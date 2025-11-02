@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getMediumName } from "../lib/teamNames";
+import { useAuth } from "../context/AuthContext";
 
 type Fixture = {
   id: string;
@@ -74,6 +75,7 @@ function formatKickoff(iso: string | null | undefined): string {
 }
 
 export default function AdminPage() {
+  const { user } = useAuth();
   const [gw, setGw] = useState(1);
   const [fixtureText, setFixtureText] = useState("");
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
@@ -86,6 +88,10 @@ export default function AdminPage() {
   const [resultsPublished, setResultsPublished] = useState(false);
   const [tab, setTab] = useState<"fixtures" | "results">("fixtures");
   const hasFixtures = fixtures.length > 0;
+  const [playerId, setPlayerId] = useState<string | null>(null);
+  const [nativePushEnabled, setNativePushEnabled] = useState<boolean | null>(null);
+  const [checkingPid, setCheckingPid] = useState(false);
+  const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
 
   // On first load, jump to the most recently published fixtures (current_gw)
   useEffect(() => {
@@ -355,6 +361,67 @@ export default function AdminPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
       <h1 className="mb-6 text-2xl font-semibold">⚙️ Admin</h1>
+
+      {isAdmin && (
+        <div className="mb-6 rounded border bg-white p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="font-semibold">OneSignal Player ID (native)</div>
+              <div className="text-sm text-slate-600">Works only inside the Despia native wrapper</div>
+              {playerId && (
+                <div className="mt-1 text-sm font-mono break-all">{playerId}</div>
+              )}
+              {nativePushEnabled != null && (
+                <div className="mt-1 text-xs text-slate-500">nativePushEnabled: {String(nativePushEnabled)}</div>
+              )}
+            </div>
+            <button
+              onClick={async () => {
+                setCheckingPid(true);
+                setPlayerId(null);
+                setNativePushEnabled(null);
+                try {
+                  const g: any = (globalThis as any);
+                  if (g && g.despia) {
+                    const d = g.despia;
+                    const pid = d?.onesignalplayerid || null;
+                    setPlayerId(pid);
+                    try {
+                      const data = typeof d === 'function' ? d('checkNativePushPermissions://', ['nativePushEnabled']) : null;
+                      if (data && typeof data === 'object' && 'nativePushEnabled' in data) {
+                        setNativePushEnabled(Boolean((data as any).nativePushEnabled));
+                      }
+                    } catch {}
+                  } else {
+                    try {
+                      const modName = 'despia-native';
+                      // @ts-ignore - vite ignore comment prevents pre-bundling
+                      const mod = await import(/* @vite-ignore */ modName);
+                      const despia: any = mod?.default;
+                      const pid = despia?.onesignalplayerid || null;
+                      setPlayerId(pid);
+                      try {
+                        const data = typeof despia === 'function' ? despia('checkNativePushPermissions://', ['nativePushEnabled']) : null;
+                        if (data && typeof data === 'object' && 'nativePushEnabled' in data) {
+                          setNativePushEnabled(Boolean((data as any).nativePushEnabled));
+                        }
+                      } catch {}
+                    } catch {
+                      setPlayerId(null);
+                    }
+                  }
+                } finally {
+                  setCheckingPid(false);
+                }
+              }}
+              className="rounded bg-slate-900 px-3 py-2 text-white disabled:opacity-50"
+              disabled={checkingPid}
+            >
+              {checkingPid ? 'Checking…' : 'Show Player ID'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* GW selector */}
       <div className="mb-6">
