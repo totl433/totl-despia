@@ -1,78 +1,67 @@
-import type { Handler } from '@netlify/functions'
-import { createClient } from '@supabase/supabase-js'
-
-function json(statusCode: number, body: unknown) {
-  return {
-    statusCode,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  }
-}
+// netlify/functions/sendPush.ts
+import type { Handler } from '@netlify/functions';
 
 export const handler: Handler = async (event) => {
-  if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' })
-
-  const SUPABASE_URL = process.env.SUPABASE_URL as string
-  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY as string
-  const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID as string
-  const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY as string
-
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return json(500, { error: 'Missing Supabase environment variables' })
-  if (!ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY) return json(500, { error: 'Missing OneSignal environment variables' })
-
-  // Optional debug
-  if (event.queryStringParameters?.debug === '1') {
-    return json(200, {
-      appId: (ONESIGNAL_APP_ID || '').slice(0, 8) + '…',
-      authHeader: 'Basic ' + (ONESIGNAL_REST_API_KEY || '').slice(0, 4) + '…'
-    })
+  // --- debug view to confirm what the function is using after deploy ---
+  const q = new URL(event.rawUrl).searchParams;
+  if (q.get('debug') === '1') {
+    return new Response(
+      JSON.stringify({
+        endpoint: 'https://onesignal.com/api/v1/notifications',
+        appIdPreview: (process.env.ONESIGNAL_APP_ID || '').slice(0, 8) + '…',
+        authPreview:
+          'Basic ' + (process.env.ONESIGNAL_REST_API_KEY || '').slice(0, 4) + '…',
+        hasBasicPrefix: !!(`Basic ${process.env.ONESIGNAL_REST_API_KEY || ''}`.startsWith('Basic ')),
+      }),
+      { headers: { 'Content-Type': 'application/json' } }
+    );
   }
-
-  let payload: any
-  try { payload = event.body ? JSON.parse(event.body) : {} } catch { return json(400, { error: 'Invalid JSON body' }) }
-
-  const { userIds, playerIds: rawPlayerIds, title, message, data } = payload || {}
-  if (!title || !message) return json(400, { error: 'Missing title or message' })
-
-  const playerIds: string[] = Array.isArray(rawPlayerIds) ? rawPlayerIds.filter(Boolean) : []
-  let includePlayerIds = [...playerIds]
-
-  if (Array.isArray(userIds) && userIds.length > 0) {
-    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-    const { data: rows, error } = await admin
-      .from('push_subscriptions')
-      .select('player_id')
-      .in('user_id', userIds)
-      .eq('is_active', true)
-
-    if (error) return json(500, { error: 'Failed to fetch player IDs', details: error.message })
-    includePlayerIds.push(...(rows || []).map((r: any) => r.player_id).filter(Boolean))
-  }
-
-  includePlayerIds = Array.from(new Set(includePlayerIds))
-  if (includePlayerIds.length === 0) return json(400, { error: 'No target player IDs found' })
 
   try {
-    const resp = await fetch('https://onesignal.com/api/v1/notifications', {
+    const body = event.body ? JSON.parse(event.body) : {};
+    const playerIds: string[] = body.playerIds || [];
+    const title: string = body.title || 'Notification';
+    const message: string = body.message || '';
+
+    const appId = process.env.ONESIGNAL_APP_ID;
+    const restKey = process.env.ONESIGNAL_REST_API_KEY;
+    if (!appId || !restKey) {
+      return new Response(JSON.stringify({ error: 'Missing OneSignal env vars' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const res = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: {
+        Authorization: `Basic ${restKey}`,         // << critical
         'Content-Type': 'application/json',
-        // CRITICAL: Always Basic <REST API KEY>
-        'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
       },
       body: JSON.stringify({
-        app_id: ONESIGNAL_APP_ID,                 // CRITICAL: app_id must be in the body
-        include_player_ids: includePlayerIds,
+        app_id: appId,                              // << required in body
+        include_player_ids: playerIds,
         headings: { en: title },
         contents: { en: message },
-        data: data ?? undefined,
       }),
-    })
+    });
 
-    const body = await resp.json().catch(() => ({}))
-    if (!resp.ok) return json(resp.status, { error: 'OneSignal error', details: body })
-    return json(200, { ok: true, result: body })
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return new Response(
+        JSON.stringify({ error: 'OneSignal error', status: res.status, body: json }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    return new Response(JSON.stringify({ ok: true, result: json }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
   } catch (e: any) {
-    return json(500, { error: 'Failed to send notification', details: e?.message || String(e) })
+    return new Response(JSON.stringify({ error: e?.message || 'unknown' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
-}
+};
+
+export default {};
