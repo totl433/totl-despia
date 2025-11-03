@@ -6,7 +6,12 @@ function json(statusCode: number, body: unknown) {
 }
 
 export const handler: Handler = async (event) => {
-  if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' });
+  console.log('[notifyLeagueMessage] Function invoked');
+  
+  if (event.httpMethod !== 'POST') {
+    console.log('[notifyLeagueMessage] Method not allowed:', event.httpMethod);
+    return json(405, { error: 'Method Not Allowed' });
+  }
 
   const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
   const SUPABASE_ANON_KEY = (process.env.SUPABASE_ANON_KEY || '').trim();
@@ -15,9 +20,11 @@ export const handler: Handler = async (event) => {
   const ONESIGNAL_REST_API_KEY = (process.env.ONESIGNAL_REST_API_KEY || '').trim();
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('[notifyLeagueMessage] Missing Supabase env vars');
     return json(500, { error: 'Missing Supabase environment variables' });
   }
   if (!ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY) {
+    console.error('[notifyLeagueMessage] Missing OneSignal env vars');
     return json(500, { error: 'Missing OneSignal environment variables' });
   }
 
@@ -33,12 +40,19 @@ export const handler: Handler = async (event) => {
   let payload: any;
   try {
     payload = event.body ? JSON.parse(event.body) : {};
-  } catch {
+    console.log('[notifyLeagueMessage] Payload parsed:', { 
+      leagueId: payload?.leagueId, 
+      senderId: payload?.senderId, 
+      hasContent: !!payload?.content 
+    });
+  } catch (e) {
+    console.error('[notifyLeagueMessage] Failed to parse JSON:', e);
     return json(400, { error: 'Invalid JSON body' });
   }
 
   const { leagueId, senderId, senderName, content, activeUserIds } = payload || {};
   if (!leagueId || !senderId || !content) {
+    console.log('[notifyLeagueMessage] Missing required fields:', { leagueId: !!leagueId, senderId: !!senderId, content: !!content });
     return json(400, { error: 'Missing leagueId, senderId, or content' });
   }
 
@@ -56,14 +70,20 @@ export const handler: Handler = async (event) => {
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   // 1) Resolve members (exclude sender)
+  console.log(`[notifyLeagueMessage] Loading members for league: ${leagueId}`);
   const { data: members, error: memErr } = await admin
     .from('league_members')
     .select('user_id')
     .eq('league_id', leagueId);
-  if (memErr) return json(500, { error: 'Failed to load members', details: memErr.message });
+  if (memErr) {
+    console.error('[notifyLeagueMessage] Failed to load members:', memErr);
+    return json(500, { error: 'Failed to load members', details: memErr.message });
+  }
 
   const recipients = new Set<string>((members || []).map((r: any) => r.user_id).filter(Boolean));
+  const totalMembers = recipients.size;
   recipients.delete(senderId);
+  console.log(`[notifyLeagueMessage] Found ${totalMembers} total members, ${recipients.size} recipients (after excluding sender)`);
 
   // 2) Remove muted
   const { data: mutes, error: muteErr } = await admin
@@ -75,9 +95,15 @@ export const handler: Handler = async (event) => {
   for (const row of (mutes || [])) recipients.delete(row.user_id);
 
   // 3) Remove currently active (optional)
-  if (Array.isArray(activeUserIds)) for (const uid of activeUserIds) recipients.delete(uid);
+  if (Array.isArray(activeUserIds)) {
+    console.log(`[notifyLeagueMessage] Removing ${activeUserIds.length} active users from recipients`);
+    for (const uid of activeUserIds) recipients.delete(uid);
+  }
 
-  if (recipients.size === 0) return json(200, { ok: true, message: 'No eligible recipients' });
+  if (recipients.size === 0) {
+    console.log('[notifyLeagueMessage] No eligible recipients after filtering');
+    return json(200, { ok: true, message: 'No eligible recipients' });
+  }
 
   // 4) Load push targets (Despia uses legacy OneSignal SDK - only player_id)
   const toIds = Array.from(recipients);
