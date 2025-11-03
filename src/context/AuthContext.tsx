@@ -80,12 +80,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function attemptRegister(retryCount = 0) {
       try {
+        console.log(`[Push] Attempting registration (attempt ${retryCount + 1}/4) for user ${currentUser.id}`);
+        
         // Prefer global despia if present (native runtime)
         const g: any = (globalThis as any);
         let pid: string | null = null;
         if (g && g.despia) {
           const d = g.despia;
           pid = (typeof d?.onesignalplayerid === 'string' && d.onesignalplayerid.trim()) ? d.onesignalplayerid.trim() : null;
+          console.log('[Push] Found despia via globalThis:', pid ? pid.slice(0, 8) + '…' : 'not found');
         } else {
           try {
             const modName = 'despia-native';
@@ -93,10 +96,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const mod = await import(/* @vite-ignore */ modName);
             const despia: any = mod?.default;
             pid = (typeof despia?.onesignalplayerid === 'string' && despia.onesignalplayerid.trim()) ? despia.onesignalplayerid.trim() : null;
-          } catch {}
+            console.log('[Push] Found despia via import:', pid ? pid.slice(0, 8) + '…' : 'not found');
+          } catch (importErr) {
+            console.log('[Push] Failed to import despia-native:', importErr);
+          }
         }
 
         if (!pid || pid.length === 0) {
+          console.log(`[Push] No Player ID found yet, will retry in 2s (attempt ${retryCount + 1}/4)`);
           // Retry up to 3 times with delay if Player ID not ready yet
           if (retryCount < 3 && !cancelled) {
             setTimeout(() => attemptRegister(retryCount + 1), 2000);
@@ -104,12 +111,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        if (cancelled) return;
+        if (cancelled) {
+          console.log('[Push] Registration cancelled');
+          return;
+        }
 
         const lsKey = `totl:last_pid:${currentUser.id}`;
         const last = localStorage.getItem(lsKey);
-        if (last === pid) return; // already registered this pid
+        if (last === pid) {
+          console.log('[Push] Already registered this Player ID, skipping');
+          return; // already registered this pid
+        }
 
+        console.log(`[Push] Calling registerPlayer endpoint with Player ID: ${pid.slice(0, 8)}…`);
         const res = await fetch('/.netlify/functions/registerPlayer', {
           method: 'POST',
           headers: {
