@@ -59,9 +59,10 @@ export const handler: Handler = async (event) => {
     userId = data?.user?.id;
   }
 
-  // Dev override (explicitly enabled only)
+  // Dev override (explicitly enabled only) - allows registering devices for any user by UUID
   if (!userId && process.env.ALLOW_UNAUTH_DEV === 'true' && payload.userId) {
     userId = String(payload.userId).trim();
+    console.log(`[registerPlayer] Using dev override for userId: ${userId}`);
   }
 
   if (!userId) return json(401, { error: 'Unauthorized: missing valid user' });
