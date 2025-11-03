@@ -759,9 +759,17 @@ export default function LeaguePage() {
           })
           .then(data => {
             console.log('[Chat] Notification result:', JSON.stringify(data, null, 2));
+            // Explicitly log OneSignal errors if present
+            if (data.oneSignalErrors && Array.isArray(data.oneSignalErrors)) {
+              console.error('[Chat] OneSignal Errors:', JSON.stringify(data.oneSignalErrors, null, 2));
+              console.error('[Chat] Full OneSignal Response:', JSON.stringify(data.fullResponse, null, 2));
+            }
             // Always show status for debugging
             if (data.error) {
-              setNotificationStatus({ message: `Error: ${data.error}${data.details ? ' - ' + JSON.stringify(data.details) : ''}`, type: 'error' });
+              const errorMsg = data.oneSignalErrors 
+                ? `OneSignal Error: ${JSON.stringify(data.oneSignalErrors)}`
+                : `Error: ${data.error}${data.details ? ' - ' + JSON.stringify(data.details) : ''}`;
+              setNotificationStatus({ message: errorMsg, type: 'error' });
             } else if (data.message === 'No devices') {
               setNotificationStatus({ 
                 message: `⚠️ ${data.eligibleRecipients || 0} recipient${(data.eligibleRecipients || 0) !== 1 ? 's' : ''} don't have devices registered`, 
