@@ -697,60 +697,68 @@ export default function LeaguePage() {
       setChat((prev) => [...prev, inserted as ChatMsg]);
     }
     // Fire-and-forget: request push notifications to league members (exclude sender)
-    try {
-      const senderName = user.user_metadata?.display_name || user.email || 'User';
-      // Show immediate status to confirm fetch is being called
-      setNotificationStatus({ message: 'Sending notification...', type: 'warning' });
-      console.log('[Chat] Calling notifyLeagueMessage:', { leagueId: league.id, senderId: user.id });
-      fetch('/.netlify/functions/notifyLeagueMessage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leagueId: league.id, senderId: user.id, senderName, content: text })
-      })
-        .then(res => {
-          console.log('[Chat] Response status:', res.status, res.statusText);
-          return res.json().catch(() => ({ error: 'Failed to parse response', status: res.status }));
+    // Show immediate status to confirm fetch is being called
+    setNotificationStatus({ message: 'Sending notification...', type: 'warning' });
+    
+    // Use setTimeout to ensure state update happens
+    setTimeout(() => {
+      try {
+        const senderName = user.user_metadata?.display_name || user.email || 'User';
+        console.log('[Chat] Calling notifyLeagueMessage:', { leagueId: league.id, senderId: user.id });
+        
+        fetch('/.netlify/functions/notifyLeagueMessage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leagueId: league.id, senderId: user.id, senderName, content: text })
         })
-        .then(data => {
-          console.log('[Chat] Notification result:', JSON.stringify(data, null, 2));
-          // Always show status for debugging
-          if (data.error) {
-            setNotificationStatus({ message: `Error: ${data.error}${data.details ? ' - ' + JSON.stringify(data.details) : ''}`, type: 'error' });
-          } else if (data.message === 'No devices') {
-            setNotificationStatus({ 
-              message: `⚠️ ${data.eligibleRecipients || 0} recipient${(data.eligibleRecipients || 0) !== 1 ? 's' : ''} don't have devices registered`, 
-              type: 'warning' 
-            });
-          } else if (data.sent > 0) {
-            setNotificationStatus({ 
-              message: `✅ Notification sent to ${data.sent} device${data.sent !== 1 ? 's' : ''}`, 
-              type: 'success' 
-            });
-          } else if (data.message === 'No eligible recipients') {
-            setNotificationStatus({ 
-              message: '⚠️ No eligible recipients (only you in league?)', 
-              type: 'warning' 
-            });
-          } else {
-            // Show any response we get
-            setNotificationStatus({ 
-              message: `Status: ${JSON.stringify(data)}`, 
-              type: 'warning' 
-            });
-          }
-          // Auto-hide status after 8 seconds (longer for debugging)
-          setTimeout(() => setNotificationStatus(null), 8000);
-        })
-        .catch(err => {
-          console.error('[Chat] Notification error:', err);
-          setNotificationStatus({ message: `Error: ${err.message || 'Failed to send notification'}`, type: 'error' });
-          setTimeout(() => setNotificationStatus(null), 8000);
-        });
-    } catch (err) {
-      console.error('[Chat] Notification exception:', err);
-      setNotificationStatus({ message: `Exception: ${err instanceof Error ? err.message : String(err)}`, type: 'error' });
-      setTimeout(() => setNotificationStatus(null), 8000);
-    }
+          .then(res => {
+            console.log('[Chat] Response status:', res.status, res.statusText);
+            if (!res.ok) {
+              throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            }
+            return res.json().catch(() => ({ error: 'Failed to parse response', status: res.status }));
+          })
+          .then(data => {
+            console.log('[Chat] Notification result:', JSON.stringify(data, null, 2));
+            // Always show status for debugging
+            if (data.error) {
+              setNotificationStatus({ message: `Error: ${data.error}${data.details ? ' - ' + JSON.stringify(data.details) : ''}`, type: 'error' });
+            } else if (data.message === 'No devices') {
+              setNotificationStatus({ 
+                message: `⚠️ ${data.eligibleRecipients || 0} recipient${(data.eligibleRecipients || 0) !== 1 ? 's' : ''} don't have devices registered`, 
+                type: 'warning' 
+              });
+            } else if (data.sent > 0) {
+              setNotificationStatus({ 
+                message: `✅ Notification sent to ${data.sent} device${data.sent !== 1 ? 's' : ''}`, 
+                type: 'success' 
+              });
+            } else if (data.message === 'No eligible recipients') {
+              setNotificationStatus({ 
+                message: '⚠️ No eligible recipients (only you in league?)', 
+                type: 'warning' 
+              });
+            } else {
+              // Show any response we get
+              setNotificationStatus({ 
+                message: `Status: ${JSON.stringify(data).slice(0, 100)}`, 
+                type: 'warning' 
+              });
+            }
+            // Auto-hide status after 8 seconds (longer for debugging)
+            setTimeout(() => setNotificationStatus(null), 8000);
+          })
+          .catch(err => {
+            console.error('[Chat] Notification error:', err);
+            setNotificationStatus({ message: `Error: ${err.message || 'Failed to send notification'}`, type: 'error' });
+            setTimeout(() => setNotificationStatus(null), 8000);
+          });
+      } catch (err) {
+        console.error('[Chat] Notification exception:', err);
+        setNotificationStatus({ message: `Exception: ${err instanceof Error ? err.message : String(err)}`, type: 'error' });
+        setTimeout(() => setNotificationStatus(null), 8000);
+      }
+    }, 100);
   }
 
   /* ---------- load fixtures + picks + submissions + results for selected GW ---------- */
