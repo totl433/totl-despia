@@ -30,20 +30,16 @@ export const handler: Handler = async (event) => {
 
   const playerIdRaw = payload.playerId;
   const playerId: string | undefined = typeof playerIdRaw === 'string' && playerIdRaw.trim() ? playerIdRaw.trim() : undefined;
-  const subscriptionIdRaw = payload.subscriptionId;
-  const subscriptionId: string | undefined = typeof subscriptionIdRaw === 'string' && subscriptionIdRaw.trim() ? subscriptionIdRaw.trim() : undefined;
-  const platform: string | null = (payload.platform || null);
+  const platform: string | null = (payload.platform || 'ios');
 
-  if (!playerId && !subscriptionId) {
-    return json(400, { error: 'Provide subscriptionId (preferred) or playerId' });
+  // Despia uses legacy OneSignal SDK - only player_id is available
+  if (!playerId) {
+    return json(400, { error: 'playerId is required (Despia provides this via despia.onesignalplayerid)' });
   }
   
   // Ensure we have a valid identifier before proceeding
-  if (playerId && playerId.length === 0) {
+  if (playerId.length === 0) {
     return json(400, { error: 'playerId cannot be empty' });
-  }
-  if (subscriptionId && subscriptionId.length === 0) {
-    return json(400, { error: 'subscriptionId cannot be empty' });
   }
 
   // Work out the caller's userId
@@ -71,63 +67,32 @@ export const handler: Handler = async (event) => {
   if (!userId) return json(401, { error: 'Unauthorized: missing valid user' });
 
   // Log for debugging
-  console.log(`[registerPlayer] userId: ${userId}, playerId: ${playerId || 'missing'}, subscriptionId: ${subscriptionId || 'missing'}, platform: ${platform || 'missing'}`);
+  console.log(`[registerPlayer] userId: ${userId}, playerId: ${playerId}, platform: ${platform}`);
 
-  // Upsert rows
+  // Upsert row (Despia uses legacy OneSignal SDK - only player_id available)
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // We upsert whichever identifiers we received. It’s okay to have both.
-  // Ensure you have a UNIQUE index to support these onConflict clauses:
-  //   - UNIQUE(user_id, player_id)
-  //   - UNIQUE(user_id, subscription_id)
-  // (Nulls won’t violate the uniqueness.)
-  const results: Array<{ player_id?: string; subscription_id?: string }> = [];
+  const { error, data } = await admin
+    .from('push_subscriptions')
+    .upsert(
+      {
+        user_id: userId,
+        player_id: playerId,
+        platform,
+        is_active: true,
+      },
+      { onConflict: 'user_id,player_id' }
+    );
 
-  if (playerId) {
-    const { error, data } = await admin
-      .from('push_subscriptions')
-      .upsert(
-        {
-          user_id: userId,
-          player_id: playerId,
-          platform,
-          subscription_id: subscriptionId ?? null, // harmless if you want to store both on same row
-          is_active: true,
-        },
-        { onConflict: 'user_id,player_id' }
-      );
-    if (error) {
-      console.error(`[registerPlayer] Failed to upsert playerId for ${userId}:`, error);
-      return json(500, { error: 'Failed to upsert playerId', details: error.message });
-    }
-    console.log(`[registerPlayer] Successfully registered playerId ${playerId} for user ${userId}`);
-    results.push({ player_id: playerId });
+  if (error) {
+    console.error(`[registerPlayer] Failed to upsert for ${userId}:`, error);
+    return json(500, { error: 'Failed to register device', details: error.message });
   }
 
-  if (subscriptionId) {
-    const { error } = await admin
-      .from('push_subscriptions')
-      .upsert(
-        {
-          user_id: userId,
-          subscription_id: subscriptionId,
-          platform,
-          // optionally keep player_id too if you passed it
-          player_id: playerId ?? null,
-          is_active: true,
-        },
-        { onConflict: 'user_id,subscription_id' }
-      );
-    if (error) return json(500, { error: 'Failed to upsert subscriptionId', details: error.message });
-    results.push({ subscription_id: subscriptionId });
-  }
-
-  // Optional tidy (disable stale rows). Safe to skip if you don’t want this behavior.
-  // await admin.rpc('deactivate_old_players', { p_user_id: userId, p_player_id: playerId ?? null });
-
+  console.log(`[registerPlayer] Successfully registered playerId ${playerId.slice(0, 8)}… for user ${userId}`);
   return json(200, {
     ok: true,
     userId,
-    stored: results,
+    playerId: playerId.slice(0, 8) + '…', // mask for privacy
   });
 };

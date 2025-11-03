@@ -79,42 +79,41 @@ export const handler: Handler = async (event) => {
 
   if (recipients.size === 0) return json(200, { ok: true, message: 'No eligible recipients' });
 
-  // 4) Load push targets (subscription_id preferred)
+  // 4) Load push targets (Despia uses legacy OneSignal SDK - only player_id)
   const toIds = Array.from(recipients);
   const { data: subs, error: subErr } = await admin
     .from('push_subscriptions')
-    .select('user_id, subscription_id, player_id, is_active')
+    .select('user_id, player_id, is_active')
     .in('user_id', toIds)
     .eq('is_active', true);
-  if (subErr) return json(500, { error: 'Failed to load subscriptions', details: subErr.message });
-
-  const subscriptionIds = Array.from(
-    new Set((subs || []).map((s: any) => s.subscription_id).filter(Boolean))
-  );
-  const fallbackPlayerIds = Array.from(
-    new Set((subs || []).filter((s: any) => !s.subscription_id).map((s: any) => s.player_id).filter(Boolean))
-  );
-
-  if (subscriptionIds.length === 0 && fallbackPlayerIds.length === 0) {
-    return json(200, { ok: true, message: 'No devices' });
+  if (subErr) {
+    console.error('[notifyLeagueMessage] Failed to load subscriptions:', subErr);
+    return json(500, { error: 'Failed to load subscriptions', details: subErr.message });
   }
+
+  const playerIds = Array.from(
+    new Set((subs || []).map((s: any) => s.player_id).filter(Boolean))
+  );
+
+  if (playerIds.length === 0) {
+    console.log(`[notifyLeagueMessage] No registered devices for ${recipients.size} recipients (league: ${leagueId})`);
+    return json(200, { ok: true, message: 'No devices', eligibleRecipients: recipients.size });
+  }
+
+  console.log(`[notifyLeagueMessage] Sending to ${playerIds.length} devices for ${recipients.size} recipients`);
 
   // 5) Build message
   const title = senderName || 'New message';
   const message = String(content).slice(0, 180);
 
-  // 6) Send via OneSignal (subscription IDs → player IDs fallback)
+  // 6) Send via OneSignal (Despia uses legacy SDK - only player_ids supported)
   const payloadOS: Record<string, any> = {
     app_id: ONESIGNAL_APP_ID,
+    include_player_ids: playerIds,
     headings: { en: title },
     contents: { en: message },
     data: { type: 'league_message', leagueId, senderId },
   };
-  if (subscriptionIds.length > 0) {
-    payloadOS.include_subscription_ids = subscriptionIds;
-  } else {
-    payloadOS.include_player_ids = fallbackPlayerIds;
-  }
 
   try {
     const resp = await fetch('https://onesignal.com/api/v1/notifications', {
@@ -127,13 +126,17 @@ export const handler: Handler = async (event) => {
     });
 
     const body = await resp.json().catch(() => ({}));
-    if (!resp.ok) return json(resp.status, { error: 'OneSignal error', details: body });
+    if (!resp.ok) {
+      console.error('[notifyLeagueMessage] OneSignal API error:', resp.status, body);
+      return json(resp.status, { error: 'OneSignal error', details: body });
+    }
 
+    console.log(`[notifyLeagueMessage] Successfully sent to ${playerIds.length} devices`);
     return json(200, {
       ok: true,
       result: body,
-      sent: subscriptionIds.length || fallbackPlayerIds.length,
-      used: subscriptionIds.length ? 'subscription_ids' : 'player_ids',
+      sent: playerIds.length,
+      recipients: recipients.size,
     });
   } catch (e: any) {
     return json(500, { error: 'Failed to send notification', details: e?.message || String(e) });
