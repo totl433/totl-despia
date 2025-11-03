@@ -680,7 +680,7 @@ export default function HomePage() {
       <section className="mt-8">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
-            Mini Leagues
+            Mini Leagues.
           </h2>
           {leagues.length > 4 && (
             <Link
