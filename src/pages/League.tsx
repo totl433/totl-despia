@@ -691,7 +691,14 @@ export default function LeaguePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leagueId: league.id, senderId: user.id, senderName, content: text })
-      });
+      })
+        .then(res => res.json().catch(() => ({})))
+        .then(data => {
+          console.log('[Chat] Notification result:', data);
+        })
+        .catch(err => {
+          console.error('[Chat] Notification error:', err);
+        });
     } catch (_) { /* ignore */ }
   }
 
