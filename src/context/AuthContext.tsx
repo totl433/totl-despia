@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { ensurePushSubscribed } from '../lib/pushNotifications';
 
 type AuthState = {
   user: User | null;
@@ -79,85 +80,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     async function attemptRegister(retryCount = 0) {
+      if (cancelled) {
+        console.log('[Push] Registration cancelled');
+        return;
+      }
+
       try {
         console.log(`[Push] Attempting registration (attempt ${retryCount + 1}/10) for user ${currentUser.id}`);
         
-        // Prefer global despia if present (native runtime)
-        const g: any = (globalThis as any);
-        let pid: string | null = null;
+        // Use ensurePushSubscribed which handles permission + initialization + registration
+        const result = await ensurePushSubscribed(currentSession);
         
-        // Try multiple ways to get despia
-        if (g && g.despia) {
-          const d = g.despia;
-          pid = (typeof d?.onesignalplayerid === 'string' && d.onesignalplayerid.trim()) ? d.onesignalplayerid.trim() : null;
-          console.log('[Push] Found despia via globalThis:', pid ? pid.slice(0, 8) + '…' : 'not found');
+        if (result.ok && result.playerId) {
+          const lsKey = `totl:last_pid:${currentUser.id}`;
+          localStorage.setItem(lsKey, result.playerId);
+          console.log('[Push] Auto-registered Player ID:', result.playerId.slice(0, 8) + '…');
+          return;
         }
-        
-        // Also try window.despia (sometimes it's on window instead of globalThis)
-        if (!pid && typeof window !== 'undefined') {
-          const w: any = (window as any);
-          if (w.despia) {
-            pid = (typeof w.despia?.onesignalplayerid === 'string' && w.despia.onesignalplayerid.trim()) ? w.despia.onesignalplayerid.trim() : null;
-            console.log('[Push] Found despia via window:', pid ? pid.slice(0, 8) + '…' : 'not found');
-          }
-        }
-        
-        // Note: despia-native is injected by Despia wrapper at runtime, not a real npm module
-        // So we only check globalThis.despia and window.despia, no dynamic import needed
 
-        if (!pid || pid.length === 0) {
-          console.log(`[Push] No Player ID found yet, will retry in 3s (attempt ${retryCount + 1}/10)`);
-          // Retry up to 9 times with longer delay if Player ID not ready yet (OneSignal might take time to initialize)
+        // Retry logic based on reason
+        if (result.reason === 'no-player-id') {
+          console.log(`[Push] Player ID not ready yet, will retry in 3s (attempt ${retryCount + 1}/10)`);
           if (retryCount < 9 && !cancelled) {
             setTimeout(() => attemptRegister(retryCount + 1), 3000);
-          } else if (retryCount >= 9) {
+          } else {
             console.warn('[Push] Failed to get Player ID after 10 attempts. OneSignal may not be initialized.');
           }
-          return;
-        }
-
-        if (cancelled) {
-          console.log('[Push] Registration cancelled');
-          return;
-        }
-
-        const lsKey = `totl:last_pid:${currentUser.id}`;
-        const last = localStorage.getItem(lsKey);
-        if (last === pid) {
-          console.log('[Push] Already registered this Player ID, skipping');
-          return; // already registered this pid
-        }
-
-        console.log(`[Push] Calling registerPlayer endpoint with Player ID: ${pid.slice(0, 8)}…`);
-        const res = await fetch('/.netlify/functions/registerPlayer', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(currentSession.access_token ? { Authorization: `Bearer ${currentSession.access_token}` } : {}),
-          },
-          body: JSON.stringify({ playerId: pid, platform: 'ios' }),
-        });
-
-        if (res.ok) {
-          localStorage.setItem(lsKey, pid);
-          console.log('[Push] Auto-registered Player ID:', pid.slice(0, 8) + '…');
+        } else if (result.reason === 'permission-denied') {
+          console.warn('[Push] Permission denied - user needs to enable notifications in OS settings');
+          // Don't retry - user needs to grant permission manually
+        } else if (result.reason === 'api-not-available') {
+          console.log('[Push] Despia API not available - not in native app, skipping');
+          // Don't retry - not a native app
         } else {
-          const err = await res.json().catch(() => ({}));
-          console.error('[Push] Registration failed:', err);
+          console.warn(`[Push] Registration failed: ${result.reason}`);
+          // Retry once more for unknown errors
+          if (retryCount < 2 && !cancelled) {
+            setTimeout(() => attemptRegister(retryCount + 1), 3000);
+          }
         }
       } catch (err) {
         console.error('[Push] Registration error:', err);
+        // Retry on exception
+        if (retryCount < 2 && !cancelled) {
+          setTimeout(() => attemptRegister(retryCount + 1), 3000);
+        }
       }
     }
 
+    // Initial attempt
     attemptRegister();
 
-    // Also retry on app visibility change (user returns to app)
+    // Retry on app foreground (when user comes back to app)
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        attemptRegister();
+      if (!document.hidden && user && session && !cancelled) {
+        console.log('[Push] App became visible, checking push subscription...');
+        setTimeout(() => attemptRegister(0), 1000);
       }
     };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {

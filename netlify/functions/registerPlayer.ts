@@ -15,6 +15,8 @@ export const handler: Handler = async (event) => {
   const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
   const SUPABASE_ANON_KEY = (process.env.SUPABASE_ANON_KEY || '').trim();
   const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  const ONESIGNAL_APP_ID = (process.env.ONESIGNAL_APP_ID || '').trim();
+  const ONESIGNAL_REST_API_KEY = (process.env.ONESIGNAL_REST_API_KEY || '').trim();
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
     return json(500, { error: 'Missing Supabase environment variables' });
@@ -70,9 +72,18 @@ export const handler: Handler = async (event) => {
   // Log for debugging
   console.log(`[registerPlayer] userId: ${userId}, playerId: ${playerId}, platform: ${platform}`);
 
-  // Upsert row (Despia uses legacy OneSignal SDK - only player_id available)
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+  // 1) Mark other devices for this user as inactive (single-device mode)
+  // If you want multi-device support, remove this block
+  await admin
+    .from('push_subscriptions')
+    .update({ is_active: false })
+    .eq('user_id', userId)
+    .neq('player_id', playerId)
+    .then(() => {}, (err) => console.warn(`[registerPlayer] Failed to deactivate old devices:`, err));
+
+  // 2) Upsert this device
   const { error, data } = await admin
     .from('push_subscriptions')
     .upsert(
@@ -81,6 +92,8 @@ export const handler: Handler = async (event) => {
         player_id: playerId,
         platform,
         is_active: true,
+        subscribed: true, // Optimistically assume subscribed if user is registering
+        last_checked_at: new Date().toISOString(),
       },
       { onConflict: 'user_id,player_id' }
     );
@@ -88,6 +101,25 @@ export const handler: Handler = async (event) => {
   if (error) {
     console.error(`[registerPlayer] Failed to upsert for ${userId}:`, error);
     return json(500, { error: 'Failed to register device', details: error.message });
+  }
+
+  // 3) Set external_user_id in OneSignal (for user-based targeting)
+  if (ONESIGNAL_APP_ID && ONESIGNAL_REST_API_KEY) {
+    try {
+      await fetch(`https://onesignal.com/api/v1/players/${playerId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
+        },
+        body: JSON.stringify({
+          app_id: ONESIGNAL_APP_ID,
+          external_user_id: userId,
+        }),
+      }).then(() => {}, (err) => console.warn(`[registerPlayer] Failed to set external_user_id:`, err));
+    } catch (e) {
+      console.warn(`[registerPlayer] Error setting external_user_id:`, e);
+    }
   }
 
   console.log(`[registerPlayer] Successfully registered playerId ${playerId.slice(0, 8)}… for user ${userId}`);

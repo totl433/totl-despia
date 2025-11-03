@@ -202,72 +202,126 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* Push Notifications */}
+          {/* Push Notifications - Self-Serve Fix Screen */}
           <div className="mt-6 pt-6 border-t border-slate-200">
             <h3 className="text-lg font-semibold text-slate-800 mb-3">Push Notifications</h3>
             <p className="text-sm text-slate-600 mb-4">
-              Register your device to receive chat notifications in mini-leagues.
+              Check and fix your notification settings to receive chat notifications in mini-leagues.
             </p>
-            <button
-              onClick={async () => {
-                if (!session?.access_token) {
-                  setRegisterResult('Error: Not signed in');
-                  return;
-                }
-                setRegistering(true);
-                setRegisterResult(null);
-                try {
-                  // Try to get Player ID
-                  let playerId: string | null = null;
-                  
-                  // Try globalThis.despia
-                  const g: any = (globalThis as any);
-                  if (g?.despia?.onesignalplayerid) {
-                    playerId = g.despia.onesignalplayerid.trim();
-                  }
-                  
-                  // Try window.despia
-                  if (!playerId && typeof window !== 'undefined') {
-                    const w: any = (window as any);
-                    if (w?.despia?.onesignalplayerid) {
-                      playerId = w.despia.onesignalplayerid.trim();
-                    }
-                  }
-                  
-                  // Note: despia-native is injected by Despia wrapper at runtime, not a real npm module
-                  // So we only check globalThis.despia and window.despia, no dynamic import needed
-                  
-                  if (!playerId) {
-                    setRegisterResult('⚠️ Player ID not found. Make sure you\'re using the native app.');
+
+            {/* Status Display */}
+            <div className="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div className="text-slate-600 mb-1">OS Permission:</div>
+                  <div className="font-semibold text-slate-800">
+                    {(() => {
+                      const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                      if (!despia) return '❓ Unknown (not native app)';
+                      // Check if permission API is available
+                      if (typeof despia.oneSignalRequestPermission === 'function' || typeof despia.requestPermission === 'function') {
+                        return '✅ Can check';
+                      }
+                      return '⚠️ Check OS Settings';
+                    })()}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-slate-600 mb-1">OneSignal Status:</div>
+                  <div className="font-semibold text-slate-800">
+                    {(() => {
+                      const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                      const pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId;
+                      return pid ? '✅ Player ID found' : '❌ Not initialized';
+                    })()}
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <div className="text-slate-600 mb-1">Player ID:</div>
+                  <div className="font-mono text-xs text-slate-700 break-all">
+                    {(() => {
+                      const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                      const pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId;
+                      if (!pid) return 'Not available';
+                      return pid.slice(0, 8) + '…' + pid.slice(-4);
+                    })()}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-2">
+              <button
+                onClick={async () => {
+                  if (!session?.access_token) {
+                    setRegisterResult('Error: Not signed in');
                     return;
                   }
-                  
-                  const res = await fetch('/.netlify/functions/registerPlayer', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      Authorization: `Bearer ${session.access_token}`,
-                    },
-                    body: JSON.stringify({ playerId, platform: 'ios' }),
-                  });
-                  
-                  const data = await res.json();
-                  if (res.ok) {
-                    setRegisterResult(`✅ Successfully registered device!`);
-                  } else {
-                    setRegisterResult(`❌ Error: ${data.error || 'Registration failed'}`);
+                  setRegistering(true);
+                  setRegisterResult(null);
+                  try {
+                    const { ensurePushSubscribed } = await import('../lib/pushNotifications');
+                    const result = await ensurePushSubscribed(session);
+                    
+                    if (result.ok) {
+                      setRegisterResult(`✅ Successfully enabled notifications! Player ID: ${result.playerId?.slice(0, 8)}…`);
+                      setTimeout(() => setRegisterResult(null), 5000);
+                    } else {
+                      const reasonMap: Record<string, string> = {
+                        'permission-denied': 'Permission denied. Please enable notifications in iOS Settings.',
+                        'no-player-id': 'OneSignal not initialized. Please wait a few seconds and try again.',
+                        'api-not-available': 'Not available in browser. Please use the native app.',
+                        'no-session': 'Not signed in. Please sign in and try again.',
+                        'unknown': 'Unknown error. Please try again or contact support.',
+                      };
+                      setRegisterResult(`⚠️ ${reasonMap[result.reason || 'unknown'] || 'Failed to enable notifications'}`);
+                    }
+                  } catch (err: any) {
+                    setRegisterResult(`❌ Error: ${err.message || 'Failed to enable notifications'}`);
+                  } finally {
+                    setRegistering(false);
                   }
-                } catch (err: any) {
-                  setRegisterResult(`❌ Error: ${err.message || 'Failed to register'}`);
-                } finally {
-                  setRegistering(false);
-                }
-              }}
-              disabled={registering || !session?.access_token}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors"
-            >
-              {registering ? 'Registering...' : '📱 Register Device for Notifications'}
-            </button>
+                }}
+                disabled={registering || !session?.access_token}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors"
+              >
+                {registering ? 'Enabling...' : '🔔 Enable Notifications'}
+              </button>
+
+              <button
+                onClick={() => {
+                  // Deep link to iOS Settings (if available)
+                  const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                  if (despia && typeof despia.openSettings === 'function') {
+                    despia.openSettings();
+                  } else {
+                    alert('Please go to iOS Settings → TotL → Notifications and enable notifications');
+                  }
+                }}
+                className="w-full py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-medium rounded-xl transition-colors text-sm"
+              >
+                ⚙️ Open OS Settings
+              </button>
+
+              <button
+                onClick={async () => {
+                  const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                  const pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId;
+                  if (pid) {
+                    await navigator.clipboard.writeText(pid);
+                    setRegisterResult('✅ Player ID copied to clipboard');
+                    setTimeout(() => setRegisterResult(null), 2000);
+                  } else {
+                    setRegisterResult('⚠️ Player ID not available');
+                  }
+                }}
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-colors text-sm"
+              >
+                📋 Copy Player ID
+              </button>
+            </div>
+
             {registerResult && (
               <div className={`mt-3 p-3 rounded-lg text-sm ${
                 registerResult.includes('✅') ? 'bg-green-50 text-green-800 border border-green-200' :
