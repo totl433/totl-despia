@@ -70,6 +70,9 @@ export const handler: Handler = async (event) => {
 
   if (!userId) return json(401, { error: 'Unauthorized: missing valid user' });
 
+  // Log for debugging
+  console.log(`[registerPlayer] userId: ${userId}, playerId: ${playerId || 'missing'}, subscriptionId: ${subscriptionId || 'missing'}, platform: ${platform || 'missing'}`);
+
   // Upsert rows
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -81,7 +84,7 @@ export const handler: Handler = async (event) => {
   const results: Array<{ player_id?: string; subscription_id?: string }> = [];
 
   if (playerId) {
-    const { error } = await admin
+    const { error, data } = await admin
       .from('push_subscriptions')
       .upsert(
         {
@@ -93,7 +96,11 @@ export const handler: Handler = async (event) => {
         },
         { onConflict: 'user_id,player_id' }
       );
-    if (error) return json(500, { error: 'Failed to upsert playerId', details: error.message });
+    if (error) {
+      console.error(`[registerPlayer] Failed to upsert playerId for ${userId}:`, error);
+      return json(500, { error: 'Failed to upsert playerId', details: error.message });
+    }
+    console.log(`[registerPlayer] Successfully registered playerId ${playerId} for user ${userId}`);
     results.push({ player_id: playerId });
   }
 
