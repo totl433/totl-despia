@@ -85,18 +85,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         let pid: string | null = null;
         if (g && g.despia) {
           const d = g.despia;
-          pid = d?.onesignalplayerid || null;
+          pid = (typeof d?.onesignalplayerid === 'string' && d.onesignalplayerid.trim()) ? d.onesignalplayerid.trim() : null;
         } else {
           try {
             const modName = 'despia-native';
             // @ts-ignore
             const mod = await import(/* @vite-ignore */ modName);
             const despia: any = mod?.default;
-            pid = despia?.onesignalplayerid || null;
+            pid = (typeof despia?.onesignalplayerid === 'string' && despia.onesignalplayerid.trim()) ? despia.onesignalplayerid.trim() : null;
           } catch {}
         }
 
-        if (!pid) {
+        if (!pid || pid.length === 0) {
           // Retry up to 3 times with delay if Player ID not ready yet
           if (retryCount < 3 && !cancelled) {
             setTimeout(() => attemptRegister(retryCount + 1), 2000);

@@ -28,12 +28,22 @@ export const handler: Handler = async (event) => {
     return json(400, { error: 'Invalid JSON body' });
   }
 
-  const playerId: string | undefined = (payload.playerId || '').trim() || undefined;
-  const subscriptionId: string | undefined = (payload.subscriptionId || '').trim() || undefined;
+  const playerIdRaw = payload.playerId;
+  const playerId: string | undefined = typeof playerIdRaw === 'string' && playerIdRaw.trim() ? playerIdRaw.trim() : undefined;
+  const subscriptionIdRaw = payload.subscriptionId;
+  const subscriptionId: string | undefined = typeof subscriptionIdRaw === 'string' && subscriptionIdRaw.trim() ? subscriptionIdRaw.trim() : undefined;
   const platform: string | null = (payload.platform || null);
 
   if (!playerId && !subscriptionId) {
     return json(400, { error: 'Provide subscriptionId (preferred) or playerId' });
+  }
+  
+  // Ensure we have a valid identifier before proceeding
+  if (playerId && playerId.length === 0) {
+    return json(400, { error: 'playerId cannot be empty' });
+  }
+  if (subscriptionId && subscriptionId.length === 0) {
+    return json(400, { error: 'subscriptionId cannot be empty' });
   }
 
   // Work out the caller's userId
