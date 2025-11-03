@@ -80,21 +80,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function attemptRegister(retryCount = 0) {
       try {
-        console.log(`[Push] Attempting registration (attempt ${retryCount + 1}/4) for user ${currentUser.id}`);
+        console.log(`[Push] Attempting registration (attempt ${retryCount + 1}/10) for user ${currentUser.id}`);
         
         // Prefer global despia if present (native runtime)
         const g: any = (globalThis as any);
         let pid: string | null = null;
+        
+        // Try multiple ways to get despia
         if (g && g.despia) {
           const d = g.despia;
           pid = (typeof d?.onesignalplayerid === 'string' && d.onesignalplayerid.trim()) ? d.onesignalplayerid.trim() : null;
           console.log('[Push] Found despia via globalThis:', pid ? pid.slice(0, 8) + '…' : 'not found');
-        } else {
+        }
+        
+        // Also try window.despia (sometimes it's on window instead of globalThis)
+        if (!pid && typeof window !== 'undefined') {
+          const w: any = (window as any);
+          if (w.despia) {
+            pid = (typeof w.despia?.onesignalplayerid === 'string' && w.despia.onesignalplayerid.trim()) ? w.despia.onesignalplayerid.trim() : null;
+            console.log('[Push] Found despia via window:', pid ? pid.slice(0, 8) + '…' : 'not found');
+          }
+        }
+        
+        // Try dynamic import as fallback
+        if (!pid) {
           try {
             const modName = 'despia-native';
             // @ts-ignore
             const mod = await import(/* @vite-ignore */ modName);
-            const despia: any = mod?.default;
+            const despia: any = mod?.default || mod;
             pid = (typeof despia?.onesignalplayerid === 'string' && despia.onesignalplayerid.trim()) ? despia.onesignalplayerid.trim() : null;
             console.log('[Push] Found despia via import:', pid ? pid.slice(0, 8) + '…' : 'not found');
           } catch (importErr) {
@@ -103,10 +117,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (!pid || pid.length === 0) {
-          console.log(`[Push] No Player ID found yet, will retry in 2s (attempt ${retryCount + 1}/4)`);
-          // Retry up to 3 times with delay if Player ID not ready yet
-          if (retryCount < 3 && !cancelled) {
-            setTimeout(() => attemptRegister(retryCount + 1), 2000);
+          console.log(`[Push] No Player ID found yet, will retry in 3s (attempt ${retryCount + 1}/10)`);
+          // Retry up to 9 times with longer delay if Player ID not ready yet (OneSignal might take time to initialize)
+          if (retryCount < 9 && !cancelled) {
+            setTimeout(() => attemptRegister(retryCount + 1), 3000);
+          } else if (retryCount >= 9) {
+            console.warn('[Push] Failed to get Player ID after 10 attempts. OneSignal may not be initialized.');
           }
           return;
         }
