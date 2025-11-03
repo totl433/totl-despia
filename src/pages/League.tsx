@@ -222,16 +222,26 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
 
   return (
     <div className="mt-4">
-      {/* Notification status indicator */}
-      {notificationStatus && (
-        <div className={`mb-3 rounded-md p-3 text-sm ${
-          notificationStatus.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' :
-          notificationStatus.type === 'warning' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
-          'bg-red-50 text-red-800 border border-red-200'
-        }`}>
-          {notificationStatus.message}
-        </div>
-      )}
+      {/* Notification status indicator - ALWAYS VISIBLE FOR DEBUGGING */}
+      <div className={`mb-3 rounded-md p-3 text-sm ${
+        notificationStatus 
+          ? (notificationStatus.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' :
+             notificationStatus.type === 'warning' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
+             'bg-red-50 text-red-800 border border-red-200')
+          : 'bg-gray-100 text-gray-600 border border-gray-300'
+      }`}>
+        {notificationStatus ? notificationStatus.message : 'No notification status (send a message to test)'}
+      </div>
+      {/* Test button */}
+      <button
+        onClick={() => {
+          setNotificationStatus({ message: 'TEST: Banner is working!', type: 'success' });
+          setTimeout(() => setNotificationStatus(null), 3000);
+        }}
+        className="mb-2 text-xs text-blue-600 underline"
+      >
+        Test Status Banner
+      </button>
       <div className="flex flex-col h-[30vh]">
         <div ref={listRef} className="flex-1 overflow-y-auto rounded-xl border bg-white shadow-sm p-3">
           {chat.map((m) => {
