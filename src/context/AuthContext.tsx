@@ -78,7 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const currentSession: Session = session;
     let cancelled = false;
 
-    async function attemptRegister() {
+    async function attemptRegister(retryCount = 0) {
       try {
         // Prefer global despia if present (native runtime)
         const g: any = (globalThis as any);
@@ -96,31 +96,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch {}
         }
 
-        if (!pid || cancelled) return;
+        if (!pid) {
+          // Retry up to 3 times with delay if Player ID not ready yet
+          if (retryCount < 3 && !cancelled) {
+            setTimeout(() => attemptRegister(retryCount + 1), 2000);
+          }
+          return;
+        }
+
+        if (cancelled) return;
 
         const lsKey = `totl:last_pid:${currentUser.id}`;
         const last = localStorage.getItem(lsKey);
         if (last === pid) return; // already registered this pid
 
-        await fetch('/.netlify/functions/registerPlayer', {
+        const res = await fetch('/.netlify/functions/registerPlayer', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             ...(currentSession.access_token ? { Authorization: `Bearer ${currentSession.access_token}` } : {}),
           },
           body: JSON.stringify({ playerId: pid, platform: 'ios' }),
-        }).catch(() => {});
+        });
 
-        localStorage.setItem(lsKey, pid);
-      } catch {
-        /* noop */
+        if (res.ok) {
+          localStorage.setItem(lsKey, pid);
+          console.log('[Push] Auto-registered Player ID:', pid.slice(0, 8) + '…');
+        } else {
+          const err = await res.json().catch(() => ({}));
+          console.error('[Push] Registration failed:', err);
+        }
+      } catch (err) {
+        console.error('[Push] Registration error:', err);
       }
     }
 
     attemptRegister();
 
+    // Also retry on app visibility change (user returns to app)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        attemptRegister();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       cancelled = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [user?.id, session?.access_token]);
 
