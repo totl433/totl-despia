@@ -159,8 +159,22 @@ export const handler: Handler = async (event) => {
 
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) {
-      console.error('[notifyLeagueMessage] OneSignal API error:', resp.status, body);
-      return json(resp.status, { error: 'OneSignal error', details: body });
+      console.error('[notifyLeagueMessage] OneSignal API error:', resp.status, JSON.stringify(body, null, 2));
+      return json(resp.status, { error: 'OneSignal error', details: body, statusCode: resp.status });
+    }
+
+    // Even if resp.ok is true, check for errors in the response body
+    if (body.errors && Array.isArray(body.errors) && body.errors.length > 0) {
+      console.error('[notifyLeagueMessage] OneSignal returned errors:', JSON.stringify(body.errors, null, 2));
+      console.error('[notifyLeagueMessage] Full OneSignal response:', JSON.stringify(body, null, 2));
+      return json(200, {
+        ok: false,
+        error: 'OneSignal rejected the request',
+        oneSignalErrors: body.errors,
+        fullResponse: body,
+        playerIdsSent: playerIds,
+        debug: `OneSignal returned errors: ${JSON.stringify(body.errors)}`
+      });
     }
 
     console.log(`[notifyLeagueMessage] Successfully sent to ${playerIds.length} devices`);
