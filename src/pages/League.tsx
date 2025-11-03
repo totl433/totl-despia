@@ -699,6 +699,8 @@ export default function LeaguePage() {
     // Fire-and-forget: request push notifications to league members (exclude sender)
     try {
       const senderName = user.user_metadata?.display_name || user.email || 'User';
+      // Show immediate status to confirm fetch is being called
+      setNotificationStatus({ message: 'Sending notification...', type: 'warning' });
       console.log('[Chat] Calling notifyLeagueMessage:', { leagueId: league.id, senderId: user.id });
       fetch('/.netlify/functions/notifyLeagueMessage', {
         method: 'POST',
