@@ -11,9 +11,11 @@ interface UserStats {
 }
 
 export default function Profile() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, session } = useAuth();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [registering, setRegistering] = useState(false);
+  const [registerResult, setRegisterResult] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUserStats();
@@ -198,6 +200,91 @@ export default function Profile() {
                 <div className="text-xs text-slate-500 font-mono">{user.id}</div>
               </div>
             </div>
+          </div>
+
+          {/* Push Notifications */}
+          <div className="mt-6 pt-6 border-t border-slate-200">
+            <h3 className="text-lg font-semibold text-slate-800 mb-3">Push Notifications</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              Register your device to receive chat notifications in mini-leagues.
+            </p>
+            <button
+              onClick={async () => {
+                if (!session?.access_token) {
+                  setRegisterResult('Error: Not signed in');
+                  return;
+                }
+                setRegistering(true);
+                setRegisterResult(null);
+                try {
+                  // Try to get Player ID
+                  let playerId: string | null = null;
+                  
+                  // Try globalThis.despia
+                  const g: any = (globalThis as any);
+                  if (g?.despia?.onesignalplayerid) {
+                    playerId = g.despia.onesignalplayerid.trim();
+                  }
+                  
+                  // Try window.despia
+                  if (!playerId && typeof window !== 'undefined') {
+                    const w: any = (window as any);
+                    if (w?.despia?.onesignalplayerid) {
+                      playerId = w.despia.onesignalplayerid.trim();
+                    }
+                  }
+                  
+                  // Try dynamic import
+                  if (!playerId) {
+                    try {
+                      const mod = await import('despia-native');
+                      const despia: any = mod?.default || mod;
+                      if (despia?.onesignalplayerid) {
+                        playerId = despia.onesignalplayerid.trim();
+                      }
+                    } catch {}
+                  }
+                  
+                  if (!playerId) {
+                    setRegisterResult('⚠️ Player ID not found. Make sure you\'re using the native app.');
+                    return;
+                  }
+                  
+                  const res = await fetch('/.netlify/functions/registerPlayer', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Authorization: `Bearer ${session.access_token}`,
+                    },
+                    body: JSON.stringify({ playerId, platform: 'ios' }),
+                  });
+                  
+                  const data = await res.json();
+                  if (res.ok) {
+                    setRegisterResult(`✅ Successfully registered device!`);
+                  } else {
+                    setRegisterResult(`❌ Error: ${data.error || 'Registration failed'}`);
+                  }
+                } catch (err: any) {
+                  setRegisterResult(`❌ Error: ${err.message || 'Failed to register'}`);
+                } finally {
+                  setRegistering(false);
+                }
+              }}
+              disabled={registering || !session?.access_token}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors"
+            >
+              {registering ? 'Registering...' : '📱 Register Device for Notifications'}
+            </button>
+            {registerResult && (
+              <div className={`mt-3 p-3 rounded-lg text-sm ${
+                registerResult.includes('✅') ? 'bg-green-50 text-green-800 border border-green-200' :
+                registerResult.includes('⚠️') ? 'bg-amber-50 text-amber-800 border border-amber-200' :
+                'bg-red-50 text-red-800 border border-red-200'
+              }`}>
+                {registerResult}
+              </div>
+            )}
           </div>
 
           {/* Sign Out Button */}
