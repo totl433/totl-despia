@@ -290,22 +290,23 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                   Send
                 </button>
               </form>
-              {leagueId && (
-                <div className="mt-2">
-                  <button
-                    onClick={onCheckDiagnostic}
-                    disabled={checkingDiagnostic}
-                    className="text-xs text-blue-600 underline disabled:opacity-50"
-                  >
-                    {checkingDiagnostic ? 'Checking...' : '🔍 Check notification setup'}
-                  </button>
-                  {diagnosticInfo && (
-                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800 whitespace-pre-wrap">
-                      {diagnosticInfo}
-                    </div>
-                  )}
-                </div>
-              )}
+              <div className="mt-3">
+                <button
+                  onClick={onCheckDiagnostic}
+                  disabled={checkingDiagnostic || !leagueId}
+                  className="w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-md disabled:opacity-50 disabled:bg-gray-400"
+                >
+                  {checkingDiagnostic ? 'Checking...' : '🔍 Check Notification Setup'}
+                </button>
+                {diagnosticInfo && (
+                  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-xs text-blue-800 whitespace-pre-wrap">
+                    {diagnosticInfo}
+                  </div>
+                )}
+                {!leagueId && (
+                  <div className="mt-2 text-xs text-gray-500">Loading league info...</div>
+                )}
+              </div>
             </>
           ) : (
             <div className="rounded-md border border-amber-200 bg-amber-50 text-amber-800 p-3 text-sm">
