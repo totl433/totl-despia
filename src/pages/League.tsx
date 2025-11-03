@@ -204,9 +204,10 @@ type ChatTabProps = {
   newMsg: string;
   setNewMsg: (v: string) => void;
   onSend: () => void;
+  notificationStatus: { message: string; type: 'success' | 'warning' | 'error' | null } | null;
 };
 
-function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend }: ChatTabProps) {
+function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, notificationStatus }: ChatTabProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -221,6 +222,16 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend }
 
   return (
     <div className="mt-4">
+      {/* Notification status indicator */}
+      {notificationStatus && (
+        <div className={`mb-3 rounded-md p-3 text-sm ${
+          notificationStatus.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' :
+          notificationStatus.type === 'warning' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
+          'bg-red-50 text-red-800 border border-red-200'
+        }`}>
+          {notificationStatus.message}
+        </div>
+      )}
       <div className="flex flex-col h-[30vh]">
         <div ref={listRef} className="flex-1 overflow-y-auto rounded-xl border bg-white shadow-sm p-3">
           {chat.map((m) => {
@@ -323,6 +334,7 @@ export default function LeaguePage() {
   /* ----- Chat state ----- */
   const [chat, setChat] = useState<ChatMsg[]>([]);
   const [newMsg, setNewMsg] = useState("");
+  const [notificationStatus, setNotificationStatus] = useState<{ message: string; type: 'success' | 'warning' | 'error' | null } | null>(null);
   const isMember = useMemo(
     () => !!user?.id && members.some((m) => m.id === user.id),
     [user?.id, members]
@@ -695,18 +707,31 @@ export default function LeaguePage() {
         .then(res => res.json().catch(() => ({ error: 'Failed to parse response' })))
         .then(data => {
           console.log('[Chat] Notification result:', data);
-          if (data.debug) {
-            console.log('[Chat] Debug info:', data.debug);
+          if (data.error) {
+            setNotificationStatus({ message: `Error: ${data.error}`, type: 'error' });
+          } else if (data.message === 'No devices') {
+            setNotificationStatus({ 
+              message: `⚠️ ${data.eligibleRecipients} recipient${data.eligibleRecipients !== 1 ? 's' : ''} don't have devices registered`, 
+              type: 'warning' 
+            });
+          } else if (data.sent > 0) {
+            setNotificationStatus({ 
+              message: `✅ Notification sent to ${data.sent} device${data.sent !== 1 ? 's' : ''}`, 
+              type: 'success' 
+            });
+          } else if (data.message === 'No eligible recipients') {
+            setNotificationStatus({ 
+              message: 'No eligible recipients', 
+              type: 'warning' 
+            });
           }
-          if (data.message === 'No devices') {
-            console.warn('[Chat] ⚠️ No devices registered for recipients:', data.eligibleRecipients, 'recipients');
-          }
-          if (data.sent > 0) {
-            console.log('[Chat] ✅ Notification sent to', data.sent, 'devices');
-          }
+          // Auto-hide status after 5 seconds
+          setTimeout(() => setNotificationStatus(null), 5000);
         })
         .catch(err => {
           console.error('[Chat] Notification error:', err);
+          setNotificationStatus({ message: `Error: ${err.message || 'Failed to send notification'}`, type: 'error' });
+          setTimeout(() => setNotificationStatus(null), 5000);
         });
     } catch (_) { /* ignore */ }
   }
@@ -1713,6 +1738,7 @@ export default function LeaguePage() {
               newMsg={newMsg}
               setNewMsg={setNewMsg}
               onSend={sendChat}
+              notificationStatus={notificationStatus}
             />
           )}
           {tab === "mlt" && <MltTab />}
