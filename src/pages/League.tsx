@@ -205,9 +205,13 @@ type ChatTabProps = {
   setNewMsg: (v: string) => void;
   onSend: () => void;
   notificationStatus: { message: string; type: 'success' | 'warning' | 'error' | null } | null;
+  leagueId?: string;
+  onCheckDiagnostic: () => void;
+  checkingDiagnostic: boolean;
+  diagnosticInfo: string | null;
 };
 
-function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, notificationStatus }: ChatTabProps) {
+function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, notificationStatus, leagueId, onCheckDiagnostic, checkingDiagnostic, diagnosticInfo }: ChatTabProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -263,28 +267,46 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
 
         <div className="mt-3">
           {isMember ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                onSend();
-              }}
-              className="flex gap-2"
-            >
-              <input
-                value={newMsg}
-                onChange={(e) => setNewMsg(e.target.value)}
-                placeholder="Message your league…"
-                maxLength={2000}
-                className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
-              />
-              <button
-                type="submit"
-                className="px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-md disabled:opacity-50"
-                disabled={!newMsg.trim()}
+            <>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  onSend();
+                }}
+                className="flex gap-2"
               >
-                Send
-              </button>
-            </form>
+                <input
+                  value={newMsg}
+                  onChange={(e) => setNewMsg(e.target.value)}
+                  placeholder="Message your league…"
+                  maxLength={2000}
+                  className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-md disabled:opacity-50"
+                  disabled={!newMsg.trim()}
+                >
+                  Send
+                </button>
+              </form>
+              {leagueId && (
+                <div className="mt-2">
+                  <button
+                    onClick={onCheckDiagnostic}
+                    disabled={checkingDiagnostic}
+                    className="text-xs text-blue-600 underline disabled:opacity-50"
+                  >
+                    {checkingDiagnostic ? 'Checking...' : '🔍 Check notification setup'}
+                  </button>
+                  {diagnosticInfo && (
+                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800 whitespace-pre-wrap">
+                      {diagnosticInfo}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           ) : (
             <div className="rounded-md border border-amber-200 bg-amber-50 text-amber-800 p-3 text-sm">
               Join this league to chat with other members.
@@ -345,6 +367,8 @@ export default function LeaguePage() {
   const [chat, setChat] = useState<ChatMsg[]>([]);
   const [newMsg, setNewMsg] = useState("");
   const [notificationStatus, setNotificationStatus] = useState<{ message: string; type: 'success' | 'warning' | 'error' | null } | null>(null);
+  const [diagnosticInfo, setDiagnosticInfo] = useState<string | null>(null);
+  const [checkingDiagnostic, setCheckingDiagnostic] = useState(false);
   const isMember = useMemo(
     () => !!user?.id && members.some((m) => m.id === user.id),
     [user?.id, members]
@@ -1774,6 +1798,42 @@ export default function LeaguePage() {
               setNewMsg={setNewMsg}
               onSend={sendChat}
               notificationStatus={notificationStatus}
+              leagueId={league?.id}
+              onCheckDiagnostic={async () => {
+                if (!league?.id) return;
+                setCheckingDiagnostic(true);
+                setDiagnosticInfo(null);
+                try {
+                  const res = await fetch(`/.netlify/functions/diagnoseLeague?leagueId=${league.id}`);
+                  const data = await res.json();
+                  if (res.ok) {
+                    const info = [
+                      `📊 League Notification Status`,
+                      `Total members: ${data.totalMembers}`,
+                      `Members with devices: ${data.membersWithDevices}`,
+                      `Members WITHOUT devices: ${data.membersWithoutDevices}`,
+                      `Total registered devices: ${data.totalDevices}`,
+                      ``,
+                      `Breakdown:`,
+                      ...data.breakdown.map((b: any) => {
+                        const name = memberNameById.get(b.userId) || 'Unknown';
+                        return `  ${name}: ${b.deviceCount} device${b.deviceCount !== 1 ? 's' : ''}`;
+                      }),
+                      ``,
+                      `OneSignal configured: ${data.oneSignalConfigured ? '✅ Yes' : '❌ No'}`
+                    ].join('\n');
+                    setDiagnosticInfo(info);
+                  } else {
+                    setDiagnosticInfo(`Error: ${data.error || 'Unknown error'}`);
+                  }
+                } catch (err: any) {
+                  setDiagnosticInfo(`Error: ${err.message || 'Failed to check'}`);
+                } finally {
+                  setCheckingDiagnostic(false);
+                }
+              }}
+              checkingDiagnostic={checkingDiagnostic}
+              diagnosticInfo={diagnosticInfo}
             />
           )}
           {tab === "mlt" && <MltTab />}
