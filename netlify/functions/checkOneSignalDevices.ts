@@ -53,15 +53,26 @@ export const handler: Handler = async (event) => {
         }
 
         const player = await resp.json();
+        // For legacy SDK, check valid identifier and subscription status
+        // OneSignal API returns different fields for legacy vs new SDK
+        const isValid = player.invalid_identifier === false;
+        const isSubscribed = isValid && (
+          player.subscription?.enabled === true || 
+          player.subscription?.enabled === undefined || // legacy SDK might not have this field
+          player.last_active != null // active device is likely subscribed
+        );
+        
         return {
           playerId,
           exists: true,
-          subscribed: player.subscription?.enabled === true || player.invalid_identifier === false,
+          subscribed: isSubscribed,
           subscriptionEnabled: player.subscription?.enabled,
           invalidIdentifier: player.invalid_identifier,
           appId: player.app_id,
           deviceType: player.device_type,
           lastActive: player.last_active,
+          // Include full response for debugging
+          fullResponse: player,
         };
       } catch (e: any) {
         return {
