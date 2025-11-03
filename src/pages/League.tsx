@@ -692,9 +692,18 @@ export default function LeaguePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leagueId: league.id, senderId: user.id, senderName, content: text })
       })
-        .then(res => res.json().catch(() => ({})))
+        .then(res => res.json().catch(() => ({ error: 'Failed to parse response' })))
         .then(data => {
           console.log('[Chat] Notification result:', data);
+          if (data.debug) {
+            console.log('[Chat] Debug info:', data.debug);
+          }
+          if (data.message === 'No devices') {
+            console.warn('[Chat] ⚠️ No devices registered for recipients:', data.eligibleRecipients, 'recipients');
+          }
+          if (data.sent > 0) {
+            console.log('[Chat] ✅ Notification sent to', data.sent, 'devices');
+          }
         })
         .catch(err => {
           console.error('[Chat] Notification error:', err);

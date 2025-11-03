@@ -123,7 +123,13 @@ export const handler: Handler = async (event) => {
 
   if (playerIds.length === 0) {
     console.log(`[notifyLeagueMessage] No registered devices for ${recipients.size} recipients (league: ${leagueId})`);
-    return json(200, { ok: true, message: 'No devices', eligibleRecipients: recipients.size });
+    return json(200, { 
+      ok: true, 
+      message: 'No devices', 
+      eligibleRecipients: recipients.size,
+      recipientUserIds: Array.from(recipients),
+      debug: `Found ${recipients.size} eligible recipients but none have registered devices. Recipients: ${Array.from(recipients).join(', ')}`
+    });
   }
 
   console.log(`[notifyLeagueMessage] Sending to ${playerIds.length} devices for ${recipients.size} recipients`);
@@ -163,6 +169,8 @@ export const handler: Handler = async (event) => {
       result: body,
       sent: playerIds.length,
       recipients: recipients.size,
+      playerIds: playerIds.length,
+      debug: `Sent notification to ${playerIds.length} devices for ${recipients.size} recipients`
     });
   } catch (e: any) {
     return json(500, { error: 'Failed to send notification', details: e?.message || String(e) });
