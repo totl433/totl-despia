@@ -234,16 +234,8 @@ export default function Profile() {
                     }
                   }
                   
-                  // Try dynamic import
-                  if (!playerId) {
-                    try {
-                      const mod = await import('despia-native');
-                      const despia: any = mod?.default || mod;
-                      if (despia?.onesignalplayerid) {
-                        playerId = despia.onesignalplayerid.trim();
-                      }
-                    } catch {}
-                  }
+                  // Note: despia-native is injected by Despia wrapper at runtime, not a real npm module
+                  // So we only check globalThis.despia and window.despia, no dynamic import needed
                   
                   if (!playerId) {
                     setRegisterResult('⚠️ Player ID not found. Make sure you\'re using the native app.');

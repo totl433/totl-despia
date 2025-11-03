@@ -102,19 +102,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
         
-        // Try dynamic import as fallback
-        if (!pid) {
-          try {
-            const modName = 'despia-native';
-            // @ts-ignore
-            const mod = await import(/* @vite-ignore */ modName);
-            const despia: any = mod?.default || mod;
-            pid = (typeof despia?.onesignalplayerid === 'string' && despia.onesignalplayerid.trim()) ? despia.onesignalplayerid.trim() : null;
-            console.log('[Push] Found despia via import:', pid ? pid.slice(0, 8) + '…' : 'not found');
-          } catch (importErr) {
-            console.log('[Push] Failed to import despia-native:', importErr);
-          }
-        }
+        // Note: despia-native is injected by Despia wrapper at runtime, not a real npm module
+        // So we only check globalThis.despia and window.despia, no dynamic import needed
 
         if (!pid || pid.length === 0) {
           console.log(`[Push] No Player ID found yet, will retry in 3s (attempt ${retryCount + 1}/10)`);
