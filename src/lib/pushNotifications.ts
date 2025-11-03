@@ -5,7 +5,7 @@
 
 export interface PushSubscriptionResult {
   ok: boolean;
-  reason?: 'permission-denied' | 'no-player-id' | 'api-not-available' | 'unknown';
+  reason?: 'permission-denied' | 'no-player-id' | 'api-not-available' | 'no-session' | 'unknown';
   playerId?: string;
 }
 
