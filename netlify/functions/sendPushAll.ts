@@ -1,49 +1,229 @@
-import type { Handler } from '@netlify/functions'
+import type { Handler } from '@netlify/functions';
+import { createClient } from '@supabase/supabase-js';
 
 function json(statusCode: number, body: unknown) {
-  return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+  return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+}
+
+// Check if a Player ID is actually subscribed in OneSignal
+async function isSubscribed(
+  playerId: string,
+  appId: string,
+  restKey: string
+): Promise<{ subscribed: boolean; player?: any }> {
+  const OS_BASE = 'https://onesignal.com/api/v1';
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Basic ${restKey}`,
+  };
+
+  try {
+    const url = `${OS_BASE}/players/${playerId}?app_id=${appId}`;
+    const r = await fetch(url, { headers });
+    
+    if (!r.ok) {
+      return { subscribed: false };
+    }
+
+    const player = await r.json();
+
+    // Heuristics that cover iOS/Android:
+    // - must have a valid push token (identifier)
+    // - must not be marked invalid
+    // - must be opted in / subscribed (notification_types: 1 = subscribed, -2 = unsubscribed, 0 = disabled)
+    const hasToken = !!player.identifier; // APNs/FCM token
+    const notInvalid = !player.invalid_identifier;
+    const notificationTypes = player.notification_types;
+    const optedIn = notificationTypes !== -2 && notificationTypes !== 0 && notificationTypes !== undefined;
+
+    const subscribed = hasToken && notInvalid && optedIn;
+
+    return { subscribed, player };
+  } catch (e) {
+    console.error(`[sendPushAll] Error checking subscription for ${playerId}:`, e);
+    return { subscribed: false };
+  }
 }
 
 export const handler: Handler = async (event) => {
-  if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' })
+  console.log('[sendPushAll] Function invoked');
+  
+  if (event.httpMethod !== 'POST') {
+    console.log('[sendPushAll] Method not allowed:', event.httpMethod);
+    return json(405, { error: 'Method Not Allowed' });
+  }
 
-  const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID as string
-  const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY as string
-  if (!ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY) return json(500, { error: 'Missing OneSignal environment variables' })
+  const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
+  const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  const ONESIGNAL_APP_ID = (process.env.ONESIGNAL_APP_ID || '').trim();
+  const ONESIGNAL_REST_API_KEY = (process.env.ONESIGNAL_REST_API_KEY || '').trim();
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('[sendPushAll] Missing Supabase env vars');
+    return json(500, { error: 'Missing Supabase environment variables' });
+  }
+  if (!ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY) {
+    console.error('[sendPushAll] Missing OneSignal env vars');
+    return json(500, { error: 'Missing OneSignal environment variables' });
+  }
 
   // Optional debug
   if (event.queryStringParameters?.debug === '1') {
     return json(200, {
-      appId: (ONESIGNAL_APP_ID || '').slice(0, 8) + '…',
-      authHeader: 'Basic ' + (ONESIGNAL_REST_API_KEY || '').slice(0, 4) + '…'
-    })
+      appId: ONESIGNAL_APP_ID.slice(0, 8) + '…',
+      authHeader: 'Basic ' + ONESIGNAL_REST_API_KEY.slice(0, 4) + '…',
+    });
   }
 
-  let payload: any
-  try { payload = event.body ? JSON.parse(event.body) : {} } catch { return json(400, { error: 'Invalid JSON body' }) }
-  const { title, message, data } = payload || {}
-  if (!title || !message) return json(400, { error: 'Missing title or message' })
+  let payload: any;
+  try {
+    payload = event.body ? JSON.parse(event.body) : {};
+    console.log('[sendPushAll] Payload parsed:', { 
+      title: payload?.title, 
+      message: payload?.message?.slice(0, 50) + '…',
+      hasData: !!payload?.data 
+    });
+  } catch (e) {
+    console.error('[sendPushAll] Failed to parse JSON:', e);
+    return json(400, { error: 'Invalid JSON body' });
+  }
+
+  const { title, message, data } = payload || {};
+  if (!title || !message) {
+    console.log('[sendPushAll] Missing required fields:', { title: !!title, message: !!message });
+    return json(400, { error: 'Missing title or message' });
+  }
 
   try {
+    // Initialize Supabase admin client
+    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false },
+    });
+
+    // Get all active Player IDs from database
+    console.log('[sendPushAll] Fetching all active Player IDs from database...');
+    const { data: subs, error: subErr } = await admin
+      .from('push_subscriptions')
+      .select('user_id, player_id, is_active, subscribed')
+      .eq('is_active', true);
+
+    if (subErr) {
+      console.error('[sendPushAll] Failed to fetch subscriptions:', subErr);
+      return json(500, { error: 'Failed to load subscriptions', details: subErr.message });
+    }
+
+    const candidatePlayerIds = (subs || [])
+      .map((s: any) => s.player_id)
+      .filter(Boolean);
+
+    console.log(`[sendPushAll] Found ${candidatePlayerIds.length} candidate Player IDs`);
+
+    if (candidatePlayerIds.length === 0) {
+      console.warn('[sendPushAll] No Player IDs found in database');
+      return json(200, { 
+        ok: true, 
+        warning: 'No subscribed devices found',
+        sentTo: 0,
+        result: null 
+      });
+    }
+
+    // Check subscription status for each Player ID (with caching from DB)
+    // Use DB 'subscribed' flag if recently checked (< 1 hour), otherwise verify with OneSignal
+    const now = Date.now();
+    const oneHourAgo = new Date(now - 60 * 60 * 1000).toISOString();
+
+    const checks = await Promise.allSettled(
+      candidatePlayerIds.map(async (playerId: string) => {
+        const sub = subs.find((s: any) => s.player_id === playerId);
+        
+        // Use cached status if recently checked
+        if (sub?.subscribed === true && sub?.last_checked_at && sub.last_checked_at > oneHourAgo) {
+          console.log(`[sendPushAll] Using cached subscription status for ${playerId.slice(0, 8)}…`);
+          return { playerId, subscribed: true };
+        }
+
+        // Otherwise verify with OneSignal
+        const result = await isSubscribed(playerId, ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY);
+
+        // Update DB with subscription health
+        if (result.player) {
+          await admin
+            .from('push_subscriptions')
+            .update({
+              subscribed: result.subscribed,
+              last_checked_at: new Date().toISOString(),
+              last_active_at: result.player.last_active ? new Date(result.player.last_active * 1000).toISOString() : null,
+              invalid: !!result.player.invalid_identifier,
+              os_payload: result.player,
+            })
+            .eq('player_id', playerId)
+            .then(() => {}, (err) => console.error(`[sendPushAll] Failed to update subscription health for ${playerId}:`, err));
+        }
+        
+        return { playerId, subscribed: result.subscribed };
+      })
+    );
+
+    const validPlayerIds = candidatePlayerIds.filter((playerId, i) => {
+      const check = checks[i];
+      if (check.status === 'fulfilled') {
+        return (check as PromiseFulfilledResult<{ playerId: string; subscribed: boolean }>).value.subscribed;
+      }
+      return false;
+    });
+
+    console.log(`[sendPushAll] Filtered to ${validPlayerIds.length} subscribed Player IDs (out of ${candidatePlayerIds.length} total)`);
+
+    if (validPlayerIds.length === 0) {
+      console.warn('[sendPushAll] No subscribed Player IDs found after filtering');
+      return json(200, { 
+        ok: true, 
+        warning: 'No subscribed devices found',
+        sentTo: 0,
+        checked: candidatePlayerIds.length,
+        result: null 
+      });
+    }
+
+    // Send notification to subscribed devices
+    console.log(`[sendPushAll] Sending notification to ${validPlayerIds.length} subscribed devices...`);
     const resp = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,   // CRITICAL
+        'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
       },
       body: JSON.stringify({
-        app_id: ONESIGNAL_APP_ID,               // CRITICAL
-        included_segments: ['Subscribed Users'],
+        app_id: ONESIGNAL_APP_ID,
+        include_player_ids: validPlayerIds,
         headings: { en: title },
         contents: { en: message },
         data: data ?? undefined,
       }),
-    })
+    });
 
-    const body = await resp.json().catch(() => ({}))
-    if (!resp.ok) return json(resp.status, { error: 'OneSignal error', details: body })
-    return json(200, { ok: true, result: body })
+    const body = await resp.json().catch(() => ({}));
+    
+    if (!resp.ok) {
+      console.error('[sendPushAll] OneSignal API error:', body);
+      return json(resp.status, { 
+        error: 'OneSignal error', 
+        details: body,
+        oneSignalErrors: body.errors || [],
+        fullResponse: body
+      });
+    }
+
+    console.log(`[sendPushAll] Successfully sent notification to ${validPlayerIds.length} devices`);
+    return json(200, { 
+      ok: true, 
+      sentTo: validPlayerIds.length,
+      checked: candidatePlayerIds.length,
+      result: body 
+    });
   } catch (e: any) {
-    return json(500, { error: 'Failed to send notification', details: e?.message || String(e) })
+    console.error('[sendPushAll] Unexpected error:', e);
+    return json(500, { error: 'Failed to send notification', details: e?.message || String(e) });
   }
-}
+};

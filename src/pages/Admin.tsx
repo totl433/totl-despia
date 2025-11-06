@@ -251,9 +251,9 @@ export default function AdminPage() {
       // Dispatch event to notify PredictionsBanner that fixtures have been published
       window.dispatchEvent(new CustomEvent('fixturesPublished'));
 
-      // Fire-and-forget: broadcast push to all users
+      // Broadcast push to all users (with error handling)
       try {
-        fetch('/.netlify/functions/sendPushAll', {
+        const pushRes = await fetch('/.netlify/functions/sendPushAll', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -262,7 +262,30 @@ export default function AdminPage() {
             data: { type: 'fixtures_published', gw }
           })
         });
-      } catch (_) { /* ignore */ }
+
+        const pushData = await pushRes.json().catch(() => ({}));
+        
+        if (pushRes.ok && pushData.ok) {
+          const sentTo = pushData.sentTo || 0;
+          const checked = pushData.checked || 0;
+          if (sentTo > 0) {
+            console.log(`[Admin] Push notification sent to ${sentTo} subscribed devices (checked ${checked} total)`);
+            setOk(`Gameweek ${gw} activated! Push notification sent to ${sentTo} devices.`);
+          } else if (pushData.warning) {
+            console.warn(`[Admin] Push notification warning: ${pushData.warning}`);
+            setOk(`Gameweek ${gw} activated! (No subscribed devices found for push notifications)`);
+          }
+        } else {
+          console.error('[Admin] Push notification failed:', pushData);
+          const errorMsg = pushData.oneSignalErrors 
+            ? `OneSignal Error: ${JSON.stringify(pushData.oneSignalErrors)}`
+            : pushData.error || 'Failed to send push notification';
+          setError(`Gameweek activated, but push notification failed: ${errorMsg}`);
+        }
+      } catch (pushErr: any) {
+        console.error('[Admin] Push notification error:', pushErr);
+        setError(`Gameweek activated, but push notification failed: ${pushErr.message || 'Network error'}`);
+      }
     } catch (e: any) {
       setError(e.message ?? "Failed to activate gameweek.");
     } finally {
@@ -322,9 +345,9 @@ export default function AdminPage() {
       // Dispatch event to refresh banners across the site
       window.dispatchEvent(new CustomEvent('resultsPublished', { detail: { gw } }));
 
-      // Fire-and-forget: broadcast push to all users
+      // Broadcast push to all users (with error handling)
       try {
-        fetch('/.netlify/functions/sendPushAll', {
+        const pushRes = await fetch('/.netlify/functions/sendPushAll', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -333,7 +356,30 @@ export default function AdminPage() {
             data: { type: 'results_published', gw }
           })
         });
-      } catch (_) { /* ignore */ }
+
+        const pushData = await pushRes.json().catch(() => ({}));
+        
+        if (pushRes.ok && pushData.ok) {
+          const sentTo = pushData.sentTo || 0;
+          const checked = pushData.checked || 0;
+          if (sentTo > 0) {
+            console.log(`[Admin] Push notification sent to ${sentTo} subscribed devices (checked ${checked} total)`);
+            setOk(`GW ${gw} results published! Push notification sent to ${sentTo} devices.`);
+          } else if (pushData.warning) {
+            console.warn(`[Admin] Push notification warning: ${pushData.warning}`);
+            setOk(`GW ${gw} results published! (No subscribed devices found for push notifications)`);
+          }
+        } else {
+          console.error('[Admin] Push notification failed:', pushData);
+          const errorMsg = pushData.oneSignalErrors 
+            ? `OneSignal Error: ${JSON.stringify(pushData.oneSignalErrors)}`
+            : pushData.error || 'Failed to send push notification';
+          setError(`Results published, but push notification failed: ${errorMsg}`);
+        }
+      } catch (pushErr: any) {
+        console.error('[Admin] Push notification error:', pushErr);
+        setError(`Results published, but push notification failed: ${pushErr.message || 'Network error'}`);
+      }
     } catch (e: any) {
       setError(e.message ?? "Failed to save results.");
     } finally {
