@@ -676,7 +676,7 @@ export default function HomePage() {
         </div>
       </Section>
 
-      {/* Mini Leagues */}
+      {/* Mini Leagues section */}
       <section className="mt-8">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
