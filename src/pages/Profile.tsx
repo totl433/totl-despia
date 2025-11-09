@@ -27,22 +27,41 @@ export default function Profile() {
     const maxAttempts = 40; // Check for 20 seconds (40 * 500ms) - Despia might inject late
     
     const checkDespia = () => {
-      // Try multiple ways to find Despia API
-      const despia: any = 
-        (globalThis as any)?.despia || 
-        (typeof window !== 'undefined' ? (window as any)?.despia : null) ||
-        (globalThis as any)?.Despia ||
-        (typeof window !== 'undefined' ? (window as any)?.Despia : null);
+      // Try multiple ways to find Despia API - check all possible locations
+      const possibleLocations = [
+        (globalThis as any)?.despia,
+        (typeof window !== 'undefined' ? (window as any)?.despia : null),
+        (globalThis as any)?.Despia,
+        (typeof window !== 'undefined' ? (window as any)?.Despia : null),
+        (globalThis as any)?.DESPIA,
+        (typeof window !== 'undefined' ? (window as any)?.DESPIA : null),
+        (globalThis as any)?.OneSignal,
+        (typeof window !== 'undefined' ? (window as any)?.OneSignal : null),
+        // Check if it's nested somewhere
+        (globalThis as any)?.webkit?.messageHandlers?.despia,
+        (typeof window !== 'undefined' ? (window as any)?.webkit?.messageHandlers?.despia : null),
+      ];
       
-      // Also check for OneSignal directly
-      const oneSignal: any = 
-        (globalThis as any)?.OneSignal ||
-        (typeof window !== 'undefined' ? (window as any)?.OneSignal : null);
+      const despia: any = possibleLocations.find(loc => loc != null) || null;
       
-      if (despia || oneSignal) {
+      // Also check all global properties for anything that looks like Despia
+      let foundInGlobals = null;
+      try {
+        const globals = typeof window !== 'undefined' ? window : globalThis;
+        for (const key in globals) {
+          if (key.toLowerCase().includes('despia') || key.toLowerCase().includes('onesignal')) {
+            foundInGlobals = { key, value: (globals as any)[key] };
+            break;
+          }
+        }
+      } catch (e) {
+        // Ignore errors when checking globals
+      }
+      
+      if (despia || foundInGlobals) {
         console.log('[Profile] Native API detected:', {
           despia: !!despia,
-          oneSignal: !!oneSignal,
+          foundInGlobals,
           despiaKeys: despia ? Object.keys(despia) : [],
           hasOneSignalRequestPermission: despia && typeof despia.oneSignalRequestPermission === 'function',
           hasRequestPermission: despia && typeof despia.requestPermission === 'function',
@@ -319,11 +338,38 @@ export default function Profile() {
                 <div>globalThis.OneSignal: {((globalThis as any)?.OneSignal ? '✅ Found' : '❌ Not found')}</div>
                 <div>window.OneSignal: {(typeof window !== 'undefined' && (window as any)?.OneSignal ? '✅ Found' : '❌ Not found')}</div>
                 {(() => {
-                  const despia: any = 
-                    (globalThis as any)?.despia || 
-                    (typeof window !== 'undefined' ? (window as any)?.despia : null) ||
-                    (globalThis as any)?.Despia ||
-                    (typeof window !== 'undefined' ? (window as any)?.Despia : null);
+                  // Check all possible locations
+                  const possibleLocations = [
+                    (globalThis as any)?.despia,
+                    (typeof window !== 'undefined' ? (window as any)?.despia : null),
+                    (globalThis as any)?.Despia,
+                    (typeof window !== 'undefined' ? (window as any)?.Despia : null),
+                    (globalThis as any)?.DESPIA,
+                    (typeof window !== 'undefined' ? (window as any)?.DESPIA : null),
+                  ];
+                  const despia: any = possibleLocations.find(loc => loc != null) || null;
+                  
+                  // Also check for any global properties with "despia" or "onesignal" in the name
+                  let foundGlobals: string[] = [];
+                  try {
+                    const globals = typeof window !== 'undefined' ? window : globalThis;
+                    for (const key in globals) {
+                      if (key.toLowerCase().includes('despia') || key.toLowerCase().includes('onesignal')) {
+                        foundGlobals.push(key);
+                      }
+                    }
+                  } catch (e) {
+                    // Ignore
+                  }
+                  
+                  if (foundGlobals.length > 0) {
+                    return (
+                      <div className="mt-2 text-green-600">
+                        ✅ Found global properties: {foundGlobals.join(', ')}
+                      </div>
+                    );
+                  }
+                  
                   if (despia) {
                     return (
                       <>
