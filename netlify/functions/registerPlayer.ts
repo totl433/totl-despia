@@ -9,6 +9,46 @@ function json(statusCode: number, body: unknown) {
   };
 }
 
+// Check if a Player ID is actually subscribed in OneSignal
+async function isSubscribed(
+  playerId: string,
+  appId: string,
+  restKey: string
+): Promise<{ subscribed: boolean; player?: any }> {
+  const OS_BASE = 'https://onesignal.com/api/v1';
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Basic ${restKey}`,
+  };
+
+  try {
+    const url = `${OS_BASE}/players/${playerId}?app_id=${appId}`;
+    const r = await fetch(url, { headers });
+    
+    if (!r.ok) {
+      return { subscribed: false };
+    }
+
+    const player = await r.json();
+
+    // Heuristics that cover iOS/Android:
+    // - must have a valid push token (identifier)
+    // - must not be marked invalid
+    // - must be opted in / subscribed (notification_types: 1 = subscribed, -2 = unsubscribed, 0 = disabled)
+    const hasToken = !!player.identifier; // APNs/FCM token
+    const notInvalid = !player.invalid_identifier;
+    const notificationTypes = player.notification_types;
+    const optedIn = notificationTypes !== -2 && notificationTypes !== 0 && notificationTypes !== undefined;
+
+    const subscribed = hasToken && notInvalid && optedIn;
+
+    return { subscribed, player };
+  } catch (e) {
+    console.error(`[registerPlayer] Error checking subscription for ${playerId}:`, e);
+    return { subscribed: false };
+  }
+}
+
 export const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' });
 
@@ -83,7 +123,24 @@ export const handler: Handler = async (event) => {
     .neq('player_id', playerId)
     .then(() => {}, (err) => console.warn(`[registerPlayer] Failed to deactivate old devices:`, err));
 
-  // 2) Upsert this device
+  // 2) Verify subscription status with OneSignal before marking as subscribed
+  let subscriptionStatus = { subscribed: false, player: null as any };
+  if (ONESIGNAL_APP_ID && ONESIGNAL_REST_API_KEY) {
+    console.log(`[registerPlayer] Verifying subscription status with OneSignal for ${playerId.slice(0, 8)}…`);
+    subscriptionStatus = await isSubscribed(playerId, ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY);
+    console.log(`[registerPlayer] OneSignal subscription status: ${subscriptionStatus.subscribed ? 'SUBSCRIBED' : 'NOT SUBSCRIBED'}`);
+    
+    if (!subscriptionStatus.subscribed && subscriptionStatus.player) {
+      console.warn(`[registerPlayer] Device not subscribed. Details:`, {
+        hasToken: !!subscriptionStatus.player.identifier,
+        invalid: subscriptionStatus.player.invalid_identifier,
+        notificationTypes: subscriptionStatus.player.notification_types,
+        lastActive: subscriptionStatus.player.last_active,
+      });
+    }
+  }
+
+  // 3) Upsert this device with actual subscription status
   const { error, data } = await admin
     .from('push_subscriptions')
     .upsert(
@@ -92,8 +149,11 @@ export const handler: Handler = async (event) => {
         player_id: playerId,
         platform,
         is_active: true,
-        subscribed: true, // Optimistically assume subscribed if user is registering
+        subscribed: subscriptionStatus.subscribed, // Use actual OneSignal subscription status
         last_checked_at: new Date().toISOString(),
+        last_active_at: subscriptionStatus.player?.last_active ? new Date(subscriptionStatus.player.last_active * 1000).toISOString() : null,
+        invalid: subscriptionStatus.player ? !!subscriptionStatus.player.invalid_identifier : false,
+        os_payload: subscriptionStatus.player || null,
       },
       { onConflict: 'user_id,player_id' }
     );
@@ -103,7 +163,7 @@ export const handler: Handler = async (event) => {
     return json(500, { error: 'Failed to register device', details: error.message });
   }
 
-  // 3) Set external_user_id in OneSignal (for user-based targeting)
+  // 4) Set external_user_id in OneSignal (for user-based targeting)
   if (ONESIGNAL_APP_ID && ONESIGNAL_REST_API_KEY) {
     try {
       await fetch(`https://onesignal.com/api/v1/players/${playerId}`, {
@@ -122,10 +182,12 @@ export const handler: Handler = async (event) => {
     }
   }
 
-  console.log(`[registerPlayer] Successfully registered playerId ${playerId.slice(0, 8)}… for user ${userId}`);
+  console.log(`[registerPlayer] Successfully registered playerId ${playerId.slice(0, 8)}… for user ${userId} (subscribed: ${subscriptionStatus.subscribed})`);
   return json(200, {
     ok: true,
     userId,
     playerId: playerId.slice(0, 8) + '…', // mask for privacy
+    subscribed: subscriptionStatus.subscribed,
+    warning: !subscriptionStatus.subscribed ? 'Device registered but not subscribed in OneSignal. Please enable notifications in OS Settings.' : undefined,
   });
 };
