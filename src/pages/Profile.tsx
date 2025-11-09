@@ -18,8 +18,8 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [registering, setRegistering] = useState(false);
   const [registerResult, setRegisterResult] = useState<string | null>(null);
-  const [despiaDetected, setDespiaDetected] = useState<boolean | null>(null);
-  const [playerId, setPlayerId] = useState<string | null>(null);
+  const [checkingSubscription, setCheckingSubscription] = useState(false);
+  const [subscriptionDetails, setSubscriptionDetails] = useState<any>(null);
 
   // Poll for Despia API availability (it may be injected after page load)
   useEffect(() => {
@@ -470,6 +470,43 @@ export default function Profile() {
 
               <button
                 onClick={async () => {
+                  if (!session?.access_token) {
+                    setRegisterResult('Error: Not signed in');
+                    return;
+                  }
+                  setCheckingSubscription(true);
+                  setRegisterResult(null);
+                  setSubscriptionDetails(null);
+                  try {
+                    const res = await fetch('/.netlify/functions/checkMySubscription', {
+                      headers: {
+                        Authorization: `Bearer ${session.access_token}`,
+                      },
+                    });
+                    const data = await res.json();
+                    setSubscriptionDetails(data);
+                    
+                    if (data.subscribed) {
+                      setRegisterResult('✅ Device is subscribed! Notifications should work.');
+                    } else {
+                      const reasons = data.reasons || [];
+                      const suggestion = data.suggestion || 'Enable notifications in iOS Settings';
+                      setRegisterResult(`⚠️ Not subscribed: ${reasons.join('; ')}. ${suggestion}`);
+                    }
+                  } catch (err: any) {
+                    setRegisterResult(`❌ Error checking subscription: ${err.message}`);
+                  } finally {
+                    setCheckingSubscription(false);
+                  }
+                }}
+                disabled={checkingSubscription || !session?.access_token}
+                className="w-full py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 disabled:opacity-50 text-white font-medium rounded-xl transition-colors text-sm"
+              >
+                {checkingSubscription ? 'Checking...' : '🔍 Check Subscription Status'}
+              </button>
+
+              <button
+                onClick={async () => {
                   // Try to import despia-native as documented, then check direct global property
                   let pid: string | null = null;
                   try {
@@ -505,6 +542,27 @@ export default function Profile() {
                 'bg-red-50 text-red-800 border border-red-200'
               }`}>
                 {registerResult}
+              </div>
+            )}
+
+            {subscriptionDetails && subscriptionDetails.details && (
+              <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                <div className="font-semibold text-slate-700 mb-2">📊 OneSignal Status Details:</div>
+                <div className="space-y-1 text-slate-600 font-mono">
+                  <div>Has Token: {subscriptionDetails.details.hasToken ? '✅ Yes' : '❌ No'}</div>
+                  <div>Invalid: {subscriptionDetails.details.invalid ? '❌ Yes' : '✅ No'}</div>
+                  <div>Notification Types: {subscriptionDetails.details.notificationTypes ?? 'null'}</div>
+                  <div>Device Type: {subscriptionDetails.details.deviceType || 'N/A'}</div>
+                  <div>Last Active: {subscriptionDetails.details.lastActive ? new Date(subscriptionDetails.details.lastActive).toLocaleString() : 'Never'}</div>
+                  {subscriptionDetails.reasons && subscriptionDetails.reasons.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-slate-300">
+                      <div className="font-semibold text-red-600">Issues Found:</div>
+                      {subscriptionDetails.reasons.map((reason: string, i: number) => (
+                        <div key={i} className="text-red-600">• {reason}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
