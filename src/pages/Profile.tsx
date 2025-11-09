@@ -16,6 +16,42 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [registering, setRegistering] = useState(false);
   const [registerResult, setRegisterResult] = useState<string | null>(null);
+  const [despiaDetected, setDespiaDetected] = useState<boolean | null>(null);
+  const [playerId, setPlayerId] = useState<string | null>(null);
+
+  // Poll for Despia API availability (it may be injected after page load)
+  useEffect(() => {
+    let attempts = 0;
+    const maxAttempts = 20; // Check for 10 seconds (20 * 500ms)
+    
+    const checkDespia = () => {
+      const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+      
+      if (despia) {
+        console.log('[Profile] Despia detected:', {
+          hasOneSignalRequestPermission: typeof despia.oneSignalRequestPermission === 'function',
+          hasRequestPermission: typeof despia.requestPermission === 'function',
+          playerId: despia.onesignalplayerid || despia.oneSignalPlayerId,
+          allKeys: Object.keys(despia),
+        });
+        setDespiaDetected(true);
+        const pid = despia.onesignalplayerid || despia.oneSignalPlayerId;
+        if (pid) setPlayerId(pid);
+        return true;
+      }
+      
+      attempts++;
+      if (attempts < maxAttempts) {
+        setTimeout(checkDespia, 500);
+      } else {
+        console.warn('[Profile] Despia not detected after', maxAttempts, 'attempts');
+        setDespiaDetected(false);
+      }
+      return false;
+    };
+    
+    checkDespia();
+  }, []);
 
   useEffect(() => {
     fetchUserStats();
@@ -213,39 +249,44 @@ export default function Profile() {
             <div className="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <div className="text-slate-600 mb-1">OS Permission:</div>
-                  <div className="font-semibold text-slate-800">
-                    {(() => {
-                      const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
-                      if (!despia) return '❓ Unknown (not native app)';
-                      // Check if permission API is available
-                      if (typeof despia.oneSignalRequestPermission === 'function' || typeof despia.requestPermission === 'function') {
-                        return '✅ Can check';
-                      }
-                      return '⚠️ Check OS Settings';
-                    })()}
-                  </div>
+                <div className="text-slate-600 mb-1">OS Permission:</div>
+                <div className="font-semibold text-slate-800">
+                  {(() => {
+                    if (despiaDetected === null) return '⏳ Checking...';
+                    if (despiaDetected === false) return '❓ Unknown (not native app)';
+                    const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                    if (!despia) return '❓ Unknown (not native app)';
+                    // Check if permission API is available
+                    if (typeof despia.oneSignalRequestPermission === 'function' || typeof despia.requestPermission === 'function') {
+                      return '✅ Can check';
+                    }
+                    return '⚠️ Check OS Settings';
+                  })()}
+                </div>
                 </div>
                 <div>
-                  <div className="text-slate-600 mb-1">OneSignal Status:</div>
-                  <div className="font-semibold text-slate-800">
-                    {(() => {
-                      const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
-                      const pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId;
-                      return pid ? '✅ Player ID found' : '❌ Not initialized';
-                    })()}
-                  </div>
+                <div className="text-slate-600 mb-1">OneSignal Status:</div>
+                <div className="font-semibold text-slate-800">
+                  {(() => {
+                    if (despiaDetected === null) return '⏳ Checking...';
+                    if (despiaDetected === false) return '❌ Not initialized';
+                    const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                    const pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId || playerId;
+                    return pid ? '✅ Player ID found' : '❌ Not initialized';
+                  })()}
+                </div>
                 </div>
                 <div className="col-span-2">
-                  <div className="text-slate-600 mb-1">Player ID:</div>
-                  <div className="font-mono text-xs text-slate-700 break-all">
-                    {(() => {
-                      const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
-                      const pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId;
-                      if (!pid) return 'Not available';
-                      return pid.slice(0, 8) + '…' + pid.slice(-4);
-                    })()}
-                  </div>
+                <div className="text-slate-600 mb-1">Player ID:</div>
+                <div className="font-mono text-xs text-slate-700 break-all">
+                  {(() => {
+                    if (despiaDetected === null) return 'Checking...';
+                    const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                    const pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId || playerId;
+                    if (!pid) return 'Not available';
+                    return pid.slice(0, 8) + '…' + pid.slice(-4);
+                  })()}
+                </div>
                 </div>
               </div>
             </div>
