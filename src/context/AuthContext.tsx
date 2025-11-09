@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const currentUser: User = user;
     const currentSession: Session = session;
     let cancelled = false;
-    let registrationInterval: NodeJS.Timeout | null = null;
+    let registrationInterval: number | null = null;
 
     async function attemptRegister(retryCount = 0): Promise<boolean> {
       if (cancelled) {
