@@ -54,18 +54,28 @@ export async function ensurePushSubscribed(
     await new Promise((resolve) => setTimeout(resolve, 1500)); // 1.5s delay
 
     // Try multiple ways to get Player ID
+    // Despia exposes onesignalplayerid directly on window/globalThis as a global property
     let playerId: string | null = null;
     
-    if (typeof despia.oneSignalPlayerId === 'function') {
-      playerId = await despia.oneSignalPlayerId();
-    } else if (despia.onesignalplayerid) {
-      playerId = typeof despia.onesignalplayerid === 'string' 
-        ? despia.onesignalplayerid.trim() 
-        : null;
-    } else if (despia.oneSignalPlayerId) {
-      playerId = typeof despia.oneSignalPlayerId === 'string'
-        ? despia.oneSignalPlayerId.trim()
-        : null;
+    // First check direct global property (Despia's actual implementation)
+    const directPid = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
+    if (directPid && typeof directPid === 'string') {
+      playerId = directPid.trim();
+    }
+    
+    // Fallback to despia object if it exists
+    if (!playerId && despia) {
+      if (typeof despia.oneSignalPlayerId === 'function') {
+        playerId = await despia.oneSignalPlayerId();
+      } else if (despia.onesignalplayerid) {
+        playerId = typeof despia.onesignalplayerid === 'string' 
+          ? despia.onesignalplayerid.trim() 
+          : null;
+      } else if (despia.oneSignalPlayerId) {
+        playerId = typeof despia.oneSignalPlayerId === 'string'
+          ? despia.oneSignalPlayerId.trim()
+          : null;
+      }
     }
 
     if (!playerId || playerId.length === 0) {
