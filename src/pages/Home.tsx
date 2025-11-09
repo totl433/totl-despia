@@ -633,7 +633,7 @@ export default function HomePage() {
     <div className={`max-w-6xl mx-auto px-4 py-4 min-h-screen ${oldSchoolMode ? 'oldschool-theme' : ''}`}>
       <WhatsAppBanner />
       {/* Leaderboards */}
-      <Section title="Leaderboard" boxed={false}>
+      <Section title="The Leaderboard" boxed={false}>
         <div className="grid grid-cols-2 gap-4">
           <LeaderCard
             to="/global"
