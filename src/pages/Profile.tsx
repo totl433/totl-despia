@@ -20,6 +20,8 @@ export default function Profile() {
   const [registerResult, setRegisterResult] = useState<string | null>(null);
   const [checkingSubscription, setCheckingSubscription] = useState(false);
   const [subscriptionDetails, setSubscriptionDetails] = useState<any>(null);
+  const [despiaDetected, setDespiaDetected] = useState<boolean | null>(null);
+  const [playerId, setPlayerId] = useState<string | null>(null);
 
   // Poll for Despia API availability (it may be injected after page load)
   useEffect(() => {
