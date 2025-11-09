@@ -22,21 +22,35 @@ export default function Profile() {
   // Poll for Despia API availability (it may be injected after page load)
   useEffect(() => {
     let attempts = 0;
-    const maxAttempts = 20; // Check for 10 seconds (20 * 500ms)
+    const maxAttempts = 40; // Check for 20 seconds (40 * 500ms) - Despia might inject late
     
     const checkDespia = () => {
-      const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+      // Try multiple ways to find Despia API
+      const despia: any = 
+        (globalThis as any)?.despia || 
+        (typeof window !== 'undefined' ? (window as any)?.despia : null) ||
+        (globalThis as any)?.Despia ||
+        (typeof window !== 'undefined' ? (window as any)?.Despia : null);
       
-      if (despia) {
-        console.log('[Profile] Despia detected:', {
-          hasOneSignalRequestPermission: typeof despia.oneSignalRequestPermission === 'function',
-          hasRequestPermission: typeof despia.requestPermission === 'function',
-          playerId: despia.onesignalplayerid || despia.oneSignalPlayerId,
-          allKeys: Object.keys(despia),
+      // Also check for OneSignal directly
+      const oneSignal: any = 
+        (globalThis as any)?.OneSignal ||
+        (typeof window !== 'undefined' ? (window as any)?.OneSignal : null);
+      
+      if (despia || oneSignal) {
+        console.log('[Profile] Native API detected:', {
+          despia: !!despia,
+          oneSignal: !!oneSignal,
+          despiaKeys: despia ? Object.keys(despia) : [],
+          hasOneSignalRequestPermission: despia && typeof despia.oneSignalRequestPermission === 'function',
+          hasRequestPermission: despia && typeof despia.requestPermission === 'function',
+          playerId: despia ? (despia.onesignalplayerid || despia.oneSignalPlayerId) : null,
         });
         setDespiaDetected(true);
-        const pid = despia.onesignalplayerid || despia.oneSignalPlayerId;
-        if (pid) setPlayerId(pid);
+        if (despia) {
+          const pid = despia.onesignalplayerid || despia.oneSignalPlayerId;
+          if (pid) setPlayerId(pid);
+        }
         return true;
       }
       
@@ -44,7 +58,7 @@ export default function Profile() {
       if (attempts < maxAttempts) {
         setTimeout(checkDespia, 500);
       } else {
-        console.warn('[Profile] Despia not detected after', maxAttempts, 'attempts');
+        console.warn('[Profile] Native API not detected after', maxAttempts, 'attempts');
         setDespiaDetected(false);
       }
       return false;
@@ -294,24 +308,35 @@ export default function Profile() {
             {/* Debug Info (for troubleshooting) */}
             <div className="mb-4 p-3 bg-slate-100 rounded-lg border border-slate-300 text-xs">
               <div className="font-semibold text-slate-700 mb-2">🔍 Debug Info:</div>
-              <div className="space-y-1 text-slate-600 font-mono">
+              <div className="space-y-1 text-slate-600 font-mono break-all">
+                <div>User Agent: {typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 50) + '…' : 'N/A'}</div>
                 <div>globalThis.despia: {((globalThis as any)?.despia ? '✅ Found' : '❌ Not found')}</div>
                 <div>window.despia: {(typeof window !== 'undefined' && (window as any)?.despia ? '✅ Found' : '❌ Not found')}</div>
+                <div>globalThis.Despia: {((globalThis as any)?.Despia ? '✅ Found' : '❌ Not found')}</div>
+                <div>window.Despia: {(typeof window !== 'undefined' && (window as any)?.Despia ? '✅ Found' : '❌ Not found')}</div>
+                <div>globalThis.OneSignal: {((globalThis as any)?.OneSignal ? '✅ Found' : '❌ Not found')}</div>
+                <div>window.OneSignal: {(typeof window !== 'undefined' && (window as any)?.OneSignal ? '✅ Found' : '❌ Not found')}</div>
                 {(() => {
-                  const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                  const despia: any = 
+                    (globalThis as any)?.despia || 
+                    (typeof window !== 'undefined' ? (window as any)?.despia : null) ||
+                    (globalThis as any)?.Despia ||
+                    (typeof window !== 'undefined' ? (window as any)?.Despia : null);
                   if (despia) {
                     return (
                       <>
-                        <div>Despia keys: {Object.keys(despia).join(', ')}</div>
-                        <div>oneSignalRequestPermission: {typeof despia.oneSignalRequestPermission === 'function' ? '✅' : '❌'}</div>
-                        <div>requestPermission: {typeof despia.requestPermission === 'function' ? '✅' : '❌'}</div>
-                        <div>onesignalplayerid: {despia.onesignalplayerid ? '✅ ' + despia.onesignalplayerid.slice(0, 8) + '…' : '❌'}</div>
-                        <div>oneSignalPlayerId: {despia.oneSignalPlayerId ? '✅ ' + despia.oneSignalPlayerId.slice(0, 8) + '…' : '❌'}</div>
+                        <div className="mt-2 font-semibold">Despia Object Found:</div>
+                        <div>Keys: {Object.keys(despia).slice(0, 10).join(', ')}{Object.keys(despia).length > 10 ? '…' : ''}</div>
+                        <div>oneSignalRequestPermission: {typeof despia.oneSignalRequestPermission === 'function' ? '✅ Function' : '❌ Not a function'}</div>
+                        <div>requestPermission: {typeof despia.requestPermission === 'function' ? '✅ Function' : '❌ Not a function'}</div>
+                        <div>onesignalplayerid: {despia.onesignalplayerid ? '✅ ' + String(despia.onesignalplayerid).slice(0, 12) + '…' : '❌'}</div>
+                        <div>oneSignalPlayerId: {despia.oneSignalPlayerId ? '✅ ' + String(despia.oneSignalPlayerId).slice(0, 12) + '…' : '❌'}</div>
                       </>
                     );
                   }
-                  return <div>No Despia object found</div>;
+                  return <div className="mt-2 text-red-600">❌ No Despia object found in any location</div>;
                 })()}
+                <div className="mt-2 text-xs text-slate-500">Polling: {despiaDetected === null ? '⏳ Checking...' : despiaDetected ? '✅ Detected' : '❌ Not detected'}</div>
               </div>
             </div>
 
