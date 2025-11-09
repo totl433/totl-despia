@@ -296,6 +296,12 @@ export default function Profile() {
                     if (despiaDetected === null) return '⏳ Checking...';
                     if (despiaDetected === false) return '❓ Unknown (not native app)';
                     const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                    // If we have Player ID, we're in native app - permission status may not be directly checkable
+                    const directPid = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
+                    if (directPid || playerId) {
+                      // We have Player ID, so we're in native app - permission might be granted or needs to be checked via OS Settings
+                      return '✅ Native app detected (check OS Settings if notifications not working)';
+                    }
                     if (!despia) return '❓ Unknown (not native app)';
                     // Check if permission API is available
                     if (typeof despia.oneSignalRequestPermission === 'function' || typeof despia.requestPermission === 'function') {
