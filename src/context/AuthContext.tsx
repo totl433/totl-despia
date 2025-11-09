@@ -73,76 +73,103 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Auto-register OneSignal Player ID (native) when signed in
+  // Runs automatically on every app load and keeps subscriptions active
   useEffect(() => {
     if (!user || !session) return;
     const currentUser: User = user;
     const currentSession: Session = session;
     let cancelled = false;
+    let registrationInterval: NodeJS.Timeout | null = null;
 
-    async function attemptRegister(retryCount = 0) {
+    async function attemptRegister(retryCount = 0): Promise<boolean> {
       if (cancelled) {
         console.log('[Push] Registration cancelled');
-        return;
+        return false;
       }
 
       try {
-        console.log(`[Push] Attempting registration (attempt ${retryCount + 1}/10) for user ${currentUser.id}`);
+        console.log(`[Push] Attempting auto-registration (attempt ${retryCount + 1}/15) for user ${currentUser.id}`);
         
         // Use ensurePushSubscribed which handles permission + initialization + registration
         const result = await ensurePushSubscribed(currentSession);
         
         if (result.ok && result.playerId) {
           const lsKey = `totl:last_pid:${currentUser.id}`;
+          const lastPid = localStorage.getItem(lsKey);
           localStorage.setItem(lsKey, result.playerId);
-          console.log('[Push] Auto-registered Player ID:', result.playerId.slice(0, 8) + '…');
-          return;
+          
+          if (lastPid !== result.playerId) {
+            console.log('[Push] ✅ Auto-registered Player ID:', result.playerId.slice(0, 8) + '…');
+          } else {
+            console.log('[Push] ✅ Player ID already registered:', result.playerId.slice(0, 8) + '…');
+          }
+          return true;
         }
 
         // Retry logic based on reason
         if (result.reason === 'no-player-id') {
-          console.log(`[Push] Player ID not ready yet, will retry in 3s (attempt ${retryCount + 1}/10)`);
-          if (retryCount < 9 && !cancelled) {
-            setTimeout(() => attemptRegister(retryCount + 1), 3000);
+          console.log(`[Push] Player ID not ready yet, will retry in 2s (attempt ${retryCount + 1}/15)`);
+          if (retryCount < 14 && !cancelled) {
+            setTimeout(() => attemptRegister(retryCount + 1), 2000);
           } else {
-            console.warn('[Push] Failed to get Player ID after 10 attempts. OneSignal may not be initialized.');
+            console.warn('[Push] Failed to get Player ID after 15 attempts. OneSignal may not be initialized.');
           }
         } else if (result.reason === 'permission-denied') {
           console.warn('[Push] Permission denied - user needs to enable notifications in OS settings');
-          // Don't retry - user needs to grant permission manually
+          // Still retry periodically in case user enables permissions
+          if (retryCount < 4 && !cancelled) {
+            setTimeout(() => attemptRegister(retryCount + 1), 5000);
+          }
         } else if (result.reason === 'api-not-available') {
           console.log('[Push] Despia API not available - not in native app, skipping');
           // Don't retry - not a native app
         } else {
           console.warn(`[Push] Registration failed: ${result.reason}`);
-          // Retry once more for unknown errors
-          if (retryCount < 2 && !cancelled) {
+          // Retry for unknown errors
+          if (retryCount < 4 && !cancelled) {
             setTimeout(() => attemptRegister(retryCount + 1), 3000);
           }
         }
       } catch (err) {
         console.error('[Push] Registration error:', err);
         // Retry on exception
-        if (retryCount < 2 && !cancelled) {
+        if (retryCount < 4 && !cancelled) {
           setTimeout(() => attemptRegister(retryCount + 1), 3000);
         }
       }
+      return false;
     }
 
-    // Initial attempt
-    attemptRegister();
+    // Initial attempt with a small delay to let the app fully load
+    const initialTimeout = setTimeout(() => {
+      attemptRegister();
+    }, 500);
 
     // Retry on app foreground (when user comes back to app)
     const handleVisibilityChange = () => {
       if (!document.hidden && user && session && !cancelled) {
-        console.log('[Push] App became visible, checking push subscription...');
+        console.log('[Push] App became visible, re-checking push subscription...');
         setTimeout(() => attemptRegister(0), 1000);
       }
     };
+
+    // Periodic re-registration to keep subscriptions active (every 5 minutes)
+    // This ensures subscriptions stay fresh even if OneSignal state changes
+    registrationInterval = setInterval(() => {
+      if (!cancelled && user && session) {
+        console.log('[Push] Periodic re-registration check...');
+        attemptRegister(0);
+      }
+    }, 5 * 60 * 1000); // 5 minutes
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       cancelled = true;
+      clearTimeout(initialTimeout);
+      if (registrationInterval) {
+        clearInterval(registrationInterval);
+      }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [user?.id, session?.access_token]);

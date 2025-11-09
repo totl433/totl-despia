@@ -57,37 +57,50 @@ export async function ensurePushSubscribed(
       }
     }
 
-    // 2) Wait for OneSignal to finish initialization and get Player ID
-    console.log('[Push] Waiting for OneSignal initialization...');
-    await new Promise((resolve) => setTimeout(resolve, 1500)); // 1.5s delay
-
-    // Try multiple ways to get Player ID
-    // From docs: despia.onesignalplayerid (lowercase)
-    // Despia also exposes onesignalplayerid directly on window/globalThis as a global property
+    // 2) Poll for OneSignal Player ID (it may take time to initialize)
+    // OneSignal SDK can take a few seconds to fully initialize, especially on first load
+    console.log('[Push] Waiting for OneSignal Player ID...');
+    
     let playerId: string | null = null;
+    const maxAttempts = 10;
+    const pollInterval = 500; // Check every 500ms
     
-    // First check direct global property (Despia's actual implementation)
-    const directPid = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
-    if (directPid && typeof directPid === 'string') {
-      playerId = directPid.trim();
-    }
-    
-    // Fallback to despia object if it exists (from import or global)
-    if (!playerId && despia) {
-      // From documentation: despia.onesignalplayerid
-      if (despia.onesignalplayerid && typeof despia.onesignalplayerid === 'string') {
-        playerId = despia.onesignalplayerid.trim();
-      } else if (despia.oneSignalPlayerId && typeof despia.oneSignalPlayerId === 'string') {
-        playerId = despia.oneSignalPlayerId.trim();
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // Try multiple ways to get Player ID
+      // From docs: despia.onesignalplayerid (lowercase)
+      // Despia also exposes onesignalplayerid directly on window/globalThis as a global property
+      
+      // First check direct global property (Despia's actual implementation)
+      const directPid = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
+      if (directPid && typeof directPid === 'string' && directPid.trim().length > 0) {
+        playerId = directPid.trim();
+        break;
+      }
+      
+      // Fallback to despia object if it exists (from import or global)
+      if (despia) {
+        // From documentation: despia.onesignalplayerid
+        if (despia.onesignalplayerid && typeof despia.onesignalplayerid === 'string' && despia.onesignalplayerid.trim().length > 0) {
+          playerId = despia.onesignalplayerid.trim();
+          break;
+        } else if (despia.oneSignalPlayerId && typeof despia.oneSignalPlayerId === 'string' && despia.oneSignalPlayerId.trim().length > 0) {
+          playerId = despia.oneSignalPlayerId.trim();
+          break;
+        }
+      }
+      
+      // Wait before next attempt
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
       }
     }
 
     if (!playerId || playerId.length === 0) {
-      console.warn('[Push] Player ID not available after initialization');
+      console.warn('[Push] Player ID not available after polling', maxAttempts, 'times');
       return { ok: false, reason: 'no-player-id' };
     }
-
-    console.log(`[Push] Got Player ID: ${playerId.slice(0, 8)}…`);
+    
+    console.log(`[Push] ✅ Got Player ID: ${playerId.slice(0, 8)}…`);
 
     // 3) Send to backend
     if (!session?.access_token) {
