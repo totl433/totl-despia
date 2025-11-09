@@ -470,10 +470,22 @@ export default function Profile() {
 
               <button
                 onClick={async () => {
-                  const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
-                  const pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId;
+                  // Try to import despia-native as documented, then check direct global property
+                  let pid: string | null = null;
+                  try {
+                    const despiaModule = await import('despia-native');
+                    const despia = despiaModule.default;
+                    pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId || null;
+                  } catch (e) {
+                    // Fallback: check direct global property (Despia's actual implementation)
+                    pid = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
+                  }
+                  
+                  // Also check playerId state
+                  pid = pid || playerId;
+                  
                   if (pid) {
-                    await navigator.clipboard.writeText(pid);
+                    await navigator.clipboard.writeText(String(pid));
                     setRegisterResult('✅ Player ID copied to clipboard');
                     setTimeout(() => setRegisterResult(null), 2000);
                   } else {
