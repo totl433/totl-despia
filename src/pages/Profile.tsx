@@ -441,11 +441,24 @@ export default function Profile() {
               </button>
 
               <button
-                onClick={() => {
-                  // Deep link to iOS Settings (if available)
-                  const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
-                  if (despia && typeof despia.openSettings === 'function') {
-                    despia.openSettings();
+                onClick={async () => {
+                  // Try to import despia-native as documented
+                  let despia: any = null;
+                  try {
+                    const despiaModule = await import('despia-native');
+                    despia = despiaModule.default;
+                  } catch (e) {
+                    // Fallback: check global properties
+                    despia = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                  }
+                  
+                  // From docs: despia("settingsapp://")
+                  if (despia && typeof despia === 'function') {
+                    try {
+                      despia('settingsapp://');
+                    } catch (e) {
+                      alert('Please go to iOS Settings → TotL → Notifications and enable notifications');
+                    }
                   } else {
                     alert('Please go to iOS Settings → TotL → Notifications and enable notifications');
                   }
