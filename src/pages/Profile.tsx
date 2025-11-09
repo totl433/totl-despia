@@ -58,20 +58,26 @@ export default function Profile() {
         // Ignore errors when checking globals
       }
       
-      if (despia || foundInGlobals) {
+      // Check for direct global properties (Despia exposes onesignalplayerid directly)
+      const directPlayerId = 
+        (globalThis as any)?.onesignalplayerid ||
+        (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null) ||
+        (globalThis as any)?.oneSignalPlayerId ||
+        (typeof window !== 'undefined' ? (window as any)?.oneSignalPlayerId : null);
+      
+      if (despia || foundInGlobals || directPlayerId) {
         console.log('[Profile] Native API detected:', {
           despia: !!despia,
           foundInGlobals,
+          directPlayerId: directPlayerId ? String(directPlayerId).slice(0, 12) + '…' : null,
           despiaKeys: despia ? Object.keys(despia) : [],
           hasOneSignalRequestPermission: despia && typeof despia.oneSignalRequestPermission === 'function',
           hasRequestPermission: despia && typeof despia.requestPermission === 'function',
-          playerId: despia ? (despia.onesignalplayerid || despia.oneSignalPlayerId) : null,
+          playerId: despia ? (despia.onesignalplayerid || despia.oneSignalPlayerId) : directPlayerId,
         });
         setDespiaDetected(true);
-        if (despia) {
-          const pid = despia.onesignalplayerid || despia.oneSignalPlayerId;
-          if (pid) setPlayerId(pid);
-        }
+        const pid = despia ? (despia.onesignalplayerid || despia.oneSignalPlayerId) : directPlayerId;
+        if (pid) setPlayerId(String(pid));
         return true;
       }
       
@@ -305,8 +311,10 @@ export default function Profile() {
                   {(() => {
                     if (despiaDetected === null) return '⏳ Checking...';
                     if (despiaDetected === false) return '❌ Not initialized';
+                    // Check both nested (despia object) and direct (global property)
                     const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
-                    const pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId || playerId;
+                    const directPid = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
+                    const pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId || directPid || playerId;
                     return pid ? '✅ Player ID found' : '❌ Not initialized';
                   })()}
                 </div>
@@ -316,10 +324,13 @@ export default function Profile() {
                 <div className="font-mono text-xs text-slate-700 break-all">
                   {(() => {
                     if (despiaDetected === null) return 'Checking...';
+                    // Check both nested (despia object) and direct (global property)
                     const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
-                    const pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId || playerId;
+                    const directPid = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
+                    const pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId || directPid || playerId;
                     if (!pid) return 'Not available';
-                    return pid.slice(0, 8) + '…' + pid.slice(-4);
+                    const pidStr = String(pid);
+                    return pidStr.slice(0, 8) + '…' + pidStr.slice(-4);
                   })()}
                 </div>
                 </div>

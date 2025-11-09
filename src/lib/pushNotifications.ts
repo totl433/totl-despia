@@ -16,9 +16,14 @@ export interface PushSubscriptionResult {
 export async function ensurePushSubscribed(
   session: { access_token: string } | null
 ): Promise<PushSubscriptionResult> {
+  // Despia exposes onesignalplayerid directly on window/globalThis, not nested in a despia object
   const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+  const directPlayerId = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
+  
+  // If we have direct player ID, we're in native app even without despia object
+  const isNativeApp = !!despia || !!directPlayerId;
 
-  if (!despia) {
+  if (!isNativeApp) {
     console.warn('[Push] Despia not available - not in native app?');
     return { ok: false, reason: 'api-not-available' };
   }
