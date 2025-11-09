@@ -291,6 +291,30 @@ export default function Profile() {
               </div>
             </div>
 
+            {/* Debug Info (for troubleshooting) */}
+            <div className="mb-4 p-3 bg-slate-100 rounded-lg border border-slate-300 text-xs">
+              <div className="font-semibold text-slate-700 mb-2">🔍 Debug Info:</div>
+              <div className="space-y-1 text-slate-600 font-mono">
+                <div>globalThis.despia: {((globalThis as any)?.despia ? '✅ Found' : '❌ Not found')}</div>
+                <div>window.despia: {(typeof window !== 'undefined' && (window as any)?.despia ? '✅ Found' : '❌ Not found')}</div>
+                {(() => {
+                  const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                  if (despia) {
+                    return (
+                      <>
+                        <div>Despia keys: {Object.keys(despia).join(', ')}</div>
+                        <div>oneSignalRequestPermission: {typeof despia.oneSignalRequestPermission === 'function' ? '✅' : '❌'}</div>
+                        <div>requestPermission: {typeof despia.requestPermission === 'function' ? '✅' : '❌'}</div>
+                        <div>onesignalplayerid: {despia.onesignalplayerid ? '✅ ' + despia.onesignalplayerid.slice(0, 8) + '…' : '❌'}</div>
+                        <div>oneSignalPlayerId: {despia.oneSignalPlayerId ? '✅ ' + despia.oneSignalPlayerId.slice(0, 8) + '…' : '❌'}</div>
+                      </>
+                    );
+                  }
+                  return <div>No Despia object found</div>;
+                })()}
+              </div>
+            </div>
+
             {/* Action Buttons */}
             <div className="space-y-2">
               <button
