@@ -1,9 +1,15 @@
 #!/bin/bash
 # Register devices for mini-league members
-# Usage: ./register-devices.sh
+# Usage: ADMIN_DEVICE_REGISTRATION_SECRET="your-secret" ./register-devices.sh
 
-SECRET="0011"
+SECRET="${ADMIN_DEVICE_REGISTRATION_SECRET:-}"
 BASE_URL="https://totl-staging.netlify.app/.netlify/functions/adminRegisterDevice"
+
+if [ -z "$SECRET" ]; then
+  echo "Error: ADMIN_DEVICE_REGISTRATION_SECRET environment variable is required"
+  echo "Usage: ADMIN_DEVICE_REGISTRATION_SECRET=\"your-secret\" ./register-devices.sh"
+  exit 1
+fi
 
 echo "Registering devices..."
 

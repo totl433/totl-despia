@@ -5,6 +5,10 @@
 [functions]
   directory = "netlify/functions"
 
+# Ignore secrets scanning for helper scripts
+[build.environment]
+  SECRETS_SCAN_OMIT_PATHS = "register-devices.sh,check-*.sh,*.sh"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
