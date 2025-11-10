@@ -207,12 +207,9 @@ type ChatTabProps = {
   notificationStatus: { message: string; type: 'success' | 'warning' | 'error' | null } | null;
   setNotificationStatus: (status: { message: string; type: 'success' | 'warning' | 'error' | null } | null) => void;
   leagueId?: string;
-  onCheckDiagnostic: () => void;
-  checkingDiagnostic: boolean;
-  diagnosticInfo: string | null;
 };
 
-function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, notificationStatus, setNotificationStatus, leagueId, onCheckDiagnostic, checkingDiagnostic, diagnosticInfo }: ChatTabProps) {
+function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, notificationStatus, setNotificationStatus, leagueId }: ChatTabProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -291,23 +288,6 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                   Send
                 </button>
               </form>
-              <div className="mt-3">
-                <button
-                  onClick={onCheckDiagnostic}
-                  disabled={checkingDiagnostic || !leagueId}
-                  className="w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-md disabled:opacity-50 disabled:bg-gray-400"
-                >
-                  {checkingDiagnostic ? 'Checking...' : '🔍 Check Notification Setup'}
-                </button>
-                {diagnosticInfo && (
-                  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-xs text-blue-800 whitespace-pre-wrap">
-                    {diagnosticInfo}
-                  </div>
-                )}
-                {!leagueId && (
-                  <div className="mt-2 text-xs text-gray-500">Loading league info...</div>
-                )}
-              </div>
             </>
           ) : (
             <div className="rounded-md border border-amber-200 bg-amber-50 text-amber-800 p-3 text-sm">
@@ -369,8 +349,6 @@ export default function LeaguePage() {
   const [chat, setChat] = useState<ChatMsg[]>([]);
   const [newMsg, setNewMsg] = useState("");
   const [notificationStatus, setNotificationStatus] = useState<{ message: string; type: 'success' | 'warning' | 'error' | null } | null>(null);
-  const [diagnosticInfo, setDiagnosticInfo] = useState<string | null>(null);
-  const [checkingDiagnostic, setCheckingDiagnostic] = useState(false);
   const isMember = useMemo(
     () => !!user?.id && members.some((m) => m.id === user.id),
     [user?.id, members]
@@ -1848,41 +1826,6 @@ export default function LeaguePage() {
               notificationStatus={notificationStatus}
               setNotificationStatus={setNotificationStatus}
               leagueId={league?.id}
-              onCheckDiagnostic={async () => {
-                if (!league?.id) return;
-                setCheckingDiagnostic(true);
-                setDiagnosticInfo(null);
-                try {
-                  const res = await fetch(`/.netlify/functions/diagnoseLeague?leagueId=${league.id}`);
-                  const data = await res.json();
-                  if (res.ok) {
-                    const info = [
-                      `📊 League Notification Status`,
-                      `Total members: ${data.totalMembers}`,
-                      `Members with devices: ${data.membersWithDevices}`,
-                      `Members WITHOUT devices: ${data.membersWithoutDevices}`,
-                      `Total registered devices: ${data.totalDevices}`,
-                      ``,
-                      `Breakdown:`,
-                      ...data.breakdown.map((b: any) => {
-                        const name = memberNameById.get(b.userId) || 'Unknown';
-                        return `  ${name}: ${b.deviceCount} device${b.deviceCount !== 1 ? 's' : ''}`;
-                      }),
-                      ``,
-                      `OneSignal configured: ${data.oneSignalConfigured ? '✅ Yes' : '❌ No'}`
-                    ].join('\n');
-                    setDiagnosticInfo(info);
-                  } else {
-                    setDiagnosticInfo(`Error: ${data.error || 'Unknown error'}`);
-                  }
-                } catch (err: any) {
-                  setDiagnosticInfo(`Error: ${err.message || 'Failed to check'}`);
-                } finally {
-                  setCheckingDiagnostic(false);
-                }
-              }}
-              checkingDiagnostic={checkingDiagnostic}
-              diagnosticInfo={diagnosticInfo}
             />
           )}
           {tab === "mlt" && <MltTab />}
