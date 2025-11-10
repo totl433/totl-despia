@@ -543,7 +543,7 @@ export default function LeaguePage() {
     if (!league?.id) return;
     let alive = true;
 
-    (async () => {
+    const loadMessages = async () => {
       const { data, error } = await supabase
         .from("league_messages")
         .select("id, league_id, user_id, content, created_at")
@@ -552,7 +552,10 @@ export default function LeaguePage() {
         .limit(200);
       if (!alive) return;
       if (!error) setChat((data as ChatMsg[]) ?? []);
-    })();
+    };
+
+    // Initial load
+    loadMessages();
 
     const channel = supabase
       .channel(`league-messages:${league.id}`)
@@ -571,15 +574,50 @@ export default function LeaguePage() {
       )
       .subscribe();
 
+    // Refetch messages when app comes to foreground (e.g., user taps push notification)
+    // This ensures messages sent while app was in background are loaded
+    const handleVisibilityChange = () => {
+      if (!document.hidden && league?.id && alive) {
+        console.log('[Chat] App became visible, refetching messages...');
+        loadMessages();
+      }
+    };
+
+    // Also refetch when window gains focus (similar to Home.tsx)
+    const handleFocus = () => {
+      if (league?.id && alive) {
+        console.log('[Chat] Window gained focus, refetching messages...');
+        loadMessages();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
     return () => {
       alive = false;
       supabase.removeChannel(channel);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
     };
   }, [league?.id]);
 
-  /* ---------- mark-as-read when viewing Chat ---------- */
+  /* ---------- mark-as-read when viewing Chat + refetch messages when tab becomes active ---------- */
   useEffect(() => {
     if (tab !== "chat" || !league?.id || !user?.id) return;
+    
+    // Refetch messages when chat tab becomes active (in case user was on another tab when notification arrived)
+    const loadMessages = async () => {
+      const { data, error } = await supabase
+        .from("league_messages")
+        .select("id, league_id, user_id, content, created_at")
+        .eq("league_id", league.id)
+        .order("created_at", { ascending: true })
+        .limit(200);
+      if (!error) setChat((data as ChatMsg[]) ?? []);
+    };
+    loadMessages();
+    
     const mark = async () => {
       await supabase
         .from("league_message_reads")
@@ -589,7 +627,7 @@ export default function LeaguePage() {
         );
     };
     mark();
-  }, [tab, league?.id, user?.id, chat.length]);
+  }, [tab, league?.id, user?.id]);
 
   /* ---------- leave/join/admin ---------- */
   async function leaveLeague() {
