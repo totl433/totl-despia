@@ -200,7 +200,7 @@ function AppContent({ menuOpen, setMenuOpen }: {
       </header>}
 
       {/* Global Predictions Banner - hide on auth page and full-screen pages */}
-      {!isFullScreenPage && location.pathname !== '/auth' && <PredictionsBanner />}
+      {!isFullScreenPage && location.pathname !== '/auth' && location.pathname !== '/new-predictions' && <PredictionsBanner />}
 
       {/* Welcome Message */}
       {showWelcome && (
@@ -238,7 +238,7 @@ function AppContent({ menuOpen, setMenuOpen }: {
       </Routes>
 
       {/* Bottom Navigation - hide on auth page and league pages */}
-      {location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && <BottomNav />}
+      {location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/new-predictions' && <BottomNav />}
     </>
   );
 }

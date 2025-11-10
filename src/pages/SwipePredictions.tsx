@@ -422,13 +422,12 @@ export default function SwipePredictions() {
               <button onClick={()=>navigate('/')} className="absolute left-0 top-0 w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 hover:text-slate-800 transition-colors"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
               <div className="text-center"><h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Predictions Centre</h1><div className="mt-0 mb-4 text-base text-slate-500">Call every game, lock in your results,<br />and climb the table.</div></div>
             </div>
-            <div className="mt-2 mb-3"><div className="rounded-xl border bg-slate-100 border-slate-200 px-6 py-4"><div className="text-center"><div className="font-semibold text-slate-800">GW{currentGw ? currentGw + 1 : 9} Coming Soon</div><div className="text-sm text-slate-600">Fixtures will be published soon.</div></div></div></div>
             <div className="mt-2 mb-4"><div className="rounded-xl border bg-gradient-to-r from-emerald-50 to-blue-50 border-emerald-200 px-6 py-4"><div className="flex items-center justify-between"><div><div className="text-emerald-900 font-semibold text-lg">GW {currentGw} Complete</div><div className="text-emerald-900 text-sm font-bold mt-1">Your Score</div></div><div className="text-emerald-900 text-5xl font-extrabold">{myScore}</div></div></div></div>
             {/* results list reused from above review rendering */}
           </div>
         </div>
       ) : (
-        <div className="flex flex-col flex-1">
+        <div className="flex flex-col flex-1 pb-32" style={{ paddingBottom: 'calc(8rem + env(safe-area-inset-bottom, 0px))' }}>
           <div className="flex items-center justify-center px-4 pt-4 pb-2 relative overflow-hidden" style={{ minHeight: 0 }}>
             <div className={`absolute left-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "home" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">←</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg whitespace-nowrap">Home Win</div></div>
             <div className={`absolute right-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "away" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">→</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg whitespace-nowrap">Away Win</div></div>
@@ -502,7 +501,7 @@ export default function SwipePredictions() {
               </div>
             </div>
           </div>
-          <div className="px-4 pt-6 pb-8 bg-[#eef4f3]">
+          <div className="fixed bottom-0 left-0 right-0 pt-2 px-4 bg-[#eef4f3] z-50" style={{ paddingBottom: `calc(0.5rem + env(safe-area-inset-bottom, 0px))` }}>
             <div className="max-w-md mx-auto">
               <div className="flex items-stretch justify-center gap-3">
                 <button
