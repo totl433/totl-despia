@@ -43,6 +43,7 @@ function _ResultButton({
     : "bg-slate-50 text-slate-600 border-slate-200";
   return <div className={[base, correctPickStyle].join(" ")}><span className={correct === true ? "font-bold" : ""}>{label}</span></div>;
 }
+void _ResultButton;
 type CardState = { x: number; y: number; rotation: number; opacity: number; scale: number };
 
 const TEAM_COLORS: Record<string, { primary: string; secondary: string }> = {
@@ -72,6 +73,7 @@ export default function SwipePredictions() {
   const navigate = useNavigate();
 
   const _isListView = (mode: "cards" | "list"): mode is "list" => mode === "list";
+  void _isListView;
   const [currentGw, setCurrentGw] = useState<number | null>(null);
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [picks, setPicks] = useState<Map<number, Pick>>(new Map());
@@ -83,7 +85,9 @@ export default function SwipePredictions() {
   const [isAnimating, setIsAnimating] = useState(false);
   const [showFeedback, setShowFeedback] = useState<"home" | "draw" | "away" | null>(null);
   const [returnToReview, setReturnToReview] = useState(false);
-  const [showSaveMessage, _setShowSaveMessage] = useState(false);
+  const [_showSaveMessage, _setShowSaveMessage] = useState(false);
+  void _showSaveMessage;
+  void _setShowSaveMessage;
   const [confirmCelebration, setConfirmCelebration] = useState<{ success: boolean; message: string } | null>(null);
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -214,6 +218,8 @@ export default function SwipePredictions() {
   };
   const _handlePrevious = () => { if (currentIndex > 0 && !isAnimating) setCurrentIndex(currentIndex - 1); };
   const _handleNext = () => { if (currentIndex < fixtures.length - 1 && !isAnimating) setCurrentIndex(currentIndex + 1); };
+  void _handlePrevious;
+  void _handleNext;
   const handleConfirmClick = () => {
     if (!allPicksMade) {
       setConfirmCelebration({ success: false, message: "You still have fixtures to call!" });
