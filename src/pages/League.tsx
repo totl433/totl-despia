@@ -224,17 +224,17 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
 
   return (
     <div className="mt-4">
-      {/* Notification status indicator - ALWAYS VISIBLE FOR DEBUGGING */}
-      <div className={`mb-3 rounded-md p-3 text-sm ${
-        notificationStatus 
-          ? (notificationStatus.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' :
-             notificationStatus.type === 'warning' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
-             'bg-red-50 text-red-800 border border-red-200')
-          : 'bg-gray-100 text-gray-600 border border-gray-300'
-      }`}>
-        {notificationStatus ? notificationStatus.message : 'No notification status (send a message to test)'}
-      </div>
-      <div className="flex flex-col h-[30vh]">
+      {/* Notification status indicator - only show when there's actual feedback */}
+      {notificationStatus && (
+        <div className={`mb-3 rounded-md p-3 text-sm ${
+          notificationStatus.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' :
+          notificationStatus.type === 'warning' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
+          'bg-red-50 text-red-800 border border-red-200'
+        }`}>
+          {notificationStatus.message}
+        </div>
+      )}
+      <div className="flex flex-col h-[320px]">
         <div ref={listRef} className="flex-1 overflow-y-auto rounded-xl border bg-white shadow-sm p-3">
           {chat.map((m) => {
             const mine = m.user_id === userId;
@@ -311,7 +311,7 @@ export default function LeaguePage() {
   const [loading, setLoading] = useState(true);
 
   // tabs: Chat / Mini League Table / GW Picks / GW Results
-  const [tab, setTab] = useState<"chat" | "mlt" | "gw" | "gwr">("gwr");
+  const [tab, setTab] = useState<"chat" | "mlt" | "gw" | "gwr">("chat");
 
   const [showForm, setShowForm] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -328,6 +328,7 @@ export default function LeaguePage() {
   const [showInvite, setShowInvite] = useState(false);
   const [showJoinConfirm, setShowJoinConfirm] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [showEndLeagueConfirm, setShowEndLeagueConfirm] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
@@ -739,76 +740,24 @@ export default function LeaguePage() {
       setChat((prev) => [...prev, inserted as ChatMsg]);
     }
     // Fire-and-forget: request push notifications to league members (exclude sender)
-    // Show immediate status to confirm fetch is being called
-    setNotificationStatus({ message: 'Sending notification...', type: 'warning' });
-    
-    // Use setTimeout to ensure state update happens
-    setTimeout(() => {
-      try {
-        const senderName = user.user_metadata?.display_name || user.email || 'User';
-        console.log('[Chat] Calling notifyLeagueMessage:', { leagueId: league.id, senderId: user.id });
-        
-        fetch('/.netlify/functions/notifyLeagueMessage', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ leagueId: league.id, senderId: user.id, senderName, content: text })
-        })
-          .then(res => {
-            console.log('[Chat] Response status:', res.status, res.statusText);
-            if (!res.ok) {
-              throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-            }
-            return res.json().catch(() => ({ error: 'Failed to parse response', status: res.status }));
-          })
-          .then(data => {
-            console.log('[Chat] Notification result:', JSON.stringify(data, null, 2));
-            // Explicitly log OneSignal errors if present
-            if (data.oneSignalErrors && Array.isArray(data.oneSignalErrors)) {
-              console.error('[Chat] OneSignal Errors:', JSON.stringify(data.oneSignalErrors, null, 2));
-              console.error('[Chat] Full OneSignal Response:', JSON.stringify(data.fullResponse, null, 2));
-            }
-            // Always show status for debugging
-            if (data.error) {
-              const errorMsg = data.oneSignalErrors 
-                ? `OneSignal Error: ${JSON.stringify(data.oneSignalErrors)}`
-                : `Error: ${data.error}${data.details ? ' - ' + JSON.stringify(data.details) : ''}`;
-              setNotificationStatus({ message: errorMsg, type: 'error' });
-            } else if (data.message === 'No devices') {
-              setNotificationStatus({ 
-                message: `⚠️ ${data.eligibleRecipients || 0} recipient${(data.eligibleRecipients || 0) !== 1 ? 's' : ''} don't have devices registered`, 
-                type: 'warning' 
-              });
-            } else if (data.sent > 0) {
-              setNotificationStatus({ 
-                message: `✅ Notification sent to ${data.sent} device${data.sent !== 1 ? 's' : ''}`, 
-                type: 'success' 
-              });
-            } else if (data.message === 'No eligible recipients') {
-              setNotificationStatus({ 
-                message: '⚠️ No eligible recipients (only you in league?)', 
-                type: 'warning' 
-              });
-            } else {
-              // Show any response we get
-              setNotificationStatus({ 
-                message: `Status: ${JSON.stringify(data).slice(0, 100)}`, 
-                type: 'warning' 
-              });
-            }
-            // Auto-hide status after 8 seconds (longer for debugging)
-            setTimeout(() => setNotificationStatus(null), 8000);
-          })
-          .catch(err => {
-            console.error('[Chat] Notification error:', err);
-            setNotificationStatus({ message: `Error: ${err.message || 'Failed to send notification'}`, type: 'error' });
-            setTimeout(() => setNotificationStatus(null), 8000);
+    // Skip in local development (Netlify Functions not available)
+    const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (!isLocalDev) {
+      setTimeout(() => {
+        try {
+          const senderName = user.user_metadata?.display_name || user.email || 'User';
+          fetch('/.netlify/functions/notifyLeagueMessage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ leagueId: league.id, senderId: user.id, senderName, content: text })
+          }).catch(err => {
+            console.error('[Chat] Notification error (silent):', err);
           });
-      } catch (err) {
-        console.error('[Chat] Notification exception:', err);
-        setNotificationStatus({ message: `Exception: ${err instanceof Error ? err.message : String(err)}`, type: 'error' });
-        setTimeout(() => setNotificationStatus(null), 8000);
-      }
-    }, 100);
+        } catch (err) {
+          console.error('[Chat] Notification exception (silent):', err);
+        }
+      }, 100);
+    }
   }
 
   /* ---------- load fixtures + picks + submissions + results for selected GW ---------- */
@@ -1708,47 +1657,64 @@ export default function LeaguePage() {
         {/* Header with back link */}
         <div className="mb-6">
           <Link to="/leagues" className="inline-flex items-center text-slate-500 hover:text-slate-700 text-sm mb-3">
-            ← Back to Mini Leagues
+            ← Back
           </Link>
 
-          <div className="text-center">
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0">
               {league.name}
             </h1>
-
-            <div className="flex items-center justify-center gap-1 sm:gap-2 flex-wrap mb-6">
+            
+            {/* Menu button */}
+            <div className="relative">
               <button
-                onClick={() => setShowInvite(true)}
-                className="px-2 sm:px-3 py-1.5 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors text-xs sm:text-sm font-medium"
-                title="Invite players"
+                onClick={() => setShowHeaderMenu(!showHeaderMenu)}
+                className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-slate-600 hover:text-slate-800 transition-colors text-sm"
+                aria-label="Menu"
               >
-                ➕ <span className="hidden sm:inline">Invite</span>
+                Menu
               </button>
-              <button
-                onClick={shareLeague}
-                className="px-2 sm:px-3 py-1.5 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors text-xs sm:text-sm font-medium"
-                title="Share league code"
-              >
-                <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"
+              
+              {/* iOS-style context menu */}
+              {showHeaderMenu && (
+                <>
+                  {/* Backdrop */}
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setShowHeaderMenu(false)}
                   />
-                </svg>
-                <span className="hidden sm:inline">Share</span>
-              </button>
-              <button
-                onClick={() => setShowLeaveConfirm(true)}
-                className="px-2 sm:px-3 py-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors text-xs sm:text-sm font-medium"
-                title="Leave league"
-              >
-                <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-                <span className="hidden sm:inline">Leave</span>
-              </button>
+                  {/* Menu */}
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-slate-200 z-50 overflow-hidden">
+                    <button
+                      onClick={() => {
+                        setShowInvite(true);
+                        setShowHeaderMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100"
+                    >
+                      ➕ Invite players
+                    </button>
+                    <button
+                      onClick={() => {
+                        shareLeague();
+                        setShowHeaderMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100"
+                    >
+                      Share league code
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowLeaveConfirm(true);
+                        setShowHeaderMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      Leave
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
