@@ -286,13 +286,14 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
           padding-left: 1rem;
           padding-right: 1rem;
+          padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
           margin: 0;
           box-sizing: border-box;
         }
         @media (max-width: 768px) {
           .chat-input-area {
             bottom: env(safe-area-inset-bottom, 0px);
-            padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+            padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px) + 8px);
           }
           .chat-container {
             height: calc(100vh - 130px) !important;
@@ -309,7 +310,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           }
         }
       `}</style>
-      <div ref={listRef} className="flex-1 overflow-y-auto rounded-xl border bg-white shadow-sm px-3 pt-3 min-h-0" style={{ paddingBottom: '25px' }}>
+      <div ref={listRef} className="flex-1 overflow-y-auto rounded-xl border bg-white shadow-sm px-3 pt-3 min-h-0">
         {chat.map((m) => {
           const mine = m.user_id === userId;
           const name = nameById.get(m.user_id) ?? "Unknown";
@@ -328,7 +329,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
       </div>
 
       {/* Input area at bottom - stays close to keyboard */}
-      <div className="chat-input-area bg-white border-t border-slate-200 pt-2" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)', marginBottom: 0 }}>
+      <div className="chat-input-area bg-white border-t border-slate-200 pt-2" style={{ marginBottom: 0 }}>
         {isMember ? (
           <form
             onSubmit={(e) => {
