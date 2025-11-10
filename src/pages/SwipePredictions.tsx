@@ -91,10 +91,58 @@ export default function SwipePredictions() {
   const [confirmCelebration, setConfirmCelebration] = useState<{ success: boolean; message: string } | null>(null);
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
-    // Prevent body scrolling
-    document.body.style.overflow = 'hidden';
+    // Prevent body scrolling - override global CSS !important rules
+    const html = document.documentElement;
+    const body = document.body;
+    const root = document.getElementById('root');
+    
+    // Store original values
+    const originalHtmlOverflow = html.style.overflow;
+    const originalBodyOverflow = body.style.overflow;
+    const originalBodyPosition = body.style.position;
+    const originalRootOverflow = root?.style.overflow;
+    
+    // Set overflow hidden with !important via style attribute
+    html.style.setProperty('overflow', 'hidden', 'important');
+    body.style.setProperty('overflow', 'hidden', 'important');
+    body.style.setProperty('position', 'fixed', 'important');
+    body.style.setProperty('width', '100%', 'important');
+    body.style.setProperty('height', '100%', 'important');
+    if (root) {
+      root.style.setProperty('overflow', 'hidden', 'important');
+    }
+    
+    // Prevent wheel scrolling
+    const preventWheel = (e: WheelEvent) => {
+      e.preventDefault();
+    };
+    
+    // Prevent scroll via touch on the document (but allow on card elements)
+    const preventScroll = (e: TouchEvent) => {
+      // Only prevent if touching outside the card area
+      const target = e.target as HTMLElement;
+      const cardContainer = target.closest('[style*="aspectRatio"]');
+      if (!cardContainer) {
+        e.preventDefault();
+      }
+    };
+    
+    window.addEventListener('wheel', preventWheel, { passive: false });
+    document.addEventListener('touchmove', preventScroll, { passive: false });
+    
     return () => {
-      document.body.style.overflow = '';
+      // Restore original values
+      html.style.overflow = originalHtmlOverflow;
+      body.style.overflow = originalBodyOverflow;
+      body.style.position = originalBodyPosition;
+      body.style.width = '';
+      body.style.height = '';
+      if (root) {
+        root.style.overflow = originalRootOverflow || '';
+      }
+      
+      window.removeEventListener('wheel', preventWheel);
+      document.removeEventListener('touchmove', preventScroll);
     };
   }, [viewMode]);
 
@@ -384,7 +432,7 @@ export default function SwipePredictions() {
   return (
     <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col overflow-hidden">
       {viewMode === "cards" && (
-        <div className="p-4">
+        <div className="sticky top-0 z-40 px-4 pt-4 pb-5 bg-gradient-to-br from-slate-50 to-slate-100">
           <div className="max-w-md mx-auto">
             <div className="relative flex items-center justify-between mb-4">
               <button onClick={()=>navigate("/predictions")} className="text-slate-600 hover:text-slate-800">✕</button>
@@ -432,8 +480,8 @@ export default function SwipePredictions() {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col flex-1" style={{ paddingBottom: `calc(0px + env(safe-area-inset-bottom, 0px))` }}>
-          <div className="flex items-center justify-center px-4 pt-4 relative overflow-hidden" style={{ minHeight: 0 }}>
+        <div className="flex flex-col min-h-0 overflow-hidden flex-1 justify-center pb-[90px]" style={{ height: '100%' }}>
+          <div className="flex items-center justify-center px-4 relative overflow-hidden" style={{ minHeight: 0 }}>
             <div className={`absolute left-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "home" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">←</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg whitespace-nowrap">Home Win</div></div>
             <div className={`absolute right-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "away" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">→</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg whitespace-nowrap">Away Win</div></div>
             <div className={`absolute bottom-32 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "draw" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">↓</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg">Draw</div></div>
