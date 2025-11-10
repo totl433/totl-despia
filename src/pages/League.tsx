@@ -205,11 +205,9 @@ type ChatTabProps = {
   setNewMsg: (v: string) => void;
   onSend: () => void;
   notificationStatus: { message: string; type: 'success' | 'warning' | 'error' | null } | null;
-  setNotificationStatus: (status: { message: string; type: 'success' | 'warning' | 'error' | null } | null) => void;
-  leagueId?: string;
 };
 
-function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, notificationStatus, setNotificationStatus, leagueId }: ChatTabProps) {
+function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, notificationStatus }: ChatTabProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -1780,8 +1778,6 @@ export default function LeaguePage() {
               setNewMsg={setNewMsg}
               onSend={sendChat}
               notificationStatus={notificationStatus}
-              setNotificationStatus={setNotificationStatus}
-              leagueId={league?.id}
             />
           )}
           {tab === "mlt" && <MltTab />}
