@@ -340,7 +340,7 @@ export default function LeaguePage() {
   /* ----- Chat state ----- */
   const [chat, setChat] = useState<ChatMsg[]>([]);
   const [newMsg, setNewMsg] = useState("");
-  const [notificationStatus, setNotificationStatus] = useState<{ message: string; type: 'success' | 'warning' | 'error' | null } | null>(null);
+  const [notificationStatus, _setNotificationStatus] = useState<{ message: string; type: 'success' | 'warning' | 'error' | null } | null>(null);
   const isMember = useMemo(
     () => !!user?.id && members.some((m) => m.id === user.id),
     [user?.id, members]
