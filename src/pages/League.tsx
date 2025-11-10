@@ -272,21 +272,35 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
   }, [isMember]);
 
   return (
-    <div className="mt-4 flex flex-col chat-container" style={{ height: 'calc(100vh - 280px)', minHeight: '400px' }}>
+    <div className="mt-4 flex flex-col chat-container" style={{ height: 'calc(100vh - 360px)', minHeight: '400px' }}>
       <style>{`
+        .chat-input-area {
+          position: fixed;
+          bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+          left: 50%;
+          transform: translateX(-50%);
+          width: 100%;
+          max-width: 72rem;
+          z-index: 10000;
+          background-color: white;
+          box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+          padding-left: 1rem;
+          padding-right: 1rem;
+          margin: 0;
+          box-sizing: border-box;
+        }
         @media (max-width: 768px) {
+          .chat-input-area {
+            bottom: 70px;
+            padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+          }
           .chat-container {
             height: calc(100vh - 200px) !important;
-          }
-          .chat-input-area {
-            position: sticky;
-            bottom: 0;
-            z-index: 10;
           }
         }
         @supports (height: 100dvh) {
           .chat-container {
-            height: calc(100dvh - 280px);
+            height: calc(100dvh - 360px);
           }
           @media (max-width: 768px) {
             .chat-container {
@@ -295,7 +309,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           }
         }
       `}</style>
-      <div ref={listRef} className="flex-1 overflow-y-auto rounded-xl border bg-white shadow-sm p-3 mb-3 min-h-0">
+      <div ref={listRef} className="flex-1 overflow-y-auto rounded-xl border bg-white shadow-sm px-3 pt-3 min-h-0" style={{ paddingBottom: '25px' }}>
         {chat.map((m) => {
           const mine = m.user_id === userId;
           const name = nameById.get(m.user_id) ?? "Unknown";
@@ -314,14 +328,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
       </div>
 
       {/* Input area at bottom - stays close to keyboard */}
-      <div className="chat-input-area bg-white border-t border-slate-200 pt-2 pb-2" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)' }}>
-        {/* Code/Members info above input */}
-        {leagueCode && memberCount !== undefined && maxMembers !== undefined && (
-          <div className="text-xs text-slate-500 text-center mb-2 px-2">
-            Code: <span className="font-mono font-semibold">{leagueCode}</span> · {memberCount}/{maxMembers} member{memberCount === 1 ? "" : "s"}
-          </div>
-        )}
-        
+      <div className="chat-input-area bg-white border-t border-slate-200 pt-2" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)', marginBottom: 0 }}>
         {isMember ? (
           <form
             onSubmit={(e) => {
@@ -334,6 +341,29 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
               ref={inputRef}
               value={newMsg}
               onChange={(e) => setNewMsg(e.target.value)}
+              onFocus={() => {
+                // Scroll to bottom when input is focused to show latest messages
+                // Use multiple strategies to ensure scroll happens
+                const scrollBoth = () => {
+                  // Scroll messages container
+                  if (listRef.current) {
+                    listRef.current.scrollTop = listRef.current.scrollHeight;
+                  }
+                  // Scroll window/page to bottom
+                  window.scrollTo({
+                    top: document.documentElement.scrollHeight,
+                    behavior: 'smooth'
+                  });
+                };
+                
+                // Immediate scroll
+                scrollBoth();
+                
+                // Also scroll after a delay to account for keyboard appearing on mobile
+                setTimeout(() => {
+                  scrollBoth();
+                }, 300);
+              }}
               placeholder="Message your league…"
               maxLength={2000}
               className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
