@@ -103,7 +103,7 @@ function AppContent({ menuOpen, setMenuOpen }: {
     <>
 
       {/* Site Header */}
-      {!isFullScreenPage && <header className="sticky top-0 z-50 text-white shadow">
+      {!isFullScreenPage && location.pathname !== '/new-predictions' && <header className="sticky top-0 z-50 text-white shadow">
         <div className="bg-[#1C8376]">
           <div className="max-w-6xl mx-auto px-4 h-20 sm:h-24 flex items-center gap-6">
                  <Link to="/" className="flex items-center no-underline gap-3">

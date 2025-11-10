@@ -91,6 +91,11 @@ export default function SwipePredictions() {
   const [confirmCelebration, setConfirmCelebration] = useState<{ success: boolean; message: string } | null>(null);
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
+    // Prevent body scrolling
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
   }, [viewMode]);
 
   const allPicksMade = useMemo(() => {
@@ -377,7 +382,7 @@ export default function SwipePredictions() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
+    <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col overflow-hidden">
       {viewMode === "cards" && (
         <div className="p-4">
           <div className="max-w-md mx-auto">
@@ -427,8 +432,8 @@ export default function SwipePredictions() {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col flex-1 pb-32" style={{ paddingBottom: 'calc(8rem + env(safe-area-inset-bottom, 0px))' }}>
-          <div className="flex items-center justify-center px-4 pt-4 pb-2 relative overflow-hidden" style={{ minHeight: 0 }}>
+        <div className="flex flex-col flex-1" style={{ paddingBottom: `calc(0px + env(safe-area-inset-bottom, 0px))` }}>
+          <div className="flex items-center justify-center px-4 pt-4 relative overflow-hidden" style={{ minHeight: 0 }}>
             <div className={`absolute left-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "home" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">←</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg whitespace-nowrap">Home Win</div></div>
             <div className={`absolute right-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "away" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">→</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg whitespace-nowrap">Away Win</div></div>
             <div className={`absolute bottom-32 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "draw" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">↓</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg">Draw</div></div>
@@ -501,7 +506,7 @@ export default function SwipePredictions() {
               </div>
             </div>
           </div>
-          <div className="fixed bottom-0 left-0 right-0 pt-2 px-4 bg-[#eef4f3] z-50" style={{ paddingBottom: `calc(0.5rem + env(safe-area-inset-bottom, 0px))` }}>
+          <div className="fixed bottom-0 left-0 right-0 pt-2 px-4 bg-[#eef4f3] z-50" style={{ paddingBottom: `calc(1.5625rem + env(safe-area-inset-bottom, 0px))` }}>
             <div className="max-w-md mx-auto">
               <div className="flex items-stretch justify-center gap-3">
                 <button
