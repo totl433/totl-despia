@@ -272,7 +272,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
   }, [isMember]);
 
   return (
-    <div className="mt-4 flex flex-col chat-container" style={{ height: 'calc(100vh - 360px)', minHeight: '400px' }}>
+    <div className="flex flex-col chat-container" style={{ height: 'calc(100vh - 360px)', minHeight: '400px' }}>
       <style>{`
         .chat-input-area {
           position: fixed;
@@ -1913,10 +1913,10 @@ export default function LeaguePage() {
           </div>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-[25px]">
           {/* Notification status banner - fixed height to prevent layout shift */}
           {tab === "chat" && (
-            <div className="mb-3 h-8 flex items-center">
+            <div className="h-8 flex items-center">
               {notificationStatus && (
                 <div className={`w-full rounded px-2 py-1 text-xs ${
                   notificationStatus.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
