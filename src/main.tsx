@@ -12,7 +12,6 @@ import HomePage from "./pages/Home";
 import GlobalPage from "./pages/Global";
 import CreateLeaguePage from "./pages/CreateLeague";
 import HowToPlayPage from "./pages/HowToPlay";
-import NewPredictionsCentre from "./pages/NewPredictionsCentre";
 import SwipePredictions from "./pages/SwipePredictions";
 import ProfilePage from "./pages/Profile";
 import { AuthProvider, useAuth } from "./context/AuthContext";

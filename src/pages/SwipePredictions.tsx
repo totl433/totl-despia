@@ -23,6 +23,26 @@ type Pick = {
   gw: number;
 };
 
+function _ResultButton({
+  label,
+  correct,
+  isCorrectResult,
+}: {
+  label: string;
+  correct: boolean | null;
+  isCorrectResult: boolean;
+}) {
+  const base =
+    "h-16 rounded-xl border text-sm font-medium transition-colors flex items-center justify-center select-none";
+  const correctPickStyle = correct === true
+    ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white !border-0 !border-none shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]"
+    : isCorrectResult
+    ? "bg-emerald-600 text-white border-emerald-600"
+    : correct === false
+    ? "bg-rose-100 text-rose-700 border-rose-200"
+    : "bg-slate-50 text-slate-600 border-slate-200";
+  return <div className={[base, correctPickStyle].join(" ")}><span className={correct === true ? "font-bold" : ""}>{label}</span></div>;
+}
 type CardState = { x: number; y: number; rotation: number; opacity: number; scale: number };
 
 const TEAM_COLORS: Record<string, { primary: string; secondary: string }> = {
@@ -51,6 +71,7 @@ export default function SwipePredictions() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  const _isListView = (mode: "cards" | "list"): mode is "list" => mode === "list";
   const [currentGw, setCurrentGw] = useState<number | null>(null);
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [picks, setPicks] = useState<Map<number, Pick>>(new Map());
@@ -62,6 +83,7 @@ export default function SwipePredictions() {
   const [isAnimating, setIsAnimating] = useState(false);
   const [showFeedback, setShowFeedback] = useState<"home" | "draw" | "away" | null>(null);
   const [returnToReview, setReturnToReview] = useState(false);
+  const [showSaveMessage, _setShowSaveMessage] = useState(false);
   const [confirmCelebration, setConfirmCelebration] = useState<{ success: boolean; message: string } | null>(null);
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -190,6 +212,8 @@ export default function SwipePredictions() {
     if (!currentFixture) return;
     setPicks(new Map(picks.set(currentFixture.fixture_index, { fixture_index: currentFixture.fixture_index, pick, gw: currentGw! })));
   };
+  const _handlePrevious = () => { if (currentIndex > 0 && !isAnimating) setCurrentIndex(currentIndex - 1); };
+  const _handleNext = () => { if (currentIndex < fixtures.length - 1 && !isAnimating) setCurrentIndex(currentIndex + 1); };
   const handleConfirmClick = () => {
     if (!allPicksMade) {
       setConfirmCelebration({ success: false, message: "You still have fixtures to call!" });
