@@ -291,10 +291,6 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                   Send
                 </button>
               </form>
-              {/* DEBUG: This should be visible if new code deployed */}
-              <div className="mt-3 p-2 bg-red-500 text-white text-xs font-bold text-center">
-                ⚠️ DEBUG: NEW CODE DEPLOYED - Button should be below this
-              </div>
               <div className="mt-3">
                 <button
                   onClick={onCheckDiagnostic}
