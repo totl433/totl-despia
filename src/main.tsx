@@ -2,7 +2,7 @@
 import "./index.css";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, useLocation, Navigate, useNavigate } from "react-router-dom";
 
 import TablesPage from "./pages/Tables";
 import LeaguePage from "./pages/League";
@@ -13,6 +13,7 @@ import GlobalPage from "./pages/Global";
 import CreateLeaguePage from "./pages/CreateLeague";
 import HowToPlayPage from "./pages/HowToPlay";
 import NewPredictionsCentre from "./pages/NewPredictionsCentre";
+import SwipePredictions from "./pages/SwipePredictions";
 import ProfilePage from "./pages/Profile";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import PredictionsBanner from "./components/PredictionsBanner";
@@ -40,6 +41,7 @@ function AppContent({ menuOpen, setMenuOpen }: {
   setMenuOpen: (value: boolean | ((prev: boolean) => boolean)) => void; 
 }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, showWelcome, dismissWelcome, signOut } = useAuth();
   
   // Admin user IDs (Jof and ThomasJamesBird)
@@ -47,6 +49,56 @@ function AppContent({ menuOpen, setMenuOpen }: {
   
   // Hide header/banner for full-screen pages
   const isFullScreenPage = false;
+
+  // Handle notification opens - navigate to league when notification is clicked
+  React.useEffect(() => {
+    // Check if OneSignal is available (for web)
+    const OneSignal = (globalThis as any)?.OneSignal || (typeof window !== 'undefined' ? (window as any)?.OneSignal : null);
+    
+    if (OneSignal && typeof OneSignal.on === 'function') {
+      // Listen for notification opened event
+      OneSignal.on('notificationDisplay', (event: any) => {
+        console.log('[Notification] Notification displayed:', event);
+      });
+
+      OneSignal.on('notificationClick', (event: any) => {
+        console.log('[Notification] Notification clicked:', event);
+        const data = event?.notification?.additionalData || event?.data;
+        if (data?.url) {
+          console.log('[Notification] Navigating to:', data.url);
+          navigate(data.url);
+        } else if (data?.leagueCode) {
+          console.log('[Notification] Navigating to league:', data.leagueCode);
+          navigate(`/league/${data.leagueCode}`);
+        }
+      });
+    }
+
+    // Also handle URL-based navigation (for when app opens from notification)
+    // Check if there's a URL parameter or hash that indicates a notification open
+    const handleNotificationUrl = () => {
+      // OneSignal may set a URL in the notification that opens the app
+      // Check for URL in hash or query params
+      const hash = window.location.hash;
+      const searchParams = new URLSearchParams(window.location.search);
+      
+      // If URL is in hash (e.g., #/league/code)
+      if (hash && hash.startsWith('#/')) {
+        const path = hash.slice(1); // Remove #
+        if (path.startsWith('/league/')) {
+          navigate(path);
+        }
+      }
+      
+      // If leagueCode is in query params
+      const leagueCode = searchParams.get('leagueCode');
+      if (leagueCode) {
+        navigate(`/league/${leagueCode}`);
+      }
+    };
+
+    handleNotificationUrl();
+  }, [navigate]);
   
   return (
     <>
@@ -173,7 +225,7 @@ function AppContent({ menuOpen, setMenuOpen }: {
       {/* Routes */}
       <Routes>
         <Route path="/auth" element={<SignIn />} />
-        <Route path="/new-predictions" element={<NewPredictionsCentre />} />
+        <Route path="/new-predictions" element={<RequireAuth><SwipePredictions /></RequireAuth>} />
         <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
         <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
         <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />

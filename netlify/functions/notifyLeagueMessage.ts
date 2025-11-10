@@ -122,6 +122,24 @@ export const handler: Handler = async (event) => {
 
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+  // 0) Get league code for deep linking
+  const { data: leagueData, error: leagueErr } = await admin
+    .from('leagues')
+    .select('code')
+    .eq('id', leagueId)
+    .single();
+  
+  if (leagueErr) {
+    console.error('[notifyLeagueMessage] Failed to load league:', leagueErr);
+    return json(500, { error: 'Failed to load league', details: leagueErr.message });
+  }
+  
+  const leagueCode = leagueData?.code;
+  if (!leagueCode) {
+    console.error('[notifyLeagueMessage] League code not found for league:', leagueId);
+    return json(500, { error: 'League code not found' });
+  }
+
   // 1) Resolve members (exclude sender)
   console.log(`[notifyLeagueMessage] Loading members for league: ${leagueId}`);
   const { data: members, error: memErr } = await admin
@@ -243,13 +261,17 @@ export const handler: Handler = async (event) => {
   const title = senderName || 'New message';
   const message = String(content).slice(0, 180);
 
+  // Build deep link URL - use relative path for web app routing
+  const leagueUrl = `/league/${leagueCode}`;
+
   // 7) Send via OneSignal (only to subscribed Player IDs)
   const payloadOS: Record<string, any> = {
     app_id: ONESIGNAL_APP_ID,
     include_player_ids: validPlayerIds,
     headings: { en: title },
     contents: { en: message },
-    data: { type: 'league_message', leagueId, senderId },
+    url: leagueUrl,
+    data: { type: 'league_message', leagueId, leagueCode, senderId, url: leagueUrl },
   };
 
   try {
