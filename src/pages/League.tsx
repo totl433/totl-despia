@@ -276,7 +276,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
       <style>{`
         .chat-input-area {
           position: fixed;
-          bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+          bottom: env(safe-area-inset-bottom, 0px);
           left: 50%;
           transform: translateX(-50%);
           width: 100%;
@@ -291,11 +291,11 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         }
         @media (max-width: 768px) {
           .chat-input-area {
-            bottom: 70px;
+            bottom: env(safe-area-inset-bottom, 0px);
             padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
           }
           .chat-container {
-            height: calc(100vh - 200px) !important;
+            height: calc(100vh - 130px) !important;
           }
         }
         @supports (height: 100dvh) {
@@ -304,7 +304,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           }
           @media (max-width: 768px) {
             .chat-container {
-              height: calc(100dvh - 200px) !important;
+              height: calc(100dvh - 130px) !important;
             }
           }
         }

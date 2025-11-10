@@ -186,8 +186,8 @@ function AppContent({ menuOpen, setMenuOpen }: {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* Bottom Navigation - hide on auth page */}
-      {location.pathname !== '/auth' && <BottomNav />}
+      {/* Bottom Navigation - hide on auth page and league pages */}
+      {location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && <BottomNav />}
     </>
   );
 }
