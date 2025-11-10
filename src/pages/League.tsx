@@ -204,27 +204,72 @@ type ChatTabProps = {
   newMsg: string;
   setNewMsg: (v: string) => void;
   onSend: () => void;
-  notificationStatus: { message: string; type: 'success' | 'warning' | 'error' | null } | null;
   leagueCode?: string;
   memberCount?: number;
   maxMembers?: number;
 };
 
-function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, notificationStatus, leagueCode, memberCount, maxMembers }: ChatTabProps) {
+function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, leagueCode, memberCount, maxMembers }: ChatTabProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const hasInitiallyScrolled = useRef(false);
 
-  // Start at bottom on mount (no animation)
-  useEffect(() => {
+  // Scroll to bottom function
+  const scrollToBottom = () => {
     if (listRef.current) {
+      // Set scroll position directly for instant scroll
       listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
+  };
+
+  // Scroll to bottom when messages are first loaded
+  useEffect(() => {
+    if (chat.length > 0 && !hasInitiallyScrolled.current) {
+      // Use multiple strategies to ensure scroll happens after DOM is ready
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollToBottom();
+          hasInitiallyScrolled.current = true;
+          // Also try after a small delay to catch any late renders
+          setTimeout(() => {
+            scrollToBottom();
+          }, 100);
+        });
+      });
+    }
+  }, [chat.length]);
+
+  // Also handle case where messages are already loaded when component mounts
+  useEffect(() => {
+    if (chat.length > 0 && listRef.current && !hasInitiallyScrolled.current) {
+      // Immediate scroll attempt
+      scrollToBottom();
+      // Then ensure with RAF
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollToBottom();
+          hasInitiallyScrolled.current = true;
+        });
+      });
     }
   }, []);
 
-  // Smooth scroll to bottom when new messages arrive
+  // Scroll to bottom when new messages are added (after initial scroll)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (chat.length > 0 && hasInitiallyScrolled.current && listRef.current) {
+      requestAnimationFrame(() => {
+        scrollToBottom();
+      });
+    }
   }, [chat.length]);
+
+  // Focus input on load
+  useEffect(() => {
+    if (isMember && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isMember]);
 
   return (
     <div className="mt-4 flex flex-col chat-container" style={{ height: 'calc(100vh - 280px)', minHeight: '400px' }}>
@@ -250,17 +295,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           }
         }
       `}</style>
-      {/* Notification status indicator - only show when there's actual feedback */}
-      {notificationStatus && (
-        <div className={`mb-3 rounded-md p-3 text-sm ${
-          notificationStatus.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' :
-          notificationStatus.type === 'warning' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
-          'bg-red-50 text-red-800 border border-red-200'
-        }`}>
-          {notificationStatus.message}
-        </div>
-      )}
-      <div className="flex-1 overflow-y-auto rounded-xl border bg-white shadow-sm p-3 mb-3 min-h-0">
+      <div ref={listRef} className="flex-1 overflow-y-auto rounded-xl border bg-white shadow-sm p-3 mb-3 min-h-0">
         {chat.map((m) => {
           const mine = m.user_id === userId;
           const name = nameById.get(m.user_id) ?? "Unknown";
@@ -296,6 +331,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
             className="flex gap-2 px-2"
           >
             <input
+              ref={inputRef}
               value={newMsg}
               onChange={(e) => setNewMsg(e.target.value)}
               placeholder="Message your league…"
@@ -369,7 +405,7 @@ export default function LeaguePage() {
   /* ----- Chat state ----- */
   const [chat, setChat] = useState<ChatMsg[]>([]);
   const [newMsg, setNewMsg] = useState("");
-  const [notificationStatus, _setNotificationStatus] = useState<{ message: string; type: 'success' | 'warning' | 'error' | null } | null>(null);
+  const [notificationStatus, setNotificationStatus] = useState<{ message: string; type: 'success' | 'warning' | 'error' | null } | null>(null);
   const isMember = useMemo(
     () => !!user?.id && members.some((m) => m.id === user.id),
     [user?.id, members]
@@ -769,22 +805,70 @@ export default function LeaguePage() {
       // Optimistic add so the message appears immediately; realtime will also append
       setChat((prev) => [...prev, inserted as ChatMsg]);
     }
-    // Fire-and-forget: request push notifications to league members (exclude sender)
+    // Request push notifications to league members (exclude sender)
     // Skip in local development (Netlify Functions not available)
     const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     if (!isLocalDev) {
-      setTimeout(() => {
+      setTimeout(async () => {
         try {
           const senderName = user.user_metadata?.display_name || user.email || 'User';
-          fetch('/.netlify/functions/notifyLeagueMessage', {
+          const response = await fetch('/.netlify/functions/notifyLeagueMessage', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ leagueId: league.id, senderId: user.id, senderName, content: text })
-          }).catch(err => {
-            console.error('[Chat] Notification error (silent):', err);
           });
+          
+          const result = await response.json().catch(() => ({}));
+          
+          // Set notification status based on response
+          if (result.ok === true) {
+            if (result.sent && result.sent > 0) {
+              setNotificationStatus({
+                message: `✓ Message sent to ${result.sent} device${result.sent === 1 ? '' : 's'}`,
+                type: 'success'
+              });
+            } else if (result.message === 'No subscribed devices') {
+              setNotificationStatus({
+                message: `⚠️ No subscribed devices (${result.eligibleRecipients || 0} eligible recipient${result.eligibleRecipients === 1 ? '' : 's'})`,
+                type: 'warning'
+              });
+            } else if (result.message === 'No devices') {
+              setNotificationStatus({
+                message: `⚠️ No devices registered (${result.eligibleRecipients || 0} eligible recipient${result.eligibleRecipients === 1 ? '' : 's'})`,
+                type: 'warning'
+              });
+            } else if (result.message === 'No eligible recipients') {
+              setNotificationStatus({
+                message: '✓ All members are currently active',
+                type: 'success'
+              });
+            } else {
+              setNotificationStatus({
+                message: `✓ ${result.message || 'Notification sent'}`,
+                type: 'success'
+              });
+            }
+          } else if (result.ok === false || result.error) {
+            setNotificationStatus({
+              message: `✗ Failed to send notification: ${result.error || 'Unknown error'}`,
+              type: 'error'
+            });
+          } else if (!response.ok) {
+            setNotificationStatus({
+              message: `✗ Notification error (HTTP ${response.status})`,
+              type: 'error'
+            });
+          }
+          
+          // Clear status after 5 seconds
+          setTimeout(() => setNotificationStatus(null), 5000);
         } catch (err) {
-          console.error('[Chat] Notification exception (silent):', err);
+          console.error('[Chat] Notification exception:', err);
+          setNotificationStatus({
+            message: '✗ Failed to send notification',
+            type: 'error'
+          });
+          setTimeout(() => setNotificationStatus(null), 5000);
         }
       }, 100);
     }
@@ -1800,6 +1884,21 @@ export default function LeaguePage() {
         </div>
 
         <div className="mt-6">
+          {/* Notification status banner - fixed height to prevent layout shift */}
+          {tab === "chat" && (
+            <div className="mb-3 h-8 flex items-center">
+              {notificationStatus && (
+                <div className={`w-full rounded px-2 py-1 text-xs ${
+                  notificationStatus.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
+                  notificationStatus.type === 'warning' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                  'bg-red-50 text-red-700 border border-red-200'
+                }`}>
+                  {notificationStatus.message}
+                </div>
+              )}
+            </div>
+          )}
+          
           {tab === "chat" && (
             <ChatTab
               chat={chat}
@@ -1809,7 +1908,6 @@ export default function LeaguePage() {
               newMsg={newMsg}
               setNewMsg={setNewMsg}
               onSend={sendChat}
-              notificationStatus={notificationStatus}
               leagueCode={league?.code}
               memberCount={members.length}
               maxMembers={MAX_MEMBERS}
