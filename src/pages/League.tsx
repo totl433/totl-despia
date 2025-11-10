@@ -234,16 +234,6 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
       }`}>
         {notificationStatus ? notificationStatus.message : 'No notification status (send a message to test)'}
       </div>
-      {/* Test button */}
-      <button
-        onClick={() => {
-          setNotificationStatus({ message: 'TEST: Banner is working!', type: 'success' });
-          setTimeout(() => setNotificationStatus(null), 3000);
-        }}
-        className="mb-2 text-xs text-blue-600 underline"
-      >
-        Test Status Banner
-      </button>
       <div className="flex flex-col h-[30vh]">
         <div ref={listRef} className="flex-1 overflow-y-auto rounded-xl border bg-white shadow-sm p-3">
           {chat.map((m) => {
