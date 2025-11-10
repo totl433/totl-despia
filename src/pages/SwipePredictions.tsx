@@ -23,27 +23,6 @@ type Pick = {
   gw: number;
 };
 
-function ResultButton({
-  label,
-  correct,
-  isCorrectResult,
-}: {
-  label: string;
-  correct: boolean | null;
-  isCorrectResult: boolean;
-}) {
-  const base =
-    "h-16 rounded-xl border text-sm font-medium transition-colors flex items-center justify-center select-none";
-  const correctPickStyle = correct === true
-    ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white !border-0 !border-none shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]"
-    : isCorrectResult
-    ? "bg-emerald-600 text-white border-emerald-600"
-    : correct === false
-    ? "bg-rose-100 text-rose-700 border-rose-200"
-    : "bg-slate-50 text-slate-600 border-slate-200";
-  return <div className={[base, correctPickStyle].join(" ")}><span className={correct === true ? "font-bold" : ""}>{label}</span></div>;
-}
-
 type CardState = { x: number; y: number; rotation: number; opacity: number; scale: number };
 
 const TEAM_COLORS: Record<string, { primary: string; secondary: string }> = {
@@ -72,8 +51,6 @@ export default function SwipePredictions() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const isListView = (mode: "cards" | "list"): mode is "list" => mode === "list";
-
   const [currentGw, setCurrentGw] = useState<number | null>(null);
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [picks, setPicks] = useState<Map<number, Pick>>(new Map());
@@ -85,7 +62,6 @@ export default function SwipePredictions() {
   const [isAnimating, setIsAnimating] = useState(false);
   const [showFeedback, setShowFeedback] = useState<"home" | "draw" | "away" | null>(null);
   const [returnToReview, setReturnToReview] = useState(false);
-  const [showSaveMessage, setShowSaveMessage] = useState(false);
   const [confirmCelebration, setConfirmCelebration] = useState<{ success: boolean; message: string } | null>(null);
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -214,8 +190,6 @@ export default function SwipePredictions() {
     if (!currentFixture) return;
     setPicks(new Map(picks.set(currentFixture.fixture_index, { fixture_index: currentFixture.fixture_index, pick, gw: currentGw! })));
   };
-  const handlePrevious = () => { if (currentIndex > 0 && !isAnimating) setCurrentIndex(currentIndex - 1); };
-  const handleNext = () => { if (currentIndex < fixtures.length - 1 && !isAnimating) setCurrentIndex(currentIndex + 1); };
   const handleConfirmClick = () => {
     if (!allPicksMade) {
       setConfirmCelebration({ success: false, message: "You still have fixtures to call!" });
@@ -236,19 +210,6 @@ export default function SwipePredictions() {
   if (currentIndex >= fixtures.length) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
-        {showSaveMessage && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="bg-green-600 text-white px-8 py-6 rounded-xl shadow-2xl max-w-md mx-4 animate-fade-in">
-              <div className="flex items-center gap-3">
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                <div>
-                  <div className="font-bold text-lg">Predictions Saved!</div>
-                  <div className="text-sm text-green-100 mt-1">Remember to confirm them before the deadline closes.</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
         {confirmCelebration && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
             <div className="relative overflow-hidden rounded-3xl bg-white px-10 py-8 text-center shadow-2xl max-w-sm mx-4">
