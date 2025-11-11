@@ -1,10 +1,12 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { getMediumName } from "../lib/teamNames";
 import WhatsAppBanner from "../components/WhatsAppBanner";
 import { getLeagueAvatarPath, getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
+import { resolveLeagueStartGw as getLeagueStartGw } from "../lib/leagueStart";
+import html2canvas from "html2canvas";
 
 // Module-level cache for home page data
 type HomePageCache = {
@@ -19,14 +21,22 @@ type HomePageCache = {
 const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
 let homePageCache: HomePageCache | null = null;
 
+// Clear cache on page load to force fresh calculation
+if (typeof window !== 'undefined') {
+  homePageCache = null;
+}
+
 // Types
-type League = { id: string; name: string; code: string; avatar?: string | null };
+type League = { id: string; name: string; code: string; avatar?: string | null; created_at?: string | null; start_gw?: number | null };
 type LeagueMember = { id: string; name: string };
 type LeagueData = {
   id: string;
   members: LeagueMember[];
   userPosition: number | null;
   positionChange: 'up' | 'down' | 'same' | null;
+  submittedMembers?: Set<string>; // Set of user IDs who have submitted for current GW
+  sortedMemberIds?: string[]; // Member IDs in ML table order (1st to last)
+  latestGwWinners?: Set<string>; // Members who topped the most recent completed GW
 };
 
 // Helper function to get initials from name
@@ -35,6 +45,13 @@ function initials(name: string) {
   if (!parts.length) return "?";
   if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// Helper function to convert number to ordinal (1st, 2nd, 3rd, etc.)
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
 // Helper function to convert result row to outcome
@@ -99,6 +116,14 @@ export default function HomePage() {
   const [nextGwComing, setNextGwComing] = useState<number | null>(null);
   const [lastScore, setLastScore] = useState<number | null>(null);
   const [lastScoreGw, setLastScoreGw] = useState<number | null>(null);
+  const [latestGw, setLatestGw] = useState<number | null>(null);
+  const [gwPoints, setGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>([]);
+  
+  // Leaderboard rankings for different time periods
+  const [lastGwRank, setLastGwRank] = useState<{ rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null>(null);
+  const [fiveGwRank, setFiveGwRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(null);
+  const [tenGwRank, setTenGwRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(null);
+  const [seasonRank, setSeasonRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(null);
 
   const [unreadByLeague, setUnreadByLeague] = useState<Record<string, number>>({});
   const [leagueData, setLeagueData] = useState<Record<string, LeagueData>>({});
@@ -142,7 +167,7 @@ export default function HomePage() {
       let ls: League[] = [];
       const { data: lm, error: lmError } = await supabase
         .from("league_members")
-        .select("leagues(id,name,code,avatar)")
+        .select("leagues(id,name,code,created_at)")
         .eq("user_id", user?.id);
 
       if (lmError) {
@@ -150,7 +175,7 @@ export default function HomePage() {
         // Try without avatar field if it doesn't exist
         const { data: lmFallback } = await supabase
           .from("league_members")
-          .select("leagues(id,name,code)")
+          .select("leagues(id,name,code,created_at)")
           .eq("user_id", user?.id);
         ls = (lmFallback as any[])?.map((r) => r.leagues).filter(Boolean) ?? [];
       } else {
@@ -159,38 +184,11 @@ export default function HomePage() {
       
       // Assign avatars to leagues that don't have one (backfill - only once)
       // Use deterministic avatar based on league ID so it's consistent even if DB update fails
-      const leaguesNeedingAvatars = ls.filter(l => !l.avatar || l.avatar === null || l.avatar === '');
-      if (leaguesNeedingAvatars.length > 0) {
-        console.log(`Assigning avatars to ${leaguesNeedingAvatars.length} leagues`);
-        // Update each league with a deterministic avatar (only if it doesn't have one)
-        for (const league of leaguesNeedingAvatars) {
-          // Use deterministic avatar based on league ID - same league always gets same avatar
-          const avatar = getDeterministicLeagueAvatar(league.id);
-          
-          // Try to update database
-          const { error: updateError } = await supabase
-            .from("leagues")
-            .update({ avatar })
-            .eq("id", league.id);
-          
-          if (!updateError) {
-            // Update succeeded - update local array
-            const leagueIndex = ls.findIndex(l => l.id === league.id);
-            if (leagueIndex !== -1) {
-              ls[leagueIndex].avatar = avatar;
-              console.log(`Assigned avatar ${avatar} to league ${league.name}`);
-            }
-          } else {
-            console.warn(`Failed to assign avatar to league ${league.id} (${league.name}):`, updateError.message);
-            // Even if DB update fails, assign locally using deterministic method
-            // This ensures the same league always shows the same avatar
-            const leagueIndex = ls.findIndex(l => l.id === league.id);
-            if (leagueIndex !== -1) {
-              ls[leagueIndex].avatar = avatar;
-            }
-          }
-        }
-      }
+      // Assign deterministic avatars locally (no DB update required)
+      ls = ls.map((league) => ({
+        ...league,
+        avatar: getDeterministicLeagueAvatar(league.id),
+      }));
       
       if (alive) setLeagues(ls);
 
@@ -454,22 +452,27 @@ export default function HomePage() {
 
   // Fetch member data and calculate positions for each league
   useEffect(() => {
-    if (!leagues.length || !user?.id) return;
+    if (!leagues.length || !user?.id || !gw) {
+      console.log('Skipping position calculation:', { leaguesLength: leagues.length, userId: user?.id, gw });
+      return;
+    }
+    
+    console.log('Starting position calculation for', leagues.length, 'leagues');
     
     let alive = true;
     (async () => {
-      // Get latest GW with results
-      const { data: latestGwData } = await supabase
-        .from("gw_results")
-        .select("gw")
-        .order("gw", { ascending: false })
-        .limit(1);
-      const latestGwWithResults = latestGwData && latestGwData.length ? (latestGwData[0] as any).gw : null;
-
-      // Get all results
+      // Get current GW from meta table (same as League page) - don't rely on state
+      const { data: meta } = await supabase
+        .from("meta")
+        .select("current_gw")
+        .eq("id", 1)
+        .maybeSingle();
+      const currentGw = (meta as any)?.current_gw ?? gw; // Fallback to state if meta unavailable
+      
+      // Get all results - EXACT same query as League page
       const { data: allResults } = await supabase
         .from("gw_results")
-        .select("gw,fixture_index,result,home_goals,away_goals");
+        .select("gw,fixture_index,result");
       
       const resultList = (allResults as ResultRowRaw[]) ?? [];
       const outcomeByGwIdx = new Map<string, "H" | "D" | "A">();
@@ -501,29 +504,89 @@ export default function HomePage() {
               id: league.id,
               members: [],
               userPosition: null,
-              positionChange: null
+              positionChange: null,
+              sortedMemberIds: [],
+              latestGwWinners: new Set()
             };
             continue;
           }
 
-          const memberIds = members.map(m => m.id);
+          // Simple: Calculate ML table exactly like League page does, then find user's position
+          if (outcomeByGwIdx.size === 0) {
+            const alphabeticalIds = members.sort((a, b) => a.name.localeCompare(b.name)).map(m => m.id);
+            leagueDataMap[league.id] = {
+              id: league.id,
+              members: members.sort((a, b) => a.name.localeCompare(b.name)),
+              userPosition: null,
+              positionChange: null,
+              sortedMemberIds: alphabeticalIds,
+              latestGwWinners: new Set()
+            };
+            continue;
+          }
+
+          const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
           
-          // Get all picks for league members
+          // Filter by league start GW (same as League page) - use currentGw from meta, not state
+          const leagueStartGw = await getLeagueStartGw(league, currentGw);
+          const relevantGws = gwsWithResults.filter(g => g >= leagueStartGw);
+          
+          // DEBUG: Check if "Forget It" has different GW filtering
+          if (league.name?.toLowerCase().includes('forget')) {
+            console.error(`[${league.name}] GW FILTERING:`, {
+              leagueStartGw,
+              allGwsWithResults: gwsWithResults,
+              relevantGws,
+              currentGw,
+              created_at: league.created_at,
+              start_gw: league.start_gw
+            });
+          }
+
+          if (relevantGws.length === 0) {
+            const alphabeticalIds = members.sort((a, b) => a.name.localeCompare(b.name)).map(m => m.id);
+            leagueDataMap[league.id] = {
+              id: league.id,
+              members: members.sort((a, b) => a.name.localeCompare(b.name)),
+              userPosition: null,
+              positionChange: null,
+              sortedMemberIds: alphabeticalIds,
+              latestGwWinners: new Set()
+            };
+            continue;
+          }
+
+          // Get picks for relevant GWs only - EXACT same as League page
+          const memberIds = members.map(m => m.id);
           const { data: allPicks } = await supabase
             .from("picks")
             .select("user_id,gw,fixture_index,pick")
-            .in("user_id", memberIds);
+            .in("user_id", memberIds)
+            .in("gw", relevantGws);
           
           const picksAll = (allPicks as PickRow[]) ?? [];
           
-          // Calculate positions for current state (all GWs)
-          const calculatePosition = (excludeGw: number | null = null) => {
-            const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
-            const relevantGws = excludeGw ? gwsWithResults.filter(gw => gw < excludeGw) : gwsWithResults;
-            
-            if (relevantGws.length === 0) return null;
-
+          // DEBUG: Check picks data for "Forget It"
+          if (league.name?.toLowerCase().includes('forget')) {
+            const picksByUser = picksAll.reduce((acc: any, p: any) => {
+              if (!acc[p.user_id]) acc[p.user_id] = [];
+              acc[p.user_id].push(`${p.gw}:${p.fixture_index}`);
+              return acc;
+            }, {});
+            console.error(`[${league.name}] PICKS DATA:`, {
+              totalPicks: picksAll.length,
+              picksByUser: Object.keys(picksByUser).map(uid => ({
+                userId: uid,
+                userName: members.find(m => m.id === uid)?.name,
+                pickCount: picksByUser[uid].length,
+                picks: picksByUser[uid].slice(0, 5) // First 5 picks
+              }))
+            });
+          }
+          
+          // Calculate ML table - EXACT same logic as League page
             const perGw = new Map<number, Map<string, { user_id: string; score: number; unicorns: number }>>();
+            const gwWinners = new Map<number, Set<string>>();
             relevantGws.forEach((g) => {
               const map = new Map<string, { user_id: string; score: number; unicorns: number }>();
               members.forEach((m) => map.set(m.id, { user_id: m.id, score: 0, unicorns: 0 }));
@@ -565,17 +628,18 @@ export default function HomePage() {
             });
 
             relevantGws.forEach((g) => {
-              const rows = Array.from(perGw.get(g)!.values());
-              rows.forEach((r) => {
+            const gwRows = Array.from(perGw.get(g)!.values());
+            gwRows.forEach((r) => {
                 ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);
                 unis.set(r.user_id, (unis.get(r.user_id) ?? 0) + r.unicorns);
               });
 
-              rows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns);
-              if (!rows.length) return;
+            gwRows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns);
+            if (!gwRows.length) return;
 
-              const top = rows[0];
-              const coTop = rows.filter((r) => r.score === top.score && r.unicorns === top.unicorns);
+            const top = gwRows[0];
+            const coTop = gwRows.filter((r) => r.score === top.score && r.unicorns === top.unicorns);
+            gwWinners.set(g, new Set(coTop.map((r) => r.user_id)));
 
               if (coTop.length === 1) {
                 mltPts.set(top.user_id, (mltPts.get(top.user_id) ?? 0) + 3);
@@ -586,7 +650,8 @@ export default function HomePage() {
               }
             });
 
-            const rows = members.map((m) => ({
+          // Build ML table rows - EXACT same as League page
+          const mltRows = members.map((m) => ({
               user_id: m.id,
               name: m.name,
               mltPts: mltPts.get(m.id) ?? 0,
@@ -594,57 +659,150 @@ export default function HomePage() {
               ocp: ocp.get(m.id) ?? 0,
             }));
 
-            rows.sort((a, b) => b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name));
+          // DEBUG: Log the exact values BEFORE sorting for "Forget It"
+          if (league.name?.toLowerCase().includes('forget')) {
+            console.error(`[${league.name}] === BEFORE SORT ===`);
+            mltRows.forEach((r, i) => {
+              console.error(`${i + 1}. ${r.name}: mltPts=${r.mltPts}, unicorns=${r.unicorns}, ocp=${r.ocp}`);
+            });
+          }
 
-            const userIndex = rows.findIndex(r => r.user_id === user.id);
-            return userIndex !== -1 ? userIndex + 1 : null;
-          };
+          // Sort EXACTLY like League.tsx line 1189 - use the exact same expression
+          // Create a NEW sorted array to avoid any mutation issues
+          const sortedMltRows = [...mltRows].sort((a, b) => 
+            b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
+          );
 
-          const currentPosition = calculatePosition();
-          const previousPosition = latestGwWithResults ? calculatePosition(latestGwWithResults) : null;
+          // DEBUG: Log the exact values AFTER sorting for "Forget It"
+          if (league.name?.toLowerCase().includes('forget')) {
+            console.error(`[${league.name}] === AFTER SORT ===`);
+            sortedMltRows.forEach((r, i) => {
+              console.error(`${i + 1}. ${r.name}: mltPts=${r.mltPts}, unicorns=${r.unicorns}, ocp=${r.ocp}, user_id=${r.user_id}`);
+            });
+            console.error(`[${league.name}] sortedMemberIds:`, sortedMltRows.map(r => r.user_id));
+          }
+
+          // Find user's position - simple: index in sorted array + 1
+          let userIndex = sortedMltRows.findIndex(r => r.user_id === user.id);
           
-          // Fallback to alphabetical position if no results yet
-          let finalPosition = currentPosition;
-          if (finalPosition === null) {
-            const sortedMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
-            const userIndex = sortedMembers.findIndex(m => m.id === user.id);
-            if (userIndex !== -1) {
-              finalPosition = userIndex + 1;
-            } else {
-              // User should be in members, but if not found, set to null
-              finalPosition = null;
+          // If not found, try to find by matching member IDs
+          if (userIndex === -1) {
+            const memberMatch = members.findIndex(m => m.id === user.id);
+            if (memberMatch !== -1) {
+              // User is in members but not in rows - add them with 0 stats
+              console.warn(`[${league.name}] User ${user.id} found in members but not in mltRows - adding with 0 stats`);
+              sortedMltRows.push({
+                user_id: user.id,
+                name: members[memberMatch].name,
+                mltPts: 0,
+                unicorns: 0,
+                ocp: 0
+              });
+              // Re-sort EXACTLY like League.tsx line 1189
+              sortedMltRows.sort((a, b) => 
+                b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
+              );
+              userIndex = sortedMltRows.findIndex(r => r.user_id === user.id);
             }
           }
           
-          let positionChange: 'up' | 'down' | 'same' | null = null;
-          if (finalPosition !== null && previousPosition !== null) {
-            if (finalPosition < previousPosition) {
-              positionChange = 'up'; // Improved (lower number is better)
-            } else if (finalPosition > previousPosition) {
-              positionChange = 'down'; // Got worse (higher number is worse)
-            } else {
-              positionChange = 'same';
-            }
+          // CRITICAL: Extract sortedMemberIds from the FINAL sorted array
+          // This is the ML table order (1st to last) - EXACTLY matching League page
+          const sortedMemberIds = sortedMltRows.map(r => r.user_id);
+          
+          // Debug logging
+          console.log(`[${league.name}] Position calculation:`, {
+            userId: user.id,
+            userIndex,
+            userPosition: userIndex !== -1 ? userIndex + 1 : null,
+            rowsCount: sortedMltRows.length,
+            rows: sortedMltRows.map((r, i) => ({ 
+              index: i + 1, 
+              name: r.name, 
+              userId: r.user_id, 
+              mltPts: r.mltPts, 
+              unicorns: r.unicorns, 
+              ocp: r.ocp 
+            })),
+            sortedMemberIds,
+            memberIds: members.map(m => m.id),
+            userInMembers: members.some(m => m.id === user.id),
+            userInRows: sortedMltRows.some(r => r.user_id === user.id),
+            leagueStartGw,
+            relevantGws,
+            picksCount: picksAll.length,
+            currentGw
+          });
+          
+          const userPosition = userIndex !== -1 ? userIndex + 1 : null;
+          const latestRelevantGw = relevantGws.length ? Math.max(...relevantGws) : null;
+          const latestGwWinners = latestRelevantGw !== null ? (gwWinners.get(latestRelevantGw) ?? new Set<string>()) : new Set<string>();
+          
+          // Check which members have submitted for current GW (reuse memberIds from above)
+          const { data: submissions } = await supabase
+            .from("gw_submissions")
+            .select("user_id")
+            .eq("gw", currentGw)
+            .in("user_id", memberIds);
+          
+          const submittedMembers = new Set<string>();
+          if (submissions) {
+            submissions.forEach((s: any) => {
+              if (s.user_id) submittedMembers.add(s.user_id);
+            });
           }
           
-          leagueDataMap[league.id] = {
+          
+          // Store data - CRITICAL: sortedMemberIds must be stored correctly
+          const storedData: LeagueData = {
             id: league.id,
-            members: members.sort((a, b) => a.name.localeCompare(b.name)),
-            userPosition: finalPosition,
-            positionChange
+            members: members.sort((a, b) => a.name.localeCompare(b.name)), // Keep alphabetical for other uses
+            userPosition,
+            positionChange: null,
+            submittedMembers,
+            sortedMemberIds: [...sortedMemberIds], // Store COPY of ML table order from sortedMltRows
+            latestGwWinners: new Set(latestGwWinners)
           };
+          
+          leagueDataMap[league.id] = storedData;
         } catch (error) {
-          console.warn(`Error loading data for league ${league.id}:`, error);
+          console.error(`Error loading data for league ${league.id} (${league.name}):`, error);
+          console.error('Error details:', error instanceof Error ? error.message : error);
           leagueDataMap[league.id] = {
             id: league.id,
             members: [],
             userPosition: null,
-            positionChange: null
+            positionChange: null,
+            sortedMemberIds: [],
+            latestGwWinners: new Set()
           };
         }
       }
       
       if (alive) {
+        console.log('Setting leagueData:', Object.keys(leagueDataMap).map(id => {
+          const data = leagueDataMap[id];
+          return { id, userPosition: data.userPosition, membersCount: data.members.length, hasSortedMemberIds: !!data.sortedMemberIds };
+        }));
+        
+        // Debug for "Forget It" league - check if it's in leagueDataMap
+        const forgetItLeague = leagues.find(l => l.name?.toLowerCase().includes('forget'));
+        if (forgetItLeague && leagueDataMap[forgetItLeague.id]) {
+          console.error(`[forget it] SETTING leagueData - Found in leagueDataMap:`, {
+            leagueId: forgetItLeague.id,
+            leagueName: forgetItLeague.name,
+            data: leagueDataMap[forgetItLeague.id],
+            sortedMemberIds: leagueDataMap[forgetItLeague.id].sortedMemberIds,
+            membersCount: leagueDataMap[forgetItLeague.id].members.length
+          });
+        } else if (forgetItLeague) {
+          console.error(`[forget it] SETTING leagueData - NOT FOUND in leagueDataMap!`, {
+            leagueId: forgetItLeague.id,
+            leagueName: forgetItLeague.name,
+            leagueDataMapKeys: Object.keys(leagueDataMap)
+          });
+        }
+        
         setLeagueData(leagueDataMap);
         
         // Update cache with leagueData
@@ -658,7 +816,7 @@ export default function HomePage() {
     return () => {
       alive = false;
     };
-  }, [leagues, user?.id]);
+  }, [leagues, user?.id, gw]);
 
   useEffect(() => {
     let alive = true;
@@ -826,6 +984,306 @@ export default function HomePage() {
     return () => { alive = false; };
   }, [user?.id]);
 
+  // Calculate leaderboard rankings for different time periods using v_gw_points and v_ocp_overall
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    let alive = true;
+    (async () => {
+      try {
+        // Get latest GW from gw_results (same as Global page)
+        const { data: latest, error: lErr } = await supabase
+          .from("gw_results")
+          .select("gw")
+          .order("gw", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (lErr) throw lErr;
+        const latestGw = latest?.gw ?? null;
+        if (!latestGw) return;
+
+        // Get total fixtures for latest GW
+        const { data: fixturesData } = await supabase
+          .from("fixtures")
+          .select("fixture_index")
+          .eq("gw", latestGw);
+        const totalFixtures = fixturesData ? [...new Set(fixturesData.map(f => f.fixture_index))].length : 10;
+
+        // Fetch all GW points and overall data
+        const [{ data: gwPointsData }, { data: overallData }] = await Promise.all([
+          supabase.from("v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
+          supabase.from("v_ocp_overall").select("user_id, name, ocp")
+        ]);
+
+        const gwPoints = (gwPointsData as Array<{user_id: string, gw: number, points: number}>) || [];
+        const overall = (overallData as Array<{user_id: string, name: string | null, ocp: number}>) || [];
+        const userMap = new Map(overall.map(o => [o.user_id, o.name ?? "User"]));
+        
+        // Store gwPoints and latestGw for streak calculation
+        if (alive) {
+          setGwPoints(gwPoints);
+          if (gwPoints.length > 0) {
+            const maxGw = Math.max(...gwPoints.map(gp => gp.gw));
+            setLatestGw(maxGw);
+          }
+        }
+
+        // Box 1: Last GW Leaderboard (same logic as Global page with joint ranking)
+        const lastGwPoints = gwPoints.filter(gp => gp.gw === latestGw);
+        if (lastGwPoints.length > 0 && alive) {
+          const sorted = lastGwPoints
+            .map(gp => ({
+              user_id: gp.user_id,
+              name: userMap.get(gp.user_id) ?? "User",
+              points: gp.points ?? 0,
+            }))
+            .sort((a, b) => (b.points - a.points) || a.name.localeCompare(b.name));
+          
+          // Add joint ranking (same as Global page)
+          let currentRank = 1;
+          const ranked = sorted.map((player, index) => {
+            if (index > 0 && sorted[index - 1].points !== player.points) {
+              currentRank = index + 1;
+            }
+            return {
+              ...player,
+              rank: currentRank,
+            };
+          });
+          
+          const userEntry = ranked.find(gp => gp.user_id === user.id);
+          if (userEntry) {
+            // Check if this rank has multiple players
+            const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
+            const isTied = rankCount > 1;
+            
+            setLastGwRank({
+              rank: userEntry.rank,
+              total: lastGwPoints.length,
+              score: userEntry.points,
+              gw: latestGw,
+              totalFixtures,
+              isTied
+            });
+          }
+        }
+
+        // Box 2: Last 5 GWs - only players who played ALL 5 weeks (same logic as Global page)
+        if (latestGw >= 5) {
+          const fiveGwStart = latestGw - 4;
+          const fiveGwPoints = gwPoints.filter(gp => gp.gw >= fiveGwStart && gp.gw <= latestGw);
+          const fiveGwUserData = new Map<string, { user_id: string; name: string; formPoints: number; weeksPlayed: Set<number> }>();
+          
+          // Initialize with users from overall
+          overall.forEach(o => {
+            fiveGwUserData.set(o.user_id, {
+              user_id: o.user_id,
+              name: o.name ?? "User",
+              formPoints: 0,
+              weeksPlayed: new Set()
+            });
+          });
+          
+          // Add form points and track which weeks each user played
+          fiveGwPoints.forEach(gp => {
+            const user = fiveGwUserData.get(gp.user_id);
+            if (user) {
+              user.formPoints += gp.points ?? 0;
+              user.weeksPlayed.add(gp.gw);
+            } else {
+              fiveGwUserData.set(gp.user_id, {
+                user_id: gp.user_id,
+                name: "User",
+                formPoints: gp.points ?? 0,
+                weeksPlayed: new Set([gp.gw])
+              });
+            }
+          });
+          
+          // Only include players who have played ALL 5 weeks
+          const sorted = Array.from(fiveGwUserData.values())
+            .filter(user => {
+              for (let gw = fiveGwStart; gw <= latestGw; gw++) {
+                if (!user.weeksPlayed.has(gw)) return false;
+              }
+              return true;
+            })
+            .sort((a, b) => (b.formPoints - a.formPoints) || a.name.localeCompare(b.name));
+          
+          // Add joint ranking (same as Global page)
+          let currentRank = 1;
+          const ranked = sorted.map((player, index) => {
+            if (index > 0 && sorted[index - 1].formPoints !== player.formPoints) {
+              currentRank = index + 1;
+            }
+            return {
+              ...player,
+              rank: currentRank,
+            };
+          });
+          
+          if (ranked.length > 0 && alive) {
+            const userEntry = ranked.find(u => u.user_id === user.id);
+            if (userEntry) {
+              // Check if this rank has multiple players
+              const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
+              const isTied = rankCount > 1;
+              
+              setFiveGwRank({
+                rank: userEntry.rank,
+                total: ranked.length,
+                isTied
+              });
+            }
+          }
+        }
+
+        // Box 3: Last 10 GWs - only players who played ALL 10 weeks (same logic as Global page)
+        if (latestGw >= 10) {
+          const tenGwStart = latestGw - 9;
+          const tenGwPoints = gwPoints.filter(gp => gp.gw >= tenGwStart && gp.gw <= latestGw);
+          const tenGwUserData = new Map<string, { user_id: string; name: string; formPoints: number; weeksPlayed: Set<number> }>();
+          
+          // Initialize with users from overall
+          overall.forEach(o => {
+            tenGwUserData.set(o.user_id, {
+              user_id: o.user_id,
+              name: o.name ?? "User",
+              formPoints: 0,
+              weeksPlayed: new Set()
+            });
+          });
+          
+          // Add form points and track which weeks each user played
+          tenGwPoints.forEach(gp => {
+            const user = tenGwUserData.get(gp.user_id);
+            if (user) {
+              user.formPoints += gp.points ?? 0;
+              user.weeksPlayed.add(gp.gw);
+            } else {
+              tenGwUserData.set(gp.user_id, {
+                user_id: gp.user_id,
+                name: "User",
+                formPoints: gp.points ?? 0,
+                weeksPlayed: new Set([gp.gw])
+              });
+            }
+          });
+          
+          // Only include players who have played ALL 10 weeks
+          const sorted = Array.from(tenGwUserData.values())
+            .filter(user => {
+              for (let gw = tenGwStart; gw <= latestGw; gw++) {
+                if (!user.weeksPlayed.has(gw)) return false;
+              }
+              return true;
+            })
+            .sort((a, b) => (b.formPoints - a.formPoints) || a.name.localeCompare(b.name));
+          
+          // Add joint ranking (same as Global page)
+          let currentRank = 1;
+          const ranked = sorted.map((player, index) => {
+            if (index > 0 && sorted[index - 1].formPoints !== player.formPoints) {
+              currentRank = index + 1;
+            }
+            return {
+              ...player,
+              rank: currentRank,
+            };
+          });
+          
+          if (ranked.length > 0 && alive) {
+            const userEntry = ranked.find(u => u.user_id === user.id);
+            if (userEntry) {
+              // Check if this rank has multiple players
+              const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
+              const isTied = rankCount > 1;
+              
+              setTenGwRank({
+                rank: userEntry.rank,
+                total: ranked.length,
+                isTied
+              });
+            }
+          }
+        }
+
+        // Box 4: Overall/Season Rank (same logic as Global page with joint ranking)
+        if (overall.length > 0 && alive) {
+          const sorted = [...overall].sort((a, b) => (b.ocp ?? 0) - (a.ocp ?? 0) || (a.name ?? "User").localeCompare(b.name ?? "User"));
+          
+          // Add joint ranking (same as Global page)
+          let currentRank = 1;
+          const ranked = sorted.map((player, index) => {
+            if (index > 0 && (sorted[index - 1].ocp ?? 0) !== (player.ocp ?? 0)) {
+              currentRank = index + 1;
+            }
+            return {
+              ...player,
+              rank: currentRank,
+            };
+          });
+          
+          const userEntry = ranked.find(o => o.user_id === user.id);
+          if (userEntry) {
+            // Check if this rank has multiple players
+            const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
+            const isTied = rankCount > 1;
+            
+            setSeasonRank({
+              rank: userEntry.rank,
+              total: overall.length,
+              isTied
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Error calculating leaderboard rankings:', e);
+      }
+    })();
+    
+    return () => { alive = false; };
+  }, [user?.id]);
+
+  // Calculate streak and last 10 GW scores for current user
+  const userStreakData = useMemo(() => {
+    if (!user?.id || !latestGw) return null;
+    
+    // Get all GW points for this user, sorted by GW descending
+    const userGwPoints = gwPoints
+      .filter(gp => gp.user_id === user.id)
+      .sort((a, b) => b.gw - a.gw);
+    
+    if (userGwPoints.length === 0) return null;
+    
+    // Calculate streak (consecutive weeks from latest GW going backwards)
+    let streak = 0;
+    let expectedGw = latestGw;
+    const userGwSet = new Set(userGwPoints.map(gp => gp.gw));
+    
+    // Count consecutive weeks starting from latest GW
+    while (expectedGw >= 1 && userGwSet.has(expectedGw)) {
+      streak++;
+      expectedGw--;
+    }
+    
+    // Get last 10 gameweeks (or as many as available)
+    const last10GwScores: Array<{ gw: number; score: number | null }> = [];
+    const startGw = Math.max(1, latestGw - 9);
+    for (let gw = latestGw; gw >= startGw; gw--) {
+      const gwData = userGwPoints.find(gp => gp.gw === gw);
+      last10GwScores.push({
+        gw,
+        score: gwData ? gwData.points : null
+      });
+    }
+    
+    return {
+      streak,
+      last10GwScores: last10GwScores.reverse() // Reverse to show oldest to newest
+    };
+  }, [user?.id, gwPoints, latestGw]);
+
   // Realtime: increment unread badge on new messages in any of my leagues
   useEffect(() => {
     const channel = supabase
@@ -889,8 +1347,9 @@ export default function HomePage() {
     headerRight?: React.ReactNode;
     className?: string;
     boxed?: boolean; // if false, render children without the outer card
+    icon?: React.ReactNode;
     children?: React.ReactNode;
-  }> = ({ title, subtitle, headerRight, className, boxed = true, children }) => (
+  }> = ({ title, subtitle, headerRight, className, boxed = true, icon, children }) => (
     <section className={className ?? ""}>
       <div className="flex items-center justify-between">
         <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
@@ -974,10 +1433,308 @@ export default function HomePage() {
     return inner;
   };
 
+  // Share predictions function
+  const sharePredictions = async () => {
+    if (!fixtures.length || gwScore === null) return;
+    
+    try {
+      // Calculate score
+      let correctCount = 0;
+      fixtures.forEach(f => {
+        const pick = picksMap[f.fixture_index];
+        const result = resultsMap[f.fixture_index];
+        if (pick && result && pick === result) correctCount++;
+      });
+
+      // Create a hidden container for the shareable image
+      const shareContainer = document.createElement('div');
+      shareContainer.style.position = 'absolute';
+      shareContainer.style.left = '-9999px';
+      shareContainer.style.width = '1080px';
+      shareContainer.style.height = '1080px';
+      shareContainer.style.backgroundColor = '#1C8376'; // TOTL green
+      shareContainer.style.padding = '40px';
+      shareContainer.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      shareContainer.style.display = 'flex';
+      shareContainer.style.flexDirection = 'column';
+      shareContainer.style.boxSizing = 'border-box';
+      document.body.appendChild(shareContainer);
+
+      // Top section with logo and score
+      const topSection = document.createElement('div');
+      topSection.style.display = 'flex';
+      topSection.style.flexDirection = 'column';
+      topSection.style.alignItems = 'center';
+      topSection.style.marginBottom = '30px';
+      topSection.style.flexShrink = '0';
+
+      // TOTL Logo - load and wait for it
+      const logoImg = document.createElement('img');
+      logoImg.crossOrigin = 'anonymous';
+      logoImg.style.width = '200px';
+      logoImg.style.height = 'auto';
+      logoImg.style.marginBottom = '20px';
+      logoImg.style.filter = 'brightness(0) invert(1)'; // Make logo white
+      topSection.appendChild(logoImg);
+      
+      // Wait for logo to load
+      await new Promise<void>((resolve) => {
+        logoImg.onload = () => resolve();
+        logoImg.onerror = () => resolve(); // Continue even if logo fails
+        logoImg.src = '/assets/badges/totl-logo1.svg';
+      });
+
+      // Game Week and Score
+      const scoreSection = document.createElement('div');
+      scoreSection.style.textAlign = 'center';
+      scoreSection.style.color = '#ffffff';
+      scoreSection.innerHTML = `
+        <div style="font-size: 36px; font-weight: 700; margin-bottom: 8px; opacity: 0.95;">Game Week ${gw}</div>
+        <div style="font-size: 96px; font-weight: 800; margin-bottom: 4px; line-height: 1;">${correctCount}<span style="font-size: 64px; opacity: 0.8;">/${fixtures.length}</span></div>
+        <div style="font-size: 24px; font-weight: 600; opacity: 0.9;">Score</div>
+      `;
+      topSection.appendChild(scoreSection);
+      shareContainer.appendChild(topSection);
+
+      // Fixtures grid - 2 rows of 5
+      const fixturesGrid = document.createElement('div');
+      fixturesGrid.style.display = 'grid';
+      fixturesGrid.style.gridTemplateColumns = 'repeat(5, 1fr)';
+      fixturesGrid.style.gridTemplateRows = 'repeat(2, 1fr)';
+      fixturesGrid.style.gap = '12px';
+      fixturesGrid.style.flex = '1';
+      fixturesGrid.style.minHeight = '0';
+
+      // Sort fixtures by fixture_index to ensure correct order
+      const sortedFixtures = [...fixtures].sort((a, b) => a.fixture_index - b.fixture_index);
+
+      // Load all badge images first
+      const badgePromises = sortedFixtures.map(f => {
+        const homeKey = (f.home_code || f.home_name || f.home_team || "").toUpperCase();
+        const awayKey = (f.away_code || f.away_name || f.away_team || "").toUpperCase();
+        return Promise.all([
+          new Promise<HTMLImageElement>((resolve) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(img); // Return even if fails
+            img.src = `/assets/badges/${homeKey}.png`;
+          }),
+          new Promise<HTMLImageElement>((resolve) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(img);
+            img.src = `/assets/badges/${awayKey}.png`;
+          })
+        ]);
+      });
+
+      await Promise.all(badgePromises);
+
+      sortedFixtures.forEach((f, idx) => {
+        const pick = picksMap[f.fixture_index];
+        const result = resultsMap[f.fixture_index];
+        const homeKey = (f.home_code || f.home_name || f.home_team || "").toUpperCase();
+        const awayKey = (f.away_code || f.away_name || f.away_team || "").toUpperCase();
+        const homeName = getMediumName(homeKey);
+        const awayName = getMediumName(awayKey);
+        const isCorrect = pick && result && pick === result;
+
+        const fixtureCard = document.createElement('div');
+        fixtureCard.style.backgroundColor = '#ffffff';
+        fixtureCard.style.borderRadius = '16px';
+        fixtureCard.style.padding = '16px';
+        fixtureCard.style.display = 'flex';
+        fixtureCard.style.flexDirection = 'column';
+        fixtureCard.style.alignItems = 'center';
+        fixtureCard.style.justifyContent = 'center';
+        fixtureCard.style.gap = '10px';
+        fixtureCard.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+
+        // Teams with badges
+        const teamsRow = document.createElement('div');
+        teamsRow.style.display = 'flex';
+        teamsRow.style.flexDirection = 'column';
+        teamsRow.style.alignItems = 'center';
+        teamsRow.style.gap = '8px';
+        teamsRow.style.width = '100%';
+
+        // Home team
+        const homeTeam = document.createElement('div');
+        homeTeam.style.display = 'flex';
+        homeTeam.style.flexDirection = 'column';
+        homeTeam.style.alignItems = 'center';
+        homeTeam.style.gap = '4px';
+        const homeBadge = document.createElement('img');
+        homeBadge.src = `/assets/badges/${homeKey}.png`;
+        homeBadge.style.width = '40px';
+        homeBadge.style.height = '40px';
+        homeBadge.style.objectFit = 'contain';
+        homeBadge.onerror = () => { homeBadge.style.display = 'none'; };
+        const homeNameDiv = document.createElement('div');
+        homeNameDiv.textContent = homeName;
+        homeNameDiv.style.fontSize = '14px';
+        homeNameDiv.style.fontWeight = '600';
+        homeNameDiv.style.color = '#0f172a';
+        homeNameDiv.style.textAlign = 'center';
+        homeNameDiv.style.lineHeight = '1.2';
+        homeTeam.appendChild(homeBadge);
+        homeTeam.appendChild(homeNameDiv);
+        teamsRow.appendChild(homeTeam);
+
+        // VS divider
+        const vsDiv = document.createElement('div');
+        vsDiv.textContent = 'vs';
+        vsDiv.style.fontSize = '12px';
+        vsDiv.style.color = '#64748b';
+        vsDiv.style.fontWeight = '500';
+        teamsRow.appendChild(vsDiv);
+
+        // Away team
+        const awayTeam = document.createElement('div');
+        awayTeam.style.display = 'flex';
+        awayTeam.style.flexDirection = 'column';
+        awayTeam.style.alignItems = 'center';
+        awayTeam.style.gap = '4px';
+        const awayBadge = document.createElement('img');
+        awayBadge.src = `/assets/badges/${awayKey}.png`;
+        awayBadge.style.width = '40px';
+        awayBadge.style.height = '40px';
+        awayBadge.style.objectFit = 'contain';
+        awayBadge.onerror = () => { awayBadge.style.display = 'none'; };
+        const awayNameDiv = document.createElement('div');
+        awayNameDiv.textContent = awayName;
+        awayNameDiv.style.fontSize = '14px';
+        awayNameDiv.style.fontWeight = '600';
+        awayNameDiv.style.color = '#0f172a';
+        awayNameDiv.style.textAlign = 'center';
+        awayNameDiv.style.lineHeight = '1.2';
+        awayTeam.appendChild(awayBadge);
+        awayTeam.appendChild(awayNameDiv);
+        teamsRow.appendChild(awayTeam);
+
+        fixtureCard.appendChild(teamsRow);
+
+        // Prediction dots
+        const predRow = document.createElement('div');
+        predRow.style.display = 'flex';
+        predRow.style.justifyContent = 'center';
+        predRow.style.gap = '8px';
+        predRow.style.marginTop = '4px';
+        
+        ['H', 'D', 'A'].forEach((outcome) => {
+          const dot = document.createElement('div');
+          dot.style.width = '24px';
+          dot.style.height = '24px';
+          dot.style.borderRadius = '50%';
+          dot.style.border = '2px solid #ffffff';
+          
+          if (pick === outcome) {
+            if (isCorrect) {
+              dot.style.background = 'linear-gradient(135deg, #fbbf24, #f97316, #ec4899, #9333ea)';
+              dot.style.boxShadow = '0 2px 8px rgba(251, 191, 36, 0.5)';
+            } else {
+              dot.style.backgroundColor = '#ef4444';
+            }
+          } else if (result === outcome) {
+            dot.style.backgroundColor = '#d1d5db';
+          } else {
+            dot.style.backgroundColor = 'transparent';
+            dot.style.border = '2px solid #e2e8f0';
+          }
+          
+          predRow.appendChild(dot);
+        });
+        
+        fixtureCard.appendChild(predRow);
+        fixturesGrid.appendChild(fixtureCard);
+      });
+
+      shareContainer.appendChild(fixturesGrid);
+
+      // Wait for all images to load
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Generate image
+      const canvas = await html2canvas(shareContainer, {
+        width: 1080,
+        height: 1080,
+        scale: 1,
+        backgroundColor: '#1C8376', // TOTL green
+        useCORS: true,
+        logging: false,
+        allowTaint: false,
+      });
+
+      // Convert to blob
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          document.body.removeChild(shareContainer);
+          return;
+        }
+
+        const file = new File([blob], `gw${gw}-predictions.png`, { type: 'image/png' });
+
+        // Try Web Share API with file (works on iOS Safari and Android Chrome)
+        if (navigator.share) {
+          // Check if we're on a mobile device
+          const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+          
+          if (isMobile) {
+            // On mobile, try to share the file directly
+            try {
+              // Try with canShare check first
+              if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                  files: [file],
+                  title: `Game Week ${gw} Predictions`,
+                  text: `My Game Week ${gw} predictions: ${correctCount}/${fixtures.length}`,
+                });
+                document.body.removeChild(shareContainer);
+                return;
+              }
+              // If canShare doesn't work, try sharing anyway (some browsers support it but canShare returns false)
+              await navigator.share({
+                files: [file],
+                title: `Game Week ${gw} Predictions`,
+                text: `My Game Week ${gw} predictions: ${correctCount}/${fixtures.length}`,
+              });
+              document.body.removeChild(shareContainer);
+              return;
+            } catch (err: any) {
+              // If user cancels, just return
+              if (err.name === 'AbortError' || err.message?.includes('cancel')) {
+                document.body.removeChild(shareContainer);
+                return;
+              }
+              // If file sharing isn't supported, fall through to download
+              console.log('File sharing not supported, falling back to download');
+            }
+          }
+        }
+
+        // Fallback: download the file (desktop or if share fails)
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `gw${gw}-predictions.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        document.body.removeChild(shareContainer);
+      }, 'image/png');
+    } catch (error) {
+      console.error('Error sharing predictions:', error);
+      alert('Failed to generate shareable image. Please try again.');
+    }
+  };
+
   const SkeletonLoader = () => (
     <>
       {/* Leaderboard Skeleton */}
-      <Section title="The Leaderboard" boxed={false}>
+      <Section title="Leaderboards" boxed={false}>
         <div className="grid grid-cols-2 gap-4">
           {/* Global Leaderboard Skeleton */}
           <div className="h-full rounded-3xl border-2 border-slate-200 bg-slate-50/80 p-4 sm:p-6 animate-pulse">
@@ -1106,25 +1863,35 @@ export default function HomePage() {
       ) : (
         <>
           {/* Leaderboards */}
-          <Section title="The Leaderboard" boxed={false}>
-        <div className="grid grid-cols-2 gap-4">
-          <LeaderCard
-            to="/global"
-            title="TotL Global"
-            icon={
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 text-[#1C8376]">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0" />
-              </svg>
-            }
-            subtitle={
-              globalRank !== null && globalCount !== null && globalCount > 0 ? (
-                <>Top {Math.round((globalRank / globalCount) * 100)}%</>
-              ) : null
-            }
-            compactFooter
-            footerLeft={
-              <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-slate-600" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <Section title="Leaderboards" boxed={false}>
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
+              <style>{`
+                .scrollbar-hide::-webkit-scrollbar {
+                  display: none;
+                }
+              `}</style>
+              <div className="flex gap-2" style={{ width: 'max-content' }}>
+                {/* Box 1: Last GW Leaderboard */}
+                <Link to="/global?tab=lastgw" className="flex-shrink-0 w-[169px] sm:w-[193px] aspect-square rounded-xl border bg-white shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer block">
+                  <div className="p-3 h-full flex flex-col">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="leading-none text-slate-900">
+                        {lastGwRank ? (
+                          <>
+                            <span className="text-5xl text-[#1C8376]">{lastGwRank.score}</span>
+                            <span className="text-2xl text-slate-500">/{lastGwRank.totalFixtures}</span>
+                          </>
+                        ) : '—'}
+                      </span>
+                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <div className="mt-auto">
+                      <div className="text-xs text-slate-500 mb-2">Game Week {lastGwRank?.gw ?? '—'}</div>
+                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <g clipPath="url(#clip0_4045_135263)">
                     <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
                     <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1137,35 +1904,284 @@ export default function HomePage() {
                     </clipPath>
                   </defs>
                 </svg>
-                <span className="font-semibold">{globalCount ?? "—"}</span>
+                        <span className="text-sm font-semibold text-slate-900">{lastGwRank?.total ?? "—"}</span>
+                      </div>
                 <div className="flex items-center gap-1">
-                  {(() => {
-                    console.log('Rank indicator debug:', { globalRank, prevGlobalRank });
-                    if (globalRank !== null && prevGlobalRank !== null) {
-                      if (globalRank < prevGlobalRank) {
-                        return <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-500 text-white text-xs font-bold">▲</span>;
-                      } else if (globalRank > prevGlobalRank) {
-                        return <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-xs font-bold">▼</span>;
-                      } else {
-                        return <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-500 text-white text-xs font-bold">→</span>;
-                      }
-                    }
-                    return null;
-                  })()}
-                  <span className="font-semibold">{globalRank ?? "—"}</span>
+                        <span className="text-green-600 text-xs">▲</span>
+                        <span className="text-sm font-semibold text-slate-900">{lastGwRank ? ordinal(lastGwRank.rank) : "—"}</span>
                 </div>
               </div>
-            }
-          />
-          <GWCard gw={lastScoreGw ?? gw} score={lastScore} submitted={false} />
+                    </div>
+                  </div>
+                </Link>
+
+                {/* Box 2: 5-WEEK FORM */}
+                <Link to="/global?tab=form5" className="flex-shrink-0 w-[169px] sm:w-[193px] aspect-square rounded-xl border bg-white shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer block">
+                  <div className="p-3 h-full flex flex-col">
+                    <div className="flex items-center justify-between mb-2">
+                      <svg className="w-[60px] h-[60px]" viewBox="0 0 24 24" fill="none" strokeWidth="1.5">
+                        <defs>
+                          <linearGradient id="trophyGradient1" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#B8860B" stopOpacity="1">
+                              <animate attributeName="stop-opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite" />
+                            </stop>
+                            <stop offset="50%" stopColor="#B8860B" stopOpacity="1">
+                              <animate attributeName="stop-opacity" values="1;0.5;1" dur="1.5s" repeatCount="indefinite" />
+                            </stop>
+                            <stop offset="100%" stopColor="#B8860B" stopOpacity="1">
+                              <animate attributeName="stop-opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite" begin="0.75s" />
+                            </stop>
+                          </linearGradient>
+                        </defs>
+                        <path stroke="url(#trophyGradient1)" strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0" />
+                      </svg>
+                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <div className="mt-auto">
+                      <div className="text-xs text-slate-500 mb-2">5-WEEK FORM</div>
+                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <g clipPath="url(#clip0_4045_135263)">
+                            <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M12.3334 6.33333C12.3334 7.622 11.2887 8.66667 10.0001 8.66667C8.71142 8.66667 7.66675 7.622 7.66675 6.33333C7.66675 5.04467 8.71142 4 10.0001 4C11.2887 4 12.3334 5.04467 12.3334 6.33333Z" stroke="currentColor" strokeWidth="1.33333"/>
+                            <path d="M7.33325 2.92025C6.94237 2.36557 6.27397 2 5.51507 2C4.31009 2 3.33325 2.92165 3.33325 4.05857C3.33325 4.95488 3.94038 5.7174 4.7878 6" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round"/>
+                          </g>
+                          <defs>
+                            <clipPath id="clip0_4045_135263">
+                              <rect width="16" height="16" fill="white"/>
+                            </clipPath>
+                          </defs>
+                        </svg>
+                        <span className="text-sm font-semibold text-slate-900">{fiveGwRank?.total ?? "—"}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-green-600 text-xs">▲</span>
+                        <span className="text-sm font-semibold text-slate-900">{fiveGwRank ? ordinal(fiveGwRank.rank) : "—"}</span>
+                      </div>
+                    </div>
+                    </div>
+                  </div>
+                </Link>
+
+                {/* Box 3: 10-WEEK FORM */}
+                <Link to="/global?tab=form10" className="flex-shrink-0 w-[169px] sm:w-[193px] aspect-square rounded-xl border bg-white shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer block">
+                  <div className="p-3 h-full flex flex-col">
+                    <div className="flex items-center justify-between mb-2">
+                      <svg className="w-[60px] h-[60px]" viewBox="0 0 24 24" fill="none" strokeWidth="1.5">
+                        <defs>
+                          <linearGradient id="trophyGradient2" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#8E8E8E" stopOpacity="1">
+                              <animate attributeName="stop-opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite" />
+                            </stop>
+                            <stop offset="50%" stopColor="#8E8E8E" stopOpacity="1">
+                              <animate attributeName="stop-opacity" values="1;0.5;1" dur="1.5s" repeatCount="indefinite" />
+                            </stop>
+                            <stop offset="100%" stopColor="#8E8E8E" stopOpacity="1">
+                              <animate attributeName="stop-opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite" begin="0.75s" />
+                            </stop>
+                          </linearGradient>
+                        </defs>
+                        <path stroke="url(#trophyGradient2)" strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0" />
+                      </svg>
+                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <div className="mt-auto">
+                      <div className="text-xs text-slate-500 mb-2">10-WEEK FORM</div>
+                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <g clipPath="url(#clip0_4045_135263)">
+                            <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M12.3334 6.33333C12.3334 7.622 11.2887 8.66667 10.0001 8.66667C8.71142 8.66667 7.66675 7.622 7.66675 6.33333C7.66675 5.04467 8.71142 4 10.0001 4C11.2887 4 12.3334 5.04467 12.3334 6.33333Z" stroke="currentColor" strokeWidth="1.33333"/>
+                            <path d="M7.33325 2.92025C6.94237 2.36557 6.27397 2 5.51507 2C4.31009 2 3.33325 2.92165 3.33325 4.05857C3.33325 4.95488 3.94038 5.7174 4.7878 6" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round"/>
+                          </g>
+                          <defs>
+                            <clipPath id="clip0_4045_135263">
+                              <rect width="16" height="16" fill="white"/>
+                            </clipPath>
+                          </defs>
+                        </svg>
+                        <span className="text-sm font-semibold text-slate-900">{tenGwRank?.total ?? "—"}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-green-600 text-xs">▲</span>
+                        <span className="text-sm font-semibold text-slate-900">{tenGwRank ? ordinal(tenGwRank.rank) : "—"}</span>
+                      </div>
+                    </div>
+                    </div>
+                  </div>
+                </Link>
+
+                {/* Box 4: SEASON RANK */}
+                <Link to="/global?tab=overall" className="flex-shrink-0 w-[169px] sm:w-[193px] aspect-square rounded-xl border bg-white shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer block">
+                  <div className="p-3 h-full flex flex-col">
+                    <div className="flex items-center justify-between mb-2">
+                      <svg className="w-[60px] h-[60px]" viewBox="0 0 24 24" fill="none" strokeWidth="1.5">
+                        <defs>
+                          <linearGradient id="trophyGradient3" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#8B6914" stopOpacity="1">
+                              <animate attributeName="stop-opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite" />
+                            </stop>
+                            <stop offset="50%" stopColor="#8B6914" stopOpacity="1">
+                              <animate attributeName="stop-opacity" values="1;0.5;1" dur="1.5s" repeatCount="indefinite" />
+                            </stop>
+                            <stop offset="100%" stopColor="#8B6914" stopOpacity="1">
+                              <animate attributeName="stop-opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite" begin="0.75s" />
+                            </stop>
+                          </linearGradient>
+                        </defs>
+                        <path stroke="url(#trophyGradient3)" strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0" />
+                      </svg>
+                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <div className="mt-auto">
+                      <div className="text-xs text-slate-500 mb-2">SEASON RANK</div>
+                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <g clipPath="url(#clip0_4045_135263)">
+                            <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M12.3334 6.33333C12.3334 7.622 11.2887 8.66667 10.0001 8.66667C8.71142 8.66667 7.66675 7.622 7.66675 6.33333C7.66675 5.04467 8.71142 4 10.0001 4C11.2887 4 12.3334 5.04467 12.3334 6.33333Z" stroke="currentColor" strokeWidth="1.33333"/>
+                            <path d="M7.33325 2.92025C6.94237 2.36557 6.27397 2 5.51507 2C4.31009 2 3.33325 2.92165 3.33325 4.05857C3.33325 4.95488 3.94038 5.7174 4.7878 6" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round"/>
+                          </g>
+                          <defs>
+                            <clipPath id="clip0_4045_135263">
+                              <rect width="16" height="16" fill="white"/>
+                            </clipPath>
+                          </defs>
+                        </svg>
+                        <span className="text-sm font-semibold text-slate-900">{seasonRank?.total ?? "—"}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-green-600 text-xs">▲</span>
+                        <span className="text-sm font-semibold text-slate-900">{seasonRank ? ordinal(seasonRank.rank) : "—"}</span>
+                      </div>
+                    </div>
+                    </div>
+                  </div>
+                </Link>
+
+                {/* Streak Box */}
+                {userStreakData && (
+                  <div className="flex-shrink-0 w-[340px] sm:w-[400px] h-[169px] sm:h-[193px] rounded-xl border bg-white shadow-sm overflow-hidden hover:shadow-md transition-shadow relative">
+                    <div className="p-3 h-full flex flex-col">
+                      {/* Spacer to push content down */}
+                      <div className="flex-1"></div>
+                      
+                      {/* Bar Graph just above text */}
+                      <div className="mb-2 relative" style={{ height: '70px' }}>
+                        {(() => {
+                          const scores = userStreakData.last10GwScores;
+                          const playedScores = scores.filter(s => s.score !== null);
+                          const maxScore = playedScores.length > 0 ? Math.max(...playedScores.map(s => s.score!)) : 10;
+                          const minScore = 0;
+                          const range = maxScore - minScore || 1;
+                          const graphHeight = 60;
+                          
+                          return (
+                            <div className="relative h-full">
+                              {/* Bar Graph */}
+                              <div className="flex items-end justify-between gap-1 h-full px-1">
+                                {scores.map((gwData, index) => {
+                                  const isPlayed = gwData.score !== null;
+                                  const isLatest = gwData.gw === latestGw;
+                                  const score = gwData.score ?? 0;
+                                  const barHeight = isPlayed ? ((score - minScore) / range) * graphHeight : 0;
+                                  
+                                  return (
+                                    <div
+                                      key={gwData.gw}
+                                      className="flex flex-col items-center justify-end gap-1 flex-1 relative min-w-0"
+                                    >
+                                      {/* Score number above bar */}
+                                      {isPlayed && (
+                                        <div
+                                          className={`text-xs font-bold mb-0.5 leading-none ${
+                                            isLatest ? 'text-[#1C8376]' : 'text-slate-700'
+                                          }`}
+                                        >
+                                          {score}
+                                        </div>
+                                      )}
+                                      
+                                      {/* Bar */}
+                                      <div
+                                        className={`w-full rounded-t transition-all ${
+                                          isPlayed
+                                            ? isLatest
+                                              ? 'bg-[#1C8376]'
+                                              : 'bg-slate-400'
+                                            : 'bg-slate-200'
+                                        }`}
+                                        style={{
+                                          height: `${barHeight}px`,
+                                          minHeight: isPlayed ? '4px' : '0'
+                                        }}
+                                        title={isPlayed ? `GW${gwData.gw}: ${score}` : `GW${gwData.gw}: Not played`}
+                                      />
+                                      
+                                      {/* GW label */}
+                                      <div
+                                        className={`text-[10px] font-medium leading-tight ${
+                                          isPlayed
+                                            ? isLatest
+                                              ? 'text-[#1C8376] font-bold'
+                                              : 'text-slate-700'
+                                            : 'text-slate-400'
+                                        }`}
+                                      >
+                                        GW{gwData.gw}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      
+                      {/* Bottom text row */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1">
+                          <svg className="w-3 h-3 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                            <circle cx="12" cy="12" r="6" strokeWidth={2} />
+                            <circle cx="12" cy="12" r="2" fill="currentColor" />
+                          </svg>
+                          <span className="text-sm font-semibold text-slate-900">
+                            Your Streak{' '}
+                            <span className="font-bold text-orange-500">
+                              {userStreakData.streak > 0 
+                                ? `${userStreakData.streak} ${userStreakData.streak === 1 ? 'Week' : 'Weeks'}`
+                                : 'Start your streak!'}
+                            </span>
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-medium text-slate-400">Last 10</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
         </div>
       </Section>
 
       {/* Mini Leagues section */}
-      <section className="mt-8">
+      <section className="mt-6">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
-            Mini Leaguez
+            Mini Leagues
           </h2>
           {leagues.length > 4 && (
             <Link
@@ -1265,14 +2281,25 @@ export default function HomePage() {
                         const unread = unreadByLeague?.[l.id] ?? 0;
                         const badge = unread > 0 ? Math.min(unread, 99) : 0;
                         const data = leagueData[l.id];
+                        
                         const members = data?.members || [];
                         const userPosition = data?.userPosition;
+                        
+                        // CRITICAL DEBUG for "Forget It"
+                        if (l.name?.toLowerCase().includes('forget')) {
+                          console.error(`[${l.name}] === RENDERING ===`);
+                          console.error(`League ID:`, l.id);
+                          console.error(`hasData:`, !!data);
+                          console.error(`data?.sortedMemberIds:`, data?.sortedMemberIds);
+                          console.error(`members count:`, members.length);
+                          console.error(`All leagueData keys:`, Object.keys(leagueData || {}));
+                        }
                         
                         return (
                           <div key={l.id} className="rounded-xl border bg-white overflow-hidden shadow-sm w-[320px]" style={{ borderRadius: '12px' }}>
                               <Link
                                 to={`/league/${l.code}`}
-                                className="block p-4 bg-white no-underline hover:text-inherit"
+                                className="block p-4 !bg-white no-underline hover:text-inherit shadow-md"
                               >
                                 <div className="flex items-start gap-3">
                                   {/* League Avatar Badge */}
@@ -1334,13 +2361,13 @@ export default function HomePage() {
                                         <span className="text-sm font-semibold text-slate-900">{members.length}</span>
                                       </div>
                                       
-                                      {/* User Position */}
-                                      {userPosition !== null && userPosition !== undefined && (
+                                      {/* User Position - ML Ranking */}
+                                      {userPosition !== null && userPosition !== undefined ? (
                                         <div className="flex items-center gap-1">
                                           <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                                           </svg>
-                                          <span className="text-sm font-semibold text-slate-900">{userPosition}</span>
+                                          <span className="text-sm font-semibold text-slate-900">{ordinal(userPosition)}</span>
                                           {data?.positionChange === 'up' && (
                                             <span className="text-green-600 text-xs">▲</span>
                                           )}
@@ -1351,42 +2378,113 @@ export default function HomePage() {
                                             <span className="text-slate-400 text-xs">—</span>
                                           )}
                                         </div>
+                                      ) : (
+                                        <div className="flex items-center gap-1">
+                                          <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                          </svg>
+                                          <span className="text-sm font-semibold text-slate-400">—</span>
+                                        </div>
                                       )}
                                       
-                                      {/* Member Initials */}
+                                      {/* Member Initials - ordered by ML table position (1st to last) */}
                                       <div className="flex items-center flex-1 overflow-hidden">
-                                        {members.slice(0, 8).map((member, index) => (
+                                        {(() => {
+                                          // CRITICAL: Use ML table order - MUST use sortedMemberIds from data
+                                          const orderedMemberIds = data?.sortedMemberIds;
+                                          
+                                          // CRITICAL: If no sortedMemberIds, we can't render correctly - show error
+                                          if (!orderedMemberIds || orderedMemberIds.length === 0) {
+                                            if (l.name?.toLowerCase().includes('forget')) {
+                                              console.error(`[${l.name}] FATAL ERROR: No sortedMemberIds available!`);
+                                            }
+                                            // Fallback to alphabetical - but this shouldn't happen
+                                            const alphabeticalMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
+                                            return alphabeticalMembers.slice(0, 8).map((member, index) => {
+                                              const hasSubmitted = data?.submittedMembers?.has(member.id) ?? false;
+                                              const isLatestWinner = data?.latestGwWinners?.has(member.id) ?? false;
+                                              return (
                                           <div
                                             key={member.id}
-                                            className="rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0"
-                                            style={{ 
+                                                  className={`rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6 ${isLatestWinner ? 'bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 ring-2 ring-yellow-300/60 font-semibold' : ''}`}
+                                            style={
+                                              isLatestWinner
+                                                ? { marginLeft: index > 0 ? '-2px' : '0' }
+                                                : { 
                                               marginLeft: index > 0 ? '-2px' : '0', 
-                                              width: '18px', 
-                                              height: '18px',
-                                              backgroundColor: '#F2F2F7',
-                                              border: '0.5px solid #D9D9D9',
-                                              color: '#ADADB1'
-                                            }}
+                                                    backgroundColor: hasSubmitted ? '#E5E5EA' : '#F2F2F7',
+                                                    border: hasSubmitted ? '0.5px solid #C7C7CC' : '0.5px solid #D9D9D9',
+                                                    color: hasSubmitted ? '#8E8E93' : '#ADADB1'
+                                                  }
+                                            }
                                             title={member.name}
                                           >
                                             {initials(member.name)}
                                           </div>
-                                        ))}
-                                        {members.length > 8 && (
-                                          <div 
-                                            className="rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0"
-                                            style={{ 
-                                              marginLeft: members.length > 1 ? '-2px' : '0', 
-                                              width: '18px', 
-                                              height: '18px',
+                                              );
+                                            });
+                                          }
+                                          
+                                          // Map IDs to members in ML table order
+                                          const orderedMembers = orderedMemberIds
+                                            .map(id => members.find(m => m.id === id))
+                                            .filter(Boolean) as LeagueMember[];
+                                          
+                                          // CRITICAL DEBUG: Log what we're rendering for "Forget It"
+                                          if (l.name?.toLowerCase().includes('forget')) {
+                                            console.error(`[${l.name}] === RENDERING ===`);
+                                            console.error(`orderedMemberIds from data:`, orderedMemberIds);
+                                            console.error(`orderedMembers names:`, orderedMembers.map(m => m.name));
+                                            console.error(`Chip order will be:`, orderedMembers.map(m => initials(m.name)).join(', '));
+                                            console.error(`Expected: J, JD, DG, E`);
+                                            console.error(`Actual:`, orderedMembers.map(m => initials(m.name)).join(', '));
+                                          }
+                                          
+                                          // CRITICAL: Ensure we're using the exact order from sortedMemberIds
+                                          return orderedMembers.slice(0, 8).map((member, index) => {
+                                            const hasSubmitted = data?.submittedMembers?.has(member.id) ?? false;
+                                            const isLatestWinner = data?.latestGwWinners?.has(member.id) ?? false;
+                                            const position = orderedMemberIds.indexOf(member.id) + 1;
+                                            return (
+                                              <div
+                                                key={member.id}
+                                                className={`rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6 ${isLatestWinner ? 'bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 ring-2 ring-yellow-300/60 font-semibold' : ''}`}
+                                            style={
+                                                  isLatestWinner
+                                                    ? { marginLeft: index > 0 ? '-2px' : '0' }
+                                                    : { 
+                                                  marginLeft: index > 0 ? '-2px' : '0', 
+                                                  backgroundColor: hasSubmitted ? '#E5E5EA' : '#F2F2F7',
+                                                  border: hasSubmitted ? '0.5px solid #C7C7CC' : '0.5px solid #D9D9D9',
+                                                  color: hasSubmitted ? '#8E8E93' : '#ADADB1'
+                                                }
+                                                }
+                                                title={`${member.name} (${position}${position === 1 ? 'st' : position === 2 ? 'nd' : position === 3 ? 'rd' : 'th'}${hasSubmitted ? ', Submitted' : ''})`}
+                                              >
+                                                {initials(member.name)}
+                                              </div>
+                                            );
+                                          });
+                                        })()}
+                                        {(() => {
+                                          const orderedMemberIds = data?.sortedMemberIds || members.map(m => m.id);
+                                          const totalMembers = orderedMemberIds.length;
+                                          return totalMembers > 8 && (
+                                            <div 
+                                              className="rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
+                                              style={{ 
+                                                marginLeft: totalMembers > 1 ? '-2px' : '0', 
+                                                width: '24px', 
+                                                height: '24px',
                                               backgroundColor: '#F2F2F7',
                                               border: '0.5px solid #D9D9D9',
                                               color: '#ADADB1'
                                             }}
                                           >
-                                            +{members.length - 8}
+                                              +{totalMembers - 8}
                                           </div>
-                                        )}
+                                          );
+                                        })()}
                                       </div>
                                     </div>
                                   </div>
@@ -1421,46 +2519,37 @@ export default function HomePage() {
       <section className="mt-8">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
-            Games
+            Game Week {gw}
           </h2>
+          <div className="flex items-center gap-2">
+            {fixtures.length > 0 && gwScore !== null && (
+              <button
+                onClick={sharePredictions}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C8376] text-white text-sm font-semibold rounded-md hover:bg-[#178f72] transition-colors"
+                title="Share your predictions"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                </svg>
+                Share
+              </button>
+            )}
           {fixtures.length > 0 && !gwSubmitted && gwScore === null && (
-            <div>
-              <Link to="/new-predictions" className="inline-block px-3 py-1 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors underline">Make your predictions</Link>
-            </div>
+              <Link to="/new-predictions" className="inline-block px-3 py-1 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors no-underline">Make your predictions</Link>
           )}
         </div>
-        <div className="text-slate-700 font-semibold text-lg mt-2 mb-0">
-          <div className="flex justify-between items-center">
-            <span>Game Week {gw}</span>
           </div>
           {nextGwComing ? (
-            <div className="mt-1">
-              <span className="font-semibold">GW{nextGwComing} coming soon</span>
+          <div className="mb-2">
+            <span className="text-slate-600 font-semibold">GW{nextGwComing} coming soon</span>
             </div>
           ) : null}
-        </div>
         {fixtures.length === 0 ? (
           <div className="p-4 text-slate-500">No fixtures yet.</div>
         ) : (
-          <div>
-            {(() => {
-              // Group fixtures by day name
-              const grouped: Record<string, Fixture[]> = {};
-              fixtures.forEach((f) => {
-                const day = f.kickoff_time
-                  ? new Date(f.kickoff_time).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })
-                  : "Unknown";
-                if (!grouped[day]) grouped[day] = [];
-                grouped[day].push(f);
-              });
-              const days = Object.keys(grouped);
-              let idx = 0;
-              return days.map((day, dayIdx) => (
-                <div key={day}>
-                  <div className={`${dayIdx === 0 ? 'mt-3' : 'mt-6'} mb-2 text-slate-700 font-semibold text-lg`}>{day}</div>
-                  <div className="rounded-2xl border bg-slate-50 overflow-hidden mb-4">
-                    <ul>
-                      {grouped[day].map((f) => {
+          <div className="rounded-2xl border bg-slate-50 overflow-hidden">
+            <ul>
+              {fixtures.map((f, idx) => {
                         const pick = picksMap[f.fixture_index];
                         const homeKey = f.home_code || f.home_name || f.home_team || "";
                         const awayKey = f.away_code || f.away_name || f.away_team || "";
@@ -1470,7 +2559,7 @@ export default function HomePage() {
 
                         const homeBadge = `/assets/badges/${homeKey.toUpperCase()}.png`;
                         const awayBadge = `/assets/badges/${awayKey.toUpperCase()}.png`;
-                        const liClass = idx++ ? "border-t" : undefined;
+                const liClass = idx > 0 ? "border-t" : undefined;
                         return (
                           <li key={f.id} className={liClass}>
                             <div className="p-4 bg-white">
@@ -1537,10 +2626,6 @@ export default function HomePage() {
                         );
                       })}
                     </ul>
-                  </div>
-                </div>
-              ));
-            })()}
           </div>
         )}
       </section>

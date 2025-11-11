@@ -2,92 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
+import { resolveLeagueStartGw as getLeagueStartGw, shouldIncludeGwForLeague } from "../lib/leagueStart";
 
 const MAX_MEMBERS = 8;
-
-// Helper function to determine league start GW based on creation date and current GW deadline
-async function getLeagueStartGw(league: any, currentGw: number): Promise<number> {
-  const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League'];
-  const gw7StartLeagues = ['The Bird league'];
-  const gw8StartLeagues = ['gregVjofVcarl', 'Let Down'];
-  
-  if (specialLeagues.includes(league?.name || '')) {
-    return 0; // Show all results from GW0
-  } else if (gw7StartLeagues.includes(league?.name || '')) {
-    return 7; // Only show from GW7 onwards
-  } else if (gw8StartLeagues.includes(league?.name || '')) {
-    return 8; // Only show from GW8 onwards
-  } else {
-    // For new leagues: find the earliest GW that the league was created before
-    if (league?.created_at && currentGw) {
-      const leagueCreatedAt = new Date(league.created_at);
-      
-      // Get all GWs with results
-      const { data: resultsData } = await supabase
-        .from("gw_results")
-        .select("gw")
-        .order("gw", { ascending: true });
-      
-      const completedGws = resultsData ? [...new Set(resultsData.map(r => r.gw))] : [];
-      
-      // Find the earliest GW where league was created before its deadline
-      for (const gw of completedGws) {
-        const { data: firstFixture } = await supabase
-          .from("fixtures")
-          .select("kickoff_time")
-          .eq("gw", gw)
-          .order("kickoff_time", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        
-        if (firstFixture?.kickoff_time) {
-          const firstKickoff = new Date(firstFixture.kickoff_time);
-          const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000)); // 75 minutes before
-          
-          if (leagueCreatedAt <= deadlineTime) {
-            return gw; // League was created before this GW's deadline
-          }
-        }
-      }
-      
-      // If league was created after all completed GWs, start from next GW
-      if (completedGws.length > 0) {
-        return Math.max(...completedGws) + 1;
-      }
-      
-      return currentGw; // No completed GWs - start from current
-    } else {
-      return currentGw; // Fallback - start from current GW
-    }
-  }
-}
-
-// Helper function to check if a specific GW should be shown for a league (synchronous)
-function shouldShowGwForLeague(league: any, gw: number, gwDeadlines: Map<number, Date>): boolean {
-  const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League'];
-  const gw7StartLeagues = ['The Bird league'];
-  const gw8StartLeagues = ['gregVjofVcarl', 'Let Down'];
-  
-  if (specialLeagues.includes(league?.name || '')) {
-    return true; // Show all GWs
-  } else if (gw7StartLeagues.includes(league?.name || '')) {
-    return gw >= 7; // Only show from GW7 onwards
-  } else if (gw8StartLeagues.includes(league?.name || '')) {
-    return gw >= 8; // Only show from GW8 onwards
-  } else {
-    // For new leagues: check if league was created before the GW deadline
-    if (league?.created_at && gwDeadlines.has(gw)) {
-      const leagueCreatedAt = new Date(league.created_at);
-      const gwDeadline = gwDeadlines.get(gw)!;
-      
-      // If league was created before GW deadline, show the GW
-      return leagueCreatedAt <= gwDeadline;
-    }
-    
-    // If no deadline info available, default to showing GW
-    return true;
-  }
-}
 
 /* =========================
    Types
@@ -1359,7 +1276,7 @@ export default function LeaguePage() {
     }
 
     // Check if this specific GW should be shown for this league
-    if (!shouldShowGwForLeague(league, picksGw, gwDeadlines)) {
+    if (!shouldIncludeGwForLeague(league, picksGw, gwDeadlines)) {
       return (
         <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">
           <div className="text-center">
@@ -1685,7 +1602,7 @@ export default function LeaguePage() {
     if (!resGw) return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No game week selected.</div>;
 
     // Check if this specific GW should be shown for this league
-    if (!shouldShowGwForLeague(league, resGw, gwDeadlines)) {
+    if (!shouldIncludeGwForLeague(league, resGw, gwDeadlines)) {
       return (
         <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">
           <div className="text-center">

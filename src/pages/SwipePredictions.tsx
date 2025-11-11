@@ -90,6 +90,27 @@ export default function SwipePredictions() {
   void _setShowSaveMessage;
   const [confirmCelebration, setConfirmCelebration] = useState<{ success: boolean; message: string } | null>(null);
   useEffect(() => {
+    // Only lock scrolling when in card swipe mode, not on review page
+    const isReviewPage = currentIndex >= fixtures.length;
+    const shouldLockScroll = viewMode === "cards" && !isReviewPage;
+    
+    if (!shouldLockScroll) {
+      // Restore scrolling if we're on review page or list mode
+      const html = document.documentElement;
+      const body = document.body;
+      const root = document.getElementById('root');
+      
+      html.style.removeProperty('overflow');
+      body.style.removeProperty('overflow');
+      body.style.removeProperty('position');
+      body.style.removeProperty('width');
+      body.style.removeProperty('height');
+      if (root) {
+        root.style.removeProperty('overflow');
+      }
+      return;
+    }
+    
     window.scrollTo({ top: 0, behavior: "auto" });
     // Prevent body scrolling - override global CSS !important rules
     const html = document.documentElement;
@@ -144,7 +165,7 @@ export default function SwipePredictions() {
       window.removeEventListener('wheel', preventWheel);
       document.removeEventListener('touchmove', preventScroll);
     };
-  }, [viewMode]);
+  }, [viewMode, currentIndex, fixtures.length]);
 
   const allPicksMade = useMemo(() => {
     if (fixtures.length === 0) return false;

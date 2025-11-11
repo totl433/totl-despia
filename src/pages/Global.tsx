@@ -1,5 +1,6 @@
 // src/pages/Global.tsx
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 
@@ -17,6 +18,12 @@ type GwPointsRow = {
 
 export default function GlobalLeaderboardPage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  const tabParam = searchParams.get("tab");
+  const validTab = (tabParam === "form5" || tabParam === "form10" || tabParam === "lastgw" || tabParam === "overall") 
+    ? tabParam 
+    : "lastgw";
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
@@ -24,7 +31,23 @@ export default function GlobalLeaderboardPage() {
   const [overall, setOverall] = useState<OverallRow[]>([]);
   const [gwPoints, setGwPoints] = useState<GwPointsRow[]>([]);
   const [prevOcp, setPrevOcp] = useState<Record<string, number>>({});
-  const [activeTab, setActiveTab] = useState<"overall" | "form5" | "form10" | "lastgw">("overall");
+  const [activeTab, setActiveTab] = useState<"overall" | "form5" | "form10" | "lastgw">(validTab);
+
+  // Sync activeTab with URL param and set default to lastgw if no tab specified
+  useEffect(() => {
+    if (!tabParam) {
+      setSearchParams({ tab: "lastgw" }, { replace: true });
+    }
+    if (validTab !== activeTab) {
+      setActiveTab(validTab);
+    }
+  }, [validTab, tabParam, activeTab, setSearchParams]);
+
+  // Update URL when tab changes
+  const handleTabChange = (tab: "overall" | "form5" | "form10" | "lastgw") => {
+    setActiveTab(tab);
+    setSearchParams({ tab });
+  };
 
   useEffect(() => {
     let alive = true;
@@ -237,16 +260,16 @@ export default function GlobalLeaderboardPage() {
       <div className="mx-auto max-w-3xl px-4 pt-6 pb-16">
         <div className="text-center">
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Leaderboard</h1>
-          <div className="mt-0 mb-6 text-sm text-slate-600">
+          <p className="mt-0 mb-6 text-xs text-slate-600">
             See how you rank against every<br />TotL player in the world.
-          </div>
+          </p>
         </div>
 
         {/* Tabs */}
         <div className="flex justify-center mb-6">
           <div className="flex rounded-lg bg-slate-100 p-1">
             <button
-              onClick={() => setActiveTab("lastgw")}
+              onClick={() => handleTabChange("lastgw")}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 activeTab === "lastgw"
                   ? "bg-white text-slate-900 shadow-sm"
@@ -256,7 +279,7 @@ export default function GlobalLeaderboardPage() {
               Last GW
             </button>
             <button
-              onClick={() => setActiveTab("form5")}
+              onClick={() => handleTabChange("form5")}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 activeTab === "form5"
                   ? "bg-white text-slate-900 shadow-sm"
@@ -266,7 +289,7 @@ export default function GlobalLeaderboardPage() {
               5 Week
             </button>
             <button
-              onClick={() => setActiveTab("form10")}
+              onClick={() => handleTabChange("form10")}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 activeTab === "form10"
                   ? "bg-white text-slate-900 shadow-sm"
@@ -276,7 +299,7 @@ export default function GlobalLeaderboardPage() {
               10 Week
             </button>
             <button
-              onClick={() => setActiveTab("overall")}
+              onClick={() => handleTabChange("overall")}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 activeTab === "overall"
                   ? "bg-white text-slate-900 shadow-sm"
@@ -292,7 +315,7 @@ export default function GlobalLeaderboardPage() {
         {activeTab === "form5" && (
           <div className="text-center mb-6">
             {latestGw && latestGw >= 5 ? (
-              <div className="text-sm text-slate-600">
+              <div className="text-xs text-slate-600">
                 Showing all players who have completed<br className="sm:hidden" /> the last 5 game weeks<br className="sm:hidden" /> (GW{Math.max(1, latestGw - 4)}-{latestGw})
               </div>
             ) : (
@@ -306,7 +329,7 @@ export default function GlobalLeaderboardPage() {
         {activeTab === "form10" && (
           <div className="text-center mb-6">
             {latestGw && latestGw >= 10 ? (
-              <div className="text-sm text-slate-600">
+              <div className="text-xs text-slate-600">
                 Showing all players who have completed<br className="sm:hidden" /> the last 10 game weeks<br className="sm:hidden" /> (GW{Math.max(1, latestGw - 9)}-{latestGw})
               </div>
             ) : (
@@ -319,7 +342,7 @@ export default function GlobalLeaderboardPage() {
         
         {activeTab === "lastgw" && (
           <div className="text-center mb-6">
-            <div className="text-sm text-slate-600">
+            <div className="text-xs text-slate-600">
               Showing all players who completed GW{latestGw}
             </div>
           </div>
@@ -375,9 +398,7 @@ export default function GlobalLeaderboardPage() {
               <tbody>
                 {(activeTab === "overall" ? rows : activeTab === "form5" ? form5Rows : activeTab === "form10" ? form10Rows : lastGwRows).map((r, i, arr) => {
                   const isMe = r.user_id === user?.id;
-                  const zebra = isMe ? "" : (i % 2 === 0 ? "bg-white" : "bg-slate-50");
-                  const highlight = isMe ? "bg-emerald-200" : "";
-
+                  
                   // Check if this rank has multiple players
                   const currentRank = 'rank' in r ? r.rank : i + 1;
                   const rankCount = arr.filter((item, index) => {
@@ -385,6 +406,22 @@ export default function GlobalLeaderboardPage() {
                     return itemRank === currentRank;
                   }).length;
                   const isTied = rankCount > 1;
+                  const isTopRank = currentRank === 1;
+                  
+                  // Special styling for top-ranked players
+                  let zebra = "";
+                  let highlight = "";
+                  if (isTopRank) {
+                    // Top rank gets special gradient background
+                    zebra = "bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50";
+                    highlight = "";
+                  } else if (isMe) {
+                    zebra = "";
+                    highlight = "bg-emerald-200";
+                  } else {
+                    zebra = i % 2 === 0 ? "bg-white" : "bg-slate-50";
+                    highlight = "";
+                  }
 
                   let indicator = "";
                   let indicatorClass = "bg-gray-300"; // default (no change)
@@ -422,44 +459,65 @@ export default function GlobalLeaderboardPage() {
                   }
 
                   return (
-                    <tr key={r.user_id} className={`border-t border-slate-200 ${zebra} ${highlight}`}>
+                    <tr key={r.user_id} className={`border-t border-slate-200 ${zebra} ${highlight} ${isTopRank ? 'relative' : ''}`}>
                       {/* Rank number only */}
-                      <td className="px-2 py-3 text-left tabular-nums whitespace-nowrap">{currentRank}{isTied ? '=' : ''}</td>
+                      <td className={`px-2 py-3 text-left tabular-nums whitespace-nowrap ${isTopRank ? 'relative bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]' : ''}`}>
+                        {isTopRank ? (
+                          <span className="flex items-center gap-1 relative z-10">
+                            <span className="text-yellow-600 font-bold text-xl">🏆</span>
+                            <span className="font-bold text-yellow-700">{currentRank}{isTied ? '=' : ''}</span>
+                          </span>
+                        ) : (
+                          <span>{currentRank}{isTied ? '=' : ''}</span>
+                        )}
+                      </td>
 
                       {/* Player name with color-coded indicator */}
-                      <td className="px-4 py-3">
-                        {(indicator || indicatorClass) && activeTab === "overall" && (
-                          <span
-                            className={`mr-2 inline-flex items-center justify-center w-4 h-4 rounded-full text-xs font-bold ${indicatorClass} align-middle`}
-                            aria-hidden
-                          >
-                            {indicator}
+                      <td className={`px-4 py-3 ${isTopRank ? 'relative bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]' : ''}`}>
+                        <div className={isTopRank ? 'relative z-10' : ''}>
+                          {(indicator || indicatorClass) && activeTab === "overall" && (
+                            <span
+                              className={`mr-2 inline-flex items-center justify-center w-4 h-4 rounded-full text-xs font-bold ${indicatorClass} align-middle`}
+                              aria-hidden
+                            >
+                              {indicator}
+                            </span>
+                          )}
+                          <span className={`align-middle font-bold text-xs ${isTopRank ? 'text-yellow-800 font-extrabold' : ''}`}>
+                            {r.name}
                           </span>
-                        )}
-                        <span className="align-middle font-bold text-xs">{r.name}</span>
-                        {isMe && (
-                          <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-                            you
-                          </span>
-                        )}
+                          {isMe && (
+                            <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                              you
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Overall tab columns */}
                       {activeTab === "overall" && (
                         <>
-                          <td className="px-4 py-3 text-center tabular-nums font-bold">{'this_gw' in r ? r.this_gw : 0}</td>
-                          <td className="px-4 py-3 text-center font-bold">{'ocp' in r ? r.ocp : 0}</td>
+                          <td className={`px-4 py-3 text-center tabular-nums font-bold ${isTopRank ? 'text-yellow-700 relative bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]' : ''}`}>
+                            <span className={isTopRank ? 'relative z-10' : ''}>{'this_gw' in r ? r.this_gw : 0}</span>
+                          </td>
+                          <td className={`px-4 py-3 text-center font-bold ${isTopRank ? 'text-yellow-700 relative bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]' : ''}`}>
+                            <span className={isTopRank ? 'relative z-10' : ''}>{'ocp' in r ? r.ocp : 0}</span>
+                          </td>
                         </>
                       )}
 
                       {/* Form tab columns (both 5 Week and 10 Week) */}
                       {(activeTab === "form5" || activeTab === "form10") && (
-                        <td className="px-4 py-3 text-center font-bold">{'formPoints' in r ? r.formPoints : 0}</td>
+                        <td className={`px-4 py-3 text-center font-bold ${isTopRank ? 'text-yellow-700 relative bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]' : ''}`}>
+                          <span className={isTopRank ? 'relative z-10' : ''}>{'formPoints' in r ? r.formPoints : 0}</span>
+                        </td>
                       )}
                       
                       {/* Last GW tab column */}
                       {activeTab === "lastgw" && (
-                        <td className="px-4 py-3 text-center font-bold tabular-nums">{'points' in r ? r.points : 0}</td>
+                        <td className={`px-4 py-3 text-center font-bold tabular-nums ${isTopRank ? 'text-yellow-700 relative bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]' : ''}`}>
+                          <span className={isTopRank ? 'relative z-10' : ''}>{'points' in r ? r.points : 0}</span>
+                        </td>
                       )}
                     </tr>
                   );

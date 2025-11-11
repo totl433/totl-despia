@@ -34,7 +34,7 @@ export default function App() {
         
         {/* Regular routes with header/banner */}
         <Route path="*" element={
-          <div className={`min-h-screen overflow-y-auto ${oldSchoolMode ? 'oldschool-theme' : 'bg-slate-50 text-slate-900'}`}>
+          <div className={`min-h-screen overflow-y-auto ${oldSchoolMode ? 'oldschool-theme' : 'text-slate-900'}`} style={{ backgroundColor: '#f5f7f6' }}>
             <SiteHeader />
             <WhatsAppBanner />
             <PredictionsBanner />

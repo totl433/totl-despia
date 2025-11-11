@@ -10,19 +10,23 @@
 /* Force scrolling to work */
 html {
   overflow-y: auto !important;
+  background-color: #f5f7f6;
 }
 body {
   overflow-y: auto !important;
   padding-bottom: 80px; /* Space for bottom nav */
+  background-color: #f5f7f6;
 }
 #root {
   overflow-y: auto !important;
+  background-color: #f5f7f6;
 }
 
 /* Prevent mobile zoom on input focus */
 html {
   -webkit-text-size-adjust: 100%;
   -ms-text-size-adjust: 100%;
+  background-color: #f5f7f6;
 }
 
 /* Prevent zoom on input focus */
@@ -40,10 +44,11 @@ input, textarea, select {
   }
 }
 body {
-  @apply bg-white text-slate-800 antialiased font-sans;
+  @apply text-slate-800 antialiased font-sans;
+  background-color: #f5f7f6;
 }
 a {
-  @apply text-inherit no-underline hover:underline;
+  @apply text-inherit no-underline;
 }
 
 /* Custom shimmer animation for ultra shiny soccer sticker effect */

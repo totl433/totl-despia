@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { getDeterministicLeagueAvatar, getLeagueAvatarPath } from "../lib/leagueAvatars";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
+import { resolveLeagueStartGw as getLeagueStartGw } from "../lib/leagueStart";
 
-type League = { id: string; name: string; code: string; created_at: string; avatar?: string | null };
+type League = { id: string; name: string; code: string; created_at: string; avatar?: string | null; start_gw?: number | null };
 type LeagueRow = {
   id: string;
   name: string;
@@ -12,6 +13,8 @@ type LeagueRow = {
   memberCount: number;
   submittedCount?: number;
   avatar?: string | null;
+  created_at?: string | null;
+  start_gw?: number | null;
 };
 type LeagueMember = { id: string; name: string };
 type LeagueData = {
@@ -19,6 +22,9 @@ type LeagueData = {
   members: LeagueMember[];
   userPosition: number | null;
   positionChange: 'up' | 'down' | 'same' | null;
+  submittedMembers?: Set<string>; // Set of user IDs who have submitted for current GW
+  sortedMemberIds?: string[]; // Member IDs in ML table order (1st to last)
+  latestGwWinners?: Set<string>; // Members who topped the most recent completed GW
 };
 
 // Helper function to get initials from name
@@ -27,6 +33,13 @@ function initials(name: string) {
   if (!parts.length) return "?";
   if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// Helper function to convert number to ordinal (1st, 2nd, 3rd, etc.)
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
 // Helper function to convert result row to outcome
@@ -61,6 +74,7 @@ export default function TablesPage() {
   const [error, setError] = useState("");
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>({});
   const [leagueData, setLeagueData] = useState<Record<string, LeagueData>>({});
+  const [unreadByLeague, setUnreadByLeague] = useState<Record<string, number>>({});
 
   async function load() {
     setLoading(true);
@@ -93,7 +107,7 @@ export default function TablesPage() {
       let leagues: League[] = [];
       const { data: leaguesData, error: lErr } = await supabase
         .from("leagues")
-        .select("id,name,code,created_at,avatar")
+        .select("id,name,code,created_at,avatar,start_gw")
         .in("id", leagueIds)
         .order("created_at", { ascending: true });
 
@@ -232,6 +246,7 @@ export default function TablesPage() {
         // Best effort - ignore errors
         console.warn("Failed to fetch unread counts:", e);
       }
+      setUnreadByLeague(unreadCounts);
 
       // F) build rows
       const out: LeagueRow[] = leagues.map((l) => {
@@ -242,6 +257,8 @@ export default function TablesPage() {
           code: l.code,
           memberCount: memberIds.length,
           avatar: l.avatar,
+          created_at: l.created_at,
+          start_gw: l.start_gw,
         };
       });
 
@@ -273,18 +290,18 @@ export default function TablesPage() {
     
     let alive = true;
     (async () => {
-      // Get latest GW with results
-      const { data: latestGwData } = await supabase
-        .from("gw_results")
-        .select("gw")
-        .order("gw", { ascending: false })
-        .limit(1);
-      const latestGwWithResults = latestGwData && latestGwData.length ? (latestGwData[0] as any).gw : null;
-
-      // Get all results
+      // Get current GW from meta table (same as Home page) - don't rely on state
+      const { data: meta } = await supabase
+        .from("meta")
+        .select("current_gw")
+        .eq("id", 1)
+        .maybeSingle();
+      const currentGw = (meta as any)?.current_gw ?? 1;
+      
+      // Get all results - EXACT same query as Home page
       const { data: allResults } = await supabase
         .from("gw_results")
-        .select("gw,fixture_index,result,home_goals,away_goals");
+        .select("gw,fixture_index,result");
       
       const resultList = (allResults as ResultRowRaw[]) ?? [];
       const outcomeByGwIdx = new Map<string, "H" | "D" | "A">();
@@ -298,6 +315,15 @@ export default function TablesPage() {
       
       for (const row of rows) {
         try {
+          // Use row as league object - same structure as Home page
+          // getLeagueStartGw will fetch start_gw if needed
+          const league = {
+            id: row.id,
+            name: row.name,
+            created_at: row.created_at || null,
+            start_gw: undefined // Will be fetched by getLeagueStartGw if needed
+          };
+
           // Fetch members with their names
           const { data: membersData } = await supabase
             .from("league_members")
@@ -316,145 +342,227 @@ export default function TablesPage() {
               id: row.id,
               members: [],
               userPosition: null,
-              positionChange: null
+              positionChange: null,
+              sortedMemberIds: [],
+              latestGwWinners: new Set()
             };
             continue;
           }
 
-          const memberIds = members.map(m => m.id);
+          // Simple: Calculate ML table exactly like Home page does, then find user's position
+          if (outcomeByGwIdx.size === 0) {
+            const alphabeticalIds = members.sort((a, b) => a.name.localeCompare(b.name)).map(m => m.id);
+            leagueDataMap[row.id] = {
+              id: row.id,
+              members: members.sort((a, b) => a.name.localeCompare(b.name)),
+              userPosition: null,
+              positionChange: null,
+              sortedMemberIds: alphabeticalIds,
+              latestGwWinners: new Set()
+            };
+            continue;
+          }
+
+          const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
           
-          // Get all picks for league members
+          // Filter by league start GW (same as Home page) - use currentGw from meta
+          const leagueStartGw = await getLeagueStartGw(league, currentGw);
+          const relevantGws = gwsWithResults.filter(g => g >= leagueStartGw);
+
+          if (relevantGws.length === 0) {
+            const alphabeticalIds = members.sort((a, b) => a.name.localeCompare(b.name)).map(m => m.id);
+            leagueDataMap[row.id] = {
+              id: row.id,
+              members: members.sort((a, b) => a.name.localeCompare(b.name)),
+              userPosition: null,
+              positionChange: null,
+              sortedMemberIds: alphabeticalIds,
+              latestGwWinners: new Set()
+            };
+            continue;
+          }
+
+          // Get picks for relevant GWs only - EXACT same as Home page
+          const memberIds = members.map(m => m.id);
           const { data: allPicks } = await supabase
             .from("picks")
             .select("user_id,gw,fixture_index,pick")
-            .in("user_id", memberIds);
+            .in("user_id", memberIds)
+            .in("gw", relevantGws);
           
           const picksAll = (allPicks as PickRow[]) ?? [];
           
-          // Calculate positions for current state (all GWs)
-          const calculatePosition = (excludeGw: number | null = null) => {
-            const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
-            const relevantGws = excludeGw ? gwsWithResults.filter(gw => gw < excludeGw) : gwsWithResults;
-            
-            if (relevantGws.length === 0) return null;
+          // Calculate ML table - EXACT same logic as Home page
+          const perGw = new Map<number, Map<string, { user_id: string; score: number; unicorns: number }>>();
+          const gwWinners = new Map<number, Set<string>>();
+          relevantGws.forEach((g) => {
+            const map = new Map<string, { user_id: string; score: number; unicorns: number }>();
+            members.forEach((m) => map.set(m.id, { user_id: m.id, score: 0, unicorns: 0 }));
+            perGw.set(g, map);
+          });
 
-            const perGw = new Map<number, Map<string, { user_id: string; score: number; unicorns: number }>>();
-            relevantGws.forEach((g) => {
-              const map = new Map<string, { user_id: string; score: number; unicorns: number }>();
-              members.forEach((m) => map.set(m.id, { user_id: m.id, score: 0, unicorns: 0 }));
-              perGw.set(g, map);
-            });
+          relevantGws.forEach((g) => {
+            const idxInGw = Array.from(outcomeByGwIdx.entries())
+              .filter(([k]) => parseInt(k.split(":")[0], 10) === g)
+              .map(([k, v]) => ({ idx: parseInt(k.split(":")[1], 10), out: v }));
 
-            relevantGws.forEach((g) => {
-              const idxInGw = Array.from(outcomeByGwIdx.entries())
-                .filter(([k]) => parseInt(k.split(":")[0], 10) === g)
-                .map(([k, v]) => ({ idx: parseInt(k.split(":")[1], 10), out: v }));
+            idxInGw.forEach(({ idx, out }) => {
+              const thesePicks = picksAll.filter((p) => p.gw === g && p.fixture_index === idx);
+              const correctUsers = thesePicks.filter((p) => p.pick === out).map((p) => p.user_id);
 
-              idxInGw.forEach(({ idx, out }) => {
-                const thesePicks = picksAll.filter((p) => p.gw === g && p.fixture_index === idx);
-                const correctUsers = thesePicks.filter((p) => p.pick === out).map((p) => p.user_id);
-
-                const map = perGw.get(g)!;
-                thesePicks.forEach((p) => {
-                  if (p.pick === out) {
-                    const row = map.get(p.user_id)!;
-                    row.score += 1;
-                  }
-                });
-
-                if (correctUsers.length === 1 && members.length >= 3) {
-                  const uid = correctUsers[0];
-                  const row = map.get(uid)!;
-                  row.unicorns += 1;
+              const map = perGw.get(g)!;
+              thesePicks.forEach((p) => {
+                if (p.pick === out) {
+                  const row = map.get(p.user_id)!;
+                  row.score += 1;
                 }
               });
-            });
 
-            const mltPts = new Map<string, number>();
-            const ocp = new Map<string, number>();
-            const unis = new Map<string, number>();
-            members.forEach((m) => {
-              mltPts.set(m.id, 0);
-              ocp.set(m.id, 0);
-              unis.set(m.id, 0);
-            });
-
-            relevantGws.forEach((g) => {
-              const rows = Array.from(perGw.get(g)!.values());
-              rows.forEach((r) => {
-                ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);
-                unis.set(r.user_id, (unis.get(r.user_id) ?? 0) + r.unicorns);
-              });
-
-              rows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns);
-              if (!rows.length) return;
-
-              const top = rows[0];
-              const coTop = rows.filter((r) => r.score === top.score && r.unicorns === top.unicorns);
-
-              if (coTop.length === 1) {
-                mltPts.set(top.user_id, (mltPts.get(top.user_id) ?? 0) + 3);
-              } else {
-                coTop.forEach((r) => {
-                  mltPts.set(r.user_id, (mltPts.get(r.user_id) ?? 0) + 1);
-                });
+              if (correctUsers.length === 1 && members.length >= 3) {
+                const uid = correctUsers[0];
+                const row = map.get(uid)!;
+                row.unicorns += 1;
               }
             });
+          });
 
-            const rows = members.map((m) => ({
-              user_id: m.id,
-              name: m.name,
-              mltPts: mltPts.get(m.id) ?? 0,
-              unicorns: unis.get(m.id) ?? 0,
-              ocp: ocp.get(m.id) ?? 0,
-            }));
+          const mltPts = new Map<string, number>();
+          const ocp = new Map<string, number>();
+          const unis = new Map<string, number>();
+          members.forEach((m) => {
+            mltPts.set(m.id, 0);
+            ocp.set(m.id, 0);
+            unis.set(m.id, 0);
+          });
 
-            rows.sort((a, b) => b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name));
+          relevantGws.forEach((g) => {
+            const gwRows = Array.from(perGw.get(g)!.values());
+            gwRows.forEach((r) => {
+              ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);
+              unis.set(r.user_id, (unis.get(r.user_id) ?? 0) + r.unicorns);
+            });
 
-            const userIndex = rows.findIndex(r => r.user_id === user.id);
-            return userIndex !== -1 ? userIndex + 1 : null;
-          };
+            gwRows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns);
+            if (!gwRows.length) return;
 
-          const currentPosition = calculatePosition();
-          const previousPosition = latestGwWithResults ? calculatePosition(latestGwWithResults) : null;
-          
-          // Fallback to alphabetical position if no results yet
-          let finalPosition = currentPosition;
-          if (finalPosition === null) {
-            const sortedMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
-            const userIndex = sortedMembers.findIndex(m => m.id === user.id);
-            if (userIndex !== -1) {
-              finalPosition = userIndex + 1;
+            const top = gwRows[0];
+            const coTop = gwRows.filter((r) => r.score === top.score && r.unicorns === top.unicorns);
+            gwWinners.set(g, new Set(coTop.map((r) => r.user_id)));
+
+            if (coTop.length === 1) {
+              mltPts.set(top.user_id, (mltPts.get(top.user_id) ?? 0) + 3);
             } else {
-              // User should be in members, but if not found, set to null
-              finalPosition = null;
+              coTop.forEach((r) => {
+                mltPts.set(r.user_id, (mltPts.get(r.user_id) ?? 0) + 1);
+              });
+            }
+          });
+
+          // Build ML table rows - EXACT same as Home page
+          const mltRows = members.map((m) => ({
+            user_id: m.id,
+            name: m.name,
+            mltPts: mltPts.get(m.id) ?? 0,
+            unicorns: unis.get(m.id) ?? 0,
+            ocp: ocp.get(m.id) ?? 0,
+          }));
+
+          // Sort EXACTLY like Home page - use the exact same expression
+          const sortedMltRows = [...mltRows].sort((a, b) => 
+            b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
+          );
+
+          // Find user's position - simple: index in sorted array + 1
+          let userIndex = sortedMltRows.findIndex(r => r.user_id === user.id);
+          
+          // If not found, try to find by matching member IDs
+          if (userIndex === -1) {
+            const memberMatch = members.findIndex(m => m.id === user.id);
+            if (memberMatch !== -1) {
+              // User is in members but not in rows - add them with 0 stats
+              sortedMltRows.push({
+                user_id: user.id,
+                name: members[memberMatch].name,
+                mltPts: 0,
+                unicorns: 0,
+                ocp: 0
+              });
+              // Re-sort EXACTLY like Home page
+              sortedMltRows.sort((a, b) => 
+                b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
+              );
+              userIndex = sortedMltRows.findIndex(r => r.user_id === user.id);
             }
           }
           
-          let positionChange: 'up' | 'down' | 'same' | null = null;
-          if (finalPosition !== null && previousPosition !== null) {
-            if (finalPosition < previousPosition) {
-              positionChange = 'up'; // Improved (lower number is better)
-            } else if (finalPosition > previousPosition) {
-              positionChange = 'down'; // Got worse (higher number is worse)
-            } else {
-              positionChange = 'same';
-            }
+          // CRITICAL: Extract sortedMemberIds from the FINAL sorted array
+          // This is the ML table order (1st to last) - EXACTLY matching Home page
+          const sortedMemberIds = sortedMltRows.map(r => r.user_id);
+          
+          // Debug logging - EXACT same as Home page
+          console.log(`[${row.name}] Position calculation:`, {
+            userId: user.id,
+            userIndex,
+            userPosition: userIndex !== -1 ? userIndex + 1 : null,
+            rowsCount: sortedMltRows.length,
+            rows: sortedMltRows.map((r, i) => ({ 
+              index: i + 1, 
+              name: r.name, 
+              userId: r.user_id, 
+              mltPts: r.mltPts, 
+              unicorns: r.unicorns, 
+              ocp: r.ocp 
+            })),
+            sortedMemberIds,
+            memberIds: members.map(m => m.id),
+            userInMembers: members.some(m => m.id === user.id),
+            userInRows: sortedMltRows.some(r => r.user_id === user.id),
+            leagueStartGw,
+            relevantGws,
+            picksCount: picksAll.length,
+            currentGw
+          });
+          
+          const userPosition = userIndex !== -1 ? userIndex + 1 : null;
+          const latestRelevantGw = relevantGws.length ? Math.max(...relevantGws) : null;
+          const latestGwWinners = latestRelevantGw !== null ? (gwWinners.get(latestRelevantGw) ?? new Set<string>()) : new Set<string>();
+          
+          // Check which members have submitted for current GW (reuse memberIds from above)
+          const { data: submissions } = await supabase
+            .from("gw_submissions")
+            .select("user_id")
+            .eq("gw", currentGw)
+            .in("user_id", memberIds);
+          
+          const submittedMembers = new Set<string>();
+          if (submissions) {
+            submissions.forEach((s: any) => {
+              if (s.user_id) submittedMembers.add(s.user_id);
+            });
           }
           
-          leagueDataMap[row.id] = {
+          // Store data - CRITICAL: sortedMemberIds must be stored correctly
+          const storedData: LeagueData = {
             id: row.id,
-            members: members.sort((a, b) => a.name.localeCompare(b.name)),
-            userPosition: finalPosition,
-            positionChange
+            members: members.sort((a, b) => a.name.localeCompare(b.name)), // Keep alphabetical for other uses
+            userPosition,
+            positionChange: null,
+            submittedMembers,
+            sortedMemberIds: [...sortedMemberIds], // Store COPY of ML table order from sortedMltRows
+            latestGwWinners: new Set(latestGwWinners)
           };
+          
+          leagueDataMap[row.id] = storedData;
         } catch (error) {
-          console.warn(`Error loading data for league ${row.id}:`, error);
+          console.error(`Error loading data for league ${row.id} (${row.name}):`, error);
+          console.error('Error details:', error instanceof Error ? error.message : error);
           leagueDataMap[row.id] = {
             id: row.id,
             members: [],
             userPosition: null,
-            positionChange: null
+            positionChange: null,
+            sortedMemberIds: [],
+            latestGwWinners: new Set()
           };
         }
       }
@@ -547,10 +655,26 @@ export default function TablesPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="max-w-6xl mx-auto px-4 pt-6 pb-16">
+      <div className="max-w-6xl mx-auto px-4 pt-4 pb-16">
         <div className="text-center">
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Mini Leagues</h1>
-          <p className="mt-0 mb-6 text-sm text-slate-600">
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Mini Leagues</h2>
+          {rows.length > 4 && (
+            <button
+              onClick={() => {
+                const createSection = document.getElementById('create-join-section');
+                if (createSection) {
+                  createSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }}
+              className="text-[#1C8376] font-semibold text-sm hover:text-[#1C8376] no-underline mb-2 flex items-center gap-1 mx-auto"
+            >
+              Create League
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          )}
+          <p className="mt-0 mb-6 text-xs text-slate-600">
             Create or join a private league<br />and battle it out with your friends.
           </p>
         </div>
@@ -564,7 +688,45 @@ export default function TablesPage() {
         {/* Leagues list */}
         <div className="mt-6">
           {loading ? (
-            <div className="px-4 py-4 text-sm">Loading…</div>
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="rounded-xl border bg-white overflow-hidden shadow-sm w-full animate-pulse"
+                  style={{ borderRadius: '12px' }}
+                >
+                  <div className="p-4 bg-white">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-200" />
+                      <div className="flex-1 min-w-0">
+                        <div className="h-5 w-32 bg-slate-200 rounded mb-2" />
+                        <div className="h-3 w-20 bg-slate-200 rounded mb-4" />
+                        <div className="flex items-center gap-3">
+                          <div className="h-4 w-8 bg-slate-200 rounded" />
+                          <div className="h-4 w-8 bg-slate-200 rounded" />
+                          <div className="flex items-center flex-1 overflow-hidden">
+                            {[1, 2, 3, 4].map((k) => (
+                              <div
+                                key={k}
+                                className="rounded-full bg-slate-200 flex-shrink-0"
+                                style={{
+                                  marginLeft: k > 1 ? '-2px' : '0',
+                                  width: '24px',
+                                  height: '24px',
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                        <div className="h-6 w-6 rounded-full bg-slate-200" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : rows.length === 0 ? (
             <div className="px-4 py-4 text-sm">No leagues yet.</div>
           ) : (
@@ -573,12 +735,14 @@ export default function TablesPage() {
                 const data = leagueData[r.id];
                 const members = data?.members || [];
                 const userPosition = data?.userPosition;
+                const unread = unreadByLeague?.[r.id] ?? 0;
+                const badge = unread > 0 ? Math.min(unread, 99) : 0;
                 
                 return (
-                  <div key={r.id} className="rounded-xl border bg-white overflow-hidden shadow-sm w-[320px]">
+                  <div key={r.id} className="rounded-xl border bg-white overflow-hidden shadow-sm w-full" style={{ borderRadius: '12px' }}>
                     <Link 
                       to={`/league/${r.code}`} 
-                      className="block p-4 bg-white no-underline hover:text-inherit"
+                      className="block p-4 !bg-white no-underline hover:text-inherit shadow-md"
                     >
                       <div className="flex items-start gap-3">
                         {/* League Avatar Badge */}
@@ -605,7 +769,7 @@ export default function TablesPage() {
                         
                         <div className="flex-1 min-w-0">
                           {/* League Name */}
-                          <div className="text-lg font-semibold text-slate-900">
+                          <div className="text-base font-semibold text-slate-900 truncate">
                             {r.name}
                           </div>
                           
@@ -620,15 +784,9 @@ export default function TablesPage() {
                             </div>
                           )}
                           
-                          {/* Member Count */}
-                          <div className={`text-xs mb-4 ${r.memberCount >= 8 ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
-                            {r.memberCount} member{r.memberCount === 1 ? "" : "s"}
-                            {r.memberCount >= 8 && " (Full)"}
-                          </div>
-                          
                           {/* Member Info Row */}
                           <div className="flex items-center gap-3">
-                            {/* Member Count Icon */}
+                            {/* Member Count */}
                             <div className="flex items-center gap-1">
                               <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <g clipPath="url(#clip0_4045_135263)">
@@ -646,13 +804,13 @@ export default function TablesPage() {
                               <span className="text-sm font-semibold text-slate-900">{members.length}</span>
                             </div>
                             
-                            {/* User Position */}
-                            {userPosition !== null && userPosition !== undefined && (
+                            {/* User Position - ML Ranking */}
+                            {userPosition !== null && userPosition !== undefined ? (
                               <div className="flex items-center gap-1">
                                 <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                                 </svg>
-                                <span className="text-sm font-semibold text-slate-900">{userPosition}</span>
+                                <span className="text-sm font-semibold text-slate-900">{ordinal(userPosition)}</span>
                                 {data?.positionChange === 'up' && (
                                   <span className="text-green-600 text-xs">▲</span>
                                 )}
@@ -663,49 +821,112 @@ export default function TablesPage() {
                                   <span className="text-slate-400 text-xs">—</span>
                                 )}
                               </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                </svg>
+                                <span className="text-sm font-semibold text-slate-400">—</span>
+                              </div>
                             )}
                             
-                            {/* Member Initials */}
+                            {/* Member Initials - ordered by ML table position (1st to last) */}
                             <div className="flex items-center flex-1 overflow-hidden">
-                              {members.slice(0, 8).map((member, index) => (
-                                <div
-                                  key={member.id}
-                                  className="rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0"
-                                  style={{ 
-                                    marginLeft: index > 0 ? '-2px' : '0', 
-                                    width: '18px', 
-                                    height: '18px',
-                                    backgroundColor: '#F2F2F7',
-                                    border: '0.5px solid #D9D9D9',
-                                    color: '#ADADB1'
-                                  }}
-                                  title={member.name}
-                                >
-                                  {initials(member.name)}
-                                </div>
-                              ))}
-                              {members.length > 8 && (
-                                <div 
-                                  className="rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0"
-                                  style={{ 
-                                    marginLeft: members.length > 1 ? '-2px' : '0', 
-                                    width: '18px', 
-                                    height: '18px',
-                                    backgroundColor: '#F2F2F7',
-                                    border: '0.5px solid #D9D9D9',
-                                    color: '#ADADB1'
-                                  }}
-                                >
-                                  +{members.length - 8}
-                                </div>
-                              )}
+                              {(() => {
+                                // CRITICAL: Use ML table order - MUST use sortedMemberIds from data
+                                const orderedMemberIds = data?.sortedMemberIds;
+                                
+                                // CRITICAL: If no sortedMemberIds, we can't render correctly - show error
+                                if (!orderedMemberIds || orderedMemberIds.length === 0) {
+                                  // Fallback to alphabetical - but this shouldn't happen
+                                  const alphabeticalMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
+                                  return alphabeticalMembers.slice(0, 8).map((member, index) => {
+                                    const hasSubmitted = data?.submittedMembers?.has(member.id) ?? false;
+                                    const isLatestWinner = data?.latestGwWinners?.has(member.id) ?? false;
+                                    return (
+                                      <div
+                                        key={member.id}
+                                        className={`rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6 ${isLatestWinner ? 'bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 ring-2 ring-yellow-300/60 font-semibold' : ''}`}
+                                        style={
+                                          isLatestWinner
+                                            ? { marginLeft: index > 0 ? '-2px' : '0' }
+                                            : { 
+                                          marginLeft: index > 0 ? '-2px' : '0', 
+                                                backgroundColor: hasSubmitted ? '#E5E5EA' : '#F2F2F7',
+                                                border: hasSubmitted ? '0.5px solid #C7C7CC' : '0.5px solid #D9D9D9',
+                                                color: hasSubmitted ? '#8E8E93' : '#ADADB1'
+                                              }
+                                        }
+                                        title={member.name}
+                                      >
+                                        {initials(member.name)}
+                                      </div>
+                                    );
+                                  });
+                                }
+                                
+                                // Map IDs to members in ML table order
+                                const orderedMembers = orderedMemberIds
+                                  .map(id => members.find(m => m.id === id))
+                                  .filter(Boolean) as LeagueMember[];
+                                
+                                // CRITICAL: Ensure we're using the exact order from sortedMemberIds
+                                return orderedMembers.slice(0, 8).map((member, index) => {
+                                  const hasSubmitted = data?.submittedMembers?.has(member.id) ?? false;
+                                  const isLatestWinner = data?.latestGwWinners?.has(member.id) ?? false;
+                                  const position = orderedMemberIds.indexOf(member.id) + 1;
+                                  return (
+                                    <div
+                                      key={member.id}
+                                      className={`rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6 ${isLatestWinner ? 'bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 ring-2 ring-yellow-300/60 font-semibold' : ''}`}
+                                      style={
+                                        isLatestWinner
+                                          ? { marginLeft: index > 0 ? '-2px' : '0' }
+                                          : { 
+                                          marginLeft: index > 0 ? '-2px' : '0', 
+                                            backgroundColor: hasSubmitted ? '#E5E5EA' : '#F2F2F7',
+                                            border: hasSubmitted ? '0.5px solid #C7C7CC' : '0.5px solid #D9D9D9',
+                                            color: hasSubmitted ? '#8E8E93' : '#ADADB1'
+                                          }
+                                      }
+                                      title={`${member.name} (${position}${position === 1 ? 'st' : position === 2 ? 'nd' : position === 3 ? 'rd' : 'th'}${hasSubmitted ? ', Submitted' : ''})`}
+                                    >
+                                      {initials(member.name)}
+                                    </div>
+                                  );
+                                });
+                              })()}
+                              {(() => {
+                                const orderedMemberIds = data?.sortedMemberIds || members.map(m => m.id);
+                                const totalMembers = orderedMemberIds.length;
+                                return totalMembers > 8 && (
+                                  <div 
+                                    className="rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
+                                    style={{ 
+                                      marginLeft: totalMembers > 1 ? '-2px' : '0', 
+                                      width: '24px', 
+                                      height: '24px',
+                                      backgroundColor: '#F2F2F7',
+                                      border: '0.5px solid #D9D9D9',
+                                      color: '#ADADB1'
+                                    }}
+                                  >
+                                    +{totalMembers - 8}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>
                         
-                        {/* View Button */}
-                        <div className="flex-shrink-0">
-                          <div className="px-3 py-1 bg-slate-100 text-slate-700 text-sm font-medium rounded-md hover:bg-slate-200 transition-colors">
+                        {/* View Button and Badge */}
+                        <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                          {badge > 0 && (
+                            <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-[#1C8376] text-white text-xs font-bold">
+                              {badge}
+                            </span>
+                          )}
+                          <div className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-md hover:bg-slate-200 transition-colors hidden">
                             View
                           </div>
                         </div>
@@ -719,7 +940,7 @@ export default function TablesPage() {
         </div>
 
         {/* separator */}
-        <div className="mt-10 mb-3 text-xl font-extrabold text-slate-900">Create or Join</div>
+        <div id="create-join-section" className="mt-10 mb-3 text-xl font-extrabold text-slate-900">Create or Join</div>
 
         {/* Create / Join cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
