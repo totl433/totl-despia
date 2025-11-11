@@ -110,12 +110,12 @@ export default function HomePage() {
   const [picksMap, setPicksMap] = useState<Record<number, "H" | "D" | "A">>({});
   const [resultsMap, setResultsMap] = useState<Record<number, "H" | "D" | "A">>({});
   const [loading, setLoading] = useState(true);
-  const [globalCount, setGlobalCount] = useState<number | null>(null);
-  const [globalRank, setGlobalRank] = useState<number | null>(null);
-  const [prevGlobalRank, setPrevGlobalRank] = useState<number | null>(null);
+  const [_globalCount, setGlobalCount] = useState<number | null>(null);
+  const [_globalRank, setGlobalRank] = useState<number | null>(null);
+  const [_prevGlobalRank, setPrevGlobalRank] = useState<number | null>(null);
   const [nextGwComing, setNextGwComing] = useState<number | null>(null);
-  const [lastScore, setLastScore] = useState<number | null>(null);
-  const [lastScoreGw, setLastScoreGw] = useState<number | null>(null);
+  const [_lastScore, setLastScore] = useState<number | null>(null);
+  const [_lastScoreGw, setLastScoreGw] = useState<number | null>(null);
   const [latestGw, setLatestGw] = useState<number | null>(null);
   const [gwPoints, setGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>([]);
   
@@ -1349,7 +1349,7 @@ export default function HomePage() {
     boxed?: boolean; // if false, render children without the outer card
     icon?: React.ReactNode;
     children?: React.ReactNode;
-  }> = ({ title, subtitle, headerRight, className, boxed = true, icon, children }) => (
+  }> = ({ title, subtitle, headerRight, className, boxed = true, icon: _icon, children }) => (
     <section className={className ?? ""}>
       <div className="flex items-center justify-between">
         <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
@@ -1382,7 +1382,7 @@ export default function HomePage() {
     }
   };
 
-  const LeaderCard: React.FC<{
+  const _LeaderCard: React.FC<{
     title: string;
     icon: React.ReactNode;
     subtitle?: React.ReactNode;
@@ -1532,7 +1532,7 @@ export default function HomePage() {
 
       await Promise.all(badgePromises);
 
-      sortedFixtures.forEach((f, idx) => {
+      sortedFixtures.forEach((f, _idx) => {
         const pick = picksMap[f.fixture_index];
         const result = resultsMap[f.fixture_index];
         const homeKey = (f.home_code || f.home_name || f.home_team || "").toUpperCase();
@@ -1832,7 +1832,7 @@ export default function HomePage() {
     </>
   );
 
-  const GWCard: React.FC<{ gw: number; score: number | null; submitted: boolean; }> = ({ gw, score, submitted }) => {
+  const _GWCard: React.FC<{ gw: number; score: number | null; submitted: boolean; }> = ({ gw, score, submitted }) => {
     const display = score !== null ? score : (submitted ? 0 : NaN);
     return (
       <div className="h-full rounded-3xl border-2 border-[#1C8376]/20 bg-amber-50/60 p-4 sm:p-6 relative flex items-center justify-center">
@@ -2092,7 +2092,7 @@ export default function HomePage() {
                             <div className="relative h-full">
                               {/* Bar Graph */}
                               <div className="flex items-end justify-between gap-1 h-full px-1">
-                                {scores.map((gwData, index) => {
+                                {scores.map((gwData, _index) => {
                                   const isPlayed = gwData.score !== null;
                                   const isLatest = gwData.gw === latestGw;
                                   const score = gwData.score ?? 0;
