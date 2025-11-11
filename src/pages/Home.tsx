@@ -4,9 +4,44 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { getMediumName } from "../lib/teamNames";
 import WhatsAppBanner from "../components/WhatsAppBanner";
+import { getLeagueAvatarPath, getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
 
 // Types
-type League = { id: string; name: string; code: string };
+type League = { id: string; name: string; code: string; avatar?: string | null };
+type LeagueMember = { id: string; name: string };
+type LeagueData = {
+  id: string;
+  members: LeagueMember[];
+  userPosition: number | null;
+  positionChange: 'up' | 'down' | 'same' | null;
+};
+
+// Helper function to get initials from name
+function initials(name: string) {
+  const parts = (name || "?").trim().split(/\s+/);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// Helper function to convert result row to outcome
+type ResultRowRaw = {
+  gw: number;
+  fixture_index: number;
+  result?: "H" | "D" | "A" | null;
+  home_goals?: number | null;
+  away_goals?: number | null;
+};
+
+function rowToOutcome(r: ResultRowRaw): "H" | "D" | "A" | null {
+  if (r.result === "H" || r.result === "D" || r.result === "A") return r.result;
+  if (typeof r.home_goals === "number" && typeof r.away_goals === "number") {
+    if (r.home_goals > r.away_goals) return "H";
+    if (r.home_goals < r.away_goals) return "A";
+    return "D";
+  }
+  return null;
+}
 type Fixture = {
   id: string;
   gw: number;
@@ -37,7 +72,7 @@ export default function HomePage() {
     localStorage.setItem('oldSchoolMode', JSON.stringify(oldSchoolMode));
   }, [oldSchoolMode]);
   const [leagues, setLeagues] = useState<League[]>([]);
-  const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, boolean>>({});
+  const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>({});
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [gw, setGw] = useState<number>(1);
   const [gwSubmitted, setGwSubmitted] = useState<boolean>(false);
@@ -53,6 +88,7 @@ export default function HomePage() {
   const [lastScoreGw, setLastScoreGw] = useState<number | null>(null);
 
   const [unreadByLeague, setUnreadByLeague] = useState<Record<string, number>>({});
+  const [leagueData, setLeagueData] = useState<Record<string, LeagueData>>({});
   const leagueIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -61,12 +97,60 @@ export default function HomePage() {
       setLoading(true);
 
       // User's leagues
-      const { data: lm } = await supabase
+      let ls: League[] = [];
+      const { data: lm, error: lmError } = await supabase
         .from("league_members")
-        .select("leagues(id,name,code)")
+        .select("leagues(id,name,code,avatar)")
         .eq("user_id", user?.id);
 
-      const ls: League[] = (lm as any[])?.map((r) => r.leagues).filter(Boolean) ?? [];
+      if (lmError) {
+        console.error("Error fetching leagues:", lmError);
+        // Try without avatar field if it doesn't exist
+        const { data: lmFallback } = await supabase
+          .from("league_members")
+          .select("leagues(id,name,code)")
+          .eq("user_id", user?.id);
+        ls = (lmFallback as any[])?.map((r) => r.leagues).filter(Boolean) ?? [];
+      } else {
+        ls = (lm as any[])?.map((r) => r.leagues).filter(Boolean) ?? [];
+      }
+      
+      // Assign avatars to leagues that don't have one (backfill - only once)
+      // Use deterministic avatar based on league ID so it's consistent even if DB update fails
+      const leaguesNeedingAvatars = ls.filter(l => !l.avatar || l.avatar === null || l.avatar === '');
+      if (leaguesNeedingAvatars.length > 0) {
+        console.log(`Assigning avatars to ${leaguesNeedingAvatars.length} leagues`);
+        // Update each league with a deterministic avatar (only if it doesn't have one)
+        for (const league of leaguesNeedingAvatars) {
+          // Use deterministic avatar based on league ID - same league always gets same avatar
+          const avatar = getDeterministicLeagueAvatar(league.id);
+          
+          // Try to update database
+          const { error: updateError } = await supabase
+            .from("leagues")
+            .update({ avatar })
+            .eq("id", league.id);
+          
+          if (!updateError) {
+            // Update succeeded - update local array
+            const leagueIndex = ls.findIndex(l => l.id === league.id);
+            if (leagueIndex !== -1) {
+              ls[leagueIndex].avatar = avatar;
+              console.log(`Assigned avatar ${avatar} to league ${league.name}`);
+            }
+          } else {
+            console.warn(`Failed to assign avatar to league ${league.id} (${league.name}):`, updateError.message);
+            // Even if DB update fails, assign locally using deterministic method
+            // This ensures the same league always shows the same avatar
+            const leagueIndex = ls.findIndex(l => l.id === league.id);
+            if (leagueIndex !== -1) {
+              ls[leagueIndex].avatar = avatar;
+            }
+          }
+        }
+      }
+      
+      if (alive) setLeagues(ls);
 
       // Get current GW from meta table (published/active GW)
       const { data: meta } = await supabase
@@ -252,7 +336,7 @@ export default function HomePage() {
       setLoading(false);
 
       // Check submission status for each league
-      const submissionStatus: Record<string, boolean> = {};
+      const submissionStatus: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }> = {};
       for (const league of ls) {
         try {
           // Get all members of this league
@@ -263,8 +347,9 @@ export default function HomePage() {
           
           if (members && members.length > 0) {
             const memberIds = members.map(m => m.user_id);
+            const totalCount = memberIds.length;
             
-            // Check if all members have submitted for current GW
+            // Check how many members have submitted for current GW
             const { data: submissions } = await supabase
               .from("gw_submissions")
               .select("user_id")
@@ -272,13 +357,25 @@ export default function HomePage() {
               .in("user_id", memberIds);
             
             const submittedCount = submissions?.length || 0;
-            submissionStatus[league.id] = submittedCount === memberIds.length;
+            submissionStatus[league.id] = {
+              allSubmitted: submittedCount === totalCount,
+              submittedCount,
+              totalCount
+            };
           } else {
-            submissionStatus[league.id] = false;
+            submissionStatus[league.id] = {
+              allSubmitted: false,
+              submittedCount: 0,
+              totalCount: 0
+            };
           }
         } catch (error) {
           console.warn(`Error checking submissions for league ${league.id}:`, error);
-          submissionStatus[league.id] = false;
+          submissionStatus[league.id] = {
+            allSubmitted: false,
+            submittedCount: 0,
+            totalCount: 0
+          };
         }
       }
       setLeagueSubmissions(submissionStatus);
@@ -291,6 +388,208 @@ export default function HomePage() {
       alive = false;
     };
   }, [user?.id]);
+
+  // Fetch member data and calculate positions for each league
+  useEffect(() => {
+    if (!leagues.length || !user?.id) return;
+    
+    let alive = true;
+    (async () => {
+      // Get latest GW with results
+      const { data: latestGwData } = await supabase
+        .from("gw_results")
+        .select("gw")
+        .order("gw", { ascending: false })
+        .limit(1);
+      const latestGwWithResults = latestGwData && latestGwData.length ? (latestGwData[0] as any).gw : null;
+
+      // Get all results
+      const { data: allResults } = await supabase
+        .from("gw_results")
+        .select("gw,fixture_index,result,home_goals,away_goals");
+      
+      const resultList = (allResults as ResultRowRaw[]) ?? [];
+      const outcomeByGwIdx = new Map<string, "H" | "D" | "A">();
+      resultList.forEach((r) => {
+        const out = rowToOutcome(r);
+        if (!out) return;
+        outcomeByGwIdx.set(`${r.gw}:${r.fixture_index}`, out);
+      });
+
+      const leagueDataMap: Record<string, LeagueData> = {};
+      
+      for (const league of leagues) {
+        try {
+          // Fetch members with their names
+          const { data: membersData } = await supabase
+            .from("league_members")
+            .select("user_id, users(id, name)")
+            .eq("league_id", league.id);
+          
+          const members: LeagueMember[] = (membersData ?? [])
+            .map((m: any) => ({
+              id: m.user_id,
+              name: m.users?.name || "Unknown"
+            }))
+            .filter((m: LeagueMember) => m.name !== "Unknown");
+
+          if (members.length === 0) {
+            leagueDataMap[league.id] = {
+              id: league.id,
+              members: [],
+              userPosition: null,
+              positionChange: null
+            };
+            continue;
+          }
+
+          const memberIds = members.map(m => m.id);
+          
+          // Get all picks for league members
+          const { data: allPicks } = await supabase
+            .from("picks")
+            .select("user_id,gw,fixture_index,pick")
+            .in("user_id", memberIds);
+          
+          const picksAll = (allPicks as PickRow[]) ?? [];
+          
+          // Calculate positions for current state (all GWs)
+          const calculatePosition = (excludeGw: number | null = null) => {
+            const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
+            const relevantGws = excludeGw ? gwsWithResults.filter(gw => gw < excludeGw) : gwsWithResults;
+            
+            if (relevantGws.length === 0) return null;
+
+            const perGw = new Map<number, Map<string, { user_id: string; score: number; unicorns: number }>>();
+            relevantGws.forEach((g) => {
+              const map = new Map<string, { user_id: string; score: number; unicorns: number }>();
+              members.forEach((m) => map.set(m.id, { user_id: m.id, score: 0, unicorns: 0 }));
+              perGw.set(g, map);
+            });
+
+            relevantGws.forEach((g) => {
+              const idxInGw = Array.from(outcomeByGwIdx.entries())
+                .filter(([k]) => parseInt(k.split(":")[0], 10) === g)
+                .map(([k, v]) => ({ idx: parseInt(k.split(":")[1], 10), out: v }));
+
+              idxInGw.forEach(({ idx, out }) => {
+                const thesePicks = picksAll.filter((p) => p.gw === g && p.fixture_index === idx);
+                const correctUsers = thesePicks.filter((p) => p.pick === out).map((p) => p.user_id);
+
+                const map = perGw.get(g)!;
+                thesePicks.forEach((p) => {
+                  if (p.pick === out) {
+                    const row = map.get(p.user_id)!;
+                    row.score += 1;
+                  }
+                });
+
+                if (correctUsers.length === 1 && members.length >= 3) {
+                  const uid = correctUsers[0];
+                  const row = map.get(uid)!;
+                  row.unicorns += 1;
+                }
+              });
+            });
+
+            const mltPts = new Map<string, number>();
+            const ocp = new Map<string, number>();
+            const unis = new Map<string, number>();
+            members.forEach((m) => {
+              mltPts.set(m.id, 0);
+              ocp.set(m.id, 0);
+              unis.set(m.id, 0);
+            });
+
+            relevantGws.forEach((g) => {
+              const rows = Array.from(perGw.get(g)!.values());
+              rows.forEach((r) => {
+                ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);
+                unis.set(r.user_id, (unis.get(r.user_id) ?? 0) + r.unicorns);
+              });
+
+              rows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns);
+              if (!rows.length) return;
+
+              const top = rows[0];
+              const coTop = rows.filter((r) => r.score === top.score && r.unicorns === top.unicorns);
+
+              if (coTop.length === 1) {
+                mltPts.set(top.user_id, (mltPts.get(top.user_id) ?? 0) + 3);
+              } else {
+                coTop.forEach((r) => {
+                  mltPts.set(r.user_id, (mltPts.get(r.user_id) ?? 0) + 1);
+                });
+              }
+            });
+
+            const rows = members.map((m) => ({
+              user_id: m.id,
+              name: m.name,
+              mltPts: mltPts.get(m.id) ?? 0,
+              unicorns: unis.get(m.id) ?? 0,
+              ocp: ocp.get(m.id) ?? 0,
+            }));
+
+            rows.sort((a, b) => b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name));
+
+            const userIndex = rows.findIndex(r => r.user_id === user.id);
+            return userIndex !== -1 ? userIndex + 1 : null;
+          };
+
+          const currentPosition = calculatePosition();
+          const previousPosition = latestGwWithResults ? calculatePosition(latestGwWithResults) : null;
+          
+          // Fallback to alphabetical position if no results yet
+          let finalPosition = currentPosition;
+          if (finalPosition === null) {
+            const sortedMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
+            const userIndex = sortedMembers.findIndex(m => m.id === user.id);
+            if (userIndex !== -1) {
+              finalPosition = userIndex + 1;
+            } else {
+              // User should be in members, but if not found, set to null
+              finalPosition = null;
+            }
+          }
+          
+          let positionChange: 'up' | 'down' | 'same' | null = null;
+          if (finalPosition !== null && previousPosition !== null) {
+            if (finalPosition < previousPosition) {
+              positionChange = 'up'; // Improved (lower number is better)
+            } else if (finalPosition > previousPosition) {
+              positionChange = 'down'; // Got worse (higher number is worse)
+            } else {
+              positionChange = 'same';
+            }
+          }
+          
+          leagueDataMap[league.id] = {
+            id: league.id,
+            members: members.sort((a, b) => a.name.localeCompare(b.name)),
+            userPosition: finalPosition,
+            positionChange
+          };
+        } catch (error) {
+          console.warn(`Error loading data for league ${league.id}:`, error);
+          leagueDataMap[league.id] = {
+            id: league.id,
+            members: [],
+            userPosition: null,
+            positionChange: null
+          };
+        }
+      }
+      
+      if (alive) {
+        setLeagueData(leagueDataMap);
+      }
+    })();
+    
+    return () => {
+      alive = false;
+    };
+  }, [leagues, user?.id]);
 
   useEffect(() => {
     let alive = true;
@@ -525,7 +824,7 @@ export default function HomePage() {
   }> = ({ title, subtitle, headerRight, className, boxed = true, children }) => (
     <section className={className ?? ""}>
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
           {title}
         </h2>
         {headerRight && (
@@ -651,7 +950,19 @@ export default function HomePage() {
             compactFooter
             footerLeft={
               <div className="flex items-center gap-2">
-                <span>👥</span>
+                <svg className="w-4 h-4 text-slate-600" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <g clipPath="url(#clip0_4045_135263)">
+                    <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M12.3334 6.33333C12.3334 7.622 11.2887 8.66667 10.0001 8.66667C8.71142 8.66667 7.66675 7.622 7.66675 6.33333C7.66675 5.04467 8.71142 4 10.0001 4C11.2887 4 12.3334 5.04467 12.3334 6.33333Z" stroke="currentColor" strokeWidth="1.33333"/>
+                    <path d="M7.33325 2.92025C6.94237 2.36557 6.27397 2 5.51507 2C4.31009 2 3.33325 2.92165 3.33325 4.05857C3.33325 4.95488 3.94038 5.7174 4.7878 6" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round"/>
+                  </g>
+                  <defs>
+                    <clipPath id="clip0_4045_135263">
+                      <rect width="16" height="16" fill="white"/>
+                    </clipPath>
+                  </defs>
+                </svg>
                 <span className="font-semibold">{globalCount ?? "—"}</span>
                 <div className="flex items-center gap-1">
                   {(() => {
@@ -679,7 +990,7 @@ export default function HomePage() {
       {/* Mini Leagues section */}
       <section className="mt-8">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
             Mini Leaguez
           </h2>
           {leagues.length > 4 && (
@@ -705,41 +1016,166 @@ export default function HomePage() {
               </Link>
             </div>
           ) : (
-            <div className="overflow-x-auto -mr-4 scrollbar-hide snap-x snap-mandatory">
-              <div className="flex gap-3 pb-2 pr-4" style={{ width: 'max-content' }}>
-                {Array.from({ length: Math.ceil(leagues.length / 4) }).map((_, pageIdx) => {
-                  const startIdx = pageIdx * 4;
-                  const pageLeagues = leagues.slice(startIdx, startIdx + 4);
-                  return (
-                    <div key={pageIdx} className="snap-start" style={{ width: 'calc(100vw - 6rem)' }}>
-                      <div className="flex flex-col gap-3">
-                        {pageLeagues.map((l) => {
-                          const unread = unreadByLeague?.[l.id] ?? 0;
-                          const badge = unread > 0 ? Math.min(unread, 99) : 0;
-                          return (
-                            <div key={l.id} className="rounded-xl border bg-slate-50 overflow-hidden">
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
+              <style>{`
+                .scrollbar-hide::-webkit-scrollbar {
+                  display: none;
+                }
+              `}</style>
+              <div className="flex gap-2" style={{ width: 'max-content' }}>
+                {(() => {
+                  // Sort leagues: those with unread messages first
+                  const sortedLeagues = [...leagues].sort((a, b) => {
+                    const unreadA = unreadByLeague?.[a.id] ?? 0;
+                    const unreadB = unreadByLeague?.[b.id] ?? 0;
+                    if (unreadA > 0 && unreadB === 0) return -1;
+                    if (unreadA === 0 && unreadB > 0) return 1;
+                    return 0; // Keep original order for leagues with same unread status
+                  });
+                  
+                  return Array.from({ length: Math.ceil(sortedLeagues.length / 3) }).map((_, colIdx) => {
+                    const startIdx = colIdx * 3;
+                    const columnLeagues = sortedLeagues.slice(startIdx, startIdx + 3);
+                    return (
+                      <div key={colIdx} className="flex flex-col gap-2">
+                        {columnLeagues.map((l) => {
+                        const unread = unreadByLeague?.[l.id] ?? 0;
+                        const badge = unread > 0 ? Math.min(unread, 99) : 0;
+                        const data = leagueData[l.id];
+                        const members = data?.members || [];
+                        const userPosition = data?.userPosition;
+                        
+                        return (
+                          <div key={l.id} className="rounded-xl border bg-white overflow-hidden shadow-sm w-[320px]" style={{ borderRadius: '12px' }}>
                               <Link
                                 to={`/league/${l.code}`}
-                                className="block p-3 bg-white hover:bg-emerald-50 transition-colors no-underline"
+                                className="block p-4 bg-white no-underline hover:text-inherit"
                               >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="min-w-0 flex-1">
+                                <div className="flex items-start gap-3">
+                                  {/* League Avatar Badge */}
+                                  <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center overflow-hidden">
+                                    <img 
+                                      src={getLeagueAvatarPath(l.avatar)} 
+                                      alt={`${l.name} avatar`}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        // Fallback to calendar icon if image fails to load
+                                        const target = e.target as HTMLImageElement;
+                                        target.style.display = 'none';
+                                        const parent = target.parentElement;
+                                        if (parent && !parent.querySelector('svg')) {
+                                          parent.innerHTML = `
+                                            <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                            </svg>
+                                          `;
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                  
+                                  <div className="flex-1 min-w-0">
+                                    {/* League Name */}
                                     <div className="text-base font-semibold text-slate-900 truncate">
                                       {l.name}
                                     </div>
+                                    
+                                    {/* Submission Status */}
                                     {leagueSubmissions[l.id] && (
-                                      <div className="text-xs text-[#1C8376] font-bold mt-0.5">
-                                        All Submitted
+                                      <div className="text-xs font-normal text-slate-600 mt-0.5 mb-4">
+                                        {leagueSubmissions[l.id].allSubmitted ? (
+                                          <span className="text-[#1C8376]">All Submitted</span>
+                                        ) : (
+                                          <span>{leagueSubmissions[l.id].submittedCount} submitted</span>
+                                        )}
                                       </div>
                                     )}
+                                    
+                                    {/* Member Info Row */}
+                                    <div className="flex items-center gap-3">
+                                      {/* Member Count */}
+                                      <div className="flex items-center gap-1">
+                                        <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                          <g clipPath="url(#clip0_4045_135263)">
+                                            <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                                            <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                                            <path d="M12.3334 6.33333C12.3334 7.622 11.2887 8.66667 10.0001 8.66667C8.71142 8.66667 7.66675 7.622 7.66675 6.33333C7.66675 5.04467 8.71142 4 10.0001 4C11.2887 4 12.3334 5.04467 12.3334 6.33333Z" stroke="currentColor" strokeWidth="1.33333"/>
+                                            <path d="M7.33325 2.92025C6.94237 2.36557 6.27397 2 5.51507 2C4.31009 2 3.33325 2.92165 3.33325 4.05857C3.33325 4.95488 3.94038 5.7174 4.7878 6" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round"/>
+                                          </g>
+                                          <defs>
+                                            <clipPath id="clip0_4045_135263">
+                                              <rect width="16" height="16" fill="white"/>
+                                            </clipPath>
+                                          </defs>
+                                        </svg>
+                                        <span className="text-sm font-semibold text-slate-900">{members.length}</span>
+                                      </div>
+                                      
+                                      {/* User Position */}
+                                      {userPosition !== null && userPosition !== undefined && (
+                                        <div className="flex items-center gap-1">
+                                          <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                          </svg>
+                                          <span className="text-sm font-semibold text-slate-900">{userPosition}</span>
+                                          {data?.positionChange === 'up' && (
+                                            <span className="text-green-600 text-xs">▲</span>
+                                          )}
+                                          {data?.positionChange === 'down' && (
+                                            <span className="text-red-600 text-xs">▼</span>
+                                          )}
+                                          {data?.positionChange === 'same' && (
+                                            <span className="text-slate-400 text-xs">—</span>
+                                          )}
+                                        </div>
+                                      )}
+                                      
+                                      {/* Member Initials */}
+                                      <div className="flex items-center flex-1 overflow-hidden">
+                                        {members.slice(0, 8).map((member, index) => (
+                                          <div
+                                            key={member.id}
+                                            className="rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0"
+                                            style={{ 
+                                              marginLeft: index > 0 ? '-2px' : '0', 
+                                              width: '18px', 
+                                              height: '18px',
+                                              backgroundColor: '#F2F2F7',
+                                              border: '0.5px solid #D9D9D9',
+                                              color: '#ADADB1'
+                                            }}
+                                            title={member.name}
+                                          >
+                                            {initials(member.name)}
+                                          </div>
+                                        ))}
+                                        {members.length > 8 && (
+                                          <div 
+                                            className="rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0"
+                                            style={{ 
+                                              marginLeft: members.length > 1 ? '-2px' : '0', 
+                                              width: '18px', 
+                                              height: '18px',
+                                              backgroundColor: '#F2F2F7',
+                                              border: '0.5px solid #D9D9D9',
+                                              color: '#ADADB1'
+                                            }}
+                                          >
+                                            +{members.length - 8}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                  
+                                  {/* View Button and Badge */}
+                                  <div className="flex-shrink-0 flex flex-col items-end gap-1">
                                     {badge > 0 && (
                                       <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-[#1C8376] text-white text-xs font-bold">
                                         {badge}
                                       </span>
                                     )}
-                                    <div className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-md hover:bg-slate-200 transition-colors">
+                                    <div className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-md hover:bg-slate-200 transition-colors hidden">
                                       View
                                     </div>
                                   </div>
@@ -749,9 +1185,9 @@ export default function HomePage() {
                           );
                         })}
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
             </div>
           )}
@@ -761,7 +1197,7 @@ export default function HomePage() {
       {/* Games (first GW) */}
       <section className="mt-8">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
             Games
           </h2>
           {fixtures.length > 0 && !gwSubmitted && gwScore === null && (

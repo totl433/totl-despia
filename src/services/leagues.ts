@@ -1,10 +1,12 @@
 import { supabase } from "../lib/supabase";
+import { getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
 
 export type League = {
   id: string;
   name: string;
   code: string;
   created_at: string;
+  avatar?: string | null;
 };
 
 export type LeagueMember = {
@@ -15,7 +17,7 @@ export type LeagueMember = {
 export async function getLeagueByCode(code: string): Promise<League | null> {
   const { data, error } = await supabase
     .from("leagues")
-    .select("id, code, name, created_at")
+    .select("id, code, name, created_at, avatar")
     .eq("code", code.toUpperCase())
     .maybeSingle();
 
@@ -103,6 +105,16 @@ export async function createLeague(name: string, userId: string): Promise<{ succ
       return { success: false, error: leagueError.message };
     }
 
+    // Assign deterministic avatar based on league ID (after creation)
+    const avatar = getDeterministicLeagueAvatar(league.id);
+    await supabase
+      .from("leagues")
+      .update({ avatar })
+      .eq("id", league.id);
+
+    // Return league with avatar
+    const leagueWithAvatar = { ...league, avatar };
+
     const { error: memberError } = await supabase
       .from("league_members")
       .insert({ league_id: league.id, user_id: userId });
@@ -111,7 +123,7 @@ export async function createLeague(name: string, userId: string): Promise<{ succ
       return { success: false, error: memberError.message };
     }
 
-    return { success: true, league };
+    return { success: true, league: leagueWithAvatar };
   } catch (error) {
     return { success: false, error: "Failed to create league" };
   }
