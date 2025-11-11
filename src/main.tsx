@@ -103,7 +103,7 @@ function AppContent({ menuOpen, setMenuOpen }: {
     <>
 
       {/* Site Header */}
-      {!isFullScreenPage && location.pathname !== '/new-predictions' && <header className="sticky top-0 z-50 text-white shadow">
+      {!isFullScreenPage && location.pathname !== '/new-predictions' && !location.pathname.startsWith('/league/') && <header className="sticky top-0 z-50 text-white shadow">
         <div className="bg-[#1C8376]">
           <div className="max-w-6xl mx-auto px-4 h-20 sm:h-24 flex items-center gap-6">
                  <Link to="/" className="flex items-center no-underline gap-3">
@@ -200,7 +200,7 @@ function AppContent({ menuOpen, setMenuOpen }: {
       </header>}
 
       {/* Global Predictions Banner - hide on auth page and full-screen pages */}
-      {!isFullScreenPage && location.pathname !== '/auth' && location.pathname !== '/new-predictions' && <PredictionsBanner />}
+      {!isFullScreenPage && location.pathname !== '/auth' && location.pathname !== '/new-predictions' && !location.pathname.startsWith('/league/') && <PredictionsBanner />}
 
       {/* Welcome Message */}
       {showWelcome && (

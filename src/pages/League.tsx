@@ -209,7 +209,7 @@ type ChatTabProps = {
   maxMembers?: number;
 };
 
-function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, leagueCode: _leagueCode, memberCount: _memberCount, maxMembers: _maxMembers }: ChatTabProps) {
+function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, leagueCode: _leagueCode, memberCount: _memberCount, maxMembers: _maxMembers, notificationStatus }: ChatTabProps & { notificationStatus?: { message: string; type: 'success' | 'warning' | 'error' | null } | null }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -380,6 +380,16 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         ) : (
           <div className="rounded-md border border-amber-200 bg-amber-50 text-amber-800 p-3 text-sm mx-2">
             Join this league to chat with other members.
+          </div>
+        )}
+        {/* Notification status banner - below input form */}
+        {notificationStatus && (
+          <div className={`w-full rounded px-2 py-1 text-xs mt-2 ${
+            notificationStatus.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
+            notificationStatus.type === 'warning' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+            'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {notificationStatus.message}
           </div>
         )}
       </div>
@@ -1798,15 +1808,23 @@ export default function LeaguePage() {
 
   return (
     <div className={`min-h-screen ${oldSchoolMode ? 'oldschool-theme' : 'bg-slate-50'}`}>
-      <div className="max-w-6xl mx-auto px-4 pt-6 pb-6">
-        {/* Header with back link */}
-        <div className="mb-6">
-          <Link to="/leagues" className="inline-flex items-center text-slate-500 hover:text-slate-700 text-sm mb-3">
-            ← Back
-          </Link>
+      {/* Sticky iOS-style header */}
+      <div className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-slate-200 shadow-sm">
+        <div className="max-w-6xl mx-auto px-4">
+          {/* Compact header bar */}
+          <div className="flex items-center justify-between h-14">
+            {/* Back button */}
+            <Link 
+              to="/leagues" 
+              className="flex items-center text-slate-600 hover:text-slate-900 transition-colors -ml-2 px-2 py-1"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </Link>
 
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0">
+            {/* Title */}
+            <h1 className="text-lg font-semibold text-slate-900 truncate flex-1 text-center px-2">
               {league.name}
             </h1>
             
@@ -1814,10 +1832,12 @@ export default function LeaguePage() {
             <div className="relative">
               <button
                 onClick={() => setShowHeaderMenu(!showHeaderMenu)}
-                className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-slate-600 hover:text-slate-800 transition-colors text-sm"
+                className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 transition-colors -mr-2"
                 aria-label="Menu"
               >
-                Menu
+                <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                </svg>
               </button>
               
               {/* iOS-style context menu */}
@@ -1829,7 +1849,7 @@ export default function LeaguePage() {
                     onClick={() => setShowHeaderMenu(false)}
                   />
                   {/* Menu */}
-                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-slate-200 z-50 overflow-hidden">
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-slate-200 z-50 overflow-hidden">
                     <button
                       onClick={() => {
                         setShowInvite(true);
@@ -1862,31 +1882,35 @@ export default function LeaguePage() {
               )}
             </div>
           </div>
-        </div>
 
-        {/* Tabs */}
-        <div className="mt-6">
-          <div className="flex rounded-lg bg-slate-100 p-1 shadow-sm gap-1">
+          {/* Tabs */}
+          <div className="flex border-b border-slate-200 bg-white">
             <button
               onClick={() => setTab("chat")}
               className={
-                "flex-1 px-3 sm:px-6 py-3 rounded-md text-sm font-semibold transition-colors " +
-                (tab === "chat" ? "bg-[#1C8376] text-white shadow-sm" : "text-slate-600 hover:text-slate-900 hover:bg-white/50")
+                "flex-1 px-3 sm:px-6 py-3 text-sm font-semibold transition-colors relative " +
+                (tab === "chat" ? "text-[#1C8376]" : "text-slate-400")
               }
             >
               Chat
+              {tab === "chat" && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
+              )}
             </button>
             {/* Show GW Results tab if there are any results available */}
             {availableGws.length > 0 && (
               <button
                 onClick={() => setTab("gwr")}
                 className={
-                  "flex-1 px-2 sm:px-4 py-3 rounded-md text-xs font-semibold transition-colors leading-tight " +
-                  (tab === "gwr" ? "bg-[#1C8376] text-white shadow-sm" : "text-slate-600 hover:text-slate-900 hover:bg-white/50")
+                  "flex-1 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight " +
+                  (tab === "gwr" ? "text-[#1C8376]" : "text-slate-400")
                 }
               >
                 <span className="hidden sm:inline">{selectedGw ? `GW ${selectedGw} Results` : (currentGw ? `GW ${currentGw} Results` : "GW Results")}</span>
                 <span className="sm:hidden whitespace-pre-line">{selectedGw ? `GW${selectedGw}\nResults` : (currentGw ? `GW${currentGw}\nResults` : "GW\nResults")}</span>
+                {tab === "gwr" && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
+                )}
               </button>
             )}
             {/* Show GW Predictions tab if there's a current GW */}
@@ -1894,42 +1918,35 @@ export default function LeaguePage() {
               <button
                 onClick={() => setTab("gw")}
                 className={
-                  "flex-1 px-2 sm:px-4 py-3 rounded-md text-xs font-semibold transition-colors leading-tight " +
-                  (tab === "gw" ? "bg-[#1C8376] text-white shadow-sm" : "text-slate-600 hover:text-slate-900 hover:bg-white/50")
+                  "flex-1 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight " +
+                  (tab === "gw" ? "text-[#1C8376]" : "text-slate-400")
                 }
               >
                 <span className="hidden sm:inline">{currentGw ? `GW ${currentGw} Predictions` : "GW Predictions"}</span>
                 <span className="sm:hidden whitespace-pre-line">{currentGw ? `GW${currentGw}\nPredictions` : "GW\nPredictions"}</span>
+                {tab === "gw" && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
+                )}
               </button>
             )}
             <button
               onClick={() => setTab("mlt")}
               className={
-                "flex-1 px-3 sm:px-6 py-3 rounded-md text-sm font-semibold transition-colors " +
-                (tab === "mlt" ? "bg-[#1C8376] text-white shadow-sm" : "text-slate-600 hover:text-slate-900 hover:bg-white/50")
+                "flex-1 px-3 sm:px-6 py-3 text-sm font-semibold transition-colors relative " +
+                (tab === "mlt" ? "text-[#1C8376]" : "text-slate-400")
               }
             >
               Table
+              {tab === "mlt" && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
+              )}
             </button>
           </div>
         </div>
+      </div>
 
-        <div className="mt-[25px]">
-          {/* Notification status banner - fixed height to prevent layout shift */}
-          {tab === "chat" && (
-            <div className="h-8 flex items-center">
-              {notificationStatus && (
-                <div className={`w-full rounded px-2 py-1 text-xs ${
-                  notificationStatus.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
-                  notificationStatus.type === 'warning' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                  'bg-red-50 text-red-700 border border-red-200'
-                }`}>
-                  {notificationStatus.message}
-                </div>
-              )}
-            </div>
-          )}
-          
+      <div className="max-w-6xl mx-auto px-4 pt-6 pb-6" style={{ paddingTop: 'calc(3.5rem + 1rem)' }}>
+        <div className="mt-[62px]">
           {tab === "chat" && (
             <ChatTab
               chat={chat}
@@ -1942,6 +1959,7 @@ export default function LeaguePage() {
               leagueCode={league?.code}
               memberCount={members.length}
               maxMembers={MAX_MEMBERS}
+              notificationStatus={notificationStatus}
             />
           )}
           {tab === "mlt" && <MltTab />}
