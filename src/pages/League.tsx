@@ -413,6 +413,42 @@ export default function LeaguePage() {
     localStorage.setItem('oldSchoolMode', JSON.stringify(oldSchoolMode));
   }, [oldSchoolMode]);
 
+  // Keep header fixed when keyboard appears
+  useEffect(() => {
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        // Prevent page scroll when keyboard appears
+        setTimeout(() => {
+          window.scrollTo(0, 0);
+          const header = document.querySelector('.league-header-fixed');
+          if (header) {
+            (header as HTMLElement).style.top = '0';
+          }
+        }, 100);
+      }
+    };
+
+    const handleResize = () => {
+      // Ensure header stays at top on resize (keyboard show/hide)
+      const header = document.querySelector('.league-header-fixed');
+      if (header) {
+        (header as HTMLElement).style.top = '0';
+      }
+      window.scrollTo(0, 0);
+    };
+
+    document.addEventListener('focusin', handleFocusIn);
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+
+    return () => {
+      document.removeEventListener('focusin', handleFocusIn);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
+  }, []);
+
   const [league, setLeague] = useState<League | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1808,8 +1844,26 @@ export default function LeaguePage() {
 
   return (
     <div className={`min-h-screen ${oldSchoolMode ? 'oldschool-theme' : 'bg-slate-50'}`}>
+      <style>{`
+        .league-header-fixed {
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          z-index: 50 !important;
+          transform: translate3d(0, 0, 0) !important;
+          -webkit-transform: translate3d(0, 0, 0) !important;
+          will-change: transform !important;
+          contain: layout style paint !important;
+        }
+        @supports (height: 100dvh) {
+          .league-header-fixed {
+            top: env(safe-area-inset-top, 0px) !important;
+          }
+        }
+      `}</style>
       {/* Sticky iOS-style header */}
-      <div className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-slate-200 shadow-sm">
+      <div className="league-header-fixed bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4">
           {/* Compact header bar */}
           <div className="flex items-center justify-between h-14">
