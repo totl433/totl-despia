@@ -6,6 +6,19 @@ import { getMediumName } from "../lib/teamNames";
 import WhatsAppBanner from "../components/WhatsAppBanner";
 import { getLeagueAvatarPath, getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
 
+// Module-level cache for home page data
+type HomePageCache = {
+  leagues: League[];
+  leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
+  leagueData: Record<string, LeagueData>;
+  unreadByLeague: Record<string, number>;
+  lastFetched: number;
+  userId: string | null;
+};
+
+const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
+let homePageCache: HomePageCache | null = null;
+
 // Types
 type League = { id: string; name: string; code: string; avatar?: string | null };
 type LeagueMember = { id: string; name: string };
@@ -90,11 +103,40 @@ export default function HomePage() {
   const [unreadByLeague, setUnreadByLeague] = useState<Record<string, number>>({});
   const [leagueData, setLeagueData] = useState<Record<string, LeagueData>>({});
   const leagueIdsRef = useRef<Set<string>>(new Set());
+  const isInitialMountRef = useRef(true);
 
   useEffect(() => {
     let alive = true;
+    
+    // Check cache first - show cached data immediately if available
+    if (homePageCache && homePageCache.userId === user?.id) {
+      const cacheAge = Date.now() - homePageCache.lastFetched;
+      if (cacheAge < CACHE_DURATION) {
+        // Cache is valid - show it immediately
+        setLeagues(homePageCache.leagues);
+        setLeagueSubmissions(homePageCache.leagueSubmissions);
+        setLeagueData(homePageCache.leagueData);
+        setUnreadByLeague(homePageCache.unreadByLeague);
+        leagueIdsRef.current = new Set(homePageCache.leagues.map((l) => l.id));
+        setLoading(false);
+        
+        // If cache is older than 30 seconds, refresh in background
+        if (cacheAge > 30 * 1000) {
+          isInitialMountRef.current = false;
+        } else {
+          // Cache is fresh, skip fetching
+          return () => { alive = false; };
+        }
+      }
+    }
+    
     (async () => {
-      setLoading(true);
+      if (!isInitialMountRef.current) {
+        // Background refresh - don't show loading spinner
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
 
       // User's leagues
       let ls: League[] = [];
@@ -326,7 +368,15 @@ export default function HomePage() {
           }
           out[lg.id] = typeof count === "number" ? count : (msgs?.length ?? 0);
         }
-        if (alive) setUnreadByLeague(out);
+        if (alive) {
+          setUnreadByLeague(out);
+          
+          // Update cache with unreadByLeague
+          if (homePageCache && homePageCache.userId === user?.id) {
+            homePageCache.unreadByLeague = out;
+            homePageCache.lastFetched = Date.now();
+          }
+        }
       } catch (e) {
         // best-effort; ignore errors
       }
@@ -383,6 +433,19 @@ export default function HomePage() {
       setFixtures(thisGwFixtures);
       setPicksMap(map);
       setLoading(false);
+      
+      // Update cache with fresh data (leagueData will be updated in next useEffect)
+      // Note: unreadByLeague is updated separately above
+      if (alive && user?.id) {
+        homePageCache = {
+          leagues: ls,
+          leagueSubmissions: submissionStatus,
+          leagueData: {}, // Will be updated when leagueData useEffect runs
+          unreadByLeague: {}, // Will be updated when unreadByLeague is set above
+          lastFetched: Date.now(),
+          userId: user.id,
+        };
+      }
     })();
     return () => {
       alive = false;
@@ -583,6 +646,12 @@ export default function HomePage() {
       
       if (alive) {
         setLeagueData(leagueDataMap);
+        
+        // Update cache with leagueData
+        if (homePageCache && homePageCache.userId === user?.id) {
+          homePageCache.leagueData = leagueDataMap;
+          homePageCache.lastFetched = Date.now();
+        }
       }
     })();
     
@@ -905,6 +974,107 @@ export default function HomePage() {
     return inner;
   };
 
+  const SkeletonLoader = () => (
+    <>
+      {/* Leaderboard Skeleton */}
+      <Section title="The Leaderboard" boxed={false}>
+        <div className="grid grid-cols-2 gap-4">
+          {/* Global Leaderboard Skeleton */}
+          <div className="h-full rounded-3xl border-2 border-slate-200 bg-slate-50/80 p-4 sm:p-6 animate-pulse">
+            <div className="flex items-start gap-3">
+              <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-slate-200 flex-shrink-0" />
+            </div>
+            <div className="mt-2">
+              <div className="h-6 w-32 bg-slate-200 rounded mb-2" />
+              <div className="h-4 w-24 bg-slate-200 rounded" />
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <div className="h-5 w-16 bg-slate-200 rounded" />
+              <div className="h-5 w-12 bg-slate-200 rounded" />
+            </div>
+          </div>
+          {/* GW Card Skeleton */}
+          <div className="h-full rounded-3xl border-2 border-slate-200 bg-amber-50/60 p-4 sm:p-6 animate-pulse relative">
+            <div className="absolute top-4 left-4 h-4 w-12 bg-slate-200 rounded" />
+            <div className="absolute bottom-4 left-4 h-4 w-32 bg-slate-200 rounded" />
+            <div className="flex items-center justify-center h-full">
+              <div className="h-16 w-16 bg-slate-200 rounded" />
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      {/* Mini Leagues Skeleton */}
+      <section className="mt-8">
+        <div className="flex items-center justify-between mb-2">
+          <div className="h-8 w-48 bg-slate-200 rounded animate-pulse" />
+        </div>
+        <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
+          <div className="flex gap-2" style={{ width: 'max-content' }}>
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex flex-col gap-2">
+                {[1, 2, 3].map((j) => (
+                  <div
+                    key={j}
+                    className="rounded-xl border bg-white overflow-hidden shadow-sm w-[320px] animate-pulse"
+                    style={{ borderRadius: '12px' }}
+                  >
+                    <div className="p-4 bg-white">
+                      <div className="flex items-start gap-3">
+                        {/* Avatar skeleton */}
+                        <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-200" />
+                        <div className="flex-1 min-w-0">
+                          {/* League name skeleton */}
+                          <div className="h-5 w-32 bg-slate-200 rounded mb-2" />
+                          {/* Submission status skeleton */}
+                          <div className="h-3 w-20 bg-slate-200 rounded mb-4" />
+                          {/* Member info skeleton */}
+                          <div className="flex items-center gap-3">
+                            <div className="h-4 w-8 bg-slate-200 rounded" />
+                            <div className="h-4 w-8 bg-slate-200 rounded" />
+                            <div className="flex items-center flex-1 overflow-hidden">
+                              {[1, 2, 3].map((k) => (
+                                <div
+                                  key={k}
+                                  className="rounded-full bg-slate-200 flex-shrink-0"
+                                  style={{
+                                    marginLeft: k > 1 ? '-2px' : '0',
+                                    width: '18px',
+                                    height: '18px',
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        {/* Badge skeleton */}
+                        <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                          <div className="h-6 w-6 rounded-full bg-slate-200" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Games Section Skeleton (if it exists) */}
+      <section className="mt-8">
+        <div className="h-8 w-32 bg-slate-200 rounded animate-pulse mb-3" />
+        <div className="rounded-2xl border bg-slate-50 overflow-hidden p-4">
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-16 bg-white rounded-lg border border-slate-200 animate-pulse" />
+            ))}
+          </div>
+        </div>
+      </section>
+    </>
+  );
+
   const GWCard: React.FC<{ gw: number; score: number | null; submitted: boolean; }> = ({ gw, score, submitted }) => {
     const display = score !== null ? score : (submitted ? 0 : NaN);
     return (
@@ -931,8 +1101,12 @@ export default function HomePage() {
   return (
     <div className={`max-w-6xl mx-auto px-4 py-4 min-h-screen ${oldSchoolMode ? 'oldschool-theme' : ''}`}>
       <WhatsAppBanner />
-      {/* Leaderboards */}
-      <Section title="The Leaderboard" boxed={false}>
+      {loading && isInitialMountRef.current ? (
+        <SkeletonLoader />
+      ) : (
+        <>
+          {/* Leaderboards */}
+          <Section title="The Leaderboard" boxed={false}>
         <div className="grid grid-cols-2 gap-4">
           <LeaderCard
             to="/global"
@@ -1003,8 +1177,57 @@ export default function HomePage() {
           )}
         </div>
         <div>
-          {loading ? (
-            <div className="p-4 text-slate-500">Loading…</div>
+          {loading && isInitialMountRef.current && leagues.length === 0 ? (
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
+              <style>{`
+                .scrollbar-hide::-webkit-scrollbar {
+                  display: none;
+                }
+              `}</style>
+              <div className="flex gap-2" style={{ width: 'max-content' }}>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex flex-col gap-2">
+                    {[1, 2, 3].map((j) => (
+                      <div
+                        key={j}
+                        className="rounded-xl border bg-white overflow-hidden shadow-sm w-[320px] animate-pulse"
+                        style={{ borderRadius: '12px' }}
+                      >
+                        <div className="p-4 bg-white">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-200" />
+                            <div className="flex-1 min-w-0">
+                              <div className="h-5 w-32 bg-slate-200 rounded mb-2" />
+                              <div className="h-3 w-20 bg-slate-200 rounded mb-4" />
+                              <div className="flex items-center gap-3">
+                                <div className="h-4 w-8 bg-slate-200 rounded" />
+                                <div className="h-4 w-8 bg-slate-200 rounded" />
+                                <div className="flex items-center flex-1 overflow-hidden">
+                                  {[1, 2, 3].map((k) => (
+                                    <div
+                                      key={k}
+                                      className="rounded-full bg-slate-200 flex-shrink-0"
+                                      style={{
+                                        marginLeft: k > 1 ? '-2px' : '0',
+                                        width: '18px',
+                                        height: '18px',
+                                      }}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                              <div className="h-6 w-6 rounded-full bg-slate-200" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : leagues.length === 0 ? (
             <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
               <div className="text-slate-600 mb-3">You don't have any mini leagues yet.</div>
@@ -1321,7 +1544,8 @@ export default function HomePage() {
           </div>
         )}
       </section>
-
+        </>
+      )}
     </div>
   );
 }
