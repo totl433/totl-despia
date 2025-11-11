@@ -281,9 +281,9 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* Push Notifications - Self-Serve Fix Screen */}
+          {/* Advanced - Self-Serve Fix Screen */}
           <div className="mt-6 pt-6 border-t border-slate-200">
-            <h3 className="text-lg font-semibold text-slate-800 mb-3">Push Notifications</h3>
+            <h3 className="text-lg font-semibold text-slate-800 mb-3">Advanced</h3>
             <p className="text-sm text-slate-600 mb-4">
               Check and fix your notification settings to receive chat notifications in mini-leagues.
             </p>
@@ -437,9 +437,9 @@ export default function Profile() {
                   }
                 }}
                 disabled={registering || !session?.access_token}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors"
+                className="w-full py-3 bg-white border border-slate-300 hover:bg-slate-50 disabled:bg-gray-100 disabled:opacity-50 text-slate-600 hover:text-slate-800 font-medium rounded-xl transition-colors"
               >
-                {registering ? 'Enabling...' : '🔔 Enable Notifications'}
+                {registering ? 'Enabling...' : 'Enable Notifications'}
               </button>
 
               <button
@@ -465,7 +465,7 @@ export default function Profile() {
                     alert('Please go to iOS Settings → TotL → Notifications and enable notifications');
                   }
                 }}
-                className="w-full py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-medium rounded-xl transition-colors text-sm"
+                className="w-full py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-medium rounded-xl transition-colors text-sm hidden"
               >
                 ⚙️ Open OS Settings
               </button>
@@ -502,9 +502,9 @@ export default function Profile() {
                   }
                 }}
                 disabled={checkingSubscription || !session?.access_token}
-                className="w-full py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 disabled:opacity-50 text-white font-medium rounded-xl transition-colors text-sm"
+                className="w-full py-3 bg-white border border-slate-300 hover:bg-slate-50 disabled:bg-gray-100 disabled:opacity-50 text-slate-600 hover:text-slate-800 font-medium rounded-xl transition-colors"
               >
-                {checkingSubscription ? 'Checking...' : '🔍 Check Subscription Status'}
+                {checkingSubscription ? 'Checking...' : 'Check Subscription Status'}
               </button>
 
               <button
@@ -531,9 +531,9 @@ export default function Profile() {
                     setRegisterResult('⚠️ Player ID not available');
                   }
                 }}
-                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-colors text-sm"
+                className="w-full py-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-600 hover:text-slate-800 font-medium rounded-xl transition-colors"
               >
-                📋 Copy Player ID
+                Copy Player ID
               </button>
             </div>
 

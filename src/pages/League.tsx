@@ -435,7 +435,8 @@ export default function LeaguePage() {
       if (header) {
         (header as HTMLElement).style.top = '0';
       }
-      window.scrollTo(0, 0);
+      // Only scroll to top on resize if it's a keyboard-related resize (significant height change)
+      // Don't scroll on tab changes or minor layout shifts
     };
 
     document.addEventListener('focusin', handleFocusIn);
@@ -1265,7 +1266,7 @@ export default function LeaguePage() {
     }
 
     return (
-      <div>
+      <div className="pt-4">
         <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
           <div className="overflow-x-auto">
             <div className="min-w-full">
@@ -1429,7 +1430,7 @@ export default function LeaguePage() {
     });
 
     return (
-      <div className="mt-4">
+      <div className="mt-4 pt-4">
         <div className="flex items-center gap-4 text-sm mb-4">
           <div className="text-slate-900 font-bold text-xl">Game Week {picksGw}</div>
           {allSubmitted && resultsPublished ? (
@@ -1734,7 +1735,7 @@ export default function LeaguePage() {
     rows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name));
 
     return (
-      <div className="mt-4">
+      <div className="mt-4 pt-4">
         <div className="text-slate-900 font-bold text-xl mb-4">Game Week {resGw}</div>
 
         {rows.length > 0 && (
@@ -1859,6 +1860,16 @@ export default function LeaguePage() {
         @supports (height: 100dvh) {
           .league-header-fixed {
             top: env(safe-area-inset-top, 0px) !important;
+          }
+        }
+        .league-content-wrapper {
+          padding-top: calc(3.5rem + 3rem);
+          padding-bottom: 6rem;
+        }
+        @media (max-width: 768px) {
+          .league-content-wrapper {
+            padding-top: calc(3.5rem + 3rem + env(safe-area-inset-top, 0px));
+            padding-bottom: 8rem;
           }
         }
       `}</style>
@@ -1999,8 +2010,8 @@ export default function LeaguePage() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 pt-6 pb-6" style={{ paddingTop: 'calc(3.5rem + 1rem)' }}>
-        <div className="mt-[62px]">
+      <div className="max-w-6xl mx-auto px-4 league-content-wrapper">
+        <div>
           {tab === "chat" && (
             <ChatTab
               chat={chat}
