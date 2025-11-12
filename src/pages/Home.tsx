@@ -1798,23 +1798,28 @@ export default function HomePage() {
               `}</style>
               <div className="flex gap-2" style={{ width: 'max-content' }}>
                 {/* Box 1: Last GW Leaderboard */}
-                <Link to="/global?tab=lastgw" className="flex-shrink-0 w-[169px] sm:w-[193px] aspect-square rounded-xl border bg-white shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer block">
-                  <div className="p-3 h-full flex flex-col">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="leading-none text-slate-900">
+                <Link to="/global?tab=lastgw" className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block">
+                  <div className="p-3 h-full flex flex-col relative">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-baseline gap-[3px]" style={{ marginTop: '-4px' }}>
                         {lastGwRank ? (
                           <>
-                            <span className="text-5xl text-[#1C8376]">{lastGwRank.score}</span>
-                            <span className="text-2xl text-slate-500">/{lastGwRank.totalFixtures}</span>
+                            <span className="text-[#1C8376]" style={{ fontSize: '38px', fontWeight: 'normal', lineHeight: '1' }}>{lastGwRank.score}</span>
+                            <div className="flex items-baseline gap-[4px]">
+                              <span className="text-slate-500" style={{ fontSize: '18px', fontWeight: 'normal', lineHeight: '1' }}>/</span>
+                              <span className="text-slate-500" style={{ fontSize: '18px', fontWeight: 'normal', lineHeight: '1' }}>{lastGwRank.totalFixtures}</span>
+                            </div>
                           </>
-                        ) : '—'}
-                      </span>
-                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        ) : (
+                          <span className="leading-none text-slate-900">—</span>
+                        )}
+                      </div>
+                      <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </div>
                     <div className="mt-auto">
-                      <div className="text-xs text-slate-500 mb-2">Game Week {lastGwRank?.gw ?? '—'}</div>
+                      <div className="text-xs text-slate-500 mb-2">GAME WEEK {lastGwRank?.gw ?? '—'}</div>
                       <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1">
                         <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1842,26 +1847,11 @@ export default function HomePage() {
                 </Link>
 
                 {/* Box 2: 5-WEEK FORM */}
-                <Link to="/global?tab=form5" className="flex-shrink-0 w-[169px] sm:w-[193px] aspect-square rounded-xl border bg-white shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer block">
+                <Link to="/global?tab=form5" className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block">
                   <div className="p-3 h-full flex flex-col">
-                    <div className="flex items-center justify-between mb-2">
-                      <svg className="w-[60px] h-[60px]" viewBox="0 0 24 24" fill="none" strokeWidth="1.5">
-                        <defs>
-                          <linearGradient id="trophyGradient1" x1="0%" y1="0%" x2="100%" y2="0%">
-                            <stop offset="0%" stopColor="#B8860B" stopOpacity="1">
-                              <animate attributeName="stop-opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite" />
-                            </stop>
-                            <stop offset="50%" stopColor="#B8860B" stopOpacity="1">
-                              <animate attributeName="stop-opacity" values="1;0.5;1" dur="1.5s" repeatCount="indefinite" />
-                            </stop>
-                            <stop offset="100%" stopColor="#B8860B" stopOpacity="1">
-                              <animate attributeName="stop-opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite" begin="0.75s" />
-                            </stop>
-                          </linearGradient>
-                        </defs>
-                        <path stroke="url(#trophyGradient1)" strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0" />
-                      </svg>
-                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex items-start justify-between mb-2">
+                      <img src="/assets/5-week-form-badge.png" alt="5-Week Form Badge" className="w-[32px] h-[32px]" />
+                      <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </div>
@@ -1894,26 +1884,11 @@ export default function HomePage() {
                 </Link>
 
                 {/* Box 3: 10-WEEK FORM */}
-                <Link to="/global?tab=form10" className="flex-shrink-0 w-[169px] sm:w-[193px] aspect-square rounded-xl border bg-white shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer block">
+                <Link to="/global?tab=form10" className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block">
                   <div className="p-3 h-full flex flex-col">
-                    <div className="flex items-center justify-between mb-2">
-                      <svg className="w-[60px] h-[60px]" viewBox="0 0 24 24" fill="none" strokeWidth="1.5">
-                        <defs>
-                          <linearGradient id="trophyGradient2" x1="0%" y1="0%" x2="100%" y2="0%">
-                            <stop offset="0%" stopColor="#8E8E8E" stopOpacity="1">
-                              <animate attributeName="stop-opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite" />
-                            </stop>
-                            <stop offset="50%" stopColor="#8E8E8E" stopOpacity="1">
-                              <animate attributeName="stop-opacity" values="1;0.5;1" dur="1.5s" repeatCount="indefinite" />
-                            </stop>
-                            <stop offset="100%" stopColor="#8E8E8E" stopOpacity="1">
-                              <animate attributeName="stop-opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite" begin="0.75s" />
-                            </stop>
-                          </linearGradient>
-                        </defs>
-                        <path stroke="url(#trophyGradient2)" strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0" />
-                      </svg>
-                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex items-start justify-between mb-2">
+                      <img src="/assets/10-week-form-badge.png" alt="10-Week Form Badge" className="w-[32px] h-[32px]" />
+                      <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </div>
@@ -1946,26 +1921,11 @@ export default function HomePage() {
                 </Link>
 
                 {/* Box 4: SEASON RANK */}
-                <Link to="/global?tab=overall" className="flex-shrink-0 w-[169px] sm:w-[193px] aspect-square rounded-xl border bg-white shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer block">
+                <Link to="/global?tab=overall" className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block">
                   <div className="p-3 h-full flex flex-col">
-                    <div className="flex items-center justify-between mb-2">
-                      <svg className="w-[60px] h-[60px]" viewBox="0 0 24 24" fill="none" strokeWidth="1.5">
-                        <defs>
-                          <linearGradient id="trophyGradient3" x1="0%" y1="0%" x2="100%" y2="0%">
-                            <stop offset="0%" stopColor="#8B6914" stopOpacity="1">
-                              <animate attributeName="stop-opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite" />
-                            </stop>
-                            <stop offset="50%" stopColor="#8B6914" stopOpacity="1">
-                              <animate attributeName="stop-opacity" values="1;0.5;1" dur="1.5s" repeatCount="indefinite" />
-                            </stop>
-                            <stop offset="100%" stopColor="#8B6914" stopOpacity="1">
-                              <animate attributeName="stop-opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite" begin="0.75s" />
-                            </stop>
-                          </linearGradient>
-                        </defs>
-                        <path stroke="url(#trophyGradient3)" strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0" />
-                      </svg>
-                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex items-start justify-between mb-2">
+                      <img src="/assets/season-rank-badge.png" alt="Season Rank Badge" className="w-[32px] h-[32px]" />
+                      <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </div>
@@ -2442,7 +2402,7 @@ export default function HomePage() {
       </section>
 
       {/* Games (first GW) */}
-      <section className="mt-8">
+      <section className="mt-[45px]">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
             Game Week {gw}
