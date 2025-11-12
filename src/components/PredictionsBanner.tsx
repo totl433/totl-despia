@@ -189,7 +189,7 @@ export default function PredictionsBanner() {
           </div>
         </Link>
       ) : (
-        <div className="mt-4 rounded-lg bg-slate-100 px-4 py-2 border border-slate-200">
+        <div className="mt-1 rounded-lg bg-slate-100 px-4 py-2 border border-slate-200">
           <div className="text-center">
             <div className="font-semibold text-slate-800">GW{(currentGw || 1) + 1} Coming Soon</div>
             <div className="text-sm text-slate-600">Fixtures will be published soon.</div>

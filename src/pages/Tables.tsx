@@ -655,29 +655,27 @@ export default function TablesPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="max-w-6xl mx-auto px-4 pt-4 pb-16">
-        <div className="text-center">
-          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Mini Leagues</h2>
-          {rows.length > 4 && (
-            <button
-              onClick={() => {
-                const createSection = document.getElementById('create-join-section');
-                if (createSection) {
-                  createSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-              }}
-              className="text-[#1C8376] font-semibold text-sm hover:text-[#1C8376] no-underline mb-2 flex items-center gap-1 mx-auto"
-            >
-              Create League
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-          )}
-          <p className="mt-0 mb-6 text-xs text-slate-600">
-            Create or join a private league<br />and battle it out with your friends.
-          </p>
-        </div>
+      <div className="max-w-6xl mx-auto px-4 py-4 pb-16">
+        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Mini Leagues</h2>
+        {rows.length > 4 && (
+          <button
+            onClick={() => {
+              const createSection = document.getElementById('create-join-section');
+              if (createSection) {
+                createSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }}
+            className="text-[#1C8376] font-semibold text-sm hover:text-[#1C8376] no-underline mb-2 flex items-center gap-1"
+          >
+            Create League
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        )}
+        <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
+          Create or join a private league and battle it out with your friends.
+        </p>
 
         {error && (
           <div className="mt-4 rounded border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2 text-sm">

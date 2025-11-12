@@ -1,14 +1,15 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { useState, useEffect } from "react";
-import SiteHeader from "./components/SiteHeader";
 import PredictionsBanner from "./components/PredictionsBanner";
 import WhatsAppBanner from "./components/WhatsAppBanner";
+import FloatingProfile from "./components/FloatingProfile";
 
 import HomePage from "./pages/Home";
 import LeaguePage from "./pages/League";
 import PredictionsPage from "./pages/Predictions";
 import AdminPage from "./pages/Admin";
 import NewPredictionsCentre from "./pages/NewPredictionsCentre";
+import ProfilePage from "./pages/Profile";
 
 export default function App() {
   const [oldSchoolMode, setOldSchoolMode] = useState(false);
@@ -35,7 +36,7 @@ export default function App() {
         {/* Regular routes with header/banner */}
         <Route path="*" element={
           <div className={`min-h-screen overflow-y-auto ${oldSchoolMode ? 'oldschool-theme' : 'text-slate-900'}`} style={{ backgroundColor: '#f5f7f6' }}>
-            <SiteHeader />
+            <FloatingProfile />
             <WhatsAppBanner />
             <PredictionsBanner />
             <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-6">
@@ -44,6 +45,7 @@ export default function App() {
                 <Route path="/league/:id" element={<LeaguePage />} />
                 <Route path="/predictions" element={<PredictionsPage />} />
                 <Route path="/admin" element={<AdminPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
               </Routes>
             </main>
           </div>

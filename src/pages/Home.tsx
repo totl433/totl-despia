@@ -2408,24 +2408,29 @@ export default function HomePage() {
             Game Week {gw}
           </h2>
           <div className="flex items-center gap-2">
-            {fixtures.length > 0 && gwScore !== null && (
+            {gwScore !== null && (
               <button
                 onClick={sharePredictions}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C8376] text-white text-sm font-semibold rounded-md hover:bg-[#178f72] transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 hover:bg-emerald-700 transition-all cursor-pointer"
                 title="Share your predictions"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <span className="text-xs sm:text-sm font-medium opacity-90">Score</span>
+                <span className="flex items-baseline gap-0.5">
+                  <span className="text-lg sm:text-xl font-extrabold">{gwScore}</span>
+                  <span className="text-sm sm:text-base font-medium opacity-90">/</span>
+                  <span className="text-base sm:text-lg font-semibold opacity-80">{fixtures.length}</span>
+                </span>
+                <svg className="w-4 h-4 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                 </svg>
-                Share
               </button>
             )}
-          {fixtures.length > 0 && !gwSubmitted && gwScore === null && (
+            {fixtures.length > 0 && !gwSubmitted && gwScore === null && (
               <Link to="/new-predictions" className="inline-block px-3 py-1 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors no-underline">Make your predictions</Link>
-          )}
-        </div>
+            )}
           </div>
-          {nextGwComing ? (
+        </div>
+        {nextGwComing ? (
           <div className="mb-2">
             <span className="text-slate-600 font-semibold">GW{nextGwComing} coming soon</span>
             </div>
@@ -2433,85 +2438,103 @@ export default function HomePage() {
         {fixtures.length === 0 ? (
           <div className="p-4 text-slate-500">No fixtures yet.</div>
         ) : (
-          <div className="rounded-2xl border bg-slate-50 overflow-hidden">
-            <ul>
-              {fixtures.map((f, idx) => {
-                        const pick = picksMap[f.fixture_index];
-                        const homeKey = f.home_code || f.home_name || f.home_team || "";
-                        const awayKey = f.away_code || f.away_name || f.away_team || "";
+          <div className="mt-6 space-y-4">
+            {fixtures.map((f) => {
+              const pick = picksMap[f.fixture_index];
+              const result = resultsMap[f.fixture_index];
+              const homeKey = f.home_code || f.home_name || f.home_team || "";
+              const awayKey = f.away_code || f.away_name || f.away_team || "";
 
-                        const homeName = getMediumName(homeKey);
-                        const awayName = getMediumName(awayKey);
+              const homeName = getMediumName(homeKey);
+              const awayName = getMediumName(awayKey);
 
-                        const homeBadge = `/assets/badges/${homeKey.toUpperCase()}.png`;
-                        const awayBadge = `/assets/badges/${awayKey.toUpperCase()}.png`;
-                const liClass = idx > 0 ? "border-t" : undefined;
-                        return (
-                          <li key={f.id} className={liClass}>
-                            <div className="p-4 bg-white">
-                              <div className="grid grid-cols-3 items-center">
-                                <div className="flex items-center justify-center">
-                                  <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{homeName}</span>
-                                </div>
-                                <div className="flex items-center justify-center gap-2">
-                                  <img src={homeBadge} alt={`${homeName} badge`} className="h-6 w-6" />
-                                  <div className="text-[15px] sm:text-base font-semibold text-slate-600">
-                                    {f.kickoff_time
-                                      ? (() => {
-                                          const d = new Date(f.kickoff_time);
-                                          const hh = String(d.getUTCHours()).padStart(2, '0');
-                                          const mm = String(d.getUTCMinutes()).padStart(2, '0');
-                                          return `${hh}:${mm}`;
-                                        })()
-                                      : ""}
-                                  </div>
-                                  <img src={awayBadge} alt={`${awayName} badge`} className="h-6 w-6" />
-                                </div>
-                                <div className="flex items-center justify-center">
-                                  <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{awayName}</span>
-                                </div>
-                              </div>
-                              {/* Row: dots under H/D/A, always centered in each third */}
-                              <div className="mt-3 grid grid-cols-3">
-                                <div className="relative h-8">
-                                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                                    {pick === "H" ? (
-                                      <Dot correct={resultsMap[f.fixture_index] ? resultsMap[f.fixture_index] === "H" : undefined} />
-                                    ) : resultsMap[f.fixture_index] === "H" ? (
-                                      <span className="inline-block h-5 w-5 rounded-full bg-gray-300 border-2 border-white shadow ring-1 ring-gray-200" />
-                                    ) : (
-                                      <span className="h-5" />
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="relative h-8">
-                                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                                    {pick === "D" ? (
-                                      <Dot correct={resultsMap[f.fixture_index] ? resultsMap[f.fixture_index] === "D" : undefined} />
-                                    ) : resultsMap[f.fixture_index] === "D" ? (
-                                      <span className="inline-block h-5 w-5 rounded-full bg-gray-300 border-2 border-white shadow ring-1 ring-gray-200" />
-                                    ) : (
-                                      <span className="h-5" />
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="relative h-8">
-                                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                                    {pick === "A" ? (
-                                      <Dot correct={resultsMap[f.fixture_index] ? resultsMap[f.fixture_index] === "A" : undefined} />
-                                    ) : resultsMap[f.fixture_index] === "A" ? (
-                                      <span className="inline-block h-5 w-5 rounded-full bg-gray-300 border-2 border-white shadow ring-1 ring-gray-200" />
-                                    ) : (
-                                      <span className="h-5" />
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
+              const kickoff = f.kickoff_time
+                ? (() => {
+                    const d = new Date(f.kickoff_time);
+                    const hh = String(d.getUTCHours()).padStart(2, '0');
+                    const mm = String(d.getUTCMinutes()).padStart(2, '0');
+                    return `${hh}:${mm}`;
+                  })()
+                : "—";
+
+              // Determine button states
+              const getButtonState = (side: "H" | "D" | "A") => {
+                const isPicked = pick === side;
+                const isCorrectResult = result === side;
+                const isCorrect = isPicked && isCorrectResult;
+                const isWrong = isPicked && result && result !== side;
+                return { isPicked, isCorrectResult, isCorrect, isWrong };
+              };
+
+              const homeState = getButtonState("H");
+              const drawState = getButtonState("D");
+              const awayState = getButtonState("A");
+
+              // Button styling helper
+              const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }) => {
+                const base = "h-16 rounded-xl border text-sm font-medium transition-colors flex items-center justify-center select-none";
+                if (state.isCorrect) {
+                  return `${base} bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white !border-0 !border-none shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]`;
+                } else if (state.isCorrectResult) {
+                  return `${base} bg-emerald-600 text-white border-emerald-600`;
+                } else if (state.isWrong) {
+                  return `${base} bg-rose-100 text-rose-700 border-rose-200`;
+                } else if (state.isPicked) {
+                  return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+                } else {
+                  return `${base} bg-slate-50 text-slate-600 border-slate-200`;
+                }
+              };
+
+              return (
+                <div
+                  key={f.id}
+                  className="rounded-2xl border bg-white p-3 shadow-sm"
+                >
+                  {/* header: Home  kickoff  Away */}
+                  <div className="flex items-center px-2 pt-1 pb-3">
+                    <div className="flex items-center gap-1 flex-1 justify-end">
+                      <div className="truncate font-medium">{homeName}</div>
+                      <img 
+                        src={`/assets/badges/${(f.home_code || homeKey).toUpperCase()}.png`} 
+                        alt={homeName}
+                        className="w-5 h-5"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                    <div className="text-slate-500 text-sm px-4">
+                      {kickoff}
+                    </div>
+                    <div className="flex items-center gap-1 flex-1 justify-start">
+                      <img 
+                        src={`/assets/badges/${(f.away_code || awayKey).toUpperCase()}.png`} 
+                        alt={awayName}
+                        className="w-5 h-5"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                      <div className="truncate font-medium">{awayName}</div>
+                    </div>
+                  </div>
+
+                  {/* buttons: Home Win, Draw, Away Win */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className={getButtonClass(homeState)}>
+                      <span className={homeState.isCorrect ? "font-bold" : ""}>Home Win</span>
+                    </div>
+                    <div className={getButtonClass(drawState)}>
+                      <span className={drawState.isCorrect ? "font-bold" : ""}>Draw</span>
+                    </div>
+                    <div className={getButtonClass(awayState)}>
+                      <span className={awayState.isCorrect ? "font-bold" : ""}>Away Win</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>

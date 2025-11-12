@@ -838,20 +838,16 @@ video {
   margin-top: 2rem;
 }
 
+.mt-\[45px\]{
+  margin-top: 45px;
+}
+
 .mt-auto{
   margin-top: auto;
 }
 
-.mt-\[55px\]{
-  margin-top: 55px;
-}
-
-.mt-\[47px\]{
-  margin-top: 47px;
-}
-
-.mt-\[45px\]{
-  margin-top: 45px;
+.ml-0\.5{
+  margin-left: 0.125rem;
 }
 
 .block{
@@ -884,10 +880,6 @@ video {
 
 .hidden{
   display: none;
-}
-
-.aspect-square{
-  aspect-ratio: 1 / 1;
 }
 
 .h-0\.5{
@@ -958,6 +950,10 @@ video {
   height: 2rem;
 }
 
+.h-\[148px\]{
+  height: 148px;
+}
+
 .h-\[169px\]{
   height: 169px;
 }
@@ -966,8 +962,8 @@ video {
   height: 220px;
 }
 
-.h-\[60px\]{
-  height: 60px;
+.h-\[32px\]{
+  height: 32px;
 }
 
 .h-full{
@@ -978,12 +974,8 @@ video {
   height: 100vh;
 }
 
-.h-\[148px\]{
-  height: 148px;
-}
-
-.h-\[32px\]{
-  height: 32px;
+.h-\[74px\]{
+  height: 74px;
 }
 
 .min-h-0{
@@ -1078,20 +1070,20 @@ video {
   width: 2rem;
 }
 
-.w-\[169px\]{
-  width: 169px;
+.w-\[148px\]{
+  width: 148px;
 }
 
 .w-\[320px\]{
   width: 320px;
 }
 
-.w-\[340px\]{
-  width: 340px;
+.w-\[32px\]{
+  width: 32px;
 }
 
-.w-\[60px\]{
-  width: 60px;
+.w-\[340px\]{
+  width: 340px;
 }
 
 .w-auto{
@@ -1100,14 +1092,6 @@ video {
 
 .w-full{
   width: 100%;
-}
-
-.w-\[148px\]{
-  width: 148px;
-}
-
-.w-\[32px\]{
-  width: 32px;
 }
 
 .min-w-0{
@@ -1184,6 +1168,10 @@ video {
 
 .flex-shrink-0{
   flex-shrink: 0;
+}
+
+.grow{
+  flex-grow: 1;
 }
 
 .-translate-x-1\/2{
@@ -1378,6 +1366,10 @@ video {
 
 .gap-\[4px\]{
   gap: 4px;
+}
+
+.gap-0\.5{
+  gap: 0.125rem;
 }
 
 .space-y-1 > :not([hidden]) ~ :not([hidden]){
@@ -1632,6 +1624,16 @@ video {
 .border-yellow-300{
   --tw-border-opacity: 1;
   border-color: rgb(253 224 71 / var(--tw-border-opacity, 1));
+}
+
+.border-slate-600{
+  --tw-border-opacity: 1;
+  border-color: rgb(71 85 105 / var(--tw-border-opacity, 1));
+}
+
+.border-\[\#178f72\]{
+  --tw-border-opacity: 1;
+  border-color: rgb(23 143 114 / var(--tw-border-opacity, 1));
 }
 
 .\!bg-white{
@@ -1919,6 +1921,16 @@ video {
 .bg-yellow-100{
   --tw-bg-opacity: 1;
   background-color: rgb(254 249 195 / var(--tw-bg-opacity, 1));
+}
+
+.bg-slate-700{
+  --tw-bg-opacity: 1;
+  background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1));
+}
+
+.bg-slate-800{
+  --tw-bg-opacity: 1;
+  background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));
 }
 
 .bg-opacity-50{
@@ -2282,6 +2294,10 @@ video {
 
 .pt-8{
   padding-top: 2rem;
+}
+
+.pb-8{
+  padding-bottom: 2rem;
 }
 
 .text-left{
@@ -2693,6 +2709,10 @@ video {
   opacity: 0.8;
 }
 
+.opacity-90{
+  opacity: 0.9;
+}
+
 .shadow{
   --tw-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --tw-shadow-colored: 0 1px 3px 0 var(--tw-shadow-color), 0 1px 2px -1px var(--tw-shadow-color);
@@ -2854,6 +2874,14 @@ video {
 
 .duration-500{
   transition-duration: 500ms;
+}
+
+.duration-200{
+  transition-duration: 200ms;
+}
+
+.duration-300{
+  transition-duration: 300ms;
 }
 
 .ease-out{
@@ -3868,12 +3896,21 @@ select option {
   --tw-gradient-stops: var(--tw-gradient-from), #047857 var(--tw-gradient-via-position), var(--tw-gradient-to);
 }
 
+.hover\:via-green-600:hover{
+  --tw-gradient-to: rgb(22 163 74 / 0)  var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), #16a34a var(--tw-gradient-via-position), var(--tw-gradient-to);
+}
+
 .hover\:to-emerald-800:hover{
   --tw-gradient-to: #065f46 var(--tw-gradient-to-position);
 }
 
 .hover\:to-slate-200:hover{
   --tw-gradient-to: #e2e8f0 var(--tw-gradient-to-position);
+}
+
+.hover\:to-emerald-700:hover{
+  --tw-gradient-to: #047857 var(--tw-gradient-to-position);
 }
 
 .hover\:text-\[\#1C8376\]:hover{
@@ -4004,16 +4041,24 @@ select option {
     height: 193px;
   }
 
+  .sm\:h-10{
+    height: 2.5rem;
+  }
+
+  .sm\:h-20{
+    height: 5rem;
+  }
+
+  .sm\:h-\[92px\]{
+    height: 92px;
+  }
+
   .sm\:w-14{
     width: 3.5rem;
   }
 
   .sm\:w-16{
     width: 4rem;
-  }
-
-  .sm\:w-\[193px\]{
-    width: 193px;
   }
 
   .sm\:w-\[400px\]{
@@ -4082,6 +4127,11 @@ select option {
 
   .sm\:text-xl{
     font-size: 1.25rem;
+    line-height: 1.75rem;
+  }
+
+  .sm\:text-lg{
+    font-size: 1.125rem;
     line-height: 1.75rem;
   }
 }

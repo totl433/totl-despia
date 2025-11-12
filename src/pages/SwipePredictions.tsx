@@ -456,7 +456,7 @@ export default function SwipePredictions() {
         <div className="sticky top-0 z-40 px-4 pt-4 pb-5 bg-gradient-to-br from-slate-50 to-slate-100">
           <div className="max-w-md mx-auto">
             <div className="relative flex items-center justify-between mb-4">
-              <button onClick={()=>navigate("/predictions")} className="text-slate-600 hover:text-slate-800">✕</button>
+              <button onClick={()=>navigate("/predictions")} className="text-slate-600 hover:text-slate-800 text-3xl font-bold w-10 h-10 flex items-center justify-center">✕</button>
               <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">Gameweek {currentGw}</span>
               {viewMode === "cards" && (
                 <button

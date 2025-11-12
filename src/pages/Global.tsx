@@ -257,13 +257,11 @@ export default function GlobalLeaderboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-3xl px-4 pt-6 pb-16">
-        <div className="text-center">
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Leaderboard</h1>
-          <p className="mt-0 mb-6 text-xs text-slate-600">
-            See how you rank against every<br />TotL player in the world.
-          </p>
-        </div>
+      <div className="max-w-6xl mx-auto px-4 py-4 pb-16">
+        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Leaderboard</h2>
+        <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
+          See how you rank against every TotL player in the world.
+        </p>
 
         {/* Tabs */}
         <div className="flex justify-center mb-6">
