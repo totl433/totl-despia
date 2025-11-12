@@ -2,7 +2,7 @@
 import "./index.css";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, Link, useLocation, Navigate, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
 
 import TablesPage from "./pages/Tables";
 import LeaguePage from "./pages/League";
@@ -28,22 +28,17 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 function AppShell() {
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  
   return (
     <BrowserRouter>
-      <AppContent menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
+      <AppContent />
     </BrowserRouter>
   );
 }
 
-function AppContent({ menuOpen, setMenuOpen }: { 
-  menuOpen: boolean; 
-  setMenuOpen: (value: boolean | ((prev: boolean) => boolean)) => void; 
-}) {
+function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, showWelcome, dismissWelcome } = useAuth();
+  const { showWelcome, dismissWelcome } = useAuth();
   
   // Hide header/banner for full-screen pages
   const isFullScreenPage = false;
