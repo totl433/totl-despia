@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { getMediumName } from "../lib/teamNames";
 import WhatsAppBanner from "../components/WhatsAppBanner";
-import { getLeagueAvatarPath, getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePhotoPicsum } from "../lib/leagueAvatars";
+import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePhotoPicsum } from "../lib/leagueAvatars";
 import { resolveLeagueStartGw as getLeagueStartGw } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
 
@@ -102,7 +102,7 @@ export default function HomePage() {
     localStorage.setItem('oldSchoolMode', JSON.stringify(oldSchoolMode));
   }, [oldSchoolMode]);
   const [leagues, setLeagues] = useState<League[]>([]);
-  const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>({});
+  const [_leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>({});
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [gw, setGw] = useState<number>(1);
   const [gwSubmitted, setGwSubmitted] = useState<boolean>(false);
@@ -2172,7 +2172,6 @@ export default function HomePage() {
                   const data = leagueData[l.id];
                   
                   const members = data?.members || [];
-                  const userPosition = data?.userPosition;
                   
                   // CRITICAL DEBUG for "Forget It"
                   if (l.name?.toLowerCase().includes('forget')) {
@@ -2241,7 +2240,6 @@ export default function HomePage() {
                                             }
                                             // Fallback to alphabetical - but this shouldn't happen
                                             const alphabeticalMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
-                                            const showShinyChips = nextGwComing !== null;
                                             
                                             return alphabeticalMembers.slice(0, 8).map((member, index) => {
                                               const hasSubmitted = data?.submittedMembers?.has(member.id) ?? false;
@@ -2291,9 +2289,6 @@ export default function HomePage() {
                                             console.error(`Expected: J, JD, DG, E`);
                                             console.error(`Actual:`, orderedMembers.map(m => initials(m.name)).join(', '));
                                           }
-                                          
-                                          // Check if GW results are published but next GW isn't out yet (shiny chips time)
-                                          const showShinyChips = nextGwComing !== null;
                                           
                                           // CRITICAL: Ensure we're using the exact order from sortedMemberIds
                                           return orderedMembers.slice(0, 8).map((member, index) => {
