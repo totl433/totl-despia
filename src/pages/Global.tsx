@@ -1,5 +1,5 @@
 // src/pages/Global.tsx
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -599,10 +599,8 @@ export default function GlobalLeaderboardPage() {
                 top: 0, 
                 zIndex: 25, 
                 backgroundColor: '#f8fafc', 
-                display: 'table-header-group',
-                WebkitPosition: 'sticky',
-                WebkitTop: 0
-              }}>
+                display: 'table-header-group'
+              } as any}>
                 <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #cbd5e1' }}>
                   <th className="py-3 text-left font-normal" style={{ backgroundColor: '#f8fafc', width: '40px', paddingLeft: '1rem', paddingRight: '0.5rem', color: '#64748b' }}>#</th>
                   <th className="px-4 py-3 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#64748b' }}>Player</th>
@@ -641,12 +639,6 @@ export default function GlobalLeaderboardPage() {
                   const isTopRank = currentRank === 1;
                   
                   // Special styling for top-ranked players
-                  let highlight = "";
-                  if (isMe) {
-                    highlight = "bg-emerald-200";
-                  } else {
-                    highlight = "";
-                  }
 
                   let indicator = "";
                   let indicatorClass = "bg-gray-300"; // default (no change)
@@ -655,9 +647,6 @@ export default function GlobalLeaderboardPage() {
                   if (activeTab === "overall") {
                     const prev = prevRanks[r.user_id];
                     const curr = currRanks[r.user_id];
-                    
-                    // Check if player has played the current game week
-                    const hasPlayedCurrentGw = gwPoints.some(gp => gp.user_id === r.user_id && gp.gw === latestGw);
                     
                     if (curr && prev) {
                       if (curr < prev) {
