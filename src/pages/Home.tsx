@@ -47,8 +47,8 @@ function initials(name: string) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// Helper function to convert number to ordinal (1st, 2nd, 3rd, etc.)
-function ordinal(n: number): string {
+// Helper function to convert number to ordinal (1st, 2nd, 3rd, etc.) - currently unused
+function _ordinal(n: number): string {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
