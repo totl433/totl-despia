@@ -686,17 +686,6 @@ export default function GlobalLeaderboardPage() {
                         paddingRight: '0.5rem',
                         backgroundColor: '#f8fafc'
                       }}>
-                        {i > 0 && (
-                          <div style={{ 
-                            position: 'absolute', 
-                            top: '-1px', 
-                            left: 0, 
-                            width: '1rem', 
-                            height: '1px', 
-                            backgroundColor: '#f8fafc',
-                            zIndex: 1
-                          }} />
-                        )}
                         <span>{currentRank}{isTied ? '=' : ''}</span>
                       </td>
 
