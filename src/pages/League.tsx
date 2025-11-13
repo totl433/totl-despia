@@ -1653,6 +1653,25 @@ export default function LeaguePage() {
 
     return (
       <div className="mt-4 pt-4">
+        <style>{`
+          @keyframes flash {
+            0%, 100% {
+              background-color: rgb(209, 250, 229);
+            }
+            25% {
+              background-color: rgb(167, 243, 208);
+            }
+            50% {
+              background-color: rgb(209, 250, 229);
+            }
+            75% {
+              background-color: rgb(167, 243, 208);
+            }
+          }
+          .flash-user-row {
+            animation: flash 1.5s ease-in-out 3;
+          }
+        `}</style>
         <div className="text-slate-900 font-bold text-xl mb-4">Game Week {resGw}</div>
 
         {rows.length > 0 && (
@@ -1677,13 +1696,16 @@ export default function LeaguePage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.user_id} className="border-t border-slate-200">
-                  <td className="px-4 py-3 font-bold text-slate-900">{r.name}</td>
-                  <td className="px-4 py-3 text-center font-semibold text-[#1C8376]">{r.score}</td>
-                  {members.length >= 3 && <td className="px-4 py-3 text-center font-semibold">{r.unicorns}</td>}
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const isMe = r.user_id === user?.id;
+                return (
+                  <tr key={r.user_id} className={`border-t border-slate-200 ${isMe ? 'flash-user-row' : ''}`}>
+                    <td className="px-4 py-3 font-bold text-slate-900">{r.name}</td>
+                    <td className="px-4 py-3 text-center font-semibold text-[#1C8376]">{r.score}</td>
+                    {members.length >= 3 && <td className="px-4 py-3 text-center font-semibold">{r.unicorns}</td>}
+                  </tr>
+                );
+              })}
               {!rows.length && (
                 <tr>
                   <td className="px-4 py-6 text-slate-500 text-center" colSpan={members.length >= 3 ? 3 : 2}>

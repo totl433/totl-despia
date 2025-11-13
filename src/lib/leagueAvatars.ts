@@ -56,3 +56,35 @@ export function getLeagueAvatarPath(avatar: string | null | undefined): string {
   return `/assets/league-avatars/${avatar}`;
 }
 
+/**
+ * Get a soccer-themed photo URL for a league
+ * Uses league ID as seed to ensure consistent photos per league
+ * Uses Unsplash random images with sports collection IDs
+ */
+export function getGenericLeaguePhoto(leagueId: string, size: number = 128): string {
+  const seed = hashString(leagueId);
+  
+  // Use Unsplash collection IDs for sports/soccer photos
+  // These are curated collections on Unsplash
+  const sportsCollections = [
+    '9046579',  // Football/Soccer collection
+    '9046578',  // Sports collection
+    '9046577',  // Soccer players
+    '9046576',  // Football stadiums
+  ];
+  
+  const collectionId = sportsCollections[seed % sportsCollections.length];
+  // Use Unsplash Source with collection parameter
+  // Format: https://source.unsplash.com/collection/{collectionId}/{size}x{size}/
+  return `https://source.unsplash.com/collection/${collectionId}/${size}x${size}/?sig=${seed}`;
+}
+
+/**
+ * Get a generic photo URL using Picsum Photos (fallback)
+ * More reliable but not soccer-themed
+ */
+export function getGenericLeaguePhotoPicsum(leagueId: string, size: number = 128): string {
+  const seed = hashString(leagueId);
+  return `https://picsum.photos/seed/${seed}/${size}/${size}`;
+}
+

@@ -168,34 +168,46 @@ export default function PredictionsBanner() {
 
   // UI - Different banners based on state
   return (
-    <div className="mx-auto max-w-6xl px-4">
+    <>
       {bannerType === "predictions" ? (
-        <Link
-          to="/new-predictions"
-          className="block mt-4 rounded-lg bg-blue-600 px-4 py-3 hover:bg-blue-700 transition-colors"
-        >
-          <div className="text-center">
-            <div className="font-semibold text-white">GW{currentGw} is Live - Make your predictions</div>
-            <div className="text-white/90">
-              {deadlineText ? (
-                <>
-                  <span>Deadline: </span>
-                  <span className="font-extrabold">{deadlineText}</span>
-                </>
-              ) : (
-                "Don't miss the deadline!"
-              )}
+        <div className="mx-auto max-w-6xl px-4">
+          <Link
+            to="/new-predictions"
+            className="block mt-4 rounded-lg bg-blue-600 px-4 py-3 hover:bg-blue-700 transition-colors"
+          >
+            <div className="text-center">
+              <div className="font-semibold text-white">GW{currentGw} is Live - Make your predictions</div>
+              <div className="text-white/90">
+                {deadlineText ? (
+                  <>
+                    <span>Deadline: </span>
+                    <span className="font-extrabold">{deadlineText}</span>
+                  </>
+                ) : (
+                  "Don't miss the deadline!"
+                )}
+              </div>
             </div>
-          </div>
-        </Link>
+          </Link>
+        </div>
       ) : (
-        <div className="mt-1 rounded-lg bg-slate-100 px-4 py-2 border border-slate-200">
-          <div className="text-center">
-            <div className="font-semibold text-slate-800">GW{(currentGw || 1) + 1} Coming Soon</div>
-            <div className="text-sm text-slate-600">Fixtures will be published soon.</div>
+        <div className="w-full px-4 py-3 relative" style={{ backgroundColor: '#e1eae9' }}>
+          <div className="mx-auto max-w-6xl relative">
+            {/* Circular icon with exclamation mark - top left */}
+            <div className="absolute top-3 left-0 w-6 h-6 rounded-full bg-[#1C8376] flex items-center justify-center text-white text-[10px] font-normal">!</div>
+            
+            {/* Text content */}
+            <div className="pl-10">
+              <div className="font-bold text-slate-900 text-base">
+                GW{(currentGw || 1) + 1} Coming Soon!
+              </div>
+              <div className="text-sm text-slate-600 mt-0.5">
+                Fixtures will be published soon.
+              </div>
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

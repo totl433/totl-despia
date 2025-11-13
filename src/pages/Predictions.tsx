@@ -453,18 +453,16 @@ export default function PredictionsPage() {
   }
 
   return (
-    <div className={`max-w-2xl mx-auto px-4 py-8 ${oldSchoolMode ? 'oldschool-theme' : ''}`}>
-      {/* header */}
-      <div className="text-center">
-        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Predictions Center</h1>
-        <div className="mt-0 mb-6 text-base text-slate-500">
-          Call every game, lock in your results,<br />and climb the table.
-        </div>
+    <div className={`min-h-screen bg-slate-50 ${oldSchoolMode ? 'oldschool-theme' : ''}`}>
+      <div className="max-w-6xl mx-auto px-4 py-4">
+        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Predictions Center</h2>
+        <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
+          Call every game, lock in your results, and climb the table.
+        </p>
         <div className="text-slate-600 text-lg font-semibold mt-1">Game Week {gwOr(gw)}</div>
-      </div>
 
-      {/* status / summary */}
-      <div className="mt-3">
+        {/* status / summary */}
+        <div className="mt-3">
         {gwFinished ? (
           <div className="rounded-xl border bg-gradient-to-r from-emerald-50 to-blue-50 border-emerald-200 px-6 py-4">
             <div className="flex items-center justify-between">
@@ -478,10 +476,9 @@ export default function PredictionsPage() {
             </div>
           </div>
         ) : null}
+        </div>
 
-      </div>
-
-      {/* error banner */}
+        {/* error banner */}
       {error && (
         <div className="mt-4 rounded border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2 text-sm">
           {error}
@@ -740,7 +737,7 @@ export default function PredictionsPage() {
           </div>
         </div>
       )}
-
+      </div>
     </div>
   );
 }

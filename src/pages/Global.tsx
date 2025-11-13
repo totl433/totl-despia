@@ -1,5 +1,5 @@
 // src/pages/Global.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -19,6 +19,8 @@ type GwPointsRow = {
 export default function GlobalLeaderboardPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const userRowRef = useRef<HTMLTableRowElement>(null);
   
   const tabParam = searchParams.get("tab");
   const validTab = (tabParam === "form5" || tabParam === "form10" || tabParam === "lastgw" || tabParam === "overall") 
@@ -255,96 +257,207 @@ export default function GlobalLeaderboardPage() {
     return merged;
   }, [overall, gwPoints, latestGw]);
 
+  // Scroll to top when tab changes to ensure header is visible
+  useEffect(() => {
+    if (tableContainerRef.current) {
+      tableContainerRef.current.scrollTop = 0;
+    }
+  }, [activeTab]);
+
+  // Animate scroll to user's row when data loads - starts at top then animates down
+  useEffect(() => {
+    if (!loading && user?.id && tableContainerRef.current && userRowRef.current) {
+      // First, ensure we start at the top
+      if (tableContainerRef.current) {
+        tableContainerRef.current.scrollTop = 0;
+      }
+      
+      // Use setTimeout to ensure DOM is fully rendered
+      const timer = setTimeout(() => {
+        const container = tableContainerRef.current;
+        const row = userRowRef.current;
+        if (container && row) {
+          // Wait a moment so users can see it starts at the top, then animate
+          setTimeout(() => {
+            if (container && row) {
+              // Calculate position relative to the scrollable container
+              const rowTopRelativeToContainer = row.offsetTop;
+              const containerHeight = container.clientHeight;
+              const rowHeight = row.offsetHeight;
+              
+              // Calculate target scroll position to center the row
+              const targetScrollTop = rowTopRelativeToContainer - (containerHeight / 2) + (rowHeight / 2);
+              
+              // Enable smooth scrolling
+              container.style.scrollBehavior = 'smooth';
+              container.scrollTop = targetScrollTop;
+              
+              // Reset scroll behavior after animation completes
+              setTimeout(() => {
+                if (container) {
+                  container.style.scrollBehavior = 'auto';
+                }
+              }, 1000);
+            }
+          }, 500); // Wait 500ms before starting scroll animation
+        }
+      }, 150);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [loading, user?.id, activeTab, rows, form5Rows, form10Rows, lastGwRows]);
+
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="max-w-6xl mx-auto px-4 py-4 pb-16">
-        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Leaderboard</h2>
-        <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
-          See how you rank against every TotL player in the world.
-        </p>
+      <style>{`
+        @keyframes sparkle {
+          0%, 100% {
+            opacity: 1;
+            transform: scale(1) rotate(0deg);
+          }
+          25% {
+            opacity: 0.8;
+            transform: scale(1.1) rotate(-5deg);
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1.15) rotate(5deg);
+          }
+          75% {
+            opacity: 0.9;
+            transform: scale(1.05) rotate(-3deg);
+          }
+        }
+        .sparkle-trophy {
+          animation: sparkle 2s ease-in-out infinite;
+          filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6));
+        }
+        .sparkle-trophy svg {
+          filter: drop-shadow(0 0 2px rgba(251, 191, 36, 0.8));
+        }
+        @keyframes flash {
+          0%, 100% {
+            background-color: rgb(209, 250, 229);
+          }
+          25% {
+            background-color: rgb(167, 243, 208);
+          }
+          50% {
+            background-color: rgb(209, 250, 229);
+          }
+          75% {
+            background-color: rgb(167, 243, 208);
+          }
+        }
+        .flash-user-row {
+          animation: flash 1.5s ease-in-out 3;
+        }
+      `}</style>
+      <div className="max-w-6xl mx-auto px-4 pb-0">
+        {/* Fixed Header Section */}
+        <div className="fixed top-0 left-0 right-0 z-30 bg-slate-50 pb-4 pt-4 shadow-sm">
+          <div className="max-w-6xl mx-auto px-4">
+          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Leaderboard</h2>
+          <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
+            See how you rank against every TotL player in the world.
+          </p>
 
-        {/* Tabs */}
-        <div className="flex justify-center mb-6">
-          <div className="flex rounded-lg bg-slate-100 p-1">
-            <button
-              onClick={() => handleTabChange("lastgw")}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeTab === "lastgw"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Last GW
-            </button>
-            <button
-              onClick={() => handleTabChange("form5")}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeTab === "form5"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              5 Week
-            </button>
-            <button
-              onClick={() => handleTabChange("form10")}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeTab === "form10"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              10 Week
-            </button>
-            <button
-              onClick={() => handleTabChange("overall")}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeTab === "overall"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Overall
-            </button>
+          {/* Tabs */}
+          <div className="flex justify-center mb-6">
+            <div className="flex rounded-xl bg-slate-100 p-1.5 border border-slate-200 shadow-sm">
+              <button
+                onClick={() => handleTabChange("lastgw")}
+                className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                  activeTab === "lastgw"
+                    ? "bg-[#1C8376] text-white shadow-md"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                }`}
+              >
+                Last GW
+              </button>
+              <button
+                onClick={() => handleTabChange("form5")}
+                className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                  activeTab === "form5"
+                    ? "bg-[#1C8376] text-white shadow-md"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                }`}
+              >
+                5 Week
+              </button>
+              <button
+                onClick={() => handleTabChange("form10")}
+                className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                  activeTab === "form10"
+                    ? "bg-[#1C8376] text-white shadow-md"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                }`}
+              >
+                10 Week
+              </button>
+              <button
+                onClick={() => handleTabChange("overall")}
+                className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                  activeTab === "overall"
+                    ? "bg-[#1C8376] text-white shadow-md"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                }`}
+              >
+                Overall
+              </button>
+            </div>
+          </div>
+
+          {/* Form tab subtitles */}
+          {activeTab === "overall" && (
+            <div className="text-center mb-2">
+              <div className="text-xs text-slate-600">
+                Showing all players
+              </div>
+            </div>
+          )}
+          
+          {activeTab === "form5" && (
+            <div className="text-center mb-2">
+              {latestGw && latestGw >= 5 ? (
+                <div className="text-xs text-slate-600">
+                  Showing all players who completed GW{Math.max(1, latestGw - 4)}-{latestGw}
+                </div>
+              ) : (
+                <div className="text-sm text-amber-600 font-medium">
+                  ⚠️ Watch this space! Complete 5 GW in a row to see the 5 Week Form Leaderboard.
+                </div>
+              )}
+            </div>
+          )}
+          
+          {activeTab === "form10" && (
+            <div className="text-center mb-2">
+              {latestGw && latestGw >= 10 ? (
+                <div className="text-xs text-slate-600">
+                  Showing all players who completed GW{Math.max(1, latestGw - 9)}-{latestGw}
+                </div>
+              ) : (
+                <div className="text-sm text-amber-600 font-medium">
+                  ⚠️ Watch this space! Complete 10 GW in a row to see the 10 Week Form Leaderboard.
+                </div>
+              )}
+            </div>
+          )}
+          
+          {activeTab === "lastgw" && (
+            <div className="text-center mb-2">
+              <div className="text-xs text-slate-600">
+                Showing all players who completed GW{latestGw}
+              </div>
+            </div>
+          )}
           </div>
         </div>
 
-        {/* Form tab subtitles */}
-        {activeTab === "form5" && (
-          <div className="text-center mb-6">
-            {latestGw && latestGw >= 5 ? (
-              <div className="text-xs text-slate-600">
-                Showing all players who have completed<br className="sm:hidden" /> the last 5 game weeks<br className="sm:hidden" /> (GW{Math.max(1, latestGw - 4)}-{latestGw})
-              </div>
-            ) : (
-              <div className="text-sm text-amber-600 font-medium">
-                ⚠️ Watch this space! Complete 5 GW<br className="sm:hidden" /> in a row to see the 5 Week Form Leaderboard.
-              </div>
-            )}
-          </div>
-        )}
-        
-        {activeTab === "form10" && (
-          <div className="text-center mb-6">
-            {latestGw && latestGw >= 10 ? (
-              <div className="text-xs text-slate-600">
-                Showing all players who have completed<br className="sm:hidden" /> the last 10 game weeks<br className="sm:hidden" /> (GW{Math.max(1, latestGw - 9)}-{latestGw})
-              </div>
-            ) : (
-              <div className="text-sm text-amber-600 font-medium">
-                ⚠️ Watch this space! Complete 10 GW<br className="sm:hidden" /> in a row to see the 10 Week Form Leaderboard.
-              </div>
-            )}
-          </div>
-        )}
-        
-        {activeTab === "lastgw" && (
-          <div className="text-center mb-6">
-            <div className="text-xs text-slate-600">
-              Showing all players who completed GW{latestGw}
-            </div>
-          </div>
-        )}
+        {/* Spacer to account for fixed header */}
+        <div style={{ height: '187px' }} className="sm:hidden" />
+        <div style={{ height: '147px' }} className="hidden sm:block" />
 
         {err && (
           <div className="mb-6 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -373,23 +486,34 @@ export default function GlobalLeaderboardPage() {
             No leaderboard data yet.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <table className="w-full text-sm text-slate-800">
-              <thead className="bg-slate-100">
-                <tr>
-                  <th className="px-1 py-3 text-left w-6 font-semibold">#</th>
-                  <th className="px-4 py-3 text-left font-semibold text-xs">Player</th>
+          <div 
+            ref={tableContainerRef}
+            className="overflow-y-auto -mx-4 sm:mx-0 rounded-none sm:rounded-2xl border-x-0 sm:border-x border-t border-b border-slate-200 bg-white shadow-sm"
+            style={{ maxHeight: 'calc(100vh - 250px)', minHeight: '400px' }}
+          >
+            <table className="w-full text-sm text-slate-800 border-collapse" style={{ tableLayout: 'fixed' }}>
+              <thead className="sticky top-0" style={{ position: 'sticky', top: 0, zIndex: 25, backgroundColor: '#f1f5f9', display: 'table-header-group' }}>
+                <tr style={{ backgroundColor: '#f1f5f9' }}>
+                  <th className="px-1 py-3 text-left font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '40px' }}>#</th>
+                  <th className="px-4 py-3 text-left font-semibold text-xs border-b border-slate-200" style={{ backgroundColor: '#f1f5f9' }}>Player</th>
                   {activeTab === "overall" && (
                     <>
-                      <th className="px-4 py-3 text-center font-semibold">GW{latestGw || '?'}</th>
-                      <th className="px-4 py-3 text-center font-semibold">OCP</th>
+                      <th className="px-4 py-3 text-center font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '100px' }}></th>
+                      <th className="px-1 py-3 text-center font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '50px' }}>GW{latestGw || '?'}</th>
+                      <th className="px-4 py-3 text-center font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '100px' }}>OCP</th>
                     </>
                   )}
                   {(activeTab === "form5" || activeTab === "form10") && (
-                    <th className="px-4 py-3 text-center font-semibold">Form Points</th>
+                    <>
+                      <th className="px-4 py-3 text-center font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '100px' }}></th>
+                      <th className="px-4 py-3 text-center font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '100px' }}>PTS</th>
+                    </>
                   )}
                   {activeTab === "lastgw" && (
-                    <th className="px-4 py-3 text-center font-semibold">GW{latestGw}</th>
+                    <>
+                      <th className="px-4 py-3 text-center font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '100px' }}></th>
+                      <th className="px-4 py-3 text-center font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '100px' }}>GW{latestGw || '?'}</th>
+                    </>
                   )}
                 </tr>
               </thead>
@@ -409,11 +533,7 @@ export default function GlobalLeaderboardPage() {
                   // Special styling for top-ranked players
                   let zebra = "";
                   let highlight = "";
-                  if (isTopRank) {
-                    // Top rank gets special gradient background
-                    zebra = "bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50";
-                    highlight = "";
-                  } else if (isMe) {
+                  if (isMe) {
                     zebra = "";
                     highlight = "bg-emerald-200";
                   } else {
@@ -457,35 +577,41 @@ export default function GlobalLeaderboardPage() {
                   }
 
                   return (
-                    <tr key={r.user_id} className={`border-t border-slate-200 ${zebra} ${highlight} ${isTopRank ? 'relative' : ''}`}>
+                    <tr 
+                      key={r.user_id} 
+                      ref={isMe ? userRowRef : null}
+                      className={`border-t border-slate-200 ${zebra} ${highlight} ${isMe ? 'flash-user-row' : ''}`}
+                    >
                       {/* Rank number only */}
-                      <td className={`px-2 py-3 text-left tabular-nums whitespace-nowrap ${isTopRank ? 'relative bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]' : ''}`}>
-                        {isTopRank ? (
-                          <span className="flex items-center gap-1 relative z-10">
-                            <span className="text-yellow-600 font-bold text-xl">🏆</span>
-                            <span className="font-bold text-yellow-700">{currentRank}{isTied ? '=' : ''}</span>
-                          </span>
-                        ) : (
-                          <span>{currentRank}{isTied ? '=' : ''}</span>
-                        )}
+                      <td className="px-2 py-3 text-left tabular-nums whitespace-nowrap">
+                        <span>{currentRank}{isTied ? '=' : ''}</span>
                       </td>
 
                       {/* Player name with color-coded indicator */}
-                      <td className={`px-4 py-3 ${isTopRank ? 'relative bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]' : ''}`}>
-                        <div className={isTopRank ? 'relative z-10' : ''}>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
                           {(indicator || indicatorClass) && activeTab === "overall" && (
                             <span
-                              className={`mr-2 inline-flex items-center justify-center w-4 h-4 rounded-full text-xs font-bold ${indicatorClass} align-middle`}
+                              className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-xs font-bold ${indicatorClass} align-middle flex-shrink-0`}
                               aria-hidden
                             >
                               {indicator}
                             </span>
                           )}
-                          <span className={`align-middle font-bold text-xs ${isTopRank ? 'text-yellow-800 font-extrabold' : ''}`}>
+                          {isTopRank && (
+                            <span className="inline-flex items-center sparkle-trophy flex-shrink-0">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="w-4 h-4 text-yellow-500">
+                                <g>
+                                  <path fill="currentColor" d="M16 3c1.1046 0 2 0.89543 2 2h2c1.1046 0 2 0.89543 2 2v1c0 2.695 -2.1323 4.89 -4.8018 4.9941 -0.8777 1.5207 -2.4019 2.6195 -4.1982 2.9209V19h3c0.5523 0 1 0.4477 1 1s-0.4477 1 -1 1H8c-0.55228 0 -1 -0.4477 -1 -1s0.44772 -1 1 -1h3v-3.085c-1.7965 -0.3015 -3.32148 -1.4 -4.19922 -2.9209C4.13175 12.8895 2 10.6947 2 8V7c0 -1.10457 0.89543 -2 2 -2h2c0 -1.10457 0.89543 -2 2 -2zm-8 7c0 2.2091 1.79086 4 4 4 2.2091 0 4 -1.7909 4 -4V5H8zM4 8c0 1.32848 0.86419 2.4532 2.06055 2.8477C6.02137 10.5707 6 10.2878 6 10V7H4zm14 2c0 0.2878 -0.0223 0.5706 -0.0615 0.8477C19.1353 10.4535 20 9.32881 20 8V7h-2z" strokeWidth="1"></path>
+                                </g>
+                              </svg>
+                            </span>
+                          )}
+                          <span className="font-bold text-sm text-slate-900 whitespace-nowrap">
                             {r.name}
                           </span>
                           {isMe && (
-                            <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                            <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 flex-shrink-0">
                               you
                             </span>
                           )}
@@ -495,27 +621,34 @@ export default function GlobalLeaderboardPage() {
                       {/* Overall tab columns */}
                       {activeTab === "overall" && (
                         <>
-                          <td className={`px-4 py-3 text-center tabular-nums font-bold ${isTopRank ? 'text-yellow-700 relative bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]' : ''}`}>
-                            <span className={isTopRank ? 'relative z-10' : ''}>{'this_gw' in r ? r.this_gw : 0}</span>
+                          <td className="px-4 py-3 text-center tabular-nums font-bold"></td>
+                          <td className="px-1 py-3 text-center tabular-nums font-bold">
+                            {'this_gw' in r ? r.this_gw : 0}
                           </td>
-                          <td className={`px-4 py-3 text-center font-bold ${isTopRank ? 'text-yellow-700 relative bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]' : ''}`}>
-                            <span className={isTopRank ? 'relative z-10' : ''}>{'ocp' in r ? r.ocp : 0}</span>
+                          <td className="px-4 py-3 text-center tabular-nums font-bold">
+                            {'ocp' in r ? r.ocp : 0}
                           </td>
                         </>
                       )}
 
                       {/* Form tab columns (both 5 Week and 10 Week) */}
                       {(activeTab === "form5" || activeTab === "form10") && (
-                        <td className={`px-4 py-3 text-center font-bold ${isTopRank ? 'text-yellow-700 relative bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]' : ''}`}>
-                          <span className={isTopRank ? 'relative z-10' : ''}>{'formPoints' in r ? r.formPoints : 0}</span>
-                        </td>
+                        <>
+                          <td className="px-4 py-3 text-center tabular-nums font-bold"></td>
+                          <td className="px-4 py-3 text-center tabular-nums font-bold">
+                            {'formPoints' in r ? r.formPoints : 0}
+                          </td>
+                        </>
                       )}
                       
-                      {/* Last GW tab column */}
+                      {/* Last GW tab columns */}
                       {activeTab === "lastgw" && (
-                        <td className={`px-4 py-3 text-center font-bold tabular-nums ${isTopRank ? 'text-yellow-700 relative bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]' : ''}`}>
-                          <span className={isTopRank ? 'relative z-10' : ''}>{'points' in r ? r.points : 0}</span>
-                        </td>
+                        <>
+                          <td className="px-4 py-3 text-center tabular-nums font-bold"></td>
+                          <td className="px-4 py-3 text-center tabular-nums font-bold">
+                            {'points' in r ? r.points : 0}
+                          </td>
+                        </>
                       )}
                     </tr>
                   );

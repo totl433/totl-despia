@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { getMediumName } from "../lib/teamNames";
 import WhatsAppBanner from "../components/WhatsAppBanner";
-import { getLeagueAvatarPath, getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
+import { getLeagueAvatarPath, getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePhotoPicsum } from "../lib/leagueAvatars";
 import { resolveLeagueStartGw as getLeagueStartGw } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
 
@@ -1352,9 +1352,14 @@ export default function HomePage() {
   }> = ({ title, subtitle, headerRight, className, boxed = true, icon: _icon, children }) => (
     <section className={className ?? ""}>
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
-          {title}
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-medium text-slate-500 uppercase tracking-wide">
+            {title}
+          </h2>
+          <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center">
+            <span className="text-[10px] text-slate-500 font-bold">i</span>
+          </div>
+        </div>
         {headerRight && (
           <div>
             {headerRight}
@@ -2051,15 +2056,20 @@ export default function HomePage() {
                   </div>
                 )}
               </div>
-        </div>
+            </div>
       </Section>
 
       {/* Mini Leagues section */}
       <section className="mt-6">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
-            Mini Leagues
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-medium text-slate-500 uppercase tracking-wide">
+              Mini Leagues
+            </h2>
+            <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center">
+              <span className="text-[10px] text-slate-500 font-bold">i</span>
+            </div>
+          </div>
           {leagues.length > 4 && (
             <Link
               to="/tables"
@@ -2149,123 +2159,77 @@ export default function HomePage() {
                     return 0; // Keep original order for leagues with same unread status
                   });
                   
-                  return Array.from({ length: Math.ceil(sortedLeagues.length / 3) }).map((_, colIdx) => {
-                    const startIdx = colIdx * 3;
-                    const columnLeagues = sortedLeagues.slice(startIdx, startIdx + 3);
+                  // Group into batches of 3
+                  return Array.from({ length: Math.ceil(sortedLeagues.length / 3) }).map((_, batchIdx) => {
+                    const startIdx = batchIdx * 3;
+                    const batchLeagues = sortedLeagues.slice(startIdx, startIdx + 3);
+                    
                     return (
-                      <div key={colIdx} className="flex flex-col gap-2">
-                        {columnLeagues.map((l) => {
-                        const unread = unreadByLeague?.[l.id] ?? 0;
-                        const badge = unread > 0 ? Math.min(unread, 99) : 0;
-                        const data = leagueData[l.id];
-                        
-                        const members = data?.members || [];
-                        const userPosition = data?.userPosition;
-                        
-                        // CRITICAL DEBUG for "Forget It"
-                        if (l.name?.toLowerCase().includes('forget')) {
-                          console.error(`[${l.name}] === RENDERING ===`);
-                          console.error(`League ID:`, l.id);
-                          console.error(`hasData:`, !!data);
-                          console.error(`data?.sortedMemberIds:`, data?.sortedMemberIds);
-                          console.error(`members count:`, members.length);
-                          console.error(`All leagueData keys:`, Object.keys(leagueData || {}));
-                        }
-                        
-                        return (
-                          <div key={l.id} className="rounded-xl border bg-white overflow-hidden shadow-sm w-[320px]" style={{ borderRadius: '12px' }}>
+                      <div key={batchIdx} className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm w-[320px]">
+                        {batchLeagues.map((l, index) => {
+                  const unread = unreadByLeague?.[l.id] ?? 0;
+                  const badge = unread > 0 ? Math.min(unread, 99) : 0;
+                  const data = leagueData[l.id];
+                  
+                  const members = data?.members || [];
+                  const userPosition = data?.userPosition;
+                  
+                  // CRITICAL DEBUG for "Forget It"
+                  if (l.name?.toLowerCase().includes('forget')) {
+                    console.error(`[${l.name}] === RENDERING ===`);
+                    console.error(`League ID:`, l.id);
+                    console.error(`hasData:`, !!data);
+                    console.error(`data?.sortedMemberIds:`, data?.sortedMemberIds);
+                    console.error(`members count:`, members.length);
+                    console.error(`All leagueData keys:`, Object.keys(leagueData || {}));
+                  }
+                  
+                          return (
+                            <div key={l.id} className={index < batchLeagues.length - 1 ? 'relative' : ''}>
+                              {index < batchLeagues.length - 1 && (
+                                <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-10" />
+                              )}
                               <Link
                                 to={`/league/${l.code}`}
-                                className="block p-4 !bg-white no-underline hover:text-inherit shadow-md"
+                                className="block p-4 !bg-white no-underline hover:text-inherit relative z-0"
                               >
-                                <div className="flex items-start gap-3">
+                                <div className="flex items-start gap-3 relative">
                                   {/* League Avatar Badge */}
-                                  <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center overflow-hidden">
+                                  <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center overflow-hidden bg-slate-100">
                                     <img 
-                                      src={getLeagueAvatarPath(l.avatar)} 
+                                      src={getGenericLeaguePhoto(l.id, 96)} 
                                       alt={`${l.name} avatar`}
                                       className="w-full h-full object-cover"
                                       onError={(e) => {
-                                        // Fallback to calendar icon if image fails to load
+                                        // Fallback to Picsum Photos if Unsplash fails
                                         const target = e.target as HTMLImageElement;
-                                        target.style.display = 'none';
-                                        const parent = target.parentElement;
-                                        if (parent && !parent.querySelector('svg')) {
-                                          parent.innerHTML = `
-                                            <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                            </svg>
-                                          `;
+                                        const fallbackSrc = getGenericLeaguePhotoPicsum(l.id, 96);
+                                        if (target.src !== fallbackSrc) {
+                                          target.src = fallbackSrc;
+                                        } else {
+                                          // If Picsum also fails, show calendar icon
+                                          target.style.display = 'none';
+                                          const parent = target.parentElement;
+                                          if (parent && !parent.querySelector('svg')) {
+                                            parent.innerHTML = `
+                                              <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                              </svg>
+                                            `;
+                                          }
                                         }
                                       }}
                                     />
                                   </div>
                                   
-                                  <div className="flex-1 min-w-0">
+                                  <div className="flex-1 min-w-0 h-12 flex flex-col justify-between">
                                     {/* League Name */}
-                                    <div className="text-base font-semibold text-slate-900 truncate">
+                                    <div className="text-base font-semibold text-slate-900 truncate -mt-0.5">
                                       {l.name}
                                     </div>
                                     
-                                    {/* Submission Status */}
-                                    {leagueSubmissions[l.id] && (
-                                      <div className="text-xs font-normal text-slate-600 mt-0.5 mb-4">
-                                        {leagueSubmissions[l.id].allSubmitted ? (
-                                          <span className="text-[#1C8376]">All Submitted</span>
-                                        ) : (
-                                          <span>{leagueSubmissions[l.id].submittedCount} submitted</span>
-                                        )}
-                                      </div>
-                                    )}
-                                    
-                                    {/* Member Info Row */}
-                                    <div className="flex items-center gap-3">
-                                      {/* Member Count */}
-                                      <div className="flex items-center gap-1">
-                                        <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                          <g clipPath="url(#clip0_4045_135263)">
-                                            <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-                                            <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-                                            <path d="M12.3334 6.33333C12.3334 7.622 11.2887 8.66667 10.0001 8.66667C8.71142 8.66667 7.66675 7.622 7.66675 6.33333C7.66675 5.04467 8.71142 4 10.0001 4C11.2887 4 12.3334 5.04467 12.3334 6.33333Z" stroke="currentColor" strokeWidth="1.33333"/>
-                                            <path d="M7.33325 2.92025C6.94237 2.36557 6.27397 2 5.51507 2C4.31009 2 3.33325 2.92165 3.33325 4.05857C3.33325 4.95488 3.94038 5.7174 4.7878 6" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round"/>
-                                          </g>
-                                          <defs>
-                                            <clipPath id="clip0_4045_135263">
-                                              <rect width="16" height="16" fill="white"/>
-                                            </clipPath>
-                                          </defs>
-                                        </svg>
-                                        <span className="text-sm font-semibold text-slate-900">{members.length}</span>
-                                      </div>
-                                      
-                                      {/* User Position - ML Ranking */}
-                                      {userPosition !== null && userPosition !== undefined ? (
-                                        <div className="flex items-center gap-1">
-                                          <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                          </svg>
-                                          <span className="text-sm font-semibold text-slate-900">{ordinal(userPosition)}</span>
-                                          {data?.positionChange === 'up' && (
-                                            <span className="text-green-600 text-xs">▲</span>
-                                          )}
-                                          {data?.positionChange === 'down' && (
-                                            <span className="text-red-600 text-xs">▼</span>
-                                          )}
-                                          {data?.positionChange === 'same' && (
-                                            <span className="text-slate-400 text-xs">—</span>
-                                          )}
-                                        </div>
-                                      ) : (
-                                        <div className="flex items-center gap-1">
-                                          <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                          </svg>
-                                          <span className="text-sm font-semibold text-slate-400">—</span>
-                                        </div>
-                                      )}
-                                      
-                                      {/* Member Initials - ordered by ML table position (1st to last) */}
-                                      <div className="flex items-center flex-1 overflow-hidden">
+                                    {/* Player Chips - ordered by ML table position (1st to last) */}
+                                    <div className="flex items-center overflow-hidden">
                                         {(() => {
                                           // CRITICAL: Use ML table order - MUST use sortedMemberIds from data
                                           const orderedMemberIds = data?.sortedMemberIds;
@@ -2277,27 +2241,38 @@ export default function HomePage() {
                                             }
                                             // Fallback to alphabetical - but this shouldn't happen
                                             const alphabeticalMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
+                                            const showShinyChips = nextGwComing !== null;
+                                            
                                             return alphabeticalMembers.slice(0, 8).map((member, index) => {
                                               const hasSubmitted = data?.submittedMembers?.has(member.id) ?? false;
                                               const isLatestWinner = data?.latestGwWinners?.has(member.id) ?? false;
+                                              
+                                              // Determine chip style
+                                              let chipClassName = 'rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
+                                              let chipStyle: React.CSSProperties = { marginLeft: index > 0 ? '-2px' : '0' };
+                                              
+                                              if (isLatestWinner) {
+                                                // Shiny chip for last GW winner
+                                                chipClassName += ' bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 font-semibold relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]';
+                                              } else if (hasSubmitted) {
+                                                // Green = picked
+                                                chipStyle.backgroundColor = '#10b981'; // emerald-500
+                                                chipStyle.color = '#ffffff';
+                                              } else {
+                                                // Grey = not picked
+                                                chipStyle.backgroundColor = '#f1f5f9'; // slate-100
+                                                chipStyle.color = '#64748b'; // slate-500
+                                              }
+                                              
                                               return (
-                                          <div
-                                            key={member.id}
-                                                  className={`rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6 ${isLatestWinner ? 'bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 ring-2 ring-yellow-300/60 font-semibold' : ''}`}
-                                            style={
-                                              isLatestWinner
-                                                ? { marginLeft: index > 0 ? '-2px' : '0' }
-                                                : { 
-                                              marginLeft: index > 0 ? '-2px' : '0', 
-                                                    backgroundColor: hasSubmitted ? '#E5E5EA' : '#F2F2F7',
-                                                    border: hasSubmitted ? '0.5px solid #C7C7CC' : '0.5px solid #D9D9D9',
-                                                    color: hasSubmitted ? '#8E8E93' : '#ADADB1'
-                                                  }
-                                            }
-                                            title={member.name}
-                                          >
-                                            {initials(member.name)}
-                                          </div>
+                                                <div
+                                                  key={member.id}
+                                                  className={chipClassName}
+                                                  style={chipStyle}
+                                                  title={member.name}
+                                                >
+                                                  {initials(member.name)}
+                                                </div>
                                               );
                                             });
                                           }
@@ -2317,26 +2292,37 @@ export default function HomePage() {
                                             console.error(`Actual:`, orderedMembers.map(m => initials(m.name)).join(', '));
                                           }
                                           
+                                          // Check if GW results are published but next GW isn't out yet (shiny chips time)
+                                          const showShinyChips = nextGwComing !== null;
+                                          
                                           // CRITICAL: Ensure we're using the exact order from sortedMemberIds
                                           return orderedMembers.slice(0, 8).map((member, index) => {
                                             const hasSubmitted = data?.submittedMembers?.has(member.id) ?? false;
                                             const isLatestWinner = data?.latestGwWinners?.has(member.id) ?? false;
-                                            const position = orderedMemberIds.indexOf(member.id) + 1;
+                                            
+                                            // Determine chip style
+                                            let chipClassName = 'rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
+                                            let chipStyle: React.CSSProperties = { marginLeft: index > 0 ? '-2px' : '0' };
+                                            
+                                            if (isLatestWinner) {
+                                              // Shiny chip for last GW winner
+                                              chipClassName += ' bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 font-semibold relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]';
+                                            } else if (hasSubmitted) {
+                                              // Green = picked
+                                              chipStyle.backgroundColor = '#10b981'; // emerald-500
+                                              chipStyle.color = '#ffffff';
+                                            } else {
+                                              // Grey = not picked
+                                              chipStyle.backgroundColor = '#f1f5f9'; // slate-100
+                                              chipStyle.color = '#64748b'; // slate-500
+                                            }
+                                            
                                             return (
                                               <div
                                                 key={member.id}
-                                                className={`rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6 ${isLatestWinner ? 'bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 ring-2 ring-yellow-300/60 font-semibold' : ''}`}
-                                            style={
-                                                  isLatestWinner
-                                                    ? { marginLeft: index > 0 ? '-2px' : '0' }
-                                                    : { 
-                                                  marginLeft: index > 0 ? '-2px' : '0', 
-                                                  backgroundColor: hasSubmitted ? '#E5E5EA' : '#F2F2F7',
-                                                  border: hasSubmitted ? '0.5px solid #C7C7CC' : '0.5px solid #D9D9D9',
-                                                  color: hasSubmitted ? '#8E8E93' : '#ADADB1'
-                                                }
-                                                }
-                                                title={`${member.name} (${position}${position === 1 ? 'st' : position === 2 ? 'nd' : position === 3 ? 'rd' : 'th'}${hasSubmitted ? ', Submitted' : ''})`}
+                                                className={chipClassName}
+                                                style={chipStyle}
+                                                title={member.name}
                                               >
                                                 {initials(member.name)}
                                               </div>
@@ -2353,30 +2339,28 @@ export default function HomePage() {
                                                 marginLeft: totalMembers > 1 ? '-2px' : '0', 
                                                 width: '24px', 
                                                 height: '24px',
-                                              backgroundColor: '#F2F2F7',
-                                              border: '0.5px solid #D9D9D9',
-                                              color: '#ADADB1'
-                                            }}
-                                          >
+                                                backgroundColor: '#f1f5f9', // slate-100
+                                                color: '#64748b' // slate-500
+                                              }}
+                                            >
                                               +{totalMembers - 8}
                                           </div>
                                           );
                                         })()}
-                                      </div>
                                     </div>
                                   </div>
-                                  
-                                  {/* View Button and Badge */}
-                                  <div className="flex-shrink-0 flex flex-col items-end gap-1">
-                                    {badge > 0 && (
-                                      <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-[#1C8376] text-white text-xs font-bold">
-                                        {badge}
-                                      </span>
-                                    )}
-                                    <div className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-md hover:bg-slate-200 transition-colors hidden">
-                                      View
-                                    </div>
-                                  </div>
+                                </div>
+                                
+                                {/* Unread Badge and Arrow - Top Right */}
+                                <div className="absolute top-4 right-4 flex items-center gap-1.5 z-10">
+                                  {badge > 0 && (
+                                    <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-[#1C8376] text-white text-xs font-bold">
+                                      {badge}
+                                    </span>
+                                  )}
+                                  <svg className="w-5 h-5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                  </svg>
                                 </div>
                               </Link>
                             </div>
@@ -2395,9 +2379,14 @@ export default function HomePage() {
       {/* Games (first GW) */}
       <section className="mt-[45px]">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
-            Game Week {gw}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-medium text-slate-500 uppercase tracking-wide">
+              Games
+            </h2>
+            <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center">
+              <span className="text-[10px] text-slate-500 font-bold">i</span>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             {gwScore !== null && (
               <button
@@ -2429,103 +2418,107 @@ export default function HomePage() {
         {fixtures.length === 0 ? (
           <div className="p-4 text-slate-500">No fixtures yet.</div>
         ) : (
-          <div className="mt-6 space-y-4">
-            {fixtures.map((f) => {
-              const pick = picksMap[f.fixture_index];
-              const result = resultsMap[f.fixture_index];
-              const homeKey = f.home_code || f.home_name || f.home_team || "";
-              const awayKey = f.away_code || f.away_name || f.away_team || "";
+          <div className="mt-6">
+            <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">
+              {fixtures.map((f, index) => {
+                const pick = picksMap[f.fixture_index];
+                const result = resultsMap[f.fixture_index];
+                const homeKey = f.home_code || f.home_name || f.home_team || "";
+                const awayKey = f.away_code || f.away_name || f.away_team || "";
 
-              const homeName = getMediumName(homeKey);
-              const awayName = getMediumName(awayKey);
+                const homeName = getMediumName(homeKey);
+                const awayName = getMediumName(awayKey);
 
-              const kickoff = f.kickoff_time
-                ? (() => {
-                    const d = new Date(f.kickoff_time);
-                    const hh = String(d.getUTCHours()).padStart(2, '0');
-                    const mm = String(d.getUTCMinutes()).padStart(2, '0');
-                    return `${hh}:${mm}`;
-                  })()
-                : "—";
+                const kickoff = f.kickoff_time
+                  ? (() => {
+                      const d = new Date(f.kickoff_time);
+                      const hh = String(d.getUTCHours()).padStart(2, '0');
+                      const mm = String(d.getUTCMinutes()).padStart(2, '0');
+                      return `${hh}:${mm}`;
+                    })()
+                  : "—";
 
-              // Determine button states
-              const getButtonState = (side: "H" | "D" | "A") => {
-                const isPicked = pick === side;
-                const isCorrectResult = result === side;
-                const isCorrect = isPicked && isCorrectResult;
-                const isWrong = isPicked && result && result !== side;
-                return { isPicked, isCorrectResult, isCorrect, isWrong };
-              };
+                // Determine button states
+                const getButtonState = (side: "H" | "D" | "A") => {
+                  const isPicked = pick === side;
+                  const isCorrectResult = result === side;
+                  const isCorrect = isPicked && isCorrectResult;
+                  const isWrong = isPicked && result && result !== side;
+                  return { isPicked, isCorrectResult, isCorrect, isWrong };
+                };
 
-              const homeState = getButtonState("H");
-              const drawState = getButtonState("D");
-              const awayState = getButtonState("A");
+                const homeState = getButtonState("H");
+                const drawState = getButtonState("D");
+                const awayState = getButtonState("A");
 
-              // Button styling helper
-              const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }) => {
-                const base = "h-16 rounded-xl border text-sm font-medium transition-colors flex items-center justify-center select-none";
-                if (state.isCorrect) {
-                  return `${base} bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white !border-0 !border-none shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]`;
-                } else if (state.isCorrectResult) {
-                  return `${base} bg-emerald-600 text-white border-emerald-600`;
-                } else if (state.isWrong) {
-                  return `${base} bg-rose-100 text-rose-700 border-rose-200`;
-                } else if (state.isPicked) {
-                  return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
-                } else {
-                  return `${base} bg-slate-50 text-slate-600 border-slate-200`;
-                }
-              };
+                // Button styling helper
+                const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }) => {
+                  const base = "h-16 rounded-xl border text-sm font-medium transition-colors flex items-center justify-center select-none";
+                  if (state.isCorrect) {
+                    return `${base} bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white !border-0 !border-none shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]`;
+                  } else if (state.isCorrectResult) {
+                    return `${base} bg-emerald-600 text-white border-emerald-600`;
+                  } else if (state.isWrong) {
+                    return `${base} bg-rose-100 text-rose-700 border-rose-200`;
+                  } else if (state.isPicked) {
+                    return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+                  } else {
+                    return `${base} bg-slate-50 text-slate-600 border-slate-200`;
+                  }
+                };
 
-              return (
-                <div
-                  key={f.id}
-                  className="rounded-2xl border bg-white p-3 shadow-sm"
-                >
-                  {/* header: Home  kickoff  Away */}
-                  <div className="flex items-center px-2 pt-1 pb-3">
-                    <div className="flex items-center gap-1 flex-1 justify-end">
-                      <div className="truncate font-medium">{homeName}</div>
-                      <img 
-                        src={`/assets/badges/${(f.home_code || homeKey).toUpperCase()}.png`} 
-                        alt={homeName}
-                        className="w-5 h-5"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                        }}
-                      />
-                    </div>
-                    <div className="text-slate-500 text-sm px-4">
-                      {kickoff}
-                    </div>
-                    <div className="flex items-center gap-1 flex-1 justify-start">
-                      <img 
-                        src={`/assets/badges/${(f.away_code || awayKey).toUpperCase()}.png`} 
-                        alt={awayName}
-                        className="w-5 h-5"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                        }}
-                      />
-                      <div className="truncate font-medium">{awayName}</div>
+                return (
+                  <div key={f.id} className={index < fixtures.length - 1 ? 'relative' : ''}>
+                    {index < fixtures.length - 1 && (
+                      <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-10" />
+                    )}
+                    <div className="p-4 !bg-white relative z-0">
+                      {/* header: Home  kickoff  Away */}
+                      <div className="flex items-center px-2 pt-1 pb-3">
+                        <div className="flex items-center gap-1 flex-1 justify-end">
+                          <div className="truncate font-medium">{homeName}</div>
+                          <img 
+                            src={`/assets/badges/${(f.home_code || homeKey).toUpperCase()}.png`} 
+                            alt={homeName}
+                            className="w-5 h-5"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        </div>
+                        <div className="text-slate-500 text-sm px-4">
+                          {kickoff}
+                        </div>
+                        <div className="flex items-center gap-1 flex-1 justify-start">
+                          <img 
+                            src={`/assets/badges/${(f.away_code || awayKey).toUpperCase()}.png`} 
+                            alt={awayName}
+                            className="w-5 h-5"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                          <div className="truncate font-medium">{awayName}</div>
+                        </div>
+                      </div>
+
+                      {/* buttons: Home Win, Draw, Away Win */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className={getButtonClass(homeState)}>
+                          <span className={homeState.isCorrect ? "font-bold" : ""}>Home Win</span>
+                        </div>
+                        <div className={getButtonClass(drawState)}>
+                          <span className={drawState.isCorrect ? "font-bold" : ""}>Draw</span>
+                        </div>
+                        <div className={getButtonClass(awayState)}>
+                          <span className={awayState.isCorrect ? "font-bold" : ""}>Away Win</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-
-                  {/* buttons: Home Win, Draw, Away Win */}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className={getButtonClass(homeState)}>
-                      <span className={homeState.isCorrect ? "font-bold" : ""}>Home Win</span>
-                    </div>
-                    <div className={getButtonClass(drawState)}>
-                      <span className={drawState.isCorrect ? "font-bold" : ""}>Draw</span>
-                    </div>
-                    <div className={getButtonClass(awayState)}>
-                      <span className={awayState.isCorrect ? "font-bold" : ""}>Away Win</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
       </section>
