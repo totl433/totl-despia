@@ -1816,28 +1816,13 @@ export default function HomePage() {
                     </div>
                     <div className="mt-auto">
                       <div className="text-xs text-slate-500 mb-2">GAME WEEK {lastGwRank?.gw ?? '—'}</div>
-                      <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1">
-                        <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <g clipPath="url(#clip0_4045_135263)">
-                    <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M12.3334 6.33333C12.3334 7.622 11.2887 8.66667 10.0001 8.66667C8.71142 8.66667 7.66675 7.622 7.66675 6.33333C7.66675 5.04467 8.71142 4 10.0001 4C11.2887 4 12.3334 5.04467 12.3334 6.33333Z" stroke="currentColor" strokeWidth="1.33333"/>
-                    <path d="M7.33325 2.92025C6.94237 2.36557 6.27397 2 5.51507 2C4.31009 2 3.33325 2.92165 3.33325 4.05857C3.33325 4.95488 3.94038 5.7174 4.7878 6" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round"/>
-                  </g>
-                  <defs>
-                    <clipPath id="clip0_4045_135263">
-                      <rect width="16" height="16" fill="white"/>
-                    </clipPath>
-                  </defs>
-                </svg>
-                        <span className="text-sm font-semibold text-slate-900">{lastGwRank?.total ?? "—"}</span>
+                        <span className="text-xs font-semibold text-slate-900">
+                          {lastGwRank && lastGwRank.total > 0 
+                            ? `TOP ${Math.round((lastGwRank.rank / lastGwRank.total) * 100)}%`
+                            : "—"}
+                        </span>
                       </div>
-                <div className="flex items-center gap-1">
-                        <span className="text-green-600 text-xs">▲</span>
-                        <span className="text-sm font-semibold text-slate-900">{lastGwRank ? ordinal(lastGwRank.rank) : "—"}</span>
-                </div>
-              </div>
                     </div>
                   </div>
                 </Link>
@@ -1853,28 +1838,13 @@ export default function HomePage() {
                     </div>
                     <div className="mt-auto">
                       <div className="text-xs text-slate-500 mb-2">5-WEEK FORM</div>
-                      <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1">
-                        <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <g clipPath="url(#clip0_4045_135263)">
-                            <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M12.3334 6.33333C12.3334 7.622 11.2887 8.66667 10.0001 8.66667C8.71142 8.66667 7.66675 7.622 7.66675 6.33333C7.66675 5.04467 8.71142 4 10.0001 4C11.2887 4 12.3334 5.04467 12.3334 6.33333Z" stroke="currentColor" strokeWidth="1.33333"/>
-                            <path d="M7.33325 2.92025C6.94237 2.36557 6.27397 2 5.51507 2C4.31009 2 3.33325 2.92165 3.33325 4.05857C3.33325 4.95488 3.94038 5.7174 4.7878 6" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round"/>
-                          </g>
-                          <defs>
-                            <clipPath id="clip0_4045_135263">
-                              <rect width="16" height="16" fill="white"/>
-                            </clipPath>
-                          </defs>
-                        </svg>
-                        <span className="text-sm font-semibold text-slate-900">{fiveGwRank?.total ?? "—"}</span>
+                        <span className="text-xs font-semibold text-slate-900">
+                          {fiveGwRank && fiveGwRank.total > 0 
+                            ? `TOP ${Math.round((fiveGwRank.rank / fiveGwRank.total) * 100)}%`
+                            : "—"}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-green-600 text-xs">▲</span>
-                        <span className="text-sm font-semibold text-slate-900">{fiveGwRank ? ordinal(fiveGwRank.rank) : "—"}</span>
-                      </div>
-                    </div>
                     </div>
                   </div>
                 </Link>
@@ -1890,28 +1860,13 @@ export default function HomePage() {
                     </div>
                     <div className="mt-auto">
                       <div className="text-xs text-slate-500 mb-2">10-WEEK FORM</div>
-                      <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1">
-                        <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <g clipPath="url(#clip0_4045_135263)">
-                            <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M12.3334 6.33333C12.3334 7.622 11.2887 8.66667 10.0001 8.66667C8.71142 8.66667 7.66675 7.622 7.66675 6.33333C7.66675 5.04467 8.71142 4 10.0001 4C11.2887 4 12.3334 5.04467 12.3334 6.33333Z" stroke="currentColor" strokeWidth="1.33333"/>
-                            <path d="M7.33325 2.92025C6.94237 2.36557 6.27397 2 5.51507 2C4.31009 2 3.33325 2.92165 3.33325 4.05857C3.33325 4.95488 3.94038 5.7174 4.7878 6" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round"/>
-                          </g>
-                          <defs>
-                            <clipPath id="clip0_4045_135263">
-                              <rect width="16" height="16" fill="white"/>
-                            </clipPath>
-                          </defs>
-                        </svg>
-                        <span className="text-sm font-semibold text-slate-900">{tenGwRank?.total ?? "—"}</span>
+                        <span className="text-xs font-semibold text-slate-900">
+                          {tenGwRank && tenGwRank.total > 0 
+                            ? `TOP ${Math.round((tenGwRank.rank / tenGwRank.total) * 100)}%`
+                            : "—"}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-green-600 text-xs">▲</span>
-                        <span className="text-sm font-semibold text-slate-900">{tenGwRank ? ordinal(tenGwRank.rank) : "—"}</span>
-                      </div>
-                    </div>
                     </div>
                   </div>
                 </Link>
@@ -1927,28 +1882,13 @@ export default function HomePage() {
                     </div>
                     <div className="mt-auto">
                       <div className="text-xs text-slate-500 mb-2">SEASON RANK</div>
-                      <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1">
-                        <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <g clipPath="url(#clip0_4045_135263)">
-                            <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M12.3334 6.33333C12.3334 7.622 11.2887 8.66667 10.0001 8.66667C8.71142 8.66667 7.66675 7.622 7.66675 6.33333C7.66675 5.04467 8.71142 4 10.0001 4C11.2887 4 12.3334 5.04467 12.3334 6.33333Z" stroke="currentColor" strokeWidth="1.33333"/>
-                            <path d="M7.33325 2.92025C6.94237 2.36557 6.27397 2 5.51507 2C4.31009 2 3.33325 2.92165 3.33325 4.05857C3.33325 4.95488 3.94038 5.7174 4.7878 6" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round"/>
-                          </g>
-                          <defs>
-                            <clipPath id="clip0_4045_135263">
-                              <rect width="16" height="16" fill="white"/>
-                            </clipPath>
-                          </defs>
-                        </svg>
-                        <span className="text-sm font-semibold text-slate-900">{seasonRank?.total ?? "—"}</span>
+                        <span className="text-xs font-semibold text-slate-900">
+                          {seasonRank && seasonRank.total > 0 
+                            ? `TOP ${Math.round((seasonRank.rank / seasonRank.total) * 100)}%`
+                            : "—"}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-green-600 text-xs">▲</span>
-                        <span className="text-sm font-semibold text-slate-900">{seasonRank ? ordinal(seasonRank.rank) : "—"}</span>
-                      </div>
-                    </div>
                     </div>
                   </div>
                 </Link>
@@ -2070,14 +2010,6 @@ export default function HomePage() {
               <span className="text-[10px] text-slate-500 font-bold">i</span>
             </div>
           </div>
-          {leagues.length > 4 && (
-            <Link
-              to="/tables"
-              className="text-[#1C8376] font-semibold text-sm hover:text-[#1C8376] no-underline"
-            >
-              Show All
-            </Link>
-          )}
         </div>
         <div>
           {loading && isInitialMountRef.current && leagues.length === 0 ? (

@@ -584,13 +584,14 @@ export default function GlobalLeaderboardPage() {
         ) : (
           <div 
             ref={tableContainerRef}
-            className="flex-1 overflow-y-auto -mx-4 sm:mx-0 rounded-none sm:rounded-2xl border-x-0 sm:border-x border-b border-slate-200 bg-slate-50 shadow-sm"
+            className="flex-1 overflow-y-auto overflow-x-hidden -mx-4 sm:mx-0 rounded-none sm:rounded-2xl border-x-0 sm:border-x border-b border-slate-200 bg-slate-50 shadow-sm"
             style={{ 
               overscrollBehavior: 'contain',
               WebkitOverflowScrolling: 'touch',
               minHeight: 0,
               paddingBottom: '100px',
-              backgroundColor: '#f8fafc'
+              backgroundColor: '#f8fafc',
+              touchAction: 'pan-y'
             }}
           >
             <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: '#f8fafc' }}>
