@@ -1,5 +1,5 @@
 // src/pages/Global.tsx
-import { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -257,6 +257,19 @@ export default function GlobalLeaderboardPage() {
     return merged;
   }, [overall, gwPoints, latestGw]);
 
+  // Prevent body scrolling - lock the page
+  useEffect(() => {
+    // Lock body scroll when component mounts
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    
+    return () => {
+      // Restore body scroll when component unmounts
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, []);
+
   // Scroll to top when tab changes to ensure header is visible
   useEffect(() => {
     if (tableContainerRef.current) {
@@ -264,9 +277,81 @@ export default function GlobalLeaderboardPage() {
     }
   }, [activeTab]);
 
+  // Prevent scrolling past the header row
+  useEffect(() => {
+    const container = tableContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      // Aggressively prevent scrolling past the header
+      if (container.scrollTop < 0) {
+        container.scrollTop = 0;
+      }
+      // Also use requestAnimationFrame to ensure it stays at 0
+      requestAnimationFrame(() => {
+        if (container.scrollTop < 0) {
+          container.scrollTop = 0;
+        }
+      });
+    };
+
+    // Use both scroll and touchmove events to catch all scroll scenarios
+    container.addEventListener('scroll', handleScroll, { passive: false });
+    container.addEventListener('touchmove', handleScroll, { passive: false });
+    
+    // Prevent on wheel events when at top
+    const handleWheel = (e: WheelEvent) => {
+      if (container.scrollTop <= 0 && e.deltaY < 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        container.scrollTop = 0;
+      }
+    };
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    
+    // Also prevent touch scrolling past top
+    const handleTouchStart = (e: TouchEvent) => {
+      if (container.scrollTop <= 0) {
+        const touch = e.touches[0];
+        if (touch) {
+          const startY = touch.clientY;
+          const handleTouchMove = (e2: TouchEvent) => {
+            const touch2 = e2.touches[0];
+            if (touch2 && touch2.clientY < startY) {
+              // Scrolling up when already at top - prevent it
+              e2.preventDefault();
+            }
+          };
+          container.addEventListener('touchmove', handleTouchMove, { passive: false });
+          container.addEventListener('touchend', () => {
+            container.removeEventListener('touchmove', handleTouchMove);
+          }, { once: true });
+        }
+      }
+    };
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      container.removeEventListener('touchmove', handleScroll);
+      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('touchstart', handleTouchStart);
+    };
+  }, []);
+
   // Animate scroll to user's row when data loads - starts at top then animates down
   useEffect(() => {
     if (!loading && user?.id && tableContainerRef.current && userRowRef.current) {
+      // Find user's rank/index in the current tab's data
+      const currentRows = activeTab === "overall" ? rows : activeTab === "form5" ? form5Rows : activeTab === "form10" ? form10Rows : lastGwRows;
+      const userIndex = currentRows.findIndex(r => r.user_id === user.id);
+      const userRank = userIndex >= 0 ? (currentRows[userIndex] as any).rank || userIndex + 1 : null;
+      
+      // If user is in top 8, skip scroll animation
+      if (userRank !== null && userRank <= 8) {
+        return;
+      }
+      
       // First, ensure we start at the top
       if (tableContainerRef.current) {
         tableContainerRef.current.scrollTop = 0;
@@ -308,7 +393,7 @@ export default function GlobalLeaderboardPage() {
   }, [loading, user?.id, activeTab, rows, form5Rows, form10Rows, lastGwRows]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="fixed inset-0 bg-slate-50 overflow-hidden flex flex-col">
       <style>{`
         @keyframes sparkle {
           0%, 100% {
@@ -349,13 +434,23 @@ export default function GlobalLeaderboardPage() {
             background-color: rgb(167, 243, 208);
           }
         }
-        .flash-user-row {
+        .flash-you-badge {
           animation: flash 1.5s ease-in-out 3;
         }
+        .full-width-header-border::after {
+          content: '';
+          position: absolute;
+          left: -1rem;
+          right: -1rem;
+          bottom: 0;
+          height: 1px;
+          background-color: #cbd5e1;
+          z-index: 1;
+        }
       `}</style>
-      <div className="max-w-6xl mx-auto px-4 pb-0">
+      <div className="max-w-6xl mx-auto px-4 pb-0 flex-1 flex flex-col overflow-hidden">
         {/* Fixed Header Section */}
-        <div className="fixed top-0 left-0 right-0 z-30 bg-slate-50 pb-4 pt-4 shadow-sm">
+        <div className="flex-shrink-0 bg-slate-50 pb-4 pt-4">
           <div className="max-w-6xl mx-auto px-4">
           <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Leaderboard</h2>
           <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
@@ -364,46 +459,50 @@ export default function GlobalLeaderboardPage() {
 
           {/* Tabs */}
           <div className="flex justify-center mb-6">
-            <div className="flex rounded-xl bg-slate-100 p-1.5 border border-slate-200 shadow-sm">
+            <div className="flex rounded-full bg-slate-100 p-1.5 border border-slate-200 shadow-sm w-full max-w-md">
               <button
                 onClick={() => handleTabChange("lastgw")}
-                className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
                   activeTab === "lastgw"
                     ? "bg-[#1C8376] text-white shadow-md"
                     : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
                 }`}
               >
-                Last GW
+                GW
               </button>
               <button
                 onClick={() => handleTabChange("form5")}
-                className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
                   activeTab === "form5"
                     ? "bg-[#1C8376] text-white shadow-md"
                     : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
                 }`}
               >
-                5 Week
+                5
               </button>
               <button
                 onClick={() => handleTabChange("form10")}
-                className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
                   activeTab === "form10"
                     ? "bg-[#1C8376] text-white shadow-md"
                     : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
                 }`}
               >
-                10 Week
+                10
               </button>
               <button
                 onClick={() => handleTabChange("overall")}
-                className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all flex items-center justify-center ${
                   activeTab === "overall"
                     ? "bg-[#1C8376] text-white shadow-md"
                     : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
                 }`}
               >
-                Overall
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="w-5 h-5">
+                  <g>
+                    <path fill="currentColor" d="M16 3c1.1046 0 2 0.89543 2 2h2c1.1046 0 2 0.89543 2 2v1c0 2.695 -2.1323 4.89 -4.8018 4.9941 -0.8777 1.5207 -2.4019 2.6195 -4.1982 2.9209V19h3c0.5523 0 1 0.4477 1 1s-0.4477 1 -1 1H8c-0.55228 0 -1 -0.4477 -1 -1s0.44772 -1 1 -1h3v-3.085c-1.7965 -0.3015 -3.32148 -1.4 -4.19922 -2.9209C4.13175 12.8895 2 10.6947 2 8V7c0 -1.10457 0.89543 -2 2 -2h2c0 -1.10457 0.89543 -2 2 -2zm-8 7c0 2.2091 1.79086 4 4 4 2.2091 0 4 -1.7909 4 -4V5H8zM4 8c0 1.32848 0.86419 2.4532 2.06055 2.8477C6.02137 10.5707 6 10.2878 6 10V7H4zm14 2c0 0.2878 -0.0223 0.5706 -0.0615 0.8477C19.1353 10.4535 20 9.32881 20 8V7h-2z" strokeWidth="1"></path>
+                  </g>
+                </svg>
               </button>
             </div>
           </div>
@@ -411,8 +510,8 @@ export default function GlobalLeaderboardPage() {
           {/* Form tab subtitles */}
           {activeTab === "overall" && (
             <div className="text-center mb-2">
-              <div className="text-xs text-slate-600">
-                Showing all players
+              <div className="text-sm text-slate-600">
+                All players overall
               </div>
             </div>
           )}
@@ -420,8 +519,8 @@ export default function GlobalLeaderboardPage() {
           {activeTab === "form5" && (
             <div className="text-center mb-2">
               {latestGw && latestGw >= 5 ? (
-                <div className="text-xs text-slate-600">
-                  Showing all players who completed GW{Math.max(1, latestGw - 4)}-{latestGw}
+                <div className="text-sm text-slate-600">
+                  Completed the last 5 Rounds
                 </div>
               ) : (
                 <div className="text-sm text-amber-600 font-medium">
@@ -434,8 +533,8 @@ export default function GlobalLeaderboardPage() {
           {activeTab === "form10" && (
             <div className="text-center mb-2">
               {latestGw && latestGw >= 10 ? (
-                <div className="text-xs text-slate-600">
-                  Showing all players who completed GW{Math.max(1, latestGw - 9)}-{latestGw}
+                <div className="text-sm text-slate-600">
+                  Completed the last 10 Rounds
                 </div>
               ) : (
                 <div className="text-sm text-amber-600 font-medium">
@@ -447,25 +546,22 @@ export default function GlobalLeaderboardPage() {
           
           {activeTab === "lastgw" && (
             <div className="text-center mb-2">
-              <div className="text-xs text-slate-600">
-                Showing all players who completed GW{latestGw}
+              <div className="text-sm text-slate-600">
+                Players who completed GW{latestGw}
               </div>
             </div>
           )}
           </div>
         </div>
 
-        {/* Spacer to account for fixed header */}
-        <div style={{ height: '187px' }} className="sm:hidden" />
-        <div style={{ height: '147px' }} className="hidden sm:block" />
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+          {err && (
+            <div className="mb-6 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 flex-shrink-0">
+              {err}
+            </div>
+          )}
 
-        {err && (
-          <div className="mb-6 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {err}
-          </div>
-        )}
-
-        {loading ? (
+          {loading ? (
           <div className="text-slate-500">Loading…</div>
         ) : activeTab === "form5" && latestGw && latestGw < 5 ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center">
@@ -488,31 +584,45 @@ export default function GlobalLeaderboardPage() {
         ) : (
           <div 
             ref={tableContainerRef}
-            className="overflow-y-auto -mx-4 sm:mx-0 rounded-none sm:rounded-2xl border-x-0 sm:border-x border-t border-b border-slate-200 bg-white shadow-sm"
-            style={{ maxHeight: 'calc(100vh - 250px)', minHeight: '400px' }}
+            className="flex-1 overflow-y-auto -mx-4 sm:mx-0 rounded-none sm:rounded-2xl border-x-0 sm:border-x border-b border-slate-200 bg-slate-50 shadow-sm"
+            style={{ 
+              overscrollBehavior: 'contain',
+              WebkitOverflowScrolling: 'touch',
+              minHeight: 0,
+              paddingBottom: '100px',
+              backgroundColor: '#f8fafc'
+            }}
           >
-            <table className="w-full text-sm text-slate-800 border-collapse" style={{ tableLayout: 'fixed' }}>
-              <thead className="sticky top-0" style={{ position: 'sticky', top: 0, zIndex: 25, backgroundColor: '#f1f5f9', display: 'table-header-group' }}>
-                <tr style={{ backgroundColor: '#f1f5f9' }}>
-                  <th className="px-1 py-3 text-left font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '40px' }}>#</th>
-                  <th className="px-4 py-3 text-left font-semibold text-xs border-b border-slate-200" style={{ backgroundColor: '#f1f5f9' }}>Player</th>
+            <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: '#f8fafc' }}>
+              <thead className="sticky top-0 full-width-header-border" style={{ 
+                position: 'sticky', 
+                top: 0, 
+                zIndex: 25, 
+                backgroundColor: '#f8fafc', 
+                display: 'table-header-group',
+                WebkitPosition: 'sticky',
+                WebkitTop: 0
+              }}>
+                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #cbd5e1' }}>
+                  <th className="py-3 text-left font-normal" style={{ backgroundColor: '#f8fafc', width: '40px', paddingLeft: '1rem', paddingRight: '0.5rem', color: '#64748b' }}>#</th>
+                  <th className="px-4 py-3 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#64748b' }}>Player</th>
                   {activeTab === "overall" && (
                     <>
-                      <th className="px-4 py-3 text-center font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '100px' }}></th>
-                      <th className="px-1 py-3 text-center font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '50px' }}>GW{latestGw || '?'}</th>
-                      <th className="px-4 py-3 text-center font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '100px' }}>OCP</th>
+                      <th className="px-4 py-3 text-center font-semibold" style={{ backgroundColor: '#f8fafc', width: '100px', borderTop: 'none' }}></th>
+                      <th className="px-1 py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '50px', color: '#64748b' }}>GW{latestGw || '?'}</th>
+                      <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '70px', paddingLeft: '1rem', paddingRight: '0.5rem', color: '#64748b' }}>OCP</th>
                     </>
                   )}
                   {(activeTab === "form5" || activeTab === "form10") && (
                     <>
-                      <th className="px-4 py-3 text-center font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '100px' }}></th>
-                      <th className="px-4 py-3 text-center font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '100px' }}>PTS</th>
+                      <th className="px-4 py-3 text-center font-semibold" style={{ backgroundColor: '#f8fafc', width: '100px', borderTop: 'none' }}></th>
+                      <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '70px', paddingLeft: '1rem', paddingRight: '0.5rem', color: '#64748b' }}>PTS</th>
                     </>
                   )}
                   {activeTab === "lastgw" && (
                     <>
-                      <th className="px-4 py-3 text-center font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '100px' }}></th>
-                      <th className="px-4 py-3 text-center font-semibold border-b border-slate-200" style={{ backgroundColor: '#f1f5f9', width: '100px' }}>GW{latestGw || '?'}</th>
+                      <th className="px-4 py-3 text-center font-semibold" style={{ backgroundColor: '#f8fafc', width: '100px', borderTop: 'none' }}></th>
+                      <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '70px', paddingLeft: '1rem', paddingRight: '0.5rem', color: '#64748b' }}>GW{latestGw || '?'}</th>
                     </>
                   )}
                 </tr>
@@ -531,13 +641,10 @@ export default function GlobalLeaderboardPage() {
                   const isTopRank = currentRank === 1;
                   
                   // Special styling for top-ranked players
-                  let zebra = "";
                   let highlight = "";
                   if (isMe) {
-                    zebra = "";
                     highlight = "bg-emerald-200";
                   } else {
-                    zebra = i % 2 === 0 ? "bg-white" : "bg-slate-50";
                     highlight = "";
                   }
 
@@ -564,31 +671,47 @@ export default function GlobalLeaderboardPage() {
                         indicatorClass = "bg-gray-500 text-white";
                       }
                     } else if (curr && !prev) {
-                      // Only show blue dot if they haven't played the current GW
-                      if (!hasPlayedCurrentGw) {
-                        indicator = ""; // new entrant - empty blue dot
-                        indicatorClass = "bg-blue-500 text-white";
-                      } else {
-                        // They have played current GW but no previous rank (first week)
-                        indicator = ""; // no change - empty circle
-                        indicatorClass = "bg-gray-400";
-                      }
+                      // They have played current GW but no previous rank (first week)
+                      indicator = ""; // no change - empty circle
+                      indicatorClass = "bg-gray-400";
                     }
                   }
 
                   return (
                     <tr 
-                      key={r.user_id} 
+                      key={r.user_id}
                       ref={isMe ? userRowRef : null}
-                      className={`border-t border-slate-200 ${zebra} ${highlight} ${isMe ? 'flash-user-row' : ''}`}
+                      className=""
+                      style={{
+                        ...(i > 0 ? { 
+                          borderTop: '1px solid #e2e8f0',
+                          position: 'relative',
+                          backgroundColor: '#f8fafc'
+                        } : { position: 'relative', backgroundColor: '#f8fafc' })
+                      }}
                     >
                       {/* Rank number only */}
-                      <td className="px-2 py-3 text-left tabular-nums whitespace-nowrap">
+                      <td className="py-3 text-left tabular-nums whitespace-nowrap relative" style={{ 
+                        paddingLeft: '1rem', 
+                        paddingRight: '0.5rem',
+                        backgroundColor: '#f8fafc'
+                      }}>
+                        {i > 0 && (
+                          <div style={{ 
+                            position: 'absolute', 
+                            top: '-1px', 
+                            left: 0, 
+                            width: '1rem', 
+                            height: '1px', 
+                            backgroundColor: '#f8fafc',
+                            zIndex: 1
+                          }} />
+                        )}
                         <span>{currentRank}{isTied ? '=' : ''}</span>
                       </td>
 
                       {/* Player name with color-coded indicator */}
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" style={{ backgroundColor: '#f8fafc' }}>
                         <div className="flex items-center gap-2">
                           {(indicator || indicatorClass) && activeTab === "overall" && (
                             <span
@@ -607,11 +730,11 @@ export default function GlobalLeaderboardPage() {
                               </svg>
                             </span>
                           )}
-                          <span className="font-bold text-sm text-slate-900 whitespace-nowrap">
+                          <span className="font-normal text-sm whitespace-nowrap" style={{ color: 'rgb(0, 0, 0)' }}>
                             {r.name}
                           </span>
                           {isMe && (
-                            <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 flex-shrink-0">
+                            <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 flex-shrink-0 flash-you-badge">
                               you
                             </span>
                           )}
@@ -621,11 +744,15 @@ export default function GlobalLeaderboardPage() {
                       {/* Overall tab columns */}
                       {activeTab === "overall" && (
                         <>
-                          <td className="px-4 py-3 text-center tabular-nums font-bold"></td>
-                          <td className="px-1 py-3 text-center tabular-nums font-bold">
+                          <td className="px-4 py-3 text-center tabular-nums font-bold" style={{ backgroundColor: '#f8fafc' }}></td>
+                          <td className="px-1 py-3 text-center tabular-nums font-bold" style={{ backgroundColor: '#f8fafc' }}>
                             {'this_gw' in r ? r.this_gw : 0}
                           </td>
-                          <td className="px-4 py-3 text-center tabular-nums font-bold">
+                          <td className="py-3 text-center tabular-nums font-bold" style={{ 
+                            paddingLeft: '1rem', 
+                            paddingRight: '0.5rem',
+                            backgroundColor: '#f8fafc'
+                          }}>
                             {'ocp' in r ? r.ocp : 0}
                           </td>
                         </>
@@ -634,8 +761,12 @@ export default function GlobalLeaderboardPage() {
                       {/* Form tab columns (both 5 Week and 10 Week) */}
                       {(activeTab === "form5" || activeTab === "form10") && (
                         <>
-                          <td className="px-4 py-3 text-center tabular-nums font-bold"></td>
-                          <td className="px-4 py-3 text-center tabular-nums font-bold">
+                          <td className="px-4 py-3 text-center tabular-nums font-bold" style={{ backgroundColor: '#f8fafc' }}></td>
+                          <td className="py-3 text-center tabular-nums font-bold" style={{ 
+                            paddingLeft: '1rem', 
+                            paddingRight: '0.5rem',
+                            backgroundColor: '#f8fafc'
+                          }}>
                             {'formPoints' in r ? r.formPoints : 0}
                           </td>
                         </>
@@ -644,8 +775,12 @@ export default function GlobalLeaderboardPage() {
                       {/* Last GW tab columns */}
                       {activeTab === "lastgw" && (
                         <>
-                          <td className="px-4 py-3 text-center tabular-nums font-bold"></td>
-                          <td className="px-4 py-3 text-center tabular-nums font-bold">
+                          <td className="px-4 py-3 text-center tabular-nums font-bold" style={{ backgroundColor: '#f8fafc' }}></td>
+                          <td className="py-3 text-center tabular-nums font-bold" style={{ 
+                            paddingLeft: '1rem', 
+                            paddingRight: '0.5rem',
+                            backgroundColor: '#f8fafc'
+                          }}>
                             {'points' in r ? r.points : 0}
                           </td>
                         </>
@@ -657,14 +792,8 @@ export default function GlobalLeaderboardPage() {
             </table>
           </div>
         )}
-        
-        {/* Key for indicators */}
-        <div className="mt-4 flex justify-center">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-            <span>New Player</span>
-          </div>
         </div>
+        
       </div>
     </div>
   );
