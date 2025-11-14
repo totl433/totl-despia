@@ -148,45 +148,116 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
     }
   }, [chat.length]);
 
-  // Simple keyboard detection - fix input above keyboard
+  // Reliable keyboard detection - fix input above keyboard
   useEffect(() => {
     const visualViewport = (window as any).visualViewport;
     if (!visualViewport) return;
 
+    let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+    let lastKeyboardHeight = 0;
+
     const updateLayout = () => {
-      const windowHeight = window.innerHeight;
-      const viewportHeight = visualViewport.height;
-      const viewportBottom = visualViewport.offsetTop + viewportHeight;
-      const keyboardHeight = windowHeight - viewportBottom;
-      
-      if (keyboardHeight > 100) {
-        // Keyboard is visible - position input above it
-        setInputBottom(keyboardHeight);
-        // Add padding to messages so they don't get hidden
-        if (listRef.current) {
-          listRef.current.style.paddingBottom = '100px';
-        }
-        setTimeout(() => scrollToBottom(), 200);
-      } else {
-        // No keyboard
-        setInputBottom(0);
-        if (listRef.current) {
-          listRef.current.style.paddingBottom = '';
-        }
+      // Clear any pending updates
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = null;
       }
+
+      // Debounce updates to avoid flickering
+      resizeTimeout = setTimeout(() => {
+        const windowHeight = window.innerHeight;
+        const viewportHeight = visualViewport.height;
+        const viewportBottom = visualViewport.offsetTop + viewportHeight;
+        const keyboardHeight = windowHeight - viewportBottom;
+        
+        // Only update if keyboard height changed significantly (avoid jitter)
+        if (Math.abs(keyboardHeight - lastKeyboardHeight) < 10 && keyboardHeight > 0) {
+          return;
+        }
+        lastKeyboardHeight = keyboardHeight;
+        
+        if (keyboardHeight > 100) {
+          // Keyboard is visible - position input above it
+          setInputBottom(keyboardHeight);
+          
+          // Calculate input area height dynamically
+          const inputAreaHeight = inputAreaRef.current?.offsetHeight || 90;
+          const paddingNeeded = inputAreaHeight + 20; // Extra space for visibility
+          
+          // Add padding to messages so bottom messages are visible above input
+          if (listRef.current) {
+            listRef.current.style.paddingBottom = `${paddingNeeded}px`;
+          }
+          
+          // Scroll after layout settles - multiple attempts for reliability
+          setTimeout(() => scrollToBottom(), 100);
+          setTimeout(() => scrollToBottom(), 300);
+          setTimeout(() => scrollToBottom(), 500);
+        } else {
+          // No keyboard
+          setInputBottom(0);
+          if (listRef.current) {
+            listRef.current.style.paddingBottom = '';
+          }
+        }
+      }, 50); // Small debounce delay
     };
 
     visualViewport.addEventListener('resize', updateLayout);
+    visualViewport.addEventListener('scroll', updateLayout);
+    
+    // Also listen to input focus for immediate response
+    const handleFocus = () => {
+      setTimeout(updateLayout, 100);
+      setTimeout(updateLayout, 300);
+    };
+    
+    // Set up focus listener after a delay to ensure input is rendered
+    const focusTimeout = setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.addEventListener('focus', handleFocus);
+      }
+    }, 100);
+    
     updateLayout();
 
     return () => {
+      if (resizeTimeout) clearTimeout(resizeTimeout);
+      clearTimeout(focusTimeout);
       visualViewport.removeEventListener('resize', updateLayout);
+      visualViewport.removeEventListener('scroll', updateLayout);
+      if (inputRef.current) {
+        inputRef.current.removeEventListener('focus', handleFocus);
+      }
     };
   }, []);
 
-  // Scroll on input focus
+  // Scroll on input focus and trigger layout update
   const handleInputFocus = () => {
-    setTimeout(() => scrollToBottom(), 300);
+    // Trigger layout update to detect keyboard
+    const visualViewport = (window as any).visualViewport;
+    if (visualViewport) {
+      setTimeout(() => {
+        const windowHeight = window.innerHeight;
+        const viewportHeight = visualViewport.height;
+        const viewportBottom = visualViewport.offsetTop + viewportHeight;
+        const keyboardHeight = windowHeight - viewportBottom;
+        
+        if (keyboardHeight > 100) {
+          setInputBottom(keyboardHeight);
+          const inputAreaHeight = inputAreaRef.current?.offsetHeight || 90;
+          const paddingNeeded = inputAreaHeight + 20;
+          if (listRef.current) {
+            listRef.current.style.paddingBottom = `${paddingNeeded}px`;
+          }
+        }
+      }, 100);
+    }
+    
+    // Multiple scroll attempts for reliability
+    setTimeout(() => scrollToBottom(), 200);
+    setTimeout(() => scrollToBottom(), 400);
+    setTimeout(() => scrollToBottom(), 600);
   };
 
   return (
