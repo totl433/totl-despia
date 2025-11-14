@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { getMediumName } from "../lib/teamNames";
 import WhatsAppBanner from "../components/WhatsAppBanner";
 import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePhotoPicsum } from "../lib/leagueAvatars";
-import { resolveLeagueStartGw as getLeagueStartGw, LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
+import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 
