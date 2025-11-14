@@ -1877,7 +1877,17 @@ export default function HomePage() {
         <>
           {/* Leaderboards */}
           <Section title="Leaderboards" boxed={false}>
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
+            <div 
+              key="leaderboard-scroll"
+              className="overflow-x-auto -mx-4 px-4 scrollbar-hide" 
+              style={{ 
+                scrollbarWidth: 'none', 
+                msOverflowStyle: 'none', 
+                WebkitOverflowScrolling: 'touch', 
+                overscrollBehaviorX: 'contain',
+                touchAction: 'pan-x pinch-zoom'
+              }}
+            >
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                   display: none;
@@ -2164,12 +2174,14 @@ export default function HomePage() {
             </div>
           ) : (
             <div 
+              key={`ml-scroll-${leagues.length}`}
               className="overflow-x-auto -mx-4 px-4 scrollbar-hide" 
               style={{ 
                 scrollbarWidth: 'none', 
                 msOverflowStyle: 'none', 
                 WebkitOverflowScrolling: 'touch', 
-                overscrollBehaviorX: 'contain'
+                overscrollBehaviorX: 'contain',
+                touchAction: 'pan-x pinch-zoom'
               }}
             >
               <style>{`
@@ -2229,17 +2241,9 @@ export default function HomePage() {
                                 to={`/league/${l.code}`}
                                 className="block p-4 !bg-white no-underline hover:text-inherit relative z-20"
                                 style={{ 
-                                  pointerEvents: 'auto', 
                                   cursor: 'pointer', 
                                   position: 'relative',
-                                  WebkitTapHighlightColor: 'transparent',
-                                  touchAction: 'manipulation',
-                                  userSelect: 'none',
-                                  WebkitUserSelect: 'none'
-                                }}
-                                onClick={(e) => {
-                                  // Ensure click works
-                                  e.stopPropagation();
+                                  WebkitTapHighlightColor: 'transparent'
                                 }}
                               >
                                 <div className="flex items-start gap-3 relative">
