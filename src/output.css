@@ -780,6 +780,14 @@ video {
   z-index: 10;
 }
 
+.z-20{
+  z-index: 20;
+}
+
+.z-30{
+  z-index: 30;
+}
+
 .z-40{
   z-index: 40;
 }
@@ -790,14 +798,6 @@ video {
 
 .z-\[60\]{
   z-index: 60;
-}
-
-.z-20{
-  z-index: 20;
-}
-
-.z-30{
-  z-index: 30;
 }
 
 .col-span-2{
@@ -1042,10 +1042,6 @@ video {
 
 .h-\[148px\]{
   height: 148px;
-}
-
-.h-\[169px\]{
-  height: 169px;
 }
 
 .h-\[220px\]{
@@ -4134,10 +4130,6 @@ select option {
 
   .sm\:h-16{
     height: 4rem;
-  }
-
-  .sm\:h-\[193px\]{
-    height: 193px;
   }
 
   .sm\:h-\[92px\]{

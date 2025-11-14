@@ -1986,7 +1986,7 @@ export default function HomePage() {
 
                 {/* Streak Box */}
                 {userStreakData && (
-                  <div className="flex-shrink-0 w-[340px] sm:w-[400px] h-[169px] sm:h-[193px] rounded-xl border bg-white shadow-sm overflow-hidden hover:shadow-md transition-shadow relative">
+                  <div className="flex-shrink-0 w-[340px] sm:w-[400px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden hover:shadow-md transition-shadow relative">
                     <div className="p-3 h-full flex flex-col">
                       {/* Spacer to push content down */}
                       <div className="flex-1"></div>
@@ -2163,7 +2163,7 @@ export default function HomePage() {
               </Link>
             </div>
           ) : (
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain', WebkitTouchCallout: 'none', userSelect: 'none' }}>
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}>
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                   display: none;
@@ -2219,7 +2219,17 @@ export default function HomePage() {
                               <Link
                                 to={`/league/${l.code}`}
                                 className="block p-4 !bg-white no-underline hover:text-inherit relative z-20"
-                                style={{ pointerEvents: 'auto', cursor: 'pointer', position: 'relative' }}
+                                style={{ 
+                                  pointerEvents: 'auto', 
+                                  cursor: 'pointer', 
+                                  position: 'relative',
+                                  WebkitTapHighlightColor: 'transparent',
+                                  touchAction: 'manipulation'
+                                }}
+                                onClick={(e) => {
+                                  // Ensure click works even if parent has touch handlers
+                                  e.stopPropagation();
+                                }}
                               >
                                 <div className="flex items-start gap-3 relative">
                                   {/* League Avatar Badge */}

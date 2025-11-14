@@ -131,187 +131,85 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
   const listRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const inputAreaRef = useRef<HTMLDivElement | null>(null);
-  const hasInitiallyScrolled = useRef(false);
-  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isScrollingRef = useRef(false);
-  const lastViewportHeightRef = useRef<number | null>(null);
-  const [inputAreaBottom, setInputAreaBottom] = useState<number>(0);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [chatHeight, setChatHeight] = useState<string>('100%');
 
-  // Scroll to bottom function - single, reliable method
-  const scrollToBottom = (force = false) => {
-    if (isScrollingRef.current && !force) return; // Prevent concurrent scrolls
-    
+  // Simple scroll to bottom
+  const scrollToBottom = () => {
     if (listRef.current) {
-      isScrollingRef.current = true;
-      // Use scrollTop for instant, reliable scrolling
-      const scrollHeight = listRef.current.scrollHeight;
-      const clientHeight = listRef.current.clientHeight;
-      listRef.current.scrollTop = scrollHeight - clientHeight;
-      
-      // Also use scrollIntoView as backup
-      if (bottomRef.current) {
-        bottomRef.current.scrollIntoView({ behavior: 'instant', block: 'end' });
-      }
-      
-      // Reset flag after scroll completes
-      requestAnimationFrame(() => {
-        isScrollingRef.current = false;
-      });
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
+    if (bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
   };
 
-  // Scroll to bottom when messages are first loaded
+  // Scroll when messages change
   useEffect(() => {
-    if (chat.length > 0 && !hasInitiallyScrolled.current) {
-      // Use multiple strategies to ensure scroll happens after DOM is ready
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scrollToBottom();
-          hasInitiallyScrolled.current = true;
-          // Also try after a small delay to catch any late renders
-          setTimeout(() => {
-            scrollToBottom();
-          }, 100);
-          // One more attempt after a longer delay to ensure everything is rendered
-          setTimeout(() => {
-            scrollToBottom();
-          }, 300);
-        });
-      });
+    if (chat.length > 0) {
+      setTimeout(() => scrollToBottom(), 100);
     }
   }, [chat.length]);
 
-  // Also handle case where messages are already loaded when component mounts
+  // Handle keyboard with visualViewport - simple approach
   useEffect(() => {
-    if (chat.length > 0 && listRef.current && !hasInitiallyScrolled.current) {
-      // Immediate scroll attempt
-      scrollToBottom();
-      // Then ensure with RAF
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scrollToBottom();
-          hasInitiallyScrolled.current = true;
-        });
-      });
-      // Final check after delay
-      setTimeout(() => {
-        scrollToBottom();
-      }, 300);
-    }
-  }, []);
-
-  // Scroll to bottom when new messages are added (after initial scroll)
-  useEffect(() => {
-    if (chat.length > 0 && hasInitiallyScrolled.current && listRef.current) {
-      requestAnimationFrame(() => {
-        scrollToBottom();
-      });
-      // Also ensure after a brief delay
-      setTimeout(() => {
-        scrollToBottom();
-      }, 50);
-    }
-  }, [chat.length]);
-
-  // Focus input on load
-  useEffect(() => {
-    if (isMember && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [isMember]);
-
-  // Handle keyboard appearance/disappearance using visualViewport API
-  useEffect(() => {
-    if (!listRef.current) return;
-    
     const visualViewport = (window as any).visualViewport;
-    if (!visualViewport) return;
-    
-    let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
-    
-    const handleViewportResize = () => {
-      const currentHeight = visualViewport.height;
-      const lastHeight = lastViewportHeightRef.current;
-      
-      // Position input area at the bottom of the visual viewport (above keyboard)
+    if (!visualViewport) {
+      // Fallback: no visualViewport support, use full height
+      setChatHeight('100%');
+      return;
+    }
+
+    const updateLayout = () => {
+      const viewportHeight = visualViewport.height;
       const windowHeight = window.innerHeight;
-      const viewportBottom = visualViewport.offsetTop + visualViewport.height;
-      const keyboardHeight = windowHeight - viewportBottom;
       
-      // Set input area bottom position to account for keyboard
-      if (keyboardHeight > 0) {
-        // Keyboard is visible - position input above it
-        setInputAreaBottom(keyboardHeight);
+      // Keyboard is visible if viewport is significantly smaller than window
+      // (accounting for browser chrome, typically >150px difference indicates keyboard)
+      if (windowHeight - viewportHeight > 150) {
+        // Keyboard is visible - set chat container height to viewport height minus input area
+        const inputAreaHeight = 90; // Input area height including padding
+        const newHeight = viewportHeight - inputAreaHeight;
+        setChatHeight(`${Math.max(newHeight, 200)}px`); // Minimum 200px
+        // Scroll after layout settles
+        setTimeout(() => scrollToBottom(), 250);
       } else {
-        // No keyboard - use safe area inset
-        setInputAreaBottom(0);
+        // No keyboard - use full height
+        setChatHeight('100%');
       }
-      
-      // Detect keyboard appearance (viewport height decreases significantly)
-      // or keyboard dismissal (viewport height increases)
-      if (lastHeight !== null) {
-        const heightDiff = lastHeight - currentHeight;
-        
-        // If keyboard appeared (height decreased by >150px) or disappeared (height increased)
-        if (Math.abs(heightDiff) > 150) {
-          // Clear any pending scroll
-          if (scrollTimeoutRef.current) {
-            clearTimeout(scrollTimeoutRef.current);
-            scrollTimeoutRef.current = null;
-          }
-          
-          // Wait for viewport to stabilize, then scroll
-          resizeTimeout = setTimeout(() => {
-            requestAnimationFrame(() => {
-              scrollToBottom(true); // Force scroll after keyboard animation
-            });
-          }, 150); // Slightly longer delay to ensure viewport has stabilized
-        }
-      }
-      
-      lastViewportHeightRef.current = currentHeight;
     };
-    
-    // Initialize last height and input position
-    lastViewportHeightRef.current = visualViewport.height;
-    handleViewportResize(); // Set initial position
-    
-    visualViewport.addEventListener('resize', handleViewportResize);
-    visualViewport.addEventListener('scroll', handleViewportResize);
-    
+
+    visualViewport.addEventListener('resize', updateLayout);
+    updateLayout(); // Initial call
+
     return () => {
-      if (resizeTimeout) clearTimeout(resizeTimeout);
-      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-      visualViewport.removeEventListener('resize', handleViewportResize);
-      visualViewport.removeEventListener('scroll', handleViewportResize);
+      visualViewport.removeEventListener('resize', updateLayout);
     };
   }, []);
+
+  // Scroll on input focus
+  const handleInputFocus = () => {
+    setTimeout(() => scrollToBottom(), 300);
+  };
 
   return (
-    <div className="flex flex-col chat-container" style={{ 
-      height: '100%',
-      maxHeight: '100%',
-    }}>
-      <style>{`
-        .chat-input-area {
-          flex-shrink: 0;
-          background-color: white;
-          box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
-          padding-left: 1rem;
-          padding-right: 1rem;
-          padding-top: 0.75rem;
-          padding-bottom: calc(1.75rem + env(safe-area-inset-bottom, 0px));
-          margin: 0;
-          box-sizing: border-box;
-          position: relative;
-          z-index: 100;
-        }
-      `}</style>
-      <div ref={listRef} className="flex-1 overflow-y-auto px-3 pt-3 pb-4 min-h-0" style={{
-        WebkitOverflowScrolling: 'touch',
-        overscrollBehavior: 'contain',
-      }}>
+    <div 
+      ref={containerRef}
+      className="flex flex-col chat-container" 
+      style={{ 
+        height: chatHeight,
+        maxHeight: '100%',
+      }}
+    >
+      {/* Messages list */}
+      <div 
+        ref={listRef} 
+        className="flex-1 overflow-y-auto px-3 pt-3 pb-4 min-h-0" 
+        style={{
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
+        }}
+      >
         {chat.map((m) => {
           const mine = m.user_id === userId;
           const name = nameById.get(m.user_id) ?? "Unknown";
@@ -329,95 +227,30 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         <div ref={bottomRef} style={{ height: '1px', width: '100%' }} />
       </div>
 
-      {/* Input area at bottom - positioned right above safe area/keyboard */}
-      <div 
-        ref={inputAreaRef}
-        className="chat-input-area bg-white border-t border-slate-200"
-        style={{
-          bottom: inputAreaBottom > 0 ? `${inputAreaBottom}px` : '0',
-          position: inputAreaBottom > 0 ? 'fixed' : 'relative',
-          left: inputAreaBottom > 0 ? '0' : 'auto',
-          right: inputAreaBottom > 0 ? '0' : 'auto',
-          width: inputAreaBottom > 0 ? '100%' : 'auto',
-        }}
-      >
+      {/* Input area - always at bottom */}
+      <div className="flex-shrink-0 bg-white border-t border-slate-200 px-4 py-3" style={{
+        paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px))`,
+      }}>
         {isMember ? (
           <form
             onSubmit={(e) => {
               e.preventDefault();
               onSend();
             }}
-            className="flex items-center gap-2 px-2"
+            className="flex items-center gap-2"
           >
             <input
               ref={inputRef}
               value={newMsg}
               onChange={(e) => setNewMsg(e.target.value)}
-              onFocus={() => {
-                // Clear any pending scrolls
-                if (scrollTimeoutRef.current) {
-                  clearTimeout(scrollTimeoutRef.current);
-                  scrollTimeoutRef.current = null;
-                }
-                
-                // Initial scroll attempt (before keyboard appears)
-                requestAnimationFrame(() => {
-                  scrollToBottom(true);
-                });
-                
-                // For Despia/native: Wait for keyboard to fully appear using visualViewport
-                const visualViewport = (window as any).visualViewport;
-                if (visualViewport) {
-                  // Monitor viewport height changes to detect when keyboard is fully visible
-                  const initialHeight = visualViewport.height;
-                  let checkCount = 0;
-                  const maxChecks = 20; // Check for up to 1 second (20 * 50ms)
-                  
-                  const checkKeyboard = () => {
-                    checkCount++;
-                    const currentHeight = visualViewport.height;
-                    const heightDiff = initialHeight - currentHeight;
-                    
-                    // Keyboard is visible if height decreased significantly (>150px)
-                    if (heightDiff > 150) {
-                      // Keyboard is visible, scroll now
-                      requestAnimationFrame(() => {
-                        scrollToBottom(true);
-                      });
-                    } else if (checkCount < maxChecks) {
-                      // Keep checking
-                      scrollTimeoutRef.current = setTimeout(checkKeyboard, 50);
-                    }
-                  };
-                  
-                  // Start checking after a short delay
-                  scrollTimeoutRef.current = setTimeout(checkKeyboard, 100);
-                } else {
-                  // Fallback for browsers without visualViewport
-                  scrollTimeoutRef.current = setTimeout(() => {
-                    requestAnimationFrame(() => {
-                      scrollToBottom(true);
-                    });
-                  }, 300);
-                }
-              }}
-              onBlur={() => {
-                // Clear any pending scrolls when input loses focus
-                if (scrollTimeoutRef.current) {
-                  clearTimeout(scrollTimeoutRef.current);
-                  scrollTimeoutRef.current = null;
-                }
-              }}
+              onFocus={handleInputFocus}
               placeholder="Start typing..."
               maxLength={2000}
               className="flex-1 rounded-full border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-transparent"
-              style={{
-                backgroundColor: '#ffffff',
-              }}
             />
             <button
               type="submit"
-              className="flex-shrink-0 w-10 h-10 rounded-full bg-[#1C8376] text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transition-opacity hover:opacity-90"
+              className="flex-shrink-0 w-10 h-10 rounded-full bg-[#1C8376] text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!newMsg.trim()}
               style={{
                 backgroundColor: !newMsg.trim() ? '#94a3b8' : '#1C8376',
@@ -429,11 +262,11 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
             </button>
           </form>
         ) : (
-          <div className="rounded-md border border-amber-200 bg-amber-50 text-amber-800 p-3 text-sm mx-2">
+          <div className="rounded-md border border-amber-200 bg-amber-50 text-amber-800 p-3 text-sm">
             Join this league to chat with other members.
           </div>
         )}
-        {/* Notification status banner - below input form */}
+        {/* Notification status banner */}
         {notificationStatus && (
           <div className={`w-full rounded px-2 py-1 text-xs mt-2 ${
             notificationStatus.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
@@ -1458,7 +1291,7 @@ export default function LeaguePage() {
                     }}>
                       {i + 1}
                     </td>
-                    <td className="py-4" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem' }}>{r.name.length > 10 ? r.name.substring(0, 10) + '...' : r.name}</td>
+                    <td className="py-4" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem' }}>{r.name.length > 20 ? r.name.substring(0, 20) + '...' : r.name}</td>
                     {showForm ? (
                       <td className="px-4 py-4" style={{ backgroundColor: '#f8fafc' }}>
                         {renderForm(r.form)}
@@ -1676,7 +1509,7 @@ export default function LeaguePage() {
                       const submitted = !!submittedMap.get(`${m.id}:${picksGw}`);
                       return (
                         <tr key={m.id} className="border-t border-slate-200">
-                          <td className="px-4 py-3 font-bold text-slate-900">{m.name}</td>
+                          <td className="px-4 py-3 font-bold text-slate-900">{m.name.length > 20 ? m.name.substring(0, 20) + '...' : m.name}</td>
                           <td className="px-4 py-3">
                             {submitted ? (
                               <span className="inline-flex items-center justify-center rounded-full bg-[#1C8376]/10 text-[#1C8376]/90 text-xs px-2 py-1 border border-emerald-300 font-bold shadow-sm whitespace-nowrap w-24">
@@ -2005,7 +1838,7 @@ export default function LeaguePage() {
                     }}>
                       {i + 1}
                     </td>
-                    <td className="py-4" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem' }}>{r.name}</td>
+                    <td className="py-4" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem' }}>{r.name.length > 20 ? r.name.substring(0, 20) + '...' : r.name}</td>
                     <td className="py-4 text-center tabular-nums font-bold" style={{ paddingLeft: '1rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc', color: '#1C8376' }}>{r.score}</td>
                     {members.length >= 3 && <td className="py-4 text-center tabular-nums" style={{ paddingLeft: '1rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}>{r.unicorns}</td>}
                   </tr>

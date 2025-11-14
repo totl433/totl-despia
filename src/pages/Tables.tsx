@@ -896,37 +896,33 @@ export default function TablesPage() {
                   className="rounded-xl border bg-white overflow-hidden shadow-sm w-full animate-pulse"
                   style={{ borderRadius: '12px' }}
                 >
-                  <div className="p-4 bg-white relative">
-                    <div className="flex items-center gap-3 relative">
+                  <div className="p-6 bg-white relative">
+                    <div className="flex items-start gap-3 relative">
                       <div className="flex-shrink-0 w-14 h-14 rounded-full bg-slate-200" />
-                      <div className="flex-1 min-w-0 flex flex-col">
-                        {/* League Name and Status Row */}
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="h-5 w-32 bg-slate-200 rounded" />
-                          <div className="h-3 w-20 bg-slate-200 rounded" />
+                      <div className="flex-1 min-w-0 flex flex-col gap-1">
+                        {/* Line 1: League Name skeleton */}
+                        <div className="h-5 w-32 bg-slate-200 rounded" />
+                        {/* Line 2: All Submitted skeleton */}
+                        <div className="h-3 w-20 bg-slate-200 rounded" />
+                        {/* Line 3: Ranking skeleton */}
+                        <div className="flex items-center gap-2">
+                          <div className="h-4 w-4 bg-slate-200 rounded" />
+                          <div className="h-4 w-6 bg-slate-200 rounded" />
+                          <div className="h-4 w-4 bg-slate-200 rounded" />
+                          <div className="h-4 w-8 bg-slate-200 rounded" />
                         </div>
-                        {/* Player Chips and Info */}
-                        <div className="flex items-center gap-3">
-                          {/* Member Count and User Position skeleton */}
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <div className="h-4 w-4 bg-slate-200 rounded" />
-                            <div className="h-4 w-6 bg-slate-200 rounded" />
-                            <div className="h-4 w-4 bg-slate-200 rounded" />
-                            <div className="h-4 w-8 bg-slate-200 rounded" />
-                          </div>
-                          {/* Chips skeleton */}
-                          <div className="flex items-center flex-1 overflow-hidden">
-                            {[1, 2, 3, 4].map((k) => (
-                              <div
-                                key={k}
-                                className={`chip-skeleton rounded-full bg-slate-200 flex-shrink-0 ${k > 1 ? 'chip-skeleton-overlap' : ''}`}
-                                style={{
-                                  width: '24px',
-                                  height: '24px',
-                                }}
-                              />
-                            ))}
-                          </div>
+                        {/* Line 3: Chips skeleton */}
+                        <div className="flex items-center overflow-hidden">
+                          {[1, 2, 3, 4].map((k) => (
+                            <div
+                              key={k}
+                              className={`chip-skeleton rounded-full bg-slate-200 flex-shrink-0 ${k > 1 ? 'chip-skeleton-overlap' : ''}`}
+                              style={{
+                                width: '24px',
+                                height: '24px',
+                              }}
+                            />
+                          ))}
                         </div>
                       </div>
                       {/* Badge skeleton - top right */}
@@ -953,9 +949,9 @@ export default function TablesPage() {
                   <div key={r.id} className="rounded-xl border bg-white overflow-hidden shadow-sm w-full" style={{ borderRadius: '12px' }}>
                     <Link 
                       to={`/league/${r.code}`} 
-                      className="block p-4 !bg-white no-underline hover:text-inherit relative z-20"
+                      className="block p-6 !bg-white no-underline hover:text-inherit relative z-20"
                     >
-                      <div className="flex items-center gap-3 relative">
+                      <div className="flex items-start gap-3 relative">
                         {/* League Avatar Badge */}
                         <div className="flex-shrink-0 w-14 h-14 rounded-full flex items-center justify-center overflow-hidden bg-slate-100">
                           <img 
@@ -984,69 +980,66 @@ export default function TablesPage() {
                           />
                         </div>
                         
-                        <div className="flex-1 min-w-0 flex flex-col">
-                          {/* League Name and Status Row */}
+                        <div className="flex-1 min-w-0 flex flex-col gap-1">
+                          {/* Line 1: League Name */}
+                          <div className="text-base font-semibold text-slate-900 truncate">
+                            {r.name}
+                          </div>
+                          
+                          {/* Line 2: All Submitted Status */}
+                          {leagueSubmissions[r.id] && leagueSubmissions[r.id].allSubmitted && (
+                            <span className="text-xs font-normal text-[#1C8376] whitespace-nowrap">All Submitted</span>
+                          )}
+                          
+                          {/* Line 3: Ranking (Member Count and User Position) */}
                           <div className="flex items-center gap-2">
-                            <div className="text-base font-semibold text-slate-900 truncate">
-                              {r.name}
+                            {/* Member Count */}
+                            <div className="flex items-center gap-1">
+                              <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <g clipPath="url(#clip0_4045_135263)">
+                                  <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M12.3334 6.33333C12.3334 7.622 11.2887 8.66667 10.0001 8.66667C8.71142 8.66667 7.66675 7.622 7.66675 6.33333C7.66675 5.04467 8.71142 4 10.0001 4C11.2887 4 12.3334 5.04467 12.3334 6.33333Z" stroke="currentColor" strokeWidth="1.33333"/>
+                                  <path d="M7.33325 2.92025C6.94237 2.36557 6.27397 2 5.51507 2C4.31009 2 3.33325 2.92165 3.33325 4.05857C3.33325 4.95488 3.94038 5.7174 4.7878 6" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round"/>
+                                </g>
+                                <defs>
+                                  <clipPath id="clip0_4045_135263">
+                                    <rect width="16" height="16" fill="white"/>
+                                  </clipPath>
+                                </defs>
+                              </svg>
+                              <span className="text-sm font-semibold text-slate-900">{members.length}</span>
                             </div>
-                            {/* Submission Status */}
-                            {leagueSubmissions[r.id] && leagueSubmissions[r.id].allSubmitted && (
-                              <span className="text-xs font-normal text-[#1C8376] whitespace-nowrap">All Submitted</span>
+                            
+                            {/* User Position - ML Ranking */}
+                            {userPosition !== null && userPosition !== undefined ? (
+                              <div className="flex items-center gap-1">
+                                <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                </svg>
+                                <span className="text-sm font-semibold text-slate-900">{ordinal(userPosition)}</span>
+                                {data?.positionChange === 'up' && (
+                                  <span className="text-green-600 text-xs">▲</span>
+                                )}
+                                {data?.positionChange === 'down' && (
+                                  <span className="text-red-600 text-xs">▼</span>
+                                )}
+                                {data?.positionChange === 'same' && (
+                                  <span className="text-slate-400 text-xs">—</span>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                </svg>
+                                <span className="text-sm font-semibold text-slate-400">—</span>
+                              </div>
                             )}
                           </div>
                           
-                          {/* Player Chips and Info - ordered by ML table position (1st to last) */}
-                          <div className="flex items-center gap-3 mt-1">
-                            {/* Member Count and User Position - left of chips */}
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              {/* Member Count */}
-                              <div className="flex items-center gap-1">
-                                <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                  <g clipPath="url(#clip0_4045_135263)">
-                                    <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-                                    <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-                                    <path d="M12.3334 6.33333C12.3334 7.622 11.2887 8.66667 10.0001 8.66667C8.71142 8.66667 7.66675 7.622 7.66675 6.33333C7.66675 5.04467 8.71142 4 10.0001 4C11.2887 4 12.3334 5.04467 12.3334 6.33333Z" stroke="currentColor" strokeWidth="1.33333"/>
-                                    <path d="M7.33325 2.92025C6.94237 2.36557 6.27397 2 5.51507 2C4.31009 2 3.33325 2.92165 3.33325 4.05857C3.33325 4.95488 3.94038 5.7174 4.7878 6" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round"/>
-                                  </g>
-                                  <defs>
-                                    <clipPath id="clip0_4045_135263">
-                                      <rect width="16" height="16" fill="white"/>
-                                    </clipPath>
-                                  </defs>
-                                </svg>
-                                <span className="text-sm font-semibold text-slate-900">{members.length}</span>
-                              </div>
-                              
-                              {/* User Position - ML Ranking */}
-                              {userPosition !== null && userPosition !== undefined ? (
-                                <div className="flex items-center gap-1">
-                                  <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                  </svg>
-                                  <span className="text-sm font-semibold text-slate-900">{ordinal(userPosition)}</span>
-                                  {data?.positionChange === 'up' && (
-                                    <span className="text-green-600 text-xs">▲</span>
-                                  )}
-                                  {data?.positionChange === 'down' && (
-                                    <span className="text-red-600 text-xs">▼</span>
-                                  )}
-                                  {data?.positionChange === 'same' && (
-                                    <span className="text-slate-400 text-xs">—</span>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-1">
-                                  <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                  </svg>
-                                  <span className="text-sm font-semibold text-slate-400">—</span>
-                                </div>
-                              )}
-                            </div>
-                            
-                            {/* Player Chips Container - no gap, chips overlap */}
-                            <div className="flex items-center overflow-hidden">
+                          {/* Line 4: Player Chips - ordered by ML table position (1st to last) */}
+                          <div className="flex items-center overflow-hidden">
                               {(() => {
                               // CRITICAL: Use ML table order - MUST use sortedMemberIds from data
                               const orderedMemberIds = data?.sortedMemberIds;
@@ -1162,7 +1155,6 @@ export default function TablesPage() {
                                 </div>
                               );
                             })()}
-                            </div>
                           </div>
                         </div>
                       </div>

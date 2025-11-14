@@ -710,7 +710,7 @@ export default function GlobalLeaderboardPage() {
                             </span>
                           )}
                           <span className="font-normal text-sm whitespace-nowrap" style={{ color: 'rgb(0, 0, 0)' }}>
-                            {r.name}
+                            {r.name.length > 20 ? r.name.substring(0, 20) + '...' : r.name}
                           </span>
                           {isMe && (
                             <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 flex-shrink-0 flash-you-badge">
