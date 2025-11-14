@@ -130,7 +130,7 @@ type ChatTabProps = {
 function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, leagueCode: _leagueCode, memberCount: _memberCount, maxMembers: _maxMembers, notificationStatus }: ChatTabProps & { notificationStatus?: { message: string; type: 'success' | 'warning' | 'error' | null } | null }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputAreaRef = useRef<HTMLDivElement | null>(null);
   const [inputBottom, setInputBottom] = useState<number>(0);
 
@@ -147,6 +147,14 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
       setTimeout(() => scrollToBottom(), 100);
     }
   }, [chat.length]);
+
+  // Reset textarea height when message is cleared (after send)
+  useEffect(() => {
+    if (!newMsg && inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      inputRef.current.style.height = '42px';
+    }
+  }, [newMsg]);
 
   // Reliable keyboard detection - fix input above keyboard
   useEffect(() => {
@@ -194,8 +202,8 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
               void listRef.current.offsetHeight;
               
               // Scroll after padding is definitely applied - multiple attempts
-              requestAnimationFrame(() => {
-                scrollToBottom();
+        requestAnimationFrame(() => {
+          scrollToBottom();
                 setTimeout(() => scrollToBottom(), 100);
                 setTimeout(() => scrollToBottom(), 300);
                 setTimeout(() => scrollToBottom(), 500);
@@ -204,10 +212,19 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
             }
           }, 100);
         } else {
-          // No keyboard
+          // No keyboard - remove padding and ensure we scroll to show bottom message
           setInputBottom(0);
           if (listRef.current) {
             listRef.current.style.paddingBottom = '';
+            // Force reflow after removing padding
+            void listRef.current.offsetHeight;
+            // Scroll to bottom after padding is removed to ensure last message is visible
+      requestAnimationFrame(() => {
+        scrollToBottom();
+              setTimeout(() => scrollToBottom(), 50);
+              setTimeout(() => scrollToBottom(), 150);
+              setTimeout(() => scrollToBottom(), 300);
+            });
           }
         }
       }, 50); // Small debounce delay
@@ -346,16 +363,36 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
             }}
             className="flex items-center gap-2"
           >
-            <input
+            <textarea
               ref={inputRef}
               value={newMsg}
-              onChange={(e) => setNewMsg(e.target.value)}
+              onChange={(e) => {
+                setNewMsg(e.target.value);
+                // Auto-resize textarea
+                if (inputRef.current) {
+                  inputRef.current.style.height = 'auto';
+                  inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
+                }
+              }}
               onFocus={handleInputFocus}
+              onKeyDown={(e) => {
+                // Submit on Enter (but allow Shift+Enter for new line)
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (newMsg.trim()) {
+                    onSend();
+                  }
+                }
+              }}
               placeholder="Start typing..."
               maxLength={2000}
-              inputMode="text"
-              enterKeyHint="send"
-              className="flex-1 rounded-full border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-transparent"
+              rows={1}
+              className="flex-1 rounded-full border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-transparent resize-none overflow-hidden"
+              style={{
+                minHeight: '42px',
+                maxHeight: '120px',
+                lineHeight: '1.5',
+              }}
             />
             <button
               type="submit"
@@ -1369,11 +1406,11 @@ export default function LeaguePage() {
                   <th className="px-4 py-3 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8' }}>Form</th>
                 ) : (
                   <>
-                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '50px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#94a3b8', fontSize: '0.75rem' }}>W</th>
-                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '50px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#94a3b8', fontSize: '0.75rem' }}>D</th>
-                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '50px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#94a3b8', fontSize: '0.75rem' }}>{isLateStartingLeague ? 'CP' : 'OCP'}</th>
-                    {members.length >= 3 && <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '50px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#94a3b8', fontSize: '1rem' }}>🦄</th>}
-                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '50px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#94a3b8', fontSize: '0.75rem' }}>PTS</th>
+                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '0.75rem' }}>W</th>
+                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '0.75rem' }}>D</th>
+                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '0.75rem' }}>{isLateStartingLeague ? 'CP' : 'OCP'}</th>
+                    {members.length >= 3 && <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '1rem' }}>🦄</th>}
+                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '0.75rem' }}>PTS</th>
                   </>
                 )}
               </tr>
@@ -1400,18 +1437,18 @@ export default function LeaguePage() {
                     }}>
                       {i + 1}
                     </td>
-                    <td className="py-4" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem' }}>{r.name.length > 20 ? r.name.substring(0, 20) + '...' : r.name}</td>
+                    <td className="py-4 truncate whitespace-nowrap" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</td>
                     {showForm ? (
                       <td className="px-4 py-4" style={{ backgroundColor: '#f8fafc' }}>
                         {renderForm(r.form)}
                       </td>
                     ) : (
                       <>
-                        <td className="py-4 text-center tabular-nums" style={{ paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}>{r.wins}</td>
-                        <td className="py-4 text-center tabular-nums" style={{ paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}>{r.draws}</td>
-                        <td className="py-4 text-center tabular-nums" style={{ paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}>{r.ocp}</td>
-                        {members.length >= 3 && <td className="py-4 text-center tabular-nums" style={{ paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}>{r.unicorns}</td>}
-                        <td className="py-4 text-center tabular-nums font-bold" style={{ paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc', color: '#1C8376' }}>{r.mltPts}</td>
+                        <td className="py-4 text-center tabular-nums" style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.wins}</td>
+                        <td className="py-4 text-center tabular-nums" style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.draws}</td>
+                        <td className="py-4 text-center tabular-nums" style={{ width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.ocp}</td>
+                        {members.length >= 3 && <td className="py-4 text-center tabular-nums" style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.unicorns}</td>}
+                        <td className="py-4 text-center tabular-nums font-bold" style={{ width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc', color: '#1C8376' }}>{r.mltPts}</td>
                       </>
                     )}
                   </tr>
@@ -1424,7 +1461,7 @@ export default function LeaguePage() {
                   </td>
                 </tr>
               )}
-              {!mltLoading && !mltRows.length && (
+          {!mltLoading && !mltRows.length && (
                 <tr style={{ backgroundColor: '#f8fafc' }}>
                   <td className="px-4 py-6 text-slate-500 text-center" colSpan={showForm ? 3 : (members.length >= 3 ? 7 : 6)} style={{ backgroundColor: '#f8fafc' }}>
                     No gameweeks completed yet — this will populate after the first results are saved.
@@ -1603,7 +1640,7 @@ export default function LeaguePage() {
             </div>
 
             <div className="overflow-hidden rounded-lg border">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
                 <thead className="bg-slate-50">
                   <tr>
                     <th className="text-left px-4 py-3 w-2/3 font-semibold text-slate-600">Player</th>
@@ -1618,7 +1655,7 @@ export default function LeaguePage() {
                       const submitted = !!submittedMap.get(`${m.id}:${picksGw}`);
                       return (
                         <tr key={m.id} className="border-t border-slate-200">
-                          <td className="px-4 py-3 font-bold text-slate-900">{m.name.length > 20 ? m.name.substring(0, 20) + '...' : m.name}</td>
+                          <td className="px-4 py-3 font-bold text-slate-900 truncate whitespace-nowrap" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.name}</td>
                           <td className="px-4 py-3">
                             {submitted ? (
                               <span className="inline-flex items-center justify-center rounded-full bg-[#1C8376]/10 text-[#1C8376]/90 text-xs px-2 py-1 border border-emerald-300 font-bold shadow-sm whitespace-nowrap w-24">
@@ -1902,7 +1939,7 @@ export default function LeaguePage() {
             </div>
           </div>
         )}
-        
+
         {/* Table */}
         <div 
           className="overflow-y-auto overflow-x-hidden -mx-4 sm:mx-0 rounded-none sm:rounded-2xl border-x-0 sm:border-x border-b border-slate-200 bg-slate-50 shadow-sm"
@@ -1921,8 +1958,8 @@ export default function LeaguePage() {
               <tr style={{ backgroundColor: '#f8fafc', borderBottom: 'none' }}>
                 <th className="py-4 text-left font-normal" style={{ backgroundColor: '#f8fafc', width: '30px', paddingLeft: '0.75rem', paddingRight: '0.5rem', color: '#94a3b8' }}>#</th>
                 <th className="py-4 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem' }}>Player</th>
-                <th className="py-4 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '70px', paddingLeft: '1rem', paddingRight: '0.5rem', color: '#94a3b8' }}>Score</th>
-                {members.length >= 3 && <th className="py-4 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '70px', paddingLeft: '1rem', paddingRight: '0.5rem', color: '#94a3b8', fontSize: '1rem' }}>🦄</th>}
+                <th className="py-4 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '50px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8' }}>Score</th>
+                {members.length >= 3 && <th className="py-4 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '1rem' }}>🦄</th>}
               </tr>
             </thead>
             <tbody>
@@ -1947,10 +1984,10 @@ export default function LeaguePage() {
                     }}>
                       {i + 1}
                     </td>
-                    <td className="py-4" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem' }}>{r.name.length > 20 ? r.name.substring(0, 20) + '...' : r.name}</td>
-                    <td className="py-4 text-center tabular-nums font-bold" style={{ paddingLeft: '1rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc', color: '#1C8376' }}>{r.score}</td>
-                    {members.length >= 3 && <td className="py-4 text-center tabular-nums" style={{ paddingLeft: '1rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}>{r.unicorns}</td>}
-                  </tr>
+                    <td className="py-4 truncate whitespace-nowrap" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</td>
+                    <td className="py-4 text-center tabular-nums font-bold" style={{ width: '50px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc', color: '#1C8376' }}>{r.score}</td>
+                    {members.length >= 3 && <td className="py-4 text-center tabular-nums" style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.unicorns}</td>}
+                </tr>
                 );
               })}
               {!rows.length && (
@@ -2046,12 +2083,12 @@ export default function LeaguePage() {
                 </div>
               </div>
             </div>
-          </div>
-        )}
+        </div>
+      )}
 
-      </div>
-    );
-  }
+    </div>
+  );
+}
 
   // Scroll to top when tab changes - MUST be before any conditional returns
   useEffect(() => {
@@ -2193,7 +2230,7 @@ export default function LeaguePage() {
                 <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                 </svg>
-              </button>
+                    </button>
             </div>
           </div>
 
@@ -2282,7 +2319,7 @@ export default function LeaguePage() {
                 <div className="px-4 py-3 border-b border-slate-100">
                   <div className="text-xs text-slate-600 mb-1">Admin:</div>
                   <div className="text-sm font-semibold text-slate-800">{adminName}</div>
-                </div>
+        </div>
                 <button
                   onClick={() => {
                     setShowAdminMenu(true);
@@ -2294,7 +2331,7 @@ export default function LeaguePage() {
                 </button>
               </>
             )}
-            <button
+                      <button
               onClick={() => {
                 setShowInvite(true);
                 setShowHeaderMenu(false);
@@ -2302,7 +2339,7 @@ export default function LeaguePage() {
               className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100"
             >
               ➕ Invite players
-            </button>
+                      </button>
             <button
               onClick={() => {
                 shareLeague();
@@ -2312,7 +2349,7 @@ export default function LeaguePage() {
             >
               Share league code
             </button>
-            <button
+                <button
               onClick={() => {
                 setShowLeaveConfirm(true);
                 setShowHeaderMenu(false);
@@ -2320,8 +2357,8 @@ export default function LeaguePage() {
               className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors"
             >
               Leave
-            </button>
-          </div>
+                </button>
+              </div>
         </>,
         document.body
       )}
@@ -2341,7 +2378,7 @@ export default function LeaguePage() {
             maxMembers={MAX_MEMBERS}
             notificationStatus={notificationStatus}
           />
-        </div>
+            </div>
       ) : (
         <div className="league-content-wrapper">
           <div className="px-1 sm:px-2">
@@ -2351,7 +2388,7 @@ export default function LeaguePage() {
           </div>
 
 
-        </div>
+      </div>
       )}
 
       {/* Admin Menu Modal */}

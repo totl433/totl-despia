@@ -133,15 +133,15 @@ export default function HomePage() {
   // Extract data fetching into a reusable function for pull-to-refresh
   const fetchHomeData = useCallback(async (showLoading = true) => {
     if (!user?.id) {
-      setLoading(false);
+        setLoading(false);
       return;
     }
 
     let alive = true;
     
     if (showLoading) {
-      setLoading(true);
-    }
+        setLoading(true);
+      }
 
     try {
       // PARALLEL QUERY 1: Fetch current GW and user's leagues simultaneously
@@ -163,7 +163,7 @@ export default function HomePage() {
       });
       
       const currentGw = (currentGwResult.data as any)?.current_gw ?? 1;
-      
+
       const userLeagues = ((userLeaguesResult.data ?? []) as any[])
         .map((r) => r.leagues)
         .filter(Boolean) as League[];
@@ -171,9 +171,9 @@ export default function HomePage() {
       console.log('[Home] Processed leagues:', userLeagues.length);
       if (userLeagues.length > 0) {
         console.log('[Home] League names:', userLeagues.map(l => l.name));
-      } else {
+        } else {
         console.warn('[Home] NO LEAGUES FOUND! Raw data:', userLeaguesResult.data);
-      }
+          }
 
       // Assign avatars to leagues
       const ls: League[] = userLeagues.map((league) => ({
@@ -201,36 +201,36 @@ export default function HomePage() {
       const submitted = !!submissionResult.data?.submitted_at;
 
     // Calculate score for current GW
-    const outcomeByIdx = new Map<number, "H" | "D" | "A">();
+        const outcomeByIdx = new Map<number, "H" | "D" | "A">();
     gwResults.forEach((r) => {
       const out = rowToOutcome(r);
       if (out) {
         outcomeByIdx.set(r.fixture_index, out);
-      }
-    });
+          }
+        });
 
-    // Populate resultsMap for the current GW
-    const currentResultsMap: Record<number, "H" | "D" | "A"> = {};
-    outcomeByIdx.forEach((result, fixtureIndex) => {
-      currentResultsMap[fixtureIndex] = result;
-    });
+        // Populate resultsMap for the current GW
+        const currentResultsMap: Record<number, "H" | "D" | "A"> = {};
+        outcomeByIdx.forEach((result, fixtureIndex) => {
+          currentResultsMap[fixtureIndex] = result;
+        });
 
     let score: number | null = null;
-    if (outcomeByIdx.size > 0) {
+        if (outcomeByIdx.size > 0) {
       // Count correct picks
-      let s = 0;
-      userPicks.forEach((p) => {
-        const out = outcomeByIdx.get(p.fixture_index);
-        if (out && out === p.pick) s += 1;
-      });
-      score = s;
-    }
+          let s = 0;
+          userPicks.forEach((p) => {
+            const out = outcomeByIdx.get(p.fixture_index);
+            if (out && out === p.pick) s += 1;
+          });
+          score = s;
+        }
 
     // Only populate picksMap if user has submitted
-    const map: Record<number, "H" | "D" | "A"> = {};
-    if (submitted) {
-      userPicks.forEach((p) => (map[p.fixture_index] = p.pick));
-    }
+      const map: Record<number, "H" | "D" | "A"> = {};
+      if (submitted) {
+        userPicks.forEach((p) => (map[p.fixture_index] = p.pick));
+      }
 
     if (!alive) return;
 
@@ -247,16 +247,16 @@ export default function HomePage() {
     // Fetch unread counts
     const unreadCounts: Record<string, number> = {};
     if (leagueIds.length > 0 && readsResult.data) {
-      const lastRead = new Map<string, string>();
+        const lastRead = new Map<string, string>();
       (readsResult.data as any[]).forEach((r: any) => lastRead.set(r.league_id, r.last_read_at));
-      
+
       const countPromises = leagueIds.map(async (leagueId) => {
         const since = lastRead.get(leagueId) ?? "1970-01-01T00:00:00Z";
         const { data, count } = await supabase
-          .from("league_messages")
-          .select("id", { count: "exact" })
+            .from("league_messages")
+            .select("id", { count: "exact" })
           .eq("league_id", leagueId)
-          .gte("created_at", since);
+            .gte("created_at", since);
         return [leagueId, typeof count === "number" ? count : (data?.length ?? 0)] as [string, number];
       });
       
@@ -264,14 +264,14 @@ export default function HomePage() {
       counts.forEach(([leagueId, count]) => {
         unreadCounts[leagueId] = count;
       });
-    }
+          }
     
     // Fetch submission status - OPTIMIZED: Single query for all members, then single query for all submissions
-    const submissionStatus: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }> = {};
+      const submissionStatus: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }> = {};
     if (leagueIds.length > 0) {
       // OPTIMIZATION: Fetch all members in one query
       const membersResult = await supabase
-        .from("league_members")
+            .from("league_members")
         .select("league_id,user_id")
         .in("league_id", leagueIds);
       
@@ -282,13 +282,13 @@ export default function HomePage() {
         if (!membersByLeague[row.league_id]) membersByLeague[row.league_id] = [];
         membersByLeague[row.league_id].push(row.user_id);
       });
-      
+            
       // OPTIMIZATION: Fetch all submissions in one query (if any members exist)
       const allMemberIds = Array.from(new Set(Object.values(membersByLeague).flat()));
       const { data: allSubmissions } = allMemberIds.length > 0 
         ? await supabase.from("gw_submissions").select("user_id").eq("gw", currentGw).in("user_id", allMemberIds)
         : { data: [] };
-      
+            
       const submittedUserIds = new Set((allSubmissions ?? []).map((s: any) => s.user_id));
       
       // Calculate submission status for each league
@@ -297,9 +297,9 @@ export default function HomePage() {
         const submittedCount = memberIds.filter(id => submittedUserIds.has(id)).length;
         submissionStatus[leagueId] = {
           allSubmitted: submittedCount === totalCount && totalCount > 0,
-          submittedCount,
+              submittedCount,
           totalCount,
-        };
+            };
       });
     }
 
@@ -333,8 +333,8 @@ export default function HomePage() {
       if (alive) {
         setLastScoreGw(null);
         setLastScore(null);
+        }
       }
-    }
 
     // Don't show "coming soon" message
     setNextGwComing(null);
@@ -573,7 +573,7 @@ export default function HomePage() {
         : { data: [] };
       
       const submittedUserIdsBatch = new Set((allSubmissionsBatch ?? []).map((s: any) => s.user_id));
-      
+
       const leagueDataMap: Record<string, LeagueData> = {};
       
       for (let i = 0; i < leagues.length; i++) {
@@ -815,7 +815,7 @@ export default function HomePage() {
             if (submittedUserIdsBatch.has(id)) {
               submittedMembers.add(id);
             }
-          });
+            });
           
           
           // Store data - CRITICAL: sortedMemberIds must be stored correctly
@@ -1430,8 +1430,8 @@ export default function HomePage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-medium text-slate-500 uppercase tracking-wide">
-            {title}
-          </h2>
+          {title}
+        </h2>
           <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center">
             <span className="text-[10px] text-slate-500 font-bold">i</span>
           </div>
@@ -1807,17 +1807,17 @@ export default function HomePage() {
                           {/* Player chips skeleton */}
                           <div className="flex items-center overflow-hidden">
                             {[1, 2, 3, 4].map((k) => (
-                              <div
-                                key={k}
+                                <div
+                                  key={k}
                                 className={`chip-skeleton rounded-full bg-slate-200 flex-shrink-0 ${k > 1 ? 'chip-skeleton-overlap' : ''}`}
-                                style={{
+                                  style={{
                                   width: '24px',
                                   height: '24px',
-                                }}
-                              />
-                            ))}
+                                  }}
+                                />
+                              ))}
+                            </div>
                           </div>
-                        </div>
                         {/* Badge skeleton - top right */}
                         <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
                           <div className="h-6 w-6 rounded-full bg-slate-200" />
@@ -1877,7 +1877,7 @@ export default function HomePage() {
         <>
           {/* Leaderboards */}
           <Section title="Leaderboards" boxed={false}>
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain', WebkitTouchCallout: 'none', userSelect: 'none' }}>
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x', overscrollBehaviorX: 'contain' }}>
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                   display: none;
@@ -1913,7 +1913,7 @@ export default function HomePage() {
                             ? `TOP ${Math.round((lastGwRank.rank / lastGwRank.total) * 100)}%`
                             : "—"}
                         </span>
-                      </div>
+              </div>
                     </div>
                   </div>
                 </Link>
@@ -1935,7 +1935,7 @@ export default function HomePage() {
                             ? `TOP ${Math.round((fiveGwRank.rank / fiveGwRank.total) * 100)}%`
                             : "—"}
                         </span>
-                      </div>
+                    </div>
                     </div>
                   </div>
                 </Link>
@@ -1957,7 +1957,7 @@ export default function HomePage() {
                             ? `TOP ${Math.round((tenGwRank.rank / tenGwRank.total) * 100)}%`
                             : "—"}
                         </span>
-                      </div>
+                    </div>
                     </div>
                   </div>
                 </Link>
@@ -1979,7 +1979,7 @@ export default function HomePage() {
                             ? `TOP ${Math.round((seasonRank.rank / seasonRank.total) * 100)}%`
                             : "—"}
                         </span>
-                      </div>
+                    </div>
                     </div>
                   </div>
                 </Link>
@@ -2087,7 +2087,7 @@ export default function HomePage() {
                   </div>
                 )}
               </div>
-            </div>
+        </div>
       </Section>
 
       {/* Mini Leagues section */}
@@ -2095,8 +2095,8 @@ export default function HomePage() {
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <h2 className="text-base font-medium text-slate-500 uppercase tracking-wide">
-              Mini Leagues
-            </h2>
+            Mini Leagues
+          </h2>
             <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center">
               <span className="text-[10px] text-slate-500 font-bold">i</span>
             </div>
@@ -2108,7 +2108,7 @@ export default function HomePage() {
             return null;
           })()}
           {(loading || leagueDataLoading) && isInitialMountRef.current && leagues.length === 0 ? (
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain', WebkitTouchCallout: 'none', userSelect: 'none' }}>
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x', overscrollBehaviorX: 'contain' }}>
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                   display: none;
@@ -2130,17 +2130,17 @@ export default function HomePage() {
                               <div className="h-5 w-32 bg-slate-200 rounded -mt-0.5" />
                               <div className="flex items-center overflow-hidden">
                                 {[1, 2, 3, 4].map((k) => (
-                                  <div
-                                    key={k}
+                                    <div
+                                      key={k}
                                     className={`chip-skeleton rounded-full bg-slate-200 flex-shrink-0 ${k > 1 ? 'chip-skeleton-overlap' : ''}`}
-                                    style={{
+                                      style={{
                                       width: '24px',
                                       height: '24px',
-                                    }}
-                                  />
-                                ))}
+                                      }}
+                                    />
+                                  ))}
+                                </div>
                               </div>
-                            </div>
                             <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
                               <div className="h-6 w-6 rounded-full bg-slate-200" />
                             </div>
@@ -2163,7 +2163,45 @@ export default function HomePage() {
               </Link>
             </div>
           ) : (
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}>
+            <div 
+              className="overflow-x-auto -mx-4 px-4 scrollbar-hide" 
+              style={{ 
+                scrollbarWidth: 'none', 
+                msOverflowStyle: 'none', 
+                WebkitOverflowScrolling: 'touch', 
+                touchAction: 'pan-x', 
+                overscrollBehaviorX: 'contain'
+              }}
+              onTouchStart={(e) => {
+                // Store initial touch position to detect scroll vs tap
+                const target = e.currentTarget;
+                const touch = e.touches[0];
+                if (touch) {
+                  (target as any).__touchStartX = touch.clientX;
+                  (target as any).__touchStartY = touch.clientY;
+                  (target as any).__touchStartTime = Date.now();
+                }
+              }}
+              onTouchMove={(e) => {
+                // If user is scrolling, mark it so links don't trigger
+                const target = e.currentTarget;
+                const touch = e.touches[0];
+                if (touch && (target as any).__touchStartX !== undefined) {
+                  const deltaX = Math.abs(touch.clientX - (target as any).__touchStartX);
+                  const deltaY = Math.abs(touch.clientY - (target as any).__touchStartY);
+                  if (deltaX > 5 || deltaY > 5) {
+                    (target as any).__isScrolling = true;
+                  }
+                }
+              }}
+              onTouchEnd={(e) => {
+                // Reset scroll flag after a delay
+                const target = e.currentTarget;
+                setTimeout(() => {
+                  (target as any).__isScrolling = false;
+                }, 100);
+              }}
+            >
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                   display: none;
@@ -2188,18 +2226,18 @@ export default function HomePage() {
                     return (
                       <div key={batchIdx} className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm w-[320px]">
                         {batchLeagues.map((l, index) => {
-                  const unread = unreadByLeague?.[l.id] ?? 0;
-                  const badge = unread > 0 ? Math.min(unread, 99) : 0;
-                  const data = leagueData[l.id];
-                  
-                  const members = data?.members || [];
-                  
+                        const unread = unreadByLeague?.[l.id] ?? 0;
+                        const badge = unread > 0 ? Math.min(unread, 99) : 0;
+                        const data = leagueData[l.id];
+                        
+                        const members = data?.members || [];
+                        
                   // DEBUG for all leagues - check data structure
                   if (l.name?.toLowerCase().includes('prem')) {
-                    console.error(`[${l.name}] === RENDERING ===`);
-                    console.error(`League ID:`, l.id);
-                    console.error(`hasData:`, !!data);
-                    console.error(`data?.sortedMemberIds:`, data?.sortedMemberIds);
+                          console.error(`[${l.name}] === RENDERING ===`);
+                          console.error(`League ID:`, l.id);
+                          console.error(`hasData:`, !!data);
+                          console.error(`data?.sortedMemberIds:`, data?.sortedMemberIds);
                     console.error(`data?.sortedMemberIds length:`, data?.sortedMemberIds?.length);
                     console.error(`data?.submittedMembers:`, data?.submittedMembers);
                     console.error(`data?.submittedMembers type:`, typeof data?.submittedMembers);
@@ -2207,11 +2245,11 @@ export default function HomePage() {
                     console.error(`data?.latestGwWinners:`, data?.latestGwWinners);
                     console.error(`data?.latestGwWinners type:`, typeof data?.latestGwWinners);
                     console.error(`data?.latestGwWinners is Set:`, data?.latestGwWinners instanceof Set);
-                    console.error(`members count:`, members.length);
+                          console.error(`members count:`, members.length);
                     console.error(`members:`, members.map(m => ({ id: m.id, name: m.name })));
-                  }
-                  
-                          return (
+                        }
+                        
+                        return (
                             <div key={l.id} className={index < batchLeagues.length - 1 ? 'relative' : ''}>
                               {index < batchLeagues.length - 1 && (
                                 <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-10 pointer-events-none" />
@@ -2224,7 +2262,23 @@ export default function HomePage() {
                                   cursor: 'pointer', 
                                   position: 'relative',
                                   WebkitTapHighlightColor: 'transparent',
-                                  touchAction: 'manipulation'
+                                  touchAction: 'manipulation',
+                                  userSelect: 'none',
+                                  WebkitUserSelect: 'none'
+                                }}
+                                onTouchStart={(e) => {
+                                  // Allow the link to handle touch events
+                                  e.stopPropagation();
+                                }}
+                                onTouchEnd={(e) => {
+                                  // Only navigate if user wasn't scrolling
+                                  const scrollContainer = e.currentTarget.closest('.overflow-x-auto');
+                                  if (scrollContainer && (scrollContainer as any).__isScrolling) {
+                                    e.preventDefault();
+                                    return;
+                                  }
+                                  // Navigation will happen via the Link's default behavior
+                                  e.stopPropagation();
                                 }}
                                 onClick={(e) => {
                                   // Ensure click works even if parent has touch handlers
@@ -2246,14 +2300,14 @@ export default function HomePage() {
                                           target.src = fallbackSrc;
                                         } else {
                                           // If Picsum also fails, show calendar icon
-                                          target.style.display = 'none';
-                                          const parent = target.parentElement;
-                                          if (parent && !parent.querySelector('svg')) {
-                                            parent.innerHTML = `
-                                              <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                              </svg>
-                                            `;
+                                        target.style.display = 'none';
+                                        const parent = target.parentElement;
+                                        if (parent && !parent.querySelector('svg')) {
+                                          parent.innerHTML = `
+                                            <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                            </svg>
+                                          `;
                                           }
                                         }
                                       }}
@@ -2309,13 +2363,13 @@ export default function HomePage() {
                                               }
                                               
                                               return (
-                                                <div
-                                                  key={member.id}
+                                          <div
+                                            key={member.id}
                                                   className={chipClassName}
-                                                  title={member.name}
-                                                >
-                                                  {initials(member.name)}
-                                                </div>
+                                            title={member.name}
+                                          >
+                                            {initials(member.name)}
+                                          </div>
                                               );
                                             });
                                           }
@@ -2397,23 +2451,23 @@ export default function HomePage() {
                                               style={{ 
                                                 width: '24px', 
                                                 height: '24px',
-                                              }}
-                                            >
+                                            }}
+                                          >
                                               +{totalMembers - 8}
                                           </div>
                                           );
                                         })()}
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                                
+                                  
                                 {/* Unread Badge and Arrow - Top Right */}
                                 <div className="absolute top-4 right-4 flex items-center gap-1.5 z-30 pointer-events-none">
-                                  {badge > 0 && (
+                                    {badge > 0 && (
                                     <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-[#1C8376] text-white text-xs font-bold pointer-events-none">
-                                      {badge}
-                                    </span>
-                                  )}
+                                        {badge}
+                                      </span>
+                                    )}
                                   <svg className="w-5 h-5 text-slate-400 flex-shrink-0 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                                   </svg>
@@ -2438,7 +2492,7 @@ export default function HomePage() {
           <div className="flex items-center gap-2">
             <h2 className="text-base font-medium text-slate-500 uppercase tracking-wide">
               Games
-            </h2>
+          </h2>
             <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center">
               <span className="text-[10px] text-slate-500 font-bold">i</span>
             </div>
@@ -2461,12 +2515,12 @@ export default function HomePage() {
                 </svg>
               </button>
             )}
-            {fixtures.length > 0 && !gwSubmitted && gwScore === null && (
+          {fixtures.length > 0 && !gwSubmitted && gwScore === null && (
               <Link to="/new-predictions" className="inline-block px-3 py-1 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors no-underline">Make your predictions</Link>
-            )}
-          </div>
+          )}
         </div>
-        {nextGwComing ? (
+          </div>
+          {nextGwComing ? (
           <div className="mb-2">
             <span className="text-slate-600 font-semibold">GW{nextGwComing} coming soon</span>
             </div>
@@ -2477,21 +2531,21 @@ export default function HomePage() {
           <div className="mt-6">
             <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">
               {fixtures.map((f, index) => {
-                const pick = picksMap[f.fixture_index];
+                        const pick = picksMap[f.fixture_index];
                 const result = resultsMap[f.fixture_index];
-                const homeKey = f.home_code || f.home_name || f.home_team || "";
-                const awayKey = f.away_code || f.away_name || f.away_team || "";
+                        const homeKey = f.home_code || f.home_name || f.home_team || "";
+                        const awayKey = f.away_code || f.away_name || f.away_team || "";
 
-                const homeName = getMediumName(homeKey);
-                const awayName = getMediumName(awayKey);
+                        const homeName = getMediumName(homeKey);
+                        const awayName = getMediumName(awayKey);
 
                 const kickoff = f.kickoff_time
-                  ? (() => {
-                      const d = new Date(f.kickoff_time);
-                      const hh = String(d.getUTCHours()).padStart(2, '0');
-                      const mm = String(d.getUTCMinutes()).padStart(2, '0');
-                      return `${hh}:${mm}`;
-                    })()
+                                      ? (() => {
+                                          const d = new Date(f.kickoff_time);
+                                          const hh = String(d.getUTCHours()).padStart(2, '0');
+                                          const mm = String(d.getUTCMinutes()).padStart(2, '0');
+                                          return `${hh}:${mm}`;
+                                        })()
                   : "—";
 
                 // Determine button states
@@ -2541,10 +2595,10 @@ export default function HomePage() {
                               e.currentTarget.style.display = 'none';
                             }}
                           />
-                        </div>
+                                  </div>
                         <div className="text-slate-500 text-sm px-4">
                           {kickoff}
-                        </div>
+                                </div>
                         <div className="flex items-center gap-1 flex-1 justify-start">
                           <img 
                             src={`/assets/badges/${(f.away_code || awayKey).toUpperCase()}.png`} 
@@ -2555,25 +2609,25 @@ export default function HomePage() {
                             }}
                           />
                           <div className="truncate font-medium">{awayName}</div>
-                        </div>
-                      </div>
+                                </div>
+                              </div>
 
                       {/* buttons: Home Win, Draw, Away Win */}
                       <div className="grid grid-cols-3 gap-3">
                         <div className={getButtonClass(homeState)}>
                           <span className={homeState.isCorrect ? "font-bold" : ""}>Home Win</span>
-                        </div>
+                                  </div>
                         <div className={getButtonClass(drawState)}>
                           <span className={drawState.isCorrect ? "font-bold" : ""}>Draw</span>
-                        </div>
+                                </div>
                         <div className={getButtonClass(awayState)}>
                           <span className={awayState.isCorrect ? "font-bold" : ""}>Away Win</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                                  </div>
+                                </div>
+                                  </div>
+                                </div>
+                        );
+                      })}
             </div>
           </div>
         )}
