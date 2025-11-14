@@ -1774,13 +1774,13 @@ export default function HomePage() {
         <>
           {/* Leaderboards */}
           <Section title="Leaderboards" boxed={false}>
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}>
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain', WebkitTouchCallout: 'none', userSelect: 'none' }}>
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                   display: none;
                 }
               `}</style>
-              <div className="flex gap-2" style={{ width: 'max-content' }}>
+              <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
                 {/* Box 1: Last GW Leaderboard */}
                 <Link to="/global?tab=lastgw" className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block">
                   <div className="p-3 h-full flex flex-col relative">
@@ -2005,13 +2005,13 @@ export default function HomePage() {
             return null;
           })()}
           {loading && isInitialMountRef.current && leagues.length === 0 ? (
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}>
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain', WebkitTouchCallout: 'none', userSelect: 'none' }}>
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                   display: none;
                 }
               `}</style>
-              <div className="flex gap-2" style={{ width: 'max-content' }}>
+              <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="flex flex-col gap-2">
                     {[1, 2, 3].map((j) => (
@@ -2065,13 +2065,13 @@ export default function HomePage() {
               </Link>
             </div>
           ) : (
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}>
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain', WebkitTouchCallout: 'none', userSelect: 'none' }}>
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                   display: none;
                 }
               `}</style>
-              <div className="flex gap-2" style={{ width: 'max-content' }}>
+              <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
                 {(() => {
                   // Sort leagues: those with unread messages first
                   const sortedLeagues = [...leagues].sort((a, b) => {
@@ -2121,6 +2121,7 @@ export default function HomePage() {
                               <Link
                                 to={`/league/${l.code}`}
                                 className="block p-4 !bg-white no-underline hover:text-inherit relative z-20"
+                                style={{ pointerEvents: 'auto', cursor: 'pointer' }}
                               >
                                 <div className="flex items-start gap-3 relative">
                                   {/* League Avatar Badge */}
