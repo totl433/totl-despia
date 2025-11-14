@@ -143,7 +143,14 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
     if (listRef.current) {
       isScrollingRef.current = true;
       // Use scrollTop for instant, reliable scrolling
-      listRef.current.scrollTop = listRef.current.scrollHeight;
+      const scrollHeight = listRef.current.scrollHeight;
+      const clientHeight = listRef.current.clientHeight;
+      listRef.current.scrollTop = scrollHeight - clientHeight;
+      
+      // Also use scrollIntoView as backup
+      if (bottomRef.current) {
+        bottomRef.current.scrollIntoView({ behavior: 'instant', block: 'end' });
+      }
       
       // Reset flag after scroll completes
       requestAnimationFrame(() => {
@@ -222,8 +229,6 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
     let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
     
     const handleViewportResize = () => {
-      if (!hasInitiallyScrolled.current) return;
-      
       const currentHeight = visualViewport.height;
       const lastHeight = lastViewportHeightRef.current;
       
@@ -245,7 +250,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
             requestAnimationFrame(() => {
               scrollToBottom(true); // Force scroll after keyboard animation
             });
-          }, 100); // Short delay to let viewport stabilize
+          }, 150); // Slightly longer delay to ensure viewport has stabilized
         }
       }
       

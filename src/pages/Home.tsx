@@ -2128,7 +2128,7 @@ export default function HomePage() {
                               <Link
                                 to={`/league/${l.code}`}
                                 className="block p-4 !bg-white no-underline hover:text-inherit relative z-20"
-                                style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+                                style={{ pointerEvents: 'auto', cursor: 'pointer', position: 'relative' }}
                               >
                                 <div className="flex items-start gap-3 relative">
                                   {/* League Avatar Badge */}
@@ -2307,13 +2307,13 @@ export default function HomePage() {
                                 </div>
                                 
                                 {/* Unread Badge and Arrow - Top Right */}
-                                <div className="absolute top-4 right-4 flex items-center gap-1.5 z-10">
+                                <div className="absolute top-4 right-4 flex items-center gap-1.5 z-30 pointer-events-none">
                                   {badge > 0 && (
-                                    <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-[#1C8376] text-white text-xs font-bold">
+                                    <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-[#1C8376] text-white text-xs font-bold pointer-events-none">
                                       {badge}
                                     </span>
                                   )}
-                                  <svg className="w-5 h-5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-5 h-5 text-slate-400 flex-shrink-0 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                                   </svg>
                                 </div>
