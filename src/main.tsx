@@ -12,7 +12,7 @@ import HomePage from "./pages/Home";
 import GlobalPage from "./pages/Global";
 import CreateLeaguePage from "./pages/CreateLeague";
 import HowToPlayPage from "./pages/HowToPlay";
-import SwipePredictions from "./pages/SwipePredictions";
+import NewPredictionsCentre from "./pages/NewPredictionsCentre";
 import ProfilePage from "./pages/Profile";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import PredictionsBanner from "./components/PredictionsBanner";
@@ -102,7 +102,7 @@ function AppContent() {
       {location.pathname === '/' && <FloatingProfile />}
 
       {/* Global Predictions Banner - hide on auth page and full-screen pages */}
-      {!isFullScreenPage && location.pathname !== '/auth' && location.pathname !== '/new-predictions' && !location.pathname.startsWith('/league/') && <PredictionsBanner />}
+      {!isFullScreenPage && location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && <PredictionsBanner />}
 
       {/* Welcome Message */}
       {showWelcome && (
@@ -126,7 +126,7 @@ function AppContent() {
       {/* Routes */}
       <Routes>
         <Route path="/auth" element={<SignIn />} />
-        <Route path="/new-predictions" element={<RequireAuth><SwipePredictions /></RequireAuth>} />
+        <Route path="/new-predictions" element={<RequireAuth><NewPredictionsCentre /></RequireAuth>} />
         <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
         <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
         <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
@@ -140,7 +140,7 @@ function AppContent() {
       </Routes>
 
       {/* Bottom Navigation - hide on auth page and league pages */}
-      {location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/new-predictions' && <BottomNav />}
+      {location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && <BottomNav />}
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -132,11 +133,15 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const hasInitiallyScrolled = useRef(false);
 
-  // Scroll to bottom function
+  // Scroll to bottom function - uses multiple methods for reliability
   const scrollToBottom = () => {
     if (listRef.current) {
-      // Set scroll position directly for instant scroll
+      // Method 1: Direct scroll position
       listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
+    // Method 2: Use bottomRef scrollIntoView as backup
+    if (bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'instant', block: 'end' });
     }
   };
 
@@ -152,6 +157,10 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           setTimeout(() => {
             scrollToBottom();
           }, 100);
+          // One more attempt after a longer delay to ensure everything is rendered
+          setTimeout(() => {
+            scrollToBottom();
+          }, 300);
         });
       });
     }
@@ -169,6 +178,10 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           hasInitiallyScrolled.current = true;
         });
       });
+      // Final check after delay
+      setTimeout(() => {
+        scrollToBottom();
+      }, 300);
     }
   }, []);
 
@@ -178,6 +191,10 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
       requestAnimationFrame(() => {
         scrollToBottom();
       });
+      // Also ensure after a brief delay
+      setTimeout(() => {
+        scrollToBottom();
+      }, 50);
     }
   }, [chat.length]);
 
@@ -188,46 +205,48 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
     }
   }, [isMember]);
 
+  // Handle container resize (e.g., when keyboard appears/disappears)
+  useEffect(() => {
+    if (!listRef.current) return;
+    
+    const resizeObserver = new ResizeObserver(() => {
+      // When container size changes, ensure we're still scrolled to bottom
+      if (hasInitiallyScrolled.current) {
+        requestAnimationFrame(() => {
+          scrollToBottom();
+        });
+      }
+    });
+    
+    resizeObserver.observe(listRef.current);
+    
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   return (
-    <div className="flex flex-col chat-container" style={{ height: 'calc(100vh - 360px)', minHeight: '400px' }}>
+    <div className="flex flex-col chat-container" style={{ 
+      height: '100%',
+      maxHeight: '100%',
+    }}>
       <style>{`
         .chat-input-area {
-          position: fixed;
-          bottom: env(safe-area-inset-bottom, 0px);
-          left: 50%;
-          transform: translateX(-50%);
-          width: 100%;
-          max-width: 72rem;
-          z-index: 10000;
+          flex-shrink: 0;
           background-color: white;
           box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
           padding-left: 1rem;
           padding-right: 1rem;
-          padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+          padding-top: 0.75rem;
+          padding-bottom: calc(1.75rem + env(safe-area-inset-bottom, 0px));
           margin: 0;
           box-sizing: border-box;
         }
-        @media (max-width: 768px) {
-          .chat-input-area {
-            bottom: env(safe-area-inset-bottom, 0px);
-            padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px) + 8px);
-          }
-          .chat-container {
-            height: calc(100vh - 130px) !important;
-          }
-        }
-        @supports (height: 100dvh) {
-          .chat-container {
-            height: calc(100dvh - 360px);
-          }
-          @media (max-width: 768px) {
-            .chat-container {
-              height: calc(100dvh - 130px) !important;
-            }
-          }
-        }
       `}</style>
-      <div ref={listRef} className="flex-1 overflow-y-auto rounded-xl border bg-white shadow-sm px-3 pt-3 min-h-0">
+      <div ref={listRef} className="flex-1 overflow-y-auto px-3 pt-3 pb-4 min-h-0" style={{
+        WebkitOverflowScrolling: 'touch',
+        overscrollBehavior: 'contain',
+      }}>
         {chat.map((m) => {
           const mine = m.user_id === userId;
           const name = nameById.get(m.user_id) ?? "Unknown";
@@ -242,18 +261,18 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
             </div>
           );
         })}
-        <div ref={bottomRef} />
+        <div ref={bottomRef} style={{ height: '1px', width: '100%' }} />
       </div>
 
-      {/* Input area at bottom - stays close to keyboard */}
-      <div className="chat-input-area bg-white border-t border-slate-200 pt-2" style={{ marginBottom: 0 }}>
+      {/* Input area at bottom - positioned right above safe area */}
+      <div className="chat-input-area bg-white border-t border-slate-200">
         {isMember ? (
           <form
             onSubmit={(e) => {
               e.preventDefault();
               onSend();
             }}
-            className="flex gap-2 px-2"
+            className="flex items-center gap-2 px-2"
           >
             <input
               ref={inputRef}
@@ -264,34 +283,45 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                 // Use multiple strategies to ensure scroll happens
                 const scrollBoth = () => {
                   // Scroll messages container
-                  if (listRef.current) {
-                    listRef.current.scrollTop = listRef.current.scrollHeight;
+                  scrollToBottom();
+                  // Scroll window/page to bottom (for desktop)
+                  if (typeof window !== 'undefined') {
+                    window.scrollTo({
+                      top: document.documentElement.scrollHeight,
+                      behavior: 'smooth'
+                    });
                   }
-                  // Scroll window/page to bottom
-                  window.scrollTo({
-                    top: document.documentElement.scrollHeight,
-                    behavior: 'smooth'
-                  });
                 };
                 
                 // Immediate scroll
                 scrollBoth();
                 
-                // Also scroll after a delay to account for keyboard appearing on mobile
+                // Also scroll after delays to account for keyboard appearing on mobile
                 setTimeout(() => {
                   scrollBoth();
                 }, 300);
+                setTimeout(() => {
+                  scrollBoth();
+                }, 600);
               }}
-              placeholder="Message your league…"
+              placeholder="Start typing..."
               maxLength={2000}
-              className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="flex-1 rounded-full border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-transparent"
+              style={{
+                backgroundColor: '#ffffff',
+              }}
             />
             <button
               type="submit"
-              className="px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-md disabled:opacity-50"
+              className="flex-shrink-0 w-10 h-10 rounded-full bg-[#1C8376] text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transition-opacity hover:opacity-90"
               disabled={!newMsg.trim()}
+              style={{
+                backgroundColor: !newMsg.trim() ? '#94a3b8' : '#1C8376',
+              }}
             >
-              Send
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+              </svg>
             </button>
           </form>
         ) : (
@@ -574,10 +604,34 @@ export default function LeaguePage() {
         .from("league_messages")
         .select("id, league_id, user_id, content, created_at")
         .eq("league_id", league.id)
-        .order("created_at", { ascending: true })
-        .limit(200);
+        .order("created_at", { ascending: false })
+        .limit(500);
       if (!alive) return;
-      if (!error) setChat((data as ChatMsg[]) ?? []);
+      if (!error && data) {
+        const fetchedMessages = (data as ChatMsg[]) ?? [];
+        // Reverse to get oldest first for display, but we fetched newest first
+        const sortedMessages = fetchedMessages.reverse();
+        console.log('[Chat] Loaded messages:', sortedMessages.length, 'from database (most recent)');
+        // Merge with existing messages to avoid losing any that were added via realtime subscription
+        setChat((prev) => {
+          const existingIds = new Set(prev.map(m => m.id));
+          const newMessages = sortedMessages.filter(m => !existingIds.has(m.id));
+          // If we have existing messages, merge; otherwise just use fetched
+          if (prev.length === 0) {
+            console.log('[Chat] Initial load, setting', sortedMessages.length, 'messages');
+            return sortedMessages;
+          }
+          // Combine and sort by created_at, then keep only the most recent 500
+          const combined = [...prev, ...newMessages];
+          const sorted = combined.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          // Keep only the most recent 500 messages (drop oldest from top)
+          const limited = sorted.length > 500 ? sorted.slice(-500) : sorted;
+          console.log('[Chat] Merged messages. Previous:', prev.length, 'New from DB:', newMessages.length, 'Total:', sorted.length, 'After limit:', limited.length);
+          return limited;
+        });
+      } else if (error) {
+        console.error('[Chat] Error loading messages:', error);
+      }
     };
 
     // Initial load
@@ -595,7 +649,16 @@ export default function LeaguePage() {
         },
         (payload) => {
           const msg = payload.new as ChatMsg;
-          setChat((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+          console.log('[Chat] Realtime message received:', msg.id, msg.content.substring(0, 50));
+          setChat((prev) => {
+            if (prev.some((m) => m.id === msg.id)) {
+              console.log('[Chat] Message already exists, skipping');
+              return prev;
+            }
+            const updated = [...prev, msg];
+            console.log('[Chat] Added realtime message. Total messages:', updated.length);
+            return updated;
+          });
         }
       )
       .subscribe();
@@ -633,14 +696,30 @@ export default function LeaguePage() {
     if (tab !== "chat" || !league?.id || !user?.id) return;
     
     // Refetch messages when chat tab becomes active (in case user was on another tab when notification arrived)
+    // Merge with existing messages to avoid losing any that were added via realtime subscription
     const loadMessages = async () => {
       const { data, error } = await supabase
         .from("league_messages")
         .select("id, league_id, user_id, content, created_at")
         .eq("league_id", league.id)
-        .order("created_at", { ascending: true })
-        .limit(200);
-      if (!error) setChat((data as ChatMsg[]) ?? []);
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (!error && data) {
+        const fetchedMessages = (data as ChatMsg[]) ?? [];
+        // Reverse to get oldest first for display, but we fetched newest first
+        const sortedMessages = fetchedMessages.reverse();
+        // Merge with existing messages, avoiding duplicates
+        setChat((prev) => {
+          const existingIds = new Set(prev.map(m => m.id));
+          const newMessages = sortedMessages.filter(m => !existingIds.has(m.id));
+          // Combine and sort by created_at, then keep only the most recent 500
+          const combined = [...prev, ...newMessages];
+          const sorted = combined.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          // Keep only the most recent 500 messages (drop oldest from top)
+          const limited = sorted.length > 500 ? sorted.slice(-500) : sorted;
+          return limited;
+        });
+      }
     };
     loadMessages();
     
@@ -1184,61 +1263,138 @@ export default function LeaguePage() {
 
     return (
       <div className="pt-4">
-        <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <div className="min-w-full">
-              <div className="grid grid-cols-[32px_80px_1fr] gap-0 bg-slate-50 text-xs font-semibold text-slate-600">
-                <div className="px-2 py-3 text-left">#</div>
-                <div className="px-2 py-3 text-left">PLAYER</div>
+        <style>{`
+          .mlt-table tbody tr:last-child {
+            border-bottom: none !important;
+            border: none !important;
+          }
+          .mlt-table tbody tr:last-child td {
+            border-bottom: none !important;
+            border: none !important;
+          }
+          .mlt-table tbody tr:last-child th {
+            border-bottom: none !important;
+            border: none !important;
+          }
+          .mlt-table {
+            border-bottom: none !important;
+          }
+          .mlt-table tbody {
+            border-bottom: none !important;
+          }
+          .mlt-table-container {
+            border-bottom: none !important;
+          }
+          .mlt-table-container table {
+            border-bottom: none !important;
+          }
+          .mlt-table-container tbody {
+            border-bottom: none !important;
+          }
+          .mlt-table-container tbody tr:last-child {
+            border-bottom: none !important;
+            border: none !important;
+          }
+          .mlt-table-container tbody tr:last-child td {
+            border-bottom: none !important;
+            border: none !important;
+          }
+        `}</style>
+        <div 
+          className="mlt-table-container overflow-y-auto overflow-x-hidden -mx-4 sm:mx-0 rounded-none sm:rounded-2xl border-x-0 sm:border-x bg-slate-50"
+          style={{ 
+            backgroundColor: '#f8fafc',
+            borderBottom: 'none',
+            boxShadow: 'none'
+          }}
+        >
+          <table className="mlt-table w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: '#f8fafc', border: 'none', borderBottom: 'none' }}>
+            <thead className="sticky top-0" style={{ 
+              position: 'sticky', 
+              top: 0, 
+              zIndex: 25, 
+              backgroundColor: '#f8fafc', 
+              display: 'table-header-group'
+            } as any}>
+              <tr style={{ backgroundColor: '#f8fafc', borderBottom: 'none' }}>
+                <th className="py-3 text-left font-normal" style={{ backgroundColor: '#f8fafc', width: '30px', paddingLeft: '0.75rem', paddingRight: '0.5rem', color: '#94a3b8' }}>#</th>
+                <th className="py-3 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem' }}>Player</th>
                 {showForm ? (
-                  <div className="px-2 py-3 text-left">FORM</div>
+                  <th className="px-4 py-3 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8' }}>Form</th>
                 ) : (
-                  <div className="px-2 py-3">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-center font-semibold w-8">W</span>
-                      <span className="text-center font-semibold w-8">D</span>
-                      <span className="text-center font-semibold w-10">{isLateStartingLeague ? 'CP' : 'OCP'}</span>
-                      {members.length >= 3 && <span className="text-center font-semibold w-8">🦄</span>}
-                      <span className="text-center font-semibold w-10 pr-2">PTS</span>
-                    </div>
-                  </div>
+                  <>
+                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '50px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#94a3b8', fontSize: '0.75rem' }}>W</th>
+                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '50px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#94a3b8', fontSize: '0.75rem' }}>D</th>
+                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '50px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#94a3b8', fontSize: '0.75rem' }}>{isLateStartingLeague ? 'CP' : 'OCP'}</th>
+                    {members.length >= 3 && <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '50px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#94a3b8', fontSize: '1rem' }}>🦄</th>}
+                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '50px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#94a3b8', fontSize: '0.75rem' }}>PTS</th>
+                  </>
                 )}
-              </div>
-
-              {rows.map((r, i) => (
-                <div key={r.user_id} className="grid grid-cols-[32px_80px_1fr] gap-0 border-t border-slate-200 text-sm">
-                  <div className="px-2 py-3 font-semibold text-slate-600">{i + 1}</div>
-                  <div className="px-2 py-3 font-bold text-slate-900 truncate text-xs">{r.name}</div>
-                  <div className="px-2 py-3">
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const isMe = r.user_id === user?.id;
+                const isLastRow = i === rows.length - 1;
+                return (
+                  <tr 
+                    key={r.user_id} 
+                    className={isMe ? 'flash-user-row' : ''}
+                    style={{
+                      position: 'relative',
+                      backgroundColor: '#f8fafc',
+                      ...(isLastRow ? {} : { borderBottom: '1px solid #e2e8f0' })
+                    }}
+                  >
+                    <td className="py-4 text-left tabular-nums whitespace-nowrap relative" style={{ 
+                      paddingLeft: '0.75rem', 
+                      paddingRight: '0.5rem',
+                      backgroundColor: '#f8fafc',
+                      width: '30px'
+                    }}>
+                      {i + 1}
+                    </td>
+                    <td className="py-4" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem' }}>{r.name.length > 10 ? r.name.substring(0, 10) + '...' : r.name}</td>
                     {showForm ? (
-                      renderForm(r.form)
+                      <td className="px-4 py-4" style={{ backgroundColor: '#f8fafc' }}>
+                        {renderForm(r.form)}
+                      </td>
                     ) : (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-center font-semibold w-8">{r.wins}</span>
-                        <span className="text-center font-semibold w-8">{r.draws}</span>
-                        <span className="text-center font-semibold w-10">{r.ocp}</span>
-                        {members.length >= 3 && <span className="text-center font-semibold w-8">{r.unicorns}</span>}
-                        <span className="text-center font-bold text-[#1C8376] w-10 pr-2">{r.mltPts}</span>
-                      </div>
+                      <>
+                        <td className="py-4 text-center tabular-nums" style={{ paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}>{r.wins}</td>
+                        <td className="py-4 text-center tabular-nums" style={{ paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}>{r.draws}</td>
+                        <td className="py-4 text-center tabular-nums" style={{ paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}>{r.ocp}</td>
+                        {members.length >= 3 && <td className="py-4 text-center tabular-nums" style={{ paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}>{r.unicorns}</td>}
+                        <td className="py-4 text-center tabular-nums font-bold" style={{ paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc', color: '#1C8376' }}>{r.mltPts}</td>
+                      </>
                     )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {mltLoading && <div className="p-3 text-slate-500 text-xs sm:text-sm">Calculating…</div>}
-          {!mltLoading && !mltRows.length && (
-            <div className="p-3 text-slate-500 text-xs sm:text-sm">No gameweeks completed yet — this will populate after the first results are saved.</div>
-          )}
+                  </tr>
+                );
+              })}
+              {mltLoading && (
+                <tr style={{ backgroundColor: '#f8fafc' }}>
+                  <td className="px-4 py-6 text-slate-500 text-center" colSpan={showForm ? 3 : (members.length >= 3 ? 7 : 6)} style={{ backgroundColor: '#f8fafc' }}>
+                    Calculating…
+                  </td>
+                </tr>
+              )}
+              {!mltLoading && !mltRows.length && (
+                <tr style={{ backgroundColor: '#f8fafc' }}>
+                  <td className="px-4 py-6 text-slate-500 text-center" colSpan={showForm ? 3 : (members.length >= 3 ? 7 : 6)} style={{ backgroundColor: '#f8fafc' }}>
+                    No gameweeks completed yet — this will populate after the first results are saved.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
-        <div className="mt-3 flex justify-between items-center">
+        <div className="mt-6 flex justify-between items-center">
           <div className="flex items-center justify-between w-full">
-            <div className="inline-flex rounded-lg bg-slate-100 p-1 shadow-sm">
+            <div className="inline-flex rounded-full bg-slate-100 p-0.5 shadow-sm border border-slate-200">
               <button
                 onClick={() => setShowForm(false)}
-                className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors ${
+                className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors ${
                   !showForm ? "bg-[#1C8376] text-white shadow-sm" : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
                 }`}
               >
@@ -1246,7 +1402,7 @@ export default function LeaguePage() {
               </button>
               <button
                 onClick={() => setShowForm(true)}
-                className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors ${
+                className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors ${
                   showForm ? "bg-[#1C8376] text-white shadow-sm" : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
                 }`}
               >
@@ -1258,10 +1414,15 @@ export default function LeaguePage() {
                 console.log('Button clicked, setting modal to true');
                 setShowTableModal(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-slate-600 hover:text-slate-800 cursor-help transition-colors"
+              className="flex items-center justify-center gap-1.5 bg-white border-2 border-slate-300 hover:bg-slate-50 rounded-full text-slate-600 hover:text-slate-800 cursor-help transition-colors flex-shrink-0 px-3 py-2"
             >
-              <span className="text-sm">📖</span>
-              <span className="text-sm">Rules</span>
+              <img 
+                src="/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png" 
+                alt="Rules" 
+                className="w-4 h-4"
+                style={{ filter: 'invert(40%) sepia(8%) saturate(750%) hue-rotate(180deg) brightness(95%) contrast(88%)' }}
+              />
+              <span className="text-sm font-medium">Rules</span>
             </button>
           </div>
         </div>
@@ -1347,25 +1508,7 @@ export default function LeaguePage() {
     });
 
     return (
-      <div className="mt-4 pt-4">
-        <div className="flex items-center gap-4 text-sm mb-4">
-          <div className="text-slate-900 font-bold text-xl">Game Week {picksGw}</div>
-          {allSubmitted && resultsPublished ? (
-            <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#1C8376]/10 text-[#1C8376]/90 text-sm font-bold border border-emerald-300 shadow-sm">
-              Round Complete!
-            </span>
-          ) : allSubmitted ? (
-            <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-bold border border-blue-300 shadow-sm">
-              All Submitted
-            </span>
-          ) : deadlinePassed ? (
-            <span className="inline-flex items-center px-3 py-1 rounded-full bg-orange-100 text-orange-800 text-sm font-bold border border-orange-300 shadow-sm">
-              Deadline Passed {whoDidntSubmit.length > 0 && `(${whoDidntSubmit.join(', ')} didn't submit)`}
-            </span>
-          ) : (
-            <span className="text-slate-500">not all submitted</span>
-          )}
-        </div>
+      <div className="mt-2 pt-2">
 
         {!allSubmitted && !deadlinePassed ? (
           <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-700">
@@ -1452,7 +1595,24 @@ export default function LeaguePage() {
           <div className="mt-3 space-y-6">
             {sections.map((sec, si) => (
               <div key={si}>
-                <div className="text-slate-700 font-semibold text-lg mb-3">{sec.label}</div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-slate-700 font-normal text-lg">{sec.label}</div>
+                  {si === 0 && allSubmitted && resultsPublished && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#1C8376]/10 text-[#1C8376]/90 text-sm font-bold border border-emerald-300 shadow-sm" style={{ marginTop: '-2px' }}>
+                      Round Complete!
+                    </span>
+                  )}
+                  {si === 0 && allSubmitted && !resultsPublished && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-bold border border-blue-300 shadow-sm" style={{ marginTop: '-2px' }}>
+                      All Submitted
+                    </span>
+                  )}
+                  {si === 0 && deadlinePassed && !allSubmitted && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full bg-orange-100 text-orange-800 text-sm font-bold border border-orange-300 shadow-sm" style={{ marginTop: '-2px' }}>
+                      Deadline Passed {whoDidntSubmit.length > 0 && `(${whoDidntSubmit.join(', ')} didn't submit)`}
+                    </span>
+                  )}
+                </div>
                 <div className="rounded-2xl border bg-slate-50 overflow-hidden">
                   <ul>
                     {sec.items.map((f, idx) => {
@@ -1599,7 +1759,9 @@ export default function LeaguePage() {
   function GwResultsTab() {
     const resGw = selectedGw;
     
-    if (!resGw) return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No game week selected.</div>;
+    if (!resGw || availableGws.length === 0) {
+      return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No game week selected.</div>;
+    }
 
     // Check if this specific GW should be shown for this league
     if (!shouldIncludeGwForLeague(league, resGw, gwDeadlines)) {
@@ -1628,7 +1790,6 @@ export default function LeaguePage() {
     const picksByFixture = new Map<number, PickRow[]>();
     picks.forEach((p) => {
       if (p.gw !== resGw) return;
-      // For results (past or completed GWs), include all picks regardless of submission status
       const arr = picksByFixture.get(p.fixture_index) ?? [];
       arr.push(p);
       picksByFixture.set(p.fixture_index, arr);
@@ -1652,7 +1813,7 @@ export default function LeaguePage() {
     rows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name));
 
     return (
-      <div className="mt-4 pt-4">
+      <div>
         <style>{`
           @keyframes flash {
             0%, 100% {
@@ -1671,44 +1832,84 @@ export default function LeaguePage() {
           .flash-user-row {
             animation: flash 1.5s ease-in-out 3;
           }
+          .full-width-header-border::after {
+            content: '';
+            position: absolute;
+            left: -1rem;
+            right: -1rem;
+            bottom: 0;
+            height: 1px;
+            background-color: #cbd5e1;
+            z-index: 1;
+          }
         `}</style>
-        <div className="text-slate-900 font-bold text-xl mb-4">Game Week {resGw}</div>
-
+        
+        {/* SP Wins Banner */}
         {rows.length > 0 && (
-          <div className="mb-4 p-4 rounded-xl bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 shadow-2xl shadow-slate-600/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]">
-            <div className="text-center relative z-10">
+          <div className="mt-4 mb-4 py-4 rounded-xl bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 shadow-2xl shadow-slate-600/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]">
+            <div className="text-center relative z-10 px-4">
               {rows[0].score === rows[1]?.score && rows[0].unicorns === rows[1]?.unicorns ? (
                 <div className="text-lg font-bold text-white">🤝 It's a Draw!</div>
               ) : (
-                <div className="text-lg font-bold text-white">🏆 {rows[0].name} Wins!</div>
+                <div className="text-lg font-bold text-white">{rows[0].name} Wins!</div>
               )}
             </div>
           </div>
         )}
-
-        <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="text-left px-4 py-3 font-semibold text-slate-600">Player</th>
-                <th className="text-center px-4 py-3 font-semibold text-slate-600">Score</th>
-                {members.length >= 3 && <th className="text-center px-4 py-3 font-semibold text-slate-600 text-lg">🦄</th>}
+        
+        {/* Table */}
+        <div 
+          className="overflow-y-auto overflow-x-hidden -mx-4 sm:mx-0 rounded-none sm:rounded-2xl border-x-0 sm:border-x border-b border-slate-200 bg-slate-50 shadow-sm"
+          style={{ 
+            backgroundColor: '#f8fafc'
+          }}
+        >
+          <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: '#f8fafc' }}>
+            <thead className="sticky top-0" style={{ 
+              position: 'sticky', 
+              top: 0, 
+              zIndex: 25, 
+              backgroundColor: '#f8fafc', 
+              display: 'table-header-group'
+            } as any}>
+              <tr style={{ backgroundColor: '#f8fafc', borderBottom: 'none' }}>
+                <th className="py-4 text-left font-normal" style={{ backgroundColor: '#f8fafc', width: '30px', paddingLeft: '0.75rem', paddingRight: '0.5rem', color: '#94a3b8' }}>#</th>
+                <th className="py-4 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem' }}>Player</th>
+                <th className="py-4 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '70px', paddingLeft: '1rem', paddingRight: '0.5rem', color: '#94a3b8' }}>Score</th>
+                {members.length >= 3 && <th className="py-4 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '70px', paddingLeft: '1rem', paddingRight: '0.5rem', color: '#94a3b8', fontSize: '1rem' }}>🦄</th>}
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {rows.map((r, i) => {
                 const isMe = r.user_id === user?.id;
+                const isLastRow = i === rows.length - 1;
                 return (
-                  <tr key={r.user_id} className={`border-t border-slate-200 ${isMe ? 'flash-user-row' : ''}`}>
-                    <td className="px-4 py-3 font-bold text-slate-900">{r.name}</td>
-                    <td className="px-4 py-3 text-center font-semibold text-[#1C8376]">{r.score}</td>
-                    {members.length >= 3 && <td className="px-4 py-3 text-center font-semibold">{r.unicorns}</td>}
+                  <tr 
+                    key={r.user_id} 
+                    className={isMe ? 'flash-user-row' : ''}
+                    style={{
+                      position: 'relative',
+                      backgroundColor: '#f8fafc',
+                      ...(isLastRow ? {} : { borderBottom: '1px solid #e2e8f0' })
+                    }}
+                  >
+                    <td className="py-4 text-left tabular-nums whitespace-nowrap relative" style={{ 
+                      paddingLeft: '0.75rem', 
+                      paddingRight: '0.5rem',
+                      backgroundColor: '#f8fafc',
+                      width: '30px'
+                    }}>
+                      {i + 1}
+                    </td>
+                    <td className="py-4" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem' }}>{r.name}</td>
+                    <td className="py-4 text-center tabular-nums font-bold" style={{ paddingLeft: '1rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc', color: '#1C8376' }}>{r.score}</td>
+                    {members.length >= 3 && <td className="py-4 text-center tabular-nums" style={{ paddingLeft: '1rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}>{r.unicorns}</td>}
                   </tr>
                 );
               })}
               {!rows.length && (
-                <tr>
-                  <td className="px-4 py-6 text-slate-500 text-center" colSpan={members.length >= 3 ? 3 : 2}>
+                <tr style={{ backgroundColor: '#f8fafc' }}>
+                  <td className="px-4 py-6 text-slate-500 text-center" colSpan={members.length >= 3 ? 4 : 3} style={{ backgroundColor: '#f8fafc' }}>
                     No results recorded for GW {resGw} yet.
                   </td>
                 </tr>
@@ -1716,6 +1917,52 @@ export default function LeaguePage() {
             </tbody>
           </table>
         </div>
+
+        {/* GW Selector and Rules Button */}
+        {availableGws.length > 1 && (
+          <div className="mt-6 mb-4 flex flex-col items-center gap-3 px-4">
+            <div className="flex items-center justify-center gap-3 w-full max-w-sm">
+              <div className="flex-1">
+                <select
+                  value={resGw}
+                  onChange={(e) => setSelectedGw(parseInt(e.target.value, 10))}
+                  className="gw-selector w-full bg-white rounded-full border-2 border-slate-300 px-3 py-2 text-xs font-normal text-slate-600 text-center focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-[#1C8376] active:bg-slate-50 transition-colors"
+                  style={{
+                    fontSize: '12px',
+                    minHeight: '40px', // Smaller
+                    WebkitAppearance: 'none',
+                    MozAppearance: 'none',
+                    appearance: 'none',
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b' stroke-width='2.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 0.75rem center',
+                    backgroundSize: '1em 1em',
+                    paddingRight: '2.5rem'
+                  }}
+                >
+                  {availableGws.map((gw) => (
+                    <option key={gw} value={gw} style={{ fontSize: '12px', padding: '0.5rem', fontWeight: 'normal', color: '#64748b', textTransform: 'uppercase' }}>
+                      GAME WEEK {gw}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={() => setShowScoringModal(true)}
+                className="flex items-center justify-center gap-1.5 bg-white border-2 border-slate-300 hover:bg-slate-50 rounded-full text-slate-600 hover:text-slate-800 cursor-help transition-colors flex-shrink-0 px-3 py-2"
+              >
+                <img 
+                  src="/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png" 
+                  alt="Rules" 
+                  className="w-4 h-4"
+                  style={{ filter: 'invert(40%) sepia(8%) saturate(750%) hue-rotate(180deg) brightness(95%) contrast(88%)' }}
+                />
+                <span className="text-sm font-medium">Rules</span>
+              </button>
+            </div>
+          </div>
+        )}
+
 
         {/* Scoring Modal */}
         {showScoringModal && (
@@ -1753,12 +2000,19 @@ export default function LeaguePage() {
                 </div>
               </div>
             </div>
-        </div>
-      )}
+          </div>
+        )}
 
-    </div>
-  );
-}
+      </div>
+    );
+  }
+
+  // Scroll to top when tab changes - MUST be before any conditional returns
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, [tab]);
 
   /* ---------- page chrome ---------- */
   if (loading) {
@@ -1769,7 +2023,7 @@ export default function LeaguePage() {
     );
   }
 
-  if (!league) {
+  if (!league && !loading) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-10">
         <div className="rounded border bg-white p-6">
@@ -1782,8 +2036,21 @@ export default function LeaguePage() {
     );
   }
 
+  if (!league) {
+    return null; // Still loading
+  }
+
   return (
-    <div className={`min-h-screen ${oldSchoolMode ? 'oldschool-theme' : 'bg-slate-50'}`}>
+    <div className={`${oldSchoolMode ? 'oldschool-theme' : 'bg-slate-50'}`} style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: '100vh',
+      maxHeight: '100vh',
+      overflow: 'hidden',
+    }}>
       <style>{`
         .league-header-fixed {
           position: fixed !important;
@@ -1796,19 +2063,57 @@ export default function LeaguePage() {
           will-change: transform !important;
           contain: layout style paint !important;
         }
+        .league-header-fixed .relative {
+          position: relative !important;
+          z-index: 100 !important;
+        }
         @supports (height: 100dvh) {
           .league-header-fixed {
             top: env(safe-area-inset-top, 0px) !important;
           }
         }
         .league-content-wrapper {
-          padding-top: calc(3.5rem + 3rem);
-          padding-bottom: 6rem;
+          position: fixed;
+          top: calc(3.5rem + 3rem + env(safe-area-inset-top, 0px) + 0.5rem);
+          left: 0;
+          right: 0;
+          bottom: 0;
+          overflow-y: auto;
+          overflow-x: hidden;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
+          padding-bottom: 2rem;
+          padding-left: 1rem;
+          padding-right: 1rem;
         }
         @media (max-width: 768px) {
           .league-content-wrapper {
-            padding-top: calc(3.5rem + 3rem + env(safe-area-inset-top, 0px));
-            padding-bottom: 8rem;
+            top: calc(3.5rem + 3rem + env(safe-area-inset-top, 0px) + 0.5rem);
+            padding-bottom: 2rem;
+            padding-left: 1rem;
+            padding-right: 1rem;
+          }
+        }
+        /* Chat tab - full height layout */
+        .chat-tab-wrapper {
+          position: fixed;
+          top: calc(3.5rem + 3rem + env(safe-area-inset-top, 0px));
+          left: 0;
+          right: 0;
+          bottom: 0;
+          height: calc(100vh - 3.5rem - 3rem - env(safe-area-inset-top, 0px));
+          max-height: calc(100vh - 3.5rem - 3rem - env(safe-area-inset-top, 0px));
+          z-index: 10;
+          overflow: visible;
+          pointer-events: none;
+        }
+        .chat-tab-wrapper > * {
+          pointer-events: auto;
+        }
+        @supports (height: 100dvh) {
+          .chat-tab-wrapper {
+            height: calc(100dvh - 3.5rem - 3rem - env(safe-area-inset-top, 0px));
+            max-height: calc(100dvh - 3.5rem - 3rem - env(safe-area-inset-top, 0px));
           }
         }
       `}</style>
@@ -1828,12 +2133,12 @@ export default function LeaguePage() {
             </Link>
 
             {/* Title */}
-            <h1 className="text-lg font-semibold text-slate-900 truncate flex-1 text-center px-2">
+            <h1 className="text-lg font-normal text-slate-900 truncate flex-1 text-left px-2">
               {league.name}
             </h1>
             
             {/* Menu button */}
-            <div className="relative">
+            <div className="relative" style={{ zIndex: 100 }}>
               <button
                 onClick={() => setShowHeaderMenu(!showHeaderMenu)}
                 className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 transition-colors -mr-2"
@@ -1843,47 +2148,6 @@ export default function LeaguePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                 </svg>
               </button>
-              
-              {/* iOS-style context menu */}
-              {showHeaderMenu && (
-                <>
-                  {/* Backdrop */}
-                  <div 
-                    className="fixed inset-0 z-40" 
-                    onClick={() => setShowHeaderMenu(false)}
-                  />
-                  {/* Menu */}
-                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-slate-200 z-50 overflow-hidden">
-                    <button
-                      onClick={() => {
-                        setShowInvite(true);
-                        setShowHeaderMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100"
-                    >
-                      ➕ Invite players
-                    </button>
-                    <button
-                      onClick={() => {
-                        shareLeague();
-                        setShowHeaderMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100"
-                    >
-                      Share league code
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowLeaveConfirm(true);
-                        setShowHeaderMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                    >
-                      Leave
-                    </button>
-                  </div>
-                </>
-              )}
             </div>
           </div>
 
@@ -1949,117 +2213,100 @@ export default function LeaguePage() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 league-content-wrapper">
-        <div>
-          {tab === "chat" && (
-            <ChatTab
-              chat={chat}
-              userId={user?.id}
-              nameById={memberNameById}
-              isMember={isMember}
-              newMsg={newMsg}
-              setNewMsg={setNewMsg}
-              onSend={sendChat}
-              leagueCode={league?.code}
-              memberCount={members.length}
-              maxMembers={MAX_MEMBERS}
-              notificationStatus={notificationStatus}
-            />
-          )}
-          {tab === "mlt" && <MltTab />}
-          {tab === "gw" && <GwPicksTab />}
-          {tab === "gwr" && <GwResultsTab />}
-        </div>
-
-
-        {/* Game Week Switcher for Results */}
-        {tab === "gwr" && availableGws.length > 0 && (
-          <div className="mt-6 flex items-center justify-between">
-            <div className="flex items-center gap-3 bg-white rounded-lg border border-slate-200 px-4 py-2 shadow-sm">
-              <span className="text-sm font-medium text-slate-600">Game Week:</span>
-              <div className="relative gw-dropdown-container">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowGwDropdown(!showGwDropdown);
-                  }}
-                  className="text-sm font-semibold text-slate-900 bg-transparent border-none outline-none cursor-pointer py-1 px-2 min-w-[100px] text-left flex items-center justify-between"
-                >
-                  {selectedGw ? `GW ${selectedGw}` : "Select GW"}
-                  <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {showGwDropdown && (
-                  <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-50 min-w-[140px]">
-                    {availableGws.map((gw) => (
-                      <button
-                        key={gw}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedGw(gw);
-                          setShowGwDropdown(false);
-                        }}
-                        className={`w-full text-left px-4 py-3 text-base font-medium hover:bg-slate-50 transition-colors ${
-                          selectedGw === gw ? "bg-blue-50 text-blue-700" : "text-slate-900"
-                        }`}
-                      >
-                        GW {gw}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            {/* Rules Button */}
-            <button
-              onClick={() => setShowScoringModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-slate-600 hover:text-slate-800 cursor-help transition-colors"
-            >
-              <span className="text-sm">📖</span>
-              <span className="text-sm">Rules</span>
-            </button>
-          </div>
-        )}
-
-        {/* Admin Section - show on all tabs except chat (code/members shown in chat input area) */}
-        {tab !== "chat" && (
-          <div className="mt-6 flex flex-col items-center gap-2">
-            <div className="text-sm text-slate-600">
-              Code: <span className="font-mono font-semibold">{league.code}</span> · {members.length}/{MAX_MEMBERS} member{members.length === 1 ? "" : "s"}
-            </div>
+      {/* Menu Portal - render at body level to ensure it's always on top */}
+      {showHeaderMenu && typeof document !== 'undefined' && document.body && createPortal(
+        <>
+          {/* Backdrop - transparent overlay to close menu on outside click */}
+          <div 
+            className="fixed inset-0" 
+            onClick={() => setShowHeaderMenu(false)}
+            style={{ backgroundColor: 'transparent', zIndex: 99998 }}
+          />
+          {/* Menu - positioned fixed to appear above everything */}
+          <div 
+            className="fixed w-56 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden" 
+            style={{ 
+              zIndex: 99999, 
+              top: 'calc(3.5rem + 0.5rem + env(safe-area-inset-top, 0px))',
+              right: '1rem',
+            }}
+          >
             {isAdmin && (
-              <div className="text-sm text-slate-600 flex justify-center items-center">
-                Admin: <span className="font-semibold text-slate-800">{adminName}</span>
+              <>
+                <div className="px-4 py-3 border-b border-slate-100">
+                  <div className="text-xs text-slate-600 mb-1">Admin:</div>
+                  <div className="text-sm font-semibold text-slate-800">{adminName}</div>
+                </div>
                 <button
-                  onClick={() => setShowAdminMenu(!showAdminMenu)}
-                  className="ml-2 px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
+                  onClick={() => {
+                    setShowAdminMenu(true);
+                    setShowHeaderMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100"
                 >
                   ⚙️ Manage
                 </button>
-              </div>
+              </>
             )}
+            <button
+              onClick={() => {
+                setShowInvite(true);
+                setShowHeaderMenu(false);
+              }}
+              className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100"
+            >
+              ➕ Invite players
+            </button>
+            <button
+              onClick={() => {
+                shareLeague();
+                setShowHeaderMenu(false);
+              }}
+              className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100"
+            >
+              Share league code
+            </button>
+            <button
+              onClick={() => {
+                setShowLeaveConfirm(true);
+                setShowHeaderMenu(false);
+              }}
+              className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors"
+            >
+              Leave
+            </button>
           </div>
-        )}
-        
-        {/* Admin Section for chat tab */}
-        {tab === "chat" && isAdmin && (
-          <div className="mt-6 flex flex-col items-center gap-2">
-            <div className="text-sm text-slate-600 flex justify-center items-center">
-              Admin: <span className="font-semibold text-slate-800">{adminName}</span>
-              <button
-                onClick={() => setShowAdminMenu(!showAdminMenu)}
-                className="ml-2 px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
-              >
-                ⚙️ Manage
-              </button>
-            </div>
-          </div>
-        )}
+        </>,
+        document.body
+      )}
 
-      </div>
+      {tab === "chat" ? (
+        <div className="chat-tab-wrapper">
+          <ChatTab
+            chat={chat}
+            userId={user?.id}
+            nameById={memberNameById}
+            isMember={isMember}
+            newMsg={newMsg}
+            setNewMsg={setNewMsg}
+            onSend={sendChat}
+            leagueCode={league?.code}
+            memberCount={members.length}
+            maxMembers={MAX_MEMBERS}
+            notificationStatus={notificationStatus}
+          />
+        </div>
+      ) : (
+        <div className="league-content-wrapper">
+          <div className="px-1 sm:px-2">
+            {tab === "mlt" && <MltTab />}
+            {tab === "gw" && <GwPicksTab />}
+            {tab === "gwr" && <GwResultsTab />}
+          </div>
+
+
+        </div>
+      )}
 
       {/* Admin Menu Modal */}
       {isAdmin && showAdminMenu && (

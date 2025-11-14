@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getDeterministicLeagueAvatar, getLeagueAvatarPath } from "../lib/leagueAvatars";
+import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePhotoPicsum } from "../lib/leagueAvatars";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { resolveLeagueStartGw as getLeagueStartGw } from "../lib/leagueStart";
@@ -656,23 +656,25 @@ export default function TablesPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-6xl mx-auto px-4 py-4 pb-16">
-        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Mini Leagues</h2>
-        {rows.length > 4 && (
-          <button
-            onClick={() => {
-              const createSection = document.getElementById('create-join-section');
-              if (createSection) {
-                createSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }
-            }}
-            className="text-[#1C8376] font-semibold text-sm hover:text-[#1C8376] no-underline mb-2 flex items-center gap-1"
-          >
-            Create League
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-        )}
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Mini Leagues</h2>
+          {rows.length > 4 && (
+            <button
+              onClick={() => {
+                const createSection = document.getElementById('create-join-section');
+                if (createSection) {
+                  createSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }}
+              className="text-[#1C8376] font-semibold text-sm hover:text-[#1C8376] no-underline flex items-center gap-1"
+            >
+              Create League
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          )}
+        </div>
         <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
           Create or join a private league and battle it out with your friends.
         </p>
@@ -740,193 +742,229 @@ export default function TablesPage() {
                   <div key={r.id} className="rounded-xl border bg-white overflow-hidden shadow-sm w-full" style={{ borderRadius: '12px' }}>
                     <Link 
                       to={`/league/${r.code}`} 
-                      className="block p-4 !bg-white no-underline hover:text-inherit shadow-md"
+                      className="block p-4 !bg-white no-underline hover:text-inherit relative z-0"
                     >
-                      <div className="flex items-start gap-3">
+                      <div className="flex items-center gap-3 relative">
                         {/* League Avatar Badge */}
-                        <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center overflow-hidden">
+                        <div className="flex-shrink-0 w-14 h-14 rounded-full flex items-center justify-center overflow-hidden bg-slate-100">
                           <img 
-                            src={getLeagueAvatarPath(r.avatar)} 
+                            src={getGenericLeaguePhoto(r.id, 96)} 
                             alt={`${r.name} avatar`}
                             className="w-full h-full object-cover"
                             onError={(e) => {
-                              // Fallback to calendar icon if image fails to load
+                              // Fallback to Picsum Photos if Unsplash fails
                               const target = e.target as HTMLImageElement;
-                              target.style.display = 'none';
-                              const parent = target.parentElement;
-                              if (parent && !parent.querySelector('svg')) {
-                                parent.innerHTML = `
-                                  <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                  </svg>
-                                `;
+                              const fallbackSrc = getGenericLeaguePhotoPicsum(r.id, 96);
+                              if (target.src !== fallbackSrc) {
+                                target.src = fallbackSrc;
+                              } else {
+                                // If Picsum also fails, show calendar icon
+                                target.style.display = 'none';
+                                const parent = target.parentElement;
+                                if (parent && !parent.querySelector('svg')) {
+                                  parent.innerHTML = `
+                                    <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                  `;
+                                }
                               }
                             }}
                           />
                         </div>
                         
-                        <div className="flex-1 min-w-0">
-                          {/* League Name */}
-                          <div className="text-base font-semibold text-slate-900 truncate">
-                            {r.name}
+                        <div className="flex-1 min-w-0 flex flex-col">
+                          {/* League Name and Status Row */}
+                          <div className="flex items-center gap-2">
+                            <div className="text-base font-semibold text-slate-900 truncate">
+                              {r.name}
+                            </div>
+                            {/* Submission Status */}
+                            {leagueSubmissions[r.id] && leagueSubmissions[r.id].allSubmitted && (
+                              <span className="text-xs font-normal text-[#1C8376] whitespace-nowrap">All Submitted</span>
+                            )}
                           </div>
                           
-                          {/* Submission Status */}
-                          {leagueSubmissions[r.id] && (
-                            <div className="text-xs font-normal text-slate-600 mt-0.5 mb-4">
-                              {leagueSubmissions[r.id].allSubmitted ? (
-                                <span className="text-[#1C8376]">All Submitted</span>
+                          {/* Player Chips and Info - ordered by ML table position (1st to last) */}
+                          <div className="flex items-center gap-3 mt-1">
+                            {/* Member Count and User Position - left of chips */}
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {/* Member Count */}
+                              <div className="flex items-center gap-1">
+                                <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <g clipPath="url(#clip0_4045_135263)">
+                                    <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <path d="M12.3334 6.33333C12.3334 7.622 11.2887 8.66667 10.0001 8.66667C8.71142 8.66667 7.66675 7.622 7.66675 6.33333C7.66675 5.04467 8.71142 4 10.0001 4C11.2887 4 12.3334 5.04467 12.3334 6.33333Z" stroke="currentColor" strokeWidth="1.33333"/>
+                                    <path d="M7.33325 2.92025C6.94237 2.36557 6.27397 2 5.51507 2C4.31009 2 3.33325 2.92165 3.33325 4.05857C3.33325 4.95488 3.94038 5.7174 4.7878 6" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round"/>
+                                  </g>
+                                  <defs>
+                                    <clipPath id="clip0_4045_135263">
+                                      <rect width="16" height="16" fill="white"/>
+                                    </clipPath>
+                                  </defs>
+                                </svg>
+                                <span className="text-sm font-semibold text-slate-900">{members.length}</span>
+                              </div>
+                              
+                              {/* User Position - ML Ranking */}
+                              {userPosition !== null && userPosition !== undefined ? (
+                                <div className="flex items-center gap-1">
+                                  <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                  </svg>
+                                  <span className="text-sm font-semibold text-slate-900">{ordinal(userPosition)}</span>
+                                  {data?.positionChange === 'up' && (
+                                    <span className="text-green-600 text-xs">▲</span>
+                                  )}
+                                  {data?.positionChange === 'down' && (
+                                    <span className="text-red-600 text-xs">▼</span>
+                                  )}
+                                  {data?.positionChange === 'same' && (
+                                    <span className="text-slate-400 text-xs">—</span>
+                                  )}
+                                </div>
                               ) : (
-                                <span>{leagueSubmissions[r.id].submittedCount} submitted</span>
+                                <div className="flex items-center gap-1">
+                                  <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                  </svg>
+                                  <span className="text-sm font-semibold text-slate-400">—</span>
+                                </div>
                               )}
                             </div>
-                          )}
-                          
-                          {/* Member Info Row */}
-                          <div className="flex items-center gap-3">
-                            {/* Member Count */}
-                            <div className="flex items-center gap-1">
-                              <svg className="w-4 h-4 text-slate-500" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <g clipPath="url(#clip0_4045_135263)">
-                                  <path d="M14.0001 14V13.7C14.0001 13.0489 14.0001 12.7234 13.925 12.4571C13.7361 11.7874 13.2127 11.264 12.543 11.0751C12.2767 11 11.9512 11 11.3001 11H8.36675C7.71566 11 7.39011 11 7.12387 11.0751C6.45414 11.264 5.93072 11.7874 5.74184 12.4571C5.66675 12.7234 5.66675 13.0489 5.66675 13.7V14" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-                                  <path d="M2 11.6667V10.6C2 10.0422 2 9.76328 2.05526 9.53311C2.23083 8.80181 2.80181 8.23083 3.53311 8.05526C3.76328 8 4.04219 8 4.6 8H4.66667" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-                                  <path d="M12.3334 6.33333C12.3334 7.622 11.2887 8.66667 10.0001 8.66667C8.71142 8.66667 7.66675 7.622 7.66675 6.33333C7.66675 5.04467 8.71142 4 10.0001 4C11.2887 4 12.3334 5.04467 12.3334 6.33333Z" stroke="currentColor" strokeWidth="1.33333"/>
-                                  <path d="M7.33325 2.92025C6.94237 2.36557 6.27397 2 5.51507 2C4.31009 2 3.33325 2.92165 3.33325 4.05857C3.33325 4.95488 3.94038 5.7174 4.7878 6" stroke="currentColor" strokeWidth="1.33333" strokeLinecap="round"/>
-                                </g>
-                                <defs>
-                                  <clipPath id="clip0_4045_135263">
-                                    <rect width="16" height="16" fill="white"/>
-                                  </clipPath>
-                                </defs>
-                              </svg>
-                              <span className="text-sm font-semibold text-slate-900">{members.length}</span>
-                            </div>
                             
-                            {/* User Position - ML Ranking */}
-                            {userPosition !== null && userPosition !== undefined ? (
-                              <div className="flex items-center gap-1">
-                                <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                </svg>
-                                <span className="text-sm font-semibold text-slate-900">{ordinal(userPosition)}</span>
-                                {data?.positionChange === 'up' && (
-                                  <span className="text-green-600 text-xs">▲</span>
-                                )}
-                                {data?.positionChange === 'down' && (
-                                  <span className="text-red-600 text-xs">▼</span>
-                                )}
-                                {data?.positionChange === 'same' && (
-                                  <span className="text-slate-400 text-xs">—</span>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1">
-                                <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                </svg>
-                                <span className="text-sm font-semibold text-slate-400">—</span>
-                              </div>
-                            )}
-                            
-                            {/* Member Initials - ordered by ML table position (1st to last) */}
-                            <div className="flex items-center flex-1 overflow-hidden">
+                            {/* Player Chips Container - no gap, chips overlap */}
+                            <div className="flex items-center overflow-hidden">
                               {(() => {
-                                // CRITICAL: Use ML table order - MUST use sortedMemberIds from data
-                                const orderedMemberIds = data?.sortedMemberIds;
+                              // CRITICAL: Use ML table order - MUST use sortedMemberIds from data
+                              const orderedMemberIds = data?.sortedMemberIds;
+                              
+                              // CRITICAL: If no sortedMemberIds, we can't render correctly - show error
+                              if (!orderedMemberIds || orderedMemberIds.length === 0) {
+                                // Fallback to alphabetical - but this shouldn't happen
+                                const alphabeticalMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
                                 
-                                // CRITICAL: If no sortedMemberIds, we can't render correctly - show error
-                                if (!orderedMemberIds || orderedMemberIds.length === 0) {
-                                  // Fallback to alphabetical - but this shouldn't happen
-                                  const alphabeticalMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
-                                  return alphabeticalMembers.slice(0, 8).map((member, index) => {
-                                    const hasSubmitted = data?.submittedMembers?.has(member.id) ?? false;
-                                    const isLatestWinner = data?.latestGwWinners?.has(member.id) ?? false;
-                                    return (
-                                      <div
-                                        key={member.id}
-                                        className={`rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6 ${isLatestWinner ? 'bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 ring-2 ring-yellow-300/60 font-semibold' : ''}`}
-                                        style={
-                                          isLatestWinner
-                                            ? { marginLeft: index > 0 ? '-2px' : '0' }
-                                            : { 
-                                          marginLeft: index > 0 ? '-2px' : '0', 
-                                                backgroundColor: hasSubmitted ? '#E5E5EA' : '#F2F2F7',
-                                                border: hasSubmitted ? '0.5px solid #C7C7CC' : '0.5px solid #D9D9D9',
-                                                color: hasSubmitted ? '#8E8E93' : '#ADADB1'
-                                              }
-                                        }
-                                        title={member.name}
-                                      >
-                                        {initials(member.name)}
-                                      </div>
-                                    );
-                                  });
-                                }
+                                // Convert Arrays back to Sets for checking (if they're Arrays)
+                                const submittedSet = data?.submittedMembers instanceof Set 
+                                  ? data.submittedMembers 
+                                  : new Set(data?.submittedMembers ?? []);
+                                const winnersSet = data?.latestGwWinners instanceof Set 
+                                  ? data.latestGwWinners 
+                                  : new Set(data?.latestGwWinners ?? []);
                                 
-                                // Map IDs to members in ML table order
-                                const orderedMembers = orderedMemberIds
-                                  .map(id => members.find(m => m.id === id))
-                                  .filter(Boolean) as LeagueMember[];
-                                
-                                // CRITICAL: Ensure we're using the exact order from sortedMemberIds
-                                return orderedMembers.slice(0, 8).map((member, index) => {
-                                  const hasSubmitted = data?.submittedMembers?.has(member.id) ?? false;
-                                  const isLatestWinner = data?.latestGwWinners?.has(member.id) ?? false;
-                                  const position = orderedMemberIds.indexOf(member.id) + 1;
+                                return alphabeticalMembers.slice(0, 8).map((member, index) => {
+                                  const hasSubmitted = submittedSet.has(member.id);
+                                  const isLatestWinner = winnersSet.has(member.id);
+                                  
+                                  // GPU-optimized: Use CSS classes instead of inline styles
+                                  let chipClassName = 'chip-container rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
+                                  
+                                  if (isLatestWinner) {
+                                    // Shiny chip for last GW winner (already GPU-optimized with transforms)
+                                    chipClassName += ' bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 font-semibold relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]';
+                                  } else if (hasSubmitted) {
+                                    // Green = picked (GPU-optimized class)
+                                    chipClassName += ' chip-green';
+                                  } else {
+                                    // Grey = not picked (GPU-optimized class)
+                                    chipClassName += ' chip-grey';
+                                  }
+                                  
+                                  // GPU-optimized: Use transform instead of marginLeft
+                                  if (index > 0) {
+                                    chipClassName += ' chip-overlap';
+                                  }
+                                  
                                   return (
                                     <div
                                       key={member.id}
-                                      className={`rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6 ${isLatestWinner ? 'bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 ring-2 ring-yellow-300/60 font-semibold' : ''}`}
-                                      style={
-                                        isLatestWinner
-                                          ? { marginLeft: index > 0 ? '-2px' : '0' }
-                                          : { 
-                                          marginLeft: index > 0 ? '-2px' : '0', 
-                                            backgroundColor: hasSubmitted ? '#E5E5EA' : '#F2F2F7',
-                                            border: hasSubmitted ? '0.5px solid #C7C7CC' : '0.5px solid #D9D9D9',
-                                            color: hasSubmitted ? '#8E8E93' : '#ADADB1'
-                                          }
-                                      }
-                                      title={`${member.name} (${position}${position === 1 ? 'st' : position === 2 ? 'nd' : position === 3 ? 'rd' : 'th'}${hasSubmitted ? ', Submitted' : ''})`}
+                                      className={chipClassName}
+                                      title={member.name}
                                     >
                                       {initials(member.name)}
                                     </div>
                                   );
                                 });
-                              })()}
-                              {(() => {
-                                const orderedMemberIds = data?.sortedMemberIds || members.map(m => m.id);
-                                const totalMembers = orderedMemberIds.length;
-                                return totalMembers > 8 && (
-                                  <div 
-                                    className="rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
-                                    style={{ 
-                                      marginLeft: totalMembers > 1 ? '-2px' : '0', 
-                                      width: '24px', 
-                                      height: '24px',
-                                      backgroundColor: '#F2F2F7',
-                                      border: '0.5px solid #D9D9D9',
-                                      color: '#ADADB1'
-                                    }}
+                              }
+                              
+                              // Map IDs to members in ML table order
+                              const orderedMembers = orderedMemberIds
+                                .map(id => members.find(m => m.id === id))
+                                .filter(Boolean) as LeagueMember[];
+                              
+                              // Convert Arrays back to Sets for checking (if they're Arrays)
+                              const submittedSet = data?.submittedMembers instanceof Set 
+                                ? data.submittedMembers 
+                                : new Set(data?.submittedMembers ?? []);
+                              const winnersSet = data?.latestGwWinners instanceof Set 
+                                ? data.latestGwWinners 
+                                : new Set(data?.latestGwWinners ?? []);
+                              
+                              // CRITICAL: Ensure we're using the exact order from sortedMemberIds
+                              return orderedMembers.slice(0, 8).map((member, index) => {
+                                const hasSubmitted = submittedSet.has(member.id);
+                                const isLatestWinner = winnersSet.has(member.id);
+                                
+                                // GPU-optimized: Use CSS classes instead of inline styles
+                                let chipClassName = 'chip-container rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
+                                
+                                if (isLatestWinner) {
+                                  // Shiny chip for last GW winner (already GPU-optimized with transforms)
+                                  chipClassName += ' bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 font-semibold relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]';
+                                } else if (hasSubmitted) {
+                                  // Green = picked (GPU-optimized class)
+                                  chipClassName += ' chip-green';
+                                } else {
+                                  // Grey = not picked (GPU-optimized class)
+                                  chipClassName += ' chip-grey';
+                                }
+                                
+                                // GPU-optimized: Use transform instead of marginLeft
+                                if (index > 0) {
+                                  chipClassName += ' chip-overlap';
+                                }
+                                
+                                return (
+                                  <div
+                                    key={member.id}
+                                    className={chipClassName}
+                                    title={member.name}
                                   >
-                                    +{totalMembers - 8}
+                                    {initials(member.name)}
                                   </div>
                                 );
-                              })()}
+                              });
+                            })()}
+                            {(() => {
+                              const orderedMemberIds = data?.sortedMemberIds || members.map(m => m.id);
+                              const totalMembers = orderedMemberIds.length;
+                              return totalMembers > 8 && (
+                                <div 
+                                  className={`chip-container chip-grey rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 ${totalMembers > 1 ? 'chip-overlap' : ''}`}
+                                  style={{ 
+                                    width: '24px', 
+                                    height: '24px',
+                                  }}
+                                >
+                                  +{totalMembers - 8}
+                                </div>
+                              );
+                            })()}
                             </div>
                           </div>
                         </div>
                         
-                        {/* View Button and Badge */}
-                        <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                        {/* Unread Badge and Arrow - Top Right */}
+                        <div className="absolute top-4 right-4 flex items-center gap-1.5 z-10">
                           {badge > 0 && (
                             <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-[#1C8376] text-white text-xs font-bold">
                               {badge}
                             </span>
                           )}
-                          <div className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-md hover:bg-slate-200 transition-colors hidden">
-                            View
-                          </div>
+                          <svg className="w-5 h-5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
                         </div>
                       </div>
                     </Link>

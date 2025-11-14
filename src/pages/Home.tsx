@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -7,6 +7,7 @@ import WhatsAppBanner from "../components/WhatsAppBanner";
 import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePhotoPicsum } from "../lib/leagueAvatars";
 import { resolveLeagueStartGw as getLeagueStartGw } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
+import { usePullToRefresh } from "../hooks/usePullToRefresh";
 
 // Module-level cache for home page data
 type HomePageCache = {
@@ -34,9 +35,9 @@ type LeagueData = {
   members: LeagueMember[];
   userPosition: number | null;
   positionChange: 'up' | 'down' | 'same' | null;
-  submittedMembers?: Set<string>; // Set of user IDs who have submitted for current GW
+  submittedMembers?: string[] | Set<string>; // Array or Set of user IDs who have submitted for current GW
   sortedMemberIds?: string[]; // Member IDs in ML table order (1st to last)
-  latestGwWinners?: Set<string>; // Members who topped the most recent completed GW
+  latestGwWinners?: string[] | Set<string>; // Array or Set of members who topped the most recent completed GW
 };
 
 // Helper function to get initials from name
@@ -79,6 +80,7 @@ type Fixture = {
 };
 
 type PickRow = { user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" };
+type ResultRow = ResultRowRaw; // Alias for consistency with other files
 
 // Results for outcome + helper to derive H/D/A if only goals exist
 
@@ -123,14 +125,280 @@ export default function HomePage() {
   const leagueIdsRef = useRef<Set<string>>(new Set());
   const isInitialMountRef = useRef(true);
 
-  useEffect(() => {
+  // Extract data fetching into a reusable function for pull-to-refresh
+  const fetchHomeData = useCallback(async (showLoading = true) => {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+
     let alive = true;
     
-    // Check cache first - show cached data immediately if available
-    if (homePageCache && homePageCache.userId === user?.id) {
+    if (showLoading) {
+      setLoading(true);
+    }
+
+    try {
+      // PARALLEL QUERY 1: Fetch current GW and user's leagues simultaneously
+      console.log('[Home] Starting data fetch for user:', user.id);
+      
+      // Use direct Supabase calls (same as original working code)
+      // NOTE: Removed start_gw from select as it may not exist or cause 400 error
+      const [currentGwResult, userLeaguesResult] = await Promise.all([
+        supabase.from("meta").select("current_gw").eq("id", 1).maybeSingle(),
+        supabase.from("league_members").select("leagues(id,name,code,created_at)").eq("user_id", user.id),
+      ]);
+      
+      console.log('[Home] Query results:', {
+        currentGwError: currentGwResult.error,
+        currentGwData: currentGwResult.data,
+        leaguesError: userLeaguesResult.error,
+        leaguesDataLength: userLeaguesResult.data?.length,
+        leaguesData: userLeaguesResult.data,
+      });
+      
+      const currentGw = (currentGwResult.data as any)?.current_gw ?? 1;
+      
+      const userLeagues = ((userLeaguesResult.data ?? []) as any[])
+        .map((r) => r.leagues)
+        .filter(Boolean) as League[];
+      
+      console.log('[Home] Processed leagues:', userLeagues.length);
+      if (userLeagues.length > 0) {
+        console.log('[Home] League names:', userLeagues.map(l => l.name));
+      } else {
+        console.warn('[Home] NO LEAGUES FOUND! Raw data:', userLeaguesResult.data);
+      }
+
+      // Assign avatars to leagues
+      const ls: League[] = userLeagues.map((league) => ({
+        ...league,
+        avatar: getDeterministicLeagueAvatar(league.id),
+      }));
+      
+      if (alive) {
+        setLeagues(ls);
+        setGw(currentGw);
+        leagueIdsRef.current = new Set(ls.map((l) => l.id));
+      }
+
+      // PARALLEL QUERY 2: Fetch fixtures, picks, results, and submission status for current GW
+      const [fixturesResult, picksResult, resultsResult, submissionResult] = await Promise.all([
+        supabase.from("fixtures").select("id,gw,fixture_index,home_code,away_code,home_team,away_team,home_name,away_name,kickoff_time").eq("gw", currentGw).order("fixture_index", { ascending: true }),
+        supabase.from("picks").select("user_id,gw,fixture_index,pick").eq("user_id", user.id).eq("gw", currentGw),
+        supabase.from("gw_results").select("gw,fixture_index,result").eq("gw", currentGw),
+        supabase.from("gw_submissions").select("submitted_at").eq("user_id", user.id).eq("gw", currentGw).maybeSingle(),
+      ]);
+      
+      const thisGwFixtures = (fixturesResult.data as Fixture[]) ?? [];
+      const userPicks = (picksResult.data as PickRow[]) ?? [];
+      const gwResults = (resultsResult.data as ResultRow[]) ?? [];
+      const submitted = !!submissionResult.data?.submitted_at;
+
+    // Calculate score for current GW
+    const outcomeByIdx = new Map<number, "H" | "D" | "A">();
+    gwResults.forEach((r) => {
+      const out = rowToOutcome(r);
+      if (out) {
+        outcomeByIdx.set(r.fixture_index, out);
+      }
+    });
+
+    // Populate resultsMap for the current GW
+    const currentResultsMap: Record<number, "H" | "D" | "A"> = {};
+    outcomeByIdx.forEach((result, fixtureIndex) => {
+      currentResultsMap[fixtureIndex] = result;
+    });
+
+    let score: number | null = null;
+    if (outcomeByIdx.size > 0) {
+      // Count correct picks
+      let s = 0;
+      userPicks.forEach((p) => {
+        const out = outcomeByIdx.get(p.fixture_index);
+        if (out && out === p.pick) s += 1;
+      });
+      score = s;
+    }
+
+    // Only populate picksMap if user has submitted
+    const map: Record<number, "H" | "D" | "A"> = {};
+    if (submitted) {
+      userPicks.forEach((p) => (map[p.fixture_index] = p.pick));
+    }
+
+    if (!alive) return;
+
+    // PARALLEL QUERY 3: Fetch latest GW with results, unread counts, and submission status
+    const leagueIds = ls.map(l => l.id);
+    
+    const [lastGwResult, readsResult] = await Promise.all([
+      supabase.from("gw_results").select("gw").order("gw", { ascending: false }).limit(1),
+      leagueIds.length > 0 ? supabase.from("league_message_reads").select("league_id,last_read_at").eq("user_id", user.id) : Promise.resolve({ data: [], error: null }),
+    ]);
+    
+    const lastGwWithResults = Array.isArray(lastGwResult.data) && lastGwResult.data.length ? (lastGwResult.data[0] as any).gw : null;
+    
+    // Fetch unread counts
+    const unreadCounts: Record<string, number> = {};
+    if (leagueIds.length > 0 && readsResult.data) {
+      const lastRead = new Map<string, string>();
+      (readsResult.data as any[]).forEach((r: any) => lastRead.set(r.league_id, r.last_read_at));
+      
+      const countPromises = leagueIds.map(async (leagueId) => {
+        const since = lastRead.get(leagueId) ?? "1970-01-01T00:00:00Z";
+        const { data, count } = await supabase
+          .from("league_messages")
+          .select("id", { count: "exact" })
+          .eq("league_id", leagueId)
+          .gte("created_at", since);
+        return [leagueId, typeof count === "number" ? count : (data?.length ?? 0)] as [string, number];
+      });
+      
+      const counts = await Promise.all(countPromises);
+      counts.forEach(([leagueId, count]) => {
+        unreadCounts[leagueId] = count;
+      });
+    }
+    
+    // Fetch submission status - OPTIMIZED: Single query for all members, then single query for all submissions
+    const submissionStatus: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }> = {};
+    if (leagueIds.length > 0) {
+      // OPTIMIZATION: Fetch all members in one query
+      const membersResult = await supabase
+        .from("league_members")
+        .select("league_id,user_id")
+        .in("league_id", leagueIds);
+      
+      // Group members by league
+      const membersByLeague: Record<string, string[]> = {};
+      leagueIds.forEach(id => membersByLeague[id] = []);
+      (membersResult.data ?? []).forEach((row: any) => {
+        if (!membersByLeague[row.league_id]) membersByLeague[row.league_id] = [];
+        membersByLeague[row.league_id].push(row.user_id);
+      });
+      
+      // OPTIMIZATION: Fetch all submissions in one query (if any members exist)
+      const allMemberIds = Array.from(new Set(Object.values(membersByLeague).flat()));
+      const { data: allSubmissions } = allMemberIds.length > 0 
+        ? await supabase.from("gw_submissions").select("user_id").eq("gw", currentGw).in("user_id", allMemberIds)
+        : { data: [] };
+      
+      const submittedUserIds = new Set((allSubmissions ?? []).map((s: any) => s.user_id));
+      
+      // Calculate submission status for each league
+      Object.entries(membersByLeague).forEach(([leagueId, memberIds]) => {
+        const totalCount = memberIds.length;
+        const submittedCount = memberIds.filter(id => submittedUserIds.has(id)).length;
+        submissionStatus[leagueId] = {
+          allSubmitted: submittedCount === totalCount && totalCount > 0,
+          submittedCount,
+          totalCount,
+        };
+      });
+    }
+
+    // Calculate score for last GW with results
+    if (lastGwWithResults !== null && lastGwWithResults !== currentGw) {
+      const [lastGwResultsData, lastGwPicksData] = await Promise.all([
+        supabase.from("gw_results").select("fixture_index,result").eq("gw", lastGwWithResults),
+        supabase.from("picks").select("fixture_index,pick").eq("gw", lastGwWithResults).eq("user_id", user.id),
+      ]);
+      
+      const lastGwResults = (lastGwResultsData.data as ResultRow[]) ?? [];
+      const lastGwPicks = (lastGwPicksData.data as PickRow[]) ?? [];
+      
+      const outMap2 = new Map<number, "H" | "D" | "A">();
+      lastGwResults.forEach(r => {
+        const out = rowToOutcome(r);
+        if (out) outMap2.set(r.fixture_index, out);
+      });
+
+      let myScore = 0;
+      lastGwPicks.forEach((p) => {
+        const out = outMap2.get(p.fixture_index);
+        if (out && out === p.pick) myScore += 1;
+      });
+
+      if (alive) {
+        setLastScoreGw(lastGwWithResults);
+        setLastScore(myScore);
+      }
+    } else {
+      if (alive) {
+        setLastScoreGw(null);
+        setLastScore(null);
+      }
+    }
+
+    // Don't show "coming soon" message
+    setNextGwComing(null);
+
+    if (alive) {
+      setGwSubmitted(submitted);
+      setGwScore(score);
+      setResultsMap(currentResultsMap);
+      setFixtures(thisGwFixtures);
+      setPicksMap(map);
+      setUnreadByLeague(unreadCounts);
+      setLeagueSubmissions(submissionStatus);
+      setLoading(false);
+      
+      // Update cache
+      if (user.id) {
+        homePageCache = {
+          leagues: ls,
+          leagueSubmissions: submissionStatus,
+          leagueData: {}, // Will be updated when leagueData useEffect runs
+          unreadByLeague: unreadCounts,
+          lastFetched: Date.now(),
+          userId: user.id,
+        };
+      }
+    }
+    } catch (error) {
+      console.error('[Home] Error loading home page data:', error);
+      if (alive) {
+        setLoading(false);
+        // Don't clear leagues if we already have them - just log the error
+        // setLeagues([]); // REMOVED - don't clear existing leagues on error
+        setFixtures([]);
+        setGwSubmitted(false);
+        setGwScore(null);
+      }
+    }
+  }, [user?.id]); // Note: This function uses many state setters which are stable, so only user?.id is needed
+
+  // Pull-to-refresh hook - only enable when user is loaded and not currently loading
+  const {
+    containerRef,
+    pullDistance,
+    isRefreshing,
+    spinnerRotation,
+    spinnerOpacity,
+    shouldShowIndicator,
+  } = usePullToRefresh({
+    onRefresh: async () => {
+      // Clear cache to force fresh fetch
+      homePageCache = null;
+      isInitialMountRef.current = true;
+      await fetchHomeData(true);
+    },
+    enabled: !!user?.id && !loading && !isInitialMountRef.current,
+    enableMouse: true, // Enable mouse drag for testing in desktop browsers
+  });
+
+  useEffect(() => {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+    
+    // NON-BLOCKING cache: Show cached data immediately if available, but still fetch fresh data
+    if (homePageCache && homePageCache.userId === user.id && homePageCache.leagues.length > 0) {
       const cacheAge = Date.now() - homePageCache.lastFetched;
       if (cacheAge < CACHE_DURATION) {
-        // Cache is valid - show it immediately
+        // Show cached data immediately (non-blocking)
         setLeagues(homePageCache.leagues);
         setLeagueSubmissions(homePageCache.leagueSubmissions);
         setLeagueData(homePageCache.leagueData);
@@ -138,310 +406,19 @@ export default function HomePage() {
         leagueIdsRef.current = new Set(homePageCache.leagues.map((l) => l.id));
         setLoading(false);
         
-        // If cache is older than 30 seconds, refresh in background
-        if (cacheAge > 30 * 1000) {
+        // If cache is very fresh (< 10 seconds), skip background refresh
+        if (cacheAge < 10 * 1000) {
           isInitialMountRef.current = false;
         } else {
-          // Cache is fresh, skip fetching
-          return () => { alive = false; };
+          // Cache is older, refresh in background
+          isInitialMountRef.current = false;
         }
       }
     }
     
-    (async () => {
-      if (!isInitialMountRef.current) {
-        // Background refresh - don't show loading spinner
-        setLoading(false);
-      } else {
-        setLoading(true);
-      }
-
-      // User's leagues
-      let ls: League[] = [];
-      const { data: lm, error: lmError } = await supabase
-        .from("league_members")
-        .select("leagues(id,name,code,created_at)")
-        .eq("user_id", user?.id);
-
-      if (lmError) {
-        console.error("Error fetching leagues:", lmError);
-        // Try without avatar field if it doesn't exist
-        const { data: lmFallback } = await supabase
-          .from("league_members")
-          .select("leagues(id,name,code,created_at)")
-          .eq("user_id", user?.id);
-        ls = (lmFallback as any[])?.map((r) => r.leagues).filter(Boolean) ?? [];
-      } else {
-        ls = (lm as any[])?.map((r) => r.leagues).filter(Boolean) ?? [];
-      }
-      
-      // Assign avatars to leagues that don't have one (backfill - only once)
-      // Use deterministic avatar based on league ID so it's consistent even if DB update fails
-      // Assign deterministic avatars locally (no DB update required)
-      ls = ls.map((league) => ({
-        ...league,
-        avatar: getDeterministicLeagueAvatar(league.id),
-      }));
-      
-      if (alive) setLeagues(ls);
-
-      // Get current GW from meta table (published/active GW)
-      const { data: meta } = await supabase
-        .from("meta")
-        .select("current_gw")
-        .eq("id", 1)
-        .maybeSingle();
-      const currentGw = (meta as any)?.current_gw ?? 1;
-
-      // All fixtures ordered by GW then index
-      const { data: fx } = await supabase
-        .from("fixtures")
-        .select(
-          "id,gw,fixture_index,home_code,away_code,home_team,away_team,home_name,away_name,kickoff_time"
-        )
-        .order("gw")
-        .order("fixture_index");
-
-      const fixturesList: Fixture[] = (fx as Fixture[]) ?? [];
-      const thisGwFixtures = fixturesList.filter(f => f.gw === currentGw);
-      setGw(currentGw);
-
-      // Determine the most recent GW that has published results, and compute my score for it
-      try {
-        const { data: lastGwRows } = await supabase
-          .from("gw_results")
-          .select("gw")
-          .order("gw", { ascending: false })
-          .limit(1);
-
-        const lastGwWithResults = Array.isArray(lastGwRows) && lastGwRows.length ? (lastGwRows[0] as any).gw as number : null;
-
-        if (lastGwWithResults != null) {
-          // fetch results for that GW
-          const [{ data: rs2 }, { data: pk2 }] = await Promise.all([
-            supabase.from("gw_results").select("fixture_index,result").eq("gw", lastGwWithResults),
-            supabase.from("picks").select("fixture_index,pick").eq("gw", lastGwWithResults).eq("user_id", user?.id),
-          ]);
-
-          const outMap2 = new Map<number, "H" | "D" | "A">();
-          (rs2 as Array<{ fixture_index: number; result: "H" | "D" | "A" | null }> | null)?.forEach(r => {
-            if (r.result === "H" || r.result === "D" || r.result === "A") outMap2.set(r.fixture_index, r.result);
-          });
-
-          let myScore = 0;
-          (pk2 as Array<{ fixture_index: number; pick: "H" | "D" | "A" }> | null)?.forEach(p => {
-            const out = outMap2.get(p.fixture_index);
-            if (out && out === p.pick) myScore += 1;
-          });
-
-          if (alive) {
-            setLastScoreGw(lastGwWithResults);
-            setLastScore(myScore);
-          }
-        } else {
-          if (alive) {
-            setLastScoreGw(null);
-            setLastScore(null);
-          }
-        }
-      } catch (_) {
-        // ignore; leave lastScore/lastScoreGw as-is
-      }
-
-      // Don't show "coming soon" message - only show current active GW
-      setNextGwComing(null);
-
-      // Load this user's picks for that GW so we can show the dot under Home/Draw/Away
-      let userPicks: PickRow[] = [];
-      if (thisGwFixtures.length) {
-        const { data: pk } = await supabase
-          .from("picks")
-          .select("user_id,gw,fixture_index,pick")
-          .eq("user_id", user?.id)
-          .eq("gw", currentGw);
-        userPicks = (pk as PickRow[]) ?? [];
-      }
-
-      // Check if user has submitted (confirmed) their predictions
-      let submitted = false;
-      if (user?.id && thisGwFixtures.length > 0) {
-        const { data: submission } = await supabase
-          .from("gw_submissions")
-          .select("submitted_at")
-          .eq("user_id", user.id)
-          .eq("gw", currentGw)
-          .maybeSingle();
-        
-        submitted = !!submission?.submitted_at;
-      }
-
-      let score: number | null = null;
-      if (thisGwFixtures.length) {
-        // Prefer GW-scoped results so it works wherever fixture IDs differ
-        const { data: rs } = await supabase
-          .from("gw_results")
-          .select("gw,fixture_index,result")
-          .eq("gw", currentGw);
-        const results = (rs as Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>) ?? [];
-
-        // Build fixture_index -> outcome map directly
-        const outcomeByIdx = new Map<number, "H" | "D" | "A">();
-        results.forEach((r) => {
-          if (r && (r.result === "H" || r.result === "D" || r.result === "A")) {
-            outcomeByIdx.set(r.fixture_index, r.result);
-          }
-        });
-
-        // Populate resultsMap for the current GW
-        const currentResultsMap: Record<number, "H" | "D" | "A"> = {};
-        outcomeByIdx.forEach((result, fixtureIndex) => {
-          currentResultsMap[fixtureIndex] = result;
-        });
-        setResultsMap(currentResultsMap);
-
-        if (outcomeByIdx.size > 0) {
-          // count correct picks
-          let s = 0;
-          userPicks.forEach((p) => {
-            const out = outcomeByIdx.get(p.fixture_index);
-            if (out && out === p.pick) s += 1;
-          });
-          score = s;
-        }
-      }
-
-      if (!alive) return;
-
-      setGwSubmitted(submitted);
-      setGwScore(score);
-
-      // Only populate picksMap if user has submitted (confirmed) their predictions
-      const map: Record<number, "H" | "D" | "A"> = {};
-      if (submitted) {
-        userPicks.forEach((p) => (map[p.fixture_index] = p.pick));
-      }
-
-      setLeagues(ls);
-      leagueIdsRef.current = new Set(ls.map((l) => l.id));
-
-      // unread-by-league (robust)
-      try {
-        let reads: any[] | null = null;
-        try {
-          const { data, error } = await supabase
-            .from("league_message_reads")
-            .select("league_id,last_read_at")
-            .eq("user_id", user?.id);
-          if (error) {
-            console.warn("league_message_reads not accessible, defaulting to no reads", error?.message);
-            reads = null;
-          } else {
-            reads = data as any[] | null;
-          }
-        } catch (err: any) {
-          console.warn("league_message_reads query failed — defaulting to no reads", err?.message);
-          reads = null;
-        }
-
-        const lastRead = new Map<string, string>();
-        (reads ?? []).forEach((r: any) => lastRead.set(r.league_id, r.last_read_at));
-
-        const out: Record<string, number> = {};
-        for (const lg of ls) {
-          const since = lastRead.get(lg.id) ?? "1970-01-01T00:00:00Z";
-          const { data: msgs, count, error } = await supabase
-            .from("league_messages")
-            .select("id", { count: "exact" })
-            .eq("league_id", lg.id)
-            .gte("created_at", since);
-          if (error) {
-            console.warn("unread count query error", lg.id, error?.message);
-          }
-          out[lg.id] = typeof count === "number" ? count : (msgs?.length ?? 0);
-        }
-        if (alive) {
-          setUnreadByLeague(out);
-          
-          // Update cache with unreadByLeague
-          if (homePageCache && homePageCache.userId === user?.id) {
-            homePageCache.unreadByLeague = out;
-            homePageCache.lastFetched = Date.now();
-          }
-        }
-      } catch (e) {
-        // best-effort; ignore errors
-      }
-
-      setFixtures(thisGwFixtures);
-      setPicksMap(map);
-      setLoading(false);
-
-      // Check submission status for each league
-      const submissionStatus: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }> = {};
-      for (const league of ls) {
-        try {
-          // Get all members of this league
-          const { data: members } = await supabase
-            .from("league_members")
-            .select("user_id")
-            .eq("league_id", league.id);
-          
-          if (members && members.length > 0) {
-            const memberIds = members.map(m => m.user_id);
-            const totalCount = memberIds.length;
-            
-            // Check how many members have submitted for current GW
-            const { data: submissions } = await supabase
-              .from("gw_submissions")
-              .select("user_id")
-              .eq("gw", currentGw)
-              .in("user_id", memberIds);
-            
-            const submittedCount = submissions?.length || 0;
-            submissionStatus[league.id] = {
-              allSubmitted: submittedCount === totalCount,
-              submittedCount,
-              totalCount
-            };
-          } else {
-            submissionStatus[league.id] = {
-              allSubmitted: false,
-              submittedCount: 0,
-              totalCount: 0
-            };
-          }
-        } catch (error) {
-          console.warn(`Error checking submissions for league ${league.id}:`, error);
-          submissionStatus[league.id] = {
-            allSubmitted: false,
-            submittedCount: 0,
-            totalCount: 0
-          };
-        }
-      }
-      setLeagueSubmissions(submissionStatus);
-      
-      setFixtures(thisGwFixtures);
-      setPicksMap(map);
-      setLoading(false);
-      
-      // Update cache with fresh data (leagueData will be updated in next useEffect)
-      // Note: unreadByLeague is updated separately above
-      if (alive && user?.id) {
-        homePageCache = {
-          leagues: ls,
-          leagueSubmissions: submissionStatus,
-          leagueData: {}, // Will be updated when leagueData useEffect runs
-          unreadByLeague: {}, // Will be updated when unreadByLeague is set above
-          lastFetched: Date.now(),
-          userId: user.id,
-        };
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [user?.id]);
+    // Use the extracted fetchHomeData function
+    fetchHomeData(isInitialMountRef.current);
+  }, [user?.id, fetchHomeData]);
 
   // Fetch member data and calculate positions for each league
   useEffect(() => {
@@ -454,42 +431,46 @@ export default function HomePage() {
     
     let alive = true;
     (async () => {
-      // Get current GW from meta table (same as League page) - don't rely on state
-      const { data: meta } = await supabase
-        .from("meta")
-        .select("current_gw")
-        .eq("id", 1)
-        .maybeSingle();
-      const currentGw = (meta as any)?.current_gw ?? gw; // Fallback to state if meta unavailable
+      // Get current GW
+      const { data: metaData } = await supabase.from("meta").select("current_gw").eq("id", 1).maybeSingle();
+      const currentGw = (metaData as any)?.current_gw ?? gw;
       
-      // Get all results - EXACT same query as League page
-      const { data: allResults } = await supabase
-        .from("gw_results")
-        .select("gw,fixture_index,result");
+      // PARALLEL: Fetch all results and all league members in parallel
+      const [allResultsData, membersData] = await Promise.all([
+        supabase.from("gw_results").select("gw,fixture_index,result"),
+        supabase.from("league_members").select("league_id,user_id,users(id,name)").in("league_id", leagues.map(l => l.id)),
+      ]);
       
-      const resultList = (allResults as ResultRowRaw[]) ?? [];
+      const allResults = (allResultsData.data as ResultRow[]) ?? [];
+      
+      // Group members by league
+      const membersByLeague: Record<string, LeagueMember[]> = {};
+      leagues.forEach(l => membersByLeague[l.id] = []);
+      (membersData.data ?? []).forEach((row: any) => {
+        const leagueId = row.league_id;
+        if (!membersByLeague[leagueId]) membersByLeague[leagueId] = [];
+        membersByLeague[leagueId].push({
+          id: row.user_id,
+          name: row.users?.name || "Unknown",
+        });
+      });
+      
       const outcomeByGwIdx = new Map<string, "H" | "D" | "A">();
-      resultList.forEach((r) => {
+      allResults.forEach((r) => {
         const out = rowToOutcome(r);
         if (!out) return;
         outcomeByGwIdx.set(`${r.gw}:${r.fixture_index}`, out);
       });
 
+      // Get ALL gameweeks with results (not filtered by league start)
+      const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
+      
       const leagueDataMap: Record<string, LeagueData> = {};
       
-      for (const league of leagues) {
+      for (let i = 0; i < leagues.length; i++) {
+        const league = leagues[i];
         try {
-          // Fetch members with their names
-          const { data: membersData } = await supabase
-            .from("league_members")
-            .select("user_id, users(id, name)")
-            .eq("league_id", league.id);
-          
-          const members: LeagueMember[] = (membersData ?? [])
-            .map((m: any) => ({
-              id: m.user_id,
-              name: m.users?.name || "Unknown"
-            }))
+          const members: LeagueMember[] = (membersByLeague[league.id] ?? [])
             .filter((m: LeagueMember) => m.name !== "Unknown");
 
           if (members.length === 0) {
@@ -499,7 +480,7 @@ export default function HomePage() {
               userPosition: null,
               positionChange: null,
               sortedMemberIds: [],
-              latestGwWinners: new Set()
+              latestGwWinners: []
             };
             continue;
           }
@@ -513,28 +494,14 @@ export default function HomePage() {
               userPosition: null,
               positionChange: null,
               sortedMemberIds: alphabeticalIds,
-              latestGwWinners: new Set()
+              latestGwWinners: []
             };
             continue;
           }
 
-          const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
-          
           // Filter by league start GW (same as League page) - use currentGw from meta, not state
           const leagueStartGw = await getLeagueStartGw(league, currentGw);
           const relevantGws = gwsWithResults.filter(g => g >= leagueStartGw);
-          
-          // DEBUG: Check if "Forget It" has different GW filtering
-          if (league.name?.toLowerCase().includes('forget')) {
-            console.error(`[${league.name}] GW FILTERING:`, {
-              leagueStartGw,
-              allGwsWithResults: gwsWithResults,
-              relevantGws,
-              currentGw,
-              created_at: league.created_at,
-              start_gw: league.start_gw
-            });
-          }
 
           if (relevantGws.length === 0) {
             const alphabeticalIds = members.sort((a, b) => a.name.localeCompare(b.name)).map(m => m.id);
@@ -544,7 +511,7 @@ export default function HomePage() {
               userPosition: null,
               positionChange: null,
               sortedMemberIds: alphabeticalIds,
-              latestGwWinners: new Set()
+              latestGwWinners: []
             };
             continue;
           }
@@ -666,13 +633,19 @@ export default function HomePage() {
             b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
           );
 
-          // DEBUG: Log the exact values AFTER sorting for "Forget It"
-          if (league.name?.toLowerCase().includes('forget')) {
+          // DEBUG: Log the exact values AFTER sorting for "Forget It" and "Prem Predictions"
+          if (league.name?.toLowerCase().includes('forget') || league.name?.toLowerCase().includes('prem')) {
             console.error(`[${league.name}] === AFTER SORT ===`);
+            console.error(`[${league.name}] leagueStartGw:`, leagueStartGw);
+            console.error(`[${league.name}] relevantGws:`, Array.from(relevantGws));
+            console.error(`[${league.name}] picksAll count:`, picksAll.length);
+            console.error(`[${league.name}] picksAll by GW:`, Array.from(new Set(picksAll.map(p => p.gw))).sort());
             sortedMltRows.forEach((r, i) => {
               console.error(`${i + 1}. ${r.name}: mltPts=${r.mltPts}, unicorns=${r.unicorns}, ocp=${r.ocp}, user_id=${r.user_id}`);
             });
             console.error(`[${league.name}] sortedMemberIds:`, sortedMltRows.map(r => r.user_id));
+            console.error(`[${league.name}] sortedMemberNames:`, sortedMltRows.map(r => r.name));
+            console.error(`[${league.name}] sortedMemberInitials:`, sortedMltRows.map(r => initials(r.name)));
           }
 
           // Find user's position - simple: index in sorted array + 1
@@ -747,14 +720,15 @@ export default function HomePage() {
           
           
           // Store data - CRITICAL: sortedMemberIds must be stored correctly
+          // Convert Sets to Arrays for React state (Sets don't serialize well)
           const storedData: LeagueData = {
             id: league.id,
             members: members.sort((a, b) => a.name.localeCompare(b.name)), // Keep alphabetical for other uses
             userPosition,
             positionChange: null,
-            submittedMembers,
+            submittedMembers: Array.from(submittedMembers), // Convert Set to Array for storage
             sortedMemberIds: [...sortedMemberIds], // Store COPY of ML table order from sortedMltRows
-            latestGwWinners: new Set(latestGwWinners)
+            latestGwWinners: Array.from(latestGwWinners) // Convert Set to Array for storage
           };
           
           leagueDataMap[league.id] = storedData;
@@ -767,7 +741,7 @@ export default function HomePage() {
             userPosition: null,
             positionChange: null,
             sortedMemberIds: [],
-            latestGwWinners: new Set()
+            latestGwWinners: []
           };
         }
       }
@@ -1731,9 +1705,8 @@ export default function HomePage() {
                               {[1, 2, 3].map((k) => (
                                 <div
                                   key={k}
-                                  className="rounded-full bg-slate-200 flex-shrink-0"
+                                  className={`chip-skeleton rounded-full bg-slate-200 flex-shrink-0 ${k > 1 ? 'chip-skeleton-overlap' : ''}`}
                                   style={{
-                                    marginLeft: k > 1 ? '-2px' : '0',
                                     width: '18px',
                                     height: '18px',
                                   }}
@@ -1771,7 +1744,29 @@ export default function HomePage() {
   );
 
   return (
-    <div className={`max-w-6xl mx-auto px-4 py-4 min-h-screen ${oldSchoolMode ? 'oldschool-theme' : ''}`}>
+    <div 
+      ref={containerRef}
+      className={`max-w-6xl mx-auto px-4 py-4 min-h-screen relative ${oldSchoolMode ? 'oldschool-theme' : ''}`}
+    >
+      {/* Pull-to-refresh indicator */}
+      {shouldShowIndicator && (
+        <div
+          className="absolute top-0 left-0 right-0 flex items-center justify-center z-50 pointer-events-none"
+          style={{
+            transform: `translateY(${Math.max(0, pullDistance - 40)}px)`,
+            opacity: spinnerOpacity,
+            transition: isRefreshing ? 'opacity 0.3s' : 'none',
+          }}
+        >
+          <div
+            className="w-8 h-8 rounded-full border-2 border-slate-400 border-t-transparent"
+            style={{
+              transform: `rotate(${isRefreshing ? spinnerRotation + 360 : spinnerRotation}deg)`,
+              transition: isRefreshing ? 'transform 0.5s linear infinite' : 'none',
+            }}
+          />
+        </div>
+      )}
       <WhatsAppBanner />
       {loading && isInitialMountRef.current ? (
         <SkeletonLoader />
@@ -2005,6 +2000,10 @@ export default function HomePage() {
           </div>
         </div>
         <div>
+          {(() => {
+            console.log('[Home] Mini Leagues render check:', { loading, isInitialMount: isInitialMountRef.current, leaguesLength: leagues.length });
+            return null;
+          })()}
           {loading && isInitialMountRef.current && leagues.length === 0 ? (
             <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
               <style>{`
@@ -2034,9 +2033,8 @@ export default function HomePage() {
                                   {[1, 2, 3].map((k) => (
                                     <div
                                       key={k}
-                                      className="rounded-full bg-slate-200 flex-shrink-0"
+                                      className={`chip-skeleton rounded-full bg-slate-200 flex-shrink-0 ${k > 1 ? 'chip-skeleton-overlap' : ''}`}
                                       style={{
-                                        marginLeft: k > 1 ? '-2px' : '0',
                                         width: '18px',
                                         height: '18px',
                                       }}
@@ -2056,7 +2054,7 @@ export default function HomePage() {
                 ))}
               </div>
             </div>
-          ) : leagues.length === 0 ? (
+          ) : !loading && leagues.length === 0 ? (
             <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
               <div className="text-slate-600 mb-3">You don't have any mini leagues yet.</div>
               <Link 
@@ -2098,14 +2096,21 @@ export default function HomePage() {
                   
                   const members = data?.members || [];
                   
-                  // CRITICAL DEBUG for "Forget It"
-                  if (l.name?.toLowerCase().includes('forget')) {
+                  // DEBUG for all leagues - check data structure
+                  if (l.name?.toLowerCase().includes('prem')) {
                     console.error(`[${l.name}] === RENDERING ===`);
                     console.error(`League ID:`, l.id);
                     console.error(`hasData:`, !!data);
                     console.error(`data?.sortedMemberIds:`, data?.sortedMemberIds);
+                    console.error(`data?.sortedMemberIds length:`, data?.sortedMemberIds?.length);
+                    console.error(`data?.submittedMembers:`, data?.submittedMembers);
+                    console.error(`data?.submittedMembers type:`, typeof data?.submittedMembers);
+                    console.error(`data?.submittedMembers is Set:`, data?.submittedMembers instanceof Set);
+                    console.error(`data?.latestGwWinners:`, data?.latestGwWinners);
+                    console.error(`data?.latestGwWinners type:`, typeof data?.latestGwWinners);
+                    console.error(`data?.latestGwWinners is Set:`, data?.latestGwWinners instanceof Set);
                     console.error(`members count:`, members.length);
-                    console.error(`All leagueData keys:`, Object.keys(leagueData || {}));
+                    console.error(`members:`, members.map(m => ({ id: m.id, name: m.name })));
                   }
                   
                           return (
@@ -2160,38 +2165,44 @@ export default function HomePage() {
                                           
                                           // CRITICAL: If no sortedMemberIds, we can't render correctly - show error
                                           if (!orderedMemberIds || orderedMemberIds.length === 0) {
-                                            if (l.name?.toLowerCase().includes('forget')) {
-                                              console.error(`[${l.name}] FATAL ERROR: No sortedMemberIds available!`);
-                                            }
                                             // Fallback to alphabetical - but this shouldn't happen
                                             const alphabeticalMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
                                             
+                                            // Convert Arrays back to Sets for checking (if they're Arrays)
+                                            const submittedSet = data?.submittedMembers instanceof Set 
+                                              ? data.submittedMembers 
+                                              : new Set(data?.submittedMembers ?? []);
+                                            const winnersSet = data?.latestGwWinners instanceof Set 
+                                              ? data.latestGwWinners 
+                                              : new Set(data?.latestGwWinners ?? []);
+                                            
                                             return alphabeticalMembers.slice(0, 8).map((member, index) => {
-                                              const hasSubmitted = data?.submittedMembers?.has(member.id) ?? false;
-                                              const isLatestWinner = data?.latestGwWinners?.has(member.id) ?? false;
+                                              const hasSubmitted = submittedSet.has(member.id);
+                                              const isLatestWinner = winnersSet.has(member.id);
                                               
-                                              // Determine chip style
-                                              let chipClassName = 'rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
-                                              let chipStyle: React.CSSProperties = { marginLeft: index > 0 ? '-2px' : '0' };
+                                              // GPU-optimized: Use CSS classes instead of inline styles
+                                              let chipClassName = 'chip-container rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
                                               
                                               if (isLatestWinner) {
-                                                // Shiny chip for last GW winner
+                                                // Shiny chip for last GW winner (already GPU-optimized with transforms)
                                                 chipClassName += ' bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 font-semibold relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]';
                                               } else if (hasSubmitted) {
-                                                // Green = picked
-                                                chipStyle.backgroundColor = '#10b981'; // emerald-500
-                                                chipStyle.color = '#ffffff';
+                                                // Green = picked (GPU-optimized class)
+                                                chipClassName += ' chip-green';
                                               } else {
-                                                // Grey = not picked
-                                                chipStyle.backgroundColor = '#f1f5f9'; // slate-100
-                                                chipStyle.color = '#64748b'; // slate-500
+                                                // Grey = not picked (GPU-optimized class)
+                                                chipClassName += ' chip-grey';
+                                              }
+                                              
+                                              // GPU-optimized: Use transform instead of marginLeft
+                                              if (index > 0) {
+                                                chipClassName += ' chip-overlap';
                                               }
                                               
                                               return (
                                                 <div
                                                   key={member.id}
                                                   className={chipClassName}
-                                                  style={chipStyle}
                                                   title={member.name}
                                                 >
                                                   {initials(member.name)}
@@ -2205,43 +2216,62 @@ export default function HomePage() {
                                             .map(id => members.find(m => m.id === id))
                                             .filter(Boolean) as LeagueMember[];
                                           
-                                          // CRITICAL DEBUG: Log what we're rendering for "Forget It"
-                                          if (l.name?.toLowerCase().includes('forget')) {
-                                            console.error(`[${l.name}] === RENDERING ===`);
-                                            console.error(`orderedMemberIds from data:`, orderedMemberIds);
-                                            console.error(`orderedMembers names:`, orderedMembers.map(m => m.name));
-                                            console.error(`Chip order will be:`, orderedMembers.map(m => initials(m.name)).join(', '));
-                                            console.error(`Expected: J, JD, DG, E`);
-                                            console.error(`Actual:`, orderedMembers.map(m => initials(m.name)).join(', '));
-                                          }
+                                          // Convert Arrays back to Sets for checking (if they're Arrays)
+                                          const submittedSet = data?.submittedMembers instanceof Set 
+                                            ? data.submittedMembers 
+                                            : new Set(data?.submittedMembers ?? []);
+                                          const winnersSet = data?.latestGwWinners instanceof Set 
+                                            ? data.latestGwWinners 
+                                            : new Set(data?.latestGwWinners ?? []);
+                                          
+                                          // DEBUG: Log chip data - EXPANDED
+                                          const chipStatus = orderedMembers.slice(0, 8).map(m => ({
+                                            name: m.name,
+                                            initials: initials(m.name),
+                                            id: m.id,
+                                            hasSubmitted: submittedSet.has(m.id),
+                                            isLatestWinner: winnersSet.has(m.id),
+                                            willBeShiny: winnersSet.has(m.id),
+                                            willBeGreen: !winnersSet.has(m.id) && submittedSet.has(m.id),
+                                            willBeGrey: !winnersSet.has(m.id) && !submittedSet.has(m.id)
+                                          }));
+                                          console.log(`[${l.name}] Chip data:`, {
+                                            orderedMemberIds: orderedMemberIds.slice(0, 8),
+                                            orderedMembersNames: orderedMembers.slice(0, 8).map(m => m.name),
+                                            orderedMembersInitials: orderedMembers.slice(0, 8).map(m => initials(m.name)),
+                                            submittedMembersArray: Array.from(submittedSet),
+                                            latestGwWinnersArray: Array.from(winnersSet),
+                                            chipStatus
+                                          });
                                           
                                           // CRITICAL: Ensure we're using the exact order from sortedMemberIds
                                           return orderedMembers.slice(0, 8).map((member, index) => {
-                                            const hasSubmitted = data?.submittedMembers?.has(member.id) ?? false;
-                                            const isLatestWinner = data?.latestGwWinners?.has(member.id) ?? false;
+                                            const hasSubmitted = submittedSet.has(member.id);
+                                            const isLatestWinner = winnersSet.has(member.id);
                                             
-                                            // Determine chip style
-                                            let chipClassName = 'rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
-                                            let chipStyle: React.CSSProperties = { marginLeft: index > 0 ? '-2px' : '0' };
+                                            // GPU-optimized: Use CSS classes instead of inline styles
+                                            let chipClassName = 'chip-container rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
                                             
                                             if (isLatestWinner) {
-                                              // Shiny chip for last GW winner
+                                              // Shiny chip for last GW winner (already GPU-optimized with transforms)
                                               chipClassName += ' bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 font-semibold relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]';
                                             } else if (hasSubmitted) {
-                                              // Green = picked
-                                              chipStyle.backgroundColor = '#10b981'; // emerald-500
-                                              chipStyle.color = '#ffffff';
+                                              // Green = picked (GPU-optimized class)
+                                              chipClassName += ' chip-green';
                                             } else {
-                                              // Grey = not picked
-                                              chipStyle.backgroundColor = '#f1f5f9'; // slate-100
-                                              chipStyle.color = '#64748b'; // slate-500
+                                              // Grey = not picked (GPU-optimized class)
+                                              chipClassName += ' chip-grey';
+                                            }
+                                            
+                                            // GPU-optimized: Use transform instead of marginLeft
+                                            if (index > 0) {
+                                              chipClassName += ' chip-overlap';
                                             }
                                             
                                             return (
                                               <div
                                                 key={member.id}
                                                 className={chipClassName}
-                                                style={chipStyle}
                                                 title={member.name}
                                               >
                                                 {initials(member.name)}
@@ -2254,13 +2284,10 @@ export default function HomePage() {
                                           const totalMembers = orderedMemberIds.length;
                                           return totalMembers > 8 && (
                                             <div 
-                                              className="rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
+                                              className={`chip-container chip-grey rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 ${totalMembers > 1 ? 'chip-overlap' : ''}`}
                                               style={{ 
-                                                marginLeft: totalMembers > 1 ? '-2px' : '0', 
                                                 width: '24px', 
                                                 height: '24px',
-                                                backgroundColor: '#f1f5f9', // slate-100
-                                                color: '#64748b' // slate-500
                                               }}
                                             >
                                               +{totalMembers - 8}

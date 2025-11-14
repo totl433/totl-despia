@@ -15,7 +15,7 @@ const navItems = [
     },
     {
       name: 'Predictions',
-      path: '/predictions',
+      path: '/new-predictions',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="w-7 h-7">
           <g>
@@ -53,7 +53,7 @@ export default function BottomNav() {
   const location = useLocation();
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const [indicatorStyle, setIndicatorStyle] = useState<{ width: number; left: number; borderRadius: number } | null>(null);
+  const [indicatorStyle, setIndicatorStyle] = useState<{ width: number; left: number; top: number; borderRadius: number } | null>(null);
 
   useEffect(() => {
     const updateIndicator = () => {
@@ -63,19 +63,24 @@ export default function BottomNav() {
         const container = containerRef.current;
         const buttonRect = button.getBoundingClientRect();
         const containerRect = container.getBoundingClientRect();
-        const containerHeight = containerRect.height;
         
-        // Calculate indicator as a circle
-        // Indicator height is container height minus top-0.5 and bottom-0.5 (0.125rem each = 0.25rem total = 4px)
-        const indicatorHeight = containerHeight - 4;
-        const indicatorSize = indicatorHeight; // Make it a perfect circle
-        const buttonCenter = buttonRect.left + buttonRect.width / 2;
-        const indicatorLeft = buttonCenter - indicatorSize / 2 - containerRect.left;
+        // Use button's height as the indicator size for perfect alignment
+        const buttonHeight = buttonRect.height;
+        const indicatorSize = buttonHeight;
+        
+        // Calculate button center X position relative to container
+        const buttonCenterX = buttonRect.left + buttonRect.width / 2;
+        const indicatorLeft = buttonCenterX - containerRect.left - indicatorSize / 2;
+        
+        // Calculate button center Y position relative to container
+        const buttonCenterY = buttonRect.top + buttonRect.height / 2;
+        const indicatorTop = buttonCenterY - containerRect.top - indicatorSize / 2;
         
         setIndicatorStyle({
           width: indicatorSize,
           left: indicatorLeft,
-          borderRadius: indicatorSize / 2, // Perfect circle
+          top: indicatorTop,
+          borderRadius: indicatorSize / 2,
         });
       }
     };
@@ -122,10 +127,12 @@ export default function BottomNav() {
           {/* Sliding background indicator */}
           {indicatorStyle && (
             <div 
-              className="absolute top-0.5 bottom-0.5 bg-[#178f72]"
+              className="absolute bg-[#178f72]"
               style={{
                 width: `${indicatorStyle.width}px`,
+                height: `${indicatorStyle.width}px`,
                 left: `${indicatorStyle.left}px`,
+                top: `${indicatorStyle.top}px`,
                 borderRadius: `${indicatorStyle.borderRadius}px`,
                 transition: 'all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55)',
               }}

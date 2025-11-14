@@ -266,11 +266,11 @@ export default function NewPredictionsCentre() {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 py-4">
           {/* Page Header */}
-          <div className="text-center mb-6">
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Predictions Centre</h1>
-            <div className="mt-0 mb-4 text-sm text-slate-600">
-              Call every game, lock in your results,<br />and climb the table.
-            </div>
+          <div className="mb-6">
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Predictions Centre</h2>
+            <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
+              Call every game, lock in your results, and climb the table.
+            </p>
           </div>
 
           {/* Current Gameweek banner - show different content based on submitted state */}
