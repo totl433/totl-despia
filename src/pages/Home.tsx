@@ -9,27 +9,6 @@ import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 
-// Module-level cache for home page data
-type HomePageCache = {
-  leagues: League[];
-  leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
-  leagueData: Record<string, LeagueData>;
-  unreadByLeague: Record<string, number>;
-  fixtures: Fixture[];
-  gw: number;
-  gwSubmitted: boolean;
-  gwScore: number | null;
-  picksMap: Record<number, "H" | "D" | "A">;
-  resultsMap: Record<number, "H" | "D" | "A">;
-  lastFetched: number;
-  userId: string | null;
-};
-
-const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
-let homePageCache: HomePageCache | null = null;
-
-// Don't clear cache on page load - preserve it across navigations
-// Cache will expire naturally based on CACHE_DURATION
 
 // Types
 type League = { id: string; name: string; code: string; avatar?: string | null; created_at?: string | null; start_gw?: number | null };
@@ -129,6 +108,7 @@ export default function HomePage() {
   const [leagueData, setLeagueData] = useState<Record<string, LeagueData>>({});
   const leagueIdsRef = useRef<Set<string>>(new Set());
   const isInitialMountRef = useRef(true);
+  const navigationKeyRef = useRef(0);
 
   // Extract data fetching into a reusable function for pull-to-refresh
   const fetchHomeData = useCallback(async (showLoading = true) => {
@@ -348,24 +328,6 @@ export default function HomePage() {
       setUnreadByLeague(unreadCounts);
       setLeagueSubmissions(submissionStatus);
       setLoading(false);
-      
-      // Update cache
-      if (user.id) {
-        homePageCache = {
-          leagues: ls,
-          leagueSubmissions: submissionStatus,
-          leagueData: {}, // Will be updated when leagueData useEffect runs
-          unreadByLeague: unreadCounts,
-          fixtures: thisGwFixtures,
-          gw: currentGw,
-          gwSubmitted: submitted,
-          gwScore: score,
-          picksMap: map,
-          resultsMap: currentResultsMap,
-          lastFetched: Date.now(),
-          userId: user.id,
-        };
-      }
     }
     } catch (error) {
       console.error('[Home] Error loading home page data:', error);
@@ -390,8 +352,6 @@ export default function HomePage() {
     shouldShowIndicator,
   } = usePullToRefresh({
     onRefresh: async () => {
-      // Clear cache to force fresh fetch
-      homePageCache = null;
       isInitialMountRef.current = true;
       await fetchHomeData(true);
     },
@@ -405,39 +365,10 @@ export default function HomePage() {
       return;
     }
     
-    // NON-BLOCKING cache: Show cached data immediately if available, but still fetch fresh data
-    if (homePageCache && homePageCache.userId === user.id && homePageCache.leagues.length > 0) {
-      const cacheAge = Date.now() - homePageCache.lastFetched;
-      if (cacheAge < CACHE_DURATION) {
-        // Show cached data immediately (non-blocking)
-        setLeagues(homePageCache.leagues);
-        setLeagueSubmissions(homePageCache.leagueSubmissions);
-        setLeagueData(homePageCache.leagueData);
-        setUnreadByLeague(homePageCache.unreadByLeague);
-        setFixtures(homePageCache.fixtures || []);
-        setGw(homePageCache.gw || 1);
-        setGwSubmitted(homePageCache.gwSubmitted || false);
-        setGwScore(homePageCache.gwScore || null);
-        setPicksMap(homePageCache.picksMap || {});
-        setResultsMap(homePageCache.resultsMap || {});
-        leagueIdsRef.current = new Set(homePageCache.leagues.map((l) => l.id));
-        setLoading(false);
-        setLeagueDataLoading(false); // Cache has leagueData, so no need to wait
-        isInitialMountRef.current = false; // Don't show skeleton
-        
-        // If cache is very fresh (< 30 seconds), skip background refresh entirely
-        if (cacheAge < 30 * 1000) {
-          // Skip fetch - cache is very fresh
-          return;
-        } else {
-          // Cache is older, refresh in background (don't show loading)
-          fetchHomeData(false);
-          return;
-        }
-      }
-    }
+    // Increment navigation key to force scroll containers to recreate
+    navigationKeyRef.current += 1;
     
-    // No cache or cache expired - fetch fresh data with loading state
+    // Always fetch fresh data
     fetchHomeData(isInitialMountRef.current);
   }, [user?.id, fetchHomeData]);
 
@@ -509,14 +440,9 @@ export default function HomePage() {
       
       // Calculate leagueStartGw for all leagues synchronously (like Tables.tsx)
       const leagueStartGws = new Map<string, number>();
-      const specialLeagues = ["Prem Predictions"]; // Leagues that should include all historical data from GW1
       leagues.forEach(league => {
-        // Special handling for leagues like "Prem Predictions" that should include all data from GW1
-        if (league.name && specialLeagues.includes(league.name)) {
-          leagueStartGws.set(league.id, 1);
-          return;
-        }
-        const override = (league.name && (LEAGUE_START_OVERRIDES as any)[league.name]) as number | undefined;
+        // Check LEAGUE_START_OVERRIDES first (matches League.tsx logic)
+        const override = league.name && LEAGUE_START_OVERRIDES[league.name];
         if (typeof override === "number") {
           leagueStartGws.set(league.id, override);
           return;
@@ -542,26 +468,40 @@ export default function HomePage() {
         leagueStartGws.set(league.id, currentGw);
       });
       
-      // Collect all member IDs and relevant GWs for batching
-      const allMemberIds = new Set<string>();
-      const allRelevantGws = new Set<number>();
-      leagues.forEach(league => {
+      // Fetch picks per league (like League page does) to avoid Supabase 1000 row limit
+      // Store picks by league ID for lookup
+      const picksByLeague = new Map<string, PickRow[]>();
+      
+      for (const league of leagues) {
         const members = membersByLeague[league.id] ?? [];
-        members.forEach(m => allMemberIds.add(m.id));
+        if (members.length === 0) {
+          picksByLeague.set(league.id, []);
+          continue;
+        }
+        
         const leagueStartGw = leagueStartGws.get(league.id) ?? currentGw;
-        gwsWithResults.filter(g => g >= leagueStartGw).forEach(g => allRelevantGws.add(g));
+        const relevantGws = gwsWithResults.filter(g => g >= leagueStartGw);
+        
+        if (relevantGws.length === 0) {
+          picksByLeague.set(league.id, []);
+          continue;
+        }
+        
+        const memberIds = members.map(m => m.id);
+        const { data: leaguePicks } = await supabase
+          .from("picks")
+          .select("user_id,gw,fixture_index,pick")
+          .in("user_id", memberIds)
+          .in("gw", relevantGws);
+        
+        picksByLeague.set(league.id, (leaguePicks as PickRow[]) ?? []);
+      }
+      
+      // Collect all member IDs for submissions batch
+      const allMemberIds = new Set<string>();
+      Object.values(membersByLeague).forEach(members => {
+        members.forEach(m => allMemberIds.add(m.id));
       });
-      
-      // BATCH: Fetch all picks for all members across all relevant GWs in one query
-      const { data: allPicksBatch } = allMemberIds.size > 0 && allRelevantGws.size > 0
-        ? await supabase
-            .from("picks")
-            .select("user_id,gw,fixture_index,pick")
-            .in("user_id", Array.from(allMemberIds))
-            .in("gw", Array.from(allRelevantGws))
-        : { data: [] };
-      
-      const picksBatch = (allPicksBatch as PickRow[]) ?? [];
       
       // BATCH: Fetch all submissions for current GW in one query
       const { data: allSubmissionsBatch } = allMemberIds.size > 0
@@ -611,6 +551,11 @@ export default function HomePage() {
           // Use pre-calculated leagueStartGw (synchronous, no DB query)
           const leagueStartGw = leagueStartGws.get(league.id) ?? currentGw;
           const relevantGws = gwsWithResults.filter(g => g >= leagueStartGw);
+          
+          // DEBUG: Log leagueStartGw and relevantGws for Prem Predictions
+          if (league.name === 'Prem Predictions') {
+            console.error(`🔴 PREM PREDICTIONS - leagueStartGw: ${leagueStartGw}, relevantGws:`, relevantGws, 'gwsWithResults:', gwsWithResults);
+          }
 
           if (relevantGws.length === 0) {
             const alphabeticalIds = members.sort((a, b) => a.name.localeCompare(b.name)).map(m => m.id);
@@ -625,11 +570,9 @@ export default function HomePage() {
             continue;
           }
 
-          // Use batched picks data (filtered for this league's members and relevant GWs)
+          // Use picks fetched per league (avoids Supabase 1000 row limit)
+          const picksAll = picksByLeague.get(league.id) ?? [];
           const memberIds = members.map(m => m.id);
-          const picksAll = picksBatch.filter(p => 
-            memberIds.includes(p.user_id) && relevantGws.includes(p.gw)
-          );
           
           // DEBUG: Check picks data for "Forget It"
           if (league.name?.toLowerCase().includes('forget')) {
@@ -667,6 +610,16 @@ export default function HomePage() {
                 const thesePicks = picksAll.filter((p) => p.gw === g && p.fixture_index === idx);
                 const correctUsers = thesePicks.filter((p) => p.pick === out).map((p) => p.user_id);
 
+                // Debug for Easy League GW 11
+                if (league.name === 'Easy League' && g === 11) {
+                  console.log(`🔵 Easy League GW 11 - Fixture ${idx}:`, {
+                    outcome: out,
+                    picksCount: thesePicks.length,
+                    picks: thesePicks.map(p => ({ user_id: p.user_id, name: members.find(m => m.id === p.user_id)?.name || 'unknown', pick: p.pick })),
+                    correctUsers: correctUsers.map(id => members.find(m => m.id === id)?.name || id)
+                  });
+                }
+
                 const map = perGw.get(g)!;
                 thesePicks.forEach((p) => {
                   if (p.pick === out) {
@@ -703,8 +656,35 @@ export default function HomePage() {
             if (!gwRows.length) return;
 
             const top = gwRows[0];
+            // Find ALL players with the same top score AND unicorns (co-winners)
             const coTop = gwRows.filter((r) => r.score === top.score && r.unicorns === top.unicorns);
-            gwWinners.set(g, new Set(coTop.map((r) => r.user_id)));
+            const winners = new Set(coTop.map((r) => r.user_id));
+            
+            // Debug logging for ties - CRITICAL for debugging
+            if (league.name === 'Easy League' && g === 11) {
+              console.log(`🔵🔵🔵 EASY LEAGUE GW 11 CALCULATION 🔵🔵🔵`);
+              const allRowsData = gwRows.map(r => ({ user_id: r.user_id, name: members.find(m => m.id === r.user_id)?.name || 'unknown', score: r.score, unicorns: r.unicorns }));
+              console.log(`All gwRows (${gwRows.length} players):`, allRowsData);
+              console.log(`Top player:`, { user_id: top.user_id, name: members.find(m => m.id === top.user_id)?.name || 'unknown', score: top.score, unicorns: top.unicorns });
+              const coTopData = coTop.map(r => ({ user_id: r.user_id, name: members.find(m => m.id === r.user_id)?.name || 'unknown', score: r.score, unicorns: r.unicorns }));
+              console.log(`coTop (filtered, ${coTop.length} players):`, coTopData);
+              console.log(`winners Set (${winners.size} winners):`, Array.from(winners));
+              console.log(`🔵🔵🔵 END EASY LEAGUE GW 11 CALCULATION 🔵🔵🔵`);
+            }
+            
+            if (coTop.length > 1) {
+              console.log(`[Home] GW ${g} has ${coTop.length} co-winners (tie):`, Array.from(winners));
+              console.log(`[Home] GW ${g} co-winners details:`, coTop.map(r => ({ user_id: r.user_id, name: members.find(m => m.id === r.user_id)?.name || 'unknown', score: r.score, unicorns: r.unicorns })));
+            } else {
+              console.log(`[Home] GW ${g} single winner:`, top.user_id, `score: ${top.score}, unicorns: ${top.unicorns}`);
+            }
+            
+            // CRITICAL: Ensure all co-winners are in the Set
+            if (coTop.length !== winners.size) {
+              console.error(`[Home] GW ${g} ERROR: coTop length (${coTop.length}) doesn't match winners Set size (${winners.size})!`);
+            }
+            
+            gwWinners.set(g, winners);
 
               if (coTop.length === 1) {
                 mltPts.set(top.user_id, (mltPts.get(top.user_id) ?? 0) + 3);
@@ -723,6 +703,17 @@ export default function HomePage() {
               unicorns: unis.get(m.id) ?? 0,
               ocp: ocp.get(m.id) ?? 0,
             }));
+          
+          // DEBUG: Log stats BEFORE sorting for Prem Predictions
+          if (league.name === 'Prem Predictions') {
+            console.error(`🔴 PREM PREDICTIONS STATS BEFORE SORT:`, mltRows.map(r => ({
+              name: r.name,
+              mltPts: r.mltPts,
+              unicorns: r.unicorns,
+              ocp: r.ocp,
+              userId: r.user_id
+            })));
+          }
 
           // DEBUG: Log the exact values BEFORE sorting for "Forget It"
           if (league.name?.toLowerCase().includes('forget')) {
@@ -732,26 +723,11 @@ export default function HomePage() {
             });
           }
 
-          // Sort EXACTLY like League.tsx line 1189 - use the exact same expression
+          // Sort EXACTLY like League.tsx line 1268 - use the exact same expression
           // Create a NEW sorted array to avoid any mutation issues
           const sortedMltRows = [...mltRows].sort((a, b) => 
             b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
           );
-
-          // DEBUG: Log the exact values AFTER sorting for "Forget It" and "Prem Predictions"
-          if (league.name?.toLowerCase().includes('forget') || league.name?.toLowerCase().includes('prem')) {
-            console.error(`[${league.name}] === AFTER SORT ===`);
-            console.error(`[${league.name}] leagueStartGw:`, leagueStartGw);
-            console.error(`[${league.name}] relevantGws:`, Array.from(relevantGws));
-            console.error(`[${league.name}] picksAll count:`, picksAll.length);
-            console.error(`[${league.name}] picksAll by GW:`, Array.from(new Set(picksAll.map(p => p.gw))).sort());
-            sortedMltRows.forEach((r, i) => {
-              console.error(`${i + 1}. ${r.name}: mltPts=${r.mltPts}, unicorns=${r.unicorns}, ocp=${r.ocp}, user_id=${r.user_id}`);
-            });
-            console.error(`[${league.name}] sortedMemberIds:`, sortedMltRows.map(r => r.user_id));
-            console.error(`[${league.name}] sortedMemberNames:`, sortedMltRows.map(r => r.name));
-            console.error(`[${league.name}] sortedMemberInitials:`, sortedMltRows.map(r => initials(r.name)));
-          }
 
           // Find user's position - simple: index in sorted array + 1
           let userIndex = sortedMltRows.findIndex(r => r.user_id === user.id);
@@ -769,7 +745,7 @@ export default function HomePage() {
                 unicorns: 0,
                 ocp: 0
               });
-              // Re-sort EXACTLY like League.tsx line 1189
+              // Re-sort EXACTLY like League.tsx line 1268
               sortedMltRows.sort((a, b) => 
                 b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
               );
@@ -777,9 +753,56 @@ export default function HomePage() {
             }
           }
           
-          // CRITICAL: Extract sortedMemberIds from the FINAL sorted array
+          // CRITICAL: Extract sortedMemberIds from the FINAL sorted array (after any user additions)
           // This is the ML table order (1st to last) - EXACTLY matching League page
           const sortedMemberIds = sortedMltRows.map(r => r.user_id);
+
+          // DEBUG: Log the exact values AFTER sorting for "Forget It" and "Prem Predictions"
+          if (league.name?.toLowerCase().includes('forget') || league.name?.toLowerCase().includes('prem')) {
+            console.error(`[${league.name}] === AFTER SORT ===`);
+            console.error(`[${league.name}] leagueStartGw:`, leagueStartGw);
+            console.error(`[${league.name}] relevantGws:`, Array.from(relevantGws));
+            console.error(`[${league.name}] picksAll count:`, picksAll.length);
+            console.error(`[${league.name}] picksAll by GW:`, Array.from(new Set(picksAll.map(p => p.gw))).sort());
+            console.error(`[${league.name}] === BEFORE SORT (mltRows) ===`);
+            mltRows.forEach((r, i) => {
+              console.error(`${i + 1}. ${r.name}: mltPts=${r.mltPts}, unicorns=${r.unicorns}, ocp=${r.ocp}, user_id=${r.user_id}`);
+            });
+            console.error(`[${league.name}] === AFTER SORT (sortedMltRows) ===`);
+            sortedMltRows.forEach((r, i) => {
+              console.error(`${i + 1}. ${r.name}: mltPts=${r.mltPts}, unicorns=${r.unicorns}, ocp=${r.ocp}, user_id=${r.user_id}`);
+            });
+            console.error(`[${league.name}] sortedMemberIds:`, sortedMemberIds);
+            console.error(`[${league.name}] sortedMemberNames:`, sortedMemberIds.map(id => members.find(m => m.id === id)?.name || id));
+            console.error(`[${league.name}] sortedMemberInitials:`, sortedMemberIds.map(id => {
+              const member = members.find(m => m.id === id);
+              return member ? initials(member.name) : '?';
+            }));
+          }
+          
+          // CRITICAL DEBUG: Log the exact order for Prem Predictions
+          if (league.name === 'Prem Predictions') {
+            console.error(`🔴🔴🔴 PREM PREDICTIONS CALCULATED ORDER 🔴🔴🔴`);
+            console.error(`sortedMemberIds:`, sortedMemberIds);
+            console.error(`sortedMemberNames:`, sortedMemberIds.map(id => members.find(m => m.id === id)?.name || id));
+            console.error(`sortedMemberInitials:`, sortedMemberIds.map(id => {
+              const member = members.find(m => m.id === id);
+              return member ? initials(member.name) : '?';
+            }));
+            console.error(`sortedMltRows (with positions):`, sortedMltRows.map((r, i) => ({
+              position: i + 1,
+              name: r.name,
+              userId: r.user_id,
+              mltPts: r.mltPts,
+              unicorns: r.unicorns,
+              ocp: r.ocp,
+              initials: initials(r.name)
+            })));
+            console.error(`📊 PREM PREDICTIONS CURRENT STANDINGS:`);
+            sortedMltRows.forEach((r, i) => {
+              console.error(`${i + 1}. ${r.name} (${initials(r.name)}) - ID: ${r.user_id} - MLT Pts: ${r.mltPts}, Unicorns: ${r.unicorns}, OCP: ${r.ocp}`);
+            });
+          }
           
           // Debug logging
           console.log(`[${league.name}] Position calculation:`, {
@@ -809,6 +832,25 @@ export default function HomePage() {
           const latestRelevantGw = relevantGws.length ? Math.max(...relevantGws) : null;
           const latestGwWinners = latestRelevantGw !== null ? (gwWinners.get(latestRelevantGw) ?? new Set<string>()) : new Set<string>();
           
+          // Debug: Log ALL GW winners for this league to see if there are ties in other GWs
+          const allGwWinnersDetails = Array.from(gwWinners.entries()).map(([gw, winners]) => ({ 
+            gw, 
+            winners: Array.from(winners),
+            winnerNames: Array.from(winners).map(id => members.find(m => m.id === id)?.name || id),
+            isLatest: gw === latestRelevantGw
+          }));
+          console.log(`[${league.name}] All GW winners:`, allGwWinnersDetails);
+          if (league.name === 'Easy League') {
+            console.log(`[Easy League] DETAILED - Latest GW: ${latestRelevantGw}, All GWs with winners:`, allGwWinnersDetails);
+          }
+          
+          // Debug: Log winners for this league
+          if (latestGwWinners.size > 0) {
+            console.log(`[${league.name}] Latest GW ${latestRelevantGw} winners:`, Array.from(latestGwWinners), 'Names:', Array.from(latestGwWinners).map(id => members.find(m => m.id === id)?.name || id));
+          } else if (latestRelevantGw !== null) {
+            console.warn(`[${league.name}] Latest GW ${latestRelevantGw} has NO winners! gwWinners map:`, Array.from(gwWinners.entries()).map(([gw, winners]) => ({ gw, winners: Array.from(winners) })));
+          }
+          
           // Use batched submissions data (filtered for this league's members)
           const submittedMembers = new Set<string>();
           memberIds.forEach(id => {
@@ -829,6 +871,18 @@ export default function HomePage() {
             sortedMemberIds: [...sortedMemberIds], // Store COPY of ML table order from sortedMltRows
             latestGwWinners: Array.from(latestGwWinners) // Convert Set to Array for storage
           };
+          
+          // CRITICAL DEBUG: Verify stored data for Prem Predictions
+          if (league.name === 'Prem Predictions') {
+            console.error(`🔴🔴🔴 PREM PREDICTIONS STORING DATA 🔴🔴🔴`);
+            console.error(`storedData.sortedMemberIds:`, storedData.sortedMemberIds);
+            console.error(`storedData.sortedMemberIds length:`, storedData.sortedMemberIds?.length ?? 0);
+            console.error(`storedData.members length:`, storedData.members.length);
+            console.error(`storedData.sortedMemberIds initials:`, (storedData.sortedMemberIds || []).map(id => {
+              const member = storedData.members.find(m => m.id === id);
+              return member ? initials(member.name) : '?';
+            }));
+          }
           
           leagueDataMap[league.id] = storedData;
         } catch (error) {
@@ -869,14 +923,31 @@ export default function HomePage() {
           });
         }
         
-        setLeagueData(leagueDataMap);
+        // CRITICAL: Create a completely new object to force React to detect the change
+        const newLeagueData = Object.fromEntries(
+          Object.entries(leagueDataMap).map(([id, data]) => [
+            id,
+            {
+              ...data,
+              sortedMemberIds: [...(data.sortedMemberIds || [])], // New array
+              latestGwWinners: [...(data.latestGwWinners || [])], // New array
+              members: [...(data.members || [])] // New array
+            }
+          ])
+        );
+        setLeagueData(newLeagueData);
         setLeagueDataLoading(false);
         
-        // Update cache with leagueData
-        if (homePageCache && homePageCache.userId === user?.id) {
-          homePageCache.leagueData = leagueDataMap;
-          homePageCache.lastFetched = Date.now();
-        }
+        // Debug: Log the final leagueData to verify it's correct
+        console.log('[Home] Final leagueData set:', Object.keys(leagueDataMap).map(id => {
+          const d = leagueDataMap[id];
+          const league = leagues.find(l => l.id === id);
+          return {
+            leagueName: league?.name || id,
+            sortedMemberIds: d.sortedMemberIds,
+            latestGwWinners: d.latestGwWinners
+          };
+        }));
       } else {
         // Component unmounted, but still set loading to false to prevent stuck skeleton
         setLeagueDataLoading(false);
@@ -1804,20 +1875,7 @@ export default function HomePage() {
                         <div className="flex-1 min-w-0 h-12 flex flex-col justify-between">
                           {/* League name skeleton */}
                           <div className="h-5 w-32 bg-slate-200 rounded -mt-0.5" />
-                          {/* Player chips skeleton */}
-                          <div className="flex items-center overflow-hidden">
-                            {[1, 2, 3, 4].map((k) => (
-                                <div
-                                  key={k}
-                                className={`chip-skeleton rounded-full bg-slate-200 flex-shrink-0 ${k > 1 ? 'chip-skeleton-overlap' : ''}`}
-                                  style={{
-                                  width: '24px',
-                                  height: '24px',
-                                  }}
-                                />
-                              ))}
                             </div>
-                          </div>
                         {/* Badge skeleton - top right */}
                         <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
                           <div className="h-6 w-6 rounded-full bg-slate-200" />
@@ -1878,7 +1936,7 @@ export default function HomePage() {
           {/* Leaderboards */}
           <Section title="Leaderboards" boxed={false}>
             <div 
-              key="leaderboard-scroll"
+              key={`leaderboard-scroll-${navigationKeyRef.current}`}
               className="overflow-x-auto -mx-4 px-4 scrollbar-hide" 
               style={{ 
                 scrollbarWidth: 'none', 
@@ -2138,18 +2196,39 @@ export default function HomePage() {
                             <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-200" />
                             <div className="flex-1 min-w-0 h-12 flex flex-col justify-between">
                               <div className="h-5 w-32 bg-slate-200 rounded -mt-0.5" />
-                              <div className="flex items-center overflow-hidden">
-                                {[1, 2, 3, 4].map((k) => (
-                                    <div
-                                      key={k}
-                                    className={`chip-skeleton rounded-full bg-slate-200 flex-shrink-0 ${k > 1 ? 'chip-skeleton-overlap' : ''}`}
-                                      style={{
-                                      width: '24px',
-                                      height: '24px',
-                                      }}
-                                    />
+                              </div>
+                            <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
+                              <div className="h-6 w-6 rounded-full bg-slate-200" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                                   ))}
                                 </div>
+                ))}
+                              </div>
+                            </div>
+          ) : (loading || leagueDataLoading) && isInitialMountRef.current && leagues.length > 0 ? (
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
+              <style>{`
+                .scrollbar-hide::-webkit-scrollbar {
+                  display: none;
+                }
+              `}</style>
+              <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex flex-col gap-2">
+                    {[1, 2, 3].map((j) => (
+                      <div
+                        key={j}
+                        className="rounded-xl border bg-white overflow-hidden shadow-sm w-[320px] animate-pulse"
+                        style={{ borderRadius: '12px' }}
+                      >
+                        <div className="p-4 bg-white relative">
+                          <div className="flex items-start gap-3 relative">
+                            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-200" />
+                            <div className="flex-1 min-w-0 h-12 flex flex-col justify-between">
+                              <div className="h-5 w-32 bg-slate-200 rounded -mt-0.5" />
                               </div>
                             <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
                               <div className="h-6 w-6 rounded-full bg-slate-200" />
@@ -2174,7 +2253,7 @@ export default function HomePage() {
             </div>
           ) : (
             <div 
-              key={`ml-scroll-${leagues.length}`}
+              key={`ml-scroll-${navigationKeyRef.current}-${leagues.length}`}
               className="overflow-x-auto -mx-4 px-4 scrollbar-hide" 
               style={{ 
                 scrollbarWidth: 'none', 
@@ -2209,31 +2288,13 @@ export default function HomePage() {
                     return (
                       <div key={batchIdx} className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm w-[320px]">
                         {batchLeagues.map((l, index) => {
+                          // Force re-render when leagueData changes by using data in key
+                          const dataKey = l.id;
                         const unread = unreadByLeague?.[l.id] ?? 0;
                         const badge = unread > 0 ? Math.min(unread, 99) : 0;
-                        const data = leagueData[l.id];
-                        
-                        const members = data?.members || [];
-                        
-                  // DEBUG for all leagues - check data structure
-                  if (l.name?.toLowerCase().includes('prem')) {
-                          console.error(`[${l.name}] === RENDERING ===`);
-                          console.error(`League ID:`, l.id);
-                          console.error(`hasData:`, !!data);
-                          console.error(`data?.sortedMemberIds:`, data?.sortedMemberIds);
-                    console.error(`data?.sortedMemberIds length:`, data?.sortedMemberIds?.length);
-                    console.error(`data?.submittedMembers:`, data?.submittedMembers);
-                    console.error(`data?.submittedMembers type:`, typeof data?.submittedMembers);
-                    console.error(`data?.submittedMembers is Set:`, data?.submittedMembers instanceof Set);
-                    console.error(`data?.latestGwWinners:`, data?.latestGwWinners);
-                    console.error(`data?.latestGwWinners type:`, typeof data?.latestGwWinners);
-                    console.error(`data?.latestGwWinners is Set:`, data?.latestGwWinners instanceof Set);
-                          console.error(`members count:`, members.length);
-                    console.error(`members:`, members.map(m => ({ id: m.id, name: m.name })));
-                        }
                         
                         return (
-                            <div key={l.id} className={index < batchLeagues.length - 1 ? 'relative' : ''}>
+                            <div key={dataKey} className={index < batchLeagues.length - 1 ? 'relative' : ''}>
                               {index < batchLeagues.length - 1 && (
                                 <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-10 pointer-events-none" />
                               )}
@@ -2282,12 +2343,21 @@ export default function HomePage() {
                                     </div>
                                     
                                     {/* Player Chips - ordered by ML table position (1st to last) */}
-                                    <div className="flex items-center overflow-hidden">
+                                    <div className="flex items-center overflow-hidden mt-1">
                                         {(() => {
+                                          // Wait for calculation to complete
+                                          if (leagueDataLoading) return null;
+                                          
+                                          const data = leagueData[l.id];
+                                          if (!data) return null;
+                                          
+                                          const members = data.members || [];
+                                          if (members.length === 0) return null;
+                                          
                                           // CRITICAL: Use ML table order - MUST use sortedMemberIds from data
                                           const orderedMemberIds = data?.sortedMemberIds;
                                           
-                                          // CRITICAL: If no sortedMemberIds, we can't render correctly - show error
+                                          // CRITICAL: If no sortedMemberIds, we can't render correctly
                                           if (!orderedMemberIds || orderedMemberIds.length === 0) {
                                             // Fallback to alphabetical - but this shouldn't happen
                                             const alphabeticalMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
@@ -2324,13 +2394,13 @@ export default function HomePage() {
                                               }
                                               
                                               return (
-                                          <div
-                                            key={member.id}
+                                                <div
+                                                  key={member.id}
                                                   className={chipClassName}
-                                            title={member.name}
-                                          >
-                                            {initials(member.name)}
-                                          </div>
+                                                  title={member.name}
+                                                >
+                                                  {initials(member.name)}
+                                                </div>
                                               );
                                             });
                                           }
@@ -2338,7 +2408,7 @@ export default function HomePage() {
                                           // Map IDs to members in ML table order
                                           const orderedMembers = orderedMemberIds
                                             .map(id => members.find(m => m.id === id))
-                                            .filter(Boolean) as LeagueMember[];
+                                            .filter((m): m is LeagueMember => m !== undefined);
                                           
                                           // Convert Arrays back to Sets for checking (if they're Arrays)
                                           const submittedSet = data?.submittedMembers instanceof Set 
@@ -2347,26 +2417,6 @@ export default function HomePage() {
                                           const winnersSet = data?.latestGwWinners instanceof Set 
                                             ? data.latestGwWinners 
                                             : new Set(data?.latestGwWinners ?? []);
-                                          
-                                          // DEBUG: Log chip data - EXPANDED
-                                          const chipStatus = orderedMembers.slice(0, 8).map(m => ({
-                                            name: m.name,
-                                            initials: initials(m.name),
-                                            id: m.id,
-                                            hasSubmitted: submittedSet.has(m.id),
-                                            isLatestWinner: winnersSet.has(m.id),
-                                            willBeShiny: winnersSet.has(m.id),
-                                            willBeGreen: !winnersSet.has(m.id) && submittedSet.has(m.id),
-                                            willBeGrey: !winnersSet.has(m.id) && !submittedSet.has(m.id)
-                                          }));
-                                          console.log(`[${l.name}] Chip data:`, {
-                                            orderedMemberIds: orderedMemberIds.slice(0, 8),
-                                            orderedMembersNames: orderedMembers.slice(0, 8).map(m => m.name),
-                                            orderedMembersInitials: orderedMembers.slice(0, 8).map(m => initials(m.name)),
-                                            submittedMembersArray: Array.from(submittedSet),
-                                            latestGwWinnersArray: Array.from(winnersSet),
-                                            chipStatus
-                                          });
                                           
                                           // CRITICAL: Ensure we're using the exact order from sortedMemberIds
                                           return orderedMembers.slice(0, 8).map((member, index) => {
@@ -2404,7 +2454,9 @@ export default function HomePage() {
                                           });
                                         })()}
                                         {(() => {
-                                          const orderedMemberIds = data?.sortedMemberIds || members.map(m => m.id);
+                                          const data = leagueData[l.id];
+                                          if (!data) return null;
+                                          const orderedMemberIds = data?.sortedMemberIds || data?.members?.map(m => m.id) || [];
                                           const totalMembers = orderedMemberIds.length;
                                           return totalMembers > 8 && (
                                             <div 
@@ -2412,13 +2464,13 @@ export default function HomePage() {
                                               style={{ 
                                                 width: '24px', 
                                                 height: '24px',
-                                            }}
-                                          >
+                                              }}
+                                            >
                                               +{totalMembers - 8}
                                           </div>
                                           );
                                         })()}
-                                      </div>
+                                    </div>
                                     </div>
                                   </div>
                                   
