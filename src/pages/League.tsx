@@ -131,16 +131,13 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
   const listRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [containerStyle, setContainerStyle] = useState<React.CSSProperties>({});
+  const inputAreaRef = useRef<HTMLDivElement | null>(null);
+  const [inputBottom, setInputBottom] = useState<number>(0);
 
   // Simple scroll to bottom
   const scrollToBottom = () => {
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
   };
 
@@ -151,81 +148,49 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
     }
   }, [chat.length]);
 
-  // Handle keyboard with visualViewport - adjust wrapper and container
+  // Simple keyboard detection - fix input above keyboard
   useEffect(() => {
     const visualViewport = (window as any).visualViewport;
-    if (!visualViewport) {
-      // Fallback: no visualViewport support
-      setContainerStyle({ height: '100%' });
-      return;
-    }
+    if (!visualViewport) return;
 
     const updateLayout = () => {
-      const wrapper = containerRef.current?.closest('.chat-tab-wrapper') as HTMLElement | null;
-      if (!wrapper) return;
-      
-      const viewportHeight = visualViewport.height;
-      const viewportTop = visualViewport.offsetTop;
       const windowHeight = window.innerHeight;
-      const keyboardHeight = windowHeight - (viewportTop + viewportHeight);
+      const viewportHeight = visualViewport.height;
+      const viewportBottom = visualViewport.offsetTop + viewportHeight;
+      const keyboardHeight = windowHeight - viewportBottom;
       
-      // Keyboard is visible if viewport is significantly smaller than window
-      if (keyboardHeight > 150) {
-        // Keyboard is visible - adjust wrapper bottom to sit above keyboard
-        const wrapperTop = wrapper.offsetTop;
-        const availableHeight = viewportHeight - (viewportTop - wrapperTop);
-        wrapper.style.bottom = `${keyboardHeight}px`;
-        wrapper.style.height = `${availableHeight}px`;
-        wrapper.style.maxHeight = `${availableHeight}px`;
-        
-        // Container uses full height of wrapper
-        setContainerStyle({
-          height: '100%',
-          maxHeight: '100%',
-        });
-        
-        // Scroll after layout settles
-        setTimeout(() => scrollToBottom(), 300);
+      if (keyboardHeight > 100) {
+        // Keyboard is visible - position input above it
+        setInputBottom(keyboardHeight);
+        // Add padding to messages so they don't get hidden
+        if (listRef.current) {
+          listRef.current.style.paddingBottom = '100px';
+        }
+        setTimeout(() => scrollToBottom(), 200);
       } else {
-        // No keyboard - reset wrapper and use full height
-        wrapper.style.bottom = '0';
-        wrapper.style.height = '';
-        wrapper.style.maxHeight = '';
-        setContainerStyle({
-          height: '100%',
-          maxHeight: '100%',
-        });
+        // No keyboard
+        setInputBottom(0);
+        if (listRef.current) {
+          listRef.current.style.paddingBottom = '';
+        }
       }
     };
 
     visualViewport.addEventListener('resize', updateLayout);
-    visualViewport.addEventListener('scroll', updateLayout);
-    updateLayout(); // Initial call
+    updateLayout();
 
     return () => {
       visualViewport.removeEventListener('resize', updateLayout);
-      visualViewport.removeEventListener('scroll', updateLayout);
-      // Reset wrapper on cleanup
-      const wrapper = containerRef.current?.closest('.chat-tab-wrapper') as HTMLElement | null;
-      if (wrapper) {
-        wrapper.style.bottom = '';
-        wrapper.style.height = '';
-        wrapper.style.maxHeight = '';
-      }
     };
   }, []);
 
   // Scroll on input focus
   const handleInputFocus = () => {
-    setTimeout(() => scrollToBottom(), 400);
+    setTimeout(() => scrollToBottom(), 300);
   };
 
   return (
-    <div 
-      ref={containerRef}
-      className="flex flex-col chat-container" 
-      style={containerStyle}
-    >
+    <div className="flex flex-col chat-container" style={{ height: '100%' }}>
       {/* Messages list */}
       <div 
         ref={listRef} 
@@ -252,10 +217,20 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         <div ref={bottomRef} style={{ height: '1px', width: '100%' }} />
       </div>
 
-      {/* Input area - always at bottom */}
-      <div className="flex-shrink-0 bg-white border-t border-slate-200 px-4 py-3" style={{
-        paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px))`,
-      }}>
+      {/* Input area - fixed above keyboard when visible */}
+      <div 
+        ref={inputAreaRef}
+        className="flex-shrink-0 bg-white border-t border-slate-200 px-4 py-3" 
+        style={{
+          paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px))`,
+          position: inputBottom > 0 ? 'fixed' : 'relative',
+          bottom: inputBottom > 0 ? `${inputBottom}px` : 'auto',
+          left: inputBottom > 0 ? '0' : 'auto',
+          right: inputBottom > 0 ? '0' : 'auto',
+          width: inputBottom > 0 ? '100%' : 'auto',
+          zIndex: inputBottom > 0 ? 1000 : 'auto',
+        }}
+      >
         {isMember ? (
           <form
             onSubmit={(e) => {
