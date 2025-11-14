@@ -1877,7 +1877,7 @@ export default function HomePage() {
         <>
           {/* Leaderboards */}
           <Section title="Leaderboards" boxed={false}>
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x', overscrollBehaviorX: 'contain' }}>
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                   display: none;
@@ -2108,7 +2108,7 @@ export default function HomePage() {
             return null;
           })()}
           {(loading || leagueDataLoading) && isInitialMountRef.current && leagues.length === 0 ? (
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x', overscrollBehaviorX: 'contain' }}>
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                   display: none;
@@ -2169,37 +2169,7 @@ export default function HomePage() {
                 scrollbarWidth: 'none', 
                 msOverflowStyle: 'none', 
                 WebkitOverflowScrolling: 'touch', 
-                touchAction: 'pan-x', 
                 overscrollBehaviorX: 'contain'
-              }}
-              onTouchStart={(e) => {
-                // Store initial touch position to detect scroll vs tap
-                const target = e.currentTarget;
-                const touch = e.touches[0];
-                if (touch) {
-                  (target as any).__touchStartX = touch.clientX;
-                  (target as any).__touchStartY = touch.clientY;
-                  (target as any).__touchStartTime = Date.now();
-                }
-              }}
-              onTouchMove={(e) => {
-                // If user is scrolling, mark it so links don't trigger
-                const target = e.currentTarget;
-                const touch = e.touches[0];
-                if (touch && (target as any).__touchStartX !== undefined) {
-                  const deltaX = Math.abs(touch.clientX - (target as any).__touchStartX);
-                  const deltaY = Math.abs(touch.clientY - (target as any).__touchStartY);
-                  if (deltaX > 5 || deltaY > 5) {
-                    (target as any).__isScrolling = true;
-                  }
-                }
-              }}
-              onTouchEnd={(e) => {
-                // Reset scroll flag after a delay
-                const target = e.currentTarget;
-                setTimeout(() => {
-                  (target as any).__isScrolling = false;
-                }, 100);
               }}
             >
               <style>{`
@@ -2209,13 +2179,14 @@ export default function HomePage() {
               `}</style>
               <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
                 {(() => {
-                  // Sort leagues: those with unread messages first
+                  // Sort leagues: those with unread messages first, then alphabetically
                   const sortedLeagues = [...leagues].sort((a, b) => {
                     const unreadA = unreadByLeague?.[a.id] ?? 0;
                     const unreadB = unreadByLeague?.[b.id] ?? 0;
                     if (unreadA > 0 && unreadB === 0) return -1;
                     if (unreadA === 0 && unreadB > 0) return 1;
-                    return 0; // Keep original order for leagues with same unread status
+                    // If same unread status, sort alphabetically
+                    return a.name.localeCompare(b.name);
                   });
                   
                   // Group into batches of 3
@@ -2266,22 +2237,8 @@ export default function HomePage() {
                                   userSelect: 'none',
                                   WebkitUserSelect: 'none'
                                 }}
-                                onTouchStart={(e) => {
-                                  // Allow the link to handle touch events
-                                  e.stopPropagation();
-                                }}
-                                onTouchEnd={(e) => {
-                                  // Only navigate if user wasn't scrolling
-                                  const scrollContainer = e.currentTarget.closest('.overflow-x-auto');
-                                  if (scrollContainer && (scrollContainer as any).__isScrolling) {
-                                    e.preventDefault();
-                                    return;
-                                  }
-                                  // Navigation will happen via the Link's default behavior
-                                  e.stopPropagation();
-                                }}
                                 onClick={(e) => {
-                                  // Ensure click works even if parent has touch handlers
+                                  // Ensure click works
                                   e.stopPropagation();
                                 }}
                               >
