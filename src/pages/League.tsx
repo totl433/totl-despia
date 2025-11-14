@@ -183,9 +183,9 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           // Calculate input area height dynamically - wait a bit for it to render
           setTimeout(() => {
             const inputAreaHeight = inputAreaRef.current?.offsetHeight || 100;
-            // Use full input area height plus significant extra space to ensure messages are fully visible
-            // Since input is fixed, we need padding equal to input height + buffer
-            const paddingNeeded = inputAreaHeight + 60; // More generous space for visibility
+            // Use keyboard height + input area height to ensure ALL messages are visible
+            // The padding needs to account for the full space from bottom of viewport to top of input
+            const paddingNeeded = keyboardHeight + inputAreaHeight + 20; // Full keyboard space + input + buffer
             
             // Add padding to messages so bottom messages are visible above input
             if (listRef.current) {
@@ -199,6 +199,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                 setTimeout(() => scrollToBottom(), 100);
                 setTimeout(() => scrollToBottom(), 300);
                 setTimeout(() => scrollToBottom(), 500);
+                setTimeout(() => scrollToBottom(), 700);
               });
             }
           }, 100);
@@ -256,7 +257,8 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           setInputBottom(keyboardHeight);
           setTimeout(() => {
             const inputAreaHeight = inputAreaRef.current?.offsetHeight || 100;
-            const paddingNeeded = inputAreaHeight + 60; // More generous space
+            // Use keyboard height + input area for full visibility
+            const paddingNeeded = keyboardHeight + inputAreaHeight + 20;
             if (listRef.current) {
               listRef.current.style.paddingBottom = `${paddingNeeded}px`;
               void listRef.current.offsetHeight;
@@ -265,6 +267,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                 setTimeout(() => scrollToBottom(), 200);
                 setTimeout(() => scrollToBottom(), 400);
                 setTimeout(() => scrollToBottom(), 600);
+                setTimeout(() => scrollToBottom(), 800);
               });
             }
           }, 100);
