@@ -1774,7 +1774,7 @@ export default function HomePage() {
         <>
           {/* Leaderboards */}
           <Section title="Leaderboards" boxed={false}>
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}>
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                   display: none;
@@ -2005,7 +2005,7 @@ export default function HomePage() {
             return null;
           })()}
           {loading && isInitialMountRef.current && leagues.length === 0 ? (
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}>
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                   display: none;
@@ -2065,7 +2065,7 @@ export default function HomePage() {
               </Link>
             </div>
           ) : (
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
+            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}>
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                   display: none;
@@ -2116,11 +2116,11 @@ export default function HomePage() {
                           return (
                             <div key={l.id} className={index < batchLeagues.length - 1 ? 'relative' : ''}>
                               {index < batchLeagues.length - 1 && (
-                                <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-10" />
+                                <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-10 pointer-events-none" />
                               )}
                               <Link
                                 to={`/league/${l.code}`}
-                                className="block p-4 !bg-white no-underline hover:text-inherit relative z-0"
+                                className="block p-4 !bg-white no-underline hover:text-inherit relative z-20"
                               >
                                 <div className="flex items-start gap-3 relative">
                                   {/* League Avatar Badge */}
