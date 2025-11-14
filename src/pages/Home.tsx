@@ -405,18 +405,21 @@ export default function HomePage() {
         setUnreadByLeague(homePageCache.unreadByLeague);
         leagueIdsRef.current = new Set(homePageCache.leagues.map((l) => l.id));
         setLoading(false);
+        isInitialMountRef.current = false; // Don't show skeleton
         
-        // If cache is very fresh (< 10 seconds), skip background refresh
-        if (cacheAge < 10 * 1000) {
-          isInitialMountRef.current = false;
+        // If cache is very fresh (< 30 seconds), skip background refresh entirely
+        if (cacheAge < 30 * 1000) {
+          // Skip fetch - cache is very fresh
+          return;
         } else {
-          // Cache is older, refresh in background
-          isInitialMountRef.current = false;
+          // Cache is older, refresh in background (don't show loading)
+          fetchHomeData(false);
+          return;
         }
       }
     }
     
-    // Use the extracted fetchHomeData function
+    // No cache or cache expired - fetch fresh data with loading state
     fetchHomeData(isInitialMountRef.current);
   }, [user?.id, fetchHomeData]);
 
