@@ -180,19 +180,28 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           // Keyboard is visible - position input above it
           setInputBottom(keyboardHeight);
           
-          // Calculate input area height dynamically
-          const inputAreaHeight = inputAreaRef.current?.offsetHeight || 90;
-          const paddingNeeded = inputAreaHeight + 20; // Extra space for visibility
-          
-          // Add padding to messages so bottom messages are visible above input
-          if (listRef.current) {
-            listRef.current.style.paddingBottom = `${paddingNeeded}px`;
-          }
-          
-          // Scroll after layout settles - multiple attempts for reliability
-          setTimeout(() => scrollToBottom(), 100);
-          setTimeout(() => scrollToBottom(), 300);
-          setTimeout(() => scrollToBottom(), 500);
+          // Calculate input area height dynamically - wait a bit for it to render
+          setTimeout(() => {
+            const inputAreaHeight = inputAreaRef.current?.offsetHeight || 100;
+            // Use full input area height plus significant extra space to ensure messages are fully visible
+            // Since input is fixed, we need padding equal to input height + buffer
+            const paddingNeeded = inputAreaHeight + 60; // More generous space for visibility
+            
+            // Add padding to messages so bottom messages are visible above input
+            if (listRef.current) {
+              listRef.current.style.paddingBottom = `${paddingNeeded}px`;
+              // Force reflow to ensure padding is applied
+              void listRef.current.offsetHeight;
+              
+              // Scroll after padding is definitely applied - multiple attempts
+              requestAnimationFrame(() => {
+                scrollToBottom();
+                setTimeout(() => scrollToBottom(), 100);
+                setTimeout(() => scrollToBottom(), 300);
+                setTimeout(() => scrollToBottom(), 500);
+              });
+            }
+          }, 100);
         } else {
           // No keyboard
           setInputBottom(0);
@@ -245,11 +254,20 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         
         if (keyboardHeight > 100) {
           setInputBottom(keyboardHeight);
-          const inputAreaHeight = inputAreaRef.current?.offsetHeight || 90;
-          const paddingNeeded = inputAreaHeight + 20;
-          if (listRef.current) {
-            listRef.current.style.paddingBottom = `${paddingNeeded}px`;
-          }
+          setTimeout(() => {
+            const inputAreaHeight = inputAreaRef.current?.offsetHeight || 100;
+            const paddingNeeded = inputAreaHeight + 60; // More generous space
+            if (listRef.current) {
+              listRef.current.style.paddingBottom = `${paddingNeeded}px`;
+              void listRef.current.offsetHeight;
+              requestAnimationFrame(() => {
+                scrollToBottom();
+                setTimeout(() => scrollToBottom(), 200);
+                setTimeout(() => scrollToBottom(), 400);
+                setTimeout(() => scrollToBottom(), 600);
+              });
+            }
+          }, 100);
         }
       }, 100);
     }
@@ -260,15 +278,30 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
     setTimeout(() => scrollToBottom(), 600);
   };
 
+  // Dismiss keyboard when tapping messages area (WhatsApp-like behavior)
+  const handleMessagesClick = (e: React.MouseEvent) => {
+    // Don't blur if clicking on interactive elements (links, buttons, etc.)
+    const target = e.target as HTMLElement;
+    const isInteractive = target.tagName === 'A' || target.tagName === 'BUTTON' || target.closest('a, button');
+    
+    // Blur input to dismiss keyboard when tapping messages area
+    if (!isInteractive && inputRef.current && document.activeElement === inputRef.current) {
+      inputRef.current.blur();
+    }
+  };
+
   return (
     <div className="flex flex-col chat-container" style={{ height: '100%' }}>
       {/* Messages list */}
       <div 
         ref={listRef} 
-        className="flex-1 overflow-y-auto px-3 pt-3 pb-4 min-h-0" 
+        className="flex-1 overflow-y-auto px-3 pt-3 pb-4 min-h-0 messages-container" 
+        onClick={handleMessagesClick}
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
+          marginBottom: inputBottom > 0 ? '0' : 'auto',
+          cursor: 'pointer',
         }}
       >
         {chat.map((m) => {
@@ -317,6 +350,8 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
               onFocus={handleInputFocus}
               placeholder="Start typing..."
               maxLength={2000}
+              inputMode="text"
+              enterKeyHint="send"
               className="flex-1 rounded-full border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-transparent"
             />
             <button
