@@ -132,16 +132,23 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const hasInitiallyScrolled = useRef(false);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isScrollingRef = useRef(false);
+  const lastViewportHeightRef = useRef<number | null>(null);
 
-  // Scroll to bottom function - uses multiple methods for reliability
-  const scrollToBottom = () => {
+  // Scroll to bottom function - single, reliable method
+  const scrollToBottom = (force = false) => {
+    if (isScrollingRef.current && !force) return; // Prevent concurrent scrolls
+    
     if (listRef.current) {
-      // Method 1: Direct scroll position
+      isScrollingRef.current = true;
+      // Use scrollTop for instant, reliable scrolling
       listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
-    // Method 2: Use bottomRef scrollIntoView as backup
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: 'instant', block: 'end' });
+      
+      // Reset flag after scroll completes
+      requestAnimationFrame(() => {
+        isScrollingRef.current = false;
+      });
     }
   };
 
@@ -205,53 +212,55 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
     }
   }, [isMember]);
 
-  // Handle container resize (e.g., when keyboard appears/disappears)
+  // Handle keyboard appearance/disappearance using visualViewport API
   useEffect(() => {
     if (!listRef.current) return;
     
-    let resizeTimeout: ReturnType<typeof setTimeout>;
+    const visualViewport = (window as any).visualViewport;
+    if (!visualViewport) return;
     
-    const resizeObserver = new ResizeObserver(() => {
-      // When container size changes, ensure we're still scrolled to bottom
-      if (hasInitiallyScrolled.current) {
-        // Debounce resize events to avoid multiple scrolls
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(() => {
-          requestAnimationFrame(() => {
-            scrollToBottom();
-          });
-        }, 50); // Small delay to batch rapid resize events
+    let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+    
+    const handleViewportResize = () => {
+      if (!hasInitiallyScrolled.current) return;
+      
+      const currentHeight = visualViewport.height;
+      const lastHeight = lastViewportHeightRef.current;
+      
+      // Detect keyboard appearance (viewport height decreases significantly)
+      // or keyboard dismissal (viewport height increases)
+      if (lastHeight !== null) {
+        const heightDiff = lastHeight - currentHeight;
+        
+        // If keyboard appeared (height decreased by >150px) or disappeared (height increased)
+        if (Math.abs(heightDiff) > 150) {
+          // Clear any pending scroll
+          if (scrollTimeoutRef.current) {
+            clearTimeout(scrollTimeoutRef.current);
+            scrollTimeoutRef.current = null;
+          }
+          
+          // Wait for viewport to stabilize, then scroll
+          resizeTimeout = setTimeout(() => {
+            requestAnimationFrame(() => {
+              scrollToBottom(true); // Force scroll after keyboard animation
+            });
+          }, 100); // Short delay to let viewport stabilize
+        }
       }
-    });
-    
-    resizeObserver.observe(listRef.current);
-    
-    // Also listen to visualViewport changes for better keyboard detection
-    if (typeof window !== 'undefined' && (window as any).visualViewport) {
-      const handleViewportChange = () => {
-        if (hasInitiallyScrolled.current) {
-          requestAnimationFrame(() => {
-            scrollToBottom();
-          });
-        }
-      };
       
-      (window as any).visualViewport.addEventListener('resize', handleViewportChange);
-      (window as any).visualViewport.addEventListener('scroll', handleViewportChange);
-      
-      return () => {
-        resizeObserver.disconnect();
-        clearTimeout(resizeTimeout);
-        if ((window as any).visualViewport) {
-          (window as any).visualViewport.removeEventListener('resize', handleViewportChange);
-          (window as any).visualViewport.removeEventListener('scroll', handleViewportChange);
-        }
-      };
-    }
+      lastViewportHeightRef.current = currentHeight;
+    };
+    
+    // Initialize last height
+    lastViewportHeightRef.current = visualViewport.height;
+    
+    visualViewport.addEventListener('resize', handleViewportResize);
     
     return () => {
-      resizeObserver.disconnect();
-      clearTimeout(resizeTimeout);
+      if (resizeTimeout) clearTimeout(resizeTimeout);
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+      visualViewport.removeEventListener('resize', handleViewportResize);
     };
   }, []);
 
@@ -309,27 +318,59 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
               value={newMsg}
               onChange={(e) => setNewMsg(e.target.value)}
               onFocus={() => {
-                // Scroll to bottom when input is focused to show latest messages
-                // Use requestAnimationFrame for smooth, immediate scroll
+                // Clear any pending scrolls
+                if (scrollTimeoutRef.current) {
+                  clearTimeout(scrollTimeoutRef.current);
+                  scrollTimeoutRef.current = null;
+                }
+                
+                // Initial scroll attempt (before keyboard appears)
                 requestAnimationFrame(() => {
-                  scrollToBottom();
-                  // Also scroll window/page to bottom (for desktop)
-                  if (typeof window !== 'undefined') {
-                    window.scrollTo({
-                      top: document.documentElement.scrollHeight,
-                      behavior: 'auto' // Use 'auto' instead of 'smooth' for immediate scroll
-                    });
-                  }
+                  scrollToBottom(true);
                 });
                 
-                // Single delayed scroll after keyboard animation completes (typically 250-300ms)
-                // Use visualViewport API if available for more accurate timing
-                const delay = (window as any).visualViewport ? 250 : 300;
-                setTimeout(() => {
-                  requestAnimationFrame(() => {
-                    scrollToBottom();
-                  });
-                }, delay);
+                // For Despia/native: Wait for keyboard to fully appear using visualViewport
+                const visualViewport = (window as any).visualViewport;
+                if (visualViewport) {
+                  // Monitor viewport height changes to detect when keyboard is fully visible
+                  const initialHeight = visualViewport.height;
+                  let checkCount = 0;
+                  const maxChecks = 20; // Check for up to 1 second (20 * 50ms)
+                  
+                  const checkKeyboard = () => {
+                    checkCount++;
+                    const currentHeight = visualViewport.height;
+                    const heightDiff = initialHeight - currentHeight;
+                    
+                    // Keyboard is visible if height decreased significantly (>150px)
+                    if (heightDiff > 150) {
+                      // Keyboard is visible, scroll now
+                      requestAnimationFrame(() => {
+                        scrollToBottom(true);
+                      });
+                    } else if (checkCount < maxChecks) {
+                      // Keep checking
+                      scrollTimeoutRef.current = setTimeout(checkKeyboard, 50);
+                    }
+                  };
+                  
+                  // Start checking after a short delay
+                  scrollTimeoutRef.current = setTimeout(checkKeyboard, 100);
+                } else {
+                  // Fallback for browsers without visualViewport
+                  scrollTimeoutRef.current = setTimeout(() => {
+                    requestAnimationFrame(() => {
+                      scrollToBottom(true);
+                    });
+                  }, 300);
+                }
+              }}
+              onBlur={() => {
+                // Clear any pending scrolls when input loses focus
+                if (scrollTimeoutRef.current) {
+                  clearTimeout(scrollTimeoutRef.current);
+                  scrollTimeoutRef.current = null;
+                }
               }}
               placeholder="Start typing..."
               maxLength={2000}

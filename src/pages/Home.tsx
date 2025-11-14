@@ -105,6 +105,7 @@ export default function HomePage() {
   const [picksMap, setPicksMap] = useState<Record<number, "H" | "D" | "A">>({});
   const [resultsMap, setResultsMap] = useState<Record<number, "H" | "D" | "A">>({});
   const [loading, setLoading] = useState(true);
+  const [leagueDataLoading, setLeagueDataLoading] = useState(true);
   const [_globalCount, setGlobalCount] = useState<number | null>(null);
   const [_globalRank, setGlobalRank] = useState<number | null>(null);
   const [_prevGlobalRank, setPrevGlobalRank] = useState<number | null>(null);
@@ -405,6 +406,7 @@ export default function HomePage() {
         setUnreadByLeague(homePageCache.unreadByLeague);
         leagueIdsRef.current = new Set(homePageCache.leagues.map((l) => l.id));
         setLoading(false);
+        setLeagueDataLoading(false); // Cache has leagueData, so no need to wait
         isInitialMountRef.current = false; // Don't show skeleton
         
         // If cache is very fresh (< 30 seconds), skip background refresh entirely
@@ -427,15 +429,18 @@ export default function HomePage() {
   useEffect(() => {
     if (!leagues.length || !user?.id || !gw) {
       console.log('Skipping position calculation:', { leaguesLength: leagues.length, userId: user?.id, gw });
+      setLeagueDataLoading(false);
       return;
     }
     
     console.log('Starting position calculation for', leagues.length, 'leagues');
+    setLeagueDataLoading(true);
     
     let alive = true;
     (async () => {
-      // Get current GW
-      const { data: metaData } = await supabase.from("meta").select("current_gw").eq("id", 1).maybeSingle();
+      try {
+        // Get current GW
+        const { data: metaData } = await supabase.from("meta").select("current_gw").eq("id", 1).maybeSingle();
       const currentGw = (metaData as any)?.current_gw ?? gw;
       
       // PARALLEL: Fetch all results and all league members in parallel
@@ -774,11 +779,21 @@ export default function HomePage() {
         }
         
         setLeagueData(leagueDataMap);
+        setLeagueDataLoading(false);
         
         // Update cache with leagueData
         if (homePageCache && homePageCache.userId === user?.id) {
           homePageCache.leagueData = leagueDataMap;
           homePageCache.lastFetched = Date.now();
+        }
+      } else {
+        // Component unmounted, but still set loading to false to prevent stuck skeleton
+        setLeagueDataLoading(false);
+      }
+      } catch (error) {
+        console.error('[Home] Error calculating league data:', error);
+        if (alive) {
+          setLeagueDataLoading(false);
         }
       }
     })();
@@ -1691,35 +1706,29 @@ export default function HomePage() {
                     className="rounded-xl border bg-white overflow-hidden shadow-sm w-[320px] animate-pulse"
                     style={{ borderRadius: '12px' }}
                   >
-                    <div className="p-4 bg-white">
-                      <div className="flex items-start gap-3">
+                    <div className="p-4 bg-white relative">
+                      <div className="flex items-start gap-3 relative">
                         {/* Avatar skeleton */}
                         <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-200" />
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0 h-12 flex flex-col justify-between">
                           {/* League name skeleton */}
-                          <div className="h-5 w-32 bg-slate-200 rounded mb-2" />
-                          {/* Submission status skeleton */}
-                          <div className="h-3 w-20 bg-slate-200 rounded mb-4" />
-                          {/* Member info skeleton */}
-                          <div className="flex items-center gap-3">
-                            <div className="h-4 w-8 bg-slate-200 rounded" />
-                            <div className="h-4 w-8 bg-slate-200 rounded" />
-                            <div className="flex items-center flex-1 overflow-hidden">
-                              {[1, 2, 3].map((k) => (
-                                <div
-                                  key={k}
-                                  className={`chip-skeleton rounded-full bg-slate-200 flex-shrink-0 ${k > 1 ? 'chip-skeleton-overlap' : ''}`}
-                                  style={{
-                                    width: '18px',
-                                    height: '18px',
-                                  }}
-                                />
-                              ))}
-                            </div>
+                          <div className="h-5 w-32 bg-slate-200 rounded -mt-0.5" />
+                          {/* Player chips skeleton */}
+                          <div className="flex items-center overflow-hidden">
+                            {[1, 2, 3, 4].map((k) => (
+                              <div
+                                key={k}
+                                className={`chip-skeleton rounded-full bg-slate-200 flex-shrink-0 ${k > 1 ? 'chip-skeleton-overlap' : ''}`}
+                                style={{
+                                  width: '24px',
+                                  height: '24px',
+                                }}
+                              />
+                            ))}
                           </div>
                         </div>
-                        {/* Badge skeleton */}
-                        <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                        {/* Badge skeleton - top right */}
+                        <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
                           <div className="h-6 w-6 rounded-full bg-slate-200" />
                         </div>
                       </div>
@@ -1771,7 +1780,7 @@ export default function HomePage() {
         </div>
       )}
       <WhatsAppBanner />
-      {loading && isInitialMountRef.current ? (
+      {(loading || leagueDataLoading) && isInitialMountRef.current ? (
         <SkeletonLoader />
       ) : (
         <>
@@ -2007,7 +2016,7 @@ export default function HomePage() {
             console.log('[Home] Mini Leagues render check:', { loading, isInitialMount: isInitialMountRef.current, leaguesLength: leagues.length });
             return null;
           })()}
-          {loading && isInitialMountRef.current && leagues.length === 0 ? (
+          {(loading || leagueDataLoading) && isInitialMountRef.current && leagues.length === 0 ? (
             <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain', WebkitTouchCallout: 'none', userSelect: 'none' }}>
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
@@ -2023,30 +2032,25 @@ export default function HomePage() {
                         className="rounded-xl border bg-white overflow-hidden shadow-sm w-[320px] animate-pulse"
                         style={{ borderRadius: '12px' }}
                       >
-                        <div className="p-4 bg-white">
-                          <div className="flex items-start gap-3">
+                        <div className="p-4 bg-white relative">
+                          <div className="flex items-start gap-3 relative">
                             <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-200" />
-                            <div className="flex-1 min-w-0">
-                              <div className="h-5 w-32 bg-slate-200 rounded mb-2" />
-                              <div className="h-3 w-20 bg-slate-200 rounded mb-4" />
-                              <div className="flex items-center gap-3">
-                                <div className="h-4 w-8 bg-slate-200 rounded" />
-                                <div className="h-4 w-8 bg-slate-200 rounded" />
-                                <div className="flex items-center flex-1 overflow-hidden">
-                                  {[1, 2, 3].map((k) => (
-                                    <div
-                                      key={k}
-                                      className={`chip-skeleton rounded-full bg-slate-200 flex-shrink-0 ${k > 1 ? 'chip-skeleton-overlap' : ''}`}
-                                      style={{
-                                        width: '18px',
-                                        height: '18px',
-                                      }}
-                                    />
-                                  ))}
-                                </div>
+                            <div className="flex-1 min-w-0 h-12 flex flex-col justify-between">
+                              <div className="h-5 w-32 bg-slate-200 rounded -mt-0.5" />
+                              <div className="flex items-center overflow-hidden">
+                                {[1, 2, 3, 4].map((k) => (
+                                  <div
+                                    key={k}
+                                    className={`chip-skeleton rounded-full bg-slate-200 flex-shrink-0 ${k > 1 ? 'chip-skeleton-overlap' : ''}`}
+                                    style={{
+                                      width: '24px',
+                                      height: '24px',
+                                    }}
+                                  />
+                                ))}
                               </div>
                             </div>
-                            <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                            <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
                               <div className="h-6 w-6 rounded-full bg-slate-200" />
                             </div>
                           </div>

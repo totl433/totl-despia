@@ -68,6 +68,7 @@ export default function TablesPage() {
 
   const [rows, setRows] = useState<LeagueRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [leagueDataLoading, setLeagueDataLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [leagueName, setLeagueName] = useState("");
@@ -127,31 +128,24 @@ export default function TablesPage() {
 
       // Assign avatars to leagues that don't have one (backfill - only once)
       // Use deterministic avatar based on league ID so it's consistent even if DB update fails
+      // OPTIMIZED: Just assign locally, don't block on DB updates
       const leaguesNeedingAvatars = leagues.filter(l => !l.avatar || l.avatar === null || l.avatar === '');
       if (leaguesNeedingAvatars.length > 0) {
-        console.log(`Assigning avatars to ${leaguesNeedingAvatars.length} leagues`);
-        // Update each league with a deterministic avatar (only if it doesn't have one)
-        for (const league of leaguesNeedingAvatars) {
-          // Use deterministic avatar based on league ID - same league always gets same avatar
+        // Assign locally immediately (non-blocking)
+        leaguesNeedingAvatars.forEach(league => {
+          league.avatar = getDeterministicLeagueAvatar(league.id);
+        });
+        
+        // Update database in background (non-blocking, don't wait)
+        Promise.all(leaguesNeedingAvatars.map(league => {
           const avatar = getDeterministicLeagueAvatar(league.id);
-          
-          // Try to update database
-          const { error: updateError } = await supabase
+          return supabase
             .from("leagues")
             .update({ avatar })
-            .eq("id", league.id);
-          
-          if (!updateError) {
-            // Update succeeded - update local array
-            league.avatar = avatar;
-            console.log(`Assigned avatar ${avatar} to league ${league.name}`);
-          } else {
-            console.warn(`Failed to assign avatar to league ${league.id} (${league.name}):`, updateError.message);
-            // Even if DB update fails, assign locally using deterministic method
-            // This ensures the same league always shows the same avatar
-            league.avatar = avatar;
-          }
-        }
+            .eq("id", league.id)
+            .then(() => console.log(`Assigned avatar ${avatar} to league ${league.name}`))
+            .catch(err => console.warn(`Failed to assign avatar to league ${league.id}:`, err));
+        })).catch(() => {}); // Ignore errors in background update
       }
 
       if (!leagues.length) {
@@ -186,33 +180,37 @@ export default function TablesPage() {
         ? Math.max(...fixturesList.map((f) => f.gw))
         : 1;
 
-      // E) submission status per league (all members submitted?)
+      // E) submission status per league (all members submitted?) - OPTIMIZED: batch query
       const submissionStatus: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }> = {};
-      for (const league of leagues) {
-        try {
+      
+      // Get all member IDs across all leagues
+      const allMemberIds = Array.from(new Set(Array.from(membersByLeague.values()).flat()));
+      
+      if (allMemberIds.length > 0) {
+        // Single query for all submissions
+        const { data: allSubmissions } = await supabase
+          .from("gw_submissions")
+          .select("user_id")
+          .eq("gw", currentGw)
+          .in("user_id", allMemberIds);
+        
+        const submittedUserIds = new Set((allSubmissions ?? []).map((s: any) => s.user_id));
+        
+        // Calculate submission status for each league
+        for (const league of leagues) {
           const memberIds = membersByLeague.get(league.id) ?? [];
           const totalCount = memberIds.length;
-          if (totalCount > 0) {
-            const { data: submissions } = await supabase
-              .from("gw_submissions")
-              .select("user_id")
-              .eq("gw", currentGw)
-              .in("user_id", memberIds);
-
-            const submittedCount = submissions?.length || 0;
-            submissionStatus[league.id] = {
-              allSubmitted: submittedCount === totalCount,
-              submittedCount,
-              totalCount
-            };
-          } else {
-            submissionStatus[league.id] = {
-              allSubmitted: false,
-              submittedCount: 0,
-              totalCount: 0
-            };
-          }
-        } catch {
+          const submittedCount = memberIds.filter(id => submittedUserIds.has(id)).length;
+          
+          submissionStatus[league.id] = {
+            allSubmitted: submittedCount === totalCount && totalCount > 0,
+            submittedCount,
+            totalCount
+          };
+        }
+      } else {
+        // No members, set defaults
+        for (const league of leagues) {
           submissionStatus[league.id] = {
             allSubmitted: false,
             submittedCount: 0,
@@ -222,7 +220,7 @@ export default function TablesPage() {
       }
       setLeagueSubmissions(submissionStatus);
 
-      // G) Fetch unread message counts
+      // G) Fetch unread message counts - OPTIMIZED: batch query
       const unreadCounts: Record<string, number> = {};
       try {
         const { data: reads } = await supabase
@@ -233,14 +231,33 @@ export default function TablesPage() {
         const lastRead = new Map<string, string>();
         (reads ?? []).forEach((r: any) => lastRead.set(r.league_id, r.last_read_at));
 
-        for (const league of leagues) {
-          const since = lastRead.get(league.id) ?? "1970-01-01T00:00:00Z";
-          const { data: msgs, count } = await supabase
+        // Batch query: fetch all unread messages for all leagues at once
+        const leagueIds = leagues.map(l => l.id);
+        if (leagueIds.length > 0) {
+          const sinceMap = new Map<string, string>();
+          leagueIds.forEach(id => {
+            sinceMap.set(id, lastRead.get(id) ?? "1970-01-01T00:00:00Z");
+          });
+          
+          // Get the earliest timestamp to use as a filter
+          const earliestSince = Math.min(...Array.from(sinceMap.values()).map(s => new Date(s).getTime()));
+          const earliestSinceStr = new Date(earliestSince).toISOString();
+          
+          // Fetch all messages for all leagues since earliest read
+          const { data: allMessages } = await supabase
             .from("league_messages")
-            .select("id", { count: "exact" })
-            .eq("league_id", league.id)
-            .gte("created_at", since);
-          unreadCounts[league.id] = typeof count === "number" ? count : (msgs?.length ?? 0);
+            .select("id,league_id,created_at")
+            .in("league_id", leagueIds)
+            .gte("created_at", earliestSinceStr);
+          
+          // Count unread per league
+          leagueIds.forEach(leagueId => {
+            const since = sinceMap.get(leagueId)!;
+            const unread = (allMessages ?? []).filter((m: any) => 
+              m.league_id === leagueId && new Date(m.created_at) > new Date(since)
+            ).length;
+            unreadCounts[leagueId] = unread;
+          });
         }
       } catch (e) {
         // Best effort - ignore errors
@@ -286,22 +303,22 @@ export default function TablesPage() {
 
   // Fetch member data and calculate positions for each league
   useEffect(() => {
-    if (!rows.length || !user?.id) return;
+    if (!rows.length || !user?.id) {
+      setLeagueDataLoading(false);
+      return;
+    }
     
+    setLeagueDataLoading(true);
     let alive = true;
     (async () => {
-      // Get current GW from meta table (same as Home page) - don't rely on state
-      const { data: meta } = await supabase
-        .from("meta")
-        .select("current_gw")
-        .eq("id", 1)
-        .maybeSingle();
-      const currentGw = (meta as any)?.current_gw ?? 1;
+      // OPTIMIZED: Fetch meta and results in parallel
+      const [metaResult, allResultsResult] = await Promise.all([
+        supabase.from("meta").select("current_gw").eq("id", 1).maybeSingle(),
+        supabase.from("gw_results").select("gw,fixture_index,result")
+      ]);
       
-      // Get all results - EXACT same query as Home page
-      const { data: allResults } = await supabase
-        .from("gw_results")
-        .select("gw,fixture_index,result");
+      const currentGw = (metaResult.data as any)?.current_gw ?? 1;
+      const { data: allResults } = allResultsResult;
       
       const resultList = (allResults as ResultRowRaw[]) ?? [];
       const outcomeByGwIdx = new Map<string, "H" | "D" | "A">();
@@ -313,29 +330,148 @@ export default function TablesPage() {
 
       const leagueDataMap: Record<string, LeagueData> = {};
       
+      // OPTIMIZED: Fetch all members for all leagues in parallel
+      const allLeagueIds = rows.map(r => r.id);
+      const { data: allMembersData } = await supabase
+        .from("league_members")
+        .select("league_id,user_id, users(id, name)")
+        .in("league_id", allLeagueIds);
+      
+      // Group members by league
+      const membersByLeagueId = new Map<string, LeagueMember[]>();
+      (allMembersData ?? []).forEach((m: any) => {
+        if (!m.users?.name) return; // Skip unknown users
+        const arr = membersByLeagueId.get(m.league_id) ?? [];
+        arr.push({
+          id: m.user_id,
+          name: m.users.name
+        });
+        membersByLeagueId.set(m.league_id, arr);
+      });
+      
+      // OPTIMIZED: Batch fetch all league metadata and fixtures upfront
+      const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
+      
+      // Fetch all league metadata in one query
+      const { data: allLeaguesMeta } = await supabase
+        .from("leagues")
+        .select("id,name,created_at,start_gw")
+        .in("id", allLeagueIds);
+      
+      const leaguesMetaMap = new Map<string, any>();
+      (allLeaguesMeta ?? []).forEach((l: any) => {
+        leaguesMetaMap.set(l.id, l);
+      });
+      
+      // Fetch all fixtures for all GWs in one query (for start_gw calculation)
+      const { data: allFixtures } = await supabase
+        .from("fixtures")
+        .select("gw,kickoff_time")
+        .in("gw", gwsWithResults)
+        .order("gw", { ascending: true })
+        .order("kickoff_time", { ascending: true });
+      
+      // Group fixtures by GW
+      const fixturesByGw = new Map<number, string[]>();
+      (allFixtures ?? []).forEach((f: any) => {
+        const arr = fixturesByGw.get(f.gw) ?? [];
+        arr.push(f.kickoff_time);
+        fixturesByGw.set(f.gw, arr);
+      });
+      
+      // Calculate start_gw for all leagues in parallel (no DB queries)
+      const allRelevantGwsSet = new Set<number>();
+      const leagueStartGwMap = new Map<string, number>();
+      
       for (const row of rows) {
-        try {
-          // Use row as league object - same structure as Home page
-          // getLeagueStartGw will fetch start_gw if needed
-          const league = {
-            id: row.id,
-            name: row.name,
-            created_at: row.created_at || null,
-            start_gw: undefined // Will be fetched by getLeagueStartGw if needed
-          };
-
-          // Fetch members with their names
-          const { data: membersData } = await supabase
-            .from("league_members")
-            .select("user_id, users(id, name)")
-            .eq("league_id", row.id);
+        const meta = leaguesMetaMap.get(row.id);
+        const league = {
+          id: row.id,
+          name: meta?.name ?? row.name,
+          created_at: (meta?.created_at ?? row.created_at) || null,
+          start_gw: meta?.start_gw ?? row.start_gw
+        };
+        
+        // Calculate start_gw without making DB queries
+        let leagueStartGw = currentGw;
+        
+        // Check override
+        const LEAGUE_START_OVERRIDES: Record<string, number> = {
+          "Prem Predictions": 0,
+          "FC Football": 0,
+          "Easy League": 0,
+          "The Bird league": 7,
+          gregVjofVcarl: 8,
+          "Let Down": 8,
+        };
+        const override = league.name ? LEAGUE_START_OVERRIDES[league.name] : undefined;
+        if (typeof override === "number") {
+          leagueStartGw = override;
+        } else if (league.start_gw !== null && league.start_gw !== undefined) {
+          leagueStartGw = league.start_gw;
+        } else if (league.created_at && gwsWithResults.length > 0) {
+          // Calculate based on creation date and fixture deadlines
+          const leagueCreatedAt = new Date(league.created_at);
+          const DEADLINE_BUFFER_MINUTES = 75;
           
-          const members: LeagueMember[] = (membersData ?? [])
-            .map((m: any) => ({
-              id: m.user_id,
-              name: m.users?.name || "Unknown"
-            }))
-            .filter((m: LeagueMember) => m.name !== "Unknown");
+          for (const gw of gwsWithResults) {
+            const gwFixtures = fixturesByGw.get(gw);
+            if (gwFixtures && gwFixtures.length > 0) {
+              const firstKickoff = new Date(gwFixtures[0]);
+              const deadlineTime = new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000);
+              if (leagueCreatedAt <= deadlineTime) {
+                leagueStartGw = gw;
+                break;
+              }
+            }
+          }
+          
+          if (leagueStartGw === currentGw && gwsWithResults.length > 0) {
+            leagueStartGw = Math.max(...gwsWithResults) + 1;
+          }
+        }
+        
+        leagueStartGwMap.set(row.id, leagueStartGw);
+        const relevantGws = gwsWithResults.filter(g => g >= leagueStartGw);
+        relevantGws.forEach(gw => allRelevantGwsSet.add(gw));
+      }
+      
+      // Fetch all picks for all leagues in one query
+      const allRelevantGws = Array.from(allRelevantGwsSet);
+      const allMemberIdsArray = Array.from(new Set(Array.from(membersByLeagueId.values()).flat().map(m => m.id)));
+      
+      const { data: allPicksData } = allMemberIdsArray.length > 0 && allRelevantGws.length > 0
+        ? await supabase
+            .from("picks")
+            .select("user_id,gw,fixture_index,pick")
+            .in("user_id", allMemberIdsArray)
+            .in("gw", allRelevantGws)
+        : { data: [] };
+      
+      const allPicksMap = new Map<string, PickRow[]>();
+      (allPicksData ?? []).forEach((p: PickRow) => {
+        const key = `${p.user_id}:${p.gw}`;
+        const arr = allPicksMap.get(key) ?? [];
+        arr.push(p);
+        allPicksMap.set(key, arr);
+      });
+      
+      // OPTIMIZED: Fetch all submissions for current GW in one query
+      const { data: allSubmissionsData } = allMemberIdsArray.length > 0
+        ? await supabase
+            .from("gw_submissions")
+            .select("user_id")
+            .eq("gw", currentGw)
+            .in("user_id", allMemberIdsArray)
+        : { data: [] };
+      
+      const submittedUserIdsSet = new Set((allSubmissionsData ?? []).map((s: any) => s.user_id));
+      
+      // Process leagues in parallel
+      await Promise.all(rows.map(async (row) => {
+        try {
+          // Get members from pre-fetched data
+          const members = (membersByLeagueId.get(row.id) ?? []).filter((m: LeagueMember) => m.name !== "Unknown");
 
           if (members.length === 0) {
             leagueDataMap[row.id] = {
@@ -346,7 +482,7 @@ export default function TablesPage() {
               sortedMemberIds: [],
               latestGwWinners: new Set()
             };
-            continue;
+            return; // Return early instead of continue
           }
 
           // Simple: Calculate ML table exactly like Home page does, then find user's position
@@ -360,13 +496,11 @@ export default function TablesPage() {
               sortedMemberIds: alphabeticalIds,
               latestGwWinners: new Set()
             };
-            continue;
+            return; // Return early instead of continue
           }
 
-          const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
-          
-          // Filter by league start GW (same as Home page) - use currentGw from meta
-          const leagueStartGw = await getLeagueStartGw(league, currentGw);
+          // Get league start GW from pre-calculated map
+          const leagueStartGw = leagueStartGwMap.get(row.id) ?? currentGw;
           const relevantGws = gwsWithResults.filter(g => g >= leagueStartGw);
 
           if (relevantGws.length === 0) {
@@ -379,18 +513,19 @@ export default function TablesPage() {
               sortedMemberIds: alphabeticalIds,
               latestGwWinners: new Set()
             };
-            continue;
+            return; // Return early instead of continue
           }
 
-          // Get picks for relevant GWs only - EXACT same as Home page
+          // Get picks for relevant GWs only - from pre-fetched data
           const memberIds = members.map(m => m.id);
-          const { data: allPicks } = await supabase
-            .from("picks")
-            .select("user_id,gw,fixture_index,pick")
-            .in("user_id", memberIds)
-            .in("gw", relevantGws);
-          
-          const picksAll = (allPicks as PickRow[]) ?? [];
+          const picksAll: PickRow[] = [];
+          memberIds.forEach(userId => {
+            relevantGws.forEach(gw => {
+              const key = `${userId}:${gw}`;
+              const picks = allPicksMap.get(key) ?? [];
+              picksAll.push(...picks);
+            });
+          });
           
           // Calculate ML table - EXACT same logic as Home page
           const perGw = new Map<number, Map<string, { user_id: string; score: number; unicorns: number }>>();
@@ -527,19 +662,13 @@ export default function TablesPage() {
           const latestRelevantGw = relevantGws.length ? Math.max(...relevantGws) : null;
           const latestGwWinners = latestRelevantGw !== null ? (gwWinners.get(latestRelevantGw) ?? new Set<string>()) : new Set<string>();
           
-          // Check which members have submitted for current GW (reuse memberIds from above)
-          const { data: submissions } = await supabase
-            .from("gw_submissions")
-            .select("user_id")
-            .eq("gw", currentGw)
-            .in("user_id", memberIds);
-          
+          // Check which members have submitted for current GW - from pre-fetched data
           const submittedMembers = new Set<string>();
-          if (submissions) {
-            submissions.forEach((s: any) => {
-              if (s.user_id) submittedMembers.add(s.user_id);
-            });
-          }
+          memberIds.forEach(userId => {
+            if (submittedUserIdsSet.has(userId)) {
+              submittedMembers.add(userId);
+            }
+          });
           
           // Store data - CRITICAL: sortedMemberIds must be stored correctly
           const storedData: LeagueData = {
@@ -565,10 +694,11 @@ export default function TablesPage() {
             latestGwWinners: new Set()
           };
         }
-      }
+      }));
       
       if (alive) {
         setLeagueData(leagueDataMap);
+        setLeagueDataLoading(false);
       }
     })();
     
@@ -687,7 +817,7 @@ export default function TablesPage() {
 
         {/* Leagues list */}
         <div className="mt-6">
-          {loading ? (
+          {loading || leagueDataLoading ? (
             <div className="space-y-3">
               {[1, 2, 3, 4].map((i) => (
                 <div
@@ -695,22 +825,31 @@ export default function TablesPage() {
                   className="rounded-xl border bg-white overflow-hidden shadow-sm w-full animate-pulse"
                   style={{ borderRadius: '12px' }}
                 >
-                  <div className="p-4 bg-white">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-200" />
-                      <div className="flex-1 min-w-0">
-                        <div className="h-5 w-32 bg-slate-200 rounded mb-2" />
-                        <div className="h-3 w-20 bg-slate-200 rounded mb-4" />
+                  <div className="p-4 bg-white relative">
+                    <div className="flex items-center gap-3 relative">
+                      <div className="flex-shrink-0 w-14 h-14 rounded-full bg-slate-200" />
+                      <div className="flex-1 min-w-0 flex flex-col">
+                        {/* League Name and Status Row */}
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="h-5 w-32 bg-slate-200 rounded" />
+                          <div className="h-3 w-20 bg-slate-200 rounded" />
+                        </div>
+                        {/* Player Chips and Info */}
                         <div className="flex items-center gap-3">
-                          <div className="h-4 w-8 bg-slate-200 rounded" />
-                          <div className="h-4 w-8 bg-slate-200 rounded" />
+                          {/* Member Count and User Position skeleton */}
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="h-4 w-4 bg-slate-200 rounded" />
+                            <div className="h-4 w-6 bg-slate-200 rounded" />
+                            <div className="h-4 w-4 bg-slate-200 rounded" />
+                            <div className="h-4 w-8 bg-slate-200 rounded" />
+                          </div>
+                          {/* Chips skeleton */}
                           <div className="flex items-center flex-1 overflow-hidden">
                             {[1, 2, 3, 4].map((k) => (
                               <div
                                 key={k}
-                                className="rounded-full bg-slate-200 flex-shrink-0"
+                                className={`chip-skeleton rounded-full bg-slate-200 flex-shrink-0 ${k > 1 ? 'chip-skeleton-overlap' : ''}`}
                                 style={{
-                                  marginLeft: k > 1 ? '-2px' : '0',
                                   width: '24px',
                                   height: '24px',
                                 }}
@@ -719,7 +858,8 @@ export default function TablesPage() {
                           </div>
                         </div>
                       </div>
-                      <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                      {/* Badge skeleton - top right */}
+                      <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
                         <div className="h-6 w-6 rounded-full bg-slate-200" />
                       </div>
                     </div>

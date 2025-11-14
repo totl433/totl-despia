@@ -716,10 +716,6 @@ video {
   bottom: 0px;
 }
 
-.bottom-0\.5{
-  bottom: 0.125rem;
-}
-
 .bottom-32{
   bottom: 8rem;
 }
@@ -760,10 +756,6 @@ video {
   top: 0px;
 }
 
-.top-0\.5{
-  top: 0.125rem;
-}
-
 .top-1\/2{
   top: 50%;
 }
@@ -798,6 +790,14 @@ video {
 
 .z-\[60\]{
   z-index: 60;
+}
+
+.z-20{
+  z-index: 20;
+}
+
+.z-30{
+  z-index: 30;
 }
 
 .col-span-2{
@@ -938,14 +938,6 @@ video {
 
 .mt-auto{
   margin-top: auto;
-}
-
-.-mt-1{
-  margin-top: -0.25rem;
-}
-
-.-mt-2{
-  margin-top: -0.5rem;
 }
 
 .block{
