@@ -209,19 +209,49 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
   useEffect(() => {
     if (!listRef.current) return;
     
+    let resizeTimeout: NodeJS.Timeout;
+    
     const resizeObserver = new ResizeObserver(() => {
       // When container size changes, ensure we're still scrolled to bottom
       if (hasInitiallyScrolled.current) {
-        requestAnimationFrame(() => {
-          scrollToBottom();
-        });
+        // Debounce resize events to avoid multiple scrolls
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+          requestAnimationFrame(() => {
+            scrollToBottom();
+          });
+        }, 50); // Small delay to batch rapid resize events
       }
     });
     
     resizeObserver.observe(listRef.current);
     
+    // Also listen to visualViewport changes for better keyboard detection
+    if (typeof window !== 'undefined' && (window as any).visualViewport) {
+      const handleViewportChange = () => {
+        if (hasInitiallyScrolled.current) {
+          requestAnimationFrame(() => {
+            scrollToBottom();
+          });
+        }
+      };
+      
+      (window as any).visualViewport.addEventListener('resize', handleViewportChange);
+      (window as any).visualViewport.addEventListener('scroll', handleViewportChange);
+      
+      return () => {
+        resizeObserver.disconnect();
+        clearTimeout(resizeTimeout);
+        if ((window as any).visualViewport) {
+          (window as any).visualViewport.removeEventListener('resize', handleViewportChange);
+          (window as any).visualViewport.removeEventListener('scroll', handleViewportChange);
+        }
+      };
+    }
+    
     return () => {
       resizeObserver.disconnect();
+      clearTimeout(resizeTimeout);
     };
   }, []);
 
@@ -280,29 +310,26 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
               onChange={(e) => setNewMsg(e.target.value)}
               onFocus={() => {
                 // Scroll to bottom when input is focused to show latest messages
-                // Use multiple strategies to ensure scroll happens
-                const scrollBoth = () => {
-                  // Scroll messages container
+                // Use requestAnimationFrame for smooth, immediate scroll
+                requestAnimationFrame(() => {
                   scrollToBottom();
-                  // Scroll window/page to bottom (for desktop)
+                  // Also scroll window/page to bottom (for desktop)
                   if (typeof window !== 'undefined') {
                     window.scrollTo({
                       top: document.documentElement.scrollHeight,
-                      behavior: 'smooth'
+                      behavior: 'auto' // Use 'auto' instead of 'smooth' for immediate scroll
                     });
                   }
-                };
+                });
                 
-                // Immediate scroll
-                scrollBoth();
-                
-                // Also scroll after delays to account for keyboard appearing on mobile
+                // Single delayed scroll after keyboard animation completes (typically 250-300ms)
+                // Use visualViewport API if available for more accurate timing
+                const delay = (window as any).visualViewport ? 250 : 300;
                 setTimeout(() => {
-                  scrollBoth();
-                }, 300);
-                setTimeout(() => {
-                  scrollBoth();
-                }, 600);
+                  requestAnimationFrame(() => {
+                    scrollToBottom();
+                  });
+                }, delay);
               }}
               placeholder="Start typing..."
               maxLength={2000}
