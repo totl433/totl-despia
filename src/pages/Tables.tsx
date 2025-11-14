@@ -62,6 +62,19 @@ function rowToOutcome(r: ResultRowRaw): "H" | "D" | "A" | null {
   return null;
 }
 
+// Module-level cache for Tables page data
+type TablesPageCache = {
+  rows: LeagueRow[];
+  leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
+  leagueData: Record<string, LeagueData>;
+  unreadByLeague: Record<string, number>;
+  lastFetched: number;
+  userId: string | null;
+};
+
+const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
+let tablesPageCache: TablesPageCache | null = null;
+
 export default function TablesPage() {
   const { user } = useAuth();
 
@@ -288,6 +301,18 @@ export default function TablesPage() {
       });
 
       setRows(out);
+      
+      // Update cache
+      if (user?.id) {
+        tablesPageCache = {
+          rows: out,
+          leagueSubmissions: submissionStatus,
+          leagueData: {}, // Will be updated when leagueData useEffect runs
+          unreadByLeague: unreadCounts,
+          lastFetched: Date.now(),
+          userId: user.id,
+        };
+      }
     } catch (e: any) {
       setError(e?.message ?? "Failed to load leagues.");
     } finally {
@@ -296,6 +321,35 @@ export default function TablesPage() {
   }
 
   useEffect(() => {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+    
+    // Check cache first
+    if (tablesPageCache && tablesPageCache.userId === user.id && tablesPageCache.rows.length > 0) {
+      const cacheAge = Date.now() - tablesPageCache.lastFetched;
+      if (cacheAge < CACHE_DURATION) {
+        // Show cached data immediately (non-blocking)
+        setRows(tablesPageCache.rows);
+        setLeagueSubmissions(tablesPageCache.leagueSubmissions);
+        setLeagueData(tablesPageCache.leagueData);
+        setUnreadByLeague(tablesPageCache.unreadByLeague);
+        setLoading(false);
+        setLeagueDataLoading(false); // Cache has leagueData, so no need to wait
+        
+        // If cache is very fresh (< 30 seconds), skip background refresh entirely
+        if (cacheAge < 30 * 1000) {
+          return;
+        } else {
+          // Cache is older, refresh in background (don't show loading)
+          load();
+          return;
+        }
+      }
+    }
+    
+    // No cache or cache expired - fetch fresh data
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
@@ -698,6 +752,24 @@ export default function TablesPage() {
       if (alive) {
         setLeagueData(leagueDataMap);
         setLeagueDataLoading(false);
+        
+        // Update cache with leagueData
+        if (user?.id) {
+          if (tablesPageCache && tablesPageCache.userId === user.id) {
+            tablesPageCache.leagueData = leagueDataMap;
+            tablesPageCache.lastFetched = Date.now();
+          } else {
+            // Initialize cache if it doesn't exist yet
+            tablesPageCache = {
+              rows: rows,
+              leagueSubmissions: {},
+              leagueData: leagueDataMap,
+              unreadByLeague: {},
+              lastFetched: Date.now(),
+              userId: user.id,
+            };
+          }
+        }
       }
     })();
     

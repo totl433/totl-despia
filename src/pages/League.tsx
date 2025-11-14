@@ -131,10 +131,12 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
   const listRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputAreaRef = useRef<HTMLDivElement | null>(null);
   const hasInitiallyScrolled = useRef(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isScrollingRef = useRef(false);
   const lastViewportHeightRef = useRef<number | null>(null);
+  const [inputAreaBottom, setInputAreaBottom] = useState<number>(0);
 
   // Scroll to bottom function - single, reliable method
   const scrollToBottom = (force = false) => {
@@ -232,6 +234,20 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
       const currentHeight = visualViewport.height;
       const lastHeight = lastViewportHeightRef.current;
       
+      // Position input area at the bottom of the visual viewport (above keyboard)
+      const windowHeight = window.innerHeight;
+      const viewportBottom = visualViewport.offsetTop + visualViewport.height;
+      const keyboardHeight = windowHeight - viewportBottom;
+      
+      // Set input area bottom position to account for keyboard
+      if (keyboardHeight > 0) {
+        // Keyboard is visible - position input above it
+        setInputAreaBottom(keyboardHeight);
+      } else {
+        // No keyboard - use safe area inset
+        setInputAreaBottom(0);
+      }
+      
       // Detect keyboard appearance (viewport height decreases significantly)
       // or keyboard dismissal (viewport height increases)
       if (lastHeight !== null) {
@@ -257,15 +273,18 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
       lastViewportHeightRef.current = currentHeight;
     };
     
-    // Initialize last height
+    // Initialize last height and input position
     lastViewportHeightRef.current = visualViewport.height;
+    handleViewportResize(); // Set initial position
     
     visualViewport.addEventListener('resize', handleViewportResize);
+    visualViewport.addEventListener('scroll', handleViewportResize);
     
     return () => {
       if (resizeTimeout) clearTimeout(resizeTimeout);
       if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
       visualViewport.removeEventListener('resize', handleViewportResize);
+      visualViewport.removeEventListener('scroll', handleViewportResize);
     };
   }, []);
 
@@ -285,6 +304,8 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           padding-bottom: calc(1.75rem + env(safe-area-inset-bottom, 0px));
           margin: 0;
           box-sizing: border-box;
+          position: relative;
+          z-index: 100;
         }
       `}</style>
       <div ref={listRef} className="flex-1 overflow-y-auto px-3 pt-3 pb-4 min-h-0" style={{
@@ -308,8 +329,18 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         <div ref={bottomRef} style={{ height: '1px', width: '100%' }} />
       </div>
 
-      {/* Input area at bottom - positioned right above safe area */}
-      <div className="chat-input-area bg-white border-t border-slate-200">
+      {/* Input area at bottom - positioned right above safe area/keyboard */}
+      <div 
+        ref={inputAreaRef}
+        className="chat-input-area bg-white border-t border-slate-200"
+        style={{
+          bottom: inputAreaBottom > 0 ? `${inputAreaBottom}px` : '0',
+          position: inputAreaBottom > 0 ? 'fixed' : 'relative',
+          left: inputAreaBottom > 0 ? '0' : 'auto',
+          right: inputAreaBottom > 0 ? '0' : 'auto',
+          width: inputAreaBottom > 0 ? '100%' : 'auto',
+        }}
+      >
         {isMember ? (
           <form
             onSubmit={(e) => {

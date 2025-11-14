@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { getMediumName } from "../lib/teamNames";
 import WhatsAppBanner from "../components/WhatsAppBanner";
 import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePhotoPicsum } from "../lib/leagueAvatars";
-import { resolveLeagueStartGw as getLeagueStartGw } from "../lib/leagueStart";
+import { resolveLeagueStartGw as getLeagueStartGw, LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 
@@ -15,6 +15,12 @@ type HomePageCache = {
   leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
   leagueData: Record<string, LeagueData>;
   unreadByLeague: Record<string, number>;
+  fixtures: Fixture[];
+  gw: number;
+  gwSubmitted: boolean;
+  gwScore: number | null;
+  picksMap: Record<number, "H" | "D" | "A">;
+  resultsMap: Record<number, "H" | "D" | "A">;
   lastFetched: number;
   userId: string | null;
 };
@@ -22,10 +28,8 @@ type HomePageCache = {
 const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
 let homePageCache: HomePageCache | null = null;
 
-// Clear cache on page load to force fresh calculation
-if (typeof window !== 'undefined') {
-  homePageCache = null;
-}
+// Don't clear cache on page load - preserve it across navigations
+// Cache will expire naturally based on CACHE_DURATION
 
 // Types
 type League = { id: string; name: string; code: string; avatar?: string | null; created_at?: string | null; start_gw?: number | null };
@@ -352,6 +356,12 @@ export default function HomePage() {
           leagueSubmissions: submissionStatus,
           leagueData: {}, // Will be updated when leagueData useEffect runs
           unreadByLeague: unreadCounts,
+          fixtures: thisGwFixtures,
+          gw: currentGw,
+          gwSubmitted: submitted,
+          gwScore: score,
+          picksMap: map,
+          resultsMap: currentResultsMap,
           lastFetched: Date.now(),
           userId: user.id,
         };
@@ -404,6 +414,12 @@ export default function HomePage() {
         setLeagueSubmissions(homePageCache.leagueSubmissions);
         setLeagueData(homePageCache.leagueData);
         setUnreadByLeague(homePageCache.unreadByLeague);
+        setFixtures(homePageCache.fixtures || []);
+        setGw(homePageCache.gw || 1);
+        setGwSubmitted(homePageCache.gwSubmitted || false);
+        setGwScore(homePageCache.gwScore || null);
+        setPicksMap(homePageCache.picksMap || {});
+        setResultsMap(homePageCache.resultsMap || {});
         leagueIdsRef.current = new Set(homePageCache.leagues.map((l) => l.id));
         setLoading(false);
         setLeagueDataLoading(false); // Cache has leagueData, so no need to wait
@@ -473,6 +489,91 @@ export default function HomePage() {
       // Get ALL gameweeks with results (not filtered by league start)
       const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
       
+      // OPTIMIZATION: Pre-fetch fixtures for all GWs to calculate leagueStartGw synchronously
+      const { data: allFixtures } = await supabase
+        .from("fixtures")
+        .select("gw,kickoff_time")
+        .in("gw", gwsWithResults.length > 0 ? gwsWithResults : [1]);
+      
+      // Build GW deadlines map for synchronous leagueStartGw calculation
+      const gwDeadlines = new Map<number, Date>();
+      (allFixtures ?? []).forEach((f: any) => {
+        if (f.kickoff_time && f.gw) {
+          const kickoff = new Date(f.kickoff_time);
+          const deadline = new Date(kickoff.getTime() - 75 * 60 * 1000); // DEADLINE_BUFFER_MINUTES
+          if (!gwDeadlines.has(f.gw) || deadline < gwDeadlines.get(f.gw)!) {
+            gwDeadlines.set(f.gw, deadline);
+          }
+        }
+      });
+      
+      // Calculate leagueStartGw for all leagues synchronously (like Tables.tsx)
+      const leagueStartGws = new Map<string, number>();
+      const specialLeagues = ["Prem Predictions"]; // Leagues that should include all historical data from GW1
+      leagues.forEach(league => {
+        // Special handling for leagues like "Prem Predictions" that should include all data from GW1
+        if (league.name && specialLeagues.includes(league.name)) {
+          leagueStartGws.set(league.id, 1);
+          return;
+        }
+        const override = (league.name && (LEAGUE_START_OVERRIDES as any)[league.name]) as number | undefined;
+        if (typeof override === "number") {
+          leagueStartGws.set(league.id, override);
+          return;
+        }
+        if (league.start_gw !== null && league.start_gw !== undefined) {
+          leagueStartGws.set(league.id, league.start_gw);
+          return;
+        }
+        if (league.created_at) {
+          const leagueCreatedAt = new Date(league.created_at);
+          for (const gw of gwsWithResults) {
+            const deadline = gwDeadlines.get(gw);
+            if (deadline && leagueCreatedAt <= deadline) {
+              leagueStartGws.set(league.id, gw);
+              return;
+            }
+          }
+          if (gwsWithResults.length > 0) {
+            leagueStartGws.set(league.id, Math.max(...gwsWithResults) + 1);
+            return;
+          }
+        }
+        leagueStartGws.set(league.id, currentGw);
+      });
+      
+      // Collect all member IDs and relevant GWs for batching
+      const allMemberIds = new Set<string>();
+      const allRelevantGws = new Set<number>();
+      leagues.forEach(league => {
+        const members = membersByLeague[league.id] ?? [];
+        members.forEach(m => allMemberIds.add(m.id));
+        const leagueStartGw = leagueStartGws.get(league.id) ?? currentGw;
+        gwsWithResults.filter(g => g >= leagueStartGw).forEach(g => allRelevantGws.add(g));
+      });
+      
+      // BATCH: Fetch all picks for all members across all relevant GWs in one query
+      const { data: allPicksBatch } = allMemberIds.size > 0 && allRelevantGws.size > 0
+        ? await supabase
+            .from("picks")
+            .select("user_id,gw,fixture_index,pick")
+            .in("user_id", Array.from(allMemberIds))
+            .in("gw", Array.from(allRelevantGws))
+        : { data: [] };
+      
+      const picksBatch = (allPicksBatch as PickRow[]) ?? [];
+      
+      // BATCH: Fetch all submissions for current GW in one query
+      const { data: allSubmissionsBatch } = allMemberIds.size > 0
+        ? await supabase
+            .from("gw_submissions")
+            .select("user_id")
+            .eq("gw", currentGw)
+            .in("user_id", Array.from(allMemberIds))
+        : { data: [] };
+      
+      const submittedUserIdsBatch = new Set((allSubmissionsBatch ?? []).map((s: any) => s.user_id));
+      
       const leagueDataMap: Record<string, LeagueData> = {};
       
       for (let i = 0; i < leagues.length; i++) {
@@ -507,8 +608,8 @@ export default function HomePage() {
             continue;
           }
 
-          // Filter by league start GW (same as League page) - use currentGw from meta, not state
-          const leagueStartGw = await getLeagueStartGw(league, currentGw);
+          // Use pre-calculated leagueStartGw (synchronous, no DB query)
+          const leagueStartGw = leagueStartGws.get(league.id) ?? currentGw;
           const relevantGws = gwsWithResults.filter(g => g >= leagueStartGw);
 
           if (relevantGws.length === 0) {
@@ -524,15 +625,11 @@ export default function HomePage() {
             continue;
           }
 
-          // Get picks for relevant GWs only - EXACT same as League page
+          // Use batched picks data (filtered for this league's members and relevant GWs)
           const memberIds = members.map(m => m.id);
-          const { data: allPicks } = await supabase
-            .from("picks")
-            .select("user_id,gw,fixture_index,pick")
-            .in("user_id", memberIds)
-            .in("gw", relevantGws);
-          
-          const picksAll = (allPicks as PickRow[]) ?? [];
+          const picksAll = picksBatch.filter(p => 
+            memberIds.includes(p.user_id) && relevantGws.includes(p.gw)
+          );
           
           // DEBUG: Check picks data for "Forget It"
           if (league.name?.toLowerCase().includes('forget')) {
@@ -712,19 +809,13 @@ export default function HomePage() {
           const latestRelevantGw = relevantGws.length ? Math.max(...relevantGws) : null;
           const latestGwWinners = latestRelevantGw !== null ? (gwWinners.get(latestRelevantGw) ?? new Set<string>()) : new Set<string>();
           
-          // Check which members have submitted for current GW (reuse memberIds from above)
-          const { data: submissions } = await supabase
-            .from("gw_submissions")
-            .select("user_id")
-            .eq("gw", currentGw)
-            .in("user_id", memberIds);
-          
+          // Use batched submissions data (filtered for this league's members)
           const submittedMembers = new Set<string>();
-          if (submissions) {
-            submissions.forEach((s: any) => {
-              if (s.user_id) submittedMembers.add(s.user_id);
-            });
-          }
+          memberIds.forEach(id => {
+            if (submittedUserIdsBatch.has(id)) {
+              submittedMembers.add(id);
+            }
+          });
           
           
           // Store data - CRITICAL: sortedMemberIds must be stored correctly
