@@ -209,7 +209,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
   useEffect(() => {
     if (!listRef.current) return;
     
-    let resizeTimeout: NodeJS.Timeout;
+    let resizeTimeout: ReturnType<typeof setTimeout>;
     
     const resizeObserver = new ResizeObserver(() => {
       // When container size changes, ensure we're still scrolled to bottom
