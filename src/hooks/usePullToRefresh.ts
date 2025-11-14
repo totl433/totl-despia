@@ -28,6 +28,7 @@ export function usePullToRefresh({
   });
 
   const touchStartY = useRef<number | null>(null);
+  const touchStartX = useRef<number | null>(null);
   const scrollTopRef = useRef<number>(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isRefreshingRef = useRef(false);
@@ -78,8 +79,13 @@ export function usePullToRefresh({
       scrollTopRef.current = getScrollTop();
       
       // Only start pull if at the top of the scroll (with small tolerance for native apps)
-      if (scrollTopRef.current <= 5) {
+      // Check if touch is within container or allow from anywhere if at top
+      const target = e.target as Node;
+      const isInContainer = container.contains(target) || container === target;
+      
+      if (scrollTopRef.current <= 5 && isInContainer) {
         touchStartY.current = e.touches[0].clientY;
+        touchStartX.current = e.touches[0].clientX;
         setState(prev => ({ ...prev, isPulling: true }));
       }
     };
@@ -89,16 +95,21 @@ export function usePullToRefresh({
       if (e.touches.length !== 1) return; // Only handle single touch
       
       const currentY = e.touches[0].clientY;
+      const currentX = e.touches[0].clientX;
       const deltaY = currentY - touchStartY.current;
+      const deltaX = touchStartX.current !== null ? Math.abs(currentX - touchStartX.current) : 0;
       
       // Update scroll position (check continuously for native apps)
       scrollTopRef.current = getScrollTop();
       
       // Only allow downward pull when at top (with tolerance)
-      if (scrollTopRef.current <= 5 && deltaY > 0) {
-        // Prevent default scrolling while pulling
-        e.preventDefault();
-        e.stopPropagation();
+      // Allow pull even if there's some horizontal movement (for horizontal scroll areas)
+      if (scrollTopRef.current <= 5 && deltaY > 0 && deltaY > Math.abs(deltaX) * 0.5) {
+        // Prevent default scrolling while pulling (but allow horizontal scroll if needed)
+        if (deltaY > 10) { // Only prevent after some vertical movement
+          e.preventDefault();
+          e.stopPropagation();
+        }
         
         // Calculate pull distance with resistance (easing)
         const rawDistance = deltaY;
@@ -112,6 +123,7 @@ export function usePullToRefresh({
       } else if (deltaY <= 0 || scrollTopRef.current > 5) {
         // User scrolled back up or page scrolled, reset
         touchStartY.current = null;
+      touchStartX.current = null;
         setState(prev => ({ ...prev, isPulling: false, pullDistance: 0 }));
       }
     };
@@ -127,6 +139,7 @@ export function usePullToRefresh({
       }
       
       touchStartY.current = null;
+      touchStartX.current = null;
     };
 
     // Add touch event listeners
@@ -135,7 +148,7 @@ export function usePullToRefresh({
     const handleTouchStartWrapper = (e: TouchEvent) => {
       // Check if touch is within container or its children
       const target = e.target as Node;
-      if (container.contains(target) || container === target || container.contains(document.body)) {
+      if (container.contains(target) || container === target) {
         handleTouchStart(e);
       }
     };
@@ -173,6 +186,7 @@ export function usePullToRefresh({
         setState(prev => ({ ...prev, pullDistance: distance }));
       } else if (deltaY <= 0 || scrollTopRef.current > 0) {
         touchStartY.current = null;
+      touchStartX.current = null;
         setState(prev => ({ ...prev, isPulling: false, pullDistance: 0 }));
       }
     };
@@ -185,13 +199,15 @@ export function usePullToRefresh({
         setState(prev => ({ ...prev, isPulling: false, pullDistance: 0 }));
       }
       touchStartY.current = null;
+      touchStartX.current = null;
     };
 
     // For Despia native apps, attach to document for better touch handling
     // This ensures we catch touches even when scrolling happens at window level
     const useDocumentEvents = typeof window !== 'undefined' && 
                               (window.navigator?.userAgent?.includes('Mobile') || 
-                               (window as any).despia); // Detect Despia or mobile
+                               !!(window as any).despia || 
+                               !!(window as any).__DESPIA__); // Detect Despia or mobile
     
     if (useDocumentEvents) {
       // Native app or mobile - use document level events
@@ -217,7 +233,8 @@ export function usePullToRefresh({
     return () => {
       const useDocumentEvents = typeof window !== 'undefined' && 
                                 (window.navigator?.userAgent?.includes('Mobile') || 
-                                 (window as any).despia);
+                                 !!(window as any).despia || 
+                                 !!(window as any).__DESPIA__);
       
       if (useDocumentEvents) {
         document.removeEventListener('touchstart', handleTouchStartWrapper);
