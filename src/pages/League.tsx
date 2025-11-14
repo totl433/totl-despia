@@ -132,7 +132,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [chatHeight, setChatHeight] = useState<string>('100%');
+  const [containerStyle, setContainerStyle] = useState<React.CSSProperties>({});
 
   // Simple scroll to bottom
   const scrollToBottom = () => {
@@ -151,55 +151,80 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
     }
   }, [chat.length]);
 
-  // Handle keyboard with visualViewport - simple approach
+  // Handle keyboard with visualViewport - adjust wrapper and container
   useEffect(() => {
     const visualViewport = (window as any).visualViewport;
     if (!visualViewport) {
-      // Fallback: no visualViewport support, use full height
-      setChatHeight('100%');
+      // Fallback: no visualViewport support
+      setContainerStyle({ height: '100%' });
       return;
     }
 
     const updateLayout = () => {
+      const wrapper = containerRef.current?.closest('.chat-tab-wrapper') as HTMLElement | null;
+      if (!wrapper) return;
+      
       const viewportHeight = visualViewport.height;
+      const viewportTop = visualViewport.offsetTop;
       const windowHeight = window.innerHeight;
+      const keyboardHeight = windowHeight - (viewportTop + viewportHeight);
       
       // Keyboard is visible if viewport is significantly smaller than window
-      // (accounting for browser chrome, typically >150px difference indicates keyboard)
-      if (windowHeight - viewportHeight > 150) {
-        // Keyboard is visible - set chat container height to viewport height minus input area
-        const inputAreaHeight = 90; // Input area height including padding
-        const newHeight = viewportHeight - inputAreaHeight;
-        setChatHeight(`${Math.max(newHeight, 200)}px`); // Minimum 200px
+      if (keyboardHeight > 150) {
+        // Keyboard is visible - adjust wrapper bottom to sit above keyboard
+        const wrapperTop = wrapper.offsetTop;
+        const availableHeight = viewportHeight - (viewportTop - wrapperTop);
+        wrapper.style.bottom = `${keyboardHeight}px`;
+        wrapper.style.height = `${availableHeight}px`;
+        wrapper.style.maxHeight = `${availableHeight}px`;
+        
+        // Container uses full height of wrapper
+        setContainerStyle({
+          height: '100%',
+          maxHeight: '100%',
+        });
+        
         // Scroll after layout settles
-        setTimeout(() => scrollToBottom(), 250);
+        setTimeout(() => scrollToBottom(), 300);
       } else {
-        // No keyboard - use full height
-        setChatHeight('100%');
+        // No keyboard - reset wrapper and use full height
+        wrapper.style.bottom = '0';
+        wrapper.style.height = '';
+        wrapper.style.maxHeight = '';
+        setContainerStyle({
+          height: '100%',
+          maxHeight: '100%',
+        });
       }
     };
 
     visualViewport.addEventListener('resize', updateLayout);
+    visualViewport.addEventListener('scroll', updateLayout);
     updateLayout(); // Initial call
 
     return () => {
       visualViewport.removeEventListener('resize', updateLayout);
+      visualViewport.removeEventListener('scroll', updateLayout);
+      // Reset wrapper on cleanup
+      const wrapper = containerRef.current?.closest('.chat-tab-wrapper') as HTMLElement | null;
+      if (wrapper) {
+        wrapper.style.bottom = '';
+        wrapper.style.height = '';
+        wrapper.style.maxHeight = '';
+      }
     };
   }, []);
 
   // Scroll on input focus
   const handleInputFocus = () => {
-    setTimeout(() => scrollToBottom(), 300);
+    setTimeout(() => scrollToBottom(), 400);
   };
 
   return (
     <div 
       ref={containerRef}
       className="flex flex-col chat-container" 
-      style={{ 
-        height: chatHeight,
-        maxHeight: '100%',
-      }}
+      style={containerStyle}
     >
       {/* Messages list */}
       <div 
