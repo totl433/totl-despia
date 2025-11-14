@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePhotoPicsum } from "../lib/leagueAvatars";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
-import { resolveLeagueStartGw as getLeagueStartGw } from "../lib/leagueStart";
 
 type League = { id: string; name: string; code: string; created_at: string; avatar?: string | null; start_gw?: number | null };
 type LeagueRow = {
@@ -137,14 +136,14 @@ export default function TablesPage() {
         });
         
         // Update database in background (non-blocking, don't wait)
-        Promise.all(leaguesNeedingAvatars.map(league => {
+        void Promise.all(leaguesNeedingAvatars.map(league => {
           const avatar = getDeterministicLeagueAvatar(league.id);
-          return supabase
+          return Promise.resolve(supabase
             .from("leagues")
             .update({ avatar })
             .eq("id", league.id)
             .then(() => console.log(`Assigned avatar ${avatar} to league ${league.name}`))
-            .catch(err => console.warn(`Failed to assign avatar to league ${league.id}:`, err));
+          ).catch((err: any) => console.warn(`Failed to assign avatar to league ${league.id}:`, err));
         })).catch(() => {}); // Ignore errors in background update
       }
 
