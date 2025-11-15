@@ -146,8 +146,6 @@ export default function HomePage() {
   const resultsNotificationSentRef = useRef(false);
   // Track if "Game Week Starting Soon" notification has been scheduled
   const gameweekStartingSoonScheduledRef = useRef(false);
-  // Track last API pull info for debugging
-  const [lastApiPull, setLastApiPull] = useState<{ minute: number | null; timestamp: Date; success: boolean } | null>(null);
   // Track when halftime ends for each fixture (when status changes from PAUSED to IN_PLAY)
   const halftimeEndTimeRef = useRef<Record<number, Date>>({});
   // Track the minute when halftime ended (should be 46')
@@ -168,6 +166,7 @@ export default function HomePage() {
   }>>>({});
   const [expandedDebugLog, setExpandedDebugLog] = useState<Record<number, boolean>>({});
   const [isInApiTestLeague, setIsInApiTestLeague] = useState(false);
+  const [showLiveOnly, setShowLiveOnly] = useState(false);
 
   // Extract data fetching into a reusable function for pull-to-refresh
   const fetchHomeData = useCallback(async (showLoading = true) => {
@@ -462,6 +461,7 @@ export default function HomePage() {
   // Fetch live scores from Football Data API via Netlify function (to avoid CORS)
   const fetchLiveScore = async (apiMatchId: number, kickoffTime?: string | null) => {
     try {
+      
       // Try Netlify function first (works in production and with netlify dev)
       let response: Response;
       let match: any;
@@ -642,6 +642,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!isInApiTestLeague || !fixtures.length) return;
     
+    
     // Only poll first 3 fixtures
     const fixturesToPoll = fixtures.slice(0, 3).filter(f => f.api_match_id && f.kickoff_time);
     if (fixturesToPoll.length === 0) return;
@@ -707,23 +708,6 @@ export default function HomePage() {
             console.log('[Home] Polling fixture', fixtureIndex, 'at', new Date().toISOString());
             const scoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
             if (scoreData) {
-              // Update last API pull info (use the latest minute from any fixture)
-              // Only update if this is a live/halftime game and we have a minute
-              if ((scoreData.status === 'IN_PLAY' || scoreData.status === 'PAUSED') && scoreData.minute !== null && scoreData.minute !== undefined) {
-                setLastApiPull(prev => {
-                  // Use the maximum minute from all fixtures (most recent game progress)
-                  const newMinute = scoreData.minute ?? null;
-                  if (!prev || newMinute === null) {
-                    return { minute: newMinute, timestamp: new Date(), success: true };
-                  }
-                  // Keep the highest minute (most advanced game)
-                  return {
-                    minute: Math.max(prev.minute ?? 0, newMinute),
-                    timestamp: new Date(),
-                    success: true
-                  };
-                });
-              }
             // PAUSED status in Football Data API v4 is used for halftime
             // IN_PLAY is for active play
             const isLive = scoreData.status === 'IN_PLAY';
@@ -745,46 +729,67 @@ export default function HomePage() {
             
             // Check if score has changed for notification
             const prevScore = prevScoresRef.current[fixtureIndex];
+            const prevStatus = liveScores[fixtureIndex]?.status;
             
             // Always initialize or update prevScore for live/finished games
             // This ensures we can detect score changes on subsequent polls
             if (isLive || isHalfTime || isFinished) {
-              // Check if score changed BEFORE updating prevScore
-              const scoreChanged = prevScore ? (
-                prevScore.homeScore !== scoreData.homeScore || 
-                prevScore.awayScore !== scoreData.awayScore
-              ) : false;
-              
-              // If score changed, send notification
-              if (scoreChanged) {
-                const homeName = fixture.home_name || fixture.home_team || 'Home';
-                const awayName = fixture.away_name || fixture.away_team || 'Away';
-                // Get user's pick for this fixture
-                const userPick = picksMap[fixtureIndex] || null;
-                
-                // Determine which team scored
-                const homeScored = scoreData.homeScore > prevScore.homeScore;
-                const awayScored = scoreData.awayScore > prevScore.awayScore;
-                
-                console.log('[Home] GOAL! Score changed - sending notification:', {
-                  fixtureIndex,
-                  prevScore,
-                  newScore: { homeScore: scoreData.homeScore, awayScore: scoreData.awayScore },
-                  homeScored,
-                  awayScored,
-                  minute: scoreData.minute,
-                  isFinished
+              // Initialize prevScore if it doesn't exist (first time we see this game)
+              if (!prevScore) {
+                prevScoresRef.current[fixtureIndex] = {
+                  homeScore: scoreData.homeScore,
+                  awayScore: scoreData.awayScore
+                };
+                console.log('[Home] Initialized prevScore for fixture', fixtureIndex, ':', {
+                  homeScore: scoreData.homeScore,
+                  awayScore: scoreData.awayScore,
+                  status: scoreData.status
                 });
-                
-                sendScoreUpdateNotification(
-                  homeName,
-                  awayName,
-                  scoreData.homeScore,
-                  scoreData.awayScore,
-                  scoreData.minute ?? null,
-                  isFinished,
-                  userPick || undefined
+              } else {
+                // Check if score changed BEFORE updating prevScore
+                const scoreChanged = (
+                  prevScore.homeScore !== scoreData.homeScore || 
+                  prevScore.awayScore !== scoreData.awayScore
                 );
+                
+                // Check if status changed to FINISHED (game just ended)
+                const justFinished = prevStatus !== 'FINISHED' && isFinished;
+                
+                // If score changed OR game just finished, send notification
+                if (scoreChanged || justFinished) {
+                  const homeName = fixture.home_name || fixture.home_team || 'Home';
+                  const awayName = fixture.away_name || fixture.away_team || 'Away';
+                  // Get user's pick for this fixture
+                  const userPick = picksMap[fixtureIndex] || null;
+                  
+                  // Determine which team scored (only if score changed)
+                  const homeScored = scoreChanged && scoreData.homeScore > prevScore.homeScore;
+                  const awayScored = scoreChanged && scoreData.awayScore > prevScore.awayScore;
+                  
+                  console.log('[Home] Score update detected - sending notification:', {
+                    fixtureIndex,
+                    prevScore,
+                    newScore: { homeScore: scoreData.homeScore, awayScore: scoreData.awayScore },
+                    homeScored,
+                    awayScored,
+                    scoreChanged,
+                    justFinished,
+                    prevStatus,
+                    currentStatus: scoreData.status,
+                    minute: scoreData.minute,
+                    isFinished
+                  });
+                  
+                  sendScoreUpdateNotification(
+                    homeName,
+                    awayName,
+                    scoreData.homeScore,
+                    scoreData.awayScore,
+                    scoreData.minute ?? null,
+                    isFinished,
+                    userPick || undefined
+                  );
+                }
               }
               
               // Always update prevScore after checking for changes
@@ -792,17 +797,9 @@ export default function HomePage() {
                 homeScore: scoreData.homeScore,
                 awayScore: scoreData.awayScore
               };
-              
-              if (!prevScore) {
-                console.log('[Home] Initialized prevScore for fixture', fixtureIndex, ':', {
-                  homeScore: scoreData.homeScore,
-                  awayScore: scoreData.awayScore
-                });
-              }
             }
             
             // Track when halftime ends (status changes from PAUSED to IN_PLAY)
-            const prevStatus = liveScores[fixtureIndex]?.status;
             if (prevStatus === 'PAUSED' && scoreData.status === 'IN_PLAY') {
               // Halftime just ended - record the time and minute
               const now = new Date();
@@ -918,6 +915,7 @@ export default function HomePage() {
                     return currentScore && currentScore.status === 'FINISHED';
                   });
                   if (allFinished) {
+                    console.log('[Home] All games finished - sending results notification');
                     sendResultsNotification(1); // GW 1 for API Test
                     resultsNotificationSentRef.current = true;
                   }
@@ -3186,7 +3184,7 @@ export default function HomePage() {
 
       {/* Games (first GW) */}
       <section className="mt-[45px]">
-        <div className="flex items-center justify-between mb-2">
+        <div className="relative flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <h2 className="text-base font-medium text-slate-500 uppercase tracking-wide">
               Games
@@ -3195,11 +3193,45 @@ export default function HomePage() {
               <span className="text-[10px] text-slate-500 font-bold">i</span>
             </div>
           </div>
+          {/* Centered toggle switch */}
+          {(() => {
+            // Check if any games are live - show filter toggle centered
+            const fixturesToCheckForLive = isInApiTestLeague ? fixtures.slice(0, 3) : fixtures;
+            const hasLiveGames = fixturesToCheckForLive.some(f => {
+              const liveScore = liveScores[f.fixture_index];
+              return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+            });
+            
+            if (!hasLiveGames) return null;
+            
+            return (
+              <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
+                <span className={`text-[10px] font-medium transition-colors ${!showLiveOnly ? 'text-slate-700' : 'text-slate-400'}`}>ALL</span>
+                <button
+                  onClick={() => setShowLiveOnly(!showLiveOnly)}
+                  className="relative inline-flex items-center rounded-full transition-colors focus:outline-none"
+                  style={{
+                    backgroundColor: showLiveOnly ? '#dc2626' : '#cbd5e1',
+                    width: '48px',
+                    height: '24px',
+                    border: 'none'
+                  }}
+                >
+                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transform transition-transform duration-200 ease-in-out ${showLiveOnly ? 'translate-x-6' : 'translate-x-0.5'}`}></span>
+                </button>
+                <span className={`text-[10px] font-medium transition-colors ${showLiveOnly ? 'text-slate-700' : 'text-slate-400'}`}>
+                  LIVE
+                </span>
+              </div>
+            );
+          })()}
           <div className="flex items-center gap-2">
             {(() => {
               // Calculate live score for test API users (includes both live and finished games)
               let liveScoreCount = 0;
               let liveFixturesCount = 0;
+              let finishedScoreCount = 0;
+              let finishedFixturesCount = 0;
               let fixturesToCheck: typeof fixtures = [];
               if (isInApiTestLeague && fixtures.length > 0) {
                 fixturesToCheck = fixtures.slice(0, 3); // Only first 3 fixtures
@@ -3211,6 +3243,7 @@ export default function HomePage() {
                   // Count both live and finished games
                   if (liveScore && (isLive || isFinished)) {
                     if (isLive) liveFixturesCount++;
+                    if (isFinished) finishedFixturesCount++;
                     const pick = picksMap[f.fixture_index];
                     // Determine if pick is correct based on live score
                     if (pick) {
@@ -3218,7 +3251,10 @@ export default function HomePage() {
                       if (pick === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrect = true;
                       else if (pick === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrect = true;
                       else if (pick === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrect = true;
-                      if (isCorrect) liveScoreCount++;
+                      if (isCorrect) {
+                        liveScoreCount++;
+                        if (isFinished) finishedScoreCount++;
+                      }
                     }
                   }
                 });
@@ -3235,65 +3271,39 @@ export default function HomePage() {
                 const liveScore = liveScores[f.fixture_index];
                 return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
               })) {
-                return (
-                  <div className="flex items-center gap-2">
-                    {/* Temporary API pull indicator - show latest minute from any live fixture */}
-                    {(() => {
-                      // Check if we have any successful API pull
-                      const hasSuccess = lastApiPull && lastApiPull.success;
-                      
-                      // Get the timestamp from lastApiPull or use current time
-                      const pullTimestamp = lastApiPull?.timestamp || new Date();
-                      const timeString = pullTimestamp.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-                      
-                      // Check if we have halftime end time for any live fixture
-                      let halftimeEndTime: Date | null = null;
-                      for (const f of fixturesToCheck) {
-                        if (f.api_match_id) {
-                          const htEndTime = halftimeEndTimeRef.current[f.api_match_id];
-                          if (htEndTime instanceof Date) {
-                            if (!halftimeEndTime || htEndTime.getTime() > halftimeEndTime.getTime()) {
-                              halftimeEndTime = htEndTime;
-                            }
-                          }
-                        }
-                      }
-                      
-                      const halftimeEndTimeString = halftimeEndTime ? halftimeEndTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }) : null;
-                      
-                      return hasSuccess ? (
-                        <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-slate-100 text-slate-700 text-xs border border-slate-200">
-                          <span className="text-slate-500 font-normal">last API:</span>
-                          <span className="text-slate-500 font-normal">{timeString}</span>
-                          {halftimeEndTimeString && (
-                            <>
-                              <span className="text-slate-400">•</span>
-                              <span className="text-slate-500 font-normal">HT ended:</span>
-                              <span className="text-slate-600 font-medium">{halftimeEndTimeString}</span>
-                            </>
-                          )}
-                          <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        </div>
-                      ) : null;
-                    })()}
-                    <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${allFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
-                      {!allFinished && liveFixturesCount > 0 && (
-                      <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                      )}
-                      {allFinished && (
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                        </svg>
-                      )}
-                      <span className="text-xs sm:text-sm font-medium opacity-90">{allFinished ? 'Score' : 'Live'}</span>
+                // If no live games but some finished games, show "Score X/Y" with clock icon
+                if (liveFixturesCount === 0 && finishedFixturesCount > 0 && !allFinished) {
+                  return (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg bg-slate-600 shadow-slate-500/30">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-xs sm:text-sm font-medium opacity-90">Score</span>
                       <span className="flex items-baseline gap-0.5">
-                        <span className="text-lg sm:text-xl font-extrabold">{liveScoreCount}</span>
+                        <span className="text-lg sm:text-xl font-extrabold">{finishedScoreCount}</span>
                         <span className="text-sm sm:text-base font-medium opacity-90">/</span>
-                        <span className="text-base sm:text-lg font-semibold opacity-80">{fixturesToCheck.length}</span>
+                        <span className="text-base sm:text-lg font-semibold opacity-80">{finishedFixturesCount}</span>
                       </span>
                     </div>
+                  );
+                }
+                
+                return (
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${allFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
+                    {!allFinished && liveFixturesCount > 0 && (
+                    <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                    )}
+                    {allFinished && (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                      </svg>
+                    )}
+                    <span className="text-xs sm:text-sm font-medium opacity-90">{allFinished ? 'Score' : 'Live'}</span>
+                    <span className="flex items-baseline gap-0.5">
+                      <span className="text-lg sm:text-xl font-extrabold">{liveScoreCount}</span>
+                      <span className="text-sm sm:text-base font-medium opacity-90">/</span>
+                      <span className="text-base sm:text-lg font-semibold opacity-80">{fixturesToCheck.length}</span>
+                    </span>
                   </div>
                 );
               }
@@ -3328,8 +3338,8 @@ export default function HomePage() {
               
               return null;
             })()}
-        </div>
           </div>
+        </div>
           {nextGwComing ? (
           <div className="mb-2">
             <span className="text-slate-600 font-semibold">GW{nextGwComing} coming soon</span>
@@ -3343,7 +3353,15 @@ export default function HomePage() {
           <div className="mt-6">
             {(() => {
               // For test API users, only show first 3 fixtures
-              const fixturesToShow = isInApiTestLeague ? fixtures.slice(0, 3) : fixtures;
+              let fixturesToShow = isInApiTestLeague ? fixtures.slice(0, 3) : fixtures;
+              
+              // Filter to live games only if toggle is on
+              if (showLiveOnly) {
+                fixturesToShow = fixturesToShow.filter(f => {
+                  const liveScore = liveScores[f.fixture_index];
+                  return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+                });
+              }
               
               // Group fixtures by date
               const grouped: Array<{ label: string; items: typeof fixturesToShow }> = [];

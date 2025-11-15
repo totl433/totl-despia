@@ -122,6 +122,16 @@ export function sendResultsNotification(gameweek: number) {
  * @param isFinished - Whether the game is finished
  * @param userPick - User's pick for this game ("H", "D", or "A")
  */
+// Track last notification to prevent duplicates
+let lastNotificationRef: {
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number;
+  awayScore: number;
+  isFinished: boolean;
+  timestamp: number;
+} | null = null;
+
 export function sendScoreUpdateNotification(
   homeTeam: string,
   awayTeam: string,
@@ -134,6 +144,26 @@ export function sendScoreUpdateNotification(
   const isFinishedGame = isFinished || minute === null;
   const minuteText = isFinishedGame ? 'FT' : (minute ? `${minute}'` : 'LIVE');
   
+  // Prevent duplicate notifications (same score within 5 seconds)
+  const now = Date.now();
+  if (lastNotificationRef &&
+      lastNotificationRef.homeTeam === homeTeam &&
+      lastNotificationRef.awayTeam === awayTeam &&
+      lastNotificationRef.homeScore === homeScore &&
+      lastNotificationRef.awayScore === awayScore &&
+      lastNotificationRef.isFinished === isFinishedGame &&
+      (now - lastNotificationRef.timestamp) < 5000) {
+    console.log('[Notifications] Skipping duplicate notification:', {
+      homeTeam,
+      awayTeam,
+      homeScore,
+      awayScore,
+      isFinished: isFinishedGame,
+      timeSinceLast: now - lastNotificationRef.timestamp
+    });
+    return;
+  }
+  
   // Determine if user got it right
   let personalMessage = '';
   if (isFinishedGame && userPick) {
@@ -143,22 +173,30 @@ export function sendScoreUpdateNotification(
     else if (homeScore === awayScore) correctResult = 'D';
     
     if (correctResult === userPick) {
-      personalMessage = 'Correct! 🎯';
+      personalMessage = 'You got it right! 🎉';
     } else {
-      personalMessage = 'Wrong pick';
+      personalMessage = 'Unlucky... 😔';
     }
   }
   
-  // Create a more engaging message for goal notifications
-  const message = personalMessage 
-    ? `${minuteText} - ${personalMessage}`
-    : `⚽ GOAL! ${minuteText}`;
+  // Create a more engaging message
+  let message: string;
+  if (isFinishedGame && personalMessage) {
+    // Full-time with personal message
+    message = `FT - ${personalMessage}`;
+  } else if (isFinishedGame) {
+    // Full-time without personal message
+    message = `FT - Game finished`;
+  } else {
+    // Goal during live game
+    message = `⚽ GOAL! ${minuteText}`;
+  }
   
   console.log('[Notifications] Sending score update notification:', {
     title: `${homeTeam} ${homeScore}-${awayScore} ${awayTeam}`,
     message,
     minute: minuteText,
-    isFinished,
+    isFinished: isFinishedGame,
     userPick,
     timestamp: new Date().toISOString()
   });
@@ -170,6 +208,17 @@ export function sendScoreUpdateNotification(
       message,
       `${window.location.origin}/league/api-test`
     );
+    
+    // Update last notification ref
+    lastNotificationRef = {
+      homeTeam,
+      awayTeam,
+      homeScore,
+      awayScore,
+      isFinished: isFinishedGame,
+      timestamp: now
+    };
+    
     console.log('[Notifications] Score update notification sent successfully');
   } catch (error) {
     console.error('[Notifications] Error sending score update notification:', error);
