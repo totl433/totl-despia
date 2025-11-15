@@ -516,7 +516,9 @@ export default function LeaguePage() {
   const [loading, setLoading] = useState(true);
 
   // tabs: Chat / Mini League Table / GW Picks / GW Results
+  // Default to "gwr" (GW Results) if gameweek is live or finished within 12 hours
   const [tab, setTab] = useState<"chat" | "mlt" | "gw" | "gwr">("chat");
+  const [initialTabSet, setInitialTabSet] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -1490,6 +1492,66 @@ export default function LeaguePage() {
       timeouts.forEach(clearTimeout);
     };
   }, [league?.name, fixtures.map((f: any) => f.api_match_id).join(','), tab]);
+
+  // Set default tab to "gwr" (GW Results) if gameweek is live or finished within 12 hours
+  useEffect(() => {
+    // Only set initial tab once, and only if we're on the chat tab
+    if (initialTabSet || !fixtures.length || tab !== "chat") return;
+    
+    // Only apply to current GW (or API Test league GW 1)
+    const isApiTestLeague = league?.name === 'API Test';
+    const viewingCurrentGw = isApiTestLeague ? true : (selectedGw === currentGw || selectedGw === null);
+    if (!viewingCurrentGw) {
+      setInitialTabSet(true);
+      return;
+    }
+    
+    const now = new Date();
+    
+    // Check if first game has started
+    const firstFixture = fixtures[0];
+    const firstKickoff = firstFixture?.kickoff_time ? new Date(firstFixture.kickoff_time) : null;
+    const firstGameStarted = firstKickoff && firstKickoff <= now;
+    
+    // Check if last game has finished and it's been less than 12 hours since finish
+    const lastFixture = fixtures[fixtures.length - 1];
+    const lastKickoff = lastFixture?.kickoff_time ? new Date(lastFixture.kickoff_time) : null;
+    const lastFixtureIndex = lastFixture?.fixture_index;
+    
+    // Check liveScores for last fixture status
+    const lastFixtureScore = lastFixtureIndex !== undefined ? liveScores[lastFixtureIndex] : null;
+    const lastGameFinished = lastFixtureScore?.status === 'FINISHED';
+    
+    // If last game finished, check if it's been less than 12 hours since finish
+    let lastGameFinishedWithin12Hours = false;
+    if (lastGameFinished && lastKickoff) {
+      // Estimate finish time as kickoff + 2 hours (typical match duration ~90 min + stoppage + halftime)
+      const estimatedFinishTime = new Date(lastKickoff.getTime() + (2 * 60 * 60 * 1000));
+      const hoursSinceFinish = (now.getTime() - estimatedFinishTime.getTime()) / (1000 * 60 * 60);
+      // Check if finished and it's been less than 12 hours since finish
+      lastGameFinishedWithin12Hours = hoursSinceFinish <= 12 && hoursSinceFinish >= 0;
+    }
+    
+    // Also check if any game is currently live (IN_PLAY or PAUSED)
+    const hasLiveGame = Object.values(liveScores).some(
+      score => score.status === 'IN_PLAY' || score.status === 'PAUSED'
+    );
+    
+    // Set tab to "gwr" if first game started OR last game finished within 12 hours OR has live game
+    if (firstGameStarted || lastGameFinishedWithin12Hours || hasLiveGame) {
+      console.log('[League] Setting default tab to GW Results:', {
+        firstGameStarted,
+        lastGameFinishedWithin12Hours,
+        hasLiveGame,
+        lastFixtureScore: lastFixtureScore?.status,
+        viewingCurrentGw
+      });
+      setTab("gwr");
+      setInitialTabSet(true);
+    } else {
+      setInitialTabSet(true);
+    }
+  }, [fixtures, liveScores, initialTabSet, tab, currentGw, selectedGw, league?.name]);
 
   const submittedMap = useMemo(() => {
     const m = new Map<string, boolean>();
