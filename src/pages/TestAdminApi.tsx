@@ -405,7 +405,6 @@ export default function TestAdminApi() {
               value={competition}
               onChange={(e) => {
                 setCompetition(e.target.value);
-                setAutoLoading(true);
                 setAvailableMatches([]);
                 setApiError(null);
               }}
