@@ -812,7 +812,7 @@ export default function HomePage() {
               }
             } else if (isHalfTime) {
               // Half-time - continue polling to catch start of second half immediately
-              console.log('[Home] Game', fixtureIndex, 'at half-time, continuing to poll every 30s to catch second half start');
+              console.log('[Home] Game', fixtureIndex, 'at half-time, continuing to poll every 30s to catch second half start. Status:', scoreData.status, 'Minute:', scoreData.minute);
               // Clear any existing HT resume timeout (no longer needed)
               const existingTimeout = htResumeTimeouts.get(fixtureIndex);
               if (existingTimeout) {
@@ -820,7 +820,7 @@ export default function HomePage() {
                 htResumeTimeouts.delete(fixtureIndex);
               }
             } else if (isLive) {
-              console.log('[Home] Game', fixtureIndex, 'is LIVE - status:', scoreData.status, 'minute:', scoreData.minute);
+              console.log('[Home] Game', fixtureIndex, 'is LIVE - status:', scoreData.status, 'minute:', scoreData.minute, 'display will be:', formatMinuteDisplay(scoreData.status, scoreData.minute));
               // Clear any HT resume timeout if second half has started
               const existingTimeout = htResumeTimeouts.get(fixtureIndex);
               if (existingTimeout) {
@@ -3356,8 +3356,20 @@ export default function HomePage() {
                               {(() => {
                                 // Debug: log what we're displaying
                                 const display = formatMinuteDisplay(liveScore.status, liveScore.minute);
-                                if (display === 'LIVE' && isOngoing) {
-                                  console.warn('[Home] Showing LIVE instead of minute:', {
+                                // Log when second half should be showing but isn't
+                                if (isLive && liveScore.minute !== null && liveScore.minute !== undefined && liveScore.minute > 45 && display === 'HT') {
+                                  console.warn('[Home] Second half started but showing HT:', {
+                                    fixtureIndex: f.fixture_index,
+                                    status: liveScore.status,
+                                    minute: liveScore.minute,
+                                    display,
+                                    isLive,
+                                    isHalfTime,
+                                    isOngoing
+                                  });
+                                }
+                                if (display === 'LIVE' && isOngoing && liveScore.minute === null) {
+                                  console.warn('[Home] Showing LIVE instead of minute (minute is null):', {
                                     fixtureIndex: f.fixture_index,
                                     status: liveScore.status,
                                     minute: liveScore.minute,
