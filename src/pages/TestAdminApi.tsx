@@ -71,7 +71,8 @@ export default function TestAdminApi() {
   const { user } = useAuth();
   const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
 
-  const [testGw, setTestGw] = useState<number>(1);
+  // API Test league always uses Test GW 1
+  const testGw = 1;
   const [availableMatches, setAvailableMatches] = useState<ApiMatch[]>([]);
   const [selectedFixtures, setSelectedFixtures] = useState<Map<number, TestFixture>>(new Map());
   const [saving, setSaving] = useState(false);
@@ -268,14 +269,13 @@ export default function TestAdminApi() {
           }
         }
         
-        const currentTestGw = meta?.current_test_gw ?? 1;
-        if (alive) setTestGw(currentTestGw);
+        // API Test league always uses Test GW 1, so we don't need to set state
 
-        // Load existing fixtures for this test GW
+        // Load existing fixtures for Test GW 1
         const { data: fixtures, error: fixturesError } = await supabase
           .from("test_api_fixtures")
           .select("*")
-          .eq("test_gw", currentTestGw)
+          .eq("test_gw", 1)
           .order("fixture_index", { ascending: true });
 
         // Silently ignore 404s - table may not exist yet
@@ -299,7 +299,7 @@ export default function TestAdminApi() {
     return () => {
       alive = false;
     };
-  }, [isAdmin, testGw]);
+  }, [isAdmin]);
 
   if (!isAdmin) {
     return (
@@ -318,7 +318,7 @@ export default function TestAdminApi() {
     } else {
       // Select - create fixture from API match
       const fixture: TestFixture = {
-        test_gw: testGw,
+        test_gw: 1,
         fixture_index: index,
         api_match_id: match.id,
         home_team: match.homeTeam.shortName,
@@ -347,11 +347,11 @@ export default function TestAdminApi() {
     setOk("");
 
     try {
-      // Delete existing fixtures for this test GW
+      // Delete existing fixtures for Test GW 1
       await supabase
         .from("test_api_fixtures")
         .delete()
-        .eq("test_gw", testGw);
+        .eq("test_gw", 1);
 
       // Insert selected fixtures
       const fixturesToInsert = Array.from(selectedFixtures.values()).map(f => ({
@@ -373,12 +373,12 @@ export default function TestAdminApi() {
 
       if (insertError) throw insertError;
 
-      // Update current test GW in meta
+      // Update current test GW in meta (always 1 for API Test league)
       await supabase
         .from("test_api_meta")
-        .upsert({ id: 1, current_test_gw: testGw }, { onConflict: 'id' });
+        .upsert({ id: 1, current_test_gw: 1 }, { onConflict: 'id' });
 
-      setOk(`Test Gameweek ${testGw} saved with ${selectedFixtures.size} fixtures!`);
+      setOk(`Test Gameweek 1 saved with ${selectedFixtures.size} fixtures!`);
     } catch (e: any) {
       setError(e.message ?? "Failed to save test gameweek.");
     } finally {
@@ -414,17 +414,12 @@ export default function TestAdminApi() {
           </div>
         )}
 
-        {/* Test GW Selection */}
+        {/* Test GW Info */}
         <div className="bg-white rounded-xl shadow-md p-4 mb-6">
           <div className="flex items-center gap-4 mb-4">
             <label className="font-medium text-slate-700">Test Gameweek:</label>
-            <input
-              type="number"
-              value={testGw}
-              onChange={(e) => setTestGw(parseInt(e.target.value) || 1)}
-              min="1"
-              className="border rounded px-3 py-2 w-20"
-            />
+            <span className="text-lg font-semibold text-slate-900">1</span>
+            <span className="text-sm text-slate-500">(API Test league always uses GW 1)</span>
           </div>
         </div>
 
@@ -572,7 +567,7 @@ export default function TestAdminApi() {
         {selectedFixtures.size > 0 && (
           <div className="bg-white rounded-xl shadow-md p-4 mb-6">
             <h3 className="text-lg font-semibold text-slate-800 mb-4">
-              Selected Fixtures for Test GW {testGw} ({selectedFixtures.size})
+              Selected Fixtures for Test GW 1 ({selectedFixtures.size})
             </h3>
             
             <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -593,7 +588,7 @@ export default function TestAdminApi() {
               disabled={saving}
               className="mt-4 w-full py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 font-semibold"
             >
-              {saving ? "Saving..." : `Save Test Gameweek ${testGw}`}
+              {saving ? "Saving..." : "Save Test Gameweek 1"}
             </button>
           </div>
         )}

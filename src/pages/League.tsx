@@ -1037,20 +1037,41 @@ export default function LeaguePage() {
 
     (async () => {
       const gwForData = tab === "gwr" ? selectedGw : tab === "gw" ? currentGw : currentGw;
-      if (!gwForData) {
+      
+      // Special handling for API Test league - use test_api_fixtures for GW 1
+      const isApiTestLeague = league?.name === 'API Test';
+      const useTestFixtures = isApiTestLeague && gwForData === 1;
+      
+      if (!gwForData && !useTestFixtures) {
         setFixtures([]);
         setPicks([]);
         setSubs([]);
         setResults([]);
         return;
       }
-      const { data: fx } = await supabase
-        .from("fixtures")
-        .select(
-          "id,gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time"
-        )
-        .eq("gw", gwForData)
-        .order("fixture_index", { ascending: true });
+      
+      let fx;
+      if (useTestFixtures) {
+        // Fetch from test_api_fixtures for API Test league GW 1
+        const { data: testFx } = await supabase
+          .from("test_api_fixtures")
+          .select(
+            "id,test_gw as gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time"
+          )
+          .eq("test_gw", 1)
+          .order("fixture_index", { ascending: true });
+        fx = testFx;
+      } else {
+        // Regular fixtures
+        const { data: regularFx } = await supabase
+          .from("fixtures")
+          .select(
+            "id,gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time"
+          )
+          .eq("gw", gwForData)
+          .order("fixture_index", { ascending: true });
+        fx = regularFx;
+      }
 
       if (!alive) return;
       setFixtures((fx as Fixture[]) ?? []);
@@ -1062,10 +1083,12 @@ export default function LeaguePage() {
         return;
       }
 
+      // For API Test league GW 1, picks are stored with gw=1 (same as regular picks)
+      // The test context is determined by the league, not the picks table
       const { data: pk } = await supabase
         .from("picks")
         .select("user_id,gw,fixture_index,pick")
-        .eq("gw", gwForData)
+        .eq("gw", useTestFixtures ? 1 : gwForData)
         .in("user_id", memberIds);
       if (!alive) return;
       setPicks((pk as PickRow[]) ?? []);
@@ -1074,13 +1097,18 @@ export default function LeaguePage() {
       const { data: submissions } = await supabase
         .from("gw_submissions")
         .select("user_id,gw,submitted_at")
-        .eq("gw", gwForData)
+        .eq("gw", useTestFixtures ? 1 : gwForData)
         .in("user_id", memberIds);
       
       if (!alive) return;
       setSubs((submissions as SubmissionRow[]) ?? []);
 
-      const { data: rs } = await supabase.from("gw_results").select("gw,fixture_index,result");
+      // For API Test league GW 1, results are stored with gw=1 (same as regular results)
+      // We'll need to check if results exist for test fixtures specifically
+      const { data: rs } = await supabase
+        .from("gw_results")
+        .select("gw,fixture_index,result")
+        .eq("gw", useTestFixtures ? 1 : (gwForData || 0));
       if (!alive) return;
       setResults((rs as ResultRowRaw[]) ?? []);
     })();

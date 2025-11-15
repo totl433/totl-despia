@@ -121,6 +121,18 @@ export default function NewPredictionsCentre() {
     let alive = true;
     (async () => {
       try {
+        // Check if user is in API Test league
+        let isInApiTestLeague = false;
+        if (user?.id) {
+          const { data: apiTestMembership } = await supabase
+            .from("league_members")
+            .select("league_id, leagues!inner(name)")
+            .eq("user_id", user.id)
+            .eq("leagues.name", "API Test")
+            .maybeSingle();
+          isInApiTestLeague = !!apiTestMembership;
+        }
+        
         // Fetch current gameweek from meta table
         const { data: meta } = await supabase
           .from("meta")
@@ -130,14 +142,43 @@ export default function NewPredictionsCentre() {
         const currentGw = (meta as any)?.current_gw ?? 1;
         setCurrentGw(currentGw);
         
-        // Fetch fixtures for current gameweek
-        const { data: fx, error: fxErr } = await supabase
-          .from("fixtures")
-          .select(
-            "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
-          )
-          .eq("gw", currentGw)
-          .order("fixture_index", { ascending: true });
+        // For API Test league members, check if test GW 1 fixtures exist
+        let fx;
+        if (isInApiTestLeague && currentGw === 1) {
+          // Check if test fixtures exist for GW 1
+          const { data: testFx } = await supabase
+            .from("test_api_fixtures")
+            .select(
+              "id,test_gw as gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
+            )
+            .eq("test_gw", 1)
+            .order("fixture_index", { ascending: true });
+          
+          // If test fixtures exist, use them; otherwise fall back to regular fixtures
+          if (testFx && testFx.length > 0) {
+            fx = { data: testFx, error: null };
+          } else {
+            // Fall back to regular fixtures
+            fx = await supabase
+              .from("fixtures")
+              .select(
+                "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
+              )
+              .eq("gw", currentGw)
+              .order("fixture_index", { ascending: true });
+          }
+        } else {
+          // Regular fixtures
+          fx = await supabase
+            .from("fixtures")
+            .select(
+              "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
+            )
+            .eq("gw", currentGw)
+            .order("fixture_index", { ascending: true });
+        }
+        
+        const { data: fxData, error: fxErr } = fx;
 
         if (fxErr) {
           console.error('Error fetching fixtures:', fxErr);
