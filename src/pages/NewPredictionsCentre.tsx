@@ -51,6 +51,7 @@ export default function NewPredictionsCentre() {
   const [picks, setPicks] = useState<Map<number, Pick>>(new Map());
   const [results, setResults] = useState<Map<number, "H" | "D" | "A">>(new Map());
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>("");
   const [submitted, setSubmitted] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -257,7 +258,7 @@ export default function NewPredictionsCentre() {
 
           if (pkErr) {
             console.error('Error fetching picks:', pkErr);
-            return;
+            // Don't return - continue without picks
           }
 
           const picksMap = new Map<number, Pick>();
