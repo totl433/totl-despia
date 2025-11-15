@@ -2733,6 +2733,7 @@ export default function LeaguePage() {
     let allFixturesFinished = false;
     let hasLiveFixtures = false;
     let hasStartingSoonFixtures = false;
+    let hasStartedFixtures = false; // Track if at least one game has started
     if (isApiTestLeague && resGw === 1) {
       // For API Test league, check if all fixtures (first 3) have finished
       const fixturesToCheck = fixtures.slice(0, 3);
@@ -2747,8 +2748,14 @@ export default function LeaguePage() {
           const liveScore = liveScores[f.fixture_index];
           return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
         });
+        // Check if at least one fixture has started (live or finished)
+        hasStartedFixtures = fixturesToCheck.some((f: any) => {
+          const liveScore = liveScores[f.fixture_index];
+          return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
+        });
         // Check if any fixtures are starting soon (within 24 hours of kickoff but not started)
-        if (!hasLiveFixtures && !allFixturesFinished) {
+        // Only show if not all fixtures are finished
+        if (!allFixturesFinished) {
           const now = new Date();
           hasStartingSoonFixtures = fixturesToCheck.some((f: any) => {
             if (!f.kickoff_time) return false;
@@ -2872,12 +2879,12 @@ export default function LeaguePage() {
                         <span className="text-[10px] font-medium">LIVE</span>
                       </div>
                     )}
-                    {isApiTestLeague && !hasLiveFixtures && hasStartingSoonFixtures && (
+                    {isApiTestLeague && !allFixturesFinished && hasStartingSoonFixtures && (
                       <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500 text-white shadow-md shadow-amber-500/30">
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <span className="text-[10px] font-medium">Starting soon</span>
+                        <span className="text-[10px] font-medium">{hasStartedFixtures ? 'Next Game Starting Soon' : 'Starting soon'}</span>
                       </div>
                     )}
                   </div>
