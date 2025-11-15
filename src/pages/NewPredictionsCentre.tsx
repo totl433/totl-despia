@@ -154,20 +154,33 @@ export default function NewPredictionsCentre() {
         // For API Test league members, check if test GW 1 fixtures exist
         let fx;
         if (isInApiTestLeague && currentGw === 1) {
-          // Check if test fixtures exist for GW 1
-          const { data: testFx } = await supabase
-            .from("test_api_fixtures")
-            .select(
-              "id,test_gw as gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
-            )
-            .eq("test_gw", 1)
-            .order("fixture_index", { ascending: true });
-          
-          // If test fixtures exist, use them; otherwise fall back to regular fixtures
-          if (testFx && testFx.length > 0) {
-            fx = { data: testFx, error: null };
-          } else {
-            // Fall back to regular fixtures
+          try {
+            // Check if test fixtures exist for GW 1
+            const { data: testFx, error: testFxError } = await supabase
+              .from("test_api_fixtures")
+              .select(
+                "id,test_gw as gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
+              )
+              .eq("test_gw", 1)
+              .order("fixture_index", { ascending: true });
+            
+            // If test fixtures exist and no error, use them; otherwise fall back to regular fixtures
+            if (!testFxError && testFx && testFx.length > 0) {
+              fx = { data: testFx, error: null };
+            } else {
+              // Fall back to regular fixtures
+              console.log('[NewPredictionsCentre] No test fixtures found, using regular fixtures');
+              fx = await supabase
+                .from("fixtures")
+                .select(
+                  "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
+                )
+                .eq("gw", currentGw)
+                .order("fixture_index", { ascending: true });
+            }
+          } catch (testError) {
+            console.error('[NewPredictionsCentre] Error fetching test fixtures, falling back to regular:', testError);
+            // Fall back to regular fixtures on any error
             fx = await supabase
               .from("fixtures")
               .select(
