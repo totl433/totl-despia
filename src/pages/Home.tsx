@@ -148,15 +148,18 @@ export default function HomePage() {
         .map((r) => r.leagues)
         .filter(Boolean) as League[];
       
-      console.log('[Home] Processed leagues:', userLeagues.length);
-      if (userLeagues.length > 0) {
-        console.log('[Home] League names:', userLeagues.map(l => l.name));
+      // Filter out "API Test" league - it's for testing only and shouldn't appear on main site
+      const filteredLeagues = userLeagues.filter(league => league.name !== 'API Test');
+      
+      console.log('[Home] Processed leagues:', filteredLeagues.length);
+      if (filteredLeagues.length > 0) {
+        console.log('[Home] League names:', filteredLeagues.map(l => l.name));
         } else {
         console.warn('[Home] NO LEAGUES FOUND! Raw data:', userLeaguesResult.data);
           }
 
       // Assign avatars to leagues
-      const ls: League[] = userLeagues.map((league) => ({
+      const ls: League[] = filteredLeagues.map((league) => ({
         ...league,
         avatar: getDeterministicLeagueAvatar(league.id),
       }));

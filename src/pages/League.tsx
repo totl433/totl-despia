@@ -1105,6 +1105,25 @@ export default function LeaguePage() {
         return;
       }
       
+      // Special handling for "API Test" league - it uses test API data, not regular game data
+      if (league?.name === 'API Test') {
+        // Show empty table with zero points for all members (test league starts fresh)
+        setMltRows(
+          members.map((m) => ({
+            user_id: m.id,
+            name: m.name,
+            mltPts: 0,
+            ocp: 0,
+            unicorns: 0,
+            wins: 0,
+            draws: 0,
+            form: [],
+          }))
+        );
+        setMltLoading(false);
+        return;
+      }
+      
       // Don't calculate until we have currentGw loaded
       if (currentGw === null) {
         return;
@@ -1145,7 +1164,8 @@ export default function LeaguePage() {
 
       // Filter gameweeks to only include those from the league's start_gw onwards
       // Special leagues that should include all historical data (start from GW0)
-      const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League', 'API Test'];
+      // Note: "API Test" is excluded - it uses test API data, not regular game data
+      const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League'];
       const gw7StartLeagues = ['The Bird league'];
       
       const leagueStartGw = await getLeagueStartGw(league, currentGw);
@@ -1310,7 +1330,8 @@ export default function LeaguePage() {
     };
 
     // Check if this is a late-starting league (not one of the special leagues that start from GW0)
-    const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League', 'API Test'];
+    // Note: "API Test" is excluded - it uses test API data, not regular game data
+    const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League'];
     const gw7StartLeagues = ['The Bird league'];
     const gw8StartLeagues = ['gregVjofVcarl', 'Let Down'];
     const isLateStartingLeague = league && !specialLeagues.includes(league.name) && !gw7StartLeagues.includes(league.name) && !gw8StartLeagues.includes(league.name);
@@ -2218,6 +2239,11 @@ export default function LeaguePage() {
             {/* Title */}
             <h1 className="text-lg font-normal text-slate-900 truncate flex-1 text-left px-2">
               {league.name}
+              {league.name === 'API Test' && (
+                <div className="mt-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                  <strong>⚠️ Test League:</strong> This league uses test API data and starts from Test GW 1 with zero points. It does not affect your main game scores.
+                </div>
+              )}
             </h1>
             
             {/* Menu button */}
