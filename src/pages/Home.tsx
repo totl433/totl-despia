@@ -634,12 +634,13 @@ export default function HomePage() {
               // Set timeout to resume polling in 15 minutes
               const htResumeTimeout = setTimeout(() => {
                 console.log('[Home] Resuming polling for fixture', fixtureIndex, 'after half-time');
-                // Resume polling every minute
+                // Resume polling every minute until game starts or finishes
                 const resumePoll = async () => {
                   const resumeScoreData = await fetchLiveScore(fixture.api_match_id!);
                   if (resumeScoreData) {
                     const resumeIsFinished = resumeScoreData.status === 'FINISHED';
                     const resumeIsLive = resumeScoreData.status === 'IN_PLAY' || resumeScoreData.status === 'PAUSED';
+                    const resumeIsHalfTime = resumeScoreData.status === 'HALF_TIME' || resumeScoreData.status === 'HT';
                     
                     setLiveScores(prev => ({
                       ...prev,
@@ -658,8 +659,13 @@ export default function HomePage() {
                         clearInterval(resumeInterval);
                         intervals.delete(fixtureIndex);
                       }
+                      htResumeTimeouts.delete(fixtureIndex);
                     } else if (resumeIsLive) {
-                      console.log('[Home] Game', fixtureIndex, 'resumed - status:', resumeScoreData.status, 'minute:', resumeScoreData.minute);
+                      // Second half has started - continue polling every minute until FT
+                      console.log('[Home] Game', fixtureIndex, 'second half started - status:', resumeScoreData.status, 'minute:', resumeScoreData.minute);
+                    } else if (resumeIsHalfTime) {
+                      // Still at half-time, keep polling every minute until second half starts
+                      console.log('[Home] Game', fixtureIndex, 'still at half-time, continuing to poll...');
                     }
                   }
                 };
