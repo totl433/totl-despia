@@ -441,6 +441,22 @@ export default function TestApiPredictions() {
       } else if (match.score?.current?.minute !== undefined && match.score.current.minute !== null) {
         minute = typeof match.score.current.minute === 'string' ? parseInt(match.score.current.minute, 10) : match.score.current.minute;
         if (isNaN(minute)) minute = null;
+      } else if (match.score?.duration !== undefined && match.score.duration !== null) {
+        // Some APIs use duration field
+        minute = typeof match.score.duration === 'string' ? parseInt(match.score.duration, 10) : match.score.duration;
+        if (isNaN(minute)) minute = null;
+      } else if (match.utcDate && status === 'IN_PLAY') {
+        // Fallback: calculate minute from match start time (if available)
+        try {
+          const matchStart = new Date(match.utcDate);
+          const now = new Date();
+          const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
+          if (diffMinutes > 0 && diffMinutes < 120) { // Reasonable range for a football match
+            minute = diffMinutes;
+          }
+        } catch (e) {
+          // Ignore calculation errors
+        }
       }
       
       return { homeScore, awayScore, status, minute };
