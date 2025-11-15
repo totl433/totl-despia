@@ -158,7 +158,7 @@ export default function NewPredictionsCentre() {
         if (isInApiTestLeague) {
           try {
             // Check if test fixtures exist for GW 1
-            const { data: testFx, error: testFxError } = await supabase
+            const testFxResult = await supabase
               .from("test_api_fixtures")
               .select(
                 "id,test_gw as gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
@@ -166,10 +166,17 @@ export default function NewPredictionsCentre() {
               .eq("test_gw", 1)
               .order("fixture_index", { ascending: true });
             
+            // Check if result is valid (not HTML error page)
+            if (testFxResult.error) {
+              console.error('[NewPredictionsCentre] Error fetching test fixtures:', testFxResult.error);
+              throw testFxResult.error;
+            }
+            
             // If test fixtures exist and no error, use them and set display GW to 1
-            if (!testFxError && testFx && testFx.length > 0) {
-              fx = { data: testFx, error: null };
+            if (testFxResult.data && testFxResult.data.length > 0) {
+              fx = { data: testFxResult.data, error: null };
               displayGw = 1; // Show as GW 1 for API Test league
+              console.log('[NewPredictionsCentre] Using test fixtures for GW 1:', testFxResult.data.length, 'fixtures');
             } else {
               // Fall back to regular fixtures
               console.log('[NewPredictionsCentre] No test fixtures found, using regular fixtures');
@@ -181,7 +188,7 @@ export default function NewPredictionsCentre() {
                 .eq("gw", currentGw)
                 .order("fixture_index", { ascending: true });
             }
-          } catch (testError) {
+          } catch (testError: any) {
             console.error('[NewPredictionsCentre] Error fetching test fixtures, falling back to regular:', testError);
             // Fall back to regular fixtures on any error
             fx = await supabase
