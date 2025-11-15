@@ -149,9 +149,17 @@ export function sendScoreUpdateNotification(
     }
   }
   
+  // Create a more engaging message for goal notifications
   const message = personalMessage 
     ? `${minuteText} - ${personalMessage}`
-    : `Score update: ${minuteText}`;
+    : `⚽ GOAL! ${minuteText}`;
+  
+  console.log('[Notifications] Sending score update notification:', {
+    title: `${homeTeam} ${homeScore}-${awayScore} ${awayTeam}`,
+    message,
+    minute: minuteText,
+    isFinished
+  });
   
   sendLocalNotification(
     0, // Send immediately

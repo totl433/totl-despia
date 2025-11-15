@@ -644,16 +644,49 @@ export default function HomePage() {
             
             // Check if score has changed for notification
             const prevScore = prevScoresRef.current[fixtureIndex];
-            const scoreChanged = !prevScore || 
-              prevScore.homeScore !== scoreData.homeScore || 
-              prevScore.awayScore !== scoreData.awayScore;
             
-            // Send score update notification if score changed (live or finished)
-            if (scoreChanged && prevScore) {
+            // Initialize prevScore if this is the first time we're seeing a score for this fixture
+            // This ensures we can detect score changes on subsequent polls
+            if (!prevScore && (isLive || isHalfTime || isFinished)) {
+              prevScoresRef.current[fixtureIndex] = {
+                homeScore: scoreData.homeScore,
+                awayScore: scoreData.awayScore
+              };
+              console.log('[Home] Initialized prevScore for fixture', fixtureIndex, ':', {
+                homeScore: scoreData.homeScore,
+                awayScore: scoreData.awayScore
+              });
+            }
+            
+            // Check if score has changed (goal scored)
+            const scoreChanged = prevScore && (
+              prevScore.homeScore !== scoreData.homeScore || 
+              prevScore.awayScore !== scoreData.awayScore
+            );
+            
+            // Send score update notification if score changed (goal scored)
+            // Only send if we have a previous score to compare (prevScore exists)
+            // This ensures we only notify on actual goal changes, not initial score detection
+            if (scoreChanged && prevScore && (isLive || isHalfTime || isFinished)) {
               const homeName = fixture.home_name || fixture.home_team || 'Home';
               const awayName = fixture.away_name || fixture.away_team || 'Away';
               // Get user's pick for this fixture
               const userPick = picksMap[fixtureIndex] || null;
+              
+              // Determine which team scored
+              const homeScored = scoreData.homeScore > prevScore.homeScore;
+              const awayScored = scoreData.awayScore > prevScore.awayScore;
+              
+              console.log('[Home] GOAL! Score changed - sending notification:', {
+                fixtureIndex,
+                prevScore,
+                newScore: { homeScore: scoreData.homeScore, awayScore: scoreData.awayScore },
+                homeScored,
+                awayScored,
+                minute: scoreData.minute,
+                isFinished
+              });
+              
               sendScoreUpdateNotification(
                 homeName,
                 awayName,
@@ -665,7 +698,7 @@ export default function HomePage() {
               );
             }
             
-            // Update previous score
+            // Update previous score (always update, even if no notification sent)
             prevScoresRef.current[fixtureIndex] = {
               homeScore: scoreData.homeScore,
               awayScore: scoreData.awayScore
