@@ -127,16 +127,20 @@ export default function NewPredictionsCentre() {
         if (user?.id) {
           try {
             // First get all user's leagues
-            const { data: userLeagues } = await supabase
+            const { data: userLeagues, error: leaguesError } = await supabase
               .from("league_members")
               .select("leagues(id,name)")
               .eq("user_id", user.id);
             
-            // Check if any league has name "API Test"
-            if (userLeagues) {
+            // If error, log but don't fail - just don't use test fixtures
+            if (leaguesError) {
+              console.warn('[NewPredictionsCentre] Error checking leagues (non-fatal):', leaguesError);
+              isInApiTestLeague = false;
+            } else if (userLeagues) {
+              // Check if any league has name "API Test"
               isInApiTestLeague = userLeagues.some((row: any) => row.leagues?.name === "API Test");
             }
-          } catch (error) {
+          } catch (error: any) {
             console.error('[NewPredictionsCentre] Error checking API Test membership:', error);
             // If check fails, default to false (don't use test fixtures)
             isInApiTestLeague = false;
@@ -144,11 +148,22 @@ export default function NewPredictionsCentre() {
         }
         
         // Fetch current gameweek from meta table
-        const { data: meta } = await supabase
+        const { data: meta, error: metaError } = await supabase
           .from("meta")
           .select("current_gw")
           .eq("id", 1)
           .maybeSingle();
+        
+        if (metaError) {
+          console.error('[NewPredictionsCentre] Error fetching current GW:', metaError);
+          // Default to GW 1 if we can't fetch
+          if (alive) {
+            setError(`Failed to load gameweek: ${metaError.message || 'Unknown error'}`);
+            setLoading(false);
+          }
+          return;
+        }
+        
         const currentGw = (meta as any)?.current_gw ?? 1;
         
         // For API Test league members, always show Test GW 1 fixtures if they exist
