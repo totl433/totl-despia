@@ -46,37 +46,22 @@ type TestFixture = {
   selected: boolean; // Whether this fixture is selected for the GW
 };
 
-// Use absolute URL for Netlify functions to avoid dev server routing issues
+// Get Netlify function URL dynamically based on current environment
 const getFunctionUrl = () => {
-  const hostname = window.location.hostname;
-  const origin = window.location.origin;
+  // Always use current origin - this works correctly for both staging and production
+  // The relative path works with Netlify's routing, but absolute URL is safer
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
   
-  console.log('[TestAdminApi] Detecting environment:', { hostname, origin });
-  
-  // Always use the current origin for Netlify functions when deployed
-  // This works for both staging (totl-staging.netlify.app) and production
+  // For Netlify deployments, use absolute URL to avoid routing issues
   if (hostname.includes('netlify.app') || hostname.includes('netlify.com')) {
-    const url = `${origin}/.netlify/functions/fetchFootballData`;
-    console.log('[TestAdminApi] Using Netlify function URL:', url);
-    return url;
+    return `${origin}/.netlify/functions/fetchFootballData`;
   }
   
-  // Only use localhost:8888 if we're actually on localhost AND netlify dev is running
-  // But prefer relative path which works with netlify dev proxy
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    // Try to detect if netlify dev is running by checking if we can reach it
-    // For now, use relative path which netlify dev will proxy correctly
-    console.log('[TestAdminApi] Using relative path for localhost (netlify dev should proxy)');
-    return "/.netlify/functions/fetchFootballData";
-  }
-  
-  // Fallback: use current origin
-  const url = `${origin}/.netlify/functions/fetchFootballData`;
-  console.log('[TestAdminApi] Using fallback URL:', url);
-  return url;
+  // For localhost, use relative path (netlify dev will proxy it correctly)
+  // Or if running netlify dev, it will work with relative path
+  return "/.netlify/functions/fetchFootballData";
 };
-
-const FOOTBALL_DATA_PROXY_URL = getFunctionUrl();
 
 export default function TestAdminApi() {
   const { user } = useAuth();
@@ -103,8 +88,11 @@ export default function TestAdminApi() {
         params.append('matchday', gw.toString());
       }
 
-      const url = `${FOOTBALL_DATA_PROXY_URL}?${params.toString()}`;
+      // Get function URL dynamically at request time
+      const functionUrl = getFunctionUrl();
+      const url = `${functionUrl}?${params.toString()}`;
       console.log('[TestAdminApi] Fetching from:', url);
+      console.log('[TestAdminApi] Current origin:', typeof window !== 'undefined' ? window.location.origin : 'N/A');
 
       const response = await fetch(url, {
         signal
