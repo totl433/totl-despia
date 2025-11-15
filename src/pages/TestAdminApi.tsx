@@ -513,7 +513,27 @@ export default function TestAdminApi() {
               {availableMatches.map((match, index) => {
                 const isSelected = selectedFixtures.has(index);
                 const kickoff = new Date(match.utcDate);
-                const kickoffStr = `${kickoff.toLocaleDateString()} ${String(kickoff.getUTCHours()).padStart(2, '0')}:${String(kickoff.getUTCMinutes()).padStart(2, '0')} UTC`;
+                
+                // Format date with TODAY/TOMORROW indicator
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const tomorrow = new Date(today);
+                tomorrow.setDate(today.getDate() + 1);
+                
+                const kickoffDate = new Date(kickoff);
+                kickoffDate.setHours(0, 0, 0, 0);
+                
+                let dateLabel = '';
+                if (kickoffDate.getTime() === today.getTime()) {
+                  dateLabel = 'TODAY';
+                } else if (kickoffDate.getTime() === tomorrow.getTime()) {
+                  dateLabel = 'TOMORROW';
+                } else {
+                  dateLabel = kickoff.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                }
+                
+                const timeStr = `${String(kickoff.getUTCHours()).padStart(2, '0')}:${String(kickoff.getUTCMinutes()).padStart(2, '0')} UTC`;
+                const kickoffStr = `${dateLabel} ${timeStr}`;
                 
                 return (
                   <div
