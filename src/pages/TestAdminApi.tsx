@@ -60,17 +60,17 @@ export default function TestAdminApi() {
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [competition, setCompetition] = useState("PL");
-  const [matchday, setMatchday] = useState<number | null>(null);
+  const [gameweek, setGameweek] = useState<number | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
 
   // Fetch available matches from API
-  const fetchApiMatches = async (comp: string, md: number | null, signal?: AbortSignal) => {
+  const fetchApiMatches = async (comp: string, gw: number | null, signal?: AbortSignal) => {
     try {
       const params = new URLSearchParams({
         competition: comp,
       });
-      if (md !== null) {
-        params.append('matchday', md.toString());
+      if (gw !== null) {
+        params.append('matchday', gw.toString());
       }
 
       const url = `${FOOTBALL_DATA_PROXY_URL}?${params.toString()}`;
@@ -367,30 +367,35 @@ export default function TestAdminApi() {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Matchday:</label>
-              <input
-                type="number"
-                value={matchday || ""}
-                onChange={(e) => setMatchday(e.target.value ? parseInt(e.target.value) : null)}
-                placeholder="e.g. 12"
+              <label className="block text-sm font-medium text-slate-700 mb-2">Game Week:</label>
+              <select
+                value={gameweek || ""}
+                onChange={(e) => setGameweek(e.target.value ? parseInt(e.target.value) : null)}
                 className="w-full border rounded px-3 py-2"
-              />
+              >
+                <option value="">Select Game Week</option>
+                {Array.from({ length: 38 }, (_, i) => i + 1).map((gw) => (
+                  <option key={gw} value={gw}>
+                    Game Week {gw}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
           <button
             onMouseDown={(e) => {
-              console.log('[TestAdminApi] Button mousedown', { matchday, fetchingMatches, disabled: e.currentTarget.disabled });
+              console.log('[TestAdminApi] Button mousedown', { gameweek, fetchingMatches, disabled: e.currentTarget.disabled });
             }}
             onMouseEnter={() => {
               console.log('[TestAdminApi] Button hover');
             }}
             onClick={(e) => {
-              console.log('[TestAdminApi] Button clicked', { matchday, fetchingMatches, disabled: e.currentTarget.disabled });
+              console.log('[TestAdminApi] Button clicked', { gameweek, fetchingMatches, disabled: e.currentTarget.disabled });
               
-              if (!matchday) {
-                const errorMsg = "⚠️ Please enter a matchday number (e.g., 12) in the Matchday field above";
-                console.log('[TestAdminApi] No matchday entered:', errorMsg);
+              if (!gameweek) {
+                const errorMsg = "⚠️ Please select a Game Week from the dropdown above";
+                console.log('[TestAdminApi] No gameweek selected:', errorMsg);
                 setApiError(errorMsg);
                 // Also clear any previous matches
                 setAvailableMatches([]);
@@ -409,13 +414,13 @@ export default function TestAdminApi() {
                 return;
               }
               
-              console.log('[TestAdminApi] Starting fetch', { competition, matchday });
+              console.log('[TestAdminApi] Starting fetch', { competition, gameweek });
               
               const abortController = new AbortController();
               setFetchingMatches(true);
               setApiError(null);
               
-              fetchApiMatches(competition, matchday, abortController.signal)
+              fetchApiMatches(competition, gameweek, abortController.signal)
                 .then((matches) => {
                   console.log('[TestAdminApi] Matches fetched', matches?.length || 0);
                   if (matches && matches.length > 0) {
@@ -436,7 +441,7 @@ export default function TestAdminApi() {
                   setFetchingMatches(false);
                 });
             }}
-            disabled={fetchingMatches}
+            disabled={fetchingMatches || !gameweek}
             className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-transform relative z-10"
             type="button"
           >
