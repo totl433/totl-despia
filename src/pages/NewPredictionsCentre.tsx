@@ -185,7 +185,7 @@ export default function NewPredictionsCentre() {
           return;
         }
 
-        const realFixtures: Fixture[] = (fx as Fixture[]) ?? [];
+        const realFixtures: Fixture[] = (fxData as Fixture[]) ?? [];
         if (alive) {
           setFixtures(realFixtures);
           console.log('Loaded', realFixtures.length, 'real GW', currentGw, 'fixtures');
