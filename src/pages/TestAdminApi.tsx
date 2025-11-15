@@ -81,7 +81,7 @@ export default function TestAdminApi() {
   const [ok, setOk] = useState("");
   const [competition, setCompetition] = useState("PL");
   const [apiError, setApiError] = useState<string | null>(null);
-  const [autoLoading, setAutoLoading] = useState(true);
+  const [autoLoading, setAutoLoading] = useState(false);
 
   // Fetch available matches from API for the next week
   const fetchUpcomingMatches = async (comp: string, signal?: AbortSignal) => {
@@ -217,34 +217,6 @@ export default function TestAdminApi() {
       return null;
     }
   };
-
-  // Auto-fetch upcoming matches on load and when competition changes
-  useEffect(() => {
-    if (!isAdmin) return;
-    
-    let alive = true;
-    setAutoLoading(true);
-    
-    (async () => {
-      try {
-        const matches = await fetchUpcomingMatches(competition);
-        if (alive && matches && matches.length > 0) {
-          setAvailableMatches(matches);
-          setApiError(null);
-        } else if (alive && matches && matches.length === 0) {
-          setApiError("No upcoming matches found in the next week for this competition.");
-        }
-      } catch (error) {
-        console.error('[TestAdminApi] Error auto-loading matches:', error);
-      } finally {
-        if (alive) setAutoLoading(false);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [isAdmin, competition]);
 
   // Load existing test GW fixtures (non-blocking - runs in background)
   useEffect(() => {
