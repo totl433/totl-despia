@@ -564,7 +564,7 @@ export default function HomePage() {
         const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000)); // 75 minutes before
         scheduleDeadlineReminder(deadlineTime.toISOString(), 1, 2); // GW 1, 2 hours before
         
-        // Schedule "Game Week Starting Soon" notification (15 minutes before first kickoff)
+        // Schedule "Game Week Starting Soon" notification (10 minutes before first kickoff)
         scheduleGameweekStartingSoon(fixture.kickoff_time, 1); // GW 1
       }
       

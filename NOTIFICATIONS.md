@@ -9,16 +9,16 @@ The app uses the Despia SDK (`despia-native`) to send local push notifications. 
 ## Notification Types
 
 ### 1. **Game Week Starting Soon** 🚀
-**When:** 15 minutes before the first kickoff
+**When:** 10 minutes before the first kickoff
 
 **Example for API Test GW 1:**
-- If first game kicks off at **Sat 15 Nov, 15:00 UTC**
-- Notification sent at **Sat 15 Nov, 14:45 UTC** (15 minutes before)
+- If first game kicks off at **Sat 15 Nov, 15:00 UTC** (21:30 UK time)
+- Notification sent at **Sat 15 Nov, 14:50 UTC** (21:20 UK time) (10 minutes before)
 
 **Notification:**
 ```
 Title: "Gameweek 1 Starting Soon! ⚽"
-Message: "The action begins in 15 minutes! Get ready for some football magic! 🎯"
+Message: "The action begins in 10 minutes! Get ready for some football magic! 🎯"
 ```
 
 ### 2. **Deadline Reminders** ⏰
@@ -137,7 +137,7 @@ Message: "All games are done! Come see the results and find out who won!"
 ## Technical Details
 
 ### Scheduling
-- **Game Week Starting Soon:** Scheduled when fixtures are loaded, 15 minutes before first kickoff
+- **Game Week Starting Soon:** Scheduled when fixtures are loaded, 10 minutes before first kickoff
 - **Deadline reminders:** Scheduled when fixtures are loaded, calculated from first kickoff time
 - **Live game notifications:** Scheduled when fixtures are loaded, one per game at kickoff time
 - **Score updates:** Sent immediately when score changes are detected (no scheduling needed)
@@ -165,8 +165,8 @@ Assuming fixtures kick off on **Sat 15 Nov, 15:00 UTC**:
 
 2. **Sat 15 Nov, 13:45 UTC** - Deadline passes (75 min before kickoff)
 
-3. **Sat 15 Nov, 14:45 UTC** - Game Week Starting Soon notification
-   - "Gameweek 1 Starting Soon! ⚽ - The action begins in 15 minutes! Get ready for some football magic! 🎯"
+3. **Sat 15 Nov, 14:50 UTC** (21:20 UK time) - Game Week Starting Soon notification
+   - "Gameweek 1 Starting Soon! ⚽ - The action begins in 10 minutes! Get ready for some football magic! 🎯"
 
 4. **Sat 15 Nov, 15:00 UTC** - Game 1 starts
    - "SC Recife vs CR Flamengo is kicking off now!"
