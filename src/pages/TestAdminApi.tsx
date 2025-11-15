@@ -114,20 +114,23 @@ export default function TestAdminApi() {
         return null;
       }
 
-      if (!isJson) {
-        const text = await response.text();
-        console.error('[TestAdminApi] Response is not JSON:', text.substring(0, 200));
-        setApiError("Server returned invalid response (not JSON). The function may not be deployed correctly.");
-        return null;
-      }
-
+      // If response is OK, try to parse as JSON regardless of content-type header
+      // (Netlify might not always set content-type correctly)
       let result;
       try {
         result = await response.json();
       } catch (parseError) {
+        // If JSON parse fails, check if we got HTML (error page)
         const text = await response.text();
-        console.error('[TestAdminApi] Failed to parse JSON:', text.substring(0, 200));
-        setApiError("Failed to parse response. Server may be returning an error page.");
+        console.error('[TestAdminApi] Failed to parse JSON. Response:', text.substring(0, 200));
+        
+        if (text.trim().startsWith('<!') || text.trim().startsWith('<html')) {
+          setApiError("Server returned an HTML error page. The function may not be deployed correctly.");
+        } else if (!isJson) {
+          setApiError("Server returned invalid response (not JSON). The function may not be deployed correctly.");
+        } else {
+          setApiError("Failed to parse JSON response. Server may be returning an error.");
+        }
         return null;
       }
 
