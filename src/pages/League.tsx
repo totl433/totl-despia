@@ -1535,7 +1535,7 @@ export default function LeaguePage() {
   }
 
   function GwPicksTab() {
-    const picksGw = currentGw;
+    const picksGw = league?.name === 'API Test' ? 1 : currentGw;
     if (!picksGw) {
       return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No current game week available.</div>;
     }
@@ -2287,8 +2287,8 @@ export default function LeaguePage() {
                   (tab === "gwr" ? "text-[#1C8376]" : "text-slate-400")
                 }
               >
-                <span className="hidden sm:inline">{selectedGw ? `GW ${selectedGw} Results` : (currentGw ? `GW ${currentGw} Results` : "GW Results")}</span>
-                <span className="sm:hidden whitespace-pre-line">{selectedGw ? `GW${selectedGw}\nResults` : (currentGw ? `GW${currentGw}\nResults` : "GW\nResults")}</span>
+                <span className="hidden sm:inline">{selectedGw ? `GW ${selectedGw} Results` : (league?.name === 'API Test' ? 'GW 1 Results' : (currentGw ? `GW ${currentGw} Results` : "GW Results"))}</span>
+                <span className="sm:hidden whitespace-pre-line">{selectedGw ? `GW${selectedGw}\nResults` : (league?.name === 'API Test' ? 'GW1\nResults' : (currentGw ? `GW${currentGw}\nResults` : "GW\nResults"))}</span>
                 {tab === "gwr" && (
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
                 )}
@@ -2303,8 +2303,8 @@ export default function LeaguePage() {
                   (tab === "gw" ? "text-[#1C8376]" : "text-slate-400")
                 }
               >
-                <span className="hidden sm:inline">{currentGw ? `GW ${currentGw} Predictions` : "GW Predictions"}</span>
-                <span className="sm:hidden whitespace-pre-line">{currentGw ? `GW${currentGw}\nPredictions` : "GW\nPredictions"}</span>
+                <span className="hidden sm:inline">{league?.name === 'API Test' ? 'GW 1 Predictions' : (currentGw ? `GW ${currentGw} Predictions` : "GW Predictions")}</span>
+                <span className="sm:hidden whitespace-pre-line">{league?.name === 'API Test' ? 'GW1\nPredictions' : (currentGw ? `GW${currentGw}\nPredictions` : "GW\nPredictions")}</span>
                 {tab === "gw" && (
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
                 )}
