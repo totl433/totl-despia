@@ -149,11 +149,12 @@ export default function NewPredictionsCentre() {
           .eq("id", 1)
           .maybeSingle();
         const currentGw = (meta as any)?.current_gw ?? 1;
-        setCurrentGw(currentGw);
         
-        // For API Test league members, check if test GW 1 fixtures exist
+        // For API Test league members, always show Test GW 1 fixtures if they exist
+        // (regardless of main game's current GW)
         let fx;
-        if (isInApiTestLeague && currentGw === 1) {
+        let displayGw = currentGw;
+        if (isInApiTestLeague) {
           try {
             // Check if test fixtures exist for GW 1
             const { data: testFx, error: testFxError } = await supabase
@@ -164,9 +165,10 @@ export default function NewPredictionsCentre() {
               .eq("test_gw", 1)
               .order("fixture_index", { ascending: true });
             
-            // If test fixtures exist and no error, use them; otherwise fall back to regular fixtures
+            // If test fixtures exist and no error, use them and set display GW to 1
             if (!testFxError && testFx && testFx.length > 0) {
               fx = { data: testFx, error: null };
+              displayGw = 1; // Show as GW 1 for API Test league
             } else {
               // Fall back to regular fixtures
               console.log('[NewPredictionsCentre] No test fixtures found, using regular fixtures');
@@ -238,12 +240,14 @@ export default function NewPredictionsCentre() {
           }
         }
 
-        // Fetch user's picks for current gameweek
+        // Fetch user's picks for the gameweek being displayed
+        // For API Test league showing test fixtures, fetch picks for GW 1
+        const picksGw = isInApiTestLeague && displayGw === 1 ? 1 : currentGw;
         if (user?.id) {
           const { data: pk, error: pkErr } = await supabase
             .from("picks")
             .select("gw,fixture_index,pick")
-            .eq("gw", currentGw)
+            .eq("gw", picksGw)
             .eq("user_id", user.id);
 
           if (pkErr) {
@@ -281,11 +285,13 @@ export default function NewPredictionsCentre() {
           }
         }
 
-        // Fetch results for current gameweek
+        // Fetch results for the gameweek being displayed
+        // For API Test league showing test fixtures, fetch results for GW 1
+        const resultsGw = isInApiTestLeague && displayGw === 1 ? 1 : currentGw;
         const { data: rs, error: rsErr } = await supabase
           .from("gw_results")
           .select("gw,fixture_index,result")
-          .eq("gw", currentGw);
+          .eq("gw", resultsGw);
 
         if (!rsErr && rs) {
           const resultsMap = new Map<number, "H" | "D" | "A">();
