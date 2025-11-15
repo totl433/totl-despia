@@ -9,6 +9,14 @@
 [build.environment]
   SECRETS_SCAN_OMIT_PATHS = "register-devices.sh,check-*.sh,*.sh"
 
+# Don't redirect Netlify functions - they need to work directly
+[[redirects]]
+  from = "/.netlify/functions/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
+
+# Redirect everything else to index.html for SPA routing
 [[redirects]]
   from = "/*"
   to = "/index.html"
