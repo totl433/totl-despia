@@ -43,9 +43,9 @@ function formatMinuteDisplay(status: string, minute: number | null | undefined):
     // After 90 minutes, show 90+ until FT
     return '90+';
   }
-  if (minute > 45) {
-    // Second half: show 90+ (not 45+1, 45+2, etc.)
-    return '90+';
+  if (minute > 45 && minute <= 90) {
+    // Second half: show actual minute (46', 47', etc. up to 90')
+    return `${minute}'`;
   }
   if (minute === 45) {
     // At 45 minutes, show 45+ until HT pause
