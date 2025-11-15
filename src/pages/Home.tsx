@@ -3026,7 +3026,7 @@ export default function HomePage() {
                       {isLive && (
                         <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
                           <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                          <span className="text-xs font-bold text-red-600">{liveScore.minute ? `${liveScore.minute}'` : 'LIVE'}</span>
+                          <span className="text-xs font-bold text-red-600">{liveScore.minute ?? 'LIVE'}'</span>
                         </div>
                       )}
                       
