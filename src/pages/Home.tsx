@@ -3169,10 +3169,32 @@ export default function HomePage() {
                       const pullTimestamp = lastApiPull?.timestamp || new Date();
                       const timeString = pullTimestamp.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
                       
+                      // Check if we have halftime end time for any live fixture
+                      let halftimeEndTime: Date | null = null;
+                      for (const f of fixturesToCheck) {
+                        if (f.api_match_id) {
+                          const htEndTime = halftimeEndTimeRef.current[f.api_match_id];
+                          if (htEndTime instanceof Date) {
+                            if (!halftimeEndTime || htEndTime.getTime() > halftimeEndTime.getTime()) {
+                              halftimeEndTime = htEndTime;
+                            }
+                          }
+                        }
+                      }
+                      
+                      const halftimeEndTimeString = halftimeEndTime ? halftimeEndTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }) : null;
+                      
                       return hasSuccess ? (
                         <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-slate-100 text-slate-700 text-xs border border-slate-200">
                           <span className="text-slate-500 font-normal">last API:</span>
                           <span className="text-slate-500 font-normal">{timeString}</span>
+                          {halftimeEndTimeString && (
+                            <>
+                              <span className="text-slate-400">•</span>
+                              <span className="text-slate-500 font-normal">HT ended:</span>
+                              <span className="text-slate-600 font-medium">{halftimeEndTimeString}</span>
+                            </>
+                          )}
                           <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
