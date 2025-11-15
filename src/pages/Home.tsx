@@ -526,15 +526,20 @@ export default function HomePage() {
           return;
         }
         
+          // Track HT state to resume polling after 15 minutes
+          const htResumeTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
+          
           const poll = async () => {
             const scoreData = await fetchLiveScore(fixture.api_match_id!);
             if (scoreData) {
             const isLive = scoreData.status === 'IN_PLAY' || scoreData.status === 'PAUSED';
+            const isHalfTime = scoreData.status === 'HALF_TIME' || scoreData.status === 'HT';
             const isFinished = scoreData.status === 'FINISHED';
             
             console.log('[Home] Poll result for fixture', fixtureIndex, ':', {
               status: scoreData.status,
               isLive,
+              isHalfTime,
               isFinished,
               homeScore: scoreData.homeScore,
               awayScore: scoreData.awayScore,
@@ -596,14 +601,76 @@ export default function HomePage() {
                 return updated;
               });
             
-            // Stop polling if game is finished
+            // Handle different game states
             if (isFinished) {
+              // Game finished - stop polling
               console.log('[Home] Game', fixtureIndex, 'finished, stopping polling');
               const pollInterval = intervals.get(fixtureIndex);
               if (pollInterval) {
                 clearInterval(pollInterval);
                 intervals.delete(fixtureIndex);
               }
+              // Clear any HT resume timeout
+              const htTimeout = htResumeTimeouts.get(fixtureIndex);
+              if (htTimeout) {
+                clearTimeout(htTimeout);
+                htResumeTimeouts.delete(fixtureIndex);
+              }
+            } else if (isHalfTime) {
+              // Half-time - stop polling, resume in 15 minutes
+              console.log('[Home] Game', fixtureIndex, 'at half-time, stopping polling, will resume in 15 minutes');
+              const pollInterval = intervals.get(fixtureIndex);
+              if (pollInterval) {
+                clearInterval(pollInterval);
+                intervals.delete(fixtureIndex);
+              }
+              
+              // Clear any existing HT resume timeout
+              const existingTimeout = htResumeTimeouts.get(fixtureIndex);
+              if (existingTimeout) {
+                clearTimeout(existingTimeout);
+              }
+              
+              // Set timeout to resume polling in 15 minutes
+              const htResumeTimeout = setTimeout(() => {
+                console.log('[Home] Resuming polling for fixture', fixtureIndex, 'after half-time');
+                // Resume polling every minute
+                const resumePoll = async () => {
+                  const resumeScoreData = await fetchLiveScore(fixture.api_match_id!);
+                  if (resumeScoreData) {
+                    const resumeIsFinished = resumeScoreData.status === 'FINISHED';
+                    const resumeIsLive = resumeScoreData.status === 'IN_PLAY' || resumeScoreData.status === 'PAUSED';
+                    
+                    setLiveScores(prev => ({
+                      ...prev,
+                      [fixtureIndex]: {
+                        homeScore: resumeScoreData.homeScore,
+                        awayScore: resumeScoreData.awayScore,
+                        status: resumeScoreData.status,
+                        minute: resumeScoreData.minute ?? null
+                      }
+                    }));
+                    
+                    if (resumeIsFinished) {
+                      console.log('[Home] Game', fixtureIndex, 'finished, stopping polling');
+                      const resumeInterval = intervals.get(fixtureIndex);
+                      if (resumeInterval) {
+                        clearInterval(resumeInterval);
+                        intervals.delete(fixtureIndex);
+                      }
+                    } else if (resumeIsLive) {
+                      console.log('[Home] Game', fixtureIndex, 'resumed - status:', resumeScoreData.status, 'minute:', resumeScoreData.minute);
+                    }
+                  }
+                };
+                
+                resumePoll(); // Poll immediately
+                const resumeInterval = setInterval(resumePoll, 60 * 1000); // Every 1 minute
+                intervals.set(fixtureIndex, resumeInterval);
+                htResumeTimeouts.delete(fixtureIndex);
+              }, 15 * 60 * 1000); // 15 minutes
+              
+              htResumeTimeouts.set(fixtureIndex, htResumeTimeout);
             } else if (isLive) {
               console.log('[Home] Game', fixtureIndex, 'is LIVE - status:', scoreData.status, 'minute:', scoreData.minute);
             }
@@ -611,7 +678,7 @@ export default function HomePage() {
           };
           
           poll(); // Poll immediately
-        const pollInterval = setInterval(poll, 5 * 60 * 1000); // Every 5 minutes
+        const pollInterval = setInterval(poll, 60 * 1000); // Every 1 minute
         intervals.set(fixtureIndex, pollInterval);
       };
       
@@ -652,6 +719,7 @@ export default function HomePage() {
       console.log('[Home] Cleaning up polling intervals and timeouts');
       intervals.forEach(clearInterval);
       timeouts.forEach(clearTimeout);
+      // Note: HT resume timeouts are stored in startPolling closure, will be cleaned up when component unmounts
     };
   }, [isInApiTestLeague, fixtures.map(f => f.api_match_id).join(','), picksMap]);
 
