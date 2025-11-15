@@ -118,6 +118,8 @@ export default function HomePage() {
   const prevScoresRef = useRef<Record<number, { homeScore: number; awayScore: number }>>({});
   // Track if results notification has been sent
   const resultsNotificationSentRef = useRef(false);
+  // Track if "Game Week Starting Soon" notification has been scheduled
+  const gameweekStartingSoonScheduledRef = useRef(false);
   const [isInApiTestLeague, setIsInApiTestLeague] = useState(false);
 
   // Extract data fetching into a reusable function for pull-to-refresh
@@ -564,8 +566,11 @@ export default function HomePage() {
         const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000)); // 75 minutes before
         scheduleDeadlineReminder(deadlineTime.toISOString(), 1, 2); // GW 1, 2 hours before
         
-        // Schedule "Game Week Starting Soon" notification (10 minutes before first kickoff)
-        scheduleGameweekStartingSoon(fixture.kickoff_time, 1); // GW 1
+        // Schedule "Game Week Starting Soon" notification (10 minutes before first kickoff) - only once
+        if (!gameweekStartingSoonScheduledRef.current) {
+          scheduleGameweekStartingSoon(fixture.kickoff_time, 1); // GW 1
+          gameweekStartingSoonScheduledRef.current = true;
+        }
       }
       
       // If kickoff hasn't happened yet, set a timeout to start polling at kickoff
