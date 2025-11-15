@@ -106,17 +106,17 @@ Message: "FT - Wrong pick"
 - The app tracks previous scores to avoid duplicate notifications
 
 ### 4. **Results Notifications** 🏆
-**When:** When ALL games in the gameweek have finished
+**When:** When ALL games in the gameweek have finished (the last game ends)
 
 **Example for API Test GW 1:**
 - Game 1 finishes: SC Recife 3-1 CR Flamengo (FT)
 - Game 2 finishes: Santos FC 1-1 SE Palmeiras (FT)
-- Game 3 finishes: RB Bragantino 2-1 CA Mineiro (FT)
-- **Once all 3 games are finished**, notification sent:
+- Game 3 finishes: RB Bragantino 2-1 CA Mineiro (FT) ← **Last game ends**
+- **Once the last game finishes**, notification sent immediately:
 
 ```
-Title: "GW1 Results Are In!"
-Message: "All games have finished. Check your scores and see who won!"
+Title: "Gameweek 1 Finished! 🏆"
+Message: "All games are done! Come see the results and find out who won!"
 ```
 
 **Note:** This notification is only sent once per gameweek, even if the app polls multiple times.
@@ -178,9 +178,9 @@ Assuming fixtures kick off on **Sat 15 Nov, 15:00 UTC**:
     - "RB Bragantino 1-1 CA Mineiro - Score update: 52'"
     - "RB Bragantino 2-1 CA Mineiro - Score update: 78'"
 
-11. **Sun 16 Nov, ~19:00 UTC** - Game 3 finishes
-    - **Results notification sent:**
-    - "GW1 Results Are In! All games have finished. Check your scores and see who won!"
+11. **Sun 16 Nov, ~19:00 UTC** - Game 3 finishes (last game)
+    - **Results notification sent immediately:**
+    - "Gameweek 1 Finished! 🏆 - All games are done! Come see the results and find out who won!"
 
 ## Implementation Files
 

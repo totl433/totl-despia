@@ -82,8 +82,8 @@ export function scheduleLiveGameNotification(
 export function sendResultsNotification(gameweek: number) {
   sendLocalNotification(
     0, // Send immediately
-    `GW${gameweek} Results Are In!`,
-    `All games have finished. Check your scores and see who won!`,
+    `Gameweek ${gameweek} Finished! 🏆`,
+    `All games are done! Come see the results and find out who won!`,
     `${window.location.origin}/league/api-test`
   );
 }
