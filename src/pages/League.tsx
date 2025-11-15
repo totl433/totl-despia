@@ -1186,23 +1186,62 @@ export default function LeaguePage() {
   // Fetch live scores from Football Data API
   const fetchLiveScore = async (apiMatchId: number) => {
     try {
-      const FOOTBALL_DATA_API_KEY = 'ed3153d132b847db836289243894706e';
-      const response = await fetch(`https://api.football-data.org/v4/matches/${apiMatchId}`, {
-        headers: {
-          'X-Auth-Token': FOOTBALL_DATA_API_KEY,
-        },
-      });
+      // Try Netlify function first (works in production and with netlify dev)
+      let response: Response;
+      let match: any;
       
-      if (!response.ok) {
-        if (response.status === 429) {
-          console.warn('[League] Rate limited, will retry on next poll');
+      try {
+        response = await fetch(`/.netlify/functions/fetchFootballData?matchId=${apiMatchId}`, {
+          method: 'GET',
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          // Netlify function returns { success: true, data: {...} }
+          match = result.data || result;
+        } else if (response.status === 404 || response.status === 0) {
+          // Netlify function not available (local dev without netlify dev)
+          console.warn('[League] Netlify function not available, trying direct API call');
+          throw new Error('Netlify function not available');
+        } else {
+          // Other error from Netlify function
+          if (response.status === 429) {
+            console.warn('[League] Rate limited, will retry on next poll');
+            return null;
+          }
+          console.error('[League] Error from Netlify function:', response.status, response.statusText);
           return null;
         }
-        return null;
+      } catch (fetchError: any) {
+        // Netlify function failed, try direct API call as fallback (for local dev)
+        if (fetchError.message === 'Netlify function not available' || fetchError.message.includes('Failed to fetch')) {
+          console.log('[League] Falling back to direct API call for local development');
+          const FOOTBALL_DATA_API_KEY = 'ed3153d132b847db836289243894706e';
+          response = await fetch(`https://api.football-data.org/v4/matches/${apiMatchId}`, {
+            headers: {
+              'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+            },
+          });
+          
+          if (!response.ok) {
+            if (response.status === 429) {
+              console.warn('[League] Rate limited, will retry on next poll');
+              return null;
+            }
+            console.error('[League] Error fetching live score:', response.status, response.statusText);
+            return null;
+          }
+          
+          match = await response.json();
+        } else {
+          throw fetchError;
+        }
       }
       
-      const match = await response.json();
-      if (!match || !match.score) return null;
+      if (!match || !match.score) {
+        console.warn('[League] No score data in API response:', match);
+        return null;
+      }
       
       const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? 0;
       const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? 0;
@@ -1247,7 +1286,17 @@ export default function LeaguePage() {
         const poll = async () => {
           const scoreData = await fetchLiveScore(fixture.api_match_id!);
           if (scoreData) {
+            const isLive = scoreData.status === 'IN_PLAY' || scoreData.status === 'PAUSED';
             const isFinished = scoreData.status === 'FINISHED';
+            
+            console.log('[League] Poll result for fixture', fixtureIndex, ':', {
+              status: scoreData.status,
+              isLive,
+              isFinished,
+              homeScore: scoreData.homeScore,
+              awayScore: scoreData.awayScore,
+              minute: scoreData.minute
+            });
             
             setLiveScores(prev => ({
               ...prev,
@@ -1261,11 +1310,14 @@ export default function LeaguePage() {
             
             // Stop polling if game is finished
             if (isFinished) {
+              console.log('[League] Game', fixtureIndex, 'finished, stopping polling');
               const pollInterval = intervals.get(fixtureIndex);
               if (pollInterval) {
                 clearInterval(pollInterval);
                 intervals.delete(fixtureIndex);
               }
+            } else if (isLive) {
+              console.log('[League] Game', fixtureIndex, 'is LIVE - status:', scoreData.status, 'minute:', scoreData.minute);
             }
           }
         };
@@ -1286,10 +1338,11 @@ export default function LeaguePage() {
     });
     
     return () => {
+      console.log('[League] Cleaning up polling intervals and timeouts');
       intervals.forEach(clearInterval);
       timeouts.forEach(clearTimeout);
     };
-  }, [league?.name, fixtures, tab]);
+  }, [league?.name, fixtures.map((f: any) => f.api_match_id).join(','), tab]);
 
   const submittedMap = useMemo(() => {
     const m = new Map<string, boolean>();
@@ -1959,7 +2012,7 @@ export default function LeaguePage() {
           const fixturesToCheck = sections.flatMap(sec => sec.items).slice(0, 3);
           const hasLiveGames = fixturesToCheck.some(f => {
             const score = combinedLiveScores[f.fixture_index];
-            return score && (score.status === 'LIVE' || score.status === 'IN_PLAY' || score.status === 'PAUSED');
+            return score && (score.status === 'IN_PLAY' || score.status === 'PAUSED');
           });
           const allGamesFinished = fixturesToCheck.length > 0 && fixturesToCheck.every(f => {
             const score = combinedLiveScores[f.fixture_index];
@@ -2019,7 +2072,7 @@ export default function LeaguePage() {
                           
                           // Get live score for this fixture (using combined mock + real scores)
                           const liveScore = combinedLiveScores[fxIdx];
-                          const isLive = liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+                          const isLive = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
                           const isFinished = liveScore && liveScore.status === 'FINISHED';
 
                           const toChips = (want: "H" | "D" | "A") => {
@@ -2386,7 +2439,7 @@ export default function LeaguePage() {
       const fixturesToCheck = fixtures.slice(0, 3);
       fixturesToCheck.forEach((f: any) => {
         const liveScore = liveScores[f.fixture_index];
-        if (liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
+        if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
           // Determine outcome from live score
           if (liveScore.homeScore > liveScore.awayScore) {
             outcomes.set(f.fixture_index, 'H');
@@ -2483,7 +2536,7 @@ export default function LeaguePage() {
         // Check if any fixtures are live
         hasLiveFixtures = fixturesToCheck.some((f: any) => {
           const liveScore = liveScores[f.fixture_index];
-          return liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+          return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
         });
         // Check if any fixtures are starting soon (within 24 hours of kickoff but not started)
         if (!hasLiveFixtures && !allFixturesFinished) {
@@ -2495,7 +2548,7 @@ export default function LeaguePage() {
             // Starting soon if kickoff is in the future and within 24 hours
             // Also check that there's no live score (meaning it hasn't started)
             const liveScore = liveScores[f.fixture_index];
-            const hasNotStarted = !liveScore || (liveScore.status !== 'LIVE' && liveScore.status !== 'IN_PLAY' && liveScore.status !== 'PAUSED' && liveScore.status !== 'FINISHED');
+            const hasNotStarted = !liveScore || (liveScore.status !== 'IN_PLAY' && liveScore.status !== 'PAUSED' && liveScore.status !== 'FINISHED');
             return hasNotStarted && timeUntilKickoff > 0 && timeUntilKickoff <= 24 * 60 * 60 * 1000;
           });
         }
