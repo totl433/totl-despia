@@ -217,6 +217,34 @@ export default function TestAdminApi() {
     }
   };
 
+  // Auto-fetch upcoming matches on load and when competition changes
+  useEffect(() => {
+    if (!isAdmin) return;
+    
+    let alive = true;
+    setAutoLoading(true);
+    
+    (async () => {
+      try {
+        const matches = await fetchUpcomingMatches(competition);
+        if (alive && matches && matches.length > 0) {
+          setAvailableMatches(matches);
+          setApiError(null);
+        } else if (alive && matches && matches.length === 0) {
+          setApiError("No upcoming matches found in the next week for this competition.");
+        }
+      } catch (error) {
+        console.error('[TestAdminApi] Error auto-loading matches:', error);
+      } finally {
+        if (alive) setAutoLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [isAdmin, competition]);
+
   // Load existing test GW fixtures (non-blocking - runs in background)
   useEffect(() => {
     if (!isAdmin) return;
