@@ -2903,7 +2903,8 @@ export default function HomePage() {
                               alt={homeName}
                               className="w-5 h-5"
                               onError={(e) => {
-                                e.currentTarget.style.display = 'none';
+                                // Reduce opacity if badge fails to load, don't hide completely
+                                (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
                               }}
                             />
                           </div>
@@ -2922,7 +2923,8 @@ export default function HomePage() {
                               alt={awayName}
                               className="w-5 h-5"
                               onError={(e) => {
-                                e.currentTarget.style.display = 'none';
+                                // Reduce opacity if badge fails to load, don't hide completely
+                                (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
                               }}
                             />
                             <div className="font-medium break-words">{awayName}</div>

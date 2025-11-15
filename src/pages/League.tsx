@@ -2051,55 +2051,29 @@ export default function LeaguePage() {
                                 </div>
                                 <div className="flex items-center justify-center gap-2">
                                   {homeKey && (
-                                    <div className="relative h-6 w-6">
-                                      <img 
-                                        src={`/assets/badges/${homeKey}.png`} 
-                                        alt={`${homeName} badge`} 
-                                        className="h-6 w-6 object-contain"
-                                        onError={(e) => {
-                                          const img = e.currentTarget;
-                                          img.style.display = 'none';
-                                          const placeholder = img.nextElementSibling as HTMLElement;
-                                          if (placeholder) {
-                                            placeholder.style.display = 'flex';
-                                          }
-                                        }}
-                                      />
-                                      <div 
-                                        className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 absolute top-0 left-0"
-                                        style={{ display: 'none' }}
-                                        title={homeName}
-                                      >
-                                        {homeKey.slice(0, 2)}
-                                      </div>
-                                    </div>
+                                    <img 
+                                      src={`/assets/badges/${homeKey}.png`} 
+                                      alt={`${homeName} badge`} 
+                                      className="h-6 w-6 object-contain"
+                                      onError={(e) => {
+                                        // Reduce opacity if badge fails to load, don't hide completely
+                                        (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
+                                      }}
+                                    />
                                   )}
                                   <div className="text-[15px] sm:text-base font-semibold text-slate-600">
                                     {timeStr}
                                   </div>
                                   {awayKey && (
-                                    <div className="relative h-6 w-6">
-                                      <img 
-                                        src={`/assets/badges/${awayKey}.png`} 
-                                        alt={`${awayName} badge`} 
-                                        className="h-6 w-6 object-contain"
-                                        onError={(e) => {
-                                          const img = e.currentTarget;
-                                          img.style.display = 'none';
-                                          const placeholder = img.nextElementSibling as HTMLElement;
-                                          if (placeholder) {
-                                            placeholder.style.display = 'flex';
-                                          }
-                                        }}
-                                      />
-                                      <div 
-                                        className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 absolute top-0 left-0"
-                                        style={{ display: 'none' }}
-                                        title={awayName}
-                                      >
-                                        {awayKey.slice(0, 2)}
-                                      </div>
-                                    </div>
+                                    <img 
+                                      src={`/assets/badges/${awayKey}.png`} 
+                                      alt={`${awayName} badge`} 
+                                      className="h-6 w-6 object-contain"
+                                      onError={(e) => {
+                                        // Reduce opacity if badge fails to load, don't hide completely
+                                        (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
+                                      }}
+                                    />
                                   )}
                                 </div>
                                 <div className="flex items-center justify-center">
