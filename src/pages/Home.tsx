@@ -501,6 +501,7 @@ export default function HomePage() {
       
       // Football Data API v4 doesn't reliably provide minute field
       // Always calculate minute from kickoff time
+      // Second half minutes (46', 47', etc.) start when HT pause ends (status changes to IN_PLAY)
       let minute: number | null = null;
       if ((status === 'IN_PLAY' || status === 'PAUSED') && kickoffTime) {
         try {
@@ -509,25 +510,37 @@ export default function HomePage() {
           const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
           
           if (diffMinutes > 0 && diffMinutes < 120) {
-            // Account for half-time break (usually 15 minutes)
-            // First half: 0-45 minutes
-            // Halftime: ~15 minutes break
-            // Second half: starts around 60 minutes after kickoff
-            if (diffMinutes > 60) {
-              // Second half - subtract halftime break (usually 15 minutes)
-              minute = diffMinutes - 15;
-            } else if (diffMinutes > 45) {
-              // Between 45-60 minutes, we're likely in halftime or just after
-              if (status === 'PAUSED') {
-                // Halftime - don't calculate minute, let it show as HT
-                minute = null;
+            if (status === 'PAUSED') {
+              // Halftime - don't calculate minute, let it show as HT
+              minute = null;
+            } else if (status === 'IN_PLAY') {
+              // Game is live - calculate minute
+              if (diffMinutes <= 45) {
+                // First half: 0-45 minutes
+                minute = diffMinutes;
               } else {
-                // Second half might have started early, calculate minute
-                minute = diffMinutes - 15;
+                // After 45 minutes, second half starts when HT pause ends (status changes to IN_PLAY)
+                // Second half typically starts around 60 minutes after kickoff (45 + 15 min halftime)
+                // When second half starts (diffMinutes >= 60), minute should be 46', then 47', 48', etc.
+                // Formula: minute = 45 + (diffMinutes - 60) + 1 = diffMinutes - 14
+                // But we account for ~15 min halftime, so: minute = diffMinutes - 15
+                // When diffMinutes = 60: minute = 45 (but should be 46, so add 1)
+                // When diffMinutes = 61: minute = 46 (but should be 47, so add 1)
+                // So: minute = diffMinutes - 15 + 1 = diffMinutes - 14
+                // Actually, let's think: if halftime is exactly 15 minutes:
+                // - diffMinutes = 60 means second half just started, minute = 46'
+                // - diffMinutes = 61 means 1 minute into second half, minute = 47'
+                // So: minute = 45 + (diffMinutes - 60) + 1 = diffMinutes - 14
+                if (diffMinutes >= 60) {
+                  // Second half has started - calculate minute starting from 46'
+                  minute = diffMinutes - 14; // This gives 46' at diffMinutes=60, 47' at 61, etc.
+                } else {
+                  // Between 45-60 minutes but status is IN_PLAY
+                  // This shouldn't normally happen (should be PAUSED), but handle it
+                  // Assume second half started early, start from 46'
+                  minute = Math.max(46, diffMinutes - 14);
+                }
               }
-            } else {
-              // First half
-              minute = diffMinutes;
             }
           }
         } catch (e) {
@@ -545,16 +558,18 @@ export default function HomePage() {
             const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
             
             if (diffMinutes > 0 && diffMinutes < 120) {
-              if (diffMinutes > 60) {
-                minute = diffMinutes - 15;
-              } else if (diffMinutes > 45) {
-                if (status === 'PAUSED') {
-                  minute = null;
+              if (status === 'PAUSED') {
+                minute = null;
+              } else if (status === 'IN_PLAY') {
+                if (diffMinutes <= 45) {
+                  minute = diffMinutes;
+                } else if (diffMinutes >= 60) {
+                  // Second half has started - calculate minute starting from 46'
+                  minute = diffMinutes - 14;
                 } else {
-                  minute = diffMinutes - 15;
+                  // Between 45-60 minutes but status is IN_PLAY
+                  minute = Math.max(46, diffMinutes - 14);
                 }
-              } else {
-                minute = diffMinutes;
               }
             }
           } catch (e) {
