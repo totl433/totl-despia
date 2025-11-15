@@ -138,7 +138,7 @@ export default function TestAdminApi() {
               
               setApiError(errorMessage);
               return null;
-            } catch (e) {
+            } catch {
               // Not valid JSON, continue with text error
             }
           }
