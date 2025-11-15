@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useRef, useEffect, useState } from 'react';
 
-const navItems = [
+  const navItems = [
     {
       name: 'Home',
       path: '/',
@@ -14,8 +14,8 @@ const navItems = [
       )
     },
     {
-      name: 'Predictions',
-      path: '/new-predictions',
+      name: 'Test API',
+      path: '/test-api-predictions',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="w-7 h-7">
           <g>
@@ -139,24 +139,24 @@ export default function BottomNav() {
             />
           )}
           {navItems.map((item, index) => {
-            const isActive = location.pathname === item.path;
-            return (
-              <button
-                key={item.name}
+          const isActive = location.pathname === item.path;
+          return (
+            <button
+              key={item.name}
                 ref={(el) => { buttonRefs.current[index] = el; }}
-                onClick={() => navigate(item.path)}
+              onClick={() => navigate(item.path)}
                 className={`relative z-10 flex-1 flex items-center justify-center py-3 px-4 rounded-full transition-all duration-300 ${
-                  isActive 
-                    ? 'text-white' 
-                    : 'text-white/70 hover:text-white'
-                }`}
-              >
+                isActive 
+                  ? 'text-white' 
+                  : 'text-white/70 hover:text-white'
+              }`}
+            >
                 <div className={`relative transition-all duration-300 ${isActive ? 'scale-110' : 'scale-100'}`}>
-                  {item.icon}
-                </div>
-              </button>
-            );
-          })}
+                {item.icon}
+              </div>
+            </button>
+          );
+        })}
         </div>
       </div>
     </>

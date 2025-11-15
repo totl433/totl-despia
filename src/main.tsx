@@ -13,6 +13,8 @@ import GlobalPage from "./pages/Global";
 import CreateLeaguePage from "./pages/CreateLeague";
 import HowToPlayPage from "./pages/HowToPlay";
 import NewPredictionsCentre from "./pages/NewPredictionsCentre";
+import TestApiPredictions from "./pages/TestApiPredictions";
+import TestAdminApi from "./pages/TestAdminApi";
 import ProfilePage from "./pages/Profile";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import PredictionsBanner from "./components/PredictionsBanner";
@@ -127,6 +129,8 @@ function AppContent() {
       <Routes>
         <Route path="/auth" element={<SignIn />} />
         <Route path="/new-predictions" element={<RequireAuth><NewPredictionsCentre /></RequireAuth>} />
+        <Route path="/test-api-predictions" element={<RequireAuth><TestApiPredictions /></RequireAuth>} />
+        <Route path="/test-admin-api" element={<RequireAuth><TestAdminApi /></RequireAuth>} />
         <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
         <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
         <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
@@ -139,8 +143,8 @@ function AppContent() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* Bottom Navigation - hide on auth page and league pages */}
-      {location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && <BottomNav />}
+      {/* Bottom Navigation - hide on auth page, league pages, and full-screen prediction pages */}
+      {location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/new-predictions' && location.pathname !== '/test-api-predictions' && <BottomNav />}
     </>
   );
 }

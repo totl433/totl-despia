@@ -62,8 +62,8 @@ export default function HowToPlayPage() {
         {/* Header */}
         <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">How To Play</h2>
         <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
-          Welcome to TOTL (Top of the League) — the game of quick Predictions and friendly rivalries. Here's how it all works.
-        </p>
+            Welcome to TOTL (Top of the League) — the game of quick Predictions and friendly rivalries. Here's how it all works.
+          </p>
 
         {/* Sections */}
         <div className="space-y-4">

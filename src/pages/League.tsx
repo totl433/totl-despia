@@ -14,6 +14,7 @@ type League = { id: string; name: string; code: string; created_at?: string; cre
 type Member = { id: string; name: string };
 
 type Fixture = {
+  api_match_id?: number | null;
   id: string;
   gw: number;
   fixture_index: number;
@@ -494,6 +495,8 @@ export default function LeaguePage() {
   const [latestResultsGw, setLatestResultsGw] = useState<number | null>(null);
   const [selectedGw, setSelectedGw] = useState<number | null>(null);
   const [availableGws, setAvailableGws] = useState<number[]>([]);
+  // Live scores for test API fixtures
+  const [liveScores, setLiveScores] = useState<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
   const [showGwDropdown, setShowGwDropdown] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [showTableModal, setShowTableModal] = useState(false);
@@ -538,9 +541,18 @@ export default function LeaguePage() {
         .select("gw, kickoff_time")
         .order("gw", { ascending: true });
       
+      // Also get test fixtures for GW 1
+      const { data: testGwData } = await supabase
+        .from("test_api_fixtures")
+        .select("test_gw, kickoff_time")
+        .eq("test_gw", 1)
+        .order("fixture_index", { ascending: true });
+      
+      // Group by GW to find first kickoff for each GW
+      const gwFirstKickoffs = new Map<number, string>();
+      
+      // Process regular fixtures
       if (allGwData) {
-        // Group by GW to find first kickoff for each GW
-        const gwFirstKickoffs = new Map<number, string>();
         allGwData.forEach((f: any) => {
           if (!gwFirstKickoffs.has(f.gw) || (f.kickoff_time && new Date(f.kickoff_time) < new Date(gwFirstKickoffs.get(f.gw)!))) {
             if (f.kickoff_time) {
@@ -548,14 +560,26 @@ export default function LeaguePage() {
             }
           }
         });
-        
-        // Calculate deadline for each GW (75 minutes before first kickoff)
-        gwFirstKickoffs.forEach((kickoffTime, gw) => {
-          const firstKickoff = new Date(kickoffTime);
-          const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000)); // 75 minutes before
-          deadlines.set(gw, deadlineTime);
-        });
       }
+      
+      // Process test fixtures for GW 1 (override regular GW 1 if test fixtures exist)
+      if (testGwData && testGwData.length > 0) {
+        const firstTestKickoff = testGwData.find(f => f.kickoff_time)?.kickoff_time;
+        if (firstTestKickoff) {
+          // Use test fixture kickoff for GW 1 if it's earlier than regular GW 1, or if regular GW 1 doesn't exist
+          const existingGw1 = gwFirstKickoffs.get(1);
+          if (!existingGw1 || new Date(firstTestKickoff) < new Date(existingGw1)) {
+            gwFirstKickoffs.set(1, firstTestKickoff);
+          }
+        }
+      }
+      
+      // Calculate deadline for each GW (75 minutes before first kickoff)
+      gwFirstKickoffs.forEach((kickoffTime, gw) => {
+        const firstKickoff = new Date(kickoffTime);
+        const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000)); // 75 minutes before
+        deadlines.set(gw, deadlineTime);
+      });
       
       setGwDeadlines(deadlines);
     })();
@@ -1036,11 +1060,17 @@ export default function LeaguePage() {
     let alive = true;
 
     (async () => {
-      const gwForData = tab === "gwr" ? selectedGw : tab === "gw" ? currentGw : currentGw;
-      
       // Special handling for API Test league - use test_api_fixtures for GW 1
       const isApiTestLeague = league?.name === 'API Test';
-      const useTestFixtures = isApiTestLeague && gwForData === 1;
+      const useTestFixtures = isApiTestLeague && (tab === "gw" || tab === "gwr");
+      console.log('[League] Data fetch:', { isApiTestLeague, tab, useTestFixtures, leagueName: league?.name });
+      
+      // For API Test league in predictions/results tabs, always use GW 1
+      let gwForData = tab === "gwr" ? selectedGw : tab === "gw" ? currentGw : currentGw;
+      if (isApiTestLeague && (tab === "gw" || tab === "gwr")) {
+        gwForData = 1; // Force GW 1 for API Test league
+      }
+      console.log('[League] gwForData:', gwForData, 'memberIds:', memberIds);
       
       if (!gwForData && !useTestFixtures) {
         setFixtures([]);
@@ -1056,11 +1086,12 @@ export default function LeaguePage() {
         const { data: testFx } = await supabase
           .from("test_api_fixtures")
           .select(
-            "id,test_gw as gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time"
+            "id,test_gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time,api_match_id"
           )
           .eq("test_gw", 1)
           .order("fixture_index", { ascending: true });
-        fx = testFx;
+        // Map test_gw to gw for consistency
+        fx = testFx?.map(f => ({ ...f, gw: f.test_gw })) || null;
       } else {
         // Regular fixtures
         const { data: regularFx } = await supabase
@@ -1083,24 +1114,51 @@ export default function LeaguePage() {
         return;
       }
 
-      // For API Test league GW 1, picks are stored with gw=1 (same as regular picks)
-      // The test context is determined by the league, not the picks table
-      const { data: pk } = await supabase
-        .from("picks")
-        .select("user_id,gw,fixture_index,pick")
-        .eq("gw", useTestFixtures ? 1 : gwForData)
-        .in("user_id", memberIds);
-      if (!alive) return;
-      setPicks((pk as PickRow[]) ?? []);
-
-      // Check submissions from gw_submissions table (confirmed/published predictions only)
-      const { data: submissions } = await supabase
-        .from("gw_submissions")
-        .select("user_id,gw,submitted_at")
-        .eq("gw", useTestFixtures ? 1 : gwForData)
-        .in("user_id", memberIds);
+      // For API Test league, use test_api_picks and test_api_submissions
+      let pk;
+      let submissions;
+      
+      if (useTestFixtures) {
+        // Fetch from test_api_picks for API Test league
+        const { data: testPicks } = await supabase
+          .from("test_api_picks")
+          .select("user_id,matchday,fixture_index,pick")
+          .eq("matchday", 1)
+          .in("user_id", memberIds);
+        // Map matchday to gw for consistency
+        pk = testPicks?.map(p => ({ ...p, gw: p.matchday })) || null;
+        
+        // Fetch from test_api_submissions for API Test league
+        const { data: testSubs, error: testSubsError } = await supabase
+          .from("test_api_submissions")
+          .select("user_id,matchday,submitted_at")
+          .eq("matchday", 1)
+          .in("user_id", memberIds);
+        if (testSubsError) {
+          console.error('Error fetching test_api_submissions:', testSubsError);
+        }
+        // Map matchday to gw for consistency
+        submissions = testSubs?.map(s => ({ ...s, gw: s.matchday })) || null;
+        console.log('Test API submissions fetched:', submissions);
+      } else {
+        // Regular picks and submissions
+        const { data: regularPicks } = await supabase
+          .from("picks")
+          .select("user_id,gw,fixture_index,pick")
+          .eq("gw", gwForData)
+          .in("user_id", memberIds);
+        pk = regularPicks;
+        
+        const { data: regularSubs } = await supabase
+          .from("gw_submissions")
+          .select("user_id,gw,submitted_at")
+          .eq("gw", gwForData)
+          .in("user_id", memberIds);
+        submissions = regularSubs;
+      }
       
       if (!alive) return;
+      setPicks((pk as PickRow[]) ?? []);
       setSubs((submissions as SubmissionRow[]) ?? []);
 
       // For API Test league GW 1, results are stored with gw=1 (same as regular results)
@@ -1118,9 +1176,123 @@ export default function LeaguePage() {
     };
   }, [tab, currentGw, latestResultsGw, selectedGw, memberIds]);
 
+  // Fetch live scores from Football Data API
+  const fetchLiveScore = async (apiMatchId: number) => {
+    try {
+      const FOOTBALL_DATA_API_KEY = 'ed3153d132b847db836289243894706e';
+      const response = await fetch(`https://api.football-data.org/v4/matches/${apiMatchId}`, {
+        headers: {
+          'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+        },
+      });
+      
+      if (!response.ok) {
+        if (response.status === 429) {
+          console.warn('[League] Rate limited, will retry on next poll');
+          return null;
+        }
+        return null;
+      }
+      
+      const match = await response.json();
+      if (!match || !match.score) return null;
+      
+      const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? 0;
+      const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? 0;
+      const status = match.status || 'SCHEDULED';
+      const minute = match.minute ?? null;
+      
+      return { homeScore, awayScore, status, minute };
+    } catch (error) {
+      console.error('[League] Error fetching live score:', error);
+      return null;
+    }
+  };
+
+  // Poll for live scores for API Test league
+  useEffect(() => {
+    const isApiTestLeague = league?.name === 'API Test';
+    if (!isApiTestLeague || !fixtures.length || tab !== 'gwr') return;
+    
+    // Only poll first 3 fixtures
+    const fixturesToPoll = fixtures.slice(0, 3).filter((f: any) => f.api_match_id && f.kickoff_time);
+    if (fixturesToPoll.length === 0) return;
+    
+    const intervals = new Map<number, ReturnType<typeof setInterval>>();
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
+    
+    fixturesToPoll.forEach((fixture: any) => {
+      if (!fixture.api_match_id || !fixture.kickoff_time) return;
+      
+      const kickoffTime = new Date(fixture.kickoff_time);
+      const now = new Date();
+      const fixtureIndex = fixture.fixture_index;
+      
+      // Helper function to start polling for a fixture
+      const startPolling = () => {
+        // Check if game is already finished
+        const currentScore = liveScores[fixtureIndex];
+        if (currentScore && currentScore.status === 'FINISHED') {
+          // Already finished, don't poll
+          return;
+        }
+        
+        const poll = async () => {
+          const scoreData = await fetchLiveScore(fixture.api_match_id!);
+          if (scoreData) {
+            const isFinished = scoreData.status === 'FINISHED';
+            
+            setLiveScores(prev => ({
+              ...prev,
+              [fixtureIndex]: {
+                homeScore: scoreData.homeScore,
+                awayScore: scoreData.awayScore,
+                status: scoreData.status,
+                minute: scoreData.minute ?? null
+              }
+            }));
+            
+            // Stop polling if game is finished
+            if (isFinished) {
+              const pollInterval = intervals.get(fixtureIndex);
+              if (pollInterval) {
+                clearInterval(pollInterval);
+                intervals.delete(fixtureIndex);
+              }
+            }
+          }
+        };
+        
+        poll(); // Poll immediately
+        const pollInterval = setInterval(poll, 5 * 60 * 1000); // Every 5 minutes
+        intervals.set(fixtureIndex, pollInterval);
+      };
+      
+      if (kickoffTime > now) {
+        const delay = kickoffTime.getTime() - now.getTime();
+        const timeout = setTimeout(startPolling, delay);
+        timeouts.push(timeout);
+      } else {
+        // Kickoff already happened, start polling immediately
+        startPolling();
+      }
+    });
+    
+    return () => {
+      intervals.forEach(clearInterval);
+      timeouts.forEach(clearTimeout);
+    };
+  }, [league?.name, fixtures, tab]);
+
   const submittedMap = useMemo(() => {
     const m = new Map<string, boolean>();
-    subs.forEach((s) => m.set(`${s.user_id}:${s.gw}`, true));
+    console.log('Building submittedMap from subs:', subs);
+    subs.forEach((s) => {
+      const key = `${s.user_id}:${s.gw}`;
+      console.log(`Adding submission key: ${key}`, s);
+      m.set(key, true);
+    });
+    console.log('Final submittedMap:', Array.from(m.entries()));
     return m;
   }, [subs]);
 
@@ -1639,16 +1811,24 @@ export default function LeaguePage() {
       willShowPredictions: allSubmitted || deadlinePassed
     });
 
+    // For API Test league, always show submission status even if all submitted or deadline passed
+    const showSubmissionStatus = league?.name === 'API Test' || (!allSubmitted && !deadlinePassed);
+
     return (
       <div className="mt-2 pt-2">
 
-        {!allSubmitted && !deadlinePassed ? (
+        {showSubmissionStatus ? (
           <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-700">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                Waiting for <span className="font-semibold">{remaining}</span> of {members.length} to submit.
+                {allSubmitted ? (
+                  <>All {members.length} members have submitted.</>
+                ) : (
+                  <>Waiting for <span className="font-semibold">{remaining}</span> of {members.length} to submit.</>
+                )}
               </div>
-              {/* Share reminder button */}
+              {/* Share reminder button - only show if not all submitted */}
+              {!allSubmitted && (
               <button
                 onClick={() => {
                   // Generate share message
@@ -1686,7 +1866,41 @@ export default function LeaguePage() {
                 </svg>
                 Share Reminder
               </button>
+              )}
             </div>
+
+            {/* Deadline display - calculate from actual fixtures like Predictions page */}
+            {(() => {
+              // Calculate deadline from fixtures (same logic as Predictions page)
+              // Find the earliest kickoff time
+              const kickoffTimes = fixtures
+                .map(f => f.kickoff_time)
+                .filter((kt): kt is string => !!kt)
+                .map(kt => new Date(kt))
+                .filter(d => !isNaN(d.getTime()));
+              
+              if (kickoffTimes.length === 0) return null;
+              
+              const firstKickoff = new Date(Math.min(...kickoffTimes.map(d => d.getTime())));
+              const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000)); // 75 minutes before
+              const deadlinePassed = new Date() >= deadlineTime;
+              
+              // Format deadline (same as Predictions page)
+              const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+              const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+              const dayOfWeek = dayNames[deadlineTime.getUTCDay()];
+              const day = deadlineTime.getUTCDate();
+              const month = months[deadlineTime.getUTCMonth()];
+              const hours = deadlineTime.getUTCHours().toString().padStart(2, '0');
+              const minutes = deadlineTime.getUTCMinutes().toString().padStart(2, '0');
+              const deadlineStr = `${dayOfWeek} ${day} ${month}, ${hours}:${minutes} BST`;
+              
+              return (
+                <div className={`mb-3 text-sm ${deadlinePassed ? 'text-orange-600 font-semibold' : 'text-slate-600'}`}>
+                  {deadlinePassed ? '⏰ Deadline Passed: ' : '⏰ Deadline: '}{deadlineStr}
+                </div>
+              );
+            })()}
 
             <div className="overflow-hidden rounded-lg border">
               <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
@@ -1701,7 +1915,11 @@ export default function LeaguePage() {
                     .slice()
                     .sort((a, b) => a.name.localeCompare(b.name))
                     .map((m) => {
-                      const submitted = !!submittedMap.get(`${m.id}:${picksGw}`);
+                      const key = `${m.id}:${picksGw}`;
+                      const submitted = !!submittedMap.get(key);
+                      if (m.name === 'Jof') {
+                        console.log(`Checking Jof submission: key=${key}, submitted=${submitted}, submittedMap has:`, submittedMap.has(key), 'picksGw=', picksGw);
+                      }
                       return (
                         <tr key={m.id} className="border-t border-slate-200">
                           <td className="px-4 py-3 font-bold text-slate-900 truncate whitespace-nowrap" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.name}</td>
@@ -1723,7 +1941,9 @@ export default function LeaguePage() {
               </table>
             </div>
           </div>
-        ) : (
+        ) : null}
+
+        {sections.length > 0 && league?.name !== 'API Test' && (
           <div className="mt-3 space-y-6">
             {sections.map((sec, si) => (
               <div key={si}>
@@ -1880,8 +2100,11 @@ export default function LeaguePage() {
                 </div>
               </div>
             ))}
-            {!sections.length && <div className="rounded-2xl border bg-white shadow-sm p-4 text-slate-500">No fixtures for GW {picksGw}.</div>}
           </div>
+        )}
+
+        {!sections.length && !showSubmissionStatus && (
+          <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-500">No fixtures for GW {picksGw}.</div>
         )}
 
       </div>
@@ -1909,12 +2132,35 @@ export default function LeaguePage() {
     }
 
     const outcomes = new Map<number, "H" | "D" | "A">();
-    results.forEach((r) => {
-      if (r.gw !== resGw) return;
-      const out = rowToOutcome(r);
-      if (!out) return;
-      outcomes.set(r.fixture_index, out);
-    });
+    const isApiTestLeague = league?.name === 'API Test';
+    
+    // For API Test league, ONLY use live scores (ignore database results)
+    if (isApiTestLeague && resGw === 1) {
+      // Check live scores for first 3 fixtures - count both live and finished fixtures
+      const fixturesToCheck = fixtures.slice(0, 3);
+      fixturesToCheck.forEach((f: any) => {
+        const liveScore = liveScores[f.fixture_index];
+        if (liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
+          // Determine outcome from live score
+          if (liveScore.homeScore > liveScore.awayScore) {
+            outcomes.set(f.fixture_index, 'H');
+          } else if (liveScore.awayScore > liveScore.homeScore) {
+            outcomes.set(f.fixture_index, 'A');
+          } else {
+            outcomes.set(f.fixture_index, 'D');
+          }
+        }
+      });
+      // DO NOT fill in from results - only count live/finished fixtures
+    } else {
+      // Regular league - use results
+      results.forEach((r) => {
+        if (r.gw !== resGw) return;
+        const out = rowToOutcome(r);
+        if (!out) return;
+        outcomes.set(r.fixture_index, out);
+      });
+    }
 
     type Row = { user_id: string; name: string; score: number; unicorns: number };
     const rows: Row[] = members.map((m) => ({ user_id: m.id, name: m.name, score: 0, unicorns: 0 }));
@@ -1944,6 +2190,47 @@ export default function LeaguePage() {
 
     rows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name));
 
+    // Check if all fixtures have finished
+    let allFixturesFinished = false;
+    let hasLiveFixtures = false;
+    let hasStartingSoonFixtures = false;
+    if (isApiTestLeague && resGw === 1) {
+      // For API Test league, check if all fixtures (first 3) have finished
+      const fixturesToCheck = fixtures.slice(0, 3);
+      if (fixturesToCheck.length > 0) {
+        allFixturesFinished = fixturesToCheck.every((f: any) => {
+          const liveScore = liveScores[f.fixture_index];
+          // Check if fixture has finished status
+          return liveScore && liveScore.status === 'FINISHED';
+        });
+        // Check if any fixtures are live
+        hasLiveFixtures = fixturesToCheck.some((f: any) => {
+          const liveScore = liveScores[f.fixture_index];
+          return liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+        });
+        // Check if any fixtures are starting soon (within 24 hours of kickoff but not started)
+        if (!hasLiveFixtures && !allFixturesFinished) {
+          const now = new Date();
+          hasStartingSoonFixtures = fixturesToCheck.some((f: any) => {
+            if (!f.kickoff_time) return false;
+            const kickoffTime = new Date(f.kickoff_time);
+            const timeUntilKickoff = kickoffTime.getTime() - now.getTime();
+            // Starting soon if kickoff is in the future and within 24 hours
+            // Also check that there's no live score (meaning it hasn't started)
+            const liveScore = liveScores[f.fixture_index];
+            const hasNotStarted = !liveScore || (liveScore.status !== 'LIVE' && liveScore.status !== 'IN_PLAY' && liveScore.status !== 'PAUSED' && liveScore.status !== 'FINISHED');
+            return hasNotStarted && timeUntilKickoff > 0 && timeUntilKickoff <= 24 * 60 * 60 * 1000;
+          });
+        }
+      }
+    } else {
+      // For regular leagues, check if all fixtures have results
+      const fixturesForGw = fixtures.filter(f => f.gw === resGw);
+      if (fixturesForGw.length > 0) {
+        allFixturesFinished = fixturesForGw.every(f => outcomes.has(f.fixture_index));
+      }
+    }
+
     return (
       <div>
         <style>{`
@@ -1961,8 +2248,21 @@ export default function LeaguePage() {
               background-color: rgb(167, 243, 208);
             }
           }
+          @keyframes pulse-score {
+            0%, 100% {
+              opacity: 1;
+              transform: scale(1);
+            }
+            50% {
+              opacity: 0.8;
+              transform: scale(1.05);
+            }
+          }
           .flash-user-row {
             animation: flash 1.5s ease-in-out 3;
+          }
+          .pulse-live-score {
+            animation: pulse-score 2s ease-in-out infinite;
           }
           .full-width-header-border::after {
             content: '';
@@ -1976,14 +2276,14 @@ export default function LeaguePage() {
           }
         `}</style>
         
-        {/* SP Wins Banner */}
-        {rows.length > 0 && (
-          <div className="mt-4 mb-4 py-4 rounded-xl bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 shadow-2xl shadow-slate-600/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]">
-            <div className="text-center relative z-10 px-4">
+        {/* SP Wins Banner - only show when all fixtures have finished */}
+        {rows.length > 0 && allFixturesFinished && (
+          <div className="mt-4 mb-4 py-6 px-6 rounded-xl bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 shadow-2xl shadow-slate-600/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]">
+            <div className="text-center relative z-10">
               {rows[0].score === rows[1]?.score && rows[0].unicorns === rows[1]?.unicorns ? (
-                <div className="text-lg font-bold text-white">🤝 It's a Draw!</div>
+                <div className="text-lg font-bold text-white break-words whitespace-normal px-2 leading-normal">🤝 It's a Draw!</div>
               ) : (
-                <div className="text-lg font-bold text-white">{rows[0].name} Wins!</div>
+                <div className="text-lg font-bold text-white break-words whitespace-normal px-2 leading-normal">{rows[0].name} Wins!</div>
               )}
             </div>
           </div>
@@ -2006,7 +2306,25 @@ export default function LeaguePage() {
             } as any}>
               <tr style={{ backgroundColor: '#f8fafc', borderBottom: 'none' }}>
                 <th className="py-4 text-left font-normal" style={{ backgroundColor: '#f8fafc', width: '30px', paddingLeft: '0.75rem', paddingRight: '0.5rem', color: '#94a3b8' }}>#</th>
-                <th className="py-4 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem' }}>Player</th>
+                <th className="py-4 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem' }}>
+                  <div className="flex items-center gap-2">
+                    Player
+                    {isApiTestLeague && hasLiveFixtures && (
+                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600 text-white shadow-md shadow-red-500/30">
+                        <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+                        <span className="text-[10px] font-medium">LIVE</span>
+                      </div>
+                    )}
+                    {isApiTestLeague && !hasLiveFixtures && hasStartingSoonFixtures && (
+                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500 text-white shadow-md shadow-amber-500/30">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-[10px] font-medium">Starting soon</span>
+                      </div>
+                    )}
+                  </div>
+                </th>
                 <th className="py-4 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '50px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8' }}>Score</th>
                 {members.length >= 3 && <th className="py-4 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '1rem' }}>🦄</th>}
               </tr>
@@ -2033,9 +2351,21 @@ export default function LeaguePage() {
                     }}>
                       {i + 1}
                     </td>
-                    <td className="py-4 truncate whitespace-nowrap" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</td>
-                    <td className="py-4 text-center tabular-nums font-bold" style={{ width: '50px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc', color: '#1C8376' }}>{r.score}</td>
-                    {members.length >= 3 && <td className="py-4 text-center tabular-nums" style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.unicorns}</td>}
+                    <td className="py-4 truncate whitespace-nowrap" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div className="flex items-center gap-2">
+                        {isApiTestLeague && hasLiveFixtures && (
+                          <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse flex-shrink-0"></div>
+                        )}
+                        {isApiTestLeague && !hasLiveFixtures && hasStartingSoonFixtures && (
+                          <svg className="w-3 h-3 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        )}
+                        <span>{r.name}</span>
+                      </div>
+                    </td>
+                    <td className={`py-4 text-center tabular-nums font-bold ${isApiTestLeague && hasLiveFixtures ? 'pulse-live-score' : ''}`} style={{ width: '50px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc', color: '#1C8376' }}>{r.score}</td>
+                    {members.length >= 3 && <td className={`py-4 text-center tabular-nums ${isApiTestLeague && hasLiveFixtures ? 'pulse-live-score' : ''}`} style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.unicorns}</td>}
                 </tr>
                 );
               })}
@@ -2218,12 +2548,18 @@ export default function LeaguePage() {
           padding-left: 1rem;
           padding-right: 1rem;
         }
+        .league-content-wrapper.has-banner {
+          top: calc(3.5rem + 3rem + 3.5rem + env(safe-area-inset-top, 0px) + 0.5rem);
+        }
         @media (max-width: 768px) {
           .league-content-wrapper {
             top: calc(3.5rem + 3rem + env(safe-area-inset-top, 0px) + 0.5rem);
             padding-bottom: 2rem;
             padding-left: 1rem;
             padding-right: 1rem;
+          }
+          .league-content-wrapper.has-banner {
+            top: calc(3.5rem + 3rem + 3.5rem + env(safe-area-inset-top, 0px) + 0.5rem);
           }
         }
         /* Chat tab - full height layout */
@@ -2239,6 +2575,11 @@ export default function LeaguePage() {
           overflow: visible;
           pointer-events: none;
         }
+        .chat-tab-wrapper.has-banner {
+          top: calc(3.5rem + 3rem + 3.5rem + env(safe-area-inset-top, 0px));
+          height: calc(100vh - 3.5rem - 3rem - 3.5rem - env(safe-area-inset-top, 0px));
+          max-height: calc(100vh - 3.5rem - 3rem - 3.5rem - env(safe-area-inset-top, 0px));
+        }
         .chat-tab-wrapper > * {
           pointer-events: auto;
         }
@@ -2246,6 +2587,10 @@ export default function LeaguePage() {
           .chat-tab-wrapper {
             height: calc(100dvh - 3.5rem - 3rem - env(safe-area-inset-top, 0px));
             max-height: calc(100dvh - 3.5rem - 3rem - env(safe-area-inset-top, 0px));
+          }
+          .chat-tab-wrapper.has-banner {
+            height: calc(100dvh - 3.5rem - 3rem - 3.5rem - env(safe-area-inset-top, 0px));
+            max-height: calc(100dvh - 3.5rem - 3rem - 3.5rem - env(safe-area-inset-top, 0px));
           }
         }
       `}</style>
@@ -2283,15 +2628,6 @@ export default function LeaguePage() {
             </div>
           </div>
 
-          {/* API Test League Notice */}
-          {league?.name === 'API Test' && (
-            <div className="px-4 py-3 bg-yellow-50 border-b border-yellow-200">
-              <div className="text-sm text-yellow-800">
-                <strong>⚠️ Test League:</strong> This league uses test API data and starts from Test GW 1 with zero points. It does not affect your main game scores.
-              </div>
-            </div>
-          )}
-
           {/* Tabs */}
           <div className="flex border-b border-slate-200 bg-white">
             <button
@@ -2315,8 +2651,14 @@ export default function LeaguePage() {
                   (tab === "gwr" ? "text-[#1C8376]" : "text-slate-400")
                 }
               >
-                <span className="hidden sm:inline">{selectedGw ? `GW ${selectedGw} Results` : (league?.name === 'API Test' ? 'GW 1 Results' : (currentGw ? `GW ${currentGw} Results` : "GW Results"))}</span>
-                <span className="sm:hidden whitespace-pre-line">{selectedGw ? `GW${selectedGw}\nResults` : (league?.name === 'API Test' ? 'GW1\nResults' : (currentGw ? `GW${currentGw}\nResults` : "GW\nResults"))}</span>
+                <span className="hidden sm:inline">{(() => {
+                  const resGw = league?.name === 'API Test' ? 1 : (selectedGw || currentGw);
+                  return resGw ? `GW ${resGw} Results` : "GW Results";
+                })()}</span>
+                <span className="sm:hidden whitespace-pre-line">{(() => {
+                  const resGw = league?.name === 'API Test' ? 1 : (selectedGw || currentGw);
+                  return resGw ? `GW${resGw}\nResults` : "GW\nResults";
+                })()}</span>
                 {tab === "gwr" && (
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
                 )}
@@ -2445,6 +2787,14 @@ export default function LeaguePage() {
             {tab === "gwr" && <GwResultsTab />}
           </div>
 
+          {/* API Test League Notice - at bottom of page */}
+          {league?.name === 'API Test' && (
+            <div className="mt-6 mb-4 px-4 py-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="text-sm text-yellow-800">
+                <strong>⚠️ Test League:</strong> This league uses test API data and starts from Test GW 1 with zero points. It does not affect your main game scores.
+              </div>
+            </div>
+          )}
 
       </div>
       )}

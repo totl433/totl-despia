@@ -1,6 +1,7 @@
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 
 // Profile page with push notification diagnostics
 
@@ -22,6 +23,9 @@ export default function Profile() {
   const [subscriptionDetails, setSubscriptionDetails] = useState<any>(null);
   const [despiaDetected, setDespiaDetected] = useState<boolean | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
+  
+  // Admin check
+  const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
 
   // Poll for Despia API availability (it may be injected after page load)
   useEffect(() => {
@@ -568,6 +572,27 @@ export default function Profile() {
               </div>
             )}
           </div>
+
+          {/* Admin Links */}
+          {isAdmin && (
+            <div className="mt-6 pt-6 border-t border-slate-200">
+              <h3 className="text-lg font-semibold text-slate-800 mb-3">Admin</h3>
+              <div className="space-y-2">
+                <Link
+                  to="/admin"
+                  className="block w-full py-3 bg-slate-600 hover:bg-slate-700 text-white font-semibold rounded-xl transition-colors text-center"
+                >
+                  Admin Panel
+                </Link>
+                <Link
+                  to="/test-admin-api"
+                  className="block w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-xl transition-colors text-center"
+                >
+                  Test API Admin (Staging)
+                </Link>
+              </div>
+            </div>
+          )}
 
           {/* Sign Out Button */}
           <button

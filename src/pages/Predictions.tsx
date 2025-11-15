@@ -461,8 +461,8 @@ export default function PredictionsPage() {
         </p>
         <div className="text-slate-600 text-lg font-semibold mt-1">Game Week {gwOr(gw)}</div>
 
-        {/* status / summary */}
-        <div className="mt-3">
+      {/* status / summary */}
+      <div className="mt-3">
         {gwFinished ? (
           <div className="rounded-xl border bg-gradient-to-r from-emerald-50 to-blue-50 border-emerald-200 px-6 py-4">
             <div className="flex items-center justify-between">
@@ -476,9 +476,9 @@ export default function PredictionsPage() {
             </div>
           </div>
         ) : null}
-        </div>
+      </div>
 
-        {/* error banner */}
+      {/* error banner */}
       {error && (
         <div className="mt-4 rounded border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2 text-sm">
           {error}

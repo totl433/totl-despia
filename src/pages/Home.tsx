@@ -60,6 +60,7 @@ type Fixture = {
   home_name?: string | null;
   away_name?: string | null;
   kickoff_time?: string | null;
+  api_match_id?: number | null;
 };
 
 type PickRow = { user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" };
@@ -109,6 +110,10 @@ export default function HomePage() {
   const leagueIdsRef = useRef<Set<string>>(new Set());
   const isInitialMountRef = useRef(true);
   const navigationKeyRef = useRef(0);
+  
+  // Live scores for test API fixtures
+  const [liveScores, setLiveScores] = useState<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
+  const [isInApiTestLeague, setIsInApiTestLeague] = useState(false);
 
   // Extract data fetching into a reusable function for pull-to-refresh
   const fetchHomeData = useCallback(async (showLoading = true) => {
@@ -161,24 +166,56 @@ export default function HomePage() {
         avatar: getDeterministicLeagueAvatar(league.id),
       }));
       
+      // Check if user is in API Test league
+      const isInApiTestLeague = userLeagues.some((league) => league.name === "API Test");
+      
       if (alive) {
         setLeagues(ls);
         setGw(currentGw);
+        setIsInApiTestLeague(isInApiTestLeague);
         leagueIdsRef.current = new Set(ls.map((l) => l.id));
       }
 
       // PARALLEL QUERY 2: Fetch fixtures, picks, results, and submission status for current GW
-      const [fixturesResult, picksResult, resultsResult, submissionResult] = await Promise.all([
-        supabase.from("fixtures").select("id,gw,fixture_index,home_code,away_code,home_team,away_team,home_name,away_name,kickoff_time").eq("gw", currentGw).order("fixture_index", { ascending: true }),
-        supabase.from("picks").select("user_id,gw,fixture_index,pick").eq("user_id", user.id).eq("gw", currentGw),
-        supabase.from("gw_results").select("gw,fixture_index,result").eq("gw", currentGw),
-        supabase.from("gw_submissions").select("submitted_at").eq("user_id", user.id).eq("gw", currentGw).maybeSingle(),
-      ]);
+      // For API Test league members, use test API data for GW 1
+      let fixturesResult, picksResult, resultsResult, submissionResult;
+      let thisGwFixtures: Fixture[];
+      let userPicks: PickRow[];
+      let gwResults: ResultRow[];
+      let submitted: boolean;
       
-      const thisGwFixtures = (fixturesResult.data as Fixture[]) ?? [];
-      const userPicks = (picksResult.data as PickRow[]) ?? [];
-      const gwResults = (resultsResult.data as ResultRow[]) ?? [];
-      const submitted = !!submissionResult.data?.submitted_at;
+      if (isInApiTestLeague) {
+        // Fetch from test API tables - include api_match_id for live scores
+        [fixturesResult, picksResult, resultsResult, submissionResult] = await Promise.all([
+          supabase.from("test_api_fixtures").select("id,test_gw,fixture_index,api_match_id,home_code,away_code,home_team,away_team,home_name,away_name,kickoff_time").eq("test_gw", 1).order("fixture_index", { ascending: true }),
+          supabase.from("test_api_picks").select("user_id,matchday,fixture_index,pick").eq("user_id", user.id).eq("matchday", 1),
+          supabase.from("gw_results").select("gw,fixture_index,result").eq("gw", 1), // Results still use gw_results with gw=1
+          supabase.from("test_api_submissions").select("submitted_at").eq("user_id", user.id).eq("matchday", 1).maybeSingle(),
+        ]);
+        
+        // Map test_gw/matchday to gw for consistency
+        const testFixtures = (fixturesResult.data as any[]) ?? [];
+        thisGwFixtures = testFixtures.map(f => ({ ...f, gw: f.test_gw })) as Fixture[];
+        
+        const testPicks = (picksResult.data as any[]) ?? [];
+        userPicks = testPicks.map(p => ({ ...p, gw: p.matchday })) as PickRow[];
+        
+        gwResults = (resultsResult.data as ResultRow[]) ?? [];
+        submitted = !!submissionResult.data?.submitted_at;
+      } else {
+        // Regular fixtures
+        [fixturesResult, picksResult, resultsResult, submissionResult] = await Promise.all([
+          supabase.from("fixtures").select("id,gw,fixture_index,home_code,away_code,home_team,away_team,home_name,away_name,kickoff_time").eq("gw", currentGw).order("fixture_index", { ascending: true }),
+          supabase.from("picks").select("user_id,gw,fixture_index,pick").eq("user_id", user.id).eq("gw", currentGw),
+          supabase.from("gw_results").select("gw,fixture_index,result").eq("gw", currentGw),
+          supabase.from("gw_submissions").select("submitted_at").eq("user_id", user.id).eq("gw", currentGw).maybeSingle(),
+        ]);
+        
+        thisGwFixtures = (fixturesResult.data as Fixture[]) ?? [];
+        userPicks = (picksResult.data as PickRow[]) ?? [];
+        gwResults = (resultsResult.data as ResultRow[]) ?? [];
+        submitted = !!submissionResult.data?.submitted_at;
+      }
 
     // Calculate score for current GW
         const outcomeByIdx = new Map<number, "H" | "D" | "A">();
@@ -206,11 +243,14 @@ export default function HomePage() {
           score = s;
         }
 
-    // Only populate picksMap if user has submitted
+    // Populate picksMap - show picks even if not submitted (for test API users)
       const map: Record<number, "H" | "D" | "A"> = {};
-      if (submitted) {
-        userPicks.forEach((p) => (map[p.fixture_index] = p.pick));
-      }
+      userPicks.forEach((p) => {
+        map[p.fixture_index] = p.pick;
+        console.log('[Home] Pick loaded:', { fixture_index: p.fixture_index, pick: p.pick, user_id: p.user_id });
+      });
+      console.log('[Home] Picks map:', map);
+      console.log('[Home] Fixtures:', thisGwFixtures.map(f => ({ fixture_index: f.fixture_index, home: f.home_name || f.home_team, away: f.away_name || f.away_team })));
 
     if (!alive) return;
 
@@ -358,6 +398,125 @@ export default function HomePage() {
     enabled: !!user?.id && !loading && !isInitialMountRef.current,
     enableMouse: true, // Enable mouse drag for testing in desktop browsers
   });
+
+  // Fetch live scores from Football Data API
+  const fetchLiveScore = async (apiMatchId: number) => {
+    try {
+      // Fetch single match by ID using Football Data API v4
+      const FOOTBALL_DATA_API_KEY = 'ed3153d132b847db836289243894706e'; // Using the same key from netlify function
+      const response = await fetch(`https://api.football-data.org/v4/matches/${apiMatchId}`, {
+        headers: {
+          'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+        },
+      });
+      
+      if (!response.ok) {
+        // If rate limited, return null (will retry on next poll)
+        if (response.status === 429) {
+          console.warn('[Home] Rate limited, will retry on next poll');
+          return null;
+        }
+        return null;
+      }
+      
+      const match = await response.json();
+      
+      if (!match || !match.score) return null;
+      
+      const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? 0;
+      const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? 0;
+      const status = match.status || 'SCHEDULED';
+      const minute = match.minute ?? null; // Match minute (e.g., 20, 45, etc.)
+      
+      // Determine outcome for flash animation
+      let outcome: "H" | "D" | "A" | null = null;
+      if (status === 'LIVE' || status === 'IN_PLAY' || status === 'PAUSED') {
+        if (homeScore > awayScore) outcome = 'H';
+        else if (awayScore > homeScore) outcome = 'A';
+        else outcome = 'D';
+      }
+      
+      return { homeScore, awayScore, status, outcome, minute };
+    } catch (error) {
+      console.error('[Home] Error fetching live score:', error);
+      return null;
+    }
+  };
+
+  // Poll for live scores every 5 minutes from kickoff time (for test API users)
+  useEffect(() => {
+    if (!isInApiTestLeague || !fixtures.length) return;
+    
+    // Only poll first 3 fixtures
+    const fixturesToPoll = fixtures.slice(0, 3).filter(f => f.api_match_id && f.kickoff_time);
+    if (fixturesToPoll.length === 0) return;
+    
+    const intervals = new Map<number, ReturnType<typeof setInterval>>();
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
+    
+    fixturesToPoll.forEach((fixture) => {
+      if (!fixture.api_match_id || !fixture.kickoff_time) return;
+      
+      const kickoffTime = new Date(fixture.kickoff_time);
+      const now = new Date();
+      const fixtureIndex = fixture.fixture_index;
+      
+      // Helper function to start polling for a fixture
+      const startPolling = () => {
+        // Check if game is already finished
+        const currentScore = liveScores[fixtureIndex];
+        if (currentScore && currentScore.status === 'FINISHED') {
+          // Already finished, don't poll
+          return;
+        }
+        
+        const poll = async () => {
+          const scoreData = await fetchLiveScore(fixture.api_match_id!);
+          if (scoreData) {
+            const isFinished = scoreData.status === 'FINISHED';
+            
+            setLiveScores(prev => ({
+              ...prev,
+              [fixtureIndex]: {
+                homeScore: scoreData.homeScore,
+                awayScore: scoreData.awayScore,
+                status: scoreData.status,
+                minute: scoreData.minute ?? null
+              }
+            }));
+            
+            // Stop polling if game is finished
+            if (isFinished) {
+              const pollInterval = intervals.get(fixtureIndex);
+              if (pollInterval) {
+                clearInterval(pollInterval);
+                intervals.delete(fixtureIndex);
+              }
+            }
+          }
+        };
+        
+        poll(); // Poll immediately
+        const pollInterval = setInterval(poll, 5 * 60 * 1000); // Every 5 minutes
+        intervals.set(fixtureIndex, pollInterval);
+      };
+      
+      // If kickoff hasn't happened yet, set a timeout to start polling at kickoff
+      if (kickoffTime > now) {
+        const delay = kickoffTime.getTime() - now.getTime();
+        const timeout = setTimeout(startPolling, delay);
+        timeouts.push(timeout);
+      } else {
+        // Kickoff already happened, start polling immediately
+        startPolling();
+      }
+    });
+    
+    return () => {
+      intervals.forEach(clearInterval);
+      timeouts.forEach(clearTimeout);
+    };
+  }, [isInApiTestLeague, fixtures]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -2511,26 +2670,95 @@ export default function HomePage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {gwScore !== null && (
-              <button
-                onClick={sharePredictions}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 hover:bg-emerald-700 transition-all cursor-pointer"
-                title="Share your predictions"
-              >
-                <span className="text-xs sm:text-sm font-medium opacity-90">Score</span>
-                <span className="flex items-baseline gap-0.5">
-                  <span className="text-lg sm:text-xl font-extrabold">{gwScore}</span>
-                  <span className="text-sm sm:text-base font-medium opacity-90">/</span>
-                  <span className="text-base sm:text-lg font-semibold opacity-80">{fixtures.length}</span>
-                </span>
-                <svg className="w-4 h-4 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                </svg>
-              </button>
-            )}
-          {fixtures.length > 0 && !gwSubmitted && gwScore === null && (
-              <Link to="/new-predictions" className="inline-block px-3 py-1 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors no-underline">Make your predictions</Link>
-          )}
+            {(() => {
+              // Calculate live score for test API users (includes both live and finished games)
+              let liveScoreCount = 0;
+              let liveFixturesCount = 0;
+              let fixturesToCheck: typeof fixtures = [];
+              if (isInApiTestLeague && fixtures.length > 0) {
+                fixturesToCheck = fixtures.slice(0, 3); // Only first 3 fixtures
+                fixturesToCheck.forEach(f => {
+                  const liveScore = liveScores[f.fixture_index];
+                  const isLive = liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+                  const isFinished = liveScore && liveScore.status === 'FINISHED';
+                  
+                  // Count both live and finished games
+                  if (liveScore && (isLive || isFinished)) {
+                    if (isLive) liveFixturesCount++;
+                    const pick = picksMap[f.fixture_index];
+                    // Determine if pick is correct based on live score
+                    if (pick) {
+                      let isCorrect = false;
+                      if (pick === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrect = true;
+                      else if (pick === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrect = true;
+                      else if (pick === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrect = true;
+                      if (isCorrect) liveScoreCount++;
+                    }
+                  }
+                });
+              }
+              
+              // Check if all games are finished
+              const allFinished = fixturesToCheck.length > 0 && fixturesToCheck.every(f => {
+                const liveScore = liveScores[f.fixture_index];
+                return liveScore && liveScore.status === 'FINISHED';
+              });
+              
+              // Show live score if there are live or finished matches
+              if (isInApiTestLeague && fixturesToCheck.length > 0 && fixturesToCheck.some(f => {
+                const liveScore = liveScores[f.fixture_index];
+                return liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
+              })) {
+                return (
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${allFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
+                    {!allFinished && liveFixturesCount > 0 && (
+                      <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                    )}
+                    {allFinished && (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                      </svg>
+                    )}
+                    <span className="text-xs sm:text-sm font-medium opacity-90">{allFinished ? 'Score' : 'Live'}</span>
+                    <span className="flex items-baseline gap-0.5">
+                      <span className="text-lg sm:text-xl font-extrabold">{liveScoreCount}</span>
+                      <span className="text-sm sm:text-base font-medium opacity-90">/</span>
+                      <span className="text-base sm:text-lg font-semibold opacity-80">{fixturesToCheck.length}</span>
+                    </span>
+                  </div>
+                );
+              }
+              
+              // Show final score if available
+              if (gwScore !== null && Object.keys(resultsMap).length > 0 && Object.keys(resultsMap).length === fixtures.length) {
+                return (
+                  <button
+                    onClick={sharePredictions}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 hover:bg-emerald-700 transition-all cursor-pointer"
+                    title="Share your predictions"
+                  >
+                    <span className="text-xs sm:text-sm font-medium opacity-90">Score</span>
+                    <span className="flex items-baseline gap-0.5">
+                      <span className="text-lg sm:text-xl font-extrabold">{gwScore}</span>
+                      <span className="text-sm sm:text-base font-medium opacity-90">/</span>
+                      <span className="text-base sm:text-lg font-semibold opacity-80">{fixtures.length}</span>
+                    </span>
+                    <svg className="w-4 h-4 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                    </svg>
+                  </button>
+                );
+              }
+              
+              // Show make predictions button
+              if (fixtures.length > 0 && !gwSubmitted && gwScore === null) {
+                return (
+                  <Link to="/new-predictions" className="inline-block px-3 py-1 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors no-underline">Make your predictions</Link>
+                );
+              }
+              
+              return null;
+            })()}
         </div>
           </div>
           {nextGwComing ? (
@@ -2542,12 +2770,48 @@ export default function HomePage() {
           <div className="p-4 text-slate-500">No fixtures yet.</div>
         ) : (
           <div className="mt-6">
-            <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">
-              {fixtures.map((f, index) => {
+            {(() => {
+              // For test API users, only show first 3 fixtures
+              const fixturesToShow = isInApiTestLeague ? fixtures.slice(0, 3) : fixtures;
+              
+              // Group fixtures by date
+              const grouped: Array<{ label: string; items: typeof fixturesToShow }> = [];
+              const byDay = new Map<string, Fixture[]>();
+              
+              fixturesToShow.forEach((f) => {
+                const d = f.kickoff_time ? new Date(f.kickoff_time) : null;
+                const key = d ? d.toISOString().slice(0, 10) : "unknown";
+                if (!byDay.has(key)) byDay.set(key, []);
+                byDay.get(key)!.push(f);
+              });
+              
+              // Sort by date and create groups
+              const sortedKeys = [...byDay.keys()].sort((a, b) => {
+                if (a === "unknown") return 1;
+                if (b === "unknown") return -1;
+                return a.localeCompare(b); // ISO date strings sort correctly
+              });
+              sortedKeys.forEach((key) => {
+                const items = byDay.get(key)!;
+                const d = items[0]?.kickoff_time ? new Date(items[0].kickoff_time) : null;
+                const label = d 
+                  ? d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })
+                  : "TBC";
+                grouped.push({ label, items });
+              });
+              
+              return grouped.map((group, groupIdx) => (
+                <div key={groupIdx} className={groupIdx > 0 ? "mt-6" : ""}>
+                  <div className="text-sm font-semibold text-slate-700 mb-3 px-1">
+                    {group.label}
+                  </div>
+                  <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">
+                    {group.items.map((f, index) => {
                         const pick = picksMap[f.fixture_index];
-                const result = resultsMap[f.fixture_index];
-                        const homeKey = f.home_code || f.home_name || f.home_team || "";
-                        const awayKey = f.away_code || f.away_name || f.away_team || "";
+                        console.log('[Home] Rendering fixture:', { fixture_index: f.fixture_index, pick, home: f.home_name, away: f.away_name });
+                        // Prioritize full names over codes for display
+                        const homeKey = f.home_name || f.home_team || f.home_code || "";
+                        const awayKey = f.away_name || f.away_team || f.away_code || "";
 
                         const homeName = getMediumName(homeKey);
                         const awayName = getMediumName(awayKey);
@@ -2561,12 +2825,26 @@ export default function HomePage() {
                                         })()
                   : "—";
 
-                // Determine button states
+                // Get live score if available
+                const liveScore = liveScores[f.fixture_index];
+                const isLive = liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+                const isFinished = liveScore && liveScore.status === 'FINISHED';
+                
+                // Determine button states (use live score if available)
                 const getButtonState = (side: "H" | "D" | "A") => {
                   const isPicked = pick === side;
-                  const isCorrectResult = result === side;
+                  // Only show correct result for live matches - for non-live, just show picked state
+                  let isCorrectResult = false;
+                  if (liveScore) {
+                    // For live/finished matches, show which outcome is correct
+                    if (side === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrectResult = true;
+                    else if (side === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrectResult = true;
+                    else if (side === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrectResult = true;
+                  }
+                  // Don't show results for non-live games - they should just show picked state
                   const isCorrect = isPicked && isCorrectResult;
-                  const isWrong = isPicked && result && result !== side;
+                  // Wrong if picked but not correct result (for both live and finished games)
+                  const isWrong = isPicked && (isLive || isFinished) && !isCorrectResult;
                   return { isPicked, isCorrectResult, isCorrect, isWrong };
                 };
 
@@ -2576,13 +2854,24 @@ export default function HomePage() {
 
                 // Button styling helper
                 const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }) => {
-                  const base = "h-16 rounded-xl border text-sm font-medium transition-colors flex items-center justify-center select-none";
-                  if (state.isCorrect) {
+                  const base = "h-16 rounded-xl border text-sm font-medium transition-all flex items-center justify-center select-none";
+                  // If live and this is the correct result, add pulsing animation
+                  const isLiveAndCorrect = isLive && state.isCorrectResult;
+                  // Shiny gradient ONLY when game is FINISHED and pick is correct
+                  if (state.isCorrect && isFinished) {
                     return `${base} bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white !border-0 !border-none shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]`;
+                  } else if (state.isCorrect && isLive) {
+                    // Live and correct - pulse in emerald green
+                    return `${base} bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-lg shadow-emerald-500/50`;
                   } else if (state.isCorrectResult) {
-                    return `${base} bg-emerald-600 text-white border-emerald-600`;
-                  } else if (state.isWrong) {
-                    return `${base} bg-rose-100 text-rose-700 border-rose-200`;
+                    // If live, add pulsing animation to the correct result tile (no color change, just pulse)
+                    return `${base} bg-emerald-600 text-white border-emerald-600 ${isLiveAndCorrect ? 'animate-pulse shadow-lg shadow-emerald-500/50' : ''}`;
+                  } else if (state.isWrong && isFinished) {
+                    // Wrong pick in finished game - grey background with flashing red border and strikethrough
+                    return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
+                  } else if (state.isWrong && isLive) {
+                    // Wrong pick in live game - grey background with flashing red border, no strikethrough until FT
+                    return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
                   } else if (state.isPicked) {
                     return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
                   } else {
@@ -2591,57 +2880,83 @@ export default function HomePage() {
                 };
 
                 return (
-                  <div key={f.id} className={index < fixtures.length - 1 ? 'relative' : ''}>
-                    {index < fixtures.length - 1 && (
+                  <div key={f.id} className={index < fixturesToShow.length - 1 ? 'relative' : ''}>
+                    {index < fixturesToShow.length - 1 && (
                       <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-10" />
                     )}
                     <div className="p-4 !bg-white relative z-0">
-                      {/* header: Home  kickoff  Away */}
-                      <div className="flex items-center px-2 pt-1 pb-3">
-                        <div className="flex items-center gap-1 flex-1 justify-end">
-                          <div className="truncate font-medium">{homeName}</div>
-                          <img 
-                            src={`/assets/badges/${(f.home_code || homeKey).toUpperCase()}.png`} 
-                            alt={homeName}
-                            className="w-5 h-5"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                                  </div>
-                        <div className="text-slate-500 text-sm px-4">
-                          {kickoff}
-                                </div>
-                        <div className="flex items-center gap-1 flex-1 justify-start">
-                          <img 
-                            src={`/assets/badges/${(f.away_code || awayKey).toUpperCase()}.png`} 
-                            alt={awayName}
-                            className="w-5 h-5"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                          <div className="truncate font-medium">{awayName}</div>
-                                </div>
-                              </div>
+                      {/* LIVE indicator - red dot top left */}
+                      {isLive && (
+                        <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
+                          <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                          <span className="text-xs font-bold text-red-600 uppercase">LIVE</span>
+                        </div>
+                      )}
+                      
+                      {/* header: Home  score/kickoff  Away */}
+                      <div className={`flex flex-col px-2 pb-3 ${isLive ? 'pt-4' : 'pt-1'}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1 flex-1 justify-end">
+                            <div className="font-medium break-words">{homeName}</div>
+                            <img 
+                              src={`/assets/badges/${(f.home_code || homeKey).toUpperCase()}.png`} 
+                              alt={homeName}
+                              className="w-5 h-5"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                          </div>
+                          <div className="px-4 flex items-center">
+                            {liveScore && (isLive || isFinished) ? (
+                              <span className="font-bold text-base text-slate-900">
+                                {liveScore.homeScore} - {liveScore.awayScore}
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 text-sm">{kickoff}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 flex-1 justify-start">
+                            <img 
+                              src={`/assets/badges/${(f.away_code || awayKey).toUpperCase()}.png`} 
+                              alt={awayName}
+                              className="w-5 h-5"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                            <div className="font-medium break-words">{awayName}</div>
+                          </div>
+                        </div>
+                        {liveScore && (isLive || isFinished) && (
+                          <div className="flex justify-center mt-1">
+                            <span className={`text-[10px] font-semibold ${isLive ? 'text-red-600' : 'text-slate-500'}`}>
+                              {isFinished ? 'FT' : (liveScore.minute ? `${liveScore.minute}'` : 'LIVE')}
+                            </span>
+                          </div>
+                        )}
+                      </div>
 
                       {/* buttons: Home Win, Draw, Away Win */}
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className={getButtonClass(homeState)}>
-                          <span className={homeState.isCorrect ? "font-bold" : ""}>Home Win</span>
+                      <div className="grid grid-cols-3 gap-3 relative">
+                        <div className={`${getButtonClass(homeState)} flex items-center justify-center`}>
+                          <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-red-200" : ""}`}>Home Win</span>
                                   </div>
-                        <div className={getButtonClass(drawState)}>
-                          <span className={drawState.isCorrect ? "font-bold" : ""}>Draw</span>
+                        <div className={`${getButtonClass(drawState)} flex items-center justify-center`}>
+                          <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-red-200" : ""}`}>Draw</span>
                                 </div>
-                        <div className={getButtonClass(awayState)}>
-                          <span className={awayState.isCorrect ? "font-bold" : ""}>Away Win</span>
+                        <div className={`${getButtonClass(awayState)} flex items-center justify-center`}>
+                          <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-red-200" : ""}`}>Away Win</span>
                                   </div>
                                 </div>
                                   </div>
                                 </div>
                         );
                       })}
-            </div>
+                  </div>
+                </div>
+              ));
+            })()}
           </div>
         )}
       </section>

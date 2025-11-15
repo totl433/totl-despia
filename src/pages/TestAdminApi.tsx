@@ -42,6 +42,8 @@ type TestFixture = {
   away_code: string | null;
   home_name: string | null;
   away_name: string | null;
+  home_crest: string | null;
+  away_crest: string | null;
   kickoff_time: string | null;
   selected: boolean; // Whether this fixture is selected for the GW
 };
@@ -299,6 +301,8 @@ export default function TestAdminApi() {
         away_code: match.awayTeam.tla,
         home_name: match.homeTeam.name,
         away_name: match.awayTeam.name,
+        home_crest: match.homeTeam.crest || null,
+        away_crest: match.awayTeam.crest || null,
         kickoff_time: match.utcDate,
         selected: true,
       };
@@ -336,6 +340,8 @@ export default function TestAdminApi() {
         away_code: f.away_code,
         home_name: f.home_name,
         away_name: f.away_name,
+        home_crest: f.home_crest,
+        away_crest: f.away_crest,
         kickoff_time: f.kickoff_time,
       }));
 

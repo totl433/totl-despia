@@ -799,18 +799,36 @@ export default function NewPredictionsCentre() {
                   onClick={async () => {
                     try {
                       // Convert picks map to array for database insertion
-                      const picksArray = Array.from(picks.values()).map(pick => ({
-                        user_id: user?.id,
-                        gw: pick.gw,
-                        fixture_index: pick.fixture_index,
-                        pick: pick.pick
-                      }));
+                      const picksArray = Array.from(picks.values()).map(pick => {
+                        if (isInApiTestLeague && displayGw === 1) {
+                          // For test API users, save to test_api_picks with matchday
+                          return {
+                            user_id: user?.id,
+                            matchday: 1,
+                            fixture_index: pick.fixture_index,
+                            pick: pick.pick
+                          };
+                        } else {
+                          // Regular users save to picks table
+                          return {
+                            user_id: user?.id,
+                            gw: pick.gw,
+                            fixture_index: pick.fixture_index,
+                            pick: pick.pick
+                          };
+                        }
+                      });
 
                       // Insert/update picks in database
+                      const tableName = isInApiTestLeague && displayGw === 1 ? 'test_api_picks' : 'picks';
+                      const conflictColumns = isInApiTestLeague && displayGw === 1 
+                        ? 'user_id,matchday,fixture_index' 
+                        : 'user_id,gw,fixture_index';
+                      
                       const { error } = await supabase
-                        .from('picks')
+                        .from(tableName)
                         .upsert(picksArray, { 
-                          onConflict: 'user_id,gw,fixture_index',
+                          onConflict: conflictColumns,
                           ignoreDuplicates: false 
                         });
 
@@ -859,18 +877,36 @@ export default function NewPredictionsCentre() {
                   onClick={async () => {
                     try {
                       // Convert picks map to array for database insertion
-                      const picksArray = Array.from(picks.values()).map(pick => ({
-                        user_id: user?.id,
-                        gw: pick.gw,
-                        fixture_index: pick.fixture_index,
-                        pick: pick.pick
-                      }));
+                      const picksArray = Array.from(picks.values()).map(pick => {
+                        if (isInApiTestLeague && displayGw === 1) {
+                          // For test API users, save to test_api_picks with matchday
+                          return {
+                            user_id: user?.id,
+                            matchday: 1,
+                            fixture_index: pick.fixture_index,
+                            pick: pick.pick
+                          };
+                        } else {
+                          // Regular users save to picks table
+                          return {
+                            user_id: user?.id,
+                            gw: pick.gw,
+                            fixture_index: pick.fixture_index,
+                            pick: pick.pick
+                          };
+                        }
+                      });
 
                       // Insert/update picks in database
+                      const tableName = isInApiTestLeague && displayGw === 1 ? 'test_api_picks' : 'picks';
+                      const conflictColumns = isInApiTestLeague && displayGw === 1 
+                        ? 'user_id,matchday,fixture_index' 
+                        : 'user_id,gw,fixture_index';
+                      
                       const { error: picksError } = await supabase
-                        .from('picks')
+                        .from(tableName)
                         .upsert(picksArray, { 
-                          onConflict: 'user_id,gw,fixture_index',
+                          onConflict: conflictColumns,
                           ignoreDuplicates: false 
                         });
 
@@ -880,15 +916,27 @@ export default function NewPredictionsCentre() {
                         return;
                       }
 
-                      // Record submission in gw_submissions table
+                      // Record submission in appropriate table
+                      const submissionTable = isInApiTestLeague && displayGw === 1 ? 'test_api_submissions' : 'gw_submissions';
+                      const submissionData = isInApiTestLeague && displayGw === 1
+                        ? {
+                            user_id: user?.id,
+                            matchday: 1,
+                            submitted_at: new Date().toISOString()
+                          }
+                        : {
+                            user_id: user?.id,
+                            gw: currentGw,
+                            submitted_at: new Date().toISOString()
+                          };
+                      const submissionConflict = isInApiTestLeague && displayGw === 1 
+                        ? 'user_id,matchday' 
+                        : 'user_id,gw';
+                      
                       const { error: submissionError } = await supabase
-                        .from('gw_submissions')
-                        .upsert({
-                          user_id: user?.id,
-                          gw: currentGw,
-                          submitted_at: new Date().toISOString()
-                        }, {
-                          onConflict: 'user_id,gw'
+                        .from(submissionTable)
+                        .upsert(submissionData, {
+                          onConflict: submissionConflict
                         });
 
                       if (submissionError) {

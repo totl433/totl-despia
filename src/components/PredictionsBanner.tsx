@@ -171,24 +171,24 @@ export default function PredictionsBanner() {
     <>
       {bannerType === "predictions" ? (
         <div className="mx-auto max-w-6xl px-4">
-          <Link
-            to="/new-predictions"
-            className="block mt-4 rounded-lg bg-blue-600 px-4 py-3 hover:bg-blue-700 transition-colors"
-          >
-            <div className="text-center">
-              <div className="font-semibold text-white">GW{currentGw} is Live - Make your predictions</div>
-              <div className="text-white/90">
-                {deadlineText ? (
-                  <>
-                    <span>Deadline: </span>
-                    <span className="font-extrabold">{deadlineText}</span>
-                  </>
-                ) : (
-                  "Don't miss the deadline!"
-                )}
-              </div>
+        <Link
+          to="/new-predictions"
+          className="block mt-4 rounded-lg bg-blue-600 px-4 py-3 hover:bg-blue-700 transition-colors"
+        >
+          <div className="text-center">
+            <div className="font-semibold text-white">GW{currentGw} is Live - Make your predictions</div>
+            <div className="text-white/90">
+              {deadlineText ? (
+                <>
+                  <span>Deadline: </span>
+                  <span className="font-extrabold">{deadlineText}</span>
+                </>
+              ) : (
+                "Don't miss the deadline!"
+              )}
             </div>
-          </Link>
+          </div>
+        </Link>
         </div>
       ) : (
         <div className="w-full px-4 py-3 relative" style={{ backgroundColor: '#e1eae9' }}>
