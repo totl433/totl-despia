@@ -1965,12 +1965,6 @@ export default function LeaguePage() {
                         // Use fallback pattern like Home.tsx
                         const homeKey = (f.home_code || f.home_name || f.home_team || "").toUpperCase();
                         const awayKey = (f.away_code || f.away_name || f.away_team || "").toUpperCase();
-                        
-                        // Debug: log badge paths
-                        if (league?.name === 'API Test') {
-                          console.log(`Fixture ${f.fixture_index}: home_code=${f.home_code}, home_name=${f.home_name}, home_team=${f.home_team}, homeKey=${homeKey}`);
-                          console.log(`Fixture ${f.fixture_index}: away_code=${f.away_code}, away_name=${f.away_name}, away_team=${f.away_team}, awayKey=${awayKey}`);
-                        }
 
                         const timeOf = (iso?: string | null) => {
                           if (!iso) return "";
@@ -2057,27 +2051,55 @@ export default function LeaguePage() {
                                 </div>
                                 <div className="flex items-center justify-center gap-2">
                                   {homeKey && (
-                                    <img 
-                                      src={`/assets/badges/${homeKey}.png`} 
-                                      alt={`${homeName} badge`} 
-                                      className="h-6 w-6"
-                                      onError={(e) => {
-                                        e.currentTarget.style.display = 'none';
-                                      }}
-                                    />
+                                    <div className="relative h-6 w-6">
+                                      <img 
+                                        src={`/assets/badges/${homeKey}.png`} 
+                                        alt={`${homeName} badge`} 
+                                        className="h-6 w-6 object-contain"
+                                        onError={(e) => {
+                                          const img = e.currentTarget;
+                                          img.style.display = 'none';
+                                          const placeholder = img.nextElementSibling as HTMLElement;
+                                          if (placeholder) {
+                                            placeholder.style.display = 'flex';
+                                          }
+                                        }}
+                                      />
+                                      <div 
+                                        className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 absolute top-0 left-0"
+                                        style={{ display: 'none' }}
+                                        title={homeName}
+                                      >
+                                        {homeKey.slice(0, 2)}
+                                      </div>
+                                    </div>
                                   )}
                                   <div className="text-[15px] sm:text-base font-semibold text-slate-600">
                                     {timeStr}
                                   </div>
                                   {awayKey && (
-                                    <img 
-                                      src={`/assets/badges/${awayKey}.png`} 
-                                      alt={`${awayName} badge`} 
-                                      className="h-6 w-6"
-                                      onError={(e) => {
-                                        e.currentTarget.style.display = 'none';
-                                      }}
-                                    />
+                                    <div className="relative h-6 w-6">
+                                      <img 
+                                        src={`/assets/badges/${awayKey}.png`} 
+                                        alt={`${awayName} badge`} 
+                                        className="h-6 w-6 object-contain"
+                                        onError={(e) => {
+                                          const img = e.currentTarget;
+                                          img.style.display = 'none';
+                                          const placeholder = img.nextElementSibling as HTMLElement;
+                                          if (placeholder) {
+                                            placeholder.style.display = 'flex';
+                                          }
+                                        }}
+                                      />
+                                      <div 
+                                        className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 absolute top-0 left-0"
+                                        style={{ display: 'none' }}
+                                        title={awayName}
+                                      >
+                                        {awayKey.slice(0, 2)}
+                                      </div>
+                                    </div>
                                   )}
                                 </div>
                                 <div className="flex items-center justify-center">
