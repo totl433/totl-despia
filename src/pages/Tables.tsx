@@ -454,10 +454,12 @@ export default function TablesPage() {
           "Prem Predictions": 0,
           "FC Football": 0,
           "Easy League": 0,
+          "API Test": 999, // Special: API Test league uses test API data, not regular game data
           "The Bird league": 7,
           gregVjofVcarl: 8,
           "Let Down": 8,
         };
+        
         const override = league.name ? LEAGUE_START_OVERRIDES[league.name] : undefined;
         if (typeof override === "number") {
           leagueStartGw = override;
@@ -507,6 +509,21 @@ export default function TablesPage() {
         try {
           // Get members from pre-fetched data
           const members = (membersByLeagueId.get(row.id) ?? []).filter((m: LeagueMember) => m.name !== "Unknown");
+          
+          // Special handling for "API Test" league - show zero points (test league)
+          const leagueMeta = leaguesMetaMap.get(row.id);
+          if (leagueMeta?.name === 'API Test') {
+            const alphabeticalIds = members.sort((a, b) => a.name.localeCompare(b.name)).map(m => m.id);
+            leagueDataMap[row.id] = {
+              id: row.id,
+              members: members.sort((a, b) => a.name.localeCompare(b.name)),
+              userPosition: alphabeticalIds.indexOf(user.id) + 1 || null,
+              positionChange: null,
+              sortedMemberIds: alphabeticalIds,
+              latestGwWinners: new Set()
+            };
+            return; // Skip calculation - test league shows zero points
+          }
 
           if (members.length === 0) {
             leagueDataMap[row.id] = {
