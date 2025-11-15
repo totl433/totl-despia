@@ -206,6 +206,10 @@ export default function NewPredictionsCentre() {
 
         if (fxErr) {
           console.error('Error fetching fixtures:', fxErr);
+          if (alive) {
+            setLoading(false);
+            setError(`Failed to load fixtures: ${fxErr.message || 'Unknown error'}`);
+          }
           return;
         }
 
@@ -307,8 +311,12 @@ export default function NewPredictionsCentre() {
             console.log('Loaded', resultsMap.size, 'results for GW', currentGw);
           }
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error loading GW data:', error);
+        if (alive) {
+          setLoading(false);
+          setError(`Failed to load matches: ${error?.message || 'Unknown error'}`);
+        }
       } finally {
         if (alive) {
           setLoading(false);
