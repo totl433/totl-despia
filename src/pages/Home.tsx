@@ -470,7 +470,8 @@ export default function HomePage() {
       const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? 0;
       const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? 0;
       const status = match.status || 'SCHEDULED';
-      const minute = match.minute ?? null; // Match minute (e.g., 20, 45, etc.)
+      // Try multiple possible locations for minute field
+      const minute = match.minute ?? match.score?.minute ?? match.liveStatus?.minute ?? null;
       
       // Debug logging to see actual API response
       console.log('[Home] API Response for match', apiMatchId, ':', {
@@ -478,6 +479,9 @@ export default function HomePage() {
         minute,
         homeScore,
         awayScore,
+        matchMinute: match.minute,
+        scoreMinute: match.score?.minute,
+        liveStatusMinute: match.liveStatus?.minute,
         fullMatch: match
       });
       
@@ -530,6 +534,7 @@ export default function HomePage() {
           const htResumeTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
           
           const poll = async () => {
+            console.log('[Home] Polling fixture', fixtureIndex, 'at', new Date().toISOString());
             const scoreData = await fetchLiveScore(fixture.api_match_id!);
             if (scoreData) {
             const isLive = scoreData.status === 'IN_PLAY' || scoreData.status === 'PAUSED';
