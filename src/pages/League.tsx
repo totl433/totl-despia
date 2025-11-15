@@ -1965,6 +1965,12 @@ export default function LeaguePage() {
                         // Use fallback pattern like Home.tsx
                         const homeKey = (f.home_code || f.home_name || f.home_team || "").toUpperCase();
                         const awayKey = (f.away_code || f.away_name || f.away_team || "").toUpperCase();
+                        
+                        // Debug: log badge paths
+                        if (league?.name === 'API Test') {
+                          console.log(`Fixture ${f.fixture_index}: home_code=${f.home_code}, home_name=${f.home_name}, home_team=${f.home_team}, homeKey=${homeKey}`);
+                          console.log(`Fixture ${f.fixture_index}: away_code=${f.away_code}, away_name=${f.away_name}, away_team=${f.away_team}, awayKey=${awayKey}`);
+                        }
 
                         const timeOf = (iso?: string | null) => {
                           if (!iso) return "";
@@ -2050,25 +2056,29 @@ export default function LeaguePage() {
                                   <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{homeName}</span>
                                 </div>
                                 <div className="flex items-center justify-center gap-2">
-                                  <img 
-                                    src={`/assets/badges/${(f.home_code || homeKey).toUpperCase()}.png`} 
-                                    alt={`${homeName} badge`} 
-                                    className="h-6 w-6"
-                                    onError={(e) => {
-                                      e.currentTarget.style.display = 'none';
-                                    }}
-                                  />
+                                  {homeKey && (
+                                    <img 
+                                      src={`/assets/badges/${homeKey}.png`} 
+                                      alt={`${homeName} badge`} 
+                                      className="h-6 w-6"
+                                      onError={(e) => {
+                                        e.currentTarget.style.display = 'none';
+                                      }}
+                                    />
+                                  )}
                                   <div className="text-[15px] sm:text-base font-semibold text-slate-600">
                                     {timeStr}
                                   </div>
-                                  <img 
-                                    src={`/assets/badges/${(f.away_code || awayKey).toUpperCase()}.png`} 
-                                    alt={`${awayName} badge`} 
-                                    className="h-6 w-6"
-                                    onError={(e) => {
-                                      e.currentTarget.style.display = 'none';
-                                    }}
-                                  />
+                                  {awayKey && (
+                                    <img 
+                                      src={`/assets/badges/${awayKey}.png`} 
+                                      alt={`${awayName} badge`} 
+                                      className="h-6 w-6"
+                                      onError={(e) => {
+                                        e.currentTarget.style.display = 'none';
+                                      }}
+                                    />
+                                  )}
                                 </div>
                                 <div className="flex items-center justify-center">
                                   <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{awayName}</span>
