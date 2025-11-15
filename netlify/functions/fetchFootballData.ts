@@ -39,7 +39,9 @@ export const handler: Handler = async (event) => {
       const response = await fetch(apiUrl, {
         headers: {
           'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+          'Cache-Control': 'no-cache', // Ensure we get fresh data
         },
+        cache: 'no-store', // Don't cache the request
       });
 
       if (!response.ok) {
@@ -95,7 +97,9 @@ export const handler: Handler = async (event) => {
     const response = await fetch(apiUrl, {
       headers: {
         'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+        'Cache-Control': 'no-cache', // Ensure we get fresh data
       },
+      cache: 'no-store', // Don't cache the request
     });
 
     if (!response.ok) {

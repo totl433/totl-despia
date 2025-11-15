@@ -62,9 +62,17 @@ function formatMinuteDisplay(status: string, minute: number | null | undefined):
   if (minute === null || minute === undefined) {
     return 'LIVE';
   }
+  if (minute > 90) {
+    // After 90 minutes, show 90+ until FT
+    return '90+';
+  }
   if (minute > 45) {
-    // Show as 45+1, 45+2, etc. for second half
-    return `45+${minute - 45}`;
+    // Second half: show 90+ (not 45+1, 45+2, etc.)
+    return '90+';
+  }
+  if (minute === 45) {
+    // At 45 minutes, show 45+ until HT pause
+    return '45+';
   }
   return `${minute}'`;
 }
@@ -138,6 +146,8 @@ export default function HomePage() {
   const resultsNotificationSentRef = useRef(false);
   // Track if "Game Week Starting Soon" notification has been scheduled
   const gameweekStartingSoonScheduledRef = useRef(false);
+  // Track last API pull info for debugging
+  const [lastApiPull, setLastApiPull] = useState<{ minute: number | null; timestamp: Date; success: boolean } | null>(null);
   const [isInApiTestLeague, setIsInApiTestLeague] = useState(false);
 
   // Extract data fetching into a reusable function for pull-to-refresh
@@ -555,6 +565,9 @@ export default function HomePage() {
       console.log('[Home] API Response for match', apiMatchId, ':', {
         status,
         minute,
+        minuteType: typeof minute,
+        minuteIsNull: minute === null,
+        minuteIsUndefined: minute === undefined,
         homeScore,
         awayScore,
         matchMinute: match.minute,
@@ -589,7 +602,7 @@ export default function HomePage() {
     }
   };
 
-  // Poll for live scores every 5 minutes from kickoff time (for test API users)
+  // Poll for live scores - only poll fixtures that are currently live (IN_PLAY or PAUSED)
   useEffect(() => {
     if (!isInApiTestLeague || !fixtures.length) return;
     
@@ -599,30 +612,82 @@ export default function HomePage() {
     
     const intervals = new Map<number, ReturnType<typeof setInterval>>();
     const timeouts: ReturnType<typeof setTimeout>[] = [];
+    const htResumeTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
     
-    fixturesToPoll.forEach((fixture) => {
-      if (!fixture.api_match_id || !fixture.kickoff_time) return;
+    // Function to check if a fixture should be polled (is live or paused)
+    // Uses cached status to avoid unnecessary API calls
+    const shouldPollFixture = async (fixture: Fixture): Promise<boolean> => {
+      if (!fixture.api_match_id || !fixture.kickoff_time) return false;
       
+      // Check current status from cache first
+      const currentScore = liveScores[fixture.fixture_index];
+      if (currentScore) {
+        // If we have a cached status, use it (no API call needed)
+        return currentScore.status === 'IN_PLAY' || currentScore.status === 'PAUSED';
+      }
+      
+      // Only check API if no cached status AND kickoff time has passed
       const kickoffTime = new Date(fixture.kickoff_time);
       const now = new Date();
+      if (kickoffTime > now) {
+        // Game hasn't started yet, don't poll
+        return false;
+      }
+      
+      // No cached status and game should have started - check API once
+      // This will only happen when a game first goes live
+      const scoreData = await fetchLiveScore(fixture.api_match_id, fixture.kickoff_time);
+      if (scoreData) {
+        const isLive = scoreData.status === 'IN_PLAY';
+        const isHalfTime = scoreData.status === 'PAUSED' || scoreData.status === 'HALF_TIME' || scoreData.status === 'HT';
+        
+        // Update liveScores with current status
+        setLiveScores(prev => ({
+          ...prev,
+          [fixture.fixture_index]: {
+            homeScore: scoreData.homeScore,
+            awayScore: scoreData.awayScore,
+            status: scoreData.status,
+            minute: scoreData.minute ?? null
+          }
+        }));
+        
+        return isLive || isHalfTime;
+      }
+      
+      return false;
+    };
+    
+    // Helper function to start polling for a fixture
+    const startPolling = (fixture: Fixture) => {
       const fixtureIndex = fixture.fixture_index;
       
-      // Helper function to start polling for a fixture
-      const startPolling = () => {
-        // Check if game is already finished
-        const currentScore = liveScores[fixtureIndex];
-        if (currentScore && currentScore.status === 'FINISHED') {
-          // Already finished, don't poll
-          return;
-        }
-        
-          // Track HT state to resume polling after 15 minutes
-          const htResumeTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
-          
-          const poll = async () => {
+      // Don't start if already polling
+      if (intervals.has(fixtureIndex)) {
+        return;
+      }
+      
+      const poll = async () => {
             console.log('[Home] Polling fixture', fixtureIndex, 'at', new Date().toISOString());
             const scoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
             if (scoreData) {
+              // Update last API pull info (use the latest minute from any fixture)
+              // Only update if this is a live/halftime game and we have a minute
+              if ((scoreData.status === 'IN_PLAY' || scoreData.status === 'PAUSED') && scoreData.minute !== null && scoreData.minute !== undefined) {
+                setLastApiPull(prev => {
+                  // Use the maximum minute from all fixtures (most recent game progress)
+                  const newMinute = scoreData.minute ?? null;
+                  if (!prev || newMinute === null) {
+                    return { minute: newMinute, timestamp: new Date(), success: true };
+                  }
+                  // Keep the highest minute (most advanced game)
+                  return {
+                    minute: Math.max(prev.minute ?? 0, newMinute),
+                    timestamp: new Date(),
+                    success: true
+                  };
+                });
+              }
             // PAUSED status in Football Data API v4 is used for halftime
             // IN_PLAY is for active play
             const isLive = scoreData.status === 'IN_PLAY';
@@ -746,77 +811,77 @@ export default function HomePage() {
                 htResumeTimeouts.delete(fixtureIndex);
               }
             } else if (isHalfTime) {
-              // Half-time - stop polling, resume in 15 minutes
-              console.log('[Home] Game', fixtureIndex, 'at half-time, stopping polling, will resume in 15 minutes');
-              const pollInterval = intervals.get(fixtureIndex);
-              if (pollInterval) {
-                clearInterval(pollInterval);
-                intervals.delete(fixtureIndex);
-              }
-              
-              // Clear any existing HT resume timeout
+              // Half-time - continue polling to catch start of second half immediately
+              console.log('[Home] Game', fixtureIndex, 'at half-time, continuing to poll every 30s to catch second half start');
+              // Clear any existing HT resume timeout (no longer needed)
               const existingTimeout = htResumeTimeouts.get(fixtureIndex);
               if (existingTimeout) {
                 clearTimeout(existingTimeout);
-              }
-              
-              // Set timeout to resume polling in 15 minutes
-              const htResumeTimeout = setTimeout(() => {
-                console.log('[Home] Resuming polling for fixture', fixtureIndex, 'after half-time');
-                // Resume polling every minute until game starts or finishes
-                const resumePoll = async () => {
-                  const resumeScoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
-                  if (resumeScoreData) {
-                    const resumeIsFinished = resumeScoreData.status === 'FINISHED';
-                    // PAUSED status in Football Data API v4 is used for halftime
-                    const resumeIsLive = resumeScoreData.status === 'IN_PLAY';
-                    const resumeIsHalfTime = resumeScoreData.status === 'PAUSED' || resumeScoreData.status === 'HALF_TIME' || resumeScoreData.status === 'HT';
-                    
-                    setLiveScores(prev => ({
-                      ...prev,
-                      [fixtureIndex]: {
-                        homeScore: resumeScoreData.homeScore,
-                        awayScore: resumeScoreData.awayScore,
-                        status: resumeScoreData.status,
-                        minute: resumeScoreData.minute ?? null
-                      }
-                    }));
-                    
-                    if (resumeIsFinished) {
-                      console.log('[Home] Game', fixtureIndex, 'finished, stopping polling');
-                      const resumeInterval = intervals.get(fixtureIndex);
-                      if (resumeInterval) {
-                        clearInterval(resumeInterval);
-                        intervals.delete(fixtureIndex);
-                      }
-                      htResumeTimeouts.delete(fixtureIndex);
-                    } else if (resumeIsLive) {
-                      // Second half has started - continue polling every minute until FT
-                      console.log('[Home] Game', fixtureIndex, 'second half started - status:', resumeScoreData.status, 'minute:', resumeScoreData.minute);
-                    } else if (resumeIsHalfTime) {
-                      // Still at half-time, keep polling every minute until second half starts
-                      console.log('[Home] Game', fixtureIndex, 'still at half-time, continuing to poll...');
-                    }
-                  }
-                };
-                
-                resumePoll(); // Poll immediately
-                const resumeInterval = setInterval(resumePoll, 60 * 1000); // Every 1 minute
-                intervals.set(fixtureIndex, resumeInterval);
                 htResumeTimeouts.delete(fixtureIndex);
-              }, 15 * 60 * 1000); // 15 minutes
-              
-              htResumeTimeouts.set(fixtureIndex, htResumeTimeout);
+              }
             } else if (isLive) {
               console.log('[Home] Game', fixtureIndex, 'is LIVE - status:', scoreData.status, 'minute:', scoreData.minute);
+              // Clear any HT resume timeout if second half has started
+              const existingTimeout = htResumeTimeouts.get(fixtureIndex);
+              if (existingTimeout) {
+                clearTimeout(existingTimeout);
+                htResumeTimeouts.delete(fixtureIndex);
+              }
             }
             }
           };
           
           poll(); // Poll immediately
-        const pollInterval = setInterval(poll, 60 * 1000); // Every 1 minute
+        const pollInterval = setInterval(poll, 30 * 1000); // Every 30 seconds for faster updates
         intervals.set(fixtureIndex, pollInterval);
       };
+    
+    // Check which fixtures should be polled and start/stop polling accordingly
+    const checkAndManagePolling = async () => {
+      for (const fixture of fixturesToPoll) {
+        if (!fixture.api_match_id || !fixture.kickoff_time) continue;
+        
+        const fixtureIndex = fixture.fixture_index;
+        const isCurrentlyPolling = intervals.has(fixtureIndex);
+        
+        // Check if fixture should be polled
+        const shouldPoll = await shouldPollFixture(fixture);
+        
+        if (shouldPoll && !isCurrentlyPolling) {
+          // Start polling this fixture
+          console.log('[Home] Starting polling for live fixture', fixtureIndex);
+          startPolling(fixture);
+        } else if (!shouldPoll && isCurrentlyPolling) {
+          // Stop polling this fixture (it's finished or not started)
+          console.log('[Home] Stopping polling for fixture', fixtureIndex, '(no longer live)');
+          const pollInterval = intervals.get(fixtureIndex);
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            intervals.delete(fixtureIndex);
+          }
+          // Clear any HT resume timeout
+          const htTimeout = htResumeTimeouts.get(fixtureIndex);
+          if (htTimeout) {
+            clearTimeout(htTimeout);
+            htResumeTimeouts.delete(fixtureIndex);
+          }
+        }
+      }
+    };
+    
+    // Initial check and then periodic checks
+    // Check every 2 minutes to see which fixtures need polling (conservative to avoid API calls)
+    // Most checks will use cached status, so this is safe
+    checkAndManagePolling();
+    const statusCheckInterval = setInterval(checkAndManagePolling, 2 * 60 * 1000); // Check every 2 minutes which fixtures need polling
+    
+    // Schedule notifications
+    fixturesToPoll.forEach((fixture) => {
+      if (!fixture.api_match_id || !fixture.kickoff_time) return;
+      
+      const kickoffTime = new Date(fixture.kickoff_time);
+      const now = new Date();
+      const fixtureIndex = fixture.fixture_index;
       
       // Schedule live game notification
       if (kickoffTime > now) {
@@ -837,25 +902,14 @@ export default function HomePage() {
           gameweekStartingSoonScheduledRef.current = true;
         }
       }
-      
-      // If kickoff hasn't happened yet, set a timeout to start polling at kickoff
-      if (kickoffTime > now) {
-        const delay = kickoffTime.getTime() - now.getTime();
-        console.log('[Home] Game', fixtureIndex, 'not started yet, will start polling in', Math.round(delay / 1000), 'seconds');
-        const timeout = setTimeout(startPolling, delay);
-        timeouts.push(timeout);
-      } else {
-        // Kickoff already happened, start polling immediately
-        console.log('[Home] Game', fixtureIndex, 'kickoff has passed, starting polling immediately');
-        startPolling();
-      }
     });
     
     return () => {
       console.log('[Home] Cleaning up polling intervals and timeouts');
       intervals.forEach(clearInterval);
       timeouts.forEach(clearTimeout);
-      // Note: HT resume timeouts are stored in startPolling closure, will be cleaned up when component unmounts
+      htResumeTimeouts.forEach(clearTimeout);
+      clearInterval(statusCheckInterval);
     };
   }, [isInApiTestLeague, fixtures.map(f => f.api_match_id).join(','), picksMap]);
 
@@ -3051,21 +3105,61 @@ export default function HomePage() {
                 return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
               })) {
                 return (
-                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${allFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
-                    {!allFinished && liveFixturesCount > 0 && (
-                    <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                    )}
-                    {allFinished && (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                      </svg>
-                    )}
-                    <span className="text-xs sm:text-sm font-medium opacity-90">{allFinished ? 'Score' : 'Live'}</span>
-                    <span className="flex items-baseline gap-0.5">
-                      <span className="text-lg sm:text-xl font-extrabold">{liveScoreCount}</span>
-                      <span className="text-sm sm:text-base font-medium opacity-90">/</span>
-                      <span className="text-base sm:text-lg font-semibold opacity-80">{fixturesToCheck.length}</span>
-                    </span>
+                  <div className="flex items-center gap-2">
+                    {/* Temporary API pull indicator - show latest minute from any live fixture */}
+                    {(() => {
+                      // Get the latest minute from any live fixture
+                      let latestMinute: number | null = null;
+                      fixturesToCheck.forEach(f => {
+                        const liveScore = liveScores[f.fixture_index];
+                        if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED')) {
+                          if (liveScore.minute !== null && liveScore.minute !== undefined) {
+                            if (latestMinute === null || liveScore.minute > latestMinute) {
+                              latestMinute = liveScore.minute;
+                            }
+                          }
+                        }
+                      });
+                      
+                      // Fallback to lastApiPull if no live fixture has a minute
+                      const displayMinute = latestMinute !== null ? latestMinute : (lastApiPull?.minute ?? null);
+                      const hasSuccess = latestMinute !== null || (lastApiPull && lastApiPull.success);
+                      
+                      // Get the timestamp from lastApiPull or use current time
+                      const pullTimestamp = lastApiPull?.timestamp || new Date();
+                      const timeString = pullTimestamp.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+                      
+                      return hasSuccess ? (
+                        <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-slate-100 text-slate-700 text-xs border border-slate-200">
+                          <span className="text-slate-500 font-normal">last API:</span>
+                          <span className="font-medium">
+                            {displayMinute !== null && displayMinute !== undefined 
+                              ? formatMinuteDisplay('IN_PLAY', displayMinute)
+                              : '—'}
+                          </span>
+                          <span className="text-slate-500 font-normal">{timeString}</span>
+                          <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      ) : null;
+                    })()}
+                    <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${allFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
+                      {!allFinished && liveFixturesCount > 0 && (
+                      <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                      )}
+                      {allFinished && (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                        </svg>
+                      )}
+                      <span className="text-xs sm:text-sm font-medium opacity-90">{allFinished ? 'Score' : 'Live'}</span>
+                      <span className="flex items-baseline gap-0.5">
+                        <span className="text-lg sm:text-xl font-extrabold">{liveScoreCount}</span>
+                        <span className="text-sm sm:text-base font-medium opacity-90">/</span>
+                        <span className="text-base sm:text-lg font-semibold opacity-80">{fixturesToCheck.length}</span>
+                      </span>
+                    </div>
                   </div>
                 );
               }

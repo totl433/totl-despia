@@ -39,9 +39,17 @@ function formatMinuteDisplay(status: string, minute: number | null | undefined):
   if (minute === null || minute === undefined) {
     return 'LIVE';
   }
+  if (minute > 90) {
+    // After 90 minutes, show 90+ until FT
+    return '90+';
+  }
   if (minute > 45) {
-    // Show as 45+1, 45+2, etc. for second half
-    return `45+${minute - 45}`;
+    // Second half: show 90+ (not 45+1, 45+2, etc.)
+    return '90+';
+  }
+  if (minute === 45) {
+    // At 45 minutes, show 45+ until HT pause
+    return '45+';
   }
   return `${minute}'`;
 }
