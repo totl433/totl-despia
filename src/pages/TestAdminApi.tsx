@@ -80,59 +80,76 @@ export default function TestAdminApi() {
         signal
       });
 
-      // Check content type before parsing
+      // Read response body once - we'll parse it based on status
       const contentType = response.headers.get('content-type');
       const isJson = contentType && contentType.includes('application/json');
+      
+      // Clone response if we might need to read it multiple times, or read text first
+      let responseText: string | null = null;
+      let responseData: any = null;
 
       if (!response.ok) {
-        let errorMessage = `API error: ${response.status}`;
-        
-        if (isJson) {
-          try {
-            const errorData = await response.json();
-            errorMessage = errorData.message || errorData.error || errorMessage;
-          } catch (e) {
-            // Failed to parse JSON, use default message
+        // For error responses, read as text first
+        try {
+          responseText = await response.text();
+          
+          // Try to parse as JSON if content-type suggests it
+          if (isJson || responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+            try {
+              responseData = JSON.parse(responseText);
+              const errorMessage = responseData.message || responseData.error || `API error: ${response.status}`;
+              
+              if (response.status === 429) {
+                setApiError("Rate limit reached. Please wait a moment.");
+                return null;
+              }
+              
+              setApiError(errorMessage);
+              return null;
+            } catch (e) {
+              // Not valid JSON, continue with text error
+            }
           }
-        } else {
-          // Got HTML error page instead of JSON
-          const text = await response.text();
-          console.error('[TestAdminApi] Got HTML instead of JSON:', text.substring(0, 200));
+          
+          // Got HTML error page or plain text error
+          console.error('[TestAdminApi] Got error response:', responseText.substring(0, 200));
           if (response.status === 404) {
-            errorMessage = "Netlify function not found. Make sure 'fetchFootballData' is deployed.";
+            setApiError("Netlify function not found. Make sure 'fetchFootballData' is deployed.");
           } else {
-            errorMessage = `Server error (${response.status}). The function may not be deployed correctly.`;
+            setApiError(`Server error (${response.status}). The function may not be deployed correctly.`);
           }
-        }
-        
-        if (response.status === 429) {
-          setApiError("Rate limit reached. Please wait a moment.");
+          return null;
+        } catch (readError) {
+          setApiError(`Failed to read error response: ${response.status}`);
           return null;
         }
-        
-        setApiError(errorMessage);
-        return null;
       }
 
-      // If response is OK, try to parse as JSON regardless of content-type header
-      // (Netlify might not always set content-type correctly)
-      let result;
+      // For successful responses, try to parse as JSON
       try {
-        result = await response.json();
-      } catch (parseError) {
-        // If JSON parse fails, check if we got HTML (error page)
-        const text = await response.text();
-        console.error('[TestAdminApi] Failed to parse JSON. Response:', text.substring(0, 200));
+        // Read response body (only once)
+        responseText = await response.text();
         
-        if (text.trim().startsWith('<!') || text.trim().startsWith('<html')) {
-          setApiError("Server returned an HTML error page. The function may not be deployed correctly.");
-        } else if (!isJson) {
-          setApiError("Server returned invalid response (not JSON). The function may not be deployed correctly.");
-        } else {
-          setApiError("Failed to parse JSON response. Server may be returning an error.");
+        // Try parsing as JSON
+        try {
+          responseData = JSON.parse(responseText);
+        } catch (parseError) {
+          // If JSON parse fails, check if we got HTML (error page)
+          console.error('[TestAdminApi] Failed to parse JSON. Response:', responseText.substring(0, 200));
+          
+          if (responseText.trim().startsWith('<!') || responseText.trim().startsWith('<html')) {
+            setApiError("Server returned an HTML error page. The function may not be deployed correctly.");
+          } else {
+            setApiError("Server returned invalid response (not JSON). The function may not be deployed correctly.");
+          }
+          return null;
         }
+      } catch (readError) {
+        setApiError("Failed to read response from server.");
         return null;
       }
+      
+      const result = responseData;
 
       if (!result.success || !result.data) {
         setApiError("Invalid API response format. Make sure the function is working correctly.");
