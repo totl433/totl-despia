@@ -167,18 +167,33 @@ export default function NewPredictionsCentre() {
               .order("fixture_index", { ascending: true });
             
             // Check if result is valid (not HTML error page)
+            // Handle common Supabase errors gracefully
             if (testFxResult.error) {
-              console.error('[NewPredictionsCentre] Error fetching test fixtures:', testFxResult.error);
-              throw testFxResult.error;
-            }
-            
-            // If test fixtures exist and no error, use them and set display GW to 1
-            if (testFxResult.data && testFxResult.data.length > 0) {
+              const errorCode = (testFxResult.error as any)?.code;
+              const errorMessage = testFxResult.error.message || '';
+              
+              // If table doesn't exist (PGRST116) or 404 error, fall back silently
+              if (errorCode === 'PGRST116' || errorMessage.includes('404') || errorMessage.includes('does not exist')) {
+                console.log('[NewPredictionsCentre] Test fixtures table not found, using regular fixtures');
+                fx = await supabase
+                  .from("fixtures")
+                  .select(
+                    "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
+                  )
+                  .eq("gw", currentGw)
+                  .order("fixture_index", { ascending: true });
+              } else {
+                // Other errors - log and fall back
+                console.error('[NewPredictionsCentre] Error fetching test fixtures:', testFxResult.error);
+                throw testFxResult.error;
+              }
+            } else if (testFxResult.data && testFxResult.data.length > 0) {
+              // If test fixtures exist and no error, use them and set display GW to 1
               fx = { data: testFxResult.data, error: null };
               displayGw = 1; // Show as GW 1 for API Test league
               console.log('[NewPredictionsCentre] Using test fixtures for GW 1:', testFxResult.data.length, 'fixtures');
             } else {
-              // Fall back to regular fixtures
+              // No test fixtures found, fall back to regular fixtures
               console.log('[NewPredictionsCentre] No test fixtures found, using regular fixtures');
               fx = await supabase
                 .from("fixtures")
