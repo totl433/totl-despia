@@ -1243,10 +1243,12 @@ export default function LeaguePage() {
         return null;
       }
       
-      const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? 0;
-      const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? 0;
+      const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? match.score.current?.home ?? 0;
+      const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? match.score.current?.away ?? 0;
       const status = match.status || 'SCHEDULED';
-      const minute = match.minute ?? null;
+      // Try multiple possible locations for minute field
+      // Football Data API v4 has minute at top level, but also check score.current for live scores
+      const minute = match.minute ?? match.score?.minute ?? match.score?.current?.minute ?? null;
       
       return { homeScore, awayScore, status, minute };
     } catch (error) {
