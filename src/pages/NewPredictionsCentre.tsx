@@ -124,13 +124,22 @@ export default function NewPredictionsCentre() {
         // Check if user is in API Test league
         let isInApiTestLeague = false;
         if (user?.id) {
-          const { data: apiTestMembership } = await supabase
-            .from("league_members")
-            .select("league_id, leagues!inner(name)")
-            .eq("user_id", user.id)
-            .eq("leagues.name", "API Test")
-            .maybeSingle();
-          isInApiTestLeague = !!apiTestMembership;
+          try {
+            // First get all user's leagues
+            const { data: userLeagues } = await supabase
+              .from("league_members")
+              .select("leagues(id,name)")
+              .eq("user_id", user.id);
+            
+            // Check if any league has name "API Test"
+            if (userLeagues) {
+              isInApiTestLeague = userLeagues.some((row: any) => row.leagues?.name === "API Test");
+            }
+          } catch (error) {
+            console.error('[NewPredictionsCentre] Error checking API Test membership:', error);
+            // If check fails, default to false (don't use test fixtures)
+            isInApiTestLeague = false;
+          }
         }
         
         // Fetch current gameweek from meta table
