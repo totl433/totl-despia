@@ -50,6 +50,24 @@ function rowToOutcome(r: ResultRowRaw): "H" | "D" | "A" | null {
   }
   return null;
 }
+
+// Helper function to format minute display
+function formatMinuteDisplay(status: string, minute: number | null | undefined): string {
+  if (status === 'FINISHED') {
+    return 'FT';
+  }
+  if (status === 'PAUSED') {
+    return 'HT';
+  }
+  if (minute === null || minute === undefined) {
+    return 'LIVE';
+  }
+  if (minute > 45) {
+    // Show as 45+1, 45+2, etc. for second half
+    return `45+${minute - 45}`;
+  }
+  return `${minute}'`;
+}
 type Fixture = {
   id: string;
   gw: number;
@@ -407,7 +425,7 @@ export default function HomePage() {
   });
 
   // Fetch live scores from Football Data API via Netlify function (to avoid CORS)
-  const fetchLiveScore = async (apiMatchId: number) => {
+  const fetchLiveScore = async (apiMatchId: number, kickoffTime?: string | null) => {
     try {
       // Try Netlify function first (works in production and with netlify dev)
       let response: Response;
@@ -474,30 +492,62 @@ export default function HomePage() {
       // Try multiple possible locations for minute field
       // Football Data API v4 has minute at top level as a number or string
       let minute: number | null = null;
+      
+      // First, try to get minute from API response
       if (match.minute !== undefined && match.minute !== null) {
-        minute = typeof match.minute === 'string' ? parseInt(match.minute, 10) : match.minute;
-        if (isNaN(minute)) minute = null;
+        const parsedMinute = typeof match.minute === 'string' ? parseInt(match.minute, 10) : match.minute;
+        minute = isNaN(parsedMinute) ? null : parsedMinute;
       } else if (match.score?.minute !== undefined && match.score.minute !== null) {
-        minute = typeof match.score.minute === 'string' ? parseInt(match.score.minute, 10) : match.score.minute;
-        if (isNaN(minute)) minute = null;
+        const parsedMinute = typeof match.score.minute === 'string' ? parseInt(match.score.minute, 10) : match.score.minute;
+        minute = isNaN(parsedMinute) ? null : parsedMinute;
       } else if (match.score?.current?.minute !== undefined && match.score.current.minute !== null) {
-        minute = typeof match.score.current.minute === 'string' ? parseInt(match.score.current.minute, 10) : match.score.current.minute;
-        if (isNaN(minute)) minute = null;
+        const parsedMinute = typeof match.score.current.minute === 'string' ? parseInt(match.score.current.minute, 10) : match.score.current.minute;
+        minute = isNaN(parsedMinute) ? null : parsedMinute;
       } else if (match.score?.duration !== undefined && match.score.duration !== null) {
         // Some APIs use duration field
-        minute = typeof match.score.duration === 'string' ? parseInt(match.score.duration, 10) : match.score.duration;
-        if (isNaN(minute)) minute = null;
-      } else if (match.utcDate && status === 'IN_PLAY') {
-        // Fallback: calculate minute from match start time (if available)
-        try {
-          const matchStart = new Date(match.utcDate);
-          const now = new Date();
-          const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
-          if (diffMinutes > 0 && diffMinutes < 120) { // Reasonable range for a football match
-            minute = diffMinutes;
+        const parsedMinute = typeof match.score.duration === 'string' ? parseInt(match.score.duration, 10) : match.score.duration;
+        minute = isNaN(parsedMinute) ? null : parsedMinute;
+      }
+      
+      // If minute is still null/undefined and game is live or paused, calculate from kickoff time
+      if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED')) {
+        // Calculate minute from match start time
+        // Try multiple possible field names for match start time
+        const matchStartTime = match.utcDate || match.date || match.kickoffTime || match.kickoff_time || kickoffTime;
+        
+        if (matchStartTime) {
+          try {
+            const matchStart = new Date(matchStartTime);
+            const now = new Date();
+            const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
+            
+            console.log('[Home] Minute calculation from kickoff:', {
+              matchStartTime,
+              matchStart: matchStart.toISOString(),
+              now: now.toISOString(),
+              diffMinutes,
+              status
+            });
+            
+            if (diffMinutes > 0 && diffMinutes < 120) {
+              // Account for half-time break (usually 15 minutes)
+              // If diffMinutes > 60, we're in second half, so subtract ~15 for halftime
+              if (diffMinutes > 60) {
+                // Second half - subtract halftime break (usually 15 minutes)
+                minute = diffMinutes - 15;
+              } else {
+                // First half
+                minute = diffMinutes;
+              }
+              console.log('[Home] Calculated minute from kickoff:', minute);
+            } else {
+              console.warn('[Home] diffMinutes out of range:', diffMinutes);
+            }
+          } catch (e) {
+            console.warn('[Home] Error calculating minute from match start time:', e);
           }
-        } catch (e) {
-          // Ignore calculation errors
+        } else {
+          console.warn('[Home] No match start time found in API response for minute calculation. Available fields:', Object.keys(match), 'kickoffTime param:', kickoffTime);
         }
       }
       
@@ -511,16 +561,21 @@ export default function HomePage() {
         matchMinuteType: typeof match.minute,
         scoreMinute: match.score?.minute,
         scoreCurrent: match.score?.current,
+        utcDate: match.utcDate,
+        date: match.date,
+        kickoffTime: match.kickoffTime,
+        kickoff_time: match.kickoff_time,
         fullMatchKeys: Object.keys(match),
         scoreKeys: match.score ? Object.keys(match.score) : null,
         fullMatch: match // Log the entire match object to see all available fields
       });
       
       // Determine outcome for flash animation
-      // Football Data API v4 uses: SCHEDULED, TIMED, IN_PLAY, PAUSED, FINISHED, POSTPONED, CANCELLED, SUSPENDED
+      // Football Data API v4 uses: SCHEDULED, TIMED, IN_PLAY, PAUSED (halftime), FINISHED, POSTPONED, CANCELLED, SUSPENDED
       // Note: 'LIVE' is not a valid status in v4, use 'IN_PLAY' instead
+      // PAUSED status is used for halftime break
       let outcome: "H" | "D" | "A" | null = null;
-      const isLive = status === 'IN_PLAY' || status === 'PAUSED';
+      const isLive = status === 'IN_PLAY'; // PAUSED is halftime, not live play
       if (isLive) {
         if (homeScore > awayScore) outcome = 'H';
         else if (awayScore > homeScore) outcome = 'A';
@@ -566,10 +621,12 @@ export default function HomePage() {
           
           const poll = async () => {
             console.log('[Home] Polling fixture', fixtureIndex, 'at', new Date().toISOString());
-            const scoreData = await fetchLiveScore(fixture.api_match_id!);
+            const scoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
             if (scoreData) {
-            const isLive = scoreData.status === 'IN_PLAY' || scoreData.status === 'PAUSED';
-            const isHalfTime = scoreData.status === 'HALF_TIME' || scoreData.status === 'HT';
+            // PAUSED status in Football Data API v4 is used for halftime
+            // IN_PLAY is for active play
+            const isLive = scoreData.status === 'IN_PLAY';
+            const isHalfTime = scoreData.status === 'PAUSED' || scoreData.status === 'HALF_TIME' || scoreData.status === 'HT';
             const isFinished = scoreData.status === 'FINISHED';
             
             console.log('[Home] Poll result for fixture', fixtureIndex, ':', {
@@ -579,7 +636,10 @@ export default function HomePage() {
               isFinished,
               homeScore: scoreData.homeScore,
               awayScore: scoreData.awayScore,
-              minute: scoreData.minute
+              minute: scoreData.minute,
+              minuteType: typeof scoreData.minute,
+              minuteIsNull: scoreData.minute === null,
+              minuteIsUndefined: scoreData.minute === undefined
             });
             
             // Check if score has changed for notification
@@ -672,11 +732,12 @@ export default function HomePage() {
                 console.log('[Home] Resuming polling for fixture', fixtureIndex, 'after half-time');
                 // Resume polling every minute until game starts or finishes
                 const resumePoll = async () => {
-                  const resumeScoreData = await fetchLiveScore(fixture.api_match_id!);
+                  const resumeScoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
                   if (resumeScoreData) {
                     const resumeIsFinished = resumeScoreData.status === 'FINISHED';
-                    const resumeIsLive = resumeScoreData.status === 'IN_PLAY' || resumeScoreData.status === 'PAUSED';
-                    const resumeIsHalfTime = resumeScoreData.status === 'HALF_TIME' || resumeScoreData.status === 'HT';
+                    // PAUSED status in Football Data API v4 is used for halftime
+                    const resumeIsLive = resumeScoreData.status === 'IN_PLAY';
+                    const resumeIsHalfTime = resumeScoreData.status === 'PAUSED' || resumeScoreData.status === 'HALF_TIME' || resumeScoreData.status === 'HT';
                     
                     setLiveScores(prev => ({
                       ...prev,
@@ -3074,8 +3135,12 @@ export default function HomePage() {
 
                 // Get live score if available
                 const liveScore = liveScores[f.fixture_index];
-                const isLive = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+                // PAUSED is halftime - include it for score counting but separate for animations
+                const isLive = liveScore && liveScore.status === 'IN_PLAY';
+                const isHalfTime = liveScore && (liveScore.status === 'PAUSED' || liveScore.status === 'HALF_TIME' || liveScore.status === 'HT');
                 const isFinished = liveScore && liveScore.status === 'FINISHED';
+                // For score counting purposes, include halftime as "ongoing"
+                const isOngoing = isLive || isHalfTime;
                 
                 // Determine button states (use live score if available)
                 const getButtonState = (side: "H" | "D" | "A") => {
@@ -3090,8 +3155,8 @@ export default function HomePage() {
                   }
                   // Don't show results for non-live games - they should just show picked state
                   const isCorrect = isPicked && isCorrectResult;
-                  // Wrong if picked but not correct result (for both live and finished games)
-                  const isWrong = isPicked && (isLive || isFinished) && !isCorrectResult;
+                  // Wrong if picked but not correct result (for both live/halftime and finished games)
+                  const isWrong = isPicked && (isOngoing || isFinished) && !isCorrectResult;
                   return { isPicked, isCorrectResult, isCorrect, isWrong };
                 };
 
@@ -3133,15 +3198,15 @@ export default function HomePage() {
                     )}
                     <div className="p-4 !bg-white relative z-0">
                       {/* LIVE indicator - red dot top left */}
-                      {isLive && (
+                      {(isLive || isHalfTime) && (
                         <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
                           <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                          <span className="text-xs font-bold text-red-600">{liveScore.minute ?? 'LIVE'}'</span>
+                          <span className="text-xs font-bold text-red-600">{formatMinuteDisplay(liveScore.status, liveScore.minute)}</span>
                         </div>
                       )}
                       
                       {/* header: Home  score/kickoff  Away */}
-                      <div className={`flex flex-col px-2 pb-3 ${isLive ? 'pt-4' : 'pt-1'}`}>
+                      <div className={`flex flex-col px-2 pb-3 ${isOngoing ? 'pt-4' : 'pt-1'}`}>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1 flex-1 justify-end">
                             <div className="font-medium break-words">{homeName}</div>
@@ -3156,7 +3221,7 @@ export default function HomePage() {
                             />
                           </div>
                           <div className="px-4 flex items-center">
-                            {liveScore && (isLive || isFinished) ? (
+                            {liveScore && (isOngoing || isFinished) ? (
                               <span className="font-bold text-base text-slate-900">
                                 {liveScore.homeScore} - {liveScore.awayScore}
                               </span>
@@ -3177,10 +3242,24 @@ export default function HomePage() {
                             <div className="font-medium break-words">{awayName}</div>
                           </div>
                         </div>
-                        {liveScore && (isLive || isFinished) && (
+                        {liveScore && (isOngoing || isFinished) && (
                           <div className="flex justify-center mt-1">
-                            <span className={`text-[10px] font-semibold ${isLive ? 'text-red-600' : 'text-slate-500'}`}>
-                              {isFinished ? 'FT' : (liveScore.minute ? `${liveScore.minute}'` : 'LIVE')}
+                            <span className={`text-[10px] font-semibold ${isOngoing ? 'text-red-600' : 'text-slate-500'}`}>
+                              {(() => {
+                                // Debug: log what we're displaying
+                                const display = formatMinuteDisplay(liveScore.status, liveScore.minute);
+                                if (display === 'LIVE' && isOngoing) {
+                                  console.warn('[Home] Showing LIVE instead of minute:', {
+                                    fixtureIndex: f.fixture_index,
+                                    status: liveScore.status,
+                                    minute: liveScore.minute,
+                                    isLive,
+                                    isHalfTime,
+                                    isOngoing
+                                  });
+                                }
+                                return display;
+                              })()}
                             </span>
                           </div>
                         )}

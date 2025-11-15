@@ -38,6 +38,24 @@ type ResultRowRaw = {
   away_goals?: number | null;
 };
 
+// Helper function to format minute display
+function formatMinuteDisplay(status: string, minute: number | null | undefined): string {
+  if (status === 'FINISHED') {
+    return 'FT';
+  }
+  if (status === 'PAUSED') {
+    return 'HT';
+  }
+  if (minute === null || minute === undefined) {
+    return 'LIVE';
+  }
+  if (minute > 45) {
+    // Show as 45+1, 45+2, etc. for second half
+    return `45+${minute - 45}`;
+  }
+  return `${minute}'`;
+}
+
 type MltRow = {
   user_id: string;
   name: string;
@@ -1184,7 +1202,7 @@ export default function LeaguePage() {
   }, [tab, currentGw, latestResultsGw, selectedGw, memberIds]);
 
   // Fetch live scores from Football Data API
-  const fetchLiveScore = async (apiMatchId: number) => {
+  const fetchLiveScore = async (apiMatchId: number, kickoffTime?: string | null) => {
     try {
       // Try Netlify function first (works in production and with netlify dev)
       let response: Response;
@@ -1250,30 +1268,49 @@ export default function LeaguePage() {
       // Try multiple possible locations for minute field
       // Football Data API v4 has minute at top level as a number or string
       let minute: number | null = null;
+      
+      // First, try to get minute from API response
       if (match.minute !== undefined && match.minute !== null) {
-        minute = typeof match.minute === 'string' ? parseInt(match.minute, 10) : match.minute;
-        if (isNaN(minute)) minute = null;
+        const parsedMinute = typeof match.minute === 'string' ? parseInt(match.minute, 10) : match.minute;
+        minute = isNaN(parsedMinute) ? null : parsedMinute;
       } else if (match.score?.minute !== undefined && match.score.minute !== null) {
-        minute = typeof match.score.minute === 'string' ? parseInt(match.score.minute, 10) : match.score.minute;
-        if (isNaN(minute)) minute = null;
+        const parsedMinute = typeof match.score.minute === 'string' ? parseInt(match.score.minute, 10) : match.score.minute;
+        minute = isNaN(parsedMinute) ? null : parsedMinute;
       } else if (match.score?.current?.minute !== undefined && match.score.current.minute !== null) {
-        minute = typeof match.score.current.minute === 'string' ? parseInt(match.score.current.minute, 10) : match.score.current.minute;
-        if (isNaN(minute)) minute = null;
+        const parsedMinute = typeof match.score.current.minute === 'string' ? parseInt(match.score.current.minute, 10) : match.score.current.minute;
+        minute = isNaN(parsedMinute) ? null : parsedMinute;
       } else if (match.score?.duration !== undefined && match.score.duration !== null) {
         // Some APIs use duration field
-        minute = typeof match.score.duration === 'string' ? parseInt(match.score.duration, 10) : match.score.duration;
-        if (isNaN(minute)) minute = null;
-      } else if (match.utcDate && status === 'IN_PLAY') {
-        // Fallback: calculate minute from match start time (if available)
-        try {
-          const matchStart = new Date(match.utcDate);
-          const now = new Date();
-          const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
-          if (diffMinutes > 0 && diffMinutes < 120) { // Reasonable range for a football match
-            minute = diffMinutes;
+        const parsedMinute = typeof match.score.duration === 'string' ? parseInt(match.score.duration, 10) : match.score.duration;
+        minute = isNaN(parsedMinute) ? null : parsedMinute;
+      }
+      
+      // If minute is still null/undefined and game is live or paused, calculate from kickoff time
+      if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED')) {
+        // Calculate minute from match start time
+        // Try multiple possible field names for match start time
+        const matchStartTime = match.utcDate || match.date || match.kickoffTime || match.kickoff_time || kickoffTime;
+        
+        if (matchStartTime) {
+          try {
+            const matchStart = new Date(matchStartTime);
+            const now = new Date();
+            const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
+            
+            if (diffMinutes > 0 && diffMinutes < 120) {
+              // Account for half-time break (usually 15 minutes)
+              // If diffMinutes > 60, we're in second half, so subtract ~15 for halftime
+              if (diffMinutes > 60) {
+                // Second half - subtract halftime break (usually 15 minutes)
+                minute = diffMinutes - 15;
+              } else {
+                // First half
+                minute = diffMinutes;
+              }
+            }
+          } catch (e) {
+            console.warn('[League] Error calculating minute from match start time:', e);
           }
-        } catch (e) {
-          // Ignore calculation errors
         }
       }
       
@@ -1316,7 +1353,7 @@ export default function LeaguePage() {
         const htResumeTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
         
         const poll = async () => {
-          const scoreData = await fetchLiveScore(fixture.api_match_id!);
+          const scoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
           if (scoreData) {
             const isLive = scoreData.status === 'IN_PLAY' || scoreData.status === 'PAUSED';
             const isHalfTime = scoreData.status === 'HALF_TIME' || scoreData.status === 'HT';
@@ -2247,7 +2284,7 @@ export default function LeaguePage() {
                               {isLive && (
                                 <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
                                   <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                                  <span className="text-xs font-bold text-red-600">{liveScore.minute ?? 'LIVE'}'</span>
+                                  <span className="text-xs font-bold text-red-600">{formatMinuteDisplay(liveScore.status, liveScore.minute)}</span>
                                 </div>
                               )}
                               {/* Fixture display - same as Home Page */}
@@ -2296,7 +2333,7 @@ export default function LeaguePage() {
                               {liveScore && (isLive || isFinished) && (
                                 <div className="flex justify-center mt-1">
                                   <span className={`text-[10px] font-semibold ${isLive ? 'text-red-600' : 'text-slate-500'}`}>
-                                    {isFinished ? 'FT' : (liveScore.minute ? `${liveScore.minute}'` : 'LIVE')}
+                                    {formatMinuteDisplay(liveScore.status, liveScore.minute)}
                                   </span>
                                 </div>
                               )}
