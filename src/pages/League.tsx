@@ -1861,9 +1861,9 @@ export default function LeaguePage() {
   }
 
   function GwResultsTab() {
-    const resGw = selectedGw;
+    const resGw = league?.name === 'API Test' ? 1 : selectedGw;
     
-    if (!resGw || availableGws.length === 0) {
+    if (!resGw || (availableGws.length === 0 && league?.name !== 'API Test')) {
       return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No game week selected.</div>;
     }
 
