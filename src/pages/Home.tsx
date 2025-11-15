@@ -3108,22 +3108,8 @@ export default function HomePage() {
                   <div className="flex items-center gap-2">
                     {/* Temporary API pull indicator - show latest minute from any live fixture */}
                     {(() => {
-                      // Get the latest minute from any live fixture
-                      let latestMinute: number | null = null;
-                      fixturesToCheck.forEach(f => {
-                        const liveScore = liveScores[f.fixture_index];
-                        if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED')) {
-                          if (liveScore.minute !== null && liveScore.minute !== undefined) {
-                            if (latestMinute === null || liveScore.minute > latestMinute) {
-                              latestMinute = liveScore.minute;
-                            }
-                          }
-                        }
-                      });
-                      
-                      // Fallback to lastApiPull if no live fixture has a minute
-                      const displayMinute = latestMinute !== null ? latestMinute : (lastApiPull?.minute ?? null);
-                      const hasSuccess = latestMinute !== null || (lastApiPull && lastApiPull.success);
+                      // Check if we have any successful API pull
+                      const hasSuccess = lastApiPull && lastApiPull.success;
                       
                       // Get the timestamp from lastApiPull or use current time
                       const pullTimestamp = lastApiPull?.timestamp || new Date();
@@ -3132,11 +3118,6 @@ export default function HomePage() {
                       return hasSuccess ? (
                         <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-slate-100 text-slate-700 text-xs border border-slate-200">
                           <span className="text-slate-500 font-normal">last API:</span>
-                          <span className="font-medium">
-                            {displayMinute !== null && displayMinute !== undefined 
-                              ? formatMinuteDisplay('IN_PLAY', displayMinute)
-                              : '—'}
-                          </span>
                           <span className="text-slate-500 font-normal">{timeString}</span>
                           <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
