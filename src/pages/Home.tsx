@@ -496,7 +496,8 @@ export default function HomePage() {
         scoreMinute: match.score?.minute,
         scoreCurrent: match.score?.current,
         fullMatchKeys: Object.keys(match),
-        scoreKeys: match.score ? Object.keys(match.score) : null
+        scoreKeys: match.score ? Object.keys(match.score) : null,
+        fullMatch: match // Log the entire match object to see all available fields
       });
       
       // Determine outcome for flash animation
