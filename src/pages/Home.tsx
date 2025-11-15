@@ -598,10 +598,12 @@ export default function HomePage() {
       // If kickoff hasn't happened yet, set a timeout to start polling at kickoff
       if (kickoffTime > now) {
         const delay = kickoffTime.getTime() - now.getTime();
+        console.log('[Home] Game', fixtureIndex, 'not started yet, will start polling in', Math.round(delay / 1000), 'seconds');
         const timeout = setTimeout(startPolling, delay);
         timeouts.push(timeout);
       } else {
         // Kickoff already happened, start polling immediately
+        console.log('[Home] Game', fixtureIndex, 'kickoff has passed, starting polling immediately');
         startPolling();
       }
     });
