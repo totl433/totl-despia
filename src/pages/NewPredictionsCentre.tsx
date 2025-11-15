@@ -353,7 +353,22 @@ export default function NewPredictionsCentre() {
         console.error('Error loading GW data:', error);
         if (alive) {
           setLoading(false);
-          setError(`Failed to load matches: ${error?.message || 'Unknown error'}`);
+          // Handle different error types
+          let errorMessage = 'Unknown error';
+          if (error?.message) {
+            errorMessage = error.message;
+          } else if (typeof error === 'string') {
+            errorMessage = error;
+          } else if (error?.toString) {
+            errorMessage = error.toString();
+          }
+          
+          // Check if error message contains JSON parsing error
+          if (errorMessage.includes('Unexpected token') || errorMessage.includes('is not valid JSON')) {
+            errorMessage = 'Server returned invalid response. Please check your connection and try again.';
+          }
+          
+          setError(`Failed to load matches: ${errorMessage}`);
         }
       } finally {
         if (alive) {
