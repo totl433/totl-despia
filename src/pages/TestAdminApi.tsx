@@ -48,16 +48,32 @@ type TestFixture = {
 
 // Use absolute URL for Netlify functions to avoid dev server routing issues
 const getFunctionUrl = () => {
-  // In production/staging, use the full URL
-  if (window.location.hostname.includes('netlify.app')) {
-    return `${window.location.origin}/.netlify/functions/fetchFootballData`;
+  const hostname = window.location.hostname;
+  const origin = window.location.origin;
+  
+  console.log('[TestAdminApi] Detecting environment:', { hostname, origin });
+  
+  // Always use the current origin for Netlify functions when deployed
+  // This works for both staging (totl-staging.netlify.app) and production
+  if (hostname.includes('netlify.app') || hostname.includes('netlify.com')) {
+    const url = `${origin}/.netlify/functions/fetchFootballData`;
+    console.log('[TestAdminApi] Using Netlify function URL:', url);
+    return url;
   }
-  // In local dev with netlify dev, use localhost
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return `http://localhost:8888/.netlify/functions/fetchFootballData`;
+  
+  // Only use localhost:8888 if we're actually on localhost AND netlify dev is running
+  // But prefer relative path which works with netlify dev proxy
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    // Try to detect if netlify dev is running by checking if we can reach it
+    // For now, use relative path which netlify dev will proxy correctly
+    console.log('[TestAdminApi] Using relative path for localhost (netlify dev should proxy)');
+    return "/.netlify/functions/fetchFootballData";
   }
-  // Fallback to relative (shouldn't happen but just in case)
-  return "/.netlify/functions/fetchFootballData";
+  
+  // Fallback: use current origin
+  const url = `${origin}/.netlify/functions/fetchFootballData`;
+  console.log('[TestAdminApi] Using fallback URL:', url);
+  return url;
 };
 
 const FOOTBALL_DATA_PROXY_URL = getFunctionUrl();
