@@ -428,9 +428,20 @@ export default function TestApiPredictions() {
       const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? match.score.current?.home ?? 0;
       const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? match.score.current?.away ?? 0;
       const status = match.status || 'SCHEDULED';
+      
       // Try multiple possible locations for minute field
-      // Football Data API v4 has minute at top level, but also check score.current for live scores
-      const minute = match.minute ?? match.score?.minute ?? match.score?.current?.minute ?? null;
+      // Football Data API v4 has minute at top level as a number or string
+      let minute: number | null = null;
+      if (match.minute !== undefined && match.minute !== null) {
+        minute = typeof match.minute === 'string' ? parseInt(match.minute, 10) : match.minute;
+        if (isNaN(minute)) minute = null;
+      } else if (match.score?.minute !== undefined && match.score.minute !== null) {
+        minute = typeof match.score.minute === 'string' ? parseInt(match.score.minute, 10) : match.score.minute;
+        if (isNaN(minute)) minute = null;
+      } else if (match.score?.current?.minute !== undefined && match.score.current.minute !== null) {
+        minute = typeof match.score.current.minute === 'string' ? parseInt(match.score.current.minute, 10) : match.score.current.minute;
+        if (isNaN(minute)) minute = null;
+      }
       
       return { homeScore, awayScore, status, minute };
     } catch (error) {
