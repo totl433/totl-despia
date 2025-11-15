@@ -130,21 +130,31 @@ export default function TestAdminApi() {
         // Read response body (only once)
         responseText = await response.text();
         
+        console.log('[TestAdminApi] Response status:', response.status);
+        console.log('[TestAdminApi] Response content-type:', contentType);
+        console.log('[TestAdminApi] Response preview:', responseText.substring(0, 100));
+        
         // Try parsing as JSON
         try {
           responseData = JSON.parse(responseText);
+          console.log('[TestAdminApi] Successfully parsed JSON');
         } catch (parseError) {
           // If JSON parse fails, check if we got HTML (error page)
-          console.error('[TestAdminApi] Failed to parse JSON. Response:', responseText.substring(0, 200));
+          console.error('[TestAdminApi] Failed to parse JSON. Parse error:', parseError);
+          console.error('[TestAdminApi] Response text:', responseText.substring(0, 500));
           
           if (responseText.trim().startsWith('<!') || responseText.trim().startsWith('<html')) {
-            setApiError("Server returned an HTML error page. The function may not be deployed correctly.");
+            setApiError("Server returned an HTML error page. The function may not be deployed correctly. Check browser console for details.");
+          } else if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+            // Looks like JSON but failed to parse - might be malformed
+            setApiError("Server returned malformed JSON. Check browser console for details.");
           } else {
-            setApiError("Server returned invalid response (not JSON). The function may not be deployed correctly.");
+            setApiError("Server returned invalid response (not JSON). Check browser console for details.");
           }
           return null;
         }
       } catch (readError) {
+        console.error('[TestAdminApi] Failed to read response:', readError);
         setApiError("Failed to read response from server.");
         return null;
       }
