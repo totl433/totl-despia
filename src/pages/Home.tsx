@@ -148,6 +148,8 @@ export default function HomePage() {
   const gameweekStartingSoonScheduledRef = useRef(false);
   // Track last API pull info for debugging
   const [lastApiPull, setLastApiPull] = useState<{ minute: number | null; timestamp: Date; success: boolean } | null>(null);
+  // Track when halftime ends for each fixture (when status changes from PAUSED to IN_PLAY)
+  const halftimeEndTimeRef = useRef<Record<number, Date>>({});
   const [isInApiTestLeague, setIsInApiTestLeague] = useState(false);
 
   // Extract data fetching into a reusable function for pull-to-refresh
@@ -516,29 +518,36 @@ export default function HomePage() {
             } else if (status === 'IN_PLAY') {
               // Game is live - calculate minute
               if (diffMinutes <= 45) {
-                // First half: 0-45 minutes
+                // First half: 0-45 minutes (accounting for stoppage time, could be 45+1, 45+2, etc.)
                 minute = diffMinutes;
               } else {
-                // After 45 minutes, second half starts when HT pause ends (status changes to IN_PLAY)
-                // Second half typically starts around 60 minutes after kickoff (45 + 15 min halftime)
-                // When second half starts (diffMinutes >= 60), minute should be 46', then 47', 48', etc.
-                // Formula: minute = 45 + (diffMinutes - 60) + 1 = diffMinutes - 14
-                // But we account for ~15 min halftime, so: minute = diffMinutes - 15
-                // When diffMinutes = 60: minute = 45 (but should be 46, so add 1)
-                // When diffMinutes = 61: minute = 46 (but should be 47, so add 1)
-                // So: minute = diffMinutes - 15 + 1 = diffMinutes - 14
-                // Actually, let's think: if halftime is exactly 15 minutes:
-                // - diffMinutes = 60 means second half just started, minute = 46'
-                // - diffMinutes = 61 means 1 minute into second half, minute = 47'
-                // So: minute = 45 + (diffMinutes - 60) + 1 = diffMinutes - 14
-                if (diffMinutes >= 60) {
-                  // Second half has started - calculate minute starting from 46'
-                  minute = diffMinutes - 14; // This gives 46' at diffMinutes=60, 47' at 61, etc.
+                // After 45 minutes, check if we have a halftime end time recorded
+                // If we do, calculate from when halftime ended
+                // Otherwise, estimate based on diffMinutes
+                const halftimeEndTime = halftimeEndTimeRef.current[apiMatchId];
+                if (halftimeEndTime) {
+                  // Calculate minutes since halftime ended
+                  const minutesSinceHalftimeEnd = Math.floor((now.getTime() - halftimeEndTime.getTime()) / (1000 * 60));
+                  // Second half starts at 46', so: 46 + minutesSinceHalftimeEnd
+                  minute = 46 + minutesSinceHalftimeEnd;
                 } else {
-                  // Between 45-60 minutes but status is IN_PLAY
-                  // This shouldn't normally happen (should be PAUSED), but handle it
-                  // Assume second half started early, start from 46'
-                  minute = Math.max(46, diffMinutes - 14);
+                  // No halftime end time recorded yet - estimate based on diffMinutes
+                  // Assume halftime is ~15 minutes, so second half starts around diffMinutes = 60
+                  // But account for first half stoppage time (could be 45+3 = 48 minutes)
+                  // So second half might start anywhere from 60-63 minutes
+                  // When status is IN_PLAY and diffMinutes > 45, second half has likely started
+                  // Start counting from 46' when diffMinutes >= 60 (accounting for ~15 min halftime)
+                  if (diffMinutes >= 60) {
+                    // Estimate: assume first half ended at 45, halftime was 15 min, so second half started at 60
+                    // But this doesn't account for stoppage time, so we'll use a more conservative estimate
+                    // If diffMinutes = 63, that could be: 45+3 first half + 15 halftime = 63, so minute = 46+3 = 49'
+                    // Formula: minute = 46 + (diffMinutes - 60)
+                    minute = 46 + (diffMinutes - 60);
+                  } else {
+                    // Between 45-60 minutes but status is IN_PLAY (shouldn't normally happen)
+                    // Assume second half started early
+                    minute = 46;
+                  }
                 }
               }
             }
@@ -780,6 +789,34 @@ export default function HomePage() {
               );
             }
             
+            // Track when halftime ends (status changes from PAUSED to IN_PLAY)
+            const prevStatus = liveScores[fixtureIndex]?.status;
+            if (prevStatus === 'PAUSED' && scoreData.status === 'IN_PLAY') {
+              // Halftime just ended - record the time
+              halftimeEndTimeRef.current[fixture.api_match_id!] = new Date();
+              console.log('[Home] Halftime ended for fixture', fixtureIndex, 'match', fixture.api_match_id, 'at', halftimeEndTimeRef.current[fixture.api_match_id!].toISOString());
+            }
+            
+            // Recalculate minute if we have halftime end time and we're in second half
+            let finalMinute = scoreData.minute;
+            if (scoreData.status === 'IN_PLAY' && scoreData.minute !== null && scoreData.minute !== undefined && scoreData.minute > 45) {
+              const halftimeEndTime = halftimeEndTimeRef.current[fixture.api_match_id!];
+              if (halftimeEndTime) {
+                // Calculate minute from when halftime ended
+                const now = new Date();
+                const minutesSinceHalftimeEnd = Math.floor((now.getTime() - halftimeEndTime.getTime()) / (1000 * 60));
+                finalMinute = 46 + minutesSinceHalftimeEnd;
+                console.log('[Home] Recalculated minute from halftime end:', {
+                  fixtureIndex,
+                  apiMatchId: fixture.api_match_id,
+                  originalMinute: scoreData.minute,
+                  finalMinute,
+                  minutesSinceHalftimeEnd,
+                  halftimeEndTime: halftimeEndTime.toISOString()
+                });
+              }
+            }
+            
             // Update previous score (always update, even if no notification sent)
             prevScoresRef.current[fixtureIndex] = {
               homeScore: scoreData.homeScore,
@@ -793,7 +830,7 @@ export default function HomePage() {
                     homeScore: scoreData.homeScore,
                     awayScore: scoreData.awayScore,
                     status: scoreData.status,
-                    minute: scoreData.minute ?? null
+                    minute: finalMinute ?? null
                   }
                 };
                 
