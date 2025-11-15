@@ -13,6 +13,7 @@ export const LEAGUE_START_OVERRIDES: Record<string, number> = {
   "Prem Predictions": 0,
   "FC Football": 0,
   "Easy League": 0,
+  "API Test": 0,
   "The Bird league": 7,
   gregVjofVcarl: 8,
   "Let Down": 8,

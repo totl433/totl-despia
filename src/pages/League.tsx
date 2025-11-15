@@ -1145,7 +1145,7 @@ export default function LeaguePage() {
 
       // Filter gameweeks to only include those from the league's start_gw onwards
       // Special leagues that should include all historical data (start from GW0)
-      const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League'];
+      const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League', 'API Test'];
       const gw7StartLeagues = ['The Bird league'];
       
       const leagueStartGw = await getLeagueStartGw(league, currentGw);
@@ -1310,7 +1310,7 @@ export default function LeaguePage() {
     };
 
     // Check if this is a late-starting league (not one of the special leagues that start from GW0)
-    const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League'];
+    const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League', 'API Test'];
     const gw7StartLeagues = ['The Bird league'];
     const gw8StartLeagues = ['gregVjofVcarl', 'Let Down'];
     const isLateStartingLeague = league && !specialLeagues.includes(league.name) && !gw7StartLeagues.includes(league.name) && !gw8StartLeagues.includes(league.name);
