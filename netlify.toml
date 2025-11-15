@@ -16,8 +16,13 @@
   status = 200
   force = true
 
+# Don't redirect static assets - serve them directly
+[[redirects]]
+  from = "/assets/*"
+  to = "/assets/:splat"
+  status = 200
+
 # Redirect everything else to index.html for SPA routing
-# Note: Netlify automatically serves static files (like /assets/*) before applying redirects
 [[redirects]]
   from = "/*"
   to = "/index.html"
