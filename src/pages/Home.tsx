@@ -470,9 +470,20 @@ export default function HomePage() {
       const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? match.score.current?.home ?? 0;
       const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? match.score.current?.away ?? 0;
       const status = match.status || 'SCHEDULED';
+      
       // Try multiple possible locations for minute field
-      // Football Data API v4 has minute at top level, but also check score.current for live scores
-      const minute = match.minute ?? match.score?.minute ?? match.score?.current?.minute ?? null;
+      // Football Data API v4 has minute at top level as a number or string
+      let minute: number | null = null;
+      if (match.minute !== undefined && match.minute !== null) {
+        minute = typeof match.minute === 'string' ? parseInt(match.minute, 10) : match.minute;
+        if (isNaN(minute)) minute = null;
+      } else if (match.score?.minute !== undefined && match.score.minute !== null) {
+        minute = typeof match.score.minute === 'string' ? parseInt(match.score.minute, 10) : match.score.minute;
+        if (isNaN(minute)) minute = null;
+      } else if (match.score?.current?.minute !== undefined && match.score.current.minute !== null) {
+        minute = typeof match.score.current.minute === 'string' ? parseInt(match.score.current.minute, 10) : match.score.current.minute;
+        if (isNaN(minute)) minute = null;
+      }
       
       // Debug logging to see actual API response
       console.log('[Home] API Response for match', apiMatchId, ':', {
@@ -481,9 +492,11 @@ export default function HomePage() {
         homeScore,
         awayScore,
         matchMinute: match.minute,
+        matchMinuteType: typeof match.minute,
         scoreMinute: match.score?.minute,
         scoreCurrent: match.score?.current,
-        fullMatch: JSON.stringify(match, null, 2).substring(0, 500) // First 500 chars of response
+        fullMatchKeys: Object.keys(match),
+        scoreKeys: match.score ? Object.keys(match.score) : null
       });
       
       // Determine outcome for flash animation
