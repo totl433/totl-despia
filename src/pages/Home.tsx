@@ -470,20 +470,20 @@ export default function HomePage() {
           return;
         }
         
-        const poll = async () => {
-          const scoreData = await fetchLiveScore(fixture.api_match_id!);
-          if (scoreData) {
+          const poll = async () => {
+            const scoreData = await fetchLiveScore(fixture.api_match_id!);
+            if (scoreData) {
             const isFinished = scoreData.status === 'FINISHED';
             
-            setLiveScores(prev => ({
-              ...prev,
+              setLiveScores(prev => ({
+                ...prev,
               [fixtureIndex]: {
-                homeScore: scoreData.homeScore,
-                awayScore: scoreData.awayScore,
-                status: scoreData.status,
-                minute: scoreData.minute ?? null
-              }
-            }));
+                  homeScore: scoreData.homeScore,
+                  awayScore: scoreData.awayScore,
+                  status: scoreData.status,
+                  minute: scoreData.minute ?? null
+                }
+              }));
             
             // Stop polling if game is finished
             if (isFinished) {
@@ -493,10 +493,10 @@ export default function HomePage() {
                 intervals.delete(fixtureIndex);
               }
             }
-          }
-        };
-        
-        poll(); // Poll immediately
+            }
+          };
+          
+          poll(); // Poll immediately
         const pollInterval = setInterval(poll, 5 * 60 * 1000); // Every 5 minutes
         intervals.set(fixtureIndex, pollInterval);
       };
@@ -2712,7 +2712,7 @@ export default function HomePage() {
                 return (
                   <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${allFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
                     {!allFinished && liveFixturesCount > 0 && (
-                      <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                    <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
                     )}
                     {allFinished && (
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -143,8 +143,8 @@ function AppContent() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* Bottom Navigation - hide on auth page, league pages, and full-screen prediction pages */}
-      {location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/new-predictions' && location.pathname !== '/test-api-predictions' && <BottomNav />}
+      {/* Bottom Navigation - hide on auth page, league pages, and swipe prediction page */}
+      {location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions/swipe' && <BottomNav />}
     </>
   );
 }

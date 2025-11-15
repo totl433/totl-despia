@@ -84,16 +84,20 @@ function Chip({
   letter,
   correct,
   unicorn,
+  finished,
 }: {
   letter: string;
   correct: boolean | null;
   unicorn: boolean;
+  finished?: boolean;
 }) {
   const tone =
     correct === null
       ? "bg-slate-100 text-slate-600 border-slate-200"
-      : correct
+      : correct && finished
       ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s] ring-2 ring-yellow-300/60"
+      : correct && !finished
+      ? "bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-lg shadow-emerald-500/50"
       : "bg-slate-50 text-slate-400 border-slate-200";
 
   return (
@@ -497,6 +501,9 @@ export default function LeaguePage() {
   const [availableGws, setAvailableGws] = useState<number[]>([]);
   // Live scores for test API fixtures
   const [liveScores, setLiveScores] = useState<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
+  // Track previous positions for animation (using ref to persist across renders)
+  const prevPositionsRef = useRef<Map<string, number>>(new Map());
+  const [positionChangeKeys, setPositionChangeKeys] = useState<Set<string>>(new Set());
   const [showGwDropdown, setShowGwDropdown] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [showTableModal, setShowTableModal] = useState(false);
@@ -1944,55 +1951,90 @@ export default function LeaguePage() {
         ) : null}
 
         {/* API Test league "who picked who" view when all submitted */}
-        {league?.name === 'API Test' && allSubmitted && sections.length > 0 && (
-          <div className="mt-3 space-y-6">
-            {sections.map((sec, si) => (
-              <div key={si}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-slate-700 font-normal text-lg">{sec.label}</div>
-                  {si === 0 && (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-bold border border-blue-300 shadow-sm" style={{ marginTop: '-2px' }}>
-                      All Submitted
-                    </span>
-                  )}
-                </div>
-                <div className="rounded-2xl border bg-slate-50 overflow-hidden">
-                  <ul>
-                    {sec.items.map((f, idx) => {
-                      try {
-                        const homeName = f.home_name || f.home_team || "Home";
-                        const awayName = f.away_name || f.away_team || "Away";
-                        // Use fallback pattern like Home.tsx
-                        const homeKey = (f.home_code || f.home_name || f.home_team || "").toUpperCase();
-                        const awayKey = (f.away_code || f.away_name || f.away_team || "").toUpperCase();
+        {league?.name === 'API Test' && allSubmitted && sections.length > 0 && (() => {
+          // Use actual live scores
+          const combinedLiveScores = liveScores;
+          
+          // Check if any games are live or finished
+          const fixturesToCheck = sections.flatMap(sec => sec.items).slice(0, 3);
+          const hasLiveGames = fixturesToCheck.some(f => {
+            const score = combinedLiveScores[f.fixture_index];
+            return score && (score.status === 'LIVE' || score.status === 'IN_PLAY' || score.status === 'PAUSED');
+          });
+          const allGamesFinished = fixturesToCheck.length > 0 && fixturesToCheck.every(f => {
+            const score = combinedLiveScores[f.fixture_index];
+            return score && score.status === 'FINISHED';
+          });
+          const hasStarted = hasLiveGames || allGamesFinished || fixturesToCheck.some(f => combinedLiveScores[f.fixture_index]);
+          
+          return (
+            <div className="mt-3 space-y-6">
+              {sections.map((sec, si) => (
+                <div key={si}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-slate-700 font-normal text-lg">{sec.label}</div>
+                    {si === 0 && (
+                      <>
+                        {hasLiveGames && (
+                          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-red-600 text-white text-sm font-bold border border-red-700 shadow-sm" style={{ marginTop: '-2px' }}>
+                            <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+                            LIVE
+                          </span>
+                        )}
+                        {allGamesFinished && (
+                          <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#1C8376]/10 text-[#1C8376]/90 text-sm font-bold border border-emerald-300 shadow-sm" style={{ marginTop: '-2px' }}>
+                            Round Complete!
+                          </span>
+                        )}
+                        {!hasStarted && (
+                          <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-bold border border-blue-300 shadow-sm" style={{ marginTop: '-2px' }}>
+                            All Submitted
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  <div className="rounded-2xl border bg-slate-50 overflow-hidden">
+                    <ul>
+                      {sec.items.map((f, idx) => {
+                        try {
+                          const homeName = f.home_name || f.home_team || "Home";
+                          const awayName = f.away_name || f.away_team || "Away";
+                          // Use fallback pattern like Home.tsx
+                          const homeKey = (f.home_code || f.home_name || f.home_team || "").toUpperCase();
+                          const awayKey = (f.away_code || f.away_name || f.away_team || "").toUpperCase();
 
-                        const timeOf = (iso?: string | null) => {
-                          if (!iso) return "";
-                          const d = new Date(iso);
-                          if (isNaN(d.getTime())) return "";
-                          const hh = String(d.getUTCHours()).padStart(2, '0');
-                          const mm = String(d.getUTCMinutes()).padStart(2, '0');
-                          return `${hh}:${mm}`;
-                        };
-                        const timeStr = timeOf(f.kickoff_time);
+                          const timeOf = (iso?: string | null) => {
+                            if (!iso) return "";
+                            const d = new Date(iso);
+                            if (isNaN(d.getTime())) return "";
+                            const hh = String(d.getUTCHours()).padStart(2, '0');
+                            const mm = String(d.getUTCMinutes()).padStart(2, '0');
+                            return `${hh}:${mm}`;
+                          };
+                          const timeStr = timeOf(f.kickoff_time);
 
-                        const fxIdx = f.fixture_index;
-                        const these = picksByFixture.get(fxIdx) ?? [];
+                          const fxIdx = f.fixture_index;
+                          const these = picksByFixture.get(fxIdx) ?? [];
+                          
+                          // Get live score for this fixture (using combined mock + real scores)
+                          const liveScore = combinedLiveScores[fxIdx];
+                          const isLive = liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+                          const isFinished = liveScore && liveScore.status === 'FINISHED';
 
-                        const toChips = (want: "H" | "D" | "A") => {
-                          const filtered = these.filter((p) => p.pick === want);
-                          // For API Test league, check live scores for outcomes
-                          let actualResult: "H" | "D" | "A" | null = null;
-                          if (league?.name === 'API Test' && picksGw === 1) {
-                            const liveScore = liveScores[fxIdx];
-                            if (liveScore) {
-                              if (liveScore.homeScore > liveScore.awayScore) actualResult = 'H';
-                              else if (liveScore.awayScore > liveScore.homeScore) actualResult = 'A';
-                              else if (liveScore.homeScore === liveScore.awayScore) actualResult = 'D';
+                          const toChips = (want: "H" | "D" | "A") => {
+                            const filtered = these.filter((p) => p.pick === want);
+                            // For API Test league, check live scores for outcomes
+                            let actualResult: "H" | "D" | "A" | null = null;
+                            if (league?.name === 'API Test' && picksGw === 1) {
+                              if (liveScore) {
+                                if (liveScore.homeScore > liveScore.awayScore) actualResult = 'H';
+                                else if (liveScore.awayScore > liveScore.homeScore) actualResult = 'A';
+                                else if (liveScore.homeScore === liveScore.awayScore) actualResult = 'D';
+                              }
+                            } else {
+                              actualResult = outcomes.get(fxIdx) || null;
                             }
-                          } else {
-                            actualResult = outcomes.get(fxIdx) || null;
-                          }
                           const allPicked = these.length === members.length && filtered.length === members.length;
                           
                           // Group chips into rows of maximum 4
@@ -2011,7 +2053,9 @@ export default function LeaguePage() {
                                   {row.map((p, idx) => {
                                     const m = members.find((mm) => mm.id === p.user_id);
                                     const letter = initials(m?.name ?? "?");
-                                    const isCorrect = actualResult ? actualResult === want : null;
+                                    // Show correct=true when pick matches result (both live and finished)
+                                    // But only show shiny when finished
+                                    const isCorrect = (actualResult && actualResult === want) ? true : null;
                                     
                                     if (allPicked) {
                                       // Stack effect - use relative positioning with negative margins
@@ -2026,13 +2070,13 @@ export default function LeaguePage() {
                                             zIndex: idx
                                           }}
                                         >
-                                          <Chip letter={letter} correct={isCorrect} unicorn={false} />
+                                          <Chip letter={letter} correct={isCorrect} unicorn={false} finished={isFinished} />
                                         </span>
                                       );
                                     }
                                     
                                     return (
-                                      <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} />
+                                      <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} finished={isFinished} />
                                     );
                                   })}
                                 </div>
@@ -2043,9 +2087,16 @@ export default function LeaguePage() {
 
                         return (
                           <li key={`${f.gw}-${f.fixture_index}`} className={idx > 0 ? "border-t" : ""}>
-                            <div className="p-4 bg-white">
+                            <div className="p-4 bg-white relative">
+                              {/* LIVE indicator - red dot top left */}
+                              {isLive && (
+                                <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
+                                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                                  <span className="text-xs font-bold text-red-600 uppercase">LIVE</span>
+                                </div>
+                              )}
                               {/* Fixture display - same as Home Page */}
-                              <div className="grid grid-cols-3 items-center">
+                              <div className={`grid grid-cols-3 items-center ${isLive ? 'pt-4' : ''}`}>
                                 <div className="flex items-center justify-center">
                                   <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{homeName}</span>
                                 </div>
@@ -2062,7 +2113,13 @@ export default function LeaguePage() {
                                     />
                                   )}
                                   <div className="text-[15px] sm:text-base font-semibold text-slate-600">
-                                    {timeStr}
+                                    {liveScore && (isLive || isFinished) ? (
+                                      <span className="font-bold text-base text-slate-900">
+                                        {liveScore.homeScore} - {liveScore.awayScore}
+                                      </span>
+                                    ) : (
+                                      <span>{timeStr}</span>
+                                    )}
                                   </div>
                                   {awayKey && (
                                     <img 
@@ -2080,6 +2137,14 @@ export default function LeaguePage() {
                                   <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{awayName}</span>
                                 </div>
                               </div>
+                              {/* Score indicator (FT or minute) */}
+                              {liveScore && (isLive || isFinished) && (
+                                <div className="flex justify-center mt-1">
+                                  <span className={`text-[10px] font-semibold ${isLive ? 'text-red-600' : 'text-slate-500'}`}>
+                                    {isFinished ? 'FT' : (liveScore.minute ? `${liveScore.minute}'` : 'LIVE')}
+                                  </span>
+                                </div>
+                              )}
                               
                               {/* Pips underneath - same as Home Page */}
                               <div className="mt-2 grid grid-cols-3">
@@ -2121,7 +2186,8 @@ export default function LeaguePage() {
               </div>
             ))}
           </div>
-        )}
+          );
+        })()}
 
         {sections.length > 0 && league?.name !== 'API Test' && (
           <div className="mt-3 space-y-6">
@@ -2203,13 +2269,13 @@ export default function LeaguePage() {
                                               zIndex: idx
                                             }}
                                           >
-                                            <Chip letter={letter} correct={isCorrect} unicorn={false} />
+                                            <Chip letter={letter} correct={isCorrect} unicorn={false} finished={true} />
                                           </span>
                                         );
                                       }
                                       
                                       return (
-                                        <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} />
+                                        <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} finished={true} />
                                       );
                                     })}
                                   </div>
@@ -2370,6 +2436,37 @@ export default function LeaguePage() {
 
     rows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name));
 
+    // Detect position changes and trigger animations (using useEffect to handle state updates)
+    useEffect(() => {
+      if (rows.length === 0) return;
+      
+      const currentPositions = new Map<string, number>();
+      rows.forEach((r, index) => {
+        currentPositions.set(r.user_id, index);
+      });
+      
+      const changedKeys = new Set<string>();
+      currentPositions.forEach((newPos, userId) => {
+        const oldPos = prevPositionsRef.current.get(userId);
+        if (oldPos !== undefined && oldPos !== newPos) {
+          changedKeys.add(userId);
+        }
+      });
+      
+      // Update previous positions in ref
+      prevPositionsRef.current = currentPositions;
+      
+      // Trigger animation for changed positions
+      if (changedKeys.size > 0) {
+        setPositionChangeKeys(changedKeys);
+        // Clear animation after it completes
+        const timeout = setTimeout(() => {
+          setPositionChangeKeys(new Set());
+        }, 2000);
+        return () => clearTimeout(timeout);
+      }
+    }, [rows.map(r => `${r.user_id}-${r.score}-${r.unicorns}`).join(',')]);
+
     // Check if all fixtures have finished
     let allFixturesFinished = false;
     let hasLiveFixtures = false;
@@ -2438,11 +2535,29 @@ export default function LeaguePage() {
               transform: scale(1.05);
             }
           }
+          @keyframes position-change {
+            0% {
+              background-color: rgb(254, 243, 199);
+              transform: scale(1.02);
+            }
+            50% {
+              background-color: rgb(253, 230, 138);
+              transform: scale(1.05);
+            }
+            100% {
+              background-color: transparent;
+              transform: scale(1);
+            }
+          }
           .flash-user-row {
             animation: flash 1.5s ease-in-out 3;
           }
           .pulse-live-score {
             animation: pulse-score 2s ease-in-out infinite;
+          }
+          .position-changed {
+            animation: position-change 1.5s ease-out;
+            transition: transform 0.3s ease-out;
           }
           .full-width-header-border::after {
             content: '';
@@ -2513,10 +2628,11 @@ export default function LeaguePage() {
               {rows.map((r, i) => {
                 const isMe = r.user_id === user?.id;
                 const isLastRow = i === rows.length - 1;
+                const hasPositionChanged = positionChangeKeys.has(r.user_id);
                 return (
                   <tr 
                     key={r.user_id} 
-                    className={isMe ? 'flash-user-row' : ''}
+                    className={`${isMe ? 'flash-user-row' : ''} ${hasPositionChanged ? 'position-changed' : ''}`}
                     style={{
                       position: 'relative',
                       backgroundColor: '#f8fafc',

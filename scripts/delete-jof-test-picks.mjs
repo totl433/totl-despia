@@ -23,7 +23,7 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  console.log('Using service role key to bypass RLS...\n');
+console.log('Using service role key to bypass RLS...\n');
 } else {
   console.log('Using anon key (may be limited by RLS)...\n');
 }
