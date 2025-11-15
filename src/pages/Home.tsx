@@ -424,9 +424,15 @@ export default function HomePage() {
         return null;
       }
       
-      const match = await response.json();
+      const result = await response.json();
       
-      if (!match || !match.score) return null;
+      // Netlify function returns { success: true, data: {...} }
+      const match = result.data || result;
+      
+      if (!match || !match.score) {
+        console.warn('[Home] No score data in API response:', match);
+        return null;
+      }
       
       const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? 0;
       const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? 0;
