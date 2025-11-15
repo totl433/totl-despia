@@ -788,7 +788,7 @@ export default function TestApiPredictions() {
     const fixturesToCheck = fixtures.slice(0, 3);
     fixturesToCheck.forEach(f => {
       const liveScore = liveScores[f.fixture_index];
-      const isLive = liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+      const isLive = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
       const isFinished = liveScore && liveScore.status === 'FINISHED';
       
       if (isLive) {
@@ -844,7 +844,7 @@ export default function TestApiPredictions() {
                     <span>{group.label}</span>
                     {groupIdx === 0 && fixturesToCheck.length > 0 && fixturesToCheck.some(f => {
                       const liveScore = liveScores[f.fixture_index];
-                      return liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
+                      return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
                     }) && (() => {
                       // Check if all fixtures are finished
                       const checkAllFinished = fixturesToCheck.every(f => {
@@ -875,7 +875,7 @@ export default function TestApiPredictions() {
                     {group.items.map((fixture, index)=>{
                       const pick = picks.get(fixture.fixture_index);
                       const liveScore = liveScores[fixture.fixture_index];
-                      const isLive = liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+                      const isLive = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
                       
                       // Get team names
                       const homeName = fixture.home_name || fixture.home_team || "";
