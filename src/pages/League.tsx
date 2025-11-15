@@ -2239,11 +2239,6 @@ export default function LeaguePage() {
             {/* Title */}
             <h1 className="text-lg font-normal text-slate-900 truncate flex-1 text-left px-2">
               {league.name}
-              {league.name === 'API Test' && (
-                <div className="mt-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-                  <strong>⚠️ Test League:</strong> This league uses test API data and starts from Test GW 1 with zero points. It does not affect your main game scores.
-                </div>
-              )}
             </h1>
             
             {/* Menu button */}
@@ -2259,6 +2254,15 @@ export default function LeaguePage() {
                     </button>
             </div>
           </div>
+
+          {/* API Test League Notice */}
+          {league?.name === 'API Test' && (
+            <div className="px-4 py-3 bg-yellow-50 border-b border-yellow-200">
+              <div className="text-sm text-yellow-800">
+                <strong>⚠️ Test League:</strong> This league uses test API data and starts from Test GW 1 with zero points. It does not affect your main game scores.
+              </div>
+            </div>
+          )}
 
           {/* Tabs */}
           <div className="flex border-b border-slate-200 bg-white">
