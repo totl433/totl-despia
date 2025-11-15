@@ -2791,7 +2791,7 @@ export default function HomePage() {
               // Show live score if there are live or finished matches
               if (isInApiTestLeague && fixturesToCheck.length > 0 && fixturesToCheck.some(f => {
                 const liveScore = liveScores[f.fixture_index];
-                return liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
+                return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
               })) {
                 return (
                   <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${allFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
@@ -2911,7 +2911,7 @@ export default function HomePage() {
 
                 // Get live score if available
                 const liveScore = liveScores[f.fixture_index];
-                const isLive = liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+                const isLive = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
                 const isFinished = liveScore && liveScore.status === 'FINISHED';
                 
                 // Determine button states (use live score if available)
