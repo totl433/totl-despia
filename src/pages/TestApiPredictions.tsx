@@ -368,23 +368,62 @@ export default function TestApiPredictions() {
   // Fetch live scores from Football Data API
   const fetchLiveScore = async (apiMatchId: number) => {
     try {
-      const FOOTBALL_DATA_API_KEY = 'ed3153d132b847db836289243894706e';
-      const response = await fetch(`https://api.football-data.org/v4/matches/${apiMatchId}`, {
-        headers: {
-          'X-Auth-Token': FOOTBALL_DATA_API_KEY,
-        },
-      });
+      // Try Netlify function first (works in production and with netlify dev)
+      let response: Response;
+      let match: any;
       
-      if (!response.ok) {
-        if (response.status === 429) {
-          console.warn('[TestApiPredictions] Rate limited, will retry on next poll');
+      try {
+        response = await fetch(`/.netlify/functions/fetchFootballData?matchId=${apiMatchId}`, {
+          method: 'GET',
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          // Netlify function returns { success: true, data: {...} }
+          match = result.data || result;
+        } else if (response.status === 404 || response.status === 0) {
+          // Netlify function not available (local dev without netlify dev)
+          console.warn('[TestApiPredictions] Netlify function not available, trying direct API call');
+          throw new Error('Netlify function not available');
+        } else {
+          // Other error from Netlify function
+          if (response.status === 429) {
+            console.warn('[TestApiPredictions] Rate limited, will retry on next poll');
+            return null;
+          }
+          console.error('[TestApiPredictions] Error from Netlify function:', response.status, response.statusText);
           return null;
         }
-        return null;
+      } catch (fetchError: any) {
+        // Netlify function failed, try direct API call as fallback (for local dev)
+        if (fetchError.message === 'Netlify function not available' || fetchError.message.includes('Failed to fetch')) {
+          console.log('[TestApiPredictions] Falling back to direct API call for local development');
+          const FOOTBALL_DATA_API_KEY = 'ed3153d132b847db836289243894706e';
+          response = await fetch(`https://api.football-data.org/v4/matches/${apiMatchId}`, {
+            headers: {
+              'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+            },
+          });
+          
+          if (!response.ok) {
+            if (response.status === 429) {
+              console.warn('[TestApiPredictions] Rate limited, will retry on next poll');
+              return null;
+            }
+            console.error('[TestApiPredictions] Error fetching live score:', response.status, response.statusText);
+            return null;
+          }
+          
+          match = await response.json();
+        } else {
+          throw fetchError;
+        }
       }
       
-      const match = await response.json();
-      if (!match || !match.score) return null;
+      if (!match || !match.score) {
+        console.warn('[TestApiPredictions] No score data in API response:', match);
+        return null;
+      }
       
       const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? 0;
       const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? 0;
@@ -428,7 +467,17 @@ export default function TestApiPredictions() {
         const poll = async () => {
           const scoreData = await fetchLiveScore(fixture.api_match_id!);
           if (scoreData) {
+            const isLive = scoreData.status === 'IN_PLAY' || scoreData.status === 'PAUSED';
             const isFinished = scoreData.status === 'FINISHED';
+            
+            console.log('[TestApiPredictions] Poll result for fixture', fixtureIndex, ':', {
+              status: scoreData.status,
+              isLive,
+              isFinished,
+              homeScore: scoreData.homeScore,
+              awayScore: scoreData.awayScore,
+              minute: scoreData.minute
+            });
             
             setLiveScores(prev => ({
               ...prev,
@@ -442,11 +491,14 @@ export default function TestApiPredictions() {
             
             // Stop polling if game is finished
             if (isFinished) {
+              console.log('[TestApiPredictions] Game', fixtureIndex, 'finished, stopping polling');
               const pollInterval = intervals.get(fixtureIndex);
               if (pollInterval) {
                 clearInterval(pollInterval);
                 intervals.delete(fixtureIndex);
               }
+            } else if (isLive) {
+              console.log('[TestApiPredictions] Game', fixtureIndex, 'is LIVE - status:', scoreData.status, 'minute:', scoreData.minute);
             }
           }
         };
@@ -467,10 +519,11 @@ export default function TestApiPredictions() {
     });
     
     return () => {
+      console.log('[TestApiPredictions] Cleaning up polling intervals and timeouts');
       intervals.forEach(clearInterval);
       timeouts.forEach(clearTimeout);
     };
-  }, [fixtures]);
+  }, [fixtures.map(f => f.api_match_id).join(',')]);
 
   // Update results map based on live scores
   useEffect(() => {
@@ -480,7 +533,7 @@ export default function TestApiPredictions() {
     const fixturesToCheck = fixtures.slice(0, 3);
     fixturesToCheck.forEach((f) => {
       const liveScore = liveScores[f.fixture_index];
-      if (liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
+      if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
         // Determine outcome from live score
         if (liveScore.homeScore > liveScore.awayScore) {
           newResults.set(f.fixture_index, 'H');
