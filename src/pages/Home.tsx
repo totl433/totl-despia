@@ -435,9 +435,21 @@ export default function HomePage() {
       const status = match.status || 'SCHEDULED';
       const minute = match.minute ?? null; // Match minute (e.g., 20, 45, etc.)
       
+      // Debug logging to see actual API response
+      console.log('[Home] API Response for match', apiMatchId, ':', {
+        status,
+        minute,
+        homeScore,
+        awayScore,
+        fullMatch: match
+      });
+      
       // Determine outcome for flash animation
+      // Football Data API v4 uses: SCHEDULED, TIMED, IN_PLAY, PAUSED, FINISHED, POSTPONED, CANCELLED, SUSPENDED
+      // Note: 'LIVE' is not a valid status in v4, use 'IN_PLAY' instead
       let outcome: "H" | "D" | "A" | null = null;
-      if (status === 'LIVE' || status === 'IN_PLAY' || status === 'PAUSED') {
+      const isLive = status === 'IN_PLAY' || status === 'PAUSED';
+      if (isLive) {
         if (homeScore > awayScore) outcome = 'H';
         else if (awayScore > homeScore) outcome = 'A';
         else outcome = 'D';
@@ -2749,10 +2761,10 @@ export default function HomePage() {
               let fixturesToCheck: typeof fixtures = [];
               if (isInApiTestLeague && fixtures.length > 0) {
                 fixturesToCheck = fixtures.slice(0, 3); // Only first 3 fixtures
-                fixturesToCheck.forEach(f => {
-                  const liveScore = liveScores[f.fixture_index];
-                  const isLive = liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
-                  const isFinished = liveScore && liveScore.status === 'FINISHED';
+              fixturesToCheck.forEach(f => {
+                const liveScore = liveScores[f.fixture_index];
+                const isLive = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+                const isFinished = liveScore && liveScore.status === 'FINISHED';
                   
                   // Count both live and finished games
                   if (liveScore && (isLive || isFinished)) {
