@@ -330,6 +330,28 @@ export default function NewPredictionsCentre() {
     };
   }, [user?.id]);
 
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto px-4">
+          <div className="text-red-600 font-semibold text-lg mb-2">Failed to Load Matches</div>
+          <div className="text-slate-600 text-sm mb-4">{error}</div>
+          <button
+            onClick={() => {
+              setError("");
+              setLoading(true);
+              window.location.reload();
+            }}
+            className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Show loading state
   if (loading || !currentGw || fixtures.length === 0) {
     return (
