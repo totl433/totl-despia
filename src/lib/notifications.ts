@@ -60,7 +60,7 @@ export function scheduleGameweekStartingSoon(
   gameweek: number
 ) {
   const kickoff = new Date(firstKickoffTime);
-  const notificationTime = new Date(kickoff.getTime() - 25 * 60 * 1000); // 25 minutes before
+  const notificationTime = new Date(kickoff.getTime() - 15 * 60 * 1000); // 15 minutes before
   const now = new Date();
   const secondsUntilNotification = Math.max(0, Math.floor((notificationTime.getTime() - now.getTime()) / 1000));
   
@@ -68,7 +68,7 @@ export function scheduleGameweekStartingSoon(
     sendLocalNotification(
       secondsUntilNotification,
       `Gameweek ${gameweek} Starting Soon! ⚽`,
-      `The action begins in 25 minutes! Get ready for some football magic! 🎯`,
+      `The action begins in 15 minutes! Get ready for some football magic! 🎯`,
       `${window.location.origin}/league/api-test`
     );
   }
