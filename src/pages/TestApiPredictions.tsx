@@ -733,19 +733,13 @@ export default function TestApiPredictions() {
     let liveScoreCount = 0;
     let liveFixturesCount = 0;
     const fixturesToCheck = fixtures.slice(0, 3);
-    let allFinished = fixturesToCheck.length > 0;
     fixturesToCheck.forEach(f => {
       const liveScore = liveScores[f.fixture_index];
       const isLive = liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
       const isFinished = liveScore && liveScore.status === 'FINISHED';
       
-      if (!liveScore) {
-        allFinished = false;
-      } else if (isLive) {
+      if (isLive) {
         liveFixturesCount++;
-        allFinished = false;
-      } else if (!isFinished) {
-        allFinished = false;
       }
       
       if (liveScore && (isLive || isFinished)) {
@@ -799,7 +793,7 @@ export default function TestApiPredictions() {
                       const liveScore = liveScores[f.fixture_index];
                       return liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
                     }) && (() => {
-                      // Recalculate allFinished here to ensure it's accurate
+                      // Check if all fixtures are finished
                       const checkAllFinished = fixturesToCheck.every(f => {
                         const liveScore = liveScores[f.fixture_index];
                         return liveScore && liveScore.status === 'FINISHED';
@@ -1100,7 +1094,7 @@ export default function TestApiPredictions() {
                                 pick?.pick==="H"
                                   ? result && result === "H" && pick.pick === result
                                     ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white border-yellow-300 shadow-xl"
-                                    : result && result !== "H"
+                                    : result && (result === "D" || result === "A")
                                     ? "bg-red-500 text-white border-red-400"
                                     : "bg-purple-600 text-white border-purple-600"
                                   : result === "H"
@@ -1125,7 +1119,7 @@ export default function TestApiPredictions() {
                                 pick?.pick==="D"
                                   ? result && result === "D" && pick.pick === result
                                     ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white border-yellow-300 shadow-xl"
-                                    : result && result !== "D"
+                                    : result && (result === "H" || result === "A")
                                     ? "bg-red-500 text-white border-red-400"
                                     : "bg-purple-600 text-white border-purple-600"
                                   : result === "D"
@@ -1150,7 +1144,7 @@ export default function TestApiPredictions() {
                                 pick?.pick==="A"
                                   ? result && result === "A" && pick.pick === result
                                     ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white border-yellow-300 shadow-xl"
-                                    : result && result !== "A"
+                                    : result && (result === "H" || result === "D")
                                     ? "bg-red-500 text-white border-red-400"
                                     : "bg-purple-600 text-white border-purple-600"
                                   : result === "A"
