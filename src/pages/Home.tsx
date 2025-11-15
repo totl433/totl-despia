@@ -406,15 +406,12 @@ export default function HomePage() {
     enableMouse: true, // Enable mouse drag for testing in desktop browsers
   });
 
-  // Fetch live scores from Football Data API
+  // Fetch live scores from Football Data API via Netlify function (to avoid CORS)
   const fetchLiveScore = async (apiMatchId: number) => {
     try {
-      // Fetch single match by ID using Football Data API v4
-      const FOOTBALL_DATA_API_KEY = 'ed3153d132b847db836289243894706e'; // Using the same key from netlify function
-      const response = await fetch(`https://api.football-data.org/v4/matches/${apiMatchId}`, {
-        headers: {
-          'X-Auth-Token': FOOTBALL_DATA_API_KEY,
-        },
+      // Use Netlify function to proxy the request (avoids CORS issues)
+      const response = await fetch(`/.netlify/functions/fetchFootballData?matchId=${apiMatchId}`, {
+        method: 'GET',
       });
       
       if (!response.ok) {
@@ -423,6 +420,7 @@ export default function HomePage() {
           console.warn('[Home] Rate limited, will retry on next poll');
           return null;
         }
+        console.error('[Home] Error fetching live score:', response.status, response.statusText);
         return null;
       }
       
