@@ -17,6 +17,7 @@
   force = true
 
 # Redirect everything else to index.html for SPA routing
+# Note: Netlify automatically serves static files (like /assets/*) before applying redirects
 [[redirects]]
   from = "/*"
   to = "/index.html"
