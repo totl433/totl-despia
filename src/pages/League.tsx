@@ -2294,8 +2294,8 @@ export default function LeaguePage() {
                 )}
               </button>
             )}
-            {/* Show GW Predictions tab if there's a current GW */}
-            {currentGw && (
+            {/* Show GW Predictions tab if there's a current GW (or if it's API Test league) */}
+            {(currentGw || league?.name === 'API Test') && (
               <button
                 onClick={() => setTab("gw")}
                 className={
