@@ -492,7 +492,17 @@ export default function HomePage() {
           const poll = async () => {
             const scoreData = await fetchLiveScore(fixture.api_match_id!);
             if (scoreData) {
+            const isLive = scoreData.status === 'IN_PLAY' || scoreData.status === 'PAUSED';
             const isFinished = scoreData.status === 'FINISHED';
+            
+            console.log('[Home] Poll result for fixture', fixtureIndex, ':', {
+              status: scoreData.status,
+              isLive,
+              isFinished,
+              homeScore: scoreData.homeScore,
+              awayScore: scoreData.awayScore,
+              minute: scoreData.minute
+            });
             
             // Check if score has changed for notification
             const prevScore = prevScoresRef.current[fixtureIndex];
