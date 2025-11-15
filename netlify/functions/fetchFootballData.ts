@@ -29,6 +29,47 @@ export const handler: Handler = async (event) => {
   try {
     // Parse query parameters
     const params = new URLSearchParams(event.queryStringParameters || {});
+    const matchId = params.get('matchId');
+    
+    // If matchId is provided, fetch single match
+    if (matchId) {
+      const apiUrl = `${FOOTBALL_DATA_BASE_URL}/matches/${matchId}`;
+      console.log('[fetchFootballData] Fetching single match:', apiUrl);
+      
+      const response = await fetch(apiUrl, {
+        headers: {
+          'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[fetchFootballData] API error:', response.status, errorText);
+        
+        if (response.status === 429) {
+          return json(429, { 
+            error: 'Rate limit reached', 
+            message: 'Too many requests. Please wait a moment.',
+            retryAfter: response.headers.get('Retry-After') || '60'
+          });
+        }
+        
+        return json(response.status, { 
+          error: 'API error', 
+          status: response.status,
+          message: errorText
+        });
+      }
+
+      const data = await response.json();
+      
+      return json(200, {
+        success: true,
+        data: data,
+      });
+    }
+    
+    // Otherwise, fetch competition matches (existing logic)
     const competition = params.get('competition') || 'PL';
     const matchday = params.get('matchday');
     const dateFrom = params.get('dateFrom');
