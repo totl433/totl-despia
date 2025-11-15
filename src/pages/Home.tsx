@@ -414,6 +414,7 @@ export default function HomePage() {
     setNextGwComing(null);
 
     if (alive) {
+      // Set all data atomically to prevent flickering
       setGwSubmitted(submitted);
       setGwScore(score);
       setResultsMap(currentResultsMap);
@@ -421,7 +422,12 @@ export default function HomePage() {
       setPicksMap(map);
       setUnreadByLeague(unreadCounts);
       setLeagueSubmissions(submissionStatus);
-      setLoading(false);
+      // Use setTimeout to ensure state updates are batched and prevent flickering
+      setTimeout(() => {
+        if (alive) {
+          setLoading(false);
+        }
+      }, 0);
     }
     } catch (error) {
       console.error('[Home] Error loading home page data:', error);
@@ -740,57 +746,59 @@ export default function HomePage() {
             // Check if score has changed for notification
             const prevScore = prevScoresRef.current[fixtureIndex];
             
-            // Initialize prevScore if this is the first time we're seeing a score for this fixture
+            // Always initialize or update prevScore for live/finished games
             // This ensures we can detect score changes on subsequent polls
-            if (!prevScore && (isLive || isHalfTime || isFinished)) {
+            if (isLive || isHalfTime || isFinished) {
+              // Check if score changed BEFORE updating prevScore
+              const scoreChanged = prevScore ? (
+                prevScore.homeScore !== scoreData.homeScore || 
+                prevScore.awayScore !== scoreData.awayScore
+              ) : false;
+              
+              // If score changed, send notification
+              if (scoreChanged) {
+                const homeName = fixture.home_name || fixture.home_team || 'Home';
+                const awayName = fixture.away_name || fixture.away_team || 'Away';
+                // Get user's pick for this fixture
+                const userPick = picksMap[fixtureIndex] || null;
+                
+                // Determine which team scored
+                const homeScored = scoreData.homeScore > prevScore.homeScore;
+                const awayScored = scoreData.awayScore > prevScore.awayScore;
+                
+                console.log('[Home] GOAL! Score changed - sending notification:', {
+                  fixtureIndex,
+                  prevScore,
+                  newScore: { homeScore: scoreData.homeScore, awayScore: scoreData.awayScore },
+                  homeScored,
+                  awayScored,
+                  minute: scoreData.minute,
+                  isFinished
+                });
+                
+                sendScoreUpdateNotification(
+                  homeName,
+                  awayName,
+                  scoreData.homeScore,
+                  scoreData.awayScore,
+                  scoreData.minute ?? null,
+                  isFinished,
+                  userPick || undefined
+                );
+              }
+              
+              // Always update prevScore after checking for changes
               prevScoresRef.current[fixtureIndex] = {
                 homeScore: scoreData.homeScore,
                 awayScore: scoreData.awayScore
               };
-              console.log('[Home] Initialized prevScore for fixture', fixtureIndex, ':', {
-                homeScore: scoreData.homeScore,
-                awayScore: scoreData.awayScore
-              });
-            }
-            
-            // Check if score has changed (goal scored)
-            const scoreChanged = prevScore && (
-              prevScore.homeScore !== scoreData.homeScore || 
-              prevScore.awayScore !== scoreData.awayScore
-            );
-            
-            // Send score update notification if score changed (goal scored)
-            // Only send if we have a previous score to compare (prevScore exists)
-            // This ensures we only notify on actual goal changes, not initial score detection
-            if (scoreChanged && prevScore && (isLive || isHalfTime || isFinished)) {
-              const homeName = fixture.home_name || fixture.home_team || 'Home';
-              const awayName = fixture.away_name || fixture.away_team || 'Away';
-              // Get user's pick for this fixture
-              const userPick = picksMap[fixtureIndex] || null;
               
-              // Determine which team scored
-              const homeScored = scoreData.homeScore > prevScore.homeScore;
-              const awayScored = scoreData.awayScore > prevScore.awayScore;
-              
-              console.log('[Home] GOAL! Score changed - sending notification:', {
-                fixtureIndex,
-                prevScore,
-                newScore: { homeScore: scoreData.homeScore, awayScore: scoreData.awayScore },
-                homeScored,
-                awayScored,
-                minute: scoreData.minute,
-                isFinished
-              });
-              
-              sendScoreUpdateNotification(
-                homeName,
-                awayName,
-                scoreData.homeScore,
-                scoreData.awayScore,
-                scoreData.minute ?? null,
-                isFinished,
-                userPick || undefined
-              );
+              if (!prevScore) {
+                console.log('[Home] Initialized prevScore for fixture', fixtureIndex, ':', {
+                  homeScore: scoreData.homeScore,
+                  awayScore: scoreData.awayScore
+                });
+              }
             }
             
             // Track when halftime ends (status changes from PAUSED to IN_PLAY)
@@ -3327,7 +3335,9 @@ export default function HomePage() {
             <span className="text-slate-600 font-semibold">GW{nextGwComing} coming soon</span>
             </div>
           ) : null}
-        {fixtures.length === 0 ? (
+        {loading ? (
+          <div className="p-4 text-slate-500">Loading fixtures...</div>
+        ) : fixtures.length === 0 ? (
           <div className="p-4 text-slate-500">No fixtures yet.</div>
         ) : (
           <div className="mt-6">

@@ -158,14 +158,21 @@ export function sendScoreUpdateNotification(
     title: `${homeTeam} ${homeScore}-${awayScore} ${awayTeam}`,
     message,
     minute: minuteText,
-    isFinished
+    isFinished,
+    userPick,
+    timestamp: new Date().toISOString()
   });
   
-  sendLocalNotification(
-    0, // Send immediately
-    `${homeTeam} ${homeScore}-${awayScore} ${awayTeam}`,
-    message,
-    `${window.location.origin}/league/api-test`
-  );
+  try {
+    sendLocalNotification(
+      0, // Send immediately
+      `${homeTeam} ${homeScore}-${awayScore} ${awayTeam}`,
+      message,
+      `${window.location.origin}/league/api-test`
+    );
+    console.log('[Notifications] Score update notification sent successfully');
+  } catch (error) {
+    console.error('[Notifications] Error sending score update notification:', error);
+  }
 }
 
