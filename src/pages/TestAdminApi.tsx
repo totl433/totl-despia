@@ -48,18 +48,22 @@ type TestFixture = {
 
 // Get Netlify function URL dynamically based on current environment
 const getFunctionUrl = () => {
-  // Always use current origin - this works correctly for both staging and production
-  // The relative path works with Netlify's routing, but absolute URL is safer
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
   
-  // For Netlify deployments, use absolute URL to avoid routing issues
+  // For Netlify deployments (staging/production), use current origin
   if (hostname.includes('netlify.app') || hostname.includes('netlify.com')) {
     return `${origin}/.netlify/functions/fetchFootballData`;
   }
   
-  // For localhost, use relative path (netlify dev will proxy it correctly)
-  // Or if running netlify dev, it will work with relative path
+  // For localhost development, use the staging function URL
+  // (since Vite dev server doesn't include Netlify functions)
+  // User can run `netlify dev` if they want local functions
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return `https://totl-staging.netlify.app/.netlify/functions/fetchFootballData`;
+  }
+  
+  // Fallback: use relative path
   return "/.netlify/functions/fetchFootballData";
 };
 
