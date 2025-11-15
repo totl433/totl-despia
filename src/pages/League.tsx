@@ -2278,8 +2278,8 @@ export default function LeaguePage() {
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
               )}
             </button>
-            {/* Show GW Results tab if there are any results available */}
-            {availableGws.length > 0 && (
+            {/* Show GW Results tab if there are any results available (or if it's API Test league) */}
+            {(availableGws.length > 0 || league?.name === 'API Test') && (
               <button
                 onClick={() => setTab("gwr")}
                 className={
