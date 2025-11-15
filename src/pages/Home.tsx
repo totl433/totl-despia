@@ -8,6 +8,7 @@ import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePh
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
+import { scheduleDeadlineReminder, scheduleLiveGameNotification, sendResultsNotification, sendScoreUpdateNotification } from "../lib/notifications";
 
 
 // Types
@@ -113,6 +114,10 @@ export default function HomePage() {
   
   // Live scores for test API fixtures
   const [liveScores, setLiveScores] = useState<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
+  // Track previous scores to avoid duplicate notifications
+  const prevScoresRef = useRef<Record<number, { homeScore: number; awayScore: number }>>({});
+  // Track if results notification has been sent
+  const resultsNotificationSentRef = useRef(false);
   const [isInApiTestLeague, setIsInApiTestLeague] = useState(false);
 
   // Extract data fetching into a reusable function for pull-to-refresh
@@ -475,15 +480,60 @@ export default function HomePage() {
             if (scoreData) {
             const isFinished = scoreData.status === 'FINISHED';
             
-              setLiveScores(prev => ({
-                ...prev,
-              [fixtureIndex]: {
-                  homeScore: scoreData.homeScore,
-                  awayScore: scoreData.awayScore,
-                  status: scoreData.status,
-                  minute: scoreData.minute ?? null
+            // Check if score has changed for notification
+            const prevScore = prevScoresRef.current[fixtureIndex];
+            const scoreChanged = !prevScore || 
+              prevScore.homeScore !== scoreData.homeScore || 
+              prevScore.awayScore !== scoreData.awayScore;
+            
+            // Send score update notification if score changed (live or finished)
+            if (scoreChanged && prevScore) {
+              const homeName = fixture.home_name || fixture.home_team || 'Home';
+              const awayName = fixture.away_name || fixture.away_team || 'Away';
+              // Get user's pick for this fixture
+              const userPick = picksMap[fixtureIndex] || null;
+              sendScoreUpdateNotification(
+                homeName,
+                awayName,
+                scoreData.homeScore,
+                scoreData.awayScore,
+                scoreData.minute ?? null,
+                isFinished,
+                userPick || undefined
+              );
+            }
+            
+            // Update previous score
+            prevScoresRef.current[fixtureIndex] = {
+              homeScore: scoreData.homeScore,
+              awayScore: scoreData.awayScore
+            };
+            
+              setLiveScores(prev => {
+                const updated = {
+                  ...prev,
+                  [fixtureIndex]: {
+                    homeScore: scoreData.homeScore,
+                    awayScore: scoreData.awayScore,
+                    status: scoreData.status,
+                    minute: scoreData.minute ?? null
+                  }
+                };
+                
+                // Check if all games finished and send results notification
+                if (isFinished && !resultsNotificationSentRef.current) {
+                  const allFinished = fixturesToPoll.every(f => {
+                    const currentScore = updated[f.fixture_index];
+                    return currentScore && currentScore.status === 'FINISHED';
+                  });
+                  if (allFinished) {
+                    sendResultsNotification(1); // GW 1 for API Test
+                    resultsNotificationSentRef.current = true;
+                  }
                 }
-              }));
+                
+                return updated;
+              });
             
             // Stop polling if game is finished
             if (isFinished) {
@@ -501,6 +551,20 @@ export default function HomePage() {
         intervals.set(fixtureIndex, pollInterval);
       };
       
+      // Schedule live game notification
+      if (kickoffTime > now) {
+        const homeName = fixture.home_name || fixture.home_team || 'Home';
+        const awayName = fixture.away_name || fixture.away_team || 'Away';
+        scheduleLiveGameNotification(fixture.kickoff_time, homeName, awayName);
+      }
+      
+      // Schedule deadline reminder (75 minutes before first kickoff)
+      if (fixtureIndex === 0 && fixture.kickoff_time) {
+        const firstKickoff = new Date(fixture.kickoff_time);
+        const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000)); // 75 minutes before
+        scheduleDeadlineReminder(deadlineTime.toISOString(), 1, 2); // GW 1, 2 hours before
+      }
+      
       // If kickoff hasn't happened yet, set a timeout to start polling at kickoff
       if (kickoffTime > now) {
         const delay = kickoffTime.getTime() - now.getTime();
@@ -516,7 +580,7 @@ export default function HomePage() {
       intervals.forEach(clearInterval);
       timeouts.forEach(clearTimeout);
     };
-  }, [isInApiTestLeague, fixtures]);
+  }, [isInApiTestLeague, fixtures, picksMap]);
 
   useEffect(() => {
     if (!user?.id) {
