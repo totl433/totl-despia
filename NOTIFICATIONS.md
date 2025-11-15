@@ -8,7 +8,20 @@ The app uses the Despia SDK (`despia-native`) to send local push notifications. 
 
 ## Notification Types
 
-### 1. **Deadline Reminders** ⏰
+### 1. **Game Week Starting Soon** 🚀
+**When:** 25 minutes before the first kickoff
+
+**Example for API Test GW 1:**
+- If first game kicks off at **Sat 15 Nov, 15:00 UTC**
+- Notification sent at **Sat 15 Nov, 14:35 UTC** (25 minutes before)
+
+**Notification:**
+```
+Title: "Gameweek 1 Starting Soon! ⚽"
+Message: "The action begins in 25 minutes! Get ready for some football magic! 🎯"
+```
+
+### 2. **Deadline Reminders** ⏰
 **When:** 2 hours before the gameweek deadline (75 minutes before first kickoff)
 
 **Example for API Test GW 1:**
@@ -22,7 +35,7 @@ Title: "GW1 Deadline Reminder"
 Message: "Don't forget to submit your predictions! Deadline in 2 hours."
 ```
 
-### 2. **Live Game Notifications** ⚽
+### 3. **Live Game Notifications** ⚽
 **When:** Exactly at kickoff time for each game
 
 **Examples for API Test GW 1 fixtures:**
@@ -54,7 +67,7 @@ Title: "Game Starting Now!"
 Message: "RB Bragantino vs CA Mineiro is kicking off now!"
 ```
 
-### 3. **Score Update Notifications** 📊
+### 4. **Score Update Notifications** 📊
 **When:** When a score changes during live games OR when a game finishes (FT)
 
 **Live Score Examples:**
@@ -105,7 +118,7 @@ Message: "FT - Wrong pick"
 - FT notifications are personalized based on whether your pick was correct
 - The app tracks previous scores to avoid duplicate notifications
 
-### 4. **Results Notifications** 🏆
+### 5. **Results Notifications** 🏆
 **When:** When ALL games in the gameweek have finished (the last game ends)
 
 **Example for API Test GW 1:**
@@ -124,6 +137,7 @@ Message: "All games are done! Come see the results and find out who won!"
 ## Technical Details
 
 ### Scheduling
+- **Game Week Starting Soon:** Scheduled when fixtures are loaded, 25 minutes before first kickoff
 - **Deadline reminders:** Scheduled when fixtures are loaded, calculated from first kickoff time
 - **Live game notifications:** Scheduled when fixtures are loaded, one per game at kickoff time
 - **Score updates:** Sent immediately when score changes are detected (no scheduling needed)
@@ -131,6 +145,7 @@ Message: "All games are done! Come see the results and find out who won!"
 
 ### Deep Links
 All notifications include deep links that open the app:
+- Game Week Starting Soon → `/league/api-test` (league page)
 - Deadline reminders → `/test-api-predictions` (predictions page)
 - Live game notifications → `/league/api-test` (league page)
 - Score updates → `/league/api-test` (league page)
@@ -150,35 +165,38 @@ Assuming fixtures kick off on **Sat 15 Nov, 15:00 UTC**:
 
 2. **Sat 15 Nov, 13:45 UTC** - Deadline passes (75 min before kickoff)
 
-3. **Sat 15 Nov, 15:00 UTC** - Game 1 starts
+3. **Sat 15 Nov, 14:35 UTC** - Game Week Starting Soon notification
+   - "Gameweek 1 Starting Soon! ⚽ - The action begins in 25 minutes! Get ready for some football magic! 🎯"
+
+4. **Sat 15 Nov, 15:00 UTC** - Game 1 starts
    - "SC Recife vs CR Flamengo is kicking off now!"
 
-4. **During Game 1** - Score updates (if scores change)
+5. **During Game 1** - Score updates (if scores change)
    - "SC Recife 1-0 CR Flamengo - Score update: 23'"
    - "SC Recife 2-0 CR Flamengo - Score update: 45'"
    - "SC Recife 3-1 CR Flamengo - Score update: 78'"
 
-5. **Sat 15 Nov, ~17:00 UTC** - Game 1 finishes
+6. **Sat 15 Nov, ~17:00 UTC** - Game 1 finishes
    - No notification (waiting for all games)
 
-6. **Sun 16 Nov, 14:00 UTC** - Game 2 starts
+7. **Sun 16 Nov, 14:00 UTC** - Game 2 starts
    - "Santos FC vs SE Palmeiras is kicking off now!"
 
-7. **During Game 2** - Score updates (if scores change)
+8. **During Game 2** - Score updates (if scores change)
    - "Santos FC 1-0 SE Palmeiras - Score update: 12'"
    - "Santos FC 1-1 SE Palmeiras - Score update: 67'"
 
-8. **Sun 16 Nov, ~16:00 UTC** - Game 2 finishes
+9. **Sun 16 Nov, ~16:00 UTC** - Game 2 finishes
 
-9. **Sun 16 Nov, 17:00 UTC** - Game 3 starts
+10. **Sun 16 Nov, 17:00 UTC** - Game 3 starts
    - "RB Bragantino vs CA Mineiro is kicking off now!"
 
-10. **During Game 3** - Score updates (if scores change)
+11. **During Game 3** - Score updates (if scores change)
     - "RB Bragantino 1-0 CA Mineiro - Score update: 34'"
     - "RB Bragantino 1-1 CA Mineiro - Score update: 52'"
     - "RB Bragantino 2-1 CA Mineiro - Score update: 78'"
 
-11. **Sun 16 Nov, ~19:00 UTC** - Game 3 finishes (last game)
+12. **Sun 16 Nov, ~19:00 UTC** - Game 3 finishes (last game)
     - **Results notification sent immediately:**
     - "Gameweek 1 Finished! 🏆 - All games are done! Come see the results and find out who won!"
 

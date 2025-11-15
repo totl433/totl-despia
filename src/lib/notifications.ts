@@ -51,6 +51,30 @@ export function scheduleDeadlineReminder(
 }
 
 /**
+ * Schedule a "Game Week Starting Soon" notification
+ * @param firstKickoffTime - ISO string of first kickoff time
+ * @param gameweek - Gameweek number
+ */
+export function scheduleGameweekStartingSoon(
+  firstKickoffTime: string,
+  gameweek: number
+) {
+  const kickoff = new Date(firstKickoffTime);
+  const notificationTime = new Date(kickoff.getTime() - 25 * 60 * 1000); // 25 minutes before
+  const now = new Date();
+  const secondsUntilNotification = Math.max(0, Math.floor((notificationTime.getTime() - now.getTime()) / 1000));
+  
+  if (secondsUntilNotification > 0 && secondsUntilNotification < 7 * 24 * 60 * 60) { // Max 7 days
+    sendLocalNotification(
+      secondsUntilNotification,
+      `Gameweek ${gameweek} Starting Soon! ⚽`,
+      `The action begins in 25 minutes! Get ready for some football magic! 🎯`,
+      `${window.location.origin}/league/api-test`
+    );
+  }
+}
+
+/**
  * Schedule a live game notification
  * @param kickoffTime - ISO string of kickoff time
  * @param homeTeam - Home team name

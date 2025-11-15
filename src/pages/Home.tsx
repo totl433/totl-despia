@@ -8,7 +8,7 @@ import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePh
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
-import { scheduleDeadlineReminder, scheduleLiveGameNotification, sendResultsNotification, sendScoreUpdateNotification } from "../lib/notifications";
+import { scheduleDeadlineReminder, scheduleLiveGameNotification, scheduleGameweekStartingSoon, sendResultsNotification, sendScoreUpdateNotification } from "../lib/notifications";
 
 
 // Types
@@ -563,6 +563,9 @@ export default function HomePage() {
         const firstKickoff = new Date(fixture.kickoff_time);
         const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000)); // 75 minutes before
         scheduleDeadlineReminder(deadlineTime.toISOString(), 1, 2); // GW 1, 2 hours before
+        
+        // Schedule "Game Week Starting Soon" notification (25 minutes before first kickoff)
+        scheduleGameweekStartingSoon(fixture.kickoff_time, 1); // GW 1
       }
       
       // If kickoff hasn't happened yet, set a timeout to start polling at kickoff
