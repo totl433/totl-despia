@@ -729,11 +729,6 @@ export default function TestApiPredictions() {
 
   // Confirmed Predictions View (after submission) - separate from review mode
   if (submitted) {
-    const hasLiveFixtures = fixtures.slice(0, 3).some(f => {
-      const liveScore = liveScores[f.fixture_index];
-      return liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
-    });
-
     // Calculate live score (includes both live and finished games)
     let liveScoreCount = 0;
     let liveFixturesCount = 0;
@@ -796,12 +791,6 @@ export default function TestApiPredictions() {
               });
               if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); }
               return grouped.map((group,groupIdx)=>{
-                // Check if any fixture in this group is live
-                const groupHasLive = group.items.some(f => {
-                  const liveScore = liveScores[f.fixture_index];
-                  return liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
-                });
-                
                 return (
                 <div key={groupIdx} className={groupIdx === 0 ? '-mt-2' : ''}>
                   <div className="text-lg font-semibold text-slate-800 mb-4 flex items-center justify-between">
@@ -838,7 +827,6 @@ export default function TestApiPredictions() {
                   <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">
                     {group.items.map((fixture, index)=>{
                       const pick = picks.get(fixture.fixture_index);
-                      const result = results.get(fixture.fixture_index);
                       const liveScore = liveScores[fixture.fixture_index];
                       const isLive = liveScore && (liveScore.status === 'LIVE' || liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
                       
@@ -1112,7 +1100,7 @@ export default function TestApiPredictions() {
                                 pick?.pick==="H"
                                   ? result && result === "H" && pick.pick === result
                                     ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white border-yellow-300 shadow-xl"
-                                    : result && result !== "H" && pick.pick === "H"
+                                    : result && result !== "H"
                                     ? "bg-red-500 text-white border-red-400"
                                     : "bg-purple-600 text-white border-purple-600"
                                   : result === "H"
@@ -1137,7 +1125,7 @@ export default function TestApiPredictions() {
                                 pick?.pick==="D"
                                   ? result && result === "D" && pick.pick === result
                                     ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white border-yellow-300 shadow-xl"
-                                    : result && result !== "D" && pick.pick === "D"
+                                    : result && result !== "D"
                                     ? "bg-red-500 text-white border-red-400"
                                     : "bg-purple-600 text-white border-purple-600"
                                   : result === "D"
@@ -1162,7 +1150,7 @@ export default function TestApiPredictions() {
                                 pick?.pick==="A"
                                   ? result && result === "A" && pick.pick === result
                                     ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white border-yellow-300 shadow-xl"
-                                    : result && result !== "A" && pick.pick === "A"
+                                    : result && result !== "A"
                                     ? "bg-red-500 text-white border-red-400"
                                     : "bg-purple-600 text-white border-purple-600"
                                   : result === "A"

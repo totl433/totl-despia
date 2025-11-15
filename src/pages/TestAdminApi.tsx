@@ -74,7 +74,6 @@ export default function TestAdminApi() {
   const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
 
   // API Test league always uses Test GW 1
-  const testGw = 1;
   const [availableMatches, setAvailableMatches] = useState<ApiMatch[]>([]);
   const [selectedFixtures, setSelectedFixtures] = useState<Map<number, TestFixture>>(new Map());
   const [saving, setSaving] = useState(false);
@@ -229,7 +228,7 @@ export default function TestAdminApi() {
     (async () => {
       try {
         // Get current test GW from meta or default to 1
-        const { data: meta, error: metaError } = await supabase
+        const { error: metaError } = await supabase
           .from("test_api_meta")
           .select("current_test_gw")
           .eq("id", 1)
@@ -433,7 +432,7 @@ export default function TestAdminApi() {
           )}
 
           <button
-            onClick={(e) => {
+            onClick={() => {
               if (fetchingMatches) {
                 console.log('[TestAdminApi] Already fetching, ignoring click');
                 return;

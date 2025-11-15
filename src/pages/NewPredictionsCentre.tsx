@@ -60,6 +60,8 @@ export default function NewPredictionsCentre() {
   const [isPastDeadline, setIsPastDeadline] = useState(false);
   const [score, setScore] = useState<number | null>(null);
   const [topPercent, setTopPercent] = useState<number | null>(null);
+  const [isInApiTestLeague, setIsInApiTestLeague] = useState(false);
+  const [displayGw, setDisplayGw] = useState<number | null>(null);
 
   // Debug: Log when isPastDeadline changes
   useEffect(() => {
@@ -123,7 +125,7 @@ export default function NewPredictionsCentre() {
     (async () => {
       try {
         // Check if user is in API Test league
-        let isInApiTestLeague = false;
+        let apiTestLeague = false;
         if (user?.id) {
           try {
             // First get all user's leagues
@@ -135,17 +137,18 @@ export default function NewPredictionsCentre() {
             // If error, log but don't fail - just don't use test fixtures
             if (leaguesError) {
               console.warn('[NewPredictionsCentre] Error checking leagues (non-fatal):', leaguesError);
-              isInApiTestLeague = false;
+              apiTestLeague = false;
             } else if (userLeagues) {
               // Check if any league has name "API Test"
-              isInApiTestLeague = userLeagues.some((row: any) => row.leagues?.name === "API Test");
+              apiTestLeague = userLeagues.some((row: any) => row.leagues?.name === "API Test");
             }
           } catch (error: any) {
             console.error('[NewPredictionsCentre] Error checking API Test membership:', error);
             // If check fails, default to false (don't use test fixtures)
-            isInApiTestLeague = false;
+            apiTestLeague = false;
           }
         }
+        if (alive) setIsInApiTestLeague(apiTestLeague);
         
         // Fetch current gameweek from meta table
         const { data: meta, error: metaError } = await supabase
@@ -169,8 +172,8 @@ export default function NewPredictionsCentre() {
         // For API Test league members, always show Test GW 1 fixtures if they exist
         // (regardless of main game's current GW)
         let fx;
-        let displayGw = currentGw;
-        if (isInApiTestLeague) {
+        let gwToDisplay = currentGw;
+        if (apiTestLeague) {
           try {
             // Check if test fixtures exist for GW 1
             const testFxResult = await supabase
@@ -205,7 +208,7 @@ export default function NewPredictionsCentre() {
             } else if (testFxResult.data && testFxResult.data.length > 0) {
               // If test fixtures exist and no error, use them and set display GW to 1
               fx = { data: testFxResult.data, error: null };
-              displayGw = 1; // Show as GW 1 for API Test league
+              gwToDisplay = 1; // Show as GW 1 for API Test league
               console.log('[NewPredictionsCentre] Using test fixtures for GW 1:', testFxResult.data.length, 'fixtures');
             } else {
               // No test fixtures found, fall back to regular fixtures
@@ -254,8 +257,9 @@ export default function NewPredictionsCentre() {
         const realFixtures: Fixture[] = (fxData as Fixture[]) ?? [];
         if (alive) {
           setFixtures(realFixtures);
-          setCurrentGw(displayGw); // Set to 1 if showing test fixtures, otherwise currentGw
-          console.log('Loaded', realFixtures.length, 'fixtures for GW', displayGw, isInApiTestLeague && displayGw === 1 ? '(Test GW 1)' : '');
+          setCurrentGw(gwToDisplay); // Set to 1 if showing test fixtures, otherwise currentGw
+          if (alive) setDisplayGw(gwToDisplay);
+          console.log('Loaded', realFixtures.length, 'fixtures for GW', gwToDisplay, apiTestLeague && gwToDisplay === 1 ? '(Test GW 1)' : '');
           
           // Check if we're past the deadline
           if (realFixtures.length > 0 && realFixtures[0].kickoff_time) {
@@ -285,7 +289,7 @@ export default function NewPredictionsCentre() {
 
         // Fetch user's picks for the gameweek being displayed
         // For API Test league showing test fixtures, fetch picks for GW 1
-        const picksGw = isInApiTestLeague && displayGw === 1 ? 1 : currentGw;
+        const picksGw = apiTestLeague && gwToDisplay === 1 ? 1 : currentGw;
         if (user?.id) {
           const { data: pk, error: pkErr } = await supabase
             .from("picks")
@@ -330,7 +334,7 @@ export default function NewPredictionsCentre() {
 
         // Fetch results for the gameweek being displayed
         // For API Test league showing test fixtures, fetch results for GW 1
-        const resultsGw = isInApiTestLeague && displayGw === 1 ? 1 : currentGw;
+        const resultsGw = apiTestLeague && gwToDisplay === 1 ? 1 : currentGw;
         const { data: rs, error: rsErr } = await supabase
           .from("gw_results")
           .select("gw,fixture_index,result")
@@ -926,7 +930,7 @@ export default function NewPredictionsCentre() {
                           }
                         : {
                             user_id: user?.id,
-                            gw: currentGw,
+                            gw: currentGw ?? 1,
                             submitted_at: new Date().toISOString()
                           };
                       const submissionConflict = isInApiTestLeague && displayGw === 1 
