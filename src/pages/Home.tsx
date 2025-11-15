@@ -409,25 +409,58 @@ export default function HomePage() {
   // Fetch live scores from Football Data API via Netlify function (to avoid CORS)
   const fetchLiveScore = async (apiMatchId: number) => {
     try {
-      // Use Netlify function to proxy the request (avoids CORS issues)
-      const response = await fetch(`/.netlify/functions/fetchFootballData?matchId=${apiMatchId}`, {
-        method: 'GET',
-      });
+      // Try Netlify function first (works in production and with netlify dev)
+      let response: Response;
+      let match: any;
       
-      if (!response.ok) {
-        // If rate limited, return null (will retry on next poll)
-        if (response.status === 429) {
-          console.warn('[Home] Rate limited, will retry on next poll');
+      try {
+        response = await fetch(`/.netlify/functions/fetchFootballData?matchId=${apiMatchId}`, {
+          method: 'GET',
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          // Netlify function returns { success: true, data: {...} }
+          match = result.data || result;
+        } else if (response.status === 404 || response.status === 0) {
+          // Netlify function not available (local dev without netlify dev)
+          // Fall back to direct API call (will have CORS in browser, but works in some cases)
+          console.warn('[Home] Netlify function not available, trying direct API call');
+          throw new Error('Netlify function not available');
+        } else {
+          // Other error from Netlify function
+          if (response.status === 429) {
+            console.warn('[Home] Rate limited, will retry on next poll');
+            return null;
+          }
+          console.error('[Home] Error from Netlify function:', response.status, response.statusText);
           return null;
         }
-        console.error('[Home] Error fetching live score:', response.status, response.statusText);
-        return null;
+      } catch (fetchError: any) {
+        // Netlify function failed, try direct API call as fallback (for local dev)
+        if (fetchError.message === 'Netlify function not available' || fetchError.message.includes('Failed to fetch')) {
+          console.log('[Home] Falling back to direct API call for local development');
+          const FOOTBALL_DATA_API_KEY = 'ed3153d132b847db836289243894706e';
+          response = await fetch(`https://api.football-data.org/v4/matches/${apiMatchId}`, {
+            headers: {
+              'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+            },
+          });
+          
+          if (!response.ok) {
+            if (response.status === 429) {
+              console.warn('[Home] Rate limited, will retry on next poll');
+              return null;
+            }
+            console.error('[Home] Error fetching live score:', response.status, response.statusText);
+            return null;
+          }
+          
+          match = await response.json();
+        } else {
+          throw fetchError;
+        }
       }
-      
-      const result = await response.json();
-      
-      // Netlify function returns { success: true, data: {...} }
-      const match = result.data || result;
       
       if (!match || !match.score) {
         console.warn('[Home] No score data in API response:', match);
