@@ -79,24 +79,31 @@ export default function TestAdminApi() {
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [competition, setCompetition] = useState("PL");
-  const [gameweek, setGameweek] = useState<number | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [autoLoading, setAutoLoading] = useState(true);
 
-  // Fetch available matches from API
-  const fetchApiMatches = async (comp: string, gw: number | null, signal?: AbortSignal) => {
+  // Fetch available matches from API for the next week
+  const fetchUpcomingMatches = async (comp: string, signal?: AbortSignal) => {
     try {
+      const today = new Date();
+      const nextWeek = new Date(today);
+      nextWeek.setDate(today.getDate() + 7);
+      
+      // Format dates as YYYY-MM-DD for the API
+      const dateFrom = today.toISOString().split('T')[0];
+      const dateTo = nextWeek.toISOString().split('T')[0];
+      
       const params = new URLSearchParams({
         competition: comp,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
       });
-      if (gw !== null) {
-        params.append('matchday', gw.toString());
-      }
 
       // Get function URL dynamically at request time
       const functionUrl = getFunctionUrl();
       const url = `${functionUrl}?${params.toString()}`;
-      console.log('[TestAdminApi] Fetching from:', url);
-      console.log('[TestAdminApi] Current origin:', typeof window !== 'undefined' ? window.location.origin : 'N/A');
+      console.log('[TestAdminApi] Fetching upcoming matches from:', url);
+      console.log('[TestAdminApi] Date range:', { dateFrom, dateTo });
 
       const response = await fetch(url, {
         signal
@@ -395,106 +402,75 @@ export default function TestAdminApi() {
 
         {/* API Match Selection */}
         <div className="bg-white rounded-xl shadow-md p-4 mb-6">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Fetch Matches from API</h3>
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">Upcoming Matches (Next 7 Days)</h3>
           
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Competition:</label>
-              <select
-                value={competition}
-                onChange={(e) => setCompetition(e.target.value)}
-                className="w-full border rounded px-3 py-2"
-              >
-                <option value="PL">Premier League</option>
-                <option value="BSA">Brazilian Serie A</option>
-                <option value="BL1">Bundesliga</option>
-                <option value="SA">Serie A</option>
-                <option value="FL1">Ligue 1</option>
-                <option value="PD">La Liga</option>
-                <option value="CL">Champions League</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Game Week:</label>
-              <select
-                value={gameweek || ""}
-                onChange={(e) => setGameweek(e.target.value ? parseInt(e.target.value) : null)}
-                className="w-full border rounded px-3 py-2"
-              >
-                <option value="">Select Game Week</option>
-                {Array.from({ length: 38 }, (_, i) => i + 1).map((gw) => (
-                  <option key={gw} value={gw}>
-                    Game Week {gw}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-slate-700 mb-2">Competition:</label>
+            <select
+              value={competition}
+              onChange={(e) => {
+                setCompetition(e.target.value);
+                setAutoLoading(true);
+                setAvailableMatches([]);
+                setApiError(null);
+              }}
+              className="w-full border rounded px-3 py-2"
+            >
+              <option value="PL">Premier League</option>
+              <option value="BSA">Brazilian Serie A</option>
+              <option value="BL1">Bundesliga</option>
+              <option value="SA">Serie A</option>
+              <option value="FL1">Ligue 1</option>
+              <option value="PD">La Liga</option>
+              <option value="CL">Champions League</option>
+            </select>
           </div>
 
+          {autoLoading && (
+            <div className="text-center py-4 text-slate-600">
+              Loading upcoming matches...
+            </div>
+          )}
+
           <button
-            onMouseDown={(e) => {
-              console.log('[TestAdminApi] Button mousedown', { gameweek, fetchingMatches, disabled: e.currentTarget.disabled });
-            }}
-            onMouseEnter={() => {
-              console.log('[TestAdminApi] Button hover');
-            }}
             onClick={(e) => {
-              console.log('[TestAdminApi] Button clicked', { gameweek, fetchingMatches, disabled: e.currentTarget.disabled });
-              
-              if (!gameweek) {
-                const errorMsg = "⚠️ Please select a Game Week from the dropdown above";
-                console.log('[TestAdminApi] No gameweek selected:', errorMsg);
-                setApiError(errorMsg);
-                // Also clear any previous matches
-                setAvailableMatches([]);
-                // Scroll to error message if needed
-                setTimeout(() => {
-                  const errorEl = document.querySelector('[data-api-error]');
-                  if (errorEl) {
-                    errorEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                  }
-                }, 100);
-                return;
-              }
-              
               if (fetchingMatches) {
                 console.log('[TestAdminApi] Already fetching, ignoring click');
                 return;
               }
               
-              console.log('[TestAdminApi] Starting fetch', { competition, gameweek });
+              console.log('[TestAdminApi] Refreshing upcoming matches', { competition });
               
               const abortController = new AbortController();
               setFetchingMatches(true);
               setApiError(null);
               
-              fetchApiMatches(competition, gameweek, abortController.signal)
+              fetchUpcomingMatches(competition, abortController.signal)
                 .then((matches) => {
                   console.log('[TestAdminApi] Matches fetched', matches?.length || 0);
                   if (matches && matches.length > 0) {
                     setAvailableMatches(matches);
-                    // Clear any previous error on success
                     setApiError(null);
                   } else if (matches && matches.length === 0) {
-                    setApiError("No matches found for this matchday");
+                    setApiError("No upcoming matches found in the next week for this competition.");
                   }
                 })
                 .catch((error) => {
-                  console.error('[TestAdminApi] Error in button handler', error);
+                  console.error('[TestAdminApi] Error refreshing matches', error);
                   if (error instanceof Error && error.name !== 'AbortError') {
                     setApiError("Failed to fetch matches. Please try again.");
                   }
                 })
                 .finally(() => {
                   setFetchingMatches(false);
+                  setAutoLoading(false);
                 });
             }}
-            disabled={fetchingMatches || !gameweek}
+            disabled={fetchingMatches}
             className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-transform relative z-10"
             type="button"
           >
-            {fetchingMatches ? "Loading..." : "Fetch Matches"}
+            {fetchingMatches ? "Refreshing..." : "Refresh Matches"}
           </button>
         </div>
 
