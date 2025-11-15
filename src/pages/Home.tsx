@@ -499,28 +499,9 @@ export default function HomePage() {
       const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? match.score.current?.away ?? 0;
       const status = match.status || 'SCHEDULED';
       
-      // Try multiple possible locations for minute field
-      // Football Data API v4 has minute at top level as a number or string
-      let apiMinute: number | null = null;
-      
-      // First, try to get minute from API response
-      if (match.minute !== undefined && match.minute !== null) {
-        const parsedMinute = typeof match.minute === 'string' ? parseInt(match.minute, 10) : match.minute;
-        apiMinute = isNaN(parsedMinute) ? null : parsedMinute;
-      } else if (match.score?.minute !== undefined && match.score.minute !== null) {
-        const parsedMinute = typeof match.score.minute === 'string' ? parseInt(match.score.minute, 10) : match.score.minute;
-        apiMinute = isNaN(parsedMinute) ? null : parsedMinute;
-      } else if (match.score?.current?.minute !== undefined && match.score.current.minute !== null) {
-        const parsedMinute = typeof match.score.current.minute === 'string' ? parseInt(match.score.current.minute, 10) : match.score.current.minute;
-        apiMinute = isNaN(parsedMinute) ? null : parsedMinute;
-      } else if (match.score?.duration !== undefined && match.score.duration !== null) {
-        // Some APIs use duration field
-        const parsedMinute = typeof match.score.duration === 'string' ? parseInt(match.score.duration, 10) : match.score.duration;
-        apiMinute = isNaN(parsedMinute) ? null : parsedMinute;
-      }
-      
-      // Calculate minute from kickoff time to verify/override API minute
-      let calculatedMinute: number | null = null;
+      // Football Data API v4 doesn't reliably provide minute field
+      // Always calculate minute from kickoff time
+      let minute: number | null = null;
       if ((status === 'IN_PLAY' || status === 'PAUSED') && kickoffTime) {
         try {
           const matchStart = new Date(kickoffTime);
@@ -534,19 +515,19 @@ export default function HomePage() {
             // Second half: starts around 60 minutes after kickoff
             if (diffMinutes > 60) {
               // Second half - subtract halftime break (usually 15 minutes)
-              calculatedMinute = diffMinutes - 15;
+              minute = diffMinutes - 15;
             } else if (diffMinutes > 45) {
               // Between 45-60 minutes, we're likely in halftime or just after
               if (status === 'PAUSED') {
                 // Halftime - don't calculate minute, let it show as HT
-                calculatedMinute = null;
+                minute = null;
               } else {
                 // Second half might have started early, calculate minute
-                calculatedMinute = diffMinutes - 15;
+                minute = diffMinutes - 15;
               }
             } else {
               // First half
-              calculatedMinute = diffMinutes;
+              minute = diffMinutes;
             }
           }
         } catch (e) {
@@ -554,32 +535,7 @@ export default function HomePage() {
         }
       }
       
-      // Use calculated minute if available, otherwise use API minute
-      // If both are available and differ significantly (> 3 minutes), prefer calculated
-      let minute: number | null = null;
-      if (calculatedMinute !== null) {
-        if (apiMinute !== null) {
-          const difference = Math.abs(apiMinute - calculatedMinute);
-          if (difference > 3) {
-            console.warn('[Home] API minute differs significantly from calculated, using calculated:', {
-              apiMinute,
-              calculatedMinute,
-              difference,
-              status
-            });
-            minute = calculatedMinute;
-          } else {
-            // Close enough, use API minute (it's more accurate if close)
-            minute = apiMinute;
-          }
-        } else {
-          minute = calculatedMinute;
-        }
-      } else {
-        minute = apiMinute;
-      }
-      
-      // If still no minute and game is live, try to calculate from API's match start time
+      // Fallback: if no kickoffTime, try to calculate from API's match start time
       if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED')) {
         const matchStartTime = match.utcDate || match.date || match.kickoffTime || match.kickoff_time;
         if (matchStartTime) {
