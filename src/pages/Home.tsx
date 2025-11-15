@@ -467,11 +467,12 @@ export default function HomePage() {
         return null;
       }
       
-      const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? 0;
-      const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? 0;
+      const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? match.score.current?.home ?? 0;
+      const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? match.score.current?.away ?? 0;
       const status = match.status || 'SCHEDULED';
       // Try multiple possible locations for minute field
-      const minute = match.minute ?? match.score?.minute ?? match.liveStatus?.minute ?? null;
+      // Football Data API v4 has minute at top level, but also check score.current for live scores
+      const minute = match.minute ?? match.score?.minute ?? match.score?.current?.minute ?? null;
       
       // Debug logging to see actual API response
       console.log('[Home] API Response for match', apiMatchId, ':', {
@@ -481,8 +482,8 @@ export default function HomePage() {
         awayScore,
         matchMinute: match.minute,
         scoreMinute: match.score?.minute,
-        liveStatusMinute: match.liveStatus?.minute,
-        fullMatch: match
+        scoreCurrent: match.score?.current,
+        fullMatch: JSON.stringify(match, null, 2).substring(0, 500) // First 500 chars of response
       });
       
       // Determine outcome for flash animation
