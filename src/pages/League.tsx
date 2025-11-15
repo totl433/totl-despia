@@ -1811,8 +1811,8 @@ export default function LeaguePage() {
       willShowPredictions: allSubmitted || deadlinePassed
     });
 
-    // For API Test league, always show submission status even if all submitted or deadline passed
-    const showSubmissionStatus = league?.name === 'API Test' || (!allSubmitted && !deadlinePassed);
+    // For API Test league, show submission status only if not all submitted
+    const showSubmissionStatus = league?.name === 'API Test' ? !allSubmitted : (!allSubmitted && !deadlinePassed);
 
     return (
       <div className="mt-2 pt-2">
@@ -1942,6 +1942,168 @@ export default function LeaguePage() {
             </div>
           </div>
         ) : null}
+
+        {/* API Test league "who picked who" view when all submitted */}
+        {league?.name === 'API Test' && allSubmitted && sections.length > 0 && (
+          <div className="mt-3 space-y-6">
+            {sections.map((sec, si) => (
+              <div key={si}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-slate-700 font-normal text-lg">{sec.label}</div>
+                  {si === 0 && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-bold border border-blue-300 shadow-sm" style={{ marginTop: '-2px' }}>
+                      All Submitted
+                    </span>
+                  )}
+                </div>
+                <div className="rounded-2xl border bg-slate-50 overflow-hidden">
+                  <ul>
+                    {sec.items.map((f, idx) => {
+                      try {
+                        const homeName = f.home_name || f.home_team || "Home";
+                        const awayName = f.away_name || f.away_team || "Away";
+                        const homeCode = f.home_code || "";
+                        const awayCode = f.away_code || "";
+
+                        const timeOf = (iso?: string | null) => {
+                          if (!iso) return "";
+                          const d = new Date(iso);
+                          if (isNaN(d.getTime())) return "";
+                          const hh = String(d.getUTCHours()).padStart(2, '0');
+                          const mm = String(d.getUTCMinutes()).padStart(2, '0');
+                          return `${hh}:${mm}`;
+                        };
+                        const timeStr = timeOf(f.kickoff_time);
+
+                        const fxIdx = f.fixture_index;
+                        const these = picksByFixture.get(fxIdx) ?? [];
+
+                        const toChips = (want: "H" | "D" | "A") => {
+                          const filtered = these.filter((p) => p.pick === want);
+                          // For API Test league, check live scores for outcomes
+                          let actualResult: "H" | "D" | "A" | null = null;
+                          if (league?.name === 'API Test' && picksGw === 1) {
+                            const liveScore = liveScores[fxIdx];
+                            if (liveScore) {
+                              if (liveScore.homeScore > liveScore.awayScore) actualResult = 'H';
+                              else if (liveScore.awayScore > liveScore.homeScore) actualResult = 'A';
+                              else if (liveScore.homeScore === liveScore.awayScore) actualResult = 'D';
+                            }
+                          } else {
+                            actualResult = outcomes.get(fxIdx) || null;
+                          }
+                          const allPicked = these.length === members.length && filtered.length === members.length;
+                          
+                          // Group chips into rows of maximum 4
+                          const chipsPerRow = 4;
+                          const rows = [];
+                          
+                          for (let i = 0; i < filtered.length; i += chipsPerRow) {
+                            const rowChips = filtered.slice(i, i + chipsPerRow);
+                            rows.push(rowChips);
+                          }
+                          
+                          return (
+                            <div className="flex flex-col gap-1">
+                              {rows.map((row, rowIdx) => (
+                                <div key={rowIdx} className="flex items-center justify-center">
+                                  {row.map((p, idx) => {
+                                    const m = members.find((mm) => mm.id === p.user_id);
+                                    const letter = initials(m?.name ?? "?");
+                                    const isCorrect = actualResult ? actualResult === want : null;
+                                    
+                                    if (allPicked) {
+                                      // Stack effect - use relative positioning with negative margins
+                                      const overlapAmount = 8;
+                                      return (
+                                        <span 
+                                          key={p.user_id}
+                                          className="inline-block"
+                                          style={{
+                                            marginLeft: idx > 0 ? `-${overlapAmount}px` : '0',
+                                            position: 'relative',
+                                            zIndex: idx
+                                          }}
+                                        >
+                                          <Chip letter={letter} correct={isCorrect} unicorn={false} />
+                                        </span>
+                                      );
+                                    }
+                                    
+                                    return (
+                                      <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} />
+                                    );
+                                  })}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        };
+
+                        const homeBadge = `/assets/badges/${homeCode.toUpperCase()}.png`;
+                        const awayBadge = `/assets/badges/${awayCode.toUpperCase()}.png`;
+
+                        return (
+                          <li key={`${f.gw}-${f.fixture_index}`} className={idx > 0 ? "border-t" : ""}>
+                            <div className="p-4 bg-white">
+                              {/* Fixture display - same as Home Page */}
+                              <div className="grid grid-cols-3 items-center">
+                                <div className="flex items-center justify-center">
+                                  <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{homeName}</span>
+                                </div>
+                                <div className="flex items-center justify-center gap-2">
+                                  <img src={homeBadge} alt={`${homeName} badge`} className="h-6 w-6" />
+                                  <div className="text-[15px] sm:text-base font-semibold text-slate-600">
+                                    {timeStr}
+                                  </div>
+                                  <img src={awayBadge} alt={`${awayName} badge`} className="h-6 w-6" />
+                                </div>
+                                <div className="flex items-center justify-center">
+                                  <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{awayName}</span>
+                                </div>
+                              </div>
+                              
+                              {/* Pips underneath - same as Home Page */}
+                              <div className="mt-2 grid grid-cols-3">
+                                <div className="relative min-h-6">
+                                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                                    {toChips("H")}
+                                  </div>
+                                </div>
+                                <div className="relative min-h-6">
+                                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                                    {toChips("D")}
+                                  </div>
+                                </div>
+                                <div className="relative min-h-6">
+                                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                                    {toChips("A")}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      } catch (error) {
+                        console.error("Error rendering fixture:", error, f);
+                        return (
+                          <li key={`${f.gw}-${f.fixture_index}`} className="p-4 text-red-500">
+                            Error loading fixture: {f.fixture_index}
+                          </li>
+                        );
+                      }
+                    })}
+                    {!sec.items.length && (
+                      <li className="p-4 text-slate-500">
+                        No fixtures.
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {sections.length > 0 && league?.name !== 'API Test' && (
           <div className="mt-3 space-y-6">
