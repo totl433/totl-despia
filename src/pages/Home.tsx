@@ -609,10 +609,11 @@ export default function HomePage() {
     });
     
     return () => {
+      console.log('[Home] Cleaning up polling intervals and timeouts');
       intervals.forEach(clearInterval);
       timeouts.forEach(clearTimeout);
     };
-  }, [isInApiTestLeague, fixtures, picksMap]);
+  }, [isInApiTestLeague, fixtures, picksMap, liveScores]);
 
   useEffect(() => {
     if (!user?.id) {
