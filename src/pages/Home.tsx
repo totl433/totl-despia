@@ -501,63 +501,109 @@ export default function HomePage() {
       
       // Try multiple possible locations for minute field
       // Football Data API v4 has minute at top level as a number or string
-      let minute: number | null = null;
+      let apiMinute: number | null = null;
       
       // First, try to get minute from API response
       if (match.minute !== undefined && match.minute !== null) {
         const parsedMinute = typeof match.minute === 'string' ? parseInt(match.minute, 10) : match.minute;
-        minute = isNaN(parsedMinute) ? null : parsedMinute;
+        apiMinute = isNaN(parsedMinute) ? null : parsedMinute;
       } else if (match.score?.minute !== undefined && match.score.minute !== null) {
         const parsedMinute = typeof match.score.minute === 'string' ? parseInt(match.score.minute, 10) : match.score.minute;
-        minute = isNaN(parsedMinute) ? null : parsedMinute;
+        apiMinute = isNaN(parsedMinute) ? null : parsedMinute;
       } else if (match.score?.current?.minute !== undefined && match.score.current.minute !== null) {
         const parsedMinute = typeof match.score.current.minute === 'string' ? parseInt(match.score.current.minute, 10) : match.score.current.minute;
-        minute = isNaN(parsedMinute) ? null : parsedMinute;
+        apiMinute = isNaN(parsedMinute) ? null : parsedMinute;
       } else if (match.score?.duration !== undefined && match.score.duration !== null) {
         // Some APIs use duration field
         const parsedMinute = typeof match.score.duration === 'string' ? parseInt(match.score.duration, 10) : match.score.duration;
-        minute = isNaN(parsedMinute) ? null : parsedMinute;
+        apiMinute = isNaN(parsedMinute) ? null : parsedMinute;
       }
       
-      // If minute is still null/undefined and game is live or paused, calculate from kickoff time
+      // Calculate minute from kickoff time to verify/override API minute
+      let calculatedMinute: number | null = null;
+      if ((status === 'IN_PLAY' || status === 'PAUSED') && kickoffTime) {
+        try {
+          const matchStart = new Date(kickoffTime);
+          const now = new Date();
+          const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
+          
+          if (diffMinutes > 0 && diffMinutes < 120) {
+            // Account for half-time break (usually 15 minutes)
+            // First half: 0-45 minutes
+            // Halftime: ~15 minutes break
+            // Second half: starts around 60 minutes after kickoff
+            if (diffMinutes > 60) {
+              // Second half - subtract halftime break (usually 15 minutes)
+              calculatedMinute = diffMinutes - 15;
+            } else if (diffMinutes > 45) {
+              // Between 45-60 minutes, we're likely in halftime or just after
+              if (status === 'PAUSED') {
+                // Halftime - don't calculate minute, let it show as HT
+                calculatedMinute = null;
+              } else {
+                // Second half might have started early, calculate minute
+                calculatedMinute = diffMinutes - 15;
+              }
+            } else {
+              // First half
+              calculatedMinute = diffMinutes;
+            }
+          }
+        } catch (e) {
+          console.warn('[Home] Error calculating minute from kickoff time:', e);
+        }
+      }
+      
+      // Use calculated minute if available, otherwise use API minute
+      // If both are available and differ significantly (> 3 minutes), prefer calculated
+      let minute: number | null = null;
+      if (calculatedMinute !== null) {
+        if (apiMinute !== null) {
+          const difference = Math.abs(apiMinute - calculatedMinute);
+          if (difference > 3) {
+            console.warn('[Home] API minute differs significantly from calculated, using calculated:', {
+              apiMinute,
+              calculatedMinute,
+              difference,
+              status
+            });
+            minute = calculatedMinute;
+          } else {
+            // Close enough, use API minute (it's more accurate if close)
+            minute = apiMinute;
+          }
+        } else {
+          minute = calculatedMinute;
+        }
+      } else {
+        minute = apiMinute;
+      }
+      
+      // If still no minute and game is live, try to calculate from API's match start time
       if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED')) {
-        // Calculate minute from match start time
-        // Try multiple possible field names for match start time
-        const matchStartTime = match.utcDate || match.date || match.kickoffTime || match.kickoff_time || kickoffTime;
-        
+        const matchStartTime = match.utcDate || match.date || match.kickoffTime || match.kickoff_time;
         if (matchStartTime) {
           try {
             const matchStart = new Date(matchStartTime);
             const now = new Date();
             const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
             
-            console.log('[Home] Minute calculation from kickoff:', {
-              matchStartTime,
-              matchStart: matchStart.toISOString(),
-              now: now.toISOString(),
-              diffMinutes,
-              status
-            });
-            
             if (diffMinutes > 0 && diffMinutes < 120) {
-              // Account for half-time break (usually 15 minutes)
-              // If diffMinutes > 60, we're in second half, so subtract ~15 for halftime
               if (diffMinutes > 60) {
-                // Second half - subtract halftime break (usually 15 minutes)
                 minute = diffMinutes - 15;
+              } else if (diffMinutes > 45) {
+                if (status === 'PAUSED') {
+                  minute = null;
+                } else {
+                  minute = diffMinutes - 15;
+                }
               } else {
-                // First half
                 minute = diffMinutes;
               }
-              console.log('[Home] Calculated minute from kickoff:', minute);
-            } else {
-              console.warn('[Home] diffMinutes out of range:', diffMinutes);
             }
           } catch (e) {
-            console.warn('[Home] Error calculating minute from match start time:', e);
+            console.warn('[Home] Error calculating minute from API match start time:', e);
           }
-        } else {
-          console.warn('[Home] No match start time found in API response for minute calculation. Available fields:', Object.keys(match), 'kickoffTime param:', kickoffTime);
         }
       }
       
