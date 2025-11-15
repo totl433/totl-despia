@@ -598,11 +598,14 @@ export default function HomePage() {
             
             // Stop polling if game is finished
             if (isFinished) {
+              console.log('[Home] Game', fixtureIndex, 'finished, stopping polling');
               const pollInterval = intervals.get(fixtureIndex);
               if (pollInterval) {
                 clearInterval(pollInterval);
                 intervals.delete(fixtureIndex);
               }
+            } else if (isLive) {
+              console.log('[Home] Game', fixtureIndex, 'is LIVE - status:', scoreData.status, 'minute:', scoreData.minute);
             }
             }
           };
@@ -650,7 +653,7 @@ export default function HomePage() {
       intervals.forEach(clearInterval);
       timeouts.forEach(clearTimeout);
     };
-  }, [isInApiTestLeague, fixtures, picksMap, liveScores]);
+  }, [isInApiTestLeague, fixtures.map(f => f.api_match_id).join(','), picksMap]);
 
   useEffect(() => {
     if (!user?.id) {
