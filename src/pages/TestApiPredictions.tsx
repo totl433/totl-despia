@@ -167,6 +167,8 @@ export default function TestApiPredictions() {
   const [isPastDeadline, setIsPastDeadline] = useState(false);
   // Live scores for test API fixtures
   const [liveScores, setLiveScores] = useState<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
+  // Track when halftime ends for each fixture (when status changes from PAUSED to IN_PLAY)
+  const halftimeEndTimeRef = useRef<Record<number, Date>>({});
 
   useEffect(() => {
     // Only lock scrolling when in card swipe mode, not on review page
@@ -555,8 +557,41 @@ export default function TestApiPredictions() {
               isFinished,
               homeScore: scoreData.homeScore,
               awayScore: scoreData.awayScore,
-              minute: scoreData.minute
+              minute: scoreData.minute,
+              apiMatchId: fixture.api_match_id
             });
+            
+            // Debug: log if game should be live but isn't detected
+            if (!isLive && !isFinished && !isHalfTime) {
+              console.warn('[TestApiPredictions] Game', fixtureIndex, 'has status', scoreData.status, 'but is not detected as live');
+            }
+            
+            // Track when halftime ends (status changes from PAUSED to IN_PLAY)
+            const prevStatus = liveScores[fixtureIndex]?.status;
+            if (prevStatus === 'PAUSED' && scoreData.status === 'IN_PLAY') {
+              // Halftime just ended - record the time
+              halftimeEndTimeRef.current[fixture.api_match_id!] = new Date();
+              console.log('[TestApiPredictions] Halftime ended for fixture', fixtureIndex, 'match', fixture.api_match_id);
+            }
+            
+            // Recalculate minute if we're in second half and have halftime end time
+            let finalMinute = scoreData.minute;
+            const halftimeEndTime = halftimeEndTimeRef.current[fixture.api_match_id!];
+            if (scoreData.status === 'IN_PLAY') {
+              if (halftimeEndTime) {
+                // We have halftime end time - calculate second half minute from that
+                const now = new Date();
+                const minutesSinceHalftimeEnd = Math.floor((now.getTime() - halftimeEndTime.getTime()) / (1000 * 60));
+                finalMinute = 46 + minutesSinceHalftimeEnd;
+                console.log('[TestApiPredictions] Recalculated minute from halftime end:', {
+                  fixtureIndex,
+                  apiMatchId: fixture.api_match_id,
+                  originalMinute: scoreData.minute,
+                  finalMinute,
+                  minutesSinceHalftimeEnd
+                });
+              }
+            }
             
             setLiveScores(prev => ({
               ...prev,
@@ -564,7 +599,7 @@ export default function TestApiPredictions() {
                 homeScore: scoreData.homeScore,
                 awayScore: scoreData.awayScore,
                 status: scoreData.status,
-                minute: scoreData.minute ?? null
+                minute: finalMinute ?? null
               }
             }));
             
@@ -1092,7 +1127,7 @@ export default function TestApiPredictions() {
                             {isLive && (
                               <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
                                 <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                                <span className="text-xs font-bold text-red-600">{formatMinuteDisplay(liveScore.status, liveScore.minute)}</span>
+                                <span className="text-xs font-bold text-red-600">LIVE</span>
                               </div>
                             )}
                             

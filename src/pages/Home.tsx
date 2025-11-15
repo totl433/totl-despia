@@ -150,6 +150,23 @@ export default function HomePage() {
   const [lastApiPull, setLastApiPull] = useState<{ minute: number | null; timestamp: Date; success: boolean } | null>(null);
   // Track when halftime ends for each fixture (when status changes from PAUSED to IN_PLAY)
   const halftimeEndTimeRef = useRef<Record<number, Date>>({});
+  // Track the minute when halftime ended (should be 46')
+  const halftimeEndMinuteRef = useRef<Record<number, number>>({});
+  // Track API pull history for debugging (fixture_index -> array of pulls)
+  const apiPullHistoryRef = useRef<Record<number, Array<{
+    timestamp: Date;
+    minute: number | null;
+    status: string;
+    homeScore: number;
+    awayScore: number;
+    kickoffTime: string | null;
+    apiMinute: number | null | undefined;
+    diffMinutes: number | null;
+    halftimeEndTime: string | null;
+    halftimeEndMinute: number | null;
+    minutesSinceHalftimeEnd: number | null;
+  }>>>({});
+  const [expandedDebugLog, setExpandedDebugLog] = useState<Record<number, boolean>>({});
   const [isInApiTestLeague, setIsInApiTestLeague] = useState(false);
 
   // Extract data fetching into a reusable function for pull-to-refresh
@@ -517,37 +534,24 @@ export default function HomePage() {
               minute = null;
             } else if (status === 'IN_PLAY') {
               // Game is live - calculate minute
-              if (diffMinutes <= 45) {
-                // First half: 0-45 minutes (accounting for stoppage time, could be 45+1, 45+2, etc.)
-                minute = diffMinutes;
+              // Check if we have a halftime end time recorded (this is set when status changes from PAUSED to IN_PLAY)
+              const halftimeEndTime = halftimeEndTimeRef.current[apiMatchId];
+              if (halftimeEndTime) {
+                // We have halftime end time - calculate second half minute from that
+                const minutesSinceHalftimeEnd = Math.floor((now.getTime() - halftimeEndTime.getTime()) / (1000 * 60));
+                // Second half starts at 46', so: 46 + minutesSinceHalftimeEnd
+                minute = 46 + minutesSinceHalftimeEnd;
               } else {
-                // After 45 minutes, check if we have a halftime end time recorded
-                // If we do, calculate from when halftime ended
-                // Otherwise, estimate based on diffMinutes
-                const halftimeEndTime = halftimeEndTimeRef.current[apiMatchId];
-                if (halftimeEndTime) {
-                  // Calculate minutes since halftime ended
-                  const minutesSinceHalftimeEnd = Math.floor((now.getTime() - halftimeEndTime.getTime()) / (1000 * 60));
-                  // Second half starts at 46', so: 46 + minutesSinceHalftimeEnd
-                  minute = 46 + minutesSinceHalftimeEnd;
+                // No halftime end time recorded yet - must be first half
+                // First half: 0-45 minutes (accounting for stoppage time, could be 45+1, 45+2, etc.)
+                if (diffMinutes <= 50) {
+                  // Still in first half (allow up to 50 minutes to account for stoppage time)
+                  minute = diffMinutes;
                 } else {
-                  // No halftime end time recorded yet - estimate based on diffMinutes
-                  // Assume halftime is ~15 minutes, so second half starts around diffMinutes = 60
-                  // But account for first half stoppage time (could be 45+3 = 48 minutes)
-                  // So second half might start anywhere from 60-63 minutes
-                  // When status is IN_PLAY and diffMinutes > 45, second half has likely started
-                  // Start counting from 46' when diffMinutes >= 60 (accounting for ~15 min halftime)
-                  if (diffMinutes >= 60) {
-                    // Estimate: assume first half ended at 45, halftime was 15 min, so second half started at 60
-                    // But this doesn't account for stoppage time, so we'll use a more conservative estimate
-                    // If diffMinutes = 63, that could be: 45+3 first half + 15 halftime = 63, so minute = 46+3 = 49'
-                    // Formula: minute = 46 + (diffMinutes - 60)
-                    minute = 46 + (diffMinutes - 60);
-                  } else {
-                    // Between 45-60 minutes but status is IN_PLAY (shouldn't normally happen)
-                    // Assume second half started early
-                    minute = 46;
-                  }
+                  // diffMinutes > 50 but no halftime end time - this shouldn't happen normally
+                  // But if it does, we can't accurately calculate the minute without knowing when halftime ended
+                  // Return null and let the recalculation logic handle it after halftime end is recorded
+                  minute = null;
                 }
               }
             }
@@ -792,17 +796,21 @@ export default function HomePage() {
             // Track when halftime ends (status changes from PAUSED to IN_PLAY)
             const prevStatus = liveScores[fixtureIndex]?.status;
             if (prevStatus === 'PAUSED' && scoreData.status === 'IN_PLAY') {
-              // Halftime just ended - record the time
-              halftimeEndTimeRef.current[fixture.api_match_id!] = new Date();
-              console.log('[Home] Halftime ended for fixture', fixtureIndex, 'match', fixture.api_match_id, 'at', halftimeEndTimeRef.current[fixture.api_match_id!].toISOString());
+              // Halftime just ended - record the time and minute
+              const now = new Date();
+              halftimeEndTimeRef.current[fixture.api_match_id!] = now;
+              // Second half always starts at 46'
+              halftimeEndMinuteRef.current[fixture.api_match_id!] = 46;
+              console.log('[Home] Halftime ended for fixture', fixtureIndex, 'match', fixture.api_match_id, 'at', now.toISOString(), 'minute: 46\'');
             }
             
-            // Recalculate minute if we have halftime end time and we're in second half
+            // Recalculate minute if we're in second half and have halftime end time
+            // OR if we just detected halftime end (status changed from PAUSED to IN_PLAY)
             let finalMinute = scoreData.minute;
-            if (scoreData.status === 'IN_PLAY' && scoreData.minute !== null && scoreData.minute !== undefined && scoreData.minute > 45) {
-              const halftimeEndTime = halftimeEndTimeRef.current[fixture.api_match_id!];
+            const halftimeEndTime = halftimeEndTimeRef.current[fixture.api_match_id!];
+            if (scoreData.status === 'IN_PLAY') {
               if (halftimeEndTime) {
-                // Calculate minute from when halftime ended
+                // We have halftime end time - calculate second half minute from that
                 const now = new Date();
                 const minutesSinceHalftimeEnd = Math.floor((now.getTime() - halftimeEndTime.getTime()) / (1000 * 60));
                 finalMinute = 46 + minutesSinceHalftimeEnd;
@@ -812,8 +820,24 @@ export default function HomePage() {
                   originalMinute: scoreData.minute,
                   finalMinute,
                   minutesSinceHalftimeEnd,
+                  adjustedMinute: finalMinute,
                   halftimeEndTime: halftimeEndTime.toISOString()
                 });
+              } else if (scoreData.minute === null || scoreData.minute === undefined) {
+                // No halftime end time yet, but status is IN_PLAY and minute is null
+                // This means we're still in first half - calculate from kickoff
+                if (fixture.kickoff_time) {
+                  try {
+                    const matchStart = new Date(fixture.kickoff_time);
+                    const now = new Date();
+                    const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
+                    if (diffMinutes > 0 && diffMinutes <= 50) {
+                      finalMinute = diffMinutes;
+                    }
+                  } catch (e) {
+                    console.warn('[Home] Error recalculating first half minute:', e);
+                  }
+                }
               }
             }
             
@@ -822,6 +846,51 @@ export default function HomePage() {
               homeScore: scoreData.homeScore,
               awayScore: scoreData.awayScore
             };
+            
+            // Log API pull history for debugging
+            if (!apiPullHistoryRef.current[fixtureIndex]) {
+              apiPullHistoryRef.current[fixtureIndex] = [];
+            }
+            
+            // Calculate debug info
+            const now = new Date();
+            let diffMinutes: number | null = null;
+            let halftimeEndTimeStr: string | null = null;
+            let minutesSinceHalftimeEnd: number | null = null;
+            
+            if (fixture.kickoff_time) {
+              try {
+                const matchStart = new Date(fixture.kickoff_time);
+                diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
+              } catch (e) {
+                // Ignore
+              }
+            }
+            
+            const htEndTime = halftimeEndTimeRef.current[fixture.api_match_id!];
+            const htEndMinute = halftimeEndMinuteRef.current[fixture.api_match_id!];
+            if (htEndTime) {
+              halftimeEndTimeStr = htEndTime.toISOString();
+              minutesSinceHalftimeEnd = Math.floor((now.getTime() - htEndTime.getTime()) / (1000 * 60));
+            }
+            
+            apiPullHistoryRef.current[fixtureIndex].push({
+              timestamp: now,
+              minute: finalMinute ?? null,
+              status: scoreData.status,
+              homeScore: scoreData.homeScore,
+              awayScore: scoreData.awayScore,
+              kickoffTime: fixture.kickoff_time ?? null,
+              apiMinute: scoreData.minute ?? null,
+              diffMinutes,
+              halftimeEndTime: halftimeEndTimeStr,
+              halftimeEndMinute: htEndMinute ?? null,
+              minutesSinceHalftimeEnd
+            });
+            // Keep only last 20 pulls per fixture
+            if (apiPullHistoryRef.current[fixtureIndex].length > 20) {
+              apiPullHistoryRef.current[fixtureIndex] = apiPullHistoryRef.current[fixtureIndex].slice(-20);
+            }
             
               setLiveScores(prev => {
                 const updated = {
@@ -3385,7 +3454,7 @@ export default function HomePage() {
                       {(isLive || isHalfTime) && (
                         <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
                           <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                          <span className="text-xs font-bold text-red-600">{formatMinuteDisplay(liveScore.status, liveScore.minute)}</span>
+                          <span className="text-xs font-bold text-red-600">LIVE</span>
                         </div>
                       )}
                       
@@ -3429,33 +3498,7 @@ export default function HomePage() {
                         {liveScore && (isOngoing || isFinished) && (
                           <div className="flex justify-center mt-1">
                             <span className={`text-[10px] font-semibold ${isOngoing ? 'text-red-600' : 'text-slate-500'}`}>
-                              {(() => {
-                                // Debug: log what we're displaying
-                                const display = formatMinuteDisplay(liveScore.status, liveScore.minute);
-                                // Log when second half should be showing but isn't
-                                if (isLive && liveScore.minute !== null && liveScore.minute !== undefined && liveScore.minute > 45 && display === 'HT') {
-                                  console.warn('[Home] Second half started but showing HT:', {
-                                    fixtureIndex: f.fixture_index,
-                                    status: liveScore.status,
-                                    minute: liveScore.minute,
-                                    display,
-                                    isLive,
-                                    isHalfTime,
-                                    isOngoing
-                                  });
-                                }
-                                if (display === 'LIVE' && isOngoing && liveScore.minute === null) {
-                                  console.warn('[Home] Showing LIVE instead of minute (minute is null):', {
-                                    fixtureIndex: f.fixture_index,
-                                    status: liveScore.status,
-                                    minute: liveScore.minute,
-                                    isLive,
-                                    isHalfTime,
-                                    isOngoing
-                                  });
-                                }
-                                return display;
-                              })()}
+                              {formatMinuteDisplay(liveScore.status, liveScore.minute)}
                             </span>
                           </div>
                         )}
@@ -3473,6 +3516,80 @@ export default function HomePage() {
                           <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-red-200" : ""}`}>Away Win</span>
                                   </div>
                                 </div>
+                                
+                                {/* Debug API Pull History - only for API Test League */}
+                                {isInApiTestLeague && apiPullHistoryRef.current[f.fixture_index] && apiPullHistoryRef.current[f.fixture_index].length > 0 && (
+                                  <div className="mt-3 border-t border-slate-200 pt-3">
+                                    <button
+                                      onClick={() => setExpandedDebugLog(prev => ({ ...prev, [f.fixture_index]: !prev[f.fixture_index] }))}
+                                      className="w-full flex items-center justify-between text-xs text-slate-500 hover:text-slate-700 py-1"
+                                    >
+                                      <span>🔍 API Pull History</span>
+                                      <svg
+                                        className={`w-4 h-4 transition-transform ${expandedDebugLog[f.fixture_index] ? 'rotate-180' : ''}`}
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                      </svg>
+                                    </button>
+                                    {expandedDebugLog[f.fixture_index] && (
+                                      <div className="mt-2 space-y-1 max-h-60 overflow-y-auto">
+                                        {apiPullHistoryRef.current[f.fixture_index].slice().reverse().map((pull, idx) => (
+                                          <div key={idx} className="text-[10px] font-mono bg-slate-50 p-2 rounded border border-slate-200">
+                                            <div className="flex justify-between items-start gap-2">
+                                              <div className="flex-1">
+                                                <div className="text-slate-600 font-semibold">
+                                                  {pull.timestamp.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                </div>
+                                                <div className="text-slate-500 mt-0.5">
+                                                  Status: <span className="font-semibold">{pull.status}</span>
+                                                </div>
+                                                <div className="text-slate-500 mt-0.5">
+                                                  Score: <span className="font-semibold">{pull.homeScore} - {pull.awayScore}</span>
+                                                </div>
+                                                <div className="text-slate-500 mt-0.5">
+                                                  Calculated Min: <span className="font-semibold">{pull.minute !== null ? `${pull.minute}'` : 'null'}</span>
+                                                </div>
+                                                {pull.apiMinute !== null && pull.apiMinute !== undefined && (
+                                                  <div className="text-slate-500 mt-0.5">
+                                                    API Min: <span className="font-semibold">{pull.apiMinute}'</span>
+                                                  </div>
+                                                )}
+                                                {pull.diffMinutes !== null && (
+                                                  <div className="text-slate-500 mt-0.5">
+                                                    Time since KO: <span className="font-semibold">{pull.diffMinutes} min</span>
+                                                  </div>
+                                                )}
+                                                {pull.halftimeEndTime && (
+                                                  <div className="text-slate-500 mt-0.5">
+                                                    HT End: <span className="font-semibold">{new Date(pull.halftimeEndTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                                                  </div>
+                                                )}
+                                                {pull.halftimeEndMinute !== null && (
+                                                  <div className="text-slate-500 mt-0.5">
+                                                    HT End Min: <span className="font-semibold">{pull.halftimeEndMinute}'</span>
+                                                  </div>
+                                                )}
+                                                {pull.minutesSinceHalftimeEnd !== null && (
+                                                  <div className="text-slate-500 mt-0.5">
+                                                    Min since HT: <span className="font-semibold">{pull.minutesSinceHalftimeEnd} min</span>
+                                                  </div>
+                                                )}
+                                                {pull.kickoffTime && (
+                                                  <div className="text-slate-400 mt-0.5 text-[9px]">
+                                                    KO: {new Date(pull.kickoffTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                                   </div>
                                 </div>
                         );
