@@ -212,7 +212,8 @@ export default function NewPredictionsCentre() {
         const realFixtures: Fixture[] = (fxData as Fixture[]) ?? [];
         if (alive) {
           setFixtures(realFixtures);
-          console.log('Loaded', realFixtures.length, 'real GW', currentGw, 'fixtures');
+          setCurrentGw(displayGw); // Set to 1 if showing test fixtures, otherwise currentGw
+          console.log('Loaded', realFixtures.length, 'fixtures for GW', displayGw, isInApiTestLeague && displayGw === 1 ? '(Test GW 1)' : '');
           
           // Check if we're past the deadline
           if (realFixtures.length > 0 && realFixtures[0].kickoff_time) {
@@ -275,7 +276,7 @@ export default function NewPredictionsCentre() {
           const { data: submission } = await supabase
             .from("gw_submissions")
             .select("submitted_at")
-            .eq("gw", currentGw)
+            .eq("gw", picksGw)
             .eq("user_id", user.id)
             .maybeSingle();
           
