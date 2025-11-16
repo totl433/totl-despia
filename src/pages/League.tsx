@@ -2662,12 +2662,11 @@ export default function LeaguePage() {
       }
     }, [rows.map(r => `${r.user_id}-${r.score}-${r.unicorns}`).join(',')]);
 
-    // Check if all fixtures have finished and derive live-phase label for badge
+    // Check if all fixtures have finished
     let allFixturesFinished = false;
     let hasLiveFixtures = false;
     let hasStartingSoonFixtures = false;
     let hasStartedFixtures = false; // Track if at least one game has started
-    let livePhaseLabel: string | null = null; // "First Half" | "HT" | "Second Half" | "FT"
     if (isApiTestLeague && resGw === 1) {
       // For API Test league, check if all fixtures (first 3) have finished
       const fixturesToCheck = fixtures.slice(0, 3);
@@ -2677,25 +2676,12 @@ export default function LeaguePage() {
           // Check if fixture has finished status
           return liveScore && liveScore.status === 'FINISHED';
         });
-        // Check if any fixtures are live and derive phase label from the first live game
+        // Check if any fixtures are live
         const firstLiveFixture = fixturesToCheck.find((f: any) => {
           const liveScore = liveScores[f.fixture_index];
           return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
         });
         hasLiveFixtures = !!firstLiveFixture;
-        if (firstLiveFixture) {
-          const liveScore = liveScores[firstLiveFixture.fixture_index];
-          const minute = liveScore?.minute ?? null;
-          if (liveScore?.status === 'PAUSED') {
-            livePhaseLabel = 'HT';
-          } else if (liveScore?.status === 'IN_PLAY') {
-            if (minute !== null && minute > 45) {
-              livePhaseLabel = 'Second Half';
-            } else {
-              livePhaseLabel = 'First Half';
-            }
-          }
-        }
         // Check if at least one fixture has started (live or finished)
         hasStartedFixtures = fixturesToCheck.some((f: any) => {
           const liveScore = liveScores[f.fixture_index];

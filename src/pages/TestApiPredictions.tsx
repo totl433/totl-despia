@@ -1028,20 +1028,6 @@ export default function TestApiPredictions() {
                       // Determine button states (use live score if available)
                       const isFinished = liveScore && liveScore.status === 'FINISHED';
 
-                      // Derive phase label for LIVE badge
-                      let livePhaseLabel: string | null = null;
-                      if (isFinished) {
-                        livePhaseLabel = 'FT';
-                      } else if (isHalfTime) {
-                        livePhaseLabel = 'HT';
-                      } else if (isLive) {
-                        const minute = liveScore?.minute ?? null;
-                        if (minute !== null && minute > 45) {
-                          livePhaseLabel = 'Second Half';
-                        } else {
-                          livePhaseLabel = 'First Half';
-                        }
-                      }
                       const getButtonState = (side: "H" | "D" | "A") => {
                         const isPicked = pick?.pick === side;
                         let isCorrectResult = false;
