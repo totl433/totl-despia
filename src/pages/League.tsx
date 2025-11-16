@@ -3161,11 +3161,37 @@ export default function LeaguePage() {
               >
                 <span className="hidden sm:inline">{(() => {
                   const resGw = league?.name === 'API Test' ? 1 : (selectedGw || currentGw);
-                  return resGw ? `GW ${resGw} Results` : "GW Results";
+                  // Check if GW is live: first game started AND last game not finished
+                  const now = new Date();
+                  const firstFixture = fixtures[0];
+                  const firstKickoff = firstFixture?.kickoff_time ? new Date(firstFixture.kickoff_time) : null;
+                  const firstGameStarted = firstKickoff && firstKickoff <= now;
+                  
+                  const lastFixture = fixtures[fixtures.length - 1];
+                  const lastFixtureIndex = lastFixture?.fixture_index;
+                  const lastFixtureScore = lastFixtureIndex !== undefined ? liveScores[lastFixtureIndex] : null;
+                  const lastGameFinished = lastFixtureScore?.status === 'FINISHED';
+                  
+                  const isGwLive = firstGameStarted && !lastGameFinished;
+                  const label = isGwLive ? 'Live Table' : 'Results';
+                  return resGw ? `GW ${resGw} ${label}` : `GW ${label}`;
                 })()}</span>
                 <span className="sm:hidden whitespace-pre-line">{(() => {
                   const resGw = league?.name === 'API Test' ? 1 : (selectedGw || currentGw);
-                  return resGw ? `GW${resGw}\nResults` : "GW\nResults";
+                  // Check if GW is live: first game started AND last game not finished
+                  const now = new Date();
+                  const firstFixture = fixtures[0];
+                  const firstKickoff = firstFixture?.kickoff_time ? new Date(firstFixture.kickoff_time) : null;
+                  const firstGameStarted = firstKickoff && firstKickoff <= now;
+                  
+                  const lastFixture = fixtures[fixtures.length - 1];
+                  const lastFixtureIndex = lastFixture?.fixture_index;
+                  const lastFixtureScore = lastFixtureIndex !== undefined ? liveScores[lastFixtureIndex] : null;
+                  const lastGameFinished = lastFixtureScore?.status === 'FINISHED';
+                  
+                  const isGwLive = firstGameStarted && !lastGameFinished;
+                  const label = isGwLive ? 'Live Table' : 'Results';
+                  return resGw ? `GW${resGw}\n${label}` : `GW\n${label}`;
                 })()}</span>
                 {tab === "gwr" && (
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
