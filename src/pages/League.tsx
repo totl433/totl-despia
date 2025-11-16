@@ -1129,7 +1129,7 @@ export default function LeaguePage() {
         const { data: regularFx } = await supabase
           .from("fixtures")
           .select(
-            "id,gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time"
+            "id,gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time,api_match_id"
           )
           .eq("gw", gwForData)
           .order("fixture_index", { ascending: true });
@@ -1278,8 +1278,8 @@ export default function LeaguePage() {
 
   // Simple live score polling - poll fixtures whose kickoff has passed
   useEffect(() => {
-    const isApiTestLeague = league?.name === 'API Test';
-    if (!isApiTestLeague || !fixtures.length || tab !== 'gwr') return;
+    // Poll for all leagues, not just API Test
+    if (!fixtures.length || tab !== 'gwr') return;
     
     const fixturesToPoll = fixtures.slice(0, 3).filter((f: any) => f.api_match_id && f.kickoff_time);
     if (fixturesToPoll.length === 0) return;
