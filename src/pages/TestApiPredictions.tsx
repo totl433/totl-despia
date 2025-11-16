@@ -1002,7 +1002,8 @@ export default function TestApiPredictions() {
                     {group.items.map((fixture, index)=>{
                       const pick = picks.get(fixture.fixture_index);
                       const liveScore = liveScores[fixture.fixture_index];
-                      const isLive = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+                      const isLive = liveScore && liveScore.status === 'IN_PLAY';
+                      const isHalfTime = liveScore && (liveScore.status === 'PAUSED' || liveScore.status === 'HALF_TIME' || liveScore.status === 'HT');
                       
                       // Get team names
                       const homeName = fixture.home_name || fixture.home_team || "";
@@ -1019,6 +1020,21 @@ export default function TestApiPredictions() {
                       
                       // Determine button states (use live score if available)
                       const isFinished = liveScore && liveScore.status === 'FINISHED';
+
+                      // Derive phase label for LIVE badge
+                      let livePhaseLabel: string | null = null;
+                      if (isFinished) {
+                        livePhaseLabel = 'FT';
+                      } else if (isHalfTime) {
+                        livePhaseLabel = 'HT';
+                      } else if (isLive) {
+                        const minute = liveScore?.minute ?? null;
+                        if (minute !== null && minute > 45) {
+                          livePhaseLabel = 'Second Half';
+                        } else {
+                          livePhaseLabel = 'First Half';
+                        }
+                      }
                       const getButtonState = (side: "H" | "D" | "A") => {
                         const isPicked = pick?.pick === side;
                         let isCorrectResult = false;
@@ -1069,10 +1085,12 @@ export default function TestApiPredictions() {
                           )}
                           <div className="p-4 !bg-white relative z-0">
                             {/* LIVE indicator - red dot top left */}
-                            {isLive && (
+                            {(isLive || isHalfTime || isFinished) && (
                               <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
                                 <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                                <span className="text-xs font-bold text-red-600">LIVE</span>
+                                <span className="text-xs font-bold text-red-600">
+                                  {livePhaseLabel || (isFinished ? 'FT' : 'First Half')}
+                                </span>
                               </div>
                             )}
                             

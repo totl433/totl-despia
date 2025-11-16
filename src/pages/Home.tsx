@@ -3152,6 +3152,21 @@ export default function HomePage() {
                 const isFinished = liveScore && liveScore.status === 'FINISHED';
                 // For score counting purposes, include halftime as "ongoing"
                 const isOngoing = isLive || isHalfTime;
+
+                // Derive phase label for LIVE badge
+                let livePhaseLabel: string | null = null;
+                if (isFinished) {
+                  livePhaseLabel = 'FT';
+                } else if (isHalfTime) {
+                  livePhaseLabel = 'HT';
+                } else if (isLive) {
+                  const minute = liveScore?.minute ?? null;
+                  if (minute !== null && minute > 45) {
+                    livePhaseLabel = 'Second Half';
+                  } else {
+                    livePhaseLabel = 'First Half';
+                  }
+                }
                 
                 // Determine button states (use live score if available)
                 const getButtonState = (side: "H" | "D" | "A") => {
@@ -3209,10 +3224,12 @@ export default function HomePage() {
                     )}
                     <div className="p-4 !bg-white relative z-0">
                       {/* LIVE indicator - red dot top left */}
-                      {(isLive || isHalfTime) && (
+                      {(isLive || isHalfTime || isFinished) && (
                         <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
                           <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                          <span className="text-xs font-bold text-red-600">LIVE</span>
+                          <span className="text-xs font-bold text-red-600">
+                            {livePhaseLabel || (isFinished ? 'FT' : 'First Half')}
+                          </span>
                         </div>
                       )}
                       
