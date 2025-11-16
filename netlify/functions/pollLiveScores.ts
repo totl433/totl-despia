@@ -99,7 +99,26 @@ async function pollAllLiveScores() {
       const homeScore = matchData.score?.fullTime?.home ?? matchData.score?.halfTime?.home ?? matchData.score?.current?.home ?? 0;
       const awayScore = matchData.score?.fullTime?.away ?? matchData.score?.halfTime?.away ?? matchData.score?.current?.away ?? 0;
       const status = matchData.status || 'SCHEDULED';
-      const minute = matchData.minute ?? null;
+      let minute: number | null = matchData.minute ?? null;
+
+      // If API doesn't provide a minute but game is live/paused, derive it from kickoff time
+      if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED')) {
+        const kickoffISO = fixture.kickoff_time || matchData.utcDate;
+        if (kickoffISO) {
+          try {
+            const matchStart = new Date(kickoffISO);
+            const now = new Date();
+            const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
+
+            // Only trust reasonable values
+            if (diffMinutes > 0 && diffMinutes < 130) {
+              minute = diffMinutes;
+            }
+          } catch (e) {
+            console.warn('[pollLiveScores] Error deriving minute from kickoff time:', e);
+          }
+        }
+      }
 
       updates.push({
         api_match_id: apiMatchId,
