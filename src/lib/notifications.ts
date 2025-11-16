@@ -74,6 +74,9 @@ export function scheduleGameweekStartingSoon(
   }
 }
 
+// Track scheduled "Game Starting Now" notifications to prevent duplicates
+const scheduledGameNotifications = new Map<string, number>();
+
 /**
  * Schedule a live game notification
  * @param kickoffTime - ISO string of kickoff time
@@ -85,17 +88,44 @@ export function scheduleLiveGameNotification(
   homeTeam: string,
   awayTeam: string
 ) {
+  // Create a unique key for this game
+  const notificationKey = `${kickoffTime}-${homeTeam}-${awayTeam}`;
+  const now = Date.now();
+  
+  // Check if we've already scheduled this notification recently (within 1 hour)
+  const lastScheduled = scheduledGameNotifications.get(notificationKey);
+  if (lastScheduled && (now - lastScheduled) < 60 * 60 * 1000) {
+    console.log('[Notifications] Skipping duplicate "Game Starting Now" notification:', {
+      homeTeam,
+      awayTeam,
+      kickoffTime,
+      timeSinceLastScheduled: Math.floor((now - lastScheduled) / 1000),
+      seconds: 'seconds'
+    });
+    return;
+  }
+  
   const kickoff = new Date(kickoffTime);
-  const now = new Date();
-  const secondsUntilKickoff = Math.max(0, Math.floor((kickoff.getTime() - now.getTime()) / 1000));
+  const secondsUntilKickoff = Math.max(0, Math.floor((kickoff.getTime() - now) / 1000));
   
   if (secondsUntilKickoff > 0 && secondsUntilKickoff < 7 * 24 * 60 * 60) { // Max 7 days
+    console.log('[Notifications] Scheduling "Game Starting Now" notification:', {
+      homeTeam,
+      awayTeam,
+      kickoffTime,
+      secondsUntilKickoff,
+      scheduledAt: new Date().toISOString()
+    });
+    
     sendLocalNotification(
       secondsUntilKickoff,
       `Game Starting Now!`,
       `${homeTeam} vs ${awayTeam} is kicking off now!`,
       `${window.location.origin}/league/api-test`
     );
+    
+    // Record that we've scheduled this notification
+    scheduledGameNotifications.set(notificationKey, now);
   }
 }
 

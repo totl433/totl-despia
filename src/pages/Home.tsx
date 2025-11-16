@@ -146,6 +146,8 @@ export default function HomePage() {
   const resultsNotificationSentRef = useRef(false);
   // Track if "Game Week Starting Soon" notification has been scheduled
   const gameweekStartingSoonScheduledRef = useRef(false);
+  // Track which fixtures have had "Game Starting Now" notifications scheduled
+  const gameStartingNowScheduledRef = useRef<Set<number>>(new Set());
   // Track when halftime ends for each fixture (when status changes from PAUSED to IN_PLAY)
   const halftimeEndTimeRef = useRef<Record<number, Date>>({});
   // Track the minute when halftime ended (should be 46')
@@ -656,6 +658,10 @@ export default function HomePage() {
     const shouldPollFixture = async (fixture: Fixture): Promise<boolean> => {
       if (!fixture.api_match_id || !fixture.kickoff_time) return false;
       
+      const kickoffTime = new Date(fixture.kickoff_time);
+      const now = new Date();
+      const timeUntilKickoff = kickoffTime.getTime() - now.getTime();
+      
       // Check current status from cache first
       const currentScore = liveScores[fixture.fixture_index];
       if (currentScore) {
@@ -663,22 +669,21 @@ export default function HomePage() {
         return currentScore.status === 'IN_PLAY' || currentScore.status === 'PAUSED';
       }
       
-      // Only check API if no cached status AND kickoff time has passed
-      const kickoffTime = new Date(fixture.kickoff_time);
-      const now = new Date();
-      if (kickoffTime > now) {
-        // Game hasn't started yet, don't poll
+      // If kickoff time is within 2 minutes (before or after), check API immediately
+      // This ensures we catch games as soon as they go live
+      if (timeUntilKickoff > 2 * 60 * 1000) {
+        // Game hasn't started yet and not close to kickoff, don't poll
         return false;
       }
       
-      // No cached status and game should have started - check API once
-      // This will only happen when a game first goes live
+      // Game is close to kickoff or has passed - check API immediately
+      // This will catch games as soon as they go live
       const scoreData = await fetchLiveScore(fixture.api_match_id, fixture.kickoff_time);
       if (scoreData) {
         const isLive = scoreData.status === 'IN_PLAY';
         const isHalfTime = scoreData.status === 'PAUSED' || scoreData.status === 'HALF_TIME' || scoreData.status === 'HT';
         
-        // Update liveScores with current status
+        // Update liveScores with current status immediately
         setLiveScores(prev => ({
           ...prev,
           [fixture.fixture_index]: {
@@ -688,6 +693,14 @@ export default function HomePage() {
             minute: scoreData.minute ?? null
           }
         }));
+        
+        // Initialize prevScore if game is live/finished
+        if ((isLive || isHalfTime || scoreData.status === 'FINISHED') && !prevScoresRef.current[fixture.fixture_index]) {
+          prevScoresRef.current[fixture.fixture_index] = {
+            homeScore: scoreData.homeScore,
+            awayScore: scoreData.awayScore
+          };
+        }
         
         return isLive || isHalfTime;
       }
@@ -967,7 +980,21 @@ export default function HomePage() {
     
     // Check which fixtures should be polled and start/stop polling accordingly
     const checkAndManagePolling = async () => {
-      for (const fixture of fixturesToPoll) {
+      // Also check fixtures that are close to kickoff time to catch them going live immediately
+      const allFixturesToCheck = isInApiTestLeague ? fixtures.slice(0, 3) : fixtures;
+      const fixturesNearKickoff = allFixturesToCheck.filter(f => {
+        if (!f.kickoff_time) return false;
+        const kickoffTime = new Date(f.kickoff_time);
+        const now = new Date();
+        const timeUntilKickoff = kickoffTime.getTime() - now.getTime();
+        // Check fixtures within 5 minutes of kickoff (before or after)
+        return Math.abs(timeUntilKickoff) < 5 * 60 * 1000;
+      });
+      
+      // Combine fixtures to poll with fixtures near kickoff
+      const fixturesToCheck = [...new Set([...fixturesToPoll, ...fixturesNearKickoff])];
+      
+      for (const fixture of fixturesToCheck) {
         if (!fixture.api_match_id || !fixture.kickoff_time) continue;
         
         const fixtureIndex = fixture.fixture_index;
@@ -999,10 +1026,10 @@ export default function HomePage() {
     };
     
     // Initial check and then periodic checks
-    // Check every 2 minutes to see which fixtures need polling (conservative to avoid API calls)
+    // Check every 10 seconds for fixtures near kickoff to catch them going live immediately
     // Most checks will use cached status, so this is safe
     checkAndManagePolling();
-    const statusCheckInterval = setInterval(checkAndManagePolling, 2 * 60 * 1000); // Check every 2 minutes which fixtures need polling
+    const statusCheckInterval = setInterval(checkAndManagePolling, 10000); // Check every 10 seconds for faster live detection
     
     // Schedule notifications
     fixturesToPoll.forEach((fixture) => {
@@ -1012,11 +1039,13 @@ export default function HomePage() {
       const now = new Date();
       const fixtureIndex = fixture.fixture_index;
       
-      // Schedule live game notification
-      if (kickoffTime > now) {
+      // Schedule live game notification (only once per fixture)
+      if (kickoffTime > now && !gameStartingNowScheduledRef.current.has(fixtureIndex)) {
         const homeName = fixture.home_name || fixture.home_team || 'Home';
         const awayName = fixture.away_name || fixture.away_team || 'Away';
         scheduleLiveGameNotification(fixture.kickoff_time, homeName, awayName);
+        gameStartingNowScheduledRef.current.add(fixtureIndex);
+        console.log('[Home] Scheduled "Game Starting Now" notification for fixture', fixtureIndex, homeName, 'vs', awayName);
       }
       
       // Schedule deadline reminder (75 minutes before first kickoff)
