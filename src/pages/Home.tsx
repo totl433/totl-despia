@@ -170,6 +170,159 @@ export default function HomePage() {
   const [isInApiTestLeague, setIsInApiTestLeague] = useState(false);
   const [showLiveOnly, setShowLiveOnly] = useState(false);
 
+  // Fetch live scores from Football Data API via Netlify function (to avoid CORS)
+  // Defined before fetchHomeData so it can be used in the initial live score checks
+  const fetchLiveScore = async (apiMatchId: number, kickoffTime?: string | null) => {
+    try {
+      
+      // Try Netlify function first (works in production and with netlify dev)
+      let response: Response;
+      let match: any;
+      
+      try {
+        response = await fetch(`/.netlify/functions/fetchFootballData?matchId=${apiMatchId}`, {
+          method: 'GET',
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          // Netlify function returns { success: true, data: {...} }
+          match = result.data || result;
+        } else if (response.status === 404 || response.status === 0) {
+          // Netlify function not available (local dev without netlify dev)
+          // Fall back to direct API call (will have CORS in browser, but works in some cases)
+          console.warn('[Home] Netlify function not available, trying direct API call');
+          throw new Error('Netlify function not available');
+        } else {
+          // Other error from Netlify function
+          if (response.status === 429) {
+            console.warn('[Home] Rate limited, will retry on next poll');
+            return null;
+          }
+          console.error('[Home] Error from Netlify function:', response.status, response.statusText);
+          return null;
+        }
+      } catch (netlifyError) {
+        // Netlify function failed, try direct API call (may fail due to CORS)
+        console.warn('[Home] Netlify function failed, trying direct API call:', netlifyError);
+        try {
+          const apiKey = import.meta.env.VITE_FOOTBALL_DATA_API_KEY;
+          if (!apiKey) {
+            console.error('[Home] No API key found');
+            return null;
+          }
+          
+          response = await fetch(`https://api.football-data.org/v4/matches/${apiMatchId}`, {
+            headers: {
+              'X-Auth-Token': apiKey,
+            },
+          });
+          
+          if (!response.ok) {
+            if (response.status === 429) {
+              console.warn('[Home] Rate limited, will retry on next poll');
+              return null;
+            }
+            console.error('[Home] Error fetching live score:', response.status, response.statusText);
+            return null;
+          }
+          
+          match = await response.json();
+        } catch (directError) {
+          console.error('[Home] Direct API call also failed:', directError);
+          return null;
+        }
+      }
+      
+      if (!match || !match.score) {
+        console.warn('[Home] No score data in API response:', match);
+        return null;
+      }
+      
+      const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? match.score.current?.home ?? 0;
+      const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? match.score.current?.away ?? 0;
+      const status = match.status || 'SCHEDULED';
+      
+      // Football Data API v4 doesn't reliably provide minute field
+      // Always calculate minute from kickoff time
+      // Second half minutes (46', 47', etc.) start when HT pause ends (status changes to IN_PLAY)
+      let minute: number | null = null;
+      if ((status === 'IN_PLAY' || status === 'PAUSED') && kickoffTime) {
+        try {
+          const matchStart = new Date(kickoffTime);
+          const now = new Date();
+          const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
+          
+          if (diffMinutes > 0 && diffMinutes < 120) {
+            if (status === 'PAUSED') {
+              // Halftime - don't calculate minute, let it show as HT
+              minute = null;
+            } else if (status === 'IN_PLAY') {
+              // Game is live - calculate minute
+              // Check if we have a halftime end time recorded (this is set when status changes from PAUSED to IN_PLAY)
+              const halftimeEndTime = halftimeEndTimeRef.current[apiMatchId];
+              if (halftimeEndTime) {
+                // We have halftime end time - calculate second half minute from that
+                const minutesSinceHalftimeEnd = Math.floor((now.getTime() - halftimeEndTime.getTime()) / (1000 * 60));
+                // Second half starts at 46', so: 46 + minutesSinceHalftimeEnd
+                minute = 46 + minutesSinceHalftimeEnd;
+              } else {
+                // No halftime end time recorded yet - must be first half
+                // First half: 0-45 minutes (accounting for stoppage time, could be 45+1, 45+2, etc.)
+                if (diffMinutes <= 50) {
+                  // Still in first half (allow up to 50 minutes to account for stoppage time)
+                  minute = diffMinutes;
+                } else {
+                  // diffMinutes > 50 but no halftime end time - this shouldn't happen normally
+                  // But if it does, we can't accurately calculate the minute without knowing when halftime ended
+                  // Return null and let the recalculation logic handle it after halftime end is recorded
+                  minute = null;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[Home] Error calculating minute from kickoff time:', e);
+        }
+      }
+      
+      // Fallback: if no kickoffTime, try to calculate from API's match start time
+      if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED')) {
+        const matchStartTime = match.utcDate || match.date || match.kickoffTime || match.kickoff_time;
+        if (matchStartTime) {
+          try {
+            const matchStart = new Date(matchStartTime);
+            const now = new Date();
+            const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
+            
+            if (diffMinutes > 0 && diffMinutes < 120) {
+              if (status === 'PAUSED') {
+                minute = null;
+              } else if (status === 'IN_PLAY') {
+                if (diffMinutes <= 45) {
+                  minute = diffMinutes;
+                } else if (diffMinutes >= 60) {
+                  // Second half has started - calculate minute starting from 46'
+                  minute = diffMinutes - 14;
+                } else {
+                  // Between 45-60 minutes but status is IN_PLAY
+                  minute = Math.max(46, diffMinutes - 14);
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('[Home] Error calculating minute from API match start time:', e);
+          }
+        }
+      }
+      
+      return { homeScore, awayScore, status, minute };
+    } catch (error) {
+      console.error('[Home] Error fetching live score:', error);
+      return null;
+    }
+  };
+
   // Extract data fetching into a reusable function for pull-to-refresh
   const fetchHomeData = useCallback(async (showLoading = true) => {
     if (!user?.id) {
@@ -460,186 +613,6 @@ export default function HomePage() {
     enableMouse: true, // Enable mouse drag for testing in desktop browsers
   });
 
-  // Fetch live scores from Football Data API via Netlify function (to avoid CORS)
-  const fetchLiveScore = async (apiMatchId: number, kickoffTime?: string | null) => {
-    try {
-      
-      // Try Netlify function first (works in production and with netlify dev)
-      let response: Response;
-      let match: any;
-      
-      try {
-        response = await fetch(`/.netlify/functions/fetchFootballData?matchId=${apiMatchId}`, {
-          method: 'GET',
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          // Netlify function returns { success: true, data: {...} }
-          match = result.data || result;
-        } else if (response.status === 404 || response.status === 0) {
-          // Netlify function not available (local dev without netlify dev)
-          // Fall back to direct API call (will have CORS in browser, but works in some cases)
-          console.warn('[Home] Netlify function not available, trying direct API call');
-          throw new Error('Netlify function not available');
-        } else {
-          // Other error from Netlify function
-          if (response.status === 429) {
-            console.warn('[Home] Rate limited, will retry on next poll');
-            return null;
-          }
-          console.error('[Home] Error from Netlify function:', response.status, response.statusText);
-          return null;
-        }
-      } catch (fetchError: any) {
-        // Netlify function failed, try direct API call as fallback (for local dev)
-        if (fetchError.message === 'Netlify function not available' || fetchError.message.includes('Failed to fetch')) {
-          console.log('[Home] Falling back to direct API call for local development');
-          const FOOTBALL_DATA_API_KEY = 'ed3153d132b847db836289243894706e';
-          response = await fetch(`https://api.football-data.org/v4/matches/${apiMatchId}`, {
-            headers: {
-              'X-Auth-Token': FOOTBALL_DATA_API_KEY,
-            },
-          });
-          
-          if (!response.ok) {
-            if (response.status === 429) {
-              console.warn('[Home] Rate limited, will retry on next poll');
-              return null;
-            }
-            console.error('[Home] Error fetching live score:', response.status, response.statusText);
-            return null;
-          }
-          
-          match = await response.json();
-        } else {
-          throw fetchError;
-        }
-      }
-      
-      if (!match || !match.score) {
-        console.warn('[Home] No score data in API response:', match);
-        return null;
-      }
-      
-      const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? match.score.current?.home ?? 0;
-      const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? match.score.current?.away ?? 0;
-      const status = match.status || 'SCHEDULED';
-      
-      // Football Data API v4 doesn't reliably provide minute field
-      // Always calculate minute from kickoff time
-      // Second half minutes (46', 47', etc.) start when HT pause ends (status changes to IN_PLAY)
-      let minute: number | null = null;
-      if ((status === 'IN_PLAY' || status === 'PAUSED') && kickoffTime) {
-        try {
-          const matchStart = new Date(kickoffTime);
-          const now = new Date();
-          const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
-          
-          if (diffMinutes > 0 && diffMinutes < 120) {
-            if (status === 'PAUSED') {
-              // Halftime - don't calculate minute, let it show as HT
-              minute = null;
-            } else if (status === 'IN_PLAY') {
-              // Game is live - calculate minute
-              // Check if we have a halftime end time recorded (this is set when status changes from PAUSED to IN_PLAY)
-              const halftimeEndTime = halftimeEndTimeRef.current[apiMatchId];
-              if (halftimeEndTime) {
-                // We have halftime end time - calculate second half minute from that
-                const minutesSinceHalftimeEnd = Math.floor((now.getTime() - halftimeEndTime.getTime()) / (1000 * 60));
-                // Second half starts at 46', so: 46 + minutesSinceHalftimeEnd
-                minute = 46 + minutesSinceHalftimeEnd;
-              } else {
-                // No halftime end time recorded yet - must be first half
-                // First half: 0-45 minutes (accounting for stoppage time, could be 45+1, 45+2, etc.)
-                if (diffMinutes <= 50) {
-                  // Still in first half (allow up to 50 minutes to account for stoppage time)
-                  minute = diffMinutes;
-                } else {
-                  // diffMinutes > 50 but no halftime end time - this shouldn't happen normally
-                  // But if it does, we can't accurately calculate the minute without knowing when halftime ended
-                  // Return null and let the recalculation logic handle it after halftime end is recorded
-                  minute = null;
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[Home] Error calculating minute from kickoff time:', e);
-        }
-      }
-      
-      // Fallback: if no kickoffTime, try to calculate from API's match start time
-      if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED')) {
-        const matchStartTime = match.utcDate || match.date || match.kickoffTime || match.kickoff_time;
-        if (matchStartTime) {
-          try {
-            const matchStart = new Date(matchStartTime);
-            const now = new Date();
-            const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
-            
-            if (diffMinutes > 0 && diffMinutes < 120) {
-              if (status === 'PAUSED') {
-                minute = null;
-              } else if (status === 'IN_PLAY') {
-                if (diffMinutes <= 45) {
-                  minute = diffMinutes;
-                } else if (diffMinutes >= 60) {
-                  // Second half has started - calculate minute starting from 46'
-                  minute = diffMinutes - 14;
-                } else {
-                  // Between 45-60 minutes but status is IN_PLAY
-                  minute = Math.max(46, diffMinutes - 14);
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('[Home] Error calculating minute from API match start time:', e);
-          }
-        }
-      }
-      
-      // Debug logging to see actual API response
-      console.log('[Home] API Response for match', apiMatchId, ':', {
-        status,
-        minute,
-        minuteType: typeof minute,
-        minuteIsNull: minute === null,
-        minuteIsUndefined: minute === undefined,
-        homeScore,
-        awayScore,
-        matchMinute: match.minute,
-        matchMinuteType: typeof match.minute,
-        scoreMinute: match.score?.minute,
-        scoreCurrent: match.score?.current,
-        utcDate: match.utcDate,
-        date: match.date,
-        kickoffTime: match.kickoffTime,
-        kickoff_time: match.kickoff_time,
-        fullMatchKeys: Object.keys(match),
-        scoreKeys: match.score ? Object.keys(match.score) : null,
-        fullMatch: match // Log the entire match object to see all available fields
-      });
-      
-      // Determine outcome for flash animation
-      // Football Data API v4 uses: SCHEDULED, TIMED, IN_PLAY, PAUSED (halftime), FINISHED, POSTPONED, CANCELLED, SUSPENDED
-      // Note: 'LIVE' is not a valid status in v4, use 'IN_PLAY' instead
-      // PAUSED status is used for halftime break
-      let outcome: "H" | "D" | "A" | null = null;
-      const isLive = status === 'IN_PLAY'; // PAUSED is halftime, not live play
-      if (isLive) {
-        if (homeScore > awayScore) outcome = 'H';
-        else if (awayScore > homeScore) outcome = 'A';
-        else outcome = 'D';
-      }
-      
-      return { homeScore, awayScore, status, outcome, minute };
-    } catch (error) {
-      console.error('[Home] Error fetching live score:', error);
-      return null;
-    }
-  };
-
   // Poll for live scores - only poll fixtures that are currently live (IN_PLAY or PAUSED)
   useEffect(() => {
     if (!isInApiTestLeague || !fixtures.length) return;
@@ -682,27 +655,83 @@ export default function HomePage() {
       if (scoreData) {
         const isLive = scoreData.status === 'IN_PLAY';
         const isHalfTime = scoreData.status === 'PAUSED' || scoreData.status === 'HALF_TIME' || scoreData.status === 'HT';
+        const isFinished = scoreData.status === 'FINISHED';
         
-        // Update liveScores with current status immediately
-        setLiveScores(prev => ({
-          ...prev,
-          [fixture.fixture_index]: {
+        // If kickoff time has passed, treat TIMED status as live (API might be slow to update)
+        const kickoffHasPassed = timeUntilKickoff <= 0;
+        const shouldShowAsLive = isLive || isHalfTime || isFinished || (kickoffHasPassed && scoreData.status === 'TIMED');
+        
+        // Store in liveScores if game is live, paused, finished, or kickoff has passed
+        if (shouldShowAsLive) {
+          // If status is TIMED but kickoff has passed, treat it as IN_PLAY
+          const displayStatus = (kickoffHasPassed && scoreData.status === 'TIMED') ? 'IN_PLAY' : scoreData.status;
+          
+          // Update liveScores with current status immediately
+          setLiveScores(prev => ({
+            ...prev,
+            [fixture.fixture_index]: {
+              homeScore: scoreData.homeScore,
+              awayScore: scoreData.awayScore,
+              status: displayStatus,
+              minute: scoreData.minute ?? null
+            }
+          }));
+          
+          // Initialize prevScore if game is live/finished
+          if (!prevScoresRef.current[fixture.fixture_index]) {
+            prevScoresRef.current[fixture.fixture_index] = {
+              homeScore: scoreData.homeScore,
+              awayScore: scoreData.awayScore
+            };
+          }
+          
+          // Initialize API pull history if it doesn't exist
+          if (!apiPullHistoryRef.current[fixture.fixture_index]) {
+            apiPullHistoryRef.current[fixture.fixture_index] = [];
+          }
+          
+          // Add this initial pull to history
+          const now = new Date();
+          let diffMinutes: number | null = null;
+          if (fixture.kickoff_time) {
+            try {
+              const matchStart = new Date(fixture.kickoff_time);
+              diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
+            } catch (e) {
+              // Ignore
+            }
+          }
+          
+          const htEndTime = halftimeEndTimeRef.current[fixture.api_match_id!];
+          const htEndMinute = halftimeEndMinuteRef.current[fixture.api_match_id!];
+          apiPullHistoryRef.current[fixture.fixture_index].push({
+            timestamp: now,
+            minute: scoreData.minute ?? null,
+            status: scoreData.status,
+            homeScore: scoreData.homeScore,
+            awayScore: scoreData.awayScore,
+            kickoffTime: fixture.kickoff_time ?? null,
+            apiMinute: scoreData.minute ?? null,
+            diffMinutes,
+            halftimeEndTime: htEndTime ? htEndTime.toISOString() : null,
+            halftimeEndMinute: htEndMinute ?? null,
+            minutesSinceHalftimeEnd: htEndTime ? Math.floor((now.getTime() - htEndTime.getTime()) / (1000 * 60)) : null
+          });
+          
+          console.log('[Home] Initial live score detected for fixture', fixture.fixture_index, ':', {
             homeScore: scoreData.homeScore,
             awayScore: scoreData.awayScore,
             status: scoreData.status,
-            minute: scoreData.minute ?? null
-          }
-        }));
-        
-        // Initialize prevScore if game is live/finished
-        if ((isLive || isHalfTime || scoreData.status === 'FINISHED') && !prevScoresRef.current[fixture.fixture_index]) {
-          prevScoresRef.current[fixture.fixture_index] = {
-            homeScore: scoreData.homeScore,
-            awayScore: scoreData.awayScore
-          };
+            displayStatus,
+            kickoffHasPassed,
+            minute: scoreData.minute
+          });
+        } else {
+          // Game is SCHEDULED and hasn't started - log but don't store
+          console.log('[Home] Game not yet started (status:', scoreData.status, ') for fixture', fixture.fixture_index);
         }
         
-        return isLive || isHalfTime;
+        return isLive || isHalfTime || (kickoffHasPassed && scoreData.status === 'TIMED');
       }
       
       return false;
@@ -3374,11 +3403,11 @@ export default function HomePage() {
             <span className="text-slate-600 font-semibold">GW{nextGwComing} coming soon</span>
             </div>
           ) : null}
-        {loading ? (
-          <div className="p-4 text-slate-500">Loading fixtures...</div>
-        ) : fixtures.length === 0 ? (
-          <div className="p-4 text-slate-500">No fixtures yet.</div>
-        ) : (
+            {loading ? (
+              <div className="p-4 text-slate-500">Loading fixtures...</div>
+            ) : fixtures.length === 0 ? (
+              <div className="p-4 text-slate-500">No fixtures yet.</div>
+            ) : (
           <div className="mt-6">
             {(() => {
               // For test API users, only show first 3 fixtures
@@ -3491,8 +3520,8 @@ export default function HomePage() {
                   } else if (state.isWrong && isFinished) {
                     // Wrong pick in finished game - grey background with flashing red border and strikethrough
                     return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
-                  } else if (state.isWrong && isLive) {
-                    // Wrong pick in live game - grey background with flashing red border, no strikethrough until FT
+                  } else if (state.isWrong && (isLive || isHalfTime)) {
+                    // Wrong pick in live game - grey background with flashing red border, NO strikethrough until FT
                     return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
                   } else if (state.isPicked) {
                     return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
@@ -3565,14 +3594,14 @@ export default function HomePage() {
                       <div className="grid grid-cols-3 gap-3 relative">
                         <div className={`${getButtonClass(homeState)} flex items-center justify-center`}>
                           <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-red-200" : ""}`}>Home Win</span>
-                                  </div>
+                        </div>
                         <div className={`${getButtonClass(drawState)} flex items-center justify-center`}>
                           <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-red-200" : ""}`}>Draw</span>
-                                </div>
+                        </div>
                         <div className={`${getButtonClass(awayState)} flex items-center justify-center`}>
                           <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-red-200" : ""}`}>Away Win</span>
-                                  </div>
-                                </div>
+                        </div>
+                      </div>
                                 
                                 {/* Debug API Pull History - only for API Test League */}
                                 {isInApiTestLeague && apiPullHistoryRef.current[f.fixture_index] && apiPullHistoryRef.current[f.fixture_index].length > 0 && (
