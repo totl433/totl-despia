@@ -39,19 +39,16 @@ function formatMinuteDisplay(status: string, minute: number | null | undefined):
   if (minute === null || minute === undefined) {
     return 'LIVE';
   }
-  if (minute > 90) {
-    // After 90 minutes, show 90+ until FT
-    return '90+';
-  }
   if (minute > 45 && minute <= 90) {
-    // Second half: show actual minute (46', 47', etc. up to 90')
-    return `${minute}'`;
+    // Second half: show "Second Half"
+    return 'Second Half';
   }
-  if (minute === 45) {
-    // At 45 minutes, show 45+ until HT pause
-    return '45+';
+  if (minute >= 1 && minute <= 45) {
+    // First half: show "First Half"
+    return 'First Half';
   }
-  return `${minute}'`;
+  // Fallback for any other cases
+  return 'LIVE';
 }
 
 // Component that displays team badge/crest - uses API crest URL if available, falls back to ClubBadge
@@ -394,121 +391,69 @@ export default function TestApiPredictions() {
   }, [user?.id]);
 
   // Fetch live scores from Football Data API
+  // Fetch live score from Supabase ONLY (updated by scheduled Netlify function)
+  // NO API calls from client - all API calls go through the scheduled function
   const fetchLiveScore = async (apiMatchId: number, kickoffTime?: string | null) => {
     try {
-      // Try Netlify function first (works in production and with netlify dev)
-      let response: Response;
-      let match: any;
+      console.log('[TestApiPredictions] fetchLiveScore called for matchId:', apiMatchId, 'kickoffTime:', kickoffTime);
       
-      try {
-        response = await fetch(`/.netlify/functions/fetchFootballData?matchId=${apiMatchId}`, {
-          method: 'GET',
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          // Netlify function returns { success: true, data: {...} }
-          match = result.data || result;
-        } else if (response.status === 404 || response.status === 0) {
-          // Netlify function not available (local dev without netlify dev)
-          console.warn('[TestApiPredictions] Netlify function not available, trying direct API call');
-          throw new Error('Netlify function not available');
-        } else {
-          // Other error from Netlify function
-          if (response.status === 429) {
-            console.warn('[TestApiPredictions] Rate limited, will retry on next poll');
-            return null;
-          }
-          console.error('[TestApiPredictions] Error from Netlify function:', response.status, response.statusText);
+      // Read from Supabase live_scores table (updated by scheduled Netlify function)
+      const { data: liveScore, error } = await supabase
+        .from('live_scores')
+        .select('*')
+        .eq('api_match_id', apiMatchId)
+        .single();
+      
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // No row found - scheduled function hasn't run yet or game hasn't started
+          console.log('[TestApiPredictions] No live score found in Supabase for match', apiMatchId, '- scheduled function may not have run yet');
           return null;
         }
-      } catch (fetchError: any) {
-        // Netlify function failed, try direct API call as fallback (for local dev)
-        if (fetchError.message === 'Netlify function not available' || fetchError.message.includes('Failed to fetch')) {
-          console.log('[TestApiPredictions] Falling back to direct API call for local development');
-          const FOOTBALL_DATA_API_KEY = 'ed3153d132b847db836289243894706e';
-          response = await fetch(`https://api.football-data.org/v4/matches/${apiMatchId}`, {
-            headers: {
-              'X-Auth-Token': FOOTBALL_DATA_API_KEY,
-            },
-          });
-          
-          if (!response.ok) {
-            if (response.status === 429) {
-              console.warn('[TestApiPredictions] Rate limited, will retry on next poll');
-              return null;
-            }
-            console.error('[TestApiPredictions] Error fetching live score:', response.status, response.statusText);
-            return null;
-          }
-          
-          match = await response.json();
-        } else {
-          throw fetchError;
-        }
-      }
-      
-      if (!match || !match.score) {
-        console.warn('[TestApiPredictions] No score data in API response:', match);
+        console.error('[TestApiPredictions] Error fetching live score from Supabase:', error);
         return null;
       }
       
-      const homeScore = match.score.fullTime?.home ?? match.score.halfTime?.home ?? match.score.current?.home ?? 0;
-      const awayScore = match.score.fullTime?.away ?? match.score.halfTime?.away ?? match.score.current?.away ?? 0;
-      const status = match.status || 'SCHEDULED';
-      
-      // Try multiple possible locations for minute field
-      // Football Data API v4 has minute at top level as a number or string
-      let minute: number | null = null;
-      
-      // First, try to get minute from API response
-      if (match.minute !== undefined && match.minute !== null) {
-        const parsedMinute = typeof match.minute === 'string' ? parseInt(match.minute, 10) : match.minute;
-        minute = isNaN(parsedMinute) ? null : parsedMinute;
-      } else if (match.score?.minute !== undefined && match.score.minute !== null) {
-        const parsedMinute = typeof match.score.minute === 'string' ? parseInt(match.score.minute, 10) : match.score.minute;
-        minute = isNaN(parsedMinute) ? null : parsedMinute;
-      } else if (match.score?.current?.minute !== undefined && match.score.current.minute !== null) {
-        const parsedMinute = typeof match.score.current.minute === 'string' ? parseInt(match.score.current.minute, 10) : match.score.current.minute;
-        minute = isNaN(parsedMinute) ? null : parsedMinute;
-      } else if (match.score?.duration !== undefined && match.score.duration !== null) {
-        // Some APIs use duration field
-        const parsedMinute = typeof match.score.duration === 'string' ? parseInt(match.score.duration, 10) : match.score.duration;
-        minute = isNaN(parsedMinute) ? null : parsedMinute;
+      if (!liveScore) {
+        console.warn('[TestApiPredictions] No live score data in Supabase');
+        return null;
       }
       
-      // If minute is still null/undefined and game is live or paused, calculate from kickoff time
-      if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED')) {
-        // Calculate minute from match start time
-        // Try multiple possible field names for match start time
-        const matchStartTime = match.utcDate || match.date || match.kickoffTime || match.kickoff_time || kickoffTime;
-        
-        if (matchStartTime) {
-          try {
-            const matchStart = new Date(matchStartTime);
-            const now = new Date();
-            const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
-            
-            if (diffMinutes > 0 && diffMinutes < 120) {
-              // Account for half-time break (usually 15 minutes)
-              // If diffMinutes > 60, we're in second half, so subtract ~15 for halftime
-              if (diffMinutes > 60) {
-                // Second half - subtract halftime break (usually 15 minutes)
-                minute = diffMinutes - 15;
-              } else {
-                // First half
+      console.log('[TestApiPredictions] Live score from Supabase:', liveScore);
+      
+      const homeScore = liveScore.home_score ?? 0;
+      const awayScore = liveScore.away_score ?? 0;
+      const status = liveScore.status || 'SCHEDULED';
+      let minute = liveScore.minute;
+      
+      // If minute is not provided, calculate from kickoff time (fallback)
+      if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED') && kickoffTime) {
+        try {
+          const matchStart = new Date(kickoffTime);
+          const now = new Date();
+          const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
+          
+          if (diffMinutes > 0 && diffMinutes < 120) {
+            if (status === 'PAUSED') {
+              minute = null;
+            } else if (status === 'IN_PLAY') {
+              if (diffMinutes <= 50) {
                 minute = diffMinutes;
+              } else {
+                minute = 46 + Math.max(0, diffMinutes - 50);
               }
             }
-          } catch (e) {
-            console.warn('[TestApiPredictions] Error calculating minute from match start time:', e);
           }
+        } catch (e) {
+          console.warn('[TestApiPredictions] Error calculating minute from kickoff time:', e);
         }
       }
       
-      return { homeScore, awayScore, status, minute };
-    } catch (error) {
-      console.error('[TestApiPredictions] Error fetching live score:', error);
+      const result = { homeScore, awayScore, status, minute, retryAfter: null as number | null };
+      console.log('[TestApiPredictions] Returning score data from Supabase:', result);
+      return result;
+    } catch (error: any) {
+      console.error('[TestApiPredictions] Error fetching live score from Supabase:', error?.message || error, error?.stack);
       return null;
     }
   };

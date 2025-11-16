@@ -5,6 +5,10 @@
 [functions]
   directory = "netlify/functions"
 
+# Scheduled function to poll live scores every 5 minutes
+[functions."pollLiveScores"]
+  schedule = "*/5 * * * *"
+
 # Ignore secrets scanning for helper scripts
 [build.environment]
   SECRETS_SCAN_OMIT_PATHS = "register-devices.sh,check-*.sh,*.sh"
