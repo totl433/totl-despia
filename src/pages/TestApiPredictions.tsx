@@ -1084,12 +1084,20 @@ export default function TestApiPredictions() {
                             <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-10" />
                           )}
                           <div className="p-4 !bg-white relative z-0">
-                            {/* LIVE indicator - red dot top left */}
-                            {(isLive || isHalfTime || isFinished) && (
+                            {/* LIVE indicator - red dot top left for live games, grey FT for finished */}
+                            {(isLive || isHalfTime) && (
                               <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
                                 <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
                                 <span className="text-xs font-bold text-red-600">
-                                  {livePhaseLabel || (isFinished ? 'FT' : 'First Half')}
+                                  {livePhaseLabel || 'First Half'}
+                                </span>
+                              </div>
+                            )}
+                            {/* FT indicator for finished games - grey, no pulse */}
+                            {isFinished && !isLive && !isHalfTime && (
+                              <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
+                                <span className="text-xs font-semibold text-slate-500">
+                                  FT
                                 </span>
                               </div>
                             )}

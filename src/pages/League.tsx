@@ -1365,9 +1365,9 @@ export default function LeaguePage() {
         }
       };
       
-      // Poll immediately, then every 2 minutes
+      // Poll immediately, then every 10 seconds
       poll(); // Fetch immediately
-      const interval = setInterval(poll, 2 * 60 * 1000); // Every 2 minutes
+      const interval = setInterval(poll, 10 * 1000); // Every 10 seconds - Supabase is fast!
       intervals.set(fixtureIndex, interval);
     };
     
@@ -2199,8 +2199,10 @@ export default function LeaguePage() {
                           
                           // Get live score for this fixture (using combined mock + real scores)
                           const liveScore = combinedLiveScores[fxIdx];
-                          const isLive = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+                          const isLive = liveScore && liveScore.status === 'IN_PLAY';
+                          const isHalfTime = liveScore && (liveScore.status === 'PAUSED' || liveScore.status === 'HALF_TIME' || liveScore.status === 'HT');
                           const isFinished = liveScore && liveScore.status === 'FINISHED';
+                          const isOngoing = isLive || isHalfTime;
 
                           const toChips = (want: "H" | "D" | "A") => {
                             const filtered = these.filter((p) => p.pick === want);
@@ -2268,15 +2270,21 @@ export default function LeaguePage() {
                         return (
                           <li key={`${f.gw}-${f.fixture_index}`} className={idx > 0 ? "border-t" : ""}>
                             <div className="p-4 bg-white relative">
-                              {/* LIVE indicator - red dot top left */}
-                              {isLive && (
+                              {/* LIVE indicator - red dot top left for live games, grey FT for finished */}
+                              {(isLive || isHalfTime) && (
                                 <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
                                   <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
                                   <span className="text-xs font-bold text-red-600">{formatMinuteDisplay(liveScore.status, liveScore.minute)}</span>
                                 </div>
                               )}
+                              {/* FT indicator for finished games - grey, no pulse */}
+                              {isFinished && !isLive && !isHalfTime && (
+                                <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
+                                  <span className="text-xs font-semibold text-slate-500">FT</span>
+                                </div>
+                              )}
                               {/* Fixture display - same as Home Page */}
-                              <div className={`grid grid-cols-3 items-center ${isLive ? 'pt-4' : ''}`}>
+                              <div className={`grid grid-cols-3 items-center ${isOngoing ? 'pt-4' : ''}`}>
                                 <div className="flex items-center justify-center">
                                   <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{homeName}</span>
                                 </div>
@@ -2318,9 +2326,9 @@ export default function LeaguePage() {
                                 </div>
                               </div>
                               {/* Score indicator (phase label for ML results table) */}
-                              {liveScore && (isLive || isFinished) && (
+                              {liveScore && (isOngoing || isFinished) && (
                                 <div className="flex justify-center mt-1">
-                                  <span className={`text-[10px] font-semibold ${isLive ? 'text-red-600' : 'text-slate-500'}`}>
+                                  <span className={`text-[10px] font-semibold ${isOngoing ? 'text-red-600' : 'text-slate-500'}`}>
                                     {formatMinuteDisplay(liveScore.status, liveScore.minute)}
                                   </span>
                                 </div>

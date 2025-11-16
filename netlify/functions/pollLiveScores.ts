@@ -53,22 +53,26 @@ async function pollAllLiveScores() {
 
     // Get all fixtures for current GW that have api_match_id
     // Check both regular fixtures and test_api_fixtures
+    // NOTE: test_api_fixtures may be for any GW, so we query ALL of them (not filtered by test_gw)
     const [regularFixtures, testFixtures] = await Promise.all([
       supabase
         .from('fixtures')
-        .select('api_match_id, fixture_index, home_team, away_team, kickoff_time')
+        .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, gw')
         .eq('gw', currentGw)
         .not('api_match_id', 'is', null),
       supabase
         .from('test_api_fixtures')
-        .select('api_match_id, fixture_index, home_team, away_team, kickoff_time')
-        .eq('test_gw', currentGw)
+        .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, test_gw')
         .not('api_match_id', 'is', null),
     ]);
 
     const allFixtures = [
-      ...((regularFixtures.data || []) as any[]).map(f => ({ ...f, gw: currentGw })),
-      ...((testFixtures.data || []) as any[]).map(f => ({ ...f, gw: currentGw, fixture_index: f.fixture_index })),
+      ...((regularFixtures.data || []) as any[]).map(f => ({ ...f, gw: f.gw || currentGw })),
+      ...((testFixtures.data || []) as any[]).map(f => ({ 
+        ...f, 
+        gw: f.test_gw || currentGw, 
+        fixture_index: f.fixture_index 
+      })),
     ];
 
     if (allFixtures.length === 0) {
@@ -78,11 +82,35 @@ async function pollAllLiveScores() {
 
     console.log(`[pollLiveScores] Polling ${allFixtures.length} fixtures for GW ${currentGw}`);
 
+    // Check current status of fixtures in database to skip FINISHED games
+    const apiMatchIds = allFixtures.map(f => f.api_match_id);
+    const { data: existingScores } = await supabase
+      .from('live_scores')
+      .select('api_match_id, status')
+      .in('api_match_id', apiMatchIds);
+
+    const finishedMatchIds = new Set<number>();
+    (existingScores || []).forEach((score: any) => {
+      if (score.status === 'FINISHED') {
+        finishedMatchIds.add(score.api_match_id);
+      }
+    });
+
+    // Filter out finished fixtures - no need to poll them
+    const fixturesToPoll = allFixtures.filter(f => !finishedMatchIds.has(f.api_match_id));
+
+    if (fixturesToPoll.length === 0) {
+      console.log('[pollLiveScores] All fixtures are finished, skipping polling');
+      return;
+    }
+
+    console.log(`[pollLiveScores] Polling ${fixturesToPoll.length} live fixtures (skipping ${allFixtures.length - fixturesToPoll.length} finished)`);
+
     // Poll each fixture with a small delay to avoid rate limits
     const updates: any[] = [];
     
-    for (let i = 0; i < allFixtures.length; i++) {
-      const fixture = allFixtures[i];
+    for (let i = 0; i < fixturesToPoll.length; i++) {
+      const fixture = fixturesToPoll[i];
       const apiMatchId = fixture.api_match_id;
 
       // Small delay between requests (stagger by 2 seconds per fixture)
@@ -101,8 +129,12 @@ async function pollAllLiveScores() {
       const status = matchData.status || 'SCHEDULED';
       let minute: number | null = matchData.minute ?? null;
 
+      // For finished games, always set minute to null (FT doesn't need minute)
+      if (status === 'FINISHED') {
+        minute = null;
+      }
       // If API doesn't provide a minute but game is live/paused, derive it from kickoff time
-      if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED')) {
+      else if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED')) {
         const kickoffISO = fixture.kickoff_time || matchData.utcDate;
         if (kickoffISO) {
           try {

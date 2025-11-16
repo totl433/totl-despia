@@ -387,6 +387,97 @@ async function checkAndSendScoreNotifications() {
     }
 
     console.log(`[sendScoreNotifications] Total notifications sent: ${totalSent}`);
+
+    // Check if all games in the GW are finished (end-of-GW detection)
+    // Get ALL fixtures for this GW (regular + test) to check if all are finished
+    const { data: regularGwFixtures } = await supabase
+      .from('fixtures')
+      .select('api_match_id')
+      .eq('gw', currentGw)
+      .not('api_match_id', 'is', null);
+
+    const { data: testGwFixtures } = await supabase
+      .from('test_api_fixtures')
+      .select('api_match_id')
+      .eq('test_gw', currentGw)
+      .not('api_match_id', 'is', null);
+
+    const allGwApiMatchIds = [
+      ...((regularGwFixtures || []).map((f: any) => f.api_match_id)),
+      ...((testGwFixtures || []).map((f: any) => f.api_match_id)),
+    ];
+
+    if (allGwApiMatchIds.length > 0) {
+      // Get status of all fixtures for this GW
+      const { data: allGwScores } = await supabase
+        .from('live_scores')
+        .select('status')
+        .in('api_match_id', allGwApiMatchIds);
+
+      const allFinished = allGwScores && 
+        allGwScores.length === allGwApiMatchIds.length &&
+        allGwScores.every((score: any) => score.status === 'FINISHED');
+
+      if (allFinished) {
+        // Check if we've already sent end-of-GW notification (use a special marker)
+        const { data: gwEndState } = await supabase
+          .from('notification_state')
+          .select('*')
+          .eq('api_match_id', 999999 - currentGw) // Use a special marker ID
+          .maybeSingle();
+
+        if (!gwEndState) {
+          console.log(`[sendScoreNotifications] All ${allGwApiMatchIds.length} games finished for GW ${currentGw}, sending end-of-GW notification`);
+
+          // Get all users who have picks for this GW
+          const { data: gwPicks } = await supabase
+            .from('picks')
+            .select('user_id')
+            .eq('gw', currentGw);
+
+          const userIdsWithPicks = [...new Set((gwPicks || []).map((p: any) => p.user_id))];
+
+          if (userIdsWithPicks.length > 0) {
+            const { data: subscriptions } = await supabase
+              .from('push_subscriptions')
+              .select('player_id')
+              .in('user_id', userIdsWithPicks)
+              .eq('is_active', true);
+
+            const allPlayerIds = (subscriptions || []).map((s: any) => s.player_id).filter(Boolean);
+
+            if (allPlayerIds.length > 0) {
+              const result = await sendOneSignalNotification(
+                allPlayerIds,
+                `GW${currentGw} Complete! 🎉`,
+                `All games finished. Check your results!`,
+                {
+                  type: 'gw_complete',
+                  gw: currentGw,
+                }
+              );
+
+              if (result.success) {
+                console.log(`[sendScoreNotifications] Sent end-of-GW notification to ${result.sentTo} devices`);
+                
+                // Mark that we've sent the end-of-GW notification (use special marker ID)
+                await supabase
+                  .from('notification_state')
+                  .upsert({
+                    api_match_id: 999999 - currentGw, // Special marker ID
+                    last_notified_home_score: 0,
+                    last_notified_away_score: 0,
+                    last_notified_status: 'GW_COMPLETE',
+                    last_notified_at: new Date().toISOString(),
+                  }, {
+                    onConflict: 'api_match_id',
+                  });
+              }
+            }
+          }
+        }
+      }
+    }
   } catch (error: any) {
     console.error('[sendScoreNotifications] Error:', error);
     throw error;
