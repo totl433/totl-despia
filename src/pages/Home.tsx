@@ -581,7 +581,7 @@ export default function HomePage() {
           awayScore: scoreData.awayScore
         };
         
-        // Stop polling if finished - and save to database if we have final score
+        // Stop polling if finished
         if (isFinished) {
           console.log(`[Home] Game ${fixtureIndex} finished - stopping polling`);
           const interval = intervals.get(fixtureIndex);
@@ -589,34 +589,9 @@ export default function HomePage() {
             clearInterval(interval);
             intervals.delete(fixtureIndex);
           }
-          // Save final score to database (if not already saved by scheduled function)
-          try {
-            // Get current GW
-            const { data: metaData } = await supabase.from("meta").select("current_gw").eq("id", 1).maybeSingle();
-            const gw = (metaData as any)?.current_gw ?? 1;
-            
-            const result = scoreData.homeScore > scoreData.awayScore ? 'H' : 
-                          scoreData.homeScore < scoreData.awayScore ? 'A' : 'D';
-            
-            console.log(`[Home] Saving final result for fixture ${fixtureIndex}: ${result} (${scoreData.homeScore}-${scoreData.awayScore})`);
-            
-            const { error: saveError } = await supabase
-              .from('gw_results')
-              .upsert({
-                gw: gw,
-                fixture_index: fixtureIndex,
-                result: result,
-                decided_at: new Date().toISOString()
-              }, { onConflict: 'gw,fixture_index' });
-            
-            if (saveError) {
-              console.error(`[Home] Error saving result for fixture ${fixtureIndex}:`, saveError);
-            } else {
-              console.log(`[Home] Successfully saved result ${result} for fixture ${fixtureIndex} to database`);
-            }
-          } catch (error: any) {
-            console.error(`[Home] Exception saving result for fixture ${fixtureIndex}:`, error?.message || error);
-          }
+          // NOTE: We intentionally do NOT auto-save final scores to gw_results here.
+          // Main game GW results should ONLY come from the Admin results flow,
+          // so that test API fixtures can never overwrite real game data.
         }
       };
       
