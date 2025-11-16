@@ -75,7 +75,8 @@ export function scheduleGameweekStartingSoon(
 }
 
 // Track scheduled "Game Starting Now" notifications to prevent duplicates
-const scheduledGameNotifications = new Map<string, number>();
+// Use localStorage to persist across page reloads and prevent duplicates
+const STORAGE_KEY_PREFIX = 'scheduled_game_notification_';
 
 /**
  * Schedule a live game notification
@@ -90,19 +91,29 @@ export function scheduleLiveGameNotification(
 ) {
   // Create a unique key for this game
   const notificationKey = `${kickoffTime}-${homeTeam}-${awayTeam}`;
+  const storageKey = `${STORAGE_KEY_PREFIX}${notificationKey}`;
   const now = Date.now();
   
-  // Check if we've already scheduled this notification recently (within 1 hour)
-  const lastScheduled = scheduledGameNotifications.get(notificationKey);
-  if (lastScheduled && (now - lastScheduled) < 60 * 60 * 1000) {
-    console.log('[Notifications] Skipping duplicate "Game Starting Now" notification:', {
-      homeTeam,
-      awayTeam,
-      kickoffTime,
-      timeSinceLastScheduled: Math.floor((now - lastScheduled) / 1000),
-      seconds: 'seconds'
-    });
-    return;
+  // Check localStorage first (persists across re-renders and page reloads)
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      const lastScheduled = parseInt(stored, 10);
+      // If scheduled within the last 24 hours, skip (game should have started by then)
+      if (lastScheduled && (now - lastScheduled) < 24 * 60 * 60 * 1000) {
+        console.log('[Notifications] Skipping duplicate "Game Starting Now" notification (from localStorage):', {
+          homeTeam,
+          awayTeam,
+          kickoffTime,
+          timeSinceLastScheduled: Math.floor((now - lastScheduled) / 1000),
+          seconds: 'seconds'
+        });
+        return;
+      }
+    }
+  } catch (e) {
+    // localStorage might not be available, continue with in-memory check
+    console.warn('[Notifications] localStorage not available, using in-memory check only');
   }
   
   const kickoff = new Date(kickoffTime);
@@ -124,8 +135,27 @@ export function scheduleLiveGameNotification(
       `${window.location.origin}/league/api-test`
     );
     
-    // Record that we've scheduled this notification
-    scheduledGameNotifications.set(notificationKey, now);
+    // Record that we've scheduled this notification in localStorage (persists across re-renders)
+    try {
+      localStorage.setItem(storageKey, now.toString());
+      // Clean up old entries (older than 7 days) to prevent localStorage bloat
+      const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(STORAGE_KEY_PREFIX)) {
+          const value = localStorage.getItem(key);
+          if (value) {
+            const timestamp = parseInt(value, 10);
+            if (timestamp < sevenDaysAgo) {
+              localStorage.removeItem(key);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // localStorage might be full or unavailable, that's okay
+      console.warn('[Notifications] Could not save to localStorage:', e);
+    }
   }
 }
 

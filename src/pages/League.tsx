@@ -46,18 +46,25 @@ function formatMinuteDisplay(status: string, minute: number | null | undefined):
   if (status === 'PAUSED') {
     return 'HT';
   }
-  if (minute === null || minute === undefined) {
-    return 'LIVE';
+  if (status === 'IN_PLAY') {
+    if (minute === null || minute === undefined) {
+      return 'LIVE';
+    }
+    // First half: 1-45 minutes
+    if (minute >= 1 && minute <= 45) {
+      return 'First Half';
+    }
+    // Stoppage time in first half: > 45 but before halftime (typically 45-50)
+    // Show "45+" until status becomes PAUSED (halftime)
+    if (minute > 45 && minute <= 50) {
+      return '45+';
+    }
+    // Second half: after halftime, typically minute > 50
+    if (minute > 50) {
+      return 'Second Half';
+    }
   }
-  if (minute > 45 && minute <= 90) {
-    // Second half: show "Second Half"
-    return 'Second Half';
-  }
-  if (minute >= 1 && minute <= 45) {
-    // First half: show "First Half"
-    return 'First Half';
-  }
-  // Fallback for any other cases
+  // Fallback
   return 'LIVE';
 }
 
@@ -2270,11 +2277,11 @@ export default function LeaguePage() {
                         return (
                           <li key={`${f.gw}-${f.fixture_index}`} className={idx > 0 ? "border-t" : ""}>
                             <div className="p-4 bg-white relative">
-                              {/* LIVE indicator - red dot top left for live games, grey FT for finished */}
+                              {/* LIVE indicator - red dot top left for live games, always says LIVE */}
                               {(isLive || isHalfTime) && (
                                 <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
                                   <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                                  <span className="text-xs font-bold text-red-600">{formatMinuteDisplay(liveScore.status, liveScore.minute)}</span>
+                                  <span className="text-xs font-bold text-red-600">LIVE</span>
                                 </div>
                               )}
                               {/* FT indicator for finished games - grey, no pulse */}
@@ -2301,7 +2308,7 @@ export default function LeaguePage() {
                                     />
                                   )}
                                   <div className="text-[15px] sm:text-base font-semibold text-slate-600">
-                                    {liveScore && (isLive || isFinished) ? (
+                                    {liveScore && (isLive || isHalfTime || isFinished) ? (
                                       <span className="font-bold text-base text-slate-900">
                                         {liveScore.homeScore} - {liveScore.awayScore}
                                       </span>
@@ -2738,25 +2745,20 @@ export default function LeaguePage() {
           @keyframes pulse-score {
             0%, 100% {
               opacity: 1;
-              transform: scale(1);
             }
             50% {
-              opacity: 0.8;
-              transform: scale(1.05);
+              opacity: 0.7;
             }
           }
           @keyframes position-change {
             0% {
               background-color: rgb(254, 243, 199);
-              transform: scale(1.02);
             }
             50% {
               background-color: rgb(253, 230, 138);
-              transform: scale(1.05);
             }
             100% {
               background-color: transparent;
-              transform: scale(1);
             }
           }
           .flash-user-row {
@@ -2767,7 +2769,6 @@ export default function LeaguePage() {
           }
           .position-changed {
             animation: position-change 1.5s ease-out;
-            transition: transform 0.3s ease-out;
           }
           .full-width-header-border::after {
             content: '';
@@ -2818,7 +2819,7 @@ export default function LeaguePage() {
                       <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600 text-white shadow-md shadow-red-500/30">
                         <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
                         <span className="text-[10px] font-medium">
-                          {livePhaseLabel || 'First Half'}
+                          LIVE
                         </span>
                       </div>
                     )}
@@ -2862,7 +2863,7 @@ export default function LeaguePage() {
                     <td className="py-4 truncate whitespace-nowrap" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       <div className="flex items-center gap-2">
                         {isApiTestLeague && hasLiveFixtures && (
-                          <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse flex-shrink-0"></div>
+                          <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse flex-shrink-0" style={{ minWidth: '8px', minHeight: '8px' }}></div>
                         )}
                         {isApiTestLeague && !hasLiveFixtures && hasStartingSoonFixtures && (
                           <svg className="w-3 h-3 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3139,7 +3140,10 @@ export default function LeaguePage() {
           {/* Tabs */}
           <div className="flex border-b border-slate-200 bg-white">
             <button
-              onClick={() => setTab("chat")}
+              onClick={() => {
+                setInitialTabSet(true); // Prevent auto-switch from interfering
+                setTab("chat");
+              }}
               className={
                 "flex-1 px-3 sm:px-6 py-3 text-sm font-semibold transition-colors relative " +
                 (tab === "chat" ? "text-[#1C8376]" : "text-slate-400")
@@ -3153,7 +3157,10 @@ export default function LeaguePage() {
             {/* Show GW Results tab if there are any results available (or if it's API Test league) */}
             {(availableGws.length > 0 || league?.name === 'API Test') && (
               <button
-                onClick={() => setTab("gwr")}
+                onClick={() => {
+                  setInitialTabSet(true); // Prevent auto-switch from interfering
+                  setTab("gwr");
+                }}
                 className={
                   "flex-1 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight flex items-center justify-center gap-1.5 " +
                   (tab === "gwr" ? "text-[#1C8376]" : "text-slate-400")
@@ -3197,7 +3204,10 @@ export default function LeaguePage() {
             {/* Show GW Predictions tab if there's a current GW (or if it's API Test league) */}
             {(currentGw || league?.name === 'API Test') && (
               <button
-                onClick={() => setTab("gw")}
+                onClick={() => {
+                  setInitialTabSet(true); // Prevent auto-switch from interfering
+                  setTab("gw");
+                }}
                 className={
                   "flex-1 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight " +
                   (tab === "gw" ? "text-[#1C8376]" : "text-slate-400")
@@ -3211,7 +3221,10 @@ export default function LeaguePage() {
               </button>
             )}
             <button
-              onClick={() => setTab("mlt")}
+              onClick={() => {
+                setInitialTabSet(true); // Prevent auto-switch from interfering
+                setTab("mlt");
+              }}
               className={
                 "flex-1 px-3 sm:px-6 py-3 text-sm font-semibold transition-colors relative " +
                 (tab === "mlt" ? "text-[#1C8376]" : "text-slate-400")

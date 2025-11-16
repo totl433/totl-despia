@@ -36,18 +36,25 @@ function formatMinuteDisplay(status: string, minute: number | null | undefined):
   if (status === 'PAUSED') {
     return 'HT';
   }
-  if (minute === null || minute === undefined) {
-    return 'LIVE';
+  if (status === 'IN_PLAY') {
+    if (minute === null || minute === undefined) {
+      return 'LIVE';
+    }
+    // First half: 1-45 minutes
+    if (minute >= 1 && minute <= 45) {
+      return 'First Half';
+    }
+    // Stoppage time in first half: > 45 but before halftime (typically 45-50)
+    // Show "45+" until status becomes PAUSED (halftime)
+    if (minute > 45 && minute <= 50) {
+      return '45+';
+    }
+    // Second half: after halftime, typically minute > 50
+    if (minute > 50) {
+      return 'Second Half';
+    }
   }
-  if (minute > 45 && minute <= 90) {
-    // Second half: show "Second Half"
-    return 'Second Half';
-  }
-  if (minute >= 1 && minute <= 45) {
-    // First half: show "First Half"
-    return 'First Half';
-  }
-  // Fallback for any other cases
+  // Fallback
   return 'LIVE';
 }
 
@@ -1084,12 +1091,12 @@ export default function TestApiPredictions() {
                             <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-10" />
                           )}
                           <div className="p-4 !bg-white relative z-0">
-                            {/* LIVE indicator - red dot top left for live games, grey FT for finished */}
+                            {/* LIVE indicator - red dot top left for live games, always says LIVE */}
                             {(isLive || isHalfTime) && (
                               <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
                                 <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
                                 <span className="text-xs font-bold text-red-600">
-                                  {livePhaseLabel || 'First Half'}
+                                  LIVE
                                 </span>
                               </div>
                             )}

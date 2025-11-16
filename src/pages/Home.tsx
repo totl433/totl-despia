@@ -60,18 +60,25 @@ function formatMinuteDisplay(status: string, minute: number | null | undefined):
   if (status === 'PAUSED') {
     return 'HT';
   }
-  if (minute === null || minute === undefined) {
-    return 'LIVE';
+  if (status === 'IN_PLAY') {
+    if (minute === null || minute === undefined) {
+      return 'LIVE';
+    }
+    // First half: 1-45 minutes
+    if (minute >= 1 && minute <= 45) {
+      return 'First Half';
+    }
+    // Stoppage time in first half: > 45 but before halftime (typically 45-50)
+    // Show "45+" until status becomes PAUSED (halftime)
+    if (minute > 45 && minute <= 50) {
+      return '45+';
+    }
+    // Second half: after halftime, typically minute > 50
+    if (minute > 50) {
+      return 'Second Half';
+    }
   }
-  if (minute > 45 && minute <= 90) {
-    // Second half: show "Second Half"
-    return 'Second Half';
-  }
-  if (minute >= 1 && minute <= 45) {
-    // First half: show "First Half"
-    return 'First Half';
-  }
-  // Fallback for any other cases
+  // Fallback
   return 'LIVE';
 }
 type Fixture = {
@@ -142,8 +149,6 @@ export default function HomePage() {
   const prevScoresRef = useRef<Record<number, { homeScore: number; awayScore: number }>>({});
   // Track if "Game Week Starting Soon" notification has been scheduled
   const gameweekStartingSoonScheduledRef = useRef(false);
-  // Track which fixtures have had "Game Starting Now" notifications scheduled
-  const gameStartingNowScheduledRef = useRef<Set<number>>(new Set());
   // Track API pull history for debugging (fixture_index -> array of pulls)
   const apiPullHistoryRef = useRef<Record<number, Array<{
     timestamp: Date;
@@ -519,6 +524,12 @@ export default function HomePage() {
     enableMouse: true, // Enable mouse drag for testing in desktop browsers
   });
 
+  // Create a stable key for fixtures to prevent unnecessary effect re-runs
+  const fixturesKey = useMemo(() => 
+    fixtures.map(f => `${f.fixture_index}-${f.api_match_id}`).join(','),
+    [fixtures]
+  );
+
   // Simple live score polling - poll fixtures whose kickoff has passed
   useEffect(() => {
     if (!isInApiTestLeague || !fixtures.length) return;
@@ -641,18 +652,18 @@ export default function HomePage() {
     checkFixtures();
     const checkInterval = setInterval(checkFixtures, 60000); // Check every 1 minute (local check only, no API calls)
     
-    // Schedule notifications
+    // Schedule notifications (only once per fixture, localStorage prevents duplicates)
     fixturesToPoll.forEach((fixture) => {
       if (!fixture.api_match_id || !fixture.kickoff_time) return;
       const kickoffTime = new Date(fixture.kickoff_time);
       const now = new Date();
       const fixtureIndex = fixture.fixture_index;
       
-      if (kickoffTime > now && !gameStartingNowScheduledRef.current.has(fixtureIndex)) {
+      // Schedule "Game Starting Now" notification - localStorage prevents duplicates even if effect re-runs
+      if (kickoffTime > now) {
         const homeName = fixture.home_name || fixture.home_team || 'Home';
         const awayName = fixture.away_name || fixture.away_team || 'Away';
         scheduleLiveGameNotification(fixture.kickoff_time, homeName, awayName);
-        gameStartingNowScheduledRef.current.add(fixtureIndex);
       }
       
       if (fixtureIndex === 0 && fixture.kickoff_time) {
@@ -671,7 +682,7 @@ export default function HomePage() {
       intervals.forEach(clearInterval);
       clearInterval(checkInterval);
     };
-  }, [isInApiTestLeague, fixtures.length, fixtures.map(f => `${f.fixture_index}-${f.api_match_id}`).join(',')]);
+  }, [isInApiTestLeague, fixtures.length, fixturesKey]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -2574,7 +2585,8 @@ export default function HomePage() {
                 msOverflowStyle: 'none', 
                 WebkitOverflowScrolling: 'touch', 
                 overscrollBehaviorX: 'contain',
-                touchAction: 'pan-x pinch-zoom'
+                overscrollBehaviorY: 'auto',
+                touchAction: 'pan-x pan-y pinch-zoom'
               }}
             >
               <style>{`
@@ -2657,7 +2669,7 @@ export default function HomePage() {
                                     </div>
                                     
                                     {/* Player Chips - ordered by ML table position (1st to last) */}
-                                    <div className="flex items-center overflow-x-hidden overflow-y-visible mt-1 py-0.5">
+                                    <div className="flex items-center overflow-x-hidden mt-1 py-0.5">
                                         {(() => {
                                           // Wait for calculation to complete
                                           if (leagueDataLoading) return null;
@@ -3053,21 +3065,6 @@ export default function HomePage() {
                 const isFinished = liveScore && liveScore.status === 'FINISHED';
                 // For score counting purposes, include halftime as "ongoing"
                 const isOngoing = isLive || isHalfTime;
-
-                // Derive phase label for LIVE badge
-                let livePhaseLabel: string | null = null;
-                if (isFinished) {
-                  livePhaseLabel = 'FT';
-                } else if (isHalfTime) {
-                  livePhaseLabel = 'HT';
-                } else if (isLive) {
-                  const minute = liveScore?.minute ?? null;
-                  if (minute !== null && minute > 45) {
-                    livePhaseLabel = 'Second Half';
-                  } else {
-                    livePhaseLabel = 'First Half';
-                  }
-                }
                 
                 // Determine button states (use live score if available)
                 const getButtonState = (side: "H" | "D" | "A") => {
@@ -3124,12 +3121,12 @@ export default function HomePage() {
                       <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-10" />
                     )}
                     <div className="p-4 !bg-white relative z-0">
-                      {/* LIVE indicator - red dot top left for live games, grey FT for finished */}
+                      {/* LIVE indicator - red dot top left for live games, always says LIVE */}
                       {(isLive || isHalfTime) && (
                         <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
                           <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
                           <span className="text-xs font-bold text-red-600">
-                            {livePhaseLabel || 'First Half'}
+                            LIVE
                           </span>
                         </div>
                       )}

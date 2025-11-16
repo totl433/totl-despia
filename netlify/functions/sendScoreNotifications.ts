@@ -344,7 +344,7 @@ async function checkAndSendScoreNotifications() {
 
       if (notification.isGameFinished) {
         title = `FT: ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
-        message = `Game finished!`;
+        message = `Full time! Game finished.`;
       } else if (notification.isScoreChange) {
         title = `⚽ GOAL! ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
         message = `${minuteText}`;
@@ -449,8 +449,8 @@ async function checkAndSendScoreNotifications() {
             if (allPlayerIds.length > 0) {
               const result = await sendOneSignalNotification(
                 allPlayerIds,
-                `GW${currentGw} Complete! 🎉`,
-                `All games finished. Check your results!`,
+                `Game Week ${currentGw} Ended! 🏆`,
+                `All games finished! Check out the results and see how you scored!`,
                 {
                   type: 'gw_complete',
                   gw: currentGw,
