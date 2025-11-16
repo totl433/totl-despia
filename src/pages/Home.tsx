@@ -748,7 +748,32 @@ export default function HomePage() {
       
       const poll = async () => {
             console.log('[Home] Polling fixture', fixtureIndex, 'at', new Date().toISOString());
-            const scoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
+            
+            // Retry logic for failed API calls
+            let scoreData = null;
+            let retries = 0;
+            const maxRetries = 2;
+            
+            while (retries <= maxRetries && !scoreData) {
+              try {
+                scoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
+                if (!scoreData && retries < maxRetries) {
+                  console.warn('[Home] API call failed for fixture', fixtureIndex, '- retrying...', retries + 1, '/', maxRetries);
+                  // Wait 2 seconds before retry
+                  await new Promise(resolve => setTimeout(resolve, 2000));
+                  retries++;
+                }
+              } catch (error) {
+                console.error('[Home] Error polling fixture', fixtureIndex, ':', error);
+                if (retries < maxRetries) {
+                  await new Promise(resolve => setTimeout(resolve, 2000));
+                  retries++;
+                } else {
+                  console.error('[Home] Max retries reached for fixture', fixtureIndex);
+                }
+              }
+            }
+            
             if (scoreData) {
             // PAUSED status in Football Data API v4 is used for halftime
             // IN_PLAY is for active play
@@ -1009,19 +1034,36 @@ export default function HomePage() {
     
     // Check which fixtures should be polled and start/stop polling accordingly
     const checkAndManagePolling = async () => {
-      // Also check fixtures that are close to kickoff time to catch them going live immediately
+      // Also check fixtures that are close to kickoff time or have passed kickoff to catch them going live immediately
       const allFixturesToCheck = isInApiTestLeague ? fixtures.slice(0, 3) : fixtures;
+      const now = new Date();
+      
+      // Check fixtures near kickoff (within 5 minutes before or after)
       const fixturesNearKickoff = allFixturesToCheck.filter(f => {
         if (!f.kickoff_time) return false;
         const kickoffTime = new Date(f.kickoff_time);
-        const now = new Date();
         const timeUntilKickoff = kickoffTime.getTime() - now.getTime();
-        // Check fixtures within 5 minutes of kickoff (before or after)
         return Math.abs(timeUntilKickoff) < 5 * 60 * 1000;
       });
       
-      // Combine fixtures to poll with fixtures near kickoff
-      const fixturesToCheck = [...new Set([...fixturesToPoll, ...fixturesNearKickoff])];
+      // Also check fixtures whose kickoff has passed but aren't marked as finished
+      // This catches cases where initial detection failed
+      const fixturesAfterKickoff = allFixturesToCheck.filter(f => {
+        if (!f.kickoff_time || !f.api_match_id) return false;
+        const kickoffTime = new Date(f.kickoff_time);
+        const kickoffHasPassed = kickoffTime.getTime() <= now.getTime();
+        if (!kickoffHasPassed) return false;
+        
+        // Check if we already have a finished status
+        const currentScore = liveScores[f.fixture_index];
+        const isFinished = currentScore && currentScore.status === 'FINISHED';
+        
+        // Include if kickoff passed but not finished (might be live or API call failed)
+        return !isFinished;
+      });
+      
+      // Combine fixtures to poll with fixtures near kickoff and after kickoff
+      const fixturesToCheck = [...new Set([...fixturesToPoll, ...fixturesNearKickoff, ...fixturesAfterKickoff])];
       
       for (const fixture of fixturesToCheck) {
         if (!fixture.api_match_id || !fixture.kickoff_time) continue;
@@ -1037,18 +1079,28 @@ export default function HomePage() {
           console.log('[Home] Starting polling for live fixture', fixtureIndex);
           startPolling(fixture);
         } else if (!shouldPoll && isCurrentlyPolling) {
-          // Stop polling this fixture (it's finished or not started)
-          console.log('[Home] Stopping polling for fixture', fixtureIndex, '(no longer live)');
-          const pollInterval = intervals.get(fixtureIndex);
-          if (pollInterval) {
-            clearInterval(pollInterval);
-            intervals.delete(fixtureIndex);
-          }
-          // Clear any HT resume timeout
-          const htTimeout = htResumeTimeouts.get(fixtureIndex);
-          if (htTimeout) {
-            clearTimeout(htTimeout);
-            htResumeTimeouts.delete(fixtureIndex);
+          // Check if fixture is actually finished before stopping
+          const currentScore = liveScores[fixtureIndex];
+          const isFinished = currentScore && currentScore.status === 'FINISHED';
+          
+          if (isFinished) {
+            // Stop polling this fixture (it's finished)
+            console.log('[Home] Stopping polling for fixture', fixtureIndex, '(finished)');
+            const pollInterval = intervals.get(fixtureIndex);
+            if (pollInterval) {
+              clearInterval(pollInterval);
+              intervals.delete(fixtureIndex);
+            }
+            // Clear any HT resume timeout
+            const htTimeout = htResumeTimeouts.get(fixtureIndex);
+            if (htTimeout) {
+              clearTimeout(htTimeout);
+              htResumeTimeouts.delete(fixtureIndex);
+            }
+          } else {
+            // Not finished but shouldn't poll - might be a temporary API issue
+            // Keep polling but log a warning
+            console.warn('[Home] Fixture', fixtureIndex, 'should not poll but not finished - keeping polling active');
           }
         }
       }

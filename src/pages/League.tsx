@@ -1343,6 +1343,195 @@ export default function LeaguePage() {
     const intervals = new Map<number, ReturnType<typeof setInterval>>();
     const timeouts: ReturnType<typeof setTimeout>[] = [];
     
+    // Helper function to start polling for a fixture (defined before use)
+    const startPollingForFixture = (fixture: any) => {
+      const fixtureIndex = fixture.fixture_index;
+      
+      // Don't start if already polling
+      if (intervals.has(fixtureIndex)) {
+        return;
+      }
+      
+      // Check if game is already finished
+      const currentScore = liveScores[fixtureIndex];
+      if (currentScore && currentScore.status === 'FINISHED') {
+        return;
+      }
+      
+      // Track HT state to resume polling after 15 minutes
+      const htResumeTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
+      
+      const poll = async () => {
+        // Retry logic for failed API calls
+        let scoreData = null;
+        let retries = 0;
+        const maxRetries = 2;
+        
+        while (retries <= maxRetries && !scoreData) {
+          try {
+            scoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
+            if (!scoreData && retries < maxRetries) {
+              console.warn('[League] API call failed for fixture', fixtureIndex, '- retrying...', retries + 1, '/', maxRetries);
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              retries++;
+            }
+          } catch (error) {
+            console.error('[League] Error polling fixture', fixtureIndex, ':', error);
+            if (retries < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              retries++;
+            } else {
+              console.error('[League] Max retries reached for fixture', fixtureIndex);
+            }
+          }
+        }
+        
+        if (scoreData) {
+          const isLive = scoreData.status === 'IN_PLAY' || scoreData.status === 'PAUSED';
+          const isHalfTime = scoreData.status === 'HALF_TIME' || scoreData.status === 'HT';
+          const isFinished = scoreData.status === 'FINISHED';
+          
+          console.log('[League] Poll result for fixture', fixtureIndex, ':', {
+            status: scoreData.status,
+            isLive,
+            isHalfTime,
+            isFinished,
+            homeScore: scoreData.homeScore,
+            awayScore: scoreData.awayScore,
+            minute: scoreData.minute
+          });
+          
+          setLiveScores(prev => ({
+            ...prev,
+            [fixtureIndex]: {
+              homeScore: scoreData.homeScore,
+              awayScore: scoreData.awayScore,
+              status: scoreData.status,
+              minute: scoreData.minute ?? null
+            }
+          }));
+          
+          // Handle different game states
+          if (isFinished) {
+            // Game finished - stop polling
+            console.log('[League] Game', fixtureIndex, 'finished, stopping polling');
+            const pollInterval = intervals.get(fixtureIndex);
+            if (pollInterval) {
+              clearInterval(pollInterval);
+              intervals.delete(fixtureIndex);
+            }
+            // Clear any HT resume timeout
+            const htTimeout = htResumeTimeouts.get(fixtureIndex);
+            if (htTimeout) {
+              clearTimeout(htTimeout);
+              htResumeTimeouts.delete(fixtureIndex);
+            }
+          } else if (isHalfTime) {
+            // Half-time - stop polling, resume in 15 minutes
+            console.log('[League] Game', fixtureIndex, 'at half-time, stopping polling, will resume in 15 minutes');
+            const pollInterval = intervals.get(fixtureIndex);
+            if (pollInterval) {
+              clearInterval(pollInterval);
+              intervals.delete(fixtureIndex);
+            }
+            
+            // Clear any existing HT resume timeout
+            const existingTimeout = htResumeTimeouts.get(fixtureIndex);
+            if (existingTimeout) {
+              clearTimeout(existingTimeout);
+            }
+            
+            // Set timeout to resume polling in 15 minutes
+            const htResumeTimeout = setTimeout(() => {
+              console.log('[League] Resuming polling for fixture', fixtureIndex, 'after half-time');
+              // Resume polling every minute until game starts or finishes
+              const resumePoll = async () => {
+                const resumeScoreData = await fetchLiveScore(fixture.api_match_id!);
+                if (resumeScoreData) {
+                  const resumeIsFinished = resumeScoreData.status === 'FINISHED';
+                  const resumeIsLive = resumeScoreData.status === 'IN_PLAY' || resumeScoreData.status === 'PAUSED';
+                  const resumeIsHalfTime = resumeScoreData.status === 'HALF_TIME' || resumeScoreData.status === 'HT';
+                  
+                  setLiveScores(prev => ({
+                    ...prev,
+                    [fixtureIndex]: {
+                      homeScore: resumeScoreData.homeScore,
+                      awayScore: resumeScoreData.awayScore,
+                      status: resumeScoreData.status,
+                      minute: resumeScoreData.minute ?? null
+                    }
+                  }));
+                  
+                  if (resumeIsFinished) {
+                    console.log('[League] Game', fixtureIndex, 'finished, stopping polling');
+                    const resumeInterval = intervals.get(fixtureIndex);
+                    if (resumeInterval) {
+                      clearInterval(resumeInterval);
+                      intervals.delete(fixtureIndex);
+                    }
+                    htResumeTimeouts.delete(fixtureIndex);
+                  } else if (resumeIsLive) {
+                    // Second half has started - continue polling every minute until FT
+                    console.log('[League] Game', fixtureIndex, 'second half started - status:', resumeScoreData.status, 'minute:', resumeScoreData.minute);
+                  } else if (resumeIsHalfTime) {
+                    // Still at half-time, keep polling every minute until second half starts
+                    console.log('[League] Game', fixtureIndex, 'still at half-time, continuing to poll...');
+                  }
+                }
+              };
+              
+              resumePoll(); // Poll immediately
+              const resumeInterval = setInterval(resumePoll, 60 * 1000); // Every 1 minute
+              intervals.set(fixtureIndex, resumeInterval);
+              htResumeTimeouts.delete(fixtureIndex);
+            }, 15 * 60 * 1000); // 15 minutes
+            
+            htResumeTimeouts.set(fixtureIndex, htResumeTimeout);
+          } else if (isLive) {
+            console.log('[League] Game', fixtureIndex, 'is LIVE - status:', scoreData.status, 'minute:', scoreData.minute);
+          }
+        }
+      };
+      
+      poll(); // Poll immediately
+      const pollInterval = setInterval(poll, 60 * 1000); // Every 1 minute
+      intervals.set(fixtureIndex, pollInterval);
+    };
+    
+    // Helper function to check and start polling for fixtures that should be polled
+    const checkAndStartPolling = () => {
+      const now = new Date();
+      fixturesToPoll.forEach((fixture: any) => {
+        if (!fixture.api_match_id || !fixture.kickoff_time) return;
+        
+        const fixtureIndex = fixture.fixture_index;
+        const kickoffTime = new Date(fixture.kickoff_time);
+        const timeUntilKickoff = kickoffTime.getTime() - now.getTime();
+        const kickoffHasPassed = timeUntilKickoff <= 0;
+        const kickoffVeryClose = timeUntilKickoff <= 2 * 60 * 1000; // Within 2 minutes
+        
+        // Check if already polling
+        const isCurrentlyPolling = intervals.has(fixtureIndex);
+        
+        // Check if finished
+        const currentScore = liveScores[fixtureIndex];
+        const isFinished = currentScore && currentScore.status === 'FINISHED';
+        
+        // Start polling if kickoff passed/close, not finished, and not already polling
+        if ((kickoffHasPassed || kickoffVeryClose) && !isFinished && !isCurrentlyPolling) {
+          console.log('[League] Detected fixture', fixtureIndex, 'should be polled - starting now');
+          startPollingForFixture(fixture);
+        }
+      });
+    };
+    
+    // Initial check
+    checkAndStartPolling();
+    
+    // Periodic check every 10 seconds to catch fixtures that should be polled
+    const checkInterval = setInterval(checkAndStartPolling, 10000);
+    
+    // Schedule initial polling for fixtures whose kickoff hasn't passed yet
     fixturesToPoll.forEach((fixture: any) => {
       if (!fixture.api_match_id || !fixture.kickoff_time) return;
       
@@ -1350,148 +1539,31 @@ export default function LeaguePage() {
       const now = new Date();
       const fixtureIndex = fixture.fixture_index;
       
-      // Helper function to start polling for a fixture
-      const startPolling = () => {
-        // Check if game is already finished
-        const currentScore = liveScores[fixtureIndex];
-        if (currentScore && currentScore.status === 'FINISHED') {
-          // Already finished, don't poll
-          return;
-        }
-        
-        // Track HT state to resume polling after 15 minutes
-        const htResumeTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
-        
-        const poll = async () => {
-          const scoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
-          if (scoreData) {
-            const isLive = scoreData.status === 'IN_PLAY' || scoreData.status === 'PAUSED';
-            const isHalfTime = scoreData.status === 'HALF_TIME' || scoreData.status === 'HT';
-            const isFinished = scoreData.status === 'FINISHED';
-            
-            console.log('[League] Poll result for fixture', fixtureIndex, ':', {
-              status: scoreData.status,
-              isLive,
-              isHalfTime,
-              isFinished,
-              homeScore: scoreData.homeScore,
-              awayScore: scoreData.awayScore,
-              minute: scoreData.minute
-            });
-            
-            setLiveScores(prev => ({
-              ...prev,
-              [fixtureIndex]: {
-                homeScore: scoreData.homeScore,
-                awayScore: scoreData.awayScore,
-                status: scoreData.status,
-                minute: scoreData.minute ?? null
-              }
-            }));
-            
-            // Handle different game states
-            if (isFinished) {
-              // Game finished - stop polling
-              console.log('[League] Game', fixtureIndex, 'finished, stopping polling');
-              const pollInterval = intervals.get(fixtureIndex);
-              if (pollInterval) {
-                clearInterval(pollInterval);
-                intervals.delete(fixtureIndex);
-              }
-              // Clear any HT resume timeout
-              const htTimeout = htResumeTimeouts.get(fixtureIndex);
-              if (htTimeout) {
-                clearTimeout(htTimeout);
-                htResumeTimeouts.delete(fixtureIndex);
-              }
-            } else if (isHalfTime) {
-              // Half-time - stop polling, resume in 15 minutes
-              console.log('[League] Game', fixtureIndex, 'at half-time, stopping polling, will resume in 15 minutes');
-              const pollInterval = intervals.get(fixtureIndex);
-              if (pollInterval) {
-                clearInterval(pollInterval);
-                intervals.delete(fixtureIndex);
-              }
-              
-              // Clear any existing HT resume timeout
-              const existingTimeout = htResumeTimeouts.get(fixtureIndex);
-              if (existingTimeout) {
-                clearTimeout(existingTimeout);
-              }
-              
-              // Set timeout to resume polling in 15 minutes
-              const htResumeTimeout = setTimeout(() => {
-                console.log('[League] Resuming polling for fixture', fixtureIndex, 'after half-time');
-                // Resume polling every minute until game starts or finishes
-                const resumePoll = async () => {
-                  const resumeScoreData = await fetchLiveScore(fixture.api_match_id!);
-                  if (resumeScoreData) {
-                    const resumeIsFinished = resumeScoreData.status === 'FINISHED';
-                    const resumeIsLive = resumeScoreData.status === 'IN_PLAY' || resumeScoreData.status === 'PAUSED';
-                    const resumeIsHalfTime = resumeScoreData.status === 'HALF_TIME' || resumeScoreData.status === 'HT';
-                    
-                    setLiveScores(prev => ({
-                      ...prev,
-                      [fixtureIndex]: {
-                        homeScore: resumeScoreData.homeScore,
-                        awayScore: resumeScoreData.awayScore,
-                        status: resumeScoreData.status,
-                        minute: resumeScoreData.minute ?? null
-                      }
-                    }));
-                    
-                    if (resumeIsFinished) {
-                      console.log('[League] Game', fixtureIndex, 'finished, stopping polling');
-                      const resumeInterval = intervals.get(fixtureIndex);
-                      if (resumeInterval) {
-                        clearInterval(resumeInterval);
-                        intervals.delete(fixtureIndex);
-                      }
-                      htResumeTimeouts.delete(fixtureIndex);
-                    } else if (resumeIsLive) {
-                      // Second half has started - continue polling every minute until FT
-                      console.log('[League] Game', fixtureIndex, 'second half started - status:', resumeScoreData.status, 'minute:', resumeScoreData.minute);
-                    } else if (resumeIsHalfTime) {
-                      // Still at half-time, keep polling every minute until second half starts
-                      console.log('[League] Game', fixtureIndex, 'still at half-time, continuing to poll...');
-                    }
-                  }
-                };
-                
-                resumePoll(); // Poll immediately
-                const resumeInterval = setInterval(resumePoll, 60 * 1000); // Every 1 minute
-                intervals.set(fixtureIndex, resumeInterval);
-                htResumeTimeouts.delete(fixtureIndex);
-              }, 15 * 60 * 1000); // 15 minutes
-              
-              htResumeTimeouts.set(fixtureIndex, htResumeTimeout);
-            } else if (isLive) {
-              console.log('[League] Game', fixtureIndex, 'is LIVE - status:', scoreData.status, 'minute:', scoreData.minute);
-            }
-          }
-        };
-        
-        poll(); // Poll immediately
-        const pollInterval = setInterval(poll, 60 * 1000); // Every 1 minute
-        intervals.set(fixtureIndex, pollInterval);
-      };
+      // Check if kickoff has passed or is very close (within 2 minutes)
+      const timeUntilKickoff = kickoffTime.getTime() - now.getTime();
+      const kickoffHasPassed = timeUntilKickoff <= 0;
+      const kickoffVeryClose = timeUntilKickoff <= 2 * 60 * 1000; // Within 2 minutes
       
-      if (kickoffTime > now) {
-        const delay = kickoffTime.getTime() - now.getTime();
-        const timeout = setTimeout(startPolling, delay);
+      if (!kickoffHasPassed && !kickoffVeryClose) {
+        // Kickoff is in the future, schedule polling to start at kickoff
+        const delay = timeUntilKickoff;
+        console.log('[League] Scheduling polling for fixture', fixtureIndex, 'in', Math.round(delay / 1000), 'seconds');
+        const timeout = setTimeout(() => {
+          console.log('[League] Starting scheduled polling for fixture', fixtureIndex);
+          startPollingForFixture(fixture);
+        }, delay);
         timeouts.push(timeout);
-      } else {
-        // Kickoff already happened, start polling immediately
-        startPolling();
       }
+      // If kickoff has passed or is very close, checkAndStartPolling will handle it
     });
     
     return () => {
       console.log('[League] Cleaning up polling intervals and timeouts');
       intervals.forEach(clearInterval);
       timeouts.forEach(clearTimeout);
+      clearInterval(checkInterval);
     };
-  }, [league?.name, fixtures.map((f: any) => f.api_match_id).join(','), tab]);
+  }, [league?.name, fixtures.map((f: any) => f.api_match_id).join(','), tab, liveScores]);
 
   // Set default tab to "gwr" (GW Results) if gameweek is live or finished within 12 hours
   useEffect(() => {
