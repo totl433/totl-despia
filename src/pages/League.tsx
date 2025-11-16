@@ -1276,6 +1276,53 @@ export default function LeaguePage() {
     }
   };
 
+  // Fetch existing live scores immediately, then poll for updates
+  useEffect(() => {
+    // Load live scores for all leagues
+    if (!fixtures.length || tab !== 'gwr') return;
+    
+    const fixturesWithApi = fixtures.filter((f: any) => f.api_match_id);
+    if (fixturesWithApi.length === 0) return;
+    
+    // Immediately fetch all existing live scores from Supabase
+    const loadExistingScores = async () => {
+      console.log('[League] Loading existing live scores from Supabase for', fixturesWithApi.length, 'fixtures');
+      
+      // Fetch all live scores in parallel
+      const scorePromises = fixturesWithApi.map(async (fixture: any) => {
+        const scoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
+        if (!scoreData) return null;
+        
+        return {
+          fixtureIndex: fixture.fixture_index,
+          scoreData
+        };
+      });
+      
+      const results = await Promise.all(scorePromises);
+      
+      // Update live scores state with all fetched scores
+      setLiveScores(prev => {
+        const updated = { ...prev };
+        results.forEach(result => {
+          if (result) {
+            updated[result.fixtureIndex] = {
+              homeScore: result.scoreData.homeScore,
+              awayScore: result.scoreData.awayScore,
+              status: result.scoreData.status,
+              minute: result.scoreData.minute ?? null
+            };
+          }
+        });
+        return updated;
+      });
+      
+      console.log('[League] Loaded', results.filter(r => r !== null).length, 'existing live scores');
+    };
+    
+    loadExistingScores();
+  }, [fixtures.map((f: any) => `${f.fixture_index}-${f.api_match_id}`).join(','), tab]);
+
   // Simple live score polling - poll fixtures whose kickoff has passed
   useEffect(() => {
     // Poll for all leagues, not just API Test
@@ -1286,7 +1333,7 @@ export default function LeaguePage() {
     
     const intervals = new Map<number, ReturnType<typeof setInterval>>();
     
-    // Simple polling function
+    // Simple polling function - reads from Supabase (no rate limits!)
     const startPolling = (fixture: any) => {
       const fixtureIndex = fixture.fixture_index;
       if (intervals.has(fixtureIndex)) return; // Already polling
@@ -1318,13 +1365,10 @@ export default function LeaguePage() {
         }
       };
       
-      // Don't poll immediately - wait for first interval to avoid rate limits
-      // poll(); // Removed immediate poll to avoid rate limits
+      // Poll immediately, then every 2 minutes
+      poll(); // Fetch immediately
       const interval = setInterval(poll, 2 * 60 * 1000); // Every 2 minutes
       intervals.set(fixtureIndex, interval);
-      
-      // Poll after a short delay (5 seconds) instead of immediately
-      setTimeout(poll, 5000);
     };
     
     // Check which fixtures should be polled
@@ -1365,7 +1409,7 @@ export default function LeaguePage() {
       intervals.forEach(clearInterval);
       clearInterval(checkInterval);
     };
-  }, [league?.name, fixtures.map((f: any) => f.api_match_id).join(','), tab]);
+  }, [league?.name, fixtures.map((f: any) => f.api_match_id).join(','), tab, liveScores]);
 
   // Set default tab to "gwr" (GW Results) if gameweek is live or finished within 12 hours
   useEffect(() => {
