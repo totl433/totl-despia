@@ -523,6 +523,8 @@ export default function LeaguePage() {
   // Default to "gwr" (GW Results) if gameweek is live or finished within 12 hours
   const [tab, setTab] = useState<"chat" | "mlt" | "gw" | "gwr">("chat");
   const [initialTabSet, setInitialTabSet] = useState(false);
+  // Use ref to track manual tab selection immediately (synchronously) to prevent race conditions
+  const manualTabSelectedRef = useRef(false);
 
   const [showForm, setShowForm] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -1419,9 +1421,11 @@ export default function LeaguePage() {
   }, [league?.name, fixtures.map((f: any) => f.api_match_id).join(','), tab, liveScores]);
 
   // Set default tab to "gwr" (GW Results) if gameweek is live or finished within 12 hours
+  // Only runs once on initial load when on chat tab - never auto-switches after user manually selects a tab
   useEffect(() => {
     // Only set initial tab once, and only if we're on the chat tab
-    if (initialTabSet || !fixtures.length || tab !== "chat") return;
+    // Once initialTabSet is true OR user has manually selected a tab, this effect will never run again
+    if (initialTabSet || manualTabSelectedRef.current || !fixtures.length || tab !== "chat") return;
     
     // Only apply to current GW (or API Test league GW 1)
     const isApiTestLeague = league?.name === 'API Test';
@@ -1476,7 +1480,9 @@ export default function LeaguePage() {
     } else {
       setInitialTabSet(true);
     }
-  }, [fixtures, liveScores, initialTabSet, tab, currentGw, selectedGw, league?.name]);
+    // Note: Removed 'tab' from dependencies to prevent re-running when user manually switches tabs
+    // The effect only needs to run once when fixtures/liveScores first load
+  }, [fixtures, liveScores, initialTabSet, currentGw, selectedGw, league?.name]);
 
   const submittedMap = useMemo(() => {
     const m = new Map<string, boolean>();
@@ -3127,6 +3133,7 @@ export default function LeaguePage() {
           <div className="flex border-b border-slate-200 bg-white">
             <button
               onClick={() => {
+                manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
                 setInitialTabSet(true); // Prevent auto-switch from interfering
                 setTab("chat");
               }}
@@ -3144,6 +3151,7 @@ export default function LeaguePage() {
             {(availableGws.length > 0 || league?.name === 'API Test') && (
               <button
                 onClick={() => {
+                  manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
                   setInitialTabSet(true); // Prevent auto-switch from interfering
                   setTab("gwr");
                 }}
@@ -3191,6 +3199,7 @@ export default function LeaguePage() {
             {(currentGw || league?.name === 'API Test') && (
               <button
                 onClick={() => {
+                  manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
                   setInitialTabSet(true); // Prevent auto-switch from interfering
                   setTab("gw");
                 }}
@@ -3208,6 +3217,7 @@ export default function LeaguePage() {
             )}
             <button
               onClick={() => {
+                manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
                 setInitialTabSet(true); // Prevent auto-switch from interfering
                 setTab("mlt");
               }}
