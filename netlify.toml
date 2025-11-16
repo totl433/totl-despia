@@ -9,6 +9,10 @@
 [functions."pollLiveScores"]
   schedule = "*/5 * * * *"
 
+# Scheduled function to send score notifications every 2 minutes
+[functions."sendScoreNotifications"]
+  schedule = "*/2 * * * *"
+
 # Ignore secrets scanning for helper scripts
 [build.environment]
   SECRETS_SCAN_OMIT_PATHS = "register-devices.sh,check-*.sh,*.sh"

@@ -8,7 +8,8 @@ import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePh
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
-import { scheduleDeadlineReminder, scheduleLiveGameNotification, scheduleGameweekStartingSoon, sendScoreUpdateNotification } from "../lib/notifications";
+import { scheduleDeadlineReminder, scheduleLiveGameNotification, scheduleGameweekStartingSoon } from "../lib/notifications";
+// Score update notifications now handled server-side by sendScoreNotifications function
 
 
 // Types
@@ -564,28 +565,14 @@ export default function HomePage() {
           }
         }));
         
-        // Check for score changes for notifications
+        // Score change notifications are now handled server-side by sendScoreNotifications function
+        // This runs every 2 minutes and checks the live_scores table for changes
+        // Removed client-side notifications to avoid flakey behavior
+        
+        // Still track previous scores for local state management
         const prevScore = prevScoresRef.current[fixtureIndex];
         if (prevScore) {
-          const scoreChanged = prevScore.homeScore !== scoreData.homeScore || 
-                              prevScore.awayScore !== scoreData.awayScore;
-          const prevStatus = liveScores[fixtureIndex]?.status;
-          const justFinished = prevStatus !== 'FINISHED' && isFinished;
-          
-          if (scoreChanged || justFinished) {
-            const homeName = fixture.home_name || fixture.home_team || 'Home';
-            const awayName = fixture.away_name || fixture.away_team || 'Away';
-            const userPick = picksMap[fixtureIndex] || undefined;
-            sendScoreUpdateNotification(
-              homeName,
-              awayName,
-              scoreData.homeScore,
-              scoreData.awayScore,
-              scoreData.minute ?? null,
-              isFinished,
-              userPick
-            );
-          }
+          // Just update prev score, no notifications
         }
         
         // Update prev score
