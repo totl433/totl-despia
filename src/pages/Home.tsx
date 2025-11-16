@@ -634,85 +634,12 @@ export default function HomePage() {
       });
     };
     
-    // Function to check for finished games that don't have results saved yet
-    const checkForMissingResults = async () => {
-      try {
-        // Get current GW
-        const { data: metaData } = await supabase.from("meta").select("current_gw").eq("id", 1).maybeSingle();
-        const gw = (metaData as any)?.current_gw ?? 1;
-        
-        // Get all fixtures for current GW that have api_match_id
-        const fixturesWithApi = fixturesToPoll.filter(f => f.api_match_id && f.kickoff_time);
-        
-        // Get existing results from database
-        const { data: existingResults } = await supabase
-          .from('gw_results')
-          .select('fixture_index')
-          .eq('gw', gw);
-        
-        const existingFixtureIndices = new Set(existingResults?.map(r => r.fixture_index) || []);
-        
-        // Check each fixture
-        for (const fixture of fixturesWithApi) {
-          const fixtureIndex = fixture.fixture_index;
-          
-          // Skip if we already have a result
-          if (existingFixtureIndices.has(fixtureIndex)) {
-            continue;
-          }
-          
-          // Check if kickoff has passed (game should have started or finished)
-          const kickoffTime = new Date(fixture.kickoff_time!);
-          const now = new Date();
-          const kickoffHasPassed = kickoffTime.getTime() <= now.getTime();
-          
-          if (!kickoffHasPassed) {
-            continue; // Game hasn't started yet
-          }
-          
-          // Check if we're currently polling this fixture (if so, skip - it will be saved when it finishes)
-          if (intervals.has(fixtureIndex)) {
-            continue;
-          }
-          
-          // Check current live score status
-          const currentScore = liveScores[fixtureIndex];
-          if (currentScore?.status === 'FINISHED') {
-            // We have the score but didn't save it - save it now
-            const result = currentScore.homeScore > currentScore.awayScore ? 'H' : 
-                          currentScore.homeScore < currentScore.awayScore ? 'A' : 'D';
-            
-            console.log(`[Home] Found missing result for finished fixture ${fixtureIndex}, saving: ${result} (${currentScore.homeScore}-${currentScore.awayScore})`);
-            
-            const { error: saveError } = await supabase
-              .from('gw_results')
-              .upsert({
-                gw: gw,
-                fixture_index: fixtureIndex,
-                result: result,
-                decided_at: new Date().toISOString()
-              }, { onConflict: 'gw,fixture_index' });
-            
-            if (saveError) {
-              console.error(`[Home] Error saving missing result for fixture ${fixtureIndex}:`, saveError);
-            } else {
-              console.log(`[Home] Successfully saved missing result ${result} for fixture ${fixtureIndex}`);
-            }
-          }
-          // Note: We don't fetch scores for games we don't have in memory to avoid extra API calls
-          // The regular polling will catch finished games eventually
-        }
-      } catch (error: any) {
-        console.error('[Home] Error checking for missing results:', error?.message || error);
-      }
-    };
+    // REMOVED: checkForMissingResults function
+    // This was causing test API results to overwrite finished GW results in gw_results table
+    // Main game GW results should ONLY come from Admin results screen, never auto-saved from API
     
     checkFixtures();
     const checkInterval = setInterval(checkFixtures, 60000); // Check every 1 minute (local check only, no API calls)
-    
-    // Check for missing results every 5 minutes
-    checkForMissingResults(); // Run immediately
-    const missingResultsInterval = setInterval(checkForMissingResults, 10 * 60 * 1000); // Every 10 minutes (only saves scores we already have in memory, no API calls)
     
     // Schedule notifications
     fixturesToPoll.forEach((fixture) => {
@@ -743,7 +670,6 @@ export default function HomePage() {
     return () => {
       intervals.forEach(clearInterval);
       clearInterval(checkInterval);
-      clearInterval(missingResultsInterval);
     };
   }, [isInApiTestLeague, fixtures.length, fixtures.map(f => `${f.fixture_index}-${f.api_match_id}`).join(',')]);
 
