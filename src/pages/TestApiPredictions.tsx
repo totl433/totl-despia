@@ -1049,7 +1049,6 @@ export default function TestApiPredictions() {
                       // Button styling helper (matching Home Page)
                       const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }) => {
                         const base = "h-16 rounded-xl border text-sm font-medium transition-all flex items-center justify-center select-none";
-                        const isLiveAndCorrect = isLive && state.isCorrectResult;
                         // Shiny gradient ONLY when game is FINISHED and pick is correct
                         if (state.isCorrect && isFinished) {
                           return `${base} bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white !border-0 !border-none shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]`;
