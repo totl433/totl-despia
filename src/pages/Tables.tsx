@@ -1024,7 +1024,7 @@ export default function TablesPage() {
                           </div>
                           
                           {/* Player Chips - ordered by ML table position (1st to last) */}
-                          <div className="flex items-center overflow-x-hidden overflow-y-visible mt-1 py-0.5">
+                          <div className="flex items-center overflow-x-hidden overflow-y-hidden mt-1 py-0.5">
                             {(() => {
                               // Wait for calculation to complete
                               if (leagueDataLoading) return null;
