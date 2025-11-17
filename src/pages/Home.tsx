@@ -3188,13 +3188,13 @@ export default function HomePage() {
                       {/* buttons: Home Win, Draw, Away Win */}
                       <div className="grid grid-cols-3 gap-3 relative">
                         <div className={`${getButtonClass(homeState)} flex items-center justify-center`}>
-                          <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-red-200" : ""}`}>Home Win</span>
+                          <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Home Win</span>
                         </div>
                         <div className={`${getButtonClass(drawState)} flex items-center justify-center`}>
-                          <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-red-200" : ""}`}>Draw</span>
+                          <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Draw</span>
                         </div>
                         <div className={`${getButtonClass(awayState)} flex items-center justify-center`}>
-                          <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-red-200" : ""}`}>Away Win</span>
+                          <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Away Win</span>
                         </div>
                       </div>
                                 
