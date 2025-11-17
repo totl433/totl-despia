@@ -1097,7 +1097,7 @@ export default function TestApiPredictions() {
                             <div className={`flex flex-col px-2 pb-3 ${isLive ? 'pt-4' : 'pt-1'}`}>
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-1 flex-1 justify-end">
-                                  <div className="font-medium break-words">{homeName}</div>
+                                  <div className={`break-words ${liveScore && (isLive || isFinished) && liveScore.homeScore > liveScore.awayScore ? 'font-bold' : 'font-medium'}`}>{homeName}</div>
                                   <img 
                                     src={`/assets/badges/${(fixture.home_code || homeName).toUpperCase()}.png`} 
                                     alt={homeName}
@@ -1125,7 +1125,7 @@ export default function TestApiPredictions() {
                                       e.currentTarget.style.display = 'none';
                                     }}
                                   />
-                                  <div className="font-medium break-words">{awayName}</div>
+                                  <div className={`break-words ${liveScore && (isLive || isFinished) && liveScore.awayScore > liveScore.homeScore ? 'font-bold' : 'font-medium'}`}>{awayName}</div>
                                 </div>
                               </div>
                               {liveScore && (isLive || isFinished) && (

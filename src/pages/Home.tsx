@@ -3140,7 +3140,7 @@ export default function HomePage() {
                       <div className={`flex flex-col px-2 pb-3 ${isOngoing ? 'pt-4' : 'pt-1'}`}>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1 flex-1 justify-end">
-                            <div className="font-medium break-words">{homeName}</div>
+                            <div className={`break-words ${liveScore && (isOngoing || isFinished) && liveScore.homeScore > liveScore.awayScore ? 'font-bold' : 'font-medium'}`}>{homeName}</div>
                             <img 
                               src={`/assets/badges/${(f.home_code || homeKey).toUpperCase()}.png`} 
                               alt={homeName}
@@ -3170,7 +3170,7 @@ export default function HomePage() {
                                 (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
                               }}
                             />
-                            <div className="font-medium break-words">{awayName}</div>
+                            <div className={`break-words ${liveScore && (isOngoing || isFinished) && liveScore.awayScore > liveScore.homeScore ? 'font-bold' : 'font-medium'}`}>{awayName}</div>
                           </div>
                         </div>
                         {liveScore && (isOngoing || isFinished) && (
