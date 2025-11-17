@@ -3097,6 +3097,9 @@ export default function HomePage() {
                   } else if (state.isCorrect && isLive) {
                     // Live and correct - pulse in emerald green
                     return `${base} bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-lg shadow-emerald-500/50`;
+                  } else if (state.isCorrectResult && isFinished) {
+                    // Correct outcome (but user didn't pick it) - grey with thick green border
+                    return `${base} bg-slate-50 text-slate-600 border-4 border-emerald-600`;
                   } else if (state.isWrong && isFinished) {
                     // Wrong pick in finished game - grey background with flashing red border and strikethrough
                     return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
