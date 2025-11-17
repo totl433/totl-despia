@@ -2662,14 +2662,14 @@ export default function HomePage() {
                                     />
                                   </div>
                                   
-                                  <div className="flex-1 min-w-0 h-12 flex flex-col justify-between">
+                                  <div className="flex-1 min-w-0 h-12 flex flex-col justify-between overflow-hidden">
                                     {/* League Name */}
                                     <div className="text-base font-semibold text-slate-900 truncate -mt-0.5">
                                       {l.name}
                                     </div>
                                     
                                     {/* Player Chips - ordered by ML table position (1st to last) */}
-                                    <div className="flex items-center overflow-x-hidden mt-1 py-0.5">
+                                    <div className="flex items-center overflow-x-hidden overflow-y-hidden mt-1 py-0.5">
                                         {(() => {
                                           // Wait for calculation to complete
                                           if (leagueDataLoading) return null;
