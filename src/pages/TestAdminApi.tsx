@@ -83,6 +83,7 @@ export default function TestAdminApi() {
   const [competition, setCompetition] = useState("PL");
   const [apiError, setApiError] = useState<string | null>(null);
   const [autoLoading, setAutoLoading] = useState(false);
+  const [clearingPicks, setClearingPicks] = useState(false);
 
   // Fetch available matches from API for the next week
   const fetchUpcomingMatches = async (comp: string, signal?: AbortSignal) => {
@@ -327,6 +328,34 @@ export default function TestAdminApi() {
     }
   };
 
+  const clearAllPicks = async () => {
+    if (!confirm("Clear all picks and submissions for Test GW 1? This will reset all users' predictions.")) {
+      return;
+    }
+
+    setClearingPicks(true);
+    setError("");
+    setOk("");
+
+    try {
+      await supabase
+        .from("test_api_picks")
+        .delete()
+        .eq("matchday", 1);
+      
+      await supabase
+        .from("test_api_submissions")
+        .delete()
+        .eq("matchday", 1);
+
+      setOk("All picks and submissions cleared! Users can now make fresh predictions.");
+    } catch (e: any) {
+      setError(e.message ?? "Failed to clear picks.");
+    } finally {
+      setClearingPicks(false);
+    }
+  };
+
   const saveTestGameweek = async () => {
     if (selectedFixtures.size === 0) {
       setError("Please select at least one fixture");
@@ -421,10 +450,19 @@ export default function TestAdminApi() {
 
         {/* Test GW Info */}
         <div className="bg-white rounded-xl shadow-md p-4 mb-6">
-          <div className="flex items-center gap-4 mb-4">
-            <label className="font-medium text-slate-700">Test Gameweek:</label>
-            <span className="text-lg font-semibold text-slate-900">1</span>
-            <span className="text-sm text-slate-500">(API Test league always uses GW 1)</span>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-4">
+              <label className="font-medium text-slate-700">Test Gameweek:</label>
+              <span className="text-lg font-semibold text-slate-900">1</span>
+              <span className="text-sm text-slate-500">(API Test league always uses GW 1)</span>
+            </div>
+            <button
+              onClick={clearAllPicks}
+              disabled={clearingPicks}
+              className="px-3 py-1.5 text-sm bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors disabled:opacity-50"
+            >
+              {clearingPicks ? "Clearing..." : "Clear All Picks"}
+            </button>
           </div>
         </div>
 
