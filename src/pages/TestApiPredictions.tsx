@@ -1605,7 +1605,7 @@ export default function TestApiPredictions() {
               </div>
             </div>
           </div>
-          <div className="fixed bottom-0 left-0 right-0 pt-2 px-4 bg-[#eef4f3] z-50" style={{ paddingBottom: `calc(1.5625rem + env(safe-area-inset-bottom, 0px))` }}>
+          <div className="fixed bottom-0 left-0 right-0 pt-2 px-4 bg-[#eef4f3] z-[10000]" style={{ paddingBottom: `calc(5rem + env(safe-area-inset-bottom, 0px))` }}>
             <div className="max-w-md mx-auto">
               <div className="flex items-stretch justify-center gap-3">
                 <button
