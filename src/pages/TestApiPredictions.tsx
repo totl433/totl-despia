@@ -338,14 +338,14 @@ export default function TestApiPredictions() {
 
         // Fetch user's picks from TEST API table
         let hasPicks = false;
-        if (user?.id) {
+        if (user?.id && fixturesData.length > 0) {
           const { data: pk, error: pkErr } = await supabase
             .from("test_api_picks")
             .select("matchday,fixture_index,pick")
             .eq("matchday", testGw)
             .eq("user_id", user.id);
 
-          if (!pkErr && pk) {
+          if (!pkErr && pk && pk.length > 0) {
             const picksMap = new Map<number, Pick>();
             (pk as any[]).forEach((p) => {
               picksMap.set(p.fixture_index, {
@@ -355,9 +355,20 @@ export default function TestApiPredictions() {
               });
             });
             
+            // Only consider it "hasPicks" if picks exist for the CURRENT fixtures
+            // Check if picks match current fixture indices
+            const currentFixtureIndices = new Set(fixturesData.map(f => f.fixture_index));
+            const validPicks = Array.from(picksMap.keys()).filter(idx => currentFixtureIndices.has(idx));
+            
             if (alive) {
-              setPicks(picksMap);
-              hasPicks = picksMap.size > 0;
+              // Only set picks that match current fixtures
+              const validPicksMap = new Map<number, Pick>();
+              validPicks.forEach(idx => {
+                const pick = picksMap.get(idx);
+                if (pick) validPicksMap.set(idx, pick);
+              });
+              setPicks(validPicksMap);
+              hasPicks = validPicks.length === fixturesData.length && validPicks.length > 0;
             }
           }
         }
@@ -378,10 +389,17 @@ export default function TestApiPredictions() {
           }
         }
         
-        // If user has picks but not submitted, show review mode
+        // If user has picks for ALL current fixtures but not submitted, show review mode
+        // If no picks or incomplete picks, show swipe mode (currentIndex = 0)
         // If submitted, we'll show confirmed predictions view (separate from review)
-        if (alive && fixturesData.length > 0 && hasPicks && !isSubmitted) {
-          setCurrentIndex(fixturesData.length);
+        if (alive && fixturesData.length > 0) {
+          if (hasPicks && !isSubmitted) {
+            // User has made all picks but not submitted - show review
+            setCurrentIndex(fixturesData.length);
+          } else {
+            // No picks or incomplete picks - start at swipe mode (index 0)
+            setCurrentIndex(0);
+          }
         }
       } catch (error) {
         console.error('Error loading test API data:', error);
