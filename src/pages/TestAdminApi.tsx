@@ -497,7 +497,7 @@ export default function TestAdminApi() {
             </h3>
             
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              {availableMatches.map((match, apiIndex) => {
+              {availableMatches.map((match) => {
                 const isSelected = Array.from(selectedFixtures.values()).some(f => f.api_match_id === match.id);
                 const kickoff = new Date(match.utcDate);
                 
