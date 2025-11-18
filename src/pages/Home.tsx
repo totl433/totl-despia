@@ -2994,8 +2994,10 @@ export default function HomePage() {
               
               // Show make predictions button
               if (fixtures.length > 0 && !gwSubmitted && gwScore === null) {
+                // For API Test league, link to test API predictions page
+                const predictionsLink = isInApiTestLeague ? "/test-api-predictions" : "/new-predictions";
                 return (
-                  <Link to="/new-predictions" className="inline-block px-3 py-1 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors no-underline">Make your predictions</Link>
+                  <Link to={predictionsLink} className="inline-block px-3 py-1 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors no-underline">Make your predictions</Link>
                 );
               }
               
