@@ -282,7 +282,7 @@ export default function TestAdminApi() {
     );
   }
 
-  const toggleFixture = (match: ApiMatch, apiIndex: number) => {
+  const toggleFixture = (match: ApiMatch) => {
     const newSelected = new Map(selectedFixtures);
     
     // Check if this API match is already selected (by api_match_id)
@@ -530,13 +530,13 @@ export default function TestAdminApi() {
                         ? "bg-purple-50 border-purple-300"
                         : "bg-slate-50 border-slate-200 hover:bg-slate-100"
                     }`}
-                    onClick={() => toggleFixture(match, apiIndex)}
+                    onClick={() => toggleFixture(match)}
                   >
                     <div className="flex items-center gap-3">
                       <input
                         type="checkbox"
                         checked={isSelected}
-                        onChange={() => toggleFixture(match, apiIndex)}
+                        onChange={() => toggleFixture(match)}
                         className="w-5 h-5"
                       />
                       <div className="flex-1">
