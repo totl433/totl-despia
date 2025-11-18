@@ -344,6 +344,18 @@ export default function TestAdminApi() {
         .delete()
         .eq("test_gw", 1);
 
+      // Clear all picks and submissions for Test GW 1 (matchday 1)
+      // This resets the predictions page so users can swipe/pick the new games fresh
+      await supabase
+        .from("test_api_picks")
+        .delete()
+        .eq("matchday", 1);
+      
+      await supabase
+        .from("test_api_submissions")
+        .delete()
+        .eq("matchday", 1);
+
       // Insert selected fixtures
       const fixturesToInsert = Array.from(selectedFixtures.values()).map(f => ({
         test_gw: f.test_gw,
@@ -371,7 +383,7 @@ export default function TestAdminApi() {
         .from("test_api_meta")
         .upsert({ id: 1, current_test_gw: 1 }, { onConflict: 'id' });
 
-      setOk(`Test Gameweek 1 saved with ${selectedFixtures.size} fixtures!`);
+      setOk(`Test Gameweek 1 saved with ${selectedFixtures.size} fixtures! All picks and submissions have been reset.`);
     } catch (e: any) {
       setError(e.message ?? "Failed to save test gameweek.");
     } finally {
