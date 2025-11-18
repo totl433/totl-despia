@@ -373,9 +373,9 @@ export default function TestApiPredictions() {
           }
         }
         
-        // Check if user has submitted
+        // Check if user has submitted - but only consider it valid if picks match current fixtures
         let isSubmitted = false;
-        if (user?.id) {
+        if (user?.id && fixturesData.length > 0) {
           const { data: submission } = await supabase
             .from("test_api_submissions")
             .select("submitted_at")
@@ -383,21 +383,41 @@ export default function TestApiPredictions() {
             .eq("user_id", user.id)
             .maybeSingle();
           
-          if (alive) {
-            isSubmitted = Boolean(submission?.submitted_at);
-            setSubmitted(isSubmitted);
+          // Only consider submitted if picks exist and match current fixtures
+          // If picks don't match (e.g., old Brazil picks vs new PL fixtures), ignore submission
+          if (alive && submission?.submitted_at) {
+            // Check if we have valid picks for current fixtures
+            if (hasPicks) {
+              isSubmitted = true;
+              setSubmitted(true);
+            } else {
+              // Submission exists but picks don't match - clear the submission
+              isSubmitted = false;
+              setSubmitted(false);
+              // Clear the invalid submission from database
+              await supabase
+                .from("test_api_submissions")
+                .delete()
+                .eq("matchday", testGw)
+                .eq("user_id", user.id);
+            }
+          } else {
+            setSubmitted(false);
           }
         }
         
         // If user has picks for ALL current fixtures but not submitted, show review mode
         // If no picks or incomplete picks, show swipe mode (currentIndex = 0)
-        // If submitted, we'll show confirmed predictions view (separate from review)
+        // If submitted with valid picks, we'll show confirmed predictions view (separate from review)
         if (alive && fixturesData.length > 0) {
           if (hasPicks && !isSubmitted) {
             // User has made all picks but not submitted - show review
             setCurrentIndex(fixturesData.length);
+          } else if (isSubmitted && hasPicks) {
+            // User has submitted with valid picks - show confirmed predictions
+            // currentIndex will be handled by the submitted check in render
           } else {
-            // No picks or incomplete picks - start at swipe mode (index 0)
+            // No picks or incomplete picks or invalid submission - start at swipe mode (index 0)
             setCurrentIndex(0);
           }
         }
