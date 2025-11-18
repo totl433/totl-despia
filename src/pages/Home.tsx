@@ -2995,8 +2995,8 @@ export default function HomePage() {
             ) : (
           <div className="mt-6">
             {(() => {
-              // For test API users, only show first 3 fixtures
-              let fixturesToShow = isInApiTestLeague ? fixtures.slice(0, 3) : fixtures;
+              // Show all fixtures for all users
+              let fixturesToShow = fixtures;
               
               // Filter to live games only if toggle is on
               if (showLiveOnly) {
