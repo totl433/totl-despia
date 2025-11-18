@@ -316,8 +316,28 @@ export default function HomePage() {
         const testFixtures = (fixturesResult.data as any[]) ?? [];
         thisGwFixtures = testFixtures.map(f => ({ ...f, gw: f.test_gw })) as Fixture[];
         
+        // Validate picks - only use picks that match ALL current fixtures
+        // If picks don't match (e.g., old Brazil picks vs new PL fixtures), ignore them
         const testPicks = (picksResult.data as any[]) ?? [];
-        userPicks = testPicks.map(p => ({ ...p, gw: p.matchday })) as PickRow[];
+        if (testPicks.length > 0 && thisGwFixtures.length > 0) {
+          const currentFixtureIndices = new Set(thisGwFixtures.map(f => f.fixture_index));
+          const picksForCurrentFixtures = testPicks.filter((p: any) => currentFixtureIndices.has(p.fixture_index));
+          
+          // Only use picks if all fixtures have picks and no extra picks exist
+          const allFixturesHavePicks = thisGwFixtures.every(f => picksForCurrentFixtures.some((p: any) => p.fixture_index === f.fixture_index));
+          const noExtraPicks = picksForCurrentFixtures.length === thisGwFixtures.length;
+          const picksAreValid = allFixturesHavePicks && noExtraPicks && picksForCurrentFixtures.length > 0;
+          
+          if (picksAreValid) {
+            userPicks = picksForCurrentFixtures.map(p => ({ ...p, gw: p.matchday })) as PickRow[];
+          } else {
+            // Picks don't match current fixtures - ignore them
+            console.log('[Home] Picks found but don\'t match current fixtures - ignoring old picks');
+            userPicks = [];
+          }
+        } else {
+          userPicks = testPicks.map(p => ({ ...p, gw: p.matchday })) as PickRow[];
+        }
         
         gwResults = (resultsResult.data as ResultRow[]) ?? [];
         submitted = !!submissionResult.data?.submitted_at;
