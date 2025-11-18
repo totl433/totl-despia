@@ -346,29 +346,49 @@ export default function TestApiPredictions() {
             .eq("user_id", user.id);
 
           if (!pkErr && pk && pk.length > 0) {
-            const picksMap = new Map<number, Pick>();
-            (pk as any[]).forEach((p) => {
-              picksMap.set(p.fixture_index, {
-                fixture_index: p.fixture_index,
-                pick: p.pick,
-                matchday: p.matchday
-              });
-            });
-            
-            // Only consider it "hasPicks" if picks exist for the CURRENT fixtures
-            // Check if picks match current fixture indices
+            // Get current fixture indices
             const currentFixtureIndices = new Set(fixturesData.map(f => f.fixture_index));
-            const validPicks = Array.from(picksMap.keys()).filter(idx => currentFixtureIndices.has(idx));
             
-            if (alive) {
-              // Only set picks that match current fixtures
-              const validPicksMap = new Map<number, Pick>();
-              validPicks.forEach(idx => {
-                const pick = picksMap.get(idx);
-                if (pick) validPicksMap.set(idx, pick);
+            // Check if picks match current fixtures
+            // If picks exist but don't match ALL current fixtures, they're invalid (old picks for different games)
+            const picksForCurrentFixtures = pk.filter((p: any) => currentFixtureIndices.has(p.fixture_index));
+            
+            // Only consider picks valid if:
+            // 1. All current fixtures have picks
+            // 2. No picks exist for non-existent fixtures
+            // 3. Number of picks matches number of fixtures exactly
+            const allFixturesHavePicks = fixturesData.every(f => picksForCurrentFixtures.some((p: any) => p.fixture_index === f.fixture_index));
+            const noExtraPicks = picksForCurrentFixtures.length === fixturesData.length;
+            const picksAreValid = allFixturesHavePicks && noExtraPicks && picksForCurrentFixtures.length > 0;
+            
+            if (picksAreValid) {
+              // Picks are valid - use them
+              const picksMap = new Map<number, Pick>();
+              picksForCurrentFixtures.forEach((p: any) => {
+                picksMap.set(p.fixture_index, {
+                  fixture_index: p.fixture_index,
+                  pick: p.pick,
+                  matchday: p.matchday
+                });
               });
-              setPicks(validPicksMap);
-              hasPicks = validPicks.length === fixturesData.length && validPicks.length > 0;
+              
+              if (alive) {
+                setPicks(picksMap);
+                hasPicks = true;
+              }
+            } else {
+              // Picks don't match current fixtures - clear them
+              if (alive && pk.length > 0) {
+                console.log('[TestApiPredictions] Picks found but don\'t match current fixtures - clearing old picks');
+                // Clear invalid picks from database
+                await supabase
+                  .from("test_api_picks")
+                  .delete()
+                  .eq("matchday", testGw)
+                  .eq("user_id", user.id);
+                setPicks(new Map());
+                hasPicks = false;
+              }
             }
           }
         }
