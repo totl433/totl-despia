@@ -282,17 +282,34 @@ export default function TestAdminApi() {
     );
   }
 
-  const toggleFixture = (match: ApiMatch, index: number) => {
+  const toggleFixture = (match: ApiMatch, apiIndex: number) => {
     const newSelected = new Map(selectedFixtures);
     
-    if (newSelected.has(index)) {
-      // Deselect
-      newSelected.delete(index);
+    // Check if this API match is already selected (by api_match_id)
+    const existingEntry = Array.from(newSelected.values()).find(f => f.api_match_id === match.id);
+    
+    if (existingEntry) {
+      // Deselect - remove by fixture_index
+      newSelected.delete(existingEntry.fixture_index);
+      
+      // Re-index remaining fixtures sequentially (0, 1, 2, ...)
+      const sortedFixtures = Array.from(newSelected.values())
+        .sort((a, b) => a.fixture_index - b.fixture_index);
+      const reindexed = new Map<number, TestFixture>();
+      sortedFixtures.forEach((f, idx) => {
+        reindexed.set(idx, { ...f, fixture_index: idx });
+      });
+      setSelectedFixtures(reindexed);
     } else {
-      // Select - create fixture from API match
+      // Select - assign next available fixture_index
+      const maxIndex = newSelected.size > 0 
+        ? Math.max(...Array.from(newSelected.keys())) 
+        : -1;
+      const nextIndex = maxIndex + 1;
+      
       const fixture: TestFixture = {
         test_gw: 1,
-        fixture_index: index,
+        fixture_index: nextIndex,
         api_match_id: match.id,
         home_team: match.homeTeam.shortName,
         away_team: match.awayTeam.shortName,
@@ -305,10 +322,9 @@ export default function TestAdminApi() {
         kickoff_time: match.utcDate,
         selected: true,
       };
-      newSelected.set(index, fixture);
+      newSelected.set(nextIndex, fixture);
+      setSelectedFixtures(newSelected);
     }
-    
-    setSelectedFixtures(newSelected);
   };
 
   const saveTestGameweek = async () => {
@@ -481,8 +497,8 @@ export default function TestAdminApi() {
             </h3>
             
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              {availableMatches.map((match, index) => {
-                const isSelected = selectedFixtures.has(index);
+              {availableMatches.map((match, apiIndex) => {
+                const isSelected = Array.from(selectedFixtures.values()).some(f => f.api_match_id === match.id);
                 const kickoff = new Date(match.utcDate);
                 
                 // Format date with TODAY/TOMORROW indicator
@@ -514,13 +530,13 @@ export default function TestAdminApi() {
                         ? "bg-purple-50 border-purple-300"
                         : "bg-slate-50 border-slate-200 hover:bg-slate-100"
                     }`}
-                    onClick={() => toggleFixture(match, index)}
+                    onClick={() => toggleFixture(match, apiIndex)}
                   >
                     <div className="flex items-center gap-3">
                       <input
                         type="checkbox"
                         checked={isSelected}
-                        onChange={() => toggleFixture(match, index)}
+                        onChange={() => toggleFixture(match, apiIndex)}
                         className="w-5 h-5"
                       />
                       <div className="flex-1">
@@ -542,9 +558,23 @@ export default function TestAdminApi() {
         {/* Selected Fixtures Summary */}
         {selectedFixtures.size > 0 && (
           <div className="bg-white rounded-xl shadow-md p-4 mb-6">
-            <h3 className="text-lg font-semibold text-slate-800 mb-4">
-              Selected Fixtures for Test GW 1 ({selectedFixtures.size})
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-800">
+                Selected Fixtures for Test GW 1 ({selectedFixtures.size})
+              </h3>
+              <button
+                onClick={() => {
+                  if (confirm("Clear all selected fixtures?")) {
+                    setSelectedFixtures(new Map());
+                    setOk("");
+                    setError("");
+                  }
+                }}
+                className="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+              >
+                Clear All
+              </button>
+            </div>
             
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {Array.from(selectedFixtures.values())
@@ -564,7 +594,7 @@ export default function TestAdminApi() {
               disabled={saving}
               className="mt-4 w-full py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 font-semibold"
             >
-              {saving ? "Saving..." : "Save Test Gameweek 1"}
+              {saving ? "Saving..." : `Save Test Gameweek 1 (${selectedFixtures.size} fixtures)`}
             </button>
           </div>
         )}
