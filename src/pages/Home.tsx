@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { getMediumName } from "../lib/teamNames";
-import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePhotoPicsum, getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
+import { getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";

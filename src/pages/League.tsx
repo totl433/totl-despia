@@ -1011,10 +1011,9 @@ export default function LeaguePage() {
       if (uploadError) {
         console.error('[Avatar Upload] Upload error details:', {
           message: uploadError.message,
-          statusCode: uploadError.statusCode,
           error: uploadError,
         });
-        throw new Error(`Upload failed: ${uploadError.message}${uploadError.statusCode ? ` (${uploadError.statusCode})` : ''}`);
+        throw new Error(`Upload failed: ${uploadError.message}`);
       }
       
       console.log('[Avatar Upload] Upload successful:', uploadData);
