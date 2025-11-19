@@ -3153,12 +3153,13 @@ export default function HomePage() {
                     {group.items.map((f, index) => {
                         const pick = picksMap[f.fixture_index];
                         console.log('[Home] Rendering fixture:', { fixture_index: f.fixture_index, pick, home: f.home_name, away: f.away_name });
-                        // Prioritize full names over codes for display
-                        const homeKey = f.home_name || f.home_team || f.home_code || "";
-                        const awayKey = f.away_name || f.away_team || f.away_code || "";
+                        // For test API fixtures, prioritize short names; otherwise use medium names
+                        const homeKey = f.home_team || f.home_name || f.home_code || "";
+                        const awayKey = f.away_team || f.away_name || f.away_code || "";
 
-                        const homeName = getMediumName(homeKey);
-                        const awayName = getMediumName(awayKey);
+                        // For test API fixtures, use short names directly; otherwise use getMediumName
+                        const homeName = isInApiTestLeague ? (f.home_team || f.home_name || "") : getMediumName(homeKey);
+                        const awayName = isInApiTestLeague ? (f.away_team || f.away_name || "") : getMediumName(awayKey);
 
                 const kickoff = f.kickoff_time
                                       ? (() => {

@@ -1070,9 +1070,9 @@ export default function TestApiPredictions() {
                       const isLive = liveScore && liveScore.status === 'IN_PLAY';
                       const isHalfTime = liveScore && (liveScore.status === 'PAUSED' || liveScore.status === 'HALF_TIME' || liveScore.status === 'HT');
                       
-                      // Get team names
-                      const homeName = fixture.home_name || fixture.home_team || "";
-                      const awayName = fixture.away_name || fixture.away_team || "";
+                      // Get team names (use short names first)
+                      const homeName = fixture.home_team || fixture.home_name || "";
+                      const awayName = fixture.away_team || fixture.away_name || "";
                       
                       const kickoff = fixture.kickoff_time
                         ? (() => {
@@ -1329,13 +1329,13 @@ export default function TestApiPredictions() {
                       return (
                         <div key={fixture.id} className="bg-white rounded-xl shadow-sm p-6">
                           <div className="flex items-center justify-between gap-2 mb-4">
-                            <div className="flex-1 min-w-0 text-right"><span className="text-sm font-semibold text-slate-800 truncate inline-block">{fixture.home_name || fixture.home_team}</span></div>
+                            <div className="flex-1 min-w-0 text-right"><span className="text-sm font-semibold text-slate-800 truncate inline-block">{fixture.home_team || fixture.home_name}</span></div>
                             <div className="flex items-center gap-2 flex-shrink-0">
                               <TeamBadge code={fixture.home_code} crest={fixture.home_crest} size={28} />
                               <div className="text-slate-400 font-medium text-sm">{fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : ''}</div>
                               <TeamBadge code={fixture.away_code} crest={fixture.away_crest} size={28} />
                             </div>
-                            <div className="flex-1 min-w-0 text-left"><span className="text-sm font-semibold text-slate-800 truncate inline-block">{fixture.away_name || fixture.away_team}</span></div>
+                            <div className="flex-1 min-w-0 text-left"><span className="text-sm font-semibold text-slate-800 truncate inline-block">{fixture.away_team || fixture.away_name}</span></div>
                           </div>
                           <div className="grid grid-cols-3 gap-3">
                             <button 
@@ -1562,9 +1562,9 @@ export default function TestApiPredictions() {
                       <div className="pt-2 px-8 pb-8">
                         {nextFixture.kickoff_time && (<div className="text-center mb-1"><div className="text-sm text-slate-500 font-medium">{new Date(nextFixture.kickoff_time).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}</div></div>)}
                         <div className="flex items-center justify-center gap-4 mb-4">
-                          <div className="flex flex-col items-center"><TeamBadge code={nextFixture.home_code} crest={nextFixture.home_crest} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{nextFixture.home_name || nextFixture.home_team}</div></div>
+                          <div className="flex flex-col items-center"><TeamBadge code={nextFixture.home_code} crest={nextFixture.home_crest} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{nextFixture.home_team || nextFixture.home_name}</div></div>
                           <div className="flex flex-col items-center mb-8">{nextFixture.kickoff_time && (<div className="text-sm text-slate-700">{new Date(nextFixture.kickoff_time).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>)}</div>
-                          <div className="flex flex-col items-center"><TeamBadge code={nextFixture.away_code} crest={nextFixture.away_crest} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{nextFixture.away_name || nextFixture.away_team}</div></div>
+                          <div className="flex flex-col items-center"><TeamBadge code={nextFixture.away_code} crest={nextFixture.away_crest} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{nextFixture.away_team || nextFixture.away_name}</div></div>
                         </div>
                       </div>
                       <div className="h-48 relative overflow-hidden">
@@ -1598,9 +1598,9 @@ export default function TestApiPredictions() {
                     </div>
                     {currentFixture.kickoff_time && (<div className="text-center mb-1"><div className="text-sm text-slate-500 font-medium">{new Date(currentFixture.kickoff_time).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}</div></div>)}
                     <div className="flex items-center justify-center gap-4 mb-4">
-                      <div className="flex flex-col items-center"><TeamBadge code={currentFixture.home_code} crest={currentFixture.home_crest} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{currentFixture.home_name || currentFixture.home_team}</div></div>
+                      <div className="flex flex-col items-center"><TeamBadge code={currentFixture.home_code} crest={currentFixture.home_crest} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{currentFixture.home_team || currentFixture.home_name}</div></div>
                       <div className="flex flex-col items-center mb-8">{currentFixture.kickoff_time && (<div className="text-sm text-slate-700">{new Date(currentFixture.kickoff_time).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>)}</div>
-                      <div className="flex flex-col items-center"><TeamBadge code={currentFixture.away_code} crest={currentFixture.away_crest} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{currentFixture.away_name || currentFixture.away_team}</div></div>
+                      <div className="flex flex-col items-center"><TeamBadge code={currentFixture.away_code} crest={currentFixture.away_crest} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{currentFixture.away_team || currentFixture.away_name}</div></div>
                     </div>
                     {(() => {
                       const fixtureResult = results.get(currentFixture.fixture_index);
