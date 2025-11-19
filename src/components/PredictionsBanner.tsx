@@ -10,6 +10,13 @@ import { useAuth } from "../context/AuthContext";
  */
 export default function PredictionsBanner() {
   const { user } = useAuth();
+  
+  // Hide banner on staging - it links to wrong predictions page
+  const isStaging = typeof window !== 'undefined' && (
+    window.location.hostname.includes('staging') || 
+    window.location.hostname.includes('netlify.app')
+  );
+  
   const [visible, setVisible] = React.useState(false);
   const [currentGw, setCurrentGw] = React.useState<number | null>(null);
   const [bannerType, setBannerType] = React.useState<"predictions" | "watch-space" | null>(null);
@@ -164,6 +171,9 @@ export default function PredictionsBanner() {
     };
   }, [user?.id]);
 
+  // Hide banner on staging
+  if (isStaging) return null;
+  
   if (!visible) return null;
 
   // UI - Different banners based on state
