@@ -1157,7 +1157,6 @@ export default function TablesPage() {
                   </div>
                 );
               })}
->>>>>>> local
             </div>
           )}
         </div>
