@@ -812,12 +812,12 @@ video {
   z-index: 50;
 }
 
-.z-\[60\]{
-  z-index: 60;
-}
-
 .z-\[10000\]{
   z-index: 10000;
+}
+
+.z-\[60\]{
+  z-index: 60;
 }
 
 .col-span-2{
@@ -1087,6 +1087,10 @@ video {
   height: 100vh;
 }
 
+.h-20{
+  height: 5rem;
+}
+
 .max-h-60{
   max-height: 15rem;
 }
@@ -1113,6 +1117,10 @@ video {
 
 .min-h-screen{
   min-height: 100vh;
+}
+
+.min-h-\[50vh\]{
+  min-height: 50vh;
 }
 
 .w-1\.5{
@@ -1259,6 +1267,10 @@ video {
   max-width: 75%;
 }
 
+.max-w-full{
+  max-width: 100%;
+}
+
 .max-w-md{
   max-width: 28rem;
 }
@@ -1351,6 +1363,16 @@ video {
 
 .animate-pulse{
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes spin{
+  to{
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin{
+  animation: spin 1s linear infinite;
 }
 
 .cursor-grab{
@@ -1643,6 +1665,10 @@ video {
 
 .border-t{
   border-top-width: 1px;
+}
+
+.border-b-2{
+  border-bottom-width: 2px;
 }
 
 .\!border-none{
@@ -2455,6 +2481,10 @@ video {
   padding-top: 2rem;
 }
 
+.pt-5{
+  padding-top: 1.25rem;
+}
+
 .text-left{
   text-align: left;
 }
@@ -2956,6 +2986,11 @@ video {
   --tw-shadow: var(--tw-shadow-colored);
 }
 
+.shadow-blue-500\/30{
+  --tw-shadow-color: rgb(59 130 246 / 0.3);
+  --tw-shadow: var(--tw-shadow-colored);
+}
+
 .shadow-emerald-500\/30{
   --tw-shadow-color: rgb(16 185 129 / 0.3);
   --tw-shadow: var(--tw-shadow-colored);
@@ -2988,11 +3023,6 @@ video {
 
 .shadow-yellow-400\/40{
   --tw-shadow-color: rgb(250 204 21 / 0.4);
-  --tw-shadow: var(--tw-shadow-colored);
-}
-
-.shadow-blue-500\/30{
-  --tw-shadow-color: rgb(59 130 246 / 0.3);
   --tw-shadow: var(--tw-shadow-colored);
 }
 
@@ -3930,6 +3960,51 @@ select option {
   /* Chrome, Safari and Opera */
 }
 
+.file\:mr-4::file-selector-button{
+  margin-right: 1rem;
+}
+
+.file\:cursor-pointer::file-selector-button{
+  cursor: pointer;
+}
+
+.file\:rounded-md::file-selector-button{
+  border-radius: 0.375rem;
+}
+
+.file\:border-0::file-selector-button{
+  border-width: 0px;
+}
+
+.file\:bg-\[\#1C8376\]::file-selector-button{
+  --tw-bg-opacity: 1;
+  background-color: rgb(28 131 118 / var(--tw-bg-opacity, 1));
+}
+
+.file\:px-4::file-selector-button{
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.file\:py-2::file-selector-button{
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.file\:text-sm::file-selector-button{
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.file\:font-semibold::file-selector-button{
+  font-weight: 600;
+}
+
+.file\:text-white::file-selector-button{
+  --tw-text-opacity: 1;
+  color: rgb(255 255 255 / var(--tw-text-opacity, 1));
+}
+
 .before\:absolute::before{
   content: var(--tw-content);
   position: absolute;
@@ -4237,6 +4312,11 @@ select option {
   --tw-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --tw-shadow-colored: 0 4px 6px -1px var(--tw-shadow-color), 0 2px 4px -2px var(--tw-shadow-color);
   box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+
+.hover\:file\:bg-emerald-700::file-selector-button:hover{
+  --tw-bg-opacity: 1;
+  background-color: rgb(4 120 87 / var(--tw-bg-opacity, 1));
 }
 
 .focus\:border-\[\#1C8376\]:focus{
