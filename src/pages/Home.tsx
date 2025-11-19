@@ -2991,44 +2991,42 @@ export default function HomePage() {
               
               // For API Test league: Show score when submitted (even if 0), update as games play out
               if (isInApiTestLeague && fixtures.length > 0 && gwSubmitted) {
-                // Calculate current score from live scores if available, otherwise use gwScore or 0
+                // Calculate current score from live scores for ALL fixtures
                 let currentScore = gwScore ?? 0;
-                let totalFixtures = fixtures.length;
+                const totalFixtures = fixtures.length;
                 
-                // If we have live scores, calculate score from them
-                if (fixturesToCheck.length > 0) {
-                  let calculatedScore = 0;
-                  fixturesToCheck.forEach(f => {
-                    const liveScore = liveScores[f.fixture_index];
-                    const pick = picksMap[f.fixture_index];
-                    if (liveScore && pick && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
+                // Calculate score from live scores for all fixtures
+                let calculatedScore = 0;
+                let hasAnyLiveOrFinished = false;
+                let allFinished = true;
+                
+                fixtures.forEach(f => {
+                  const liveScore = liveScores[f.fixture_index];
+                  const pick = picksMap[f.fixture_index];
+                  if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
+                    hasAnyLiveOrFinished = true;
+                    if (liveScore.status !== 'FINISHED') {
+                      allFinished = false;
+                    }
+                    if (pick) {
                       let isCorrect = false;
                       if (pick === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrect = true;
                       else if (pick === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrect = true;
                       else if (pick === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrect = true;
                       if (isCorrect) calculatedScore++;
                     }
-                  });
-                  // Use calculated score if we have live scores, otherwise fall back to gwScore
-                  if (calculatedScore > 0 || fixturesToCheck.some(f => liveScores[f.fixture_index])) {
-                    currentScore = calculatedScore;
-                    totalFixtures = fixturesToCheck.length;
+                  } else {
+                    allFinished = false;
                   }
-                }
-                
-                // Check if any games are live or finished
-                const hasLiveOrFinished = fixturesToCheck.length > 0 && fixturesToCheck.some(f => {
-                  const liveScore = liveScores[f.fixture_index];
-                  return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
                 });
                 
-                if (hasLiveOrFinished) {
+                // Use calculated score if we have live scores, otherwise use gwScore or 0
+                if (hasAnyLiveOrFinished) {
+                  currentScore = calculatedScore;
+                }
+                
+                if (hasAnyLiveOrFinished) {
                   // Show live score with live indicator
-                  const allFinished = fixturesToCheck.every(f => {
-                    const liveScore = liveScores[f.fixture_index];
-                    return liveScore && liveScore.status === 'FINISHED';
-                  });
-                  
                   return (
                     <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${allFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
                       {!allFinished && (
