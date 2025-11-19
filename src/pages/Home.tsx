@@ -340,7 +340,21 @@ export default function HomePage() {
         }
         
         gwResults = (resultsResult.data as ResultRow[]) ?? [];
-        submitted = !!submissionResult.data?.submitted_at;
+        
+        // Only consider submitted if picks exist and match current fixtures
+        // If picks don't match (e.g., old Brazil picks vs new PL fixtures), ignore submission
+        if (submissionResult.data?.submitted_at && userPicks.length > 0) {
+          // Check if picks match all current fixtures
+          const currentFixtureIndices = new Set(thisGwFixtures.map(f => f.fixture_index));
+          const picksForCurrentFixtures = userPicks.filter((p: any) => currentFixtureIndices.has(p.fixture_index));
+          const allFixturesHavePicks = thisGwFixtures.every(f => picksForCurrentFixtures.some((p: any) => p.fixture_index === f.fixture_index));
+          const noExtraPicks = picksForCurrentFixtures.length === thisGwFixtures.length;
+          const picksAreValid = allFixturesHavePicks && noExtraPicks && picksForCurrentFixtures.length > 0;
+          
+          submitted = picksAreValid;
+        } else {
+          submitted = false;
+        }
       } else {
         // Regular fixtures
         [fixturesResult, picksResult, resultsResult, submissionResult] = await Promise.all([
