@@ -12,11 +12,16 @@ export default function PredictionsBanner() {
   const { user } = useAuth();
   
   // Hide banner on staging - it links to wrong predictions page
-  const isStaging = typeof window !== 'undefined' && (
-    window.location.hostname.includes('staging') || 
-    window.location.hostname.includes('netlify.app') ||
-    window.location.hostname.includes('totl-staging')
-  );
+  // Check hostname early and return null immediately
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname.toLowerCase();
+    if (hostname.includes('staging') || 
+        hostname.includes('netlify.app') ||
+        hostname.includes('totl-staging') ||
+        hostname.includes('localhost')) {
+      return null;
+    }
+  }
   
   const [visible, setVisible] = React.useState(false);
   const [currentGw, setCurrentGw] = React.useState<number | null>(null);
@@ -172,9 +177,6 @@ export default function PredictionsBanner() {
     };
   }, [user?.id]);
 
-  // Hide banner on staging
-  if (isStaging) return null;
-  
   if (!visible) return null;
 
   // UI - Different banners based on state
