@@ -341,9 +341,16 @@ export default function HomePage() {
         
         gwResults = (resultsResult.data as ResultRow[]) ?? [];
         
-        // Only consider submitted if picks exist and match current fixtures
-        // If picks don't match (e.g., old Brazil picks vs new PL fixtures), ignore submission
-        if (submissionResult.data?.submitted_at && userPicks.length > 0) {
+        // Only consider submitted if:
+        // 1. Submission exists with non-null submitted_at
+        // 2. Submission timestamp is recent (after Nov 18, 2025 - when new fixtures were loaded)
+        // 3. Picks exist and match ALL current fixtures
+        // This filters out old submissions from previous test runs (like Brazil picks)
+        const cutoffDate = new Date('2025-11-18T00:00:00Z'); // Nov 18, 2025 - when new fixtures were loaded
+        const submissionDate = submissionResult.data?.submitted_at ? new Date(submissionResult.data.submitted_at) : null;
+        const isRecentSubmission = submissionDate && submissionDate >= cutoffDate;
+        
+        if (isRecentSubmission && userPicks.length > 0) {
           // Check if picks match all current fixtures
           const currentFixtureIndices = new Set(thisGwFixtures.map(f => f.fixture_index));
           const picksForCurrentFixtures = userPicks.filter((p: any) => currentFixtureIndices.has(p.fixture_index));
@@ -352,8 +359,24 @@ export default function HomePage() {
           const picksAreValid = allFixturesHavePicks && noExtraPicks && picksForCurrentFixtures.length > 0;
           
           submitted = picksAreValid;
+          console.log('[Home] Test API submission check:', {
+            hasSubmission: !!submissionResult.data?.submitted_at,
+            submissionDate: submissionDate?.toISOString(),
+            cutoffDate: cutoffDate.toISOString(),
+            isRecent: isRecentSubmission,
+            picksCount: userPicks.length,
+            picksAreValid,
+            submitted
+          });
         } else {
           submitted = false;
+          if (submissionResult.data?.submitted_at) {
+            console.log('[Home] Test API submission ignored (old submission):', {
+              submissionDate: submissionDate?.toISOString(),
+              cutoffDate: cutoffDate.toISOString(),
+              isRecent: isRecentSubmission
+            });
+          }
         }
       } else {
         // Regular fixtures
@@ -386,8 +409,12 @@ export default function HomePage() {
         });
 
     let score: number | null = null;
-        // Only calculate score if there are results AND user has picks
-        if (outcomeByIdx.size > 0 && userPicks.length > 0) {
+        // Only calculate score if:
+        // 1. There are results
+        // 2. User has picks that match current fixtures
+        // 3. User has submitted (for test API league, this means recent submission)
+        // This ensures we don't show scores from old picks
+        if (outcomeByIdx.size > 0 && userPicks.length > 0 && submitted) {
       // Count correct picks
           let s = 0;
           userPicks.forEach((p) => {
@@ -398,14 +425,24 @@ export default function HomePage() {
         } else if (outcomeByIdx.size === 0 && userPicks.length === 0) {
           // No results and no picks - score should be null (show "Make predictions" button)
           score = null;
+        } else if (!submitted && isInApiTestLeague) {
+          // For test API league, if not submitted, don't show score even if picks exist
+          // This prevents showing scores from old unsubmitted picks
+          score = null;
         }
 
-    // Populate picksMap - show picks even if not submitted (for test API users)
+    // Populate picksMap - only show picks if user has submitted (for test API league)
+      // This prevents showing old unsubmitted picks in the tabs
       const map: Record<number, "H" | "D" | "A"> = {};
-      userPicks.forEach((p) => {
-        map[p.fixture_index] = p.pick;
-        console.log('[Home] Pick loaded:', { fixture_index: p.fixture_index, pick: p.pick, user_id: p.user_id });
-      });
+      if (submitted || !isInApiTestLeague) {
+        // Only populate picks map if submitted (or not test API league)
+        userPicks.forEach((p) => {
+          map[p.fixture_index] = p.pick;
+          console.log('[Home] Pick loaded:', { fixture_index: p.fixture_index, pick: p.pick, user_id: p.user_id });
+        });
+      } else {
+        console.log('[Home] Not showing picks - user has not submitted for test API league');
+      }
       console.log('[Home] Picks map:', map);
       console.log('[Home] Fixtures:', thisGwFixtures.map(f => ({ fixture_index: f.fixture_index, home: f.home_name || f.home_team, away: f.away_name || f.away_team })));
 

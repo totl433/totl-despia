@@ -1103,6 +1103,8 @@ export default function LeaguePage() {
     (async () => {
       // Special handling for API Test league - use test_api_fixtures for GW 1
       const isApiTestLeague = league?.name === 'API Test';
+      // For API Test league, only allow "gw" tab if all members have submitted
+      // Check if all submitted for GW 1 (we'll check this properly after loading submissions)
       const useTestFixtures = isApiTestLeague && (tab === "gw" || tab === "gwr");
       console.log('[League] Data fetch:', { isApiTestLeague, tab, useTestFixtures, leagueName: league?.name });
       
@@ -1170,17 +1172,117 @@ export default function LeaguePage() {
         pk = testPicks?.map(p => ({ ...p, gw: p.matchday })) || null;
         
         // Fetch from test_api_submissions for API Test league
+        // IMPORTANT: Only get submissions that have a non-null submitted_at (actually submitted)
         const { data: testSubs, error: testSubsError } = await supabase
           .from("test_api_submissions")
           .select("user_id,matchday,submitted_at")
           .eq("matchday", 1)
+          .not("submitted_at", "is", null)  // CRITICAL: Only count submissions with non-null submitted_at
           .in("user_id", memberIds);
         if (testSubsError) {
           console.error('Error fetching test_api_submissions:', testSubsError);
         }
+        
+        // CRITICAL: Only count submissions if the user has picks for the CURRENT fixtures
+        // This filters out old submissions from previous test runs (like Brazil picks)
+        // Get the current fixtures with their teams to verify picks match actual teams, not just indices
+        const { data: currentTestFixtures } = await supabase
+          .from("test_api_fixtures")
+          .select("fixture_index,home_team,away_team,home_code,away_code,kickoff_time")
+          .eq("test_gw", 1)
+          .order("fixture_index", { ascending: true });
+        
+        const currentFixtureIndicesSet = new Set((currentTestFixtures || []).map(f => f.fixture_index));
+        const currentFixturesMap = new Map((currentTestFixtures || []).map(f => [f.fixture_index, f]));
+        console.log('[League] Current fixture indices from test_api_fixtures:', Array.from(currentFixtureIndicesSet));
+        console.log('[League] Current fixtures:', currentTestFixtures?.map(f => ({ index: f.fixture_index, home: f.home_team, away: f.away_team })));
+        
+        // Filter submissions: only count if user has picks for ALL current fixtures AND those picks match the actual teams
+        // This ensures we don't count old submissions (like Brazil picks) even if they have matching fixture indices
+        const validSubmissions: typeof testSubs = [];
+        if (testSubs && pk && currentTestFixtures) {
+          const requiredFixtureCount = currentFixtureIndicesSet.size;
+          console.log('[League] Required fixture count for valid submission:', requiredFixtureCount);
+          
+          // Get the picks that were fetched - we need to match them against current fixtures
+          // Note: We can't directly match teams from picks table, but we can verify:
+          // 1. User has picks for ALL current fixture indices
+          // 2. The submission timestamp is recent (after current fixtures were created)
+          // For now, we'll require ALL picks match current fixture indices
+          
+          // Get the earliest kickoff time from current fixtures to determine cutoff date
+          // Submissions before this date are from old test runs
+          const currentFixtureKickoffs = (currentTestFixtures || [])
+            .map(f => f.kickoff_time ? new Date(f.kickoff_time) : null)
+            .filter((d): d is Date => d !== null && !isNaN(d.getTime()));
+          const earliestKickoff = currentFixtureKickoffs.length > 0 
+            ? new Date(Math.min(...currentFixtureKickoffs.map(d => d.getTime())))
+            : null;
+          
+          // Use a cutoff date: submissions must be after Nov 18, 2025 (when new fixtures were likely loaded)
+          // We use Nov 18 as the cutoff because that's when the new Premier League fixtures were loaded
+          // Old submissions from Nov 15 (Brazil picks) will be filtered out
+          // Recent submissions from Nov 19+ (Carl, ThomasJamesBird) will be counted
+          const cutoffDate = new Date('2025-11-18T00:00:00Z'); // Nov 18, 2025 - when new fixtures were loaded
+          console.log('[League] Submission cutoff date (submissions before this are old):', cutoffDate.toISOString());
+          console.log('[League] Earliest kickoff:', earliestKickoff?.toISOString());
+          
+          testSubs.forEach((sub) => {
+            // Check if this user has picks for ALL current fixtures
+            const userPicks = pk.filter(p => p.user_id === sub.user_id && p.matchday === 1);
+            const picksForCurrentFixtures = userPicks.filter(p => currentFixtureIndicesSet.has(p.fixture_index));
+            const hasAllRequiredPicks = picksForCurrentFixtures.length === requiredFixtureCount && requiredFixtureCount > 0;
+            
+            // Additional check: verify the picks are for the right number of fixtures
+            // If user has more picks than current fixtures, they might be old picks mixed with new ones
+            const uniqueFixtureIndices = new Set(picksForCurrentFixtures.map(p => p.fixture_index));
+            const hasExactMatch = uniqueFixtureIndices.size === requiredFixtureCount;
+            
+            // CRITICAL: Check if submission timestamp is recent (after cutoff date)
+            // Old submissions from previous test runs (like Brazil picks) will be filtered out
+            const submissionDate = sub.submitted_at ? new Date(sub.submitted_at) : null;
+            const isRecentSubmission = submissionDate && submissionDate >= cutoffDate;
+            
+            if (hasAllRequiredPicks && hasExactMatch && isRecentSubmission) {
+              validSubmissions.push(sub);
+              console.log('[League] ✅ VALID submission (has picks for ALL current fixtures AND recent submission):', {
+                user_id: sub.user_id,
+                submitted_at: sub.submitted_at,
+                submissionDate: submissionDate?.toISOString(),
+                cutoffDate: cutoffDate.toISOString(),
+                picksCount: userPicks.length,
+                picksForCurrentFixtures: picksForCurrentFixtures.length,
+                uniqueIndices: uniqueFixtureIndices.size,
+                requiredCount: requiredFixtureCount
+              });
+            } else {
+              const reasons = [];
+              if (!hasAllRequiredPicks) reasons.push('missing picks');
+              if (!hasExactMatch) reasons.push('duplicate/extra picks');
+              if (!isRecentSubmission) reasons.push(`old submission (${submissionDate?.toISOString()} < ${cutoffDate.toISOString()})`);
+              
+              console.log('[League] ❌ INVALID submission:', {
+                user_id: sub.user_id,
+                submitted_at: sub.submitted_at,
+                submissionDate: submissionDate?.toISOString(),
+                cutoffDate: cutoffDate.toISOString(),
+                picksCount: userPicks.length,
+                picksForCurrentFixtures: picksForCurrentFixtures.length,
+                uniqueIndices: uniqueFixtureIndices.size,
+                requiredCount: requiredFixtureCount,
+                hasAllRequired: hasAllRequiredPicks,
+                hasExactMatch: hasExactMatch,
+                isRecent: isRecentSubmission,
+                reason: reasons.join(', ')
+              });
+            }
+          });
+        }
+        
         // Map matchday to gw for consistency
-        submissions = testSubs?.map(s => ({ ...s, gw: s.matchday })) || null;
-        console.log('Test API submissions fetched:', submissions);
+        submissions = validSubmissions.map(s => ({ ...s, gw: s.matchday })) || null;
+        console.log('[League] Test API submissions fetched (filtered to only current fixtures):', submissions);
+        console.log('[League] Valid submissions count:', validSubmissions.length, 'out of', testSubs?.length || 0, 'total');
       } else {
         // Regular picks and submissions
         const { data: regularPicks } = await supabase
@@ -1486,13 +1588,18 @@ export default function LeaguePage() {
 
   const submittedMap = useMemo(() => {
     const m = new Map<string, boolean>();
-    console.log('Building submittedMap from subs:', subs);
+    console.log('[League] Building submittedMap from subs:', subs);
     subs.forEach((s) => {
-      const key = `${s.user_id}:${s.gw}`;
-      console.log(`Adding submission key: ${key}`, s);
-      m.set(key, true);
+      // Only count as submitted if submitted_at is not null
+      if (s.submitted_at) {
+        const key = `${s.user_id}:${s.gw}`;
+        console.log(`[League] Adding submission key: ${key}`, s);
+        m.set(key, true);
+      } else {
+        console.log(`[League] Skipping submission with null submitted_at:`, s);
+      }
     });
-    console.log('Final submittedMap:', Array.from(m.entries()));
+    console.log('[League] Final submittedMap:', Array.from(m.entries()));
     return m;
   }, [subs]);
 
@@ -1983,18 +2090,76 @@ export default function LeaguePage() {
       return out;
     }, [fixtures, picksGw]);
 
-    const picksByFixture = new Map<number, PickRow[]>();
-    picks.forEach((p) => {
-      if (p.gw !== picksGw) return;
-      // Only include picks from users who have submitted (confirmed) their predictions
-      const hasSubmitted = submittedMap.get(`${p.user_id}:${picksGw}`);
-      if (!hasSubmitted) return;
-      const arr = picksByFixture.get(p.fixture_index) ?? [];
-      arr.push(p);
-      picksByFixture.set(p.fixture_index, arr);
-    });
-
+    // Get current fixture indices to filter out old picks (e.g., old Brazil picks)
+    // For API Test league, we need to be extra careful - only include picks that match EXACTLY
+    const currentFixtureIndices = new Set(fixtures.filter(f => f.gw === picksGw).map(f => f.fixture_index));
+    
+    // Check if this is API Test league (used throughout this function)
+    const isApiTestLeague = league?.name === 'API Test';
+    
+    // Calculate allSubmitted FIRST - we need this before processing picks
     const allSubmitted = members.length > 0 && members.every((m) => submittedMap.get(`${m.id}:${picksGw}`));
+    
+    // Debug logging for API Test league
+    if (isApiTestLeague && picksGw === 1) {
+      console.log('[League] API Test filtering:', {
+        currentFixtureIndices: Array.from(currentFixtureIndices),
+        totalPicks: picks.length,
+        picksForGw: picks.filter(p => p.gw === picksGw).length,
+        submittedMapSize: submittedMap.size,
+        allSubmitted,
+        members: members.map(m => ({ id: m.id, name: m.name, submitted: submittedMap.get(`${m.id}:${picksGw}`) })),
+        fixturesCount: fixtures.filter(f => f.gw === picksGw).length
+      });
+      
+      // Log all picks to see what we're dealing with
+      const allPicksForGw = picks.filter(p => p.gw === picksGw);
+      console.log('[League] All picks for GW1:', allPicksForGw.map(p => ({
+        user_id: p.user_id,
+        userName: members.find(m => m.id === p.user_id)?.name,
+        fixture_index: p.fixture_index,
+        pick: p.pick,
+        hasSubmitted: !!submittedMap.get(`${p.user_id}:${picksGw}`),
+        inCurrentFixtures: currentFixtureIndices.has(p.fixture_index)
+      })));
+    }
+    
+    const picksByFixture = new Map<number, PickRow[]>();
+    
+    // For API Test league, if not all submitted, don't process ANY picks - they shouldn't be shown
+    if (!isApiTestLeague || allSubmitted) {
+      picks.forEach((p) => {
+        if (p.gw !== picksGw) return;
+        
+        // CRITICAL: For API Test league, only include picks from users who have submitted (confirmed) their predictions
+        const hasSubmitted = submittedMap.get(`${p.user_id}:${picksGw}`);
+        if (!hasSubmitted) {
+          if (isApiTestLeague && picksGw === 1) {
+            console.log('[League] Filtering out unsubmitted pick:', { user_id: p.user_id, fixture_index: p.fixture_index, userName: members.find(m => m.id === p.user_id)?.name });
+          }
+          return;
+        }
+        
+        // CRITICAL: Only include picks for current fixtures (filter out old picks like Brazil)
+        // This ensures we don't show picks from previous test runs
+        if (!currentFixtureIndices.has(p.fixture_index)) {
+          if (isApiTestLeague && picksGw === 1) {
+            console.log('[League] Filtering out old pick (not in current fixtures):', { 
+              fixture_index: p.fixture_index, 
+              currentIndices: Array.from(currentFixtureIndices),
+              userName: members.find(m => m.id === p.user_id)?.name
+            });
+          }
+          return;
+        }
+        
+        const arr = picksByFixture.get(p.fixture_index) ?? [];
+        arr.push(p);
+        picksByFixture.set(p.fixture_index, arr);
+      });
+    } else {
+      console.log('[League] API Test: Not all submitted - skipping ALL picks processing. allSubmitted=', allSubmitted);
+    }
     const resultsPublished = latestResultsGw !== null && latestResultsGw >= picksGw;
     const remaining = members.filter((m) => !submittedMap.get(`${m.id}:${picksGw}`)).length;
     const whoDidntSubmit = members.filter((m) => !submittedMap.get(`${m.id}:${picksGw}`)).map(m => m.name);
@@ -2002,6 +2167,34 @@ export default function LeaguePage() {
     // Check if deadline has passed for this GW
     const gwDeadline = gwDeadlines.get(picksGw);
     const deadlinePassed = gwDeadline ? new Date() >= gwDeadline : false;
+    
+    // Debug logging for API Test league
+    if (isApiTestLeague && picksGw === 1) {
+      const memberSubmissionStatus = members.map(m => {
+        const key = `${m.id}:${picksGw}`;
+        const submitted = submittedMap.get(key);
+        return { id: m.id, name: m.name, submitted: !!submitted, key };
+      });
+      console.log(`[League] ===== API Test GW${picksGw} SUBMISSION CHECK =====`);
+      console.log(`[League] All submitted:`, allSubmitted);
+      console.log(`[League] Remaining:`, remaining);
+      console.log(`[League] Who didn't submit:`, whoDidntSubmit);
+      console.log(`[League] Member submission status:`, memberSubmissionStatus);
+      console.log(`[League] Submitted map entries:`, Array.from(submittedMap.entries()));
+      console.log(`[League] ================================================`);
+      
+      // Specifically check for Steve and Jof
+      const steve = members.find(m => m.name.toLowerCase().includes('steve') || m.name.toLowerCase().includes('s'));
+      const jof = members.find(m => m.name.toLowerCase().includes('jof') || m.name.toLowerCase().includes('j'));
+      if (steve) {
+        const steveKey = `${steve.id}:${picksGw}`;
+        console.log(`[League] STEVE (${steve.name}):`, { id: steve.id, submitted: !!submittedMap.get(steveKey), key: steveKey });
+      }
+      if (jof) {
+        const jofKey = `${jof.id}:${picksGw}`;
+        console.log(`[League] JOF (${jof.name}):`, { id: jof.id, submitted: !!submittedMap.get(jofKey), key: jofKey });
+      }
+    }
     
     console.log(`GW${picksGw} deadline check:`, {
       gwDeadline,
@@ -2012,7 +2205,131 @@ export default function LeaguePage() {
     });
 
     // For API Test league, show submission status only if not all submitted
-    const showSubmissionStatus = league?.name === 'API Test' ? !allSubmitted : (!allSubmitted && !deadlinePassed);
+    // Also show it if user is on "gw" tab but not all submitted (they should see "Who's submitted" instead of predictions)
+    const showSubmissionStatus = isApiTestLeague 
+      ? !allSubmitted  // Always show "Who's submitted" if not all submitted, regardless of tab
+      : (!allSubmitted && !deadlinePassed);
+
+    // For API Test league, if not all submitted, ONLY show "Who's submitted" view, nothing else
+    // This is CRITICAL - no predictions should show if not all submitted
+    if (isApiTestLeague && !allSubmitted) {
+      console.log('[League] API Test: Not all submitted, showing ONLY "Who\'s submitted" view. Blocking all predictions.');
+      return (
+        <div className="mt-2 pt-2">
+          <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-700">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <>Waiting for <span className="font-semibold">{remaining}</span> of {members.length} to submit.</>
+              </div>
+              {/* Share reminder button - only show if not all submitted */}
+              <button
+                onClick={() => {
+                  // Generate share message
+                  const message = `Game Week ${picksGw} Predictions Reminder!\n\nDEADLINE: THIS ${(() => {
+                    const firstKickoff = new Date(fixtures.find(f => f.gw === picksGw)?.kickoff_time || '');
+                    const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
+                    const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+                    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+                    const dayOfWeek = dayNames[deadlineTime.getUTCDay()];
+                    const day = deadlineTime.getUTCDate();
+                    const month = months[deadlineTime.getUTCMonth()];
+                    const hours = deadlineTime.getUTCHours().toString().padStart(2, '0');
+                    const minutes = deadlineTime.getUTCMinutes().toString().padStart(2, '0');
+                    return `${dayOfWeek} ${day} ${month}, ${hours}:${minutes} BST`;
+                  })()}\n\nDon't forget!\nplaytotl.com`;
+                  
+                  // Create WhatsApp link
+                  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+                  
+                  // Try to open WhatsApp, fallback to copy to clipboard
+                  try {
+                    window.open(whatsappUrl, '_blank');
+                  } catch {
+                    navigator.clipboard.writeText(message).then(() => {
+                      alert('Message copied to clipboard! You can now paste it in WhatsApp or Messages.');
+                    }).catch(() => {
+                      alert('Unable to open WhatsApp. Please copy this message manually:\n\n' + message);
+                    });
+                  }
+                }}
+                className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.488"/>
+                </svg>
+                Share Reminder
+              </button>
+            </div>
+
+            {/* Deadline display */}
+            {(() => {
+              const kickoffTimes = fixtures
+                .map(f => f.kickoff_time)
+                .filter((kt): kt is string => !!kt)
+                .map(kt => new Date(kt))
+                .filter(d => !isNaN(d.getTime()));
+              
+              if (kickoffTimes.length === 0) return null;
+              
+              const firstKickoff = new Date(Math.min(...kickoffTimes.map(d => d.getTime())));
+              const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
+              const deadlinePassed = new Date() >= deadlineTime;
+              
+              const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+              const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+              const dayOfWeek = dayNames[deadlineTime.getUTCDay()];
+              const day = deadlineTime.getUTCDate();
+              const month = months[deadlineTime.getUTCMonth()];
+              const hours = deadlineTime.getUTCHours().toString().padStart(2, '0');
+              const minutes = deadlineTime.getUTCMinutes().toString().padStart(2, '0');
+              const deadlineStr = `${dayOfWeek} ${day} ${month}, ${hours}:${minutes} BST`;
+              
+              return (
+                <div className={`mb-3 text-sm ${deadlinePassed ? 'text-orange-600 font-semibold' : 'text-slate-600'}`}>
+                  {deadlinePassed ? '⏰ Deadline Passed: ' : '⏰ Deadline: '}{deadlineStr}
+                </div>
+              );
+            })()}
+
+            <div className="overflow-hidden rounded-lg border">
+              <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="text-left px-4 py-3 w-2/3 font-semibold text-slate-600">Player</th>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-600">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {members
+                    .slice()
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((m) => {
+                      const key = `${m.id}:${picksGw}`;
+                      const submitted = !!submittedMap.get(key);
+                      return (
+                        <tr key={m.id} className="border-t border-slate-200">
+                          <td className="px-4 py-3 font-bold text-slate-900 truncate whitespace-nowrap" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.name}</td>
+                          <td className="px-4 py-3">
+                            {submitted ? (
+                              <span className="inline-flex items-center justify-center rounded-full bg-[#1C8376]/10 text-[#1C8376]/90 text-xs px-2 py-1 border border-emerald-300 font-bold shadow-sm whitespace-nowrap w-24">
+                                ✅ Submitted
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center justify-center rounded-full bg-amber-50 text-amber-700 text-xs px-2 py-1 border border-amber-200 font-semibold whitespace-nowrap w-24">
+                                ⏳ Not yet
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="mt-2 pt-2">
@@ -2143,8 +2460,8 @@ export default function LeaguePage() {
           </div>
         ) : null}
 
-        {/* API Test league "who picked who" view when all submitted */}
-        {league?.name === 'API Test' && allSubmitted && sections.length > 0 && (() => {
+        {/* API Test league "who picked who" view when all submitted - ONLY show if all submitted */}
+        {league?.name === 'API Test' && allSubmitted && sections.length > 0 && !showSubmissionStatus && (() => {
           // Use actual live scores
           const combinedLiveScores = liveScores;
           
@@ -2191,11 +2508,12 @@ export default function LeaguePage() {
                     <ul>
                       {sec.items.map((f, idx) => {
                         try {
-                          const homeName = f.home_name || f.home_team || "Home";
-                          const awayName = f.away_name || f.away_team || "Away";
+                          // For API Test league, use short names first
+                          const homeName = f.home_team || f.home_name || "Home";
+                          const awayName = f.away_team || f.away_name || "Away";
                           // Use fallback pattern like Home.tsx
-                          const homeKey = (f.home_code || f.home_name || f.home_team || "").toUpperCase();
-                          const awayKey = (f.away_code || f.away_name || f.away_team || "").toUpperCase();
+                          const homeKey = (f.home_code || f.home_team || f.home_name || "").toUpperCase();
+                          const awayKey = (f.away_code || f.away_team || f.away_name || "").toUpperCase();
 
                           const timeOf = (iso?: string | null) => {
                             if (!iso) return "";
@@ -2390,6 +2708,7 @@ export default function LeaguePage() {
           );
         })()}
 
+        {/* Regular league predictions view - NEVER show for API Test league (it has its own view above) */}
         {sections.length > 0 && league?.name !== 'API Test' && (
           <div className="mt-3 space-y-6">
             {sections.map((sec, si) => (
@@ -3196,6 +3515,7 @@ export default function LeaguePage() {
               </button>
             )}
             {/* Show GW Predictions tab if there's a current GW (or if it's API Test league) */}
+            {/* Tab is always visible, but content will show "Who's submitted" if not all submitted */}
             {(currentGw || league?.name === 'API Test') && (
               <button
                 onClick={() => {
