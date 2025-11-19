@@ -1,7 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { useState, useEffect } from "react";
 import PredictionsBanner from "./components/PredictionsBanner";
-import WhatsAppBanner from "./components/WhatsAppBanner";
 import FloatingProfile from "./components/FloatingProfile";
 
 import HomePage from "./pages/Home";
@@ -37,7 +36,7 @@ export default function App() {
         <Route path="*" element={
           <div className={`min-h-screen overflow-y-auto ${oldSchoolMode ? 'oldschool-theme' : 'text-slate-900'}`} style={{ backgroundColor: '#f5f7f6' }}>
             <FloatingProfile />
-            <WhatsAppBanner />
+            {/* <WhatsAppBanner /> */}
             <PredictionsBanner />
             <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-6">
               <Routes>

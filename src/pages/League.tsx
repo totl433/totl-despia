@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
@@ -176,6 +176,15 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
     }
   };
 
+  // Helper to scroll with multiple attempts for reliability
+  const scrollToBottomWithRetries = useCallback((delays: number[] = [0, 100, 300, 500, 700]) => {
+    requestAnimationFrame(() => {
+      delays.forEach((delay) => {
+        setTimeout(() => scrollToBottom(), delay);
+      });
+    });
+  }, []);
+
   // Scroll when messages change
   useEffect(() => {
     if (chat.length > 0) {
@@ -237,13 +246,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
               void listRef.current.offsetHeight;
               
               // Scroll after padding is definitely applied - multiple attempts
-        requestAnimationFrame(() => {
-          scrollToBottom();
-                setTimeout(() => scrollToBottom(), 100);
-                setTimeout(() => scrollToBottom(), 300);
-                setTimeout(() => scrollToBottom(), 500);
-                setTimeout(() => scrollToBottom(), 700);
-              });
+              scrollToBottomWithRetries([0, 100, 300, 500, 700]);
             }
           }, 100);
         } else {
@@ -254,12 +257,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
             // Force reflow after removing padding
             void listRef.current.offsetHeight;
             // Scroll to bottom after padding is removed to ensure last message is visible
-      requestAnimationFrame(() => {
-        scrollToBottom();
-              setTimeout(() => scrollToBottom(), 50);
-              setTimeout(() => scrollToBottom(), 150);
-              setTimeout(() => scrollToBottom(), 300);
-            });
+            scrollToBottomWithRetries([0, 50, 150, 300]);
           }
         }
       }, 50); // Small debounce delay
@@ -314,13 +312,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
             if (listRef.current) {
               listRef.current.style.paddingBottom = `${paddingNeeded}px`;
               void listRef.current.offsetHeight;
-              requestAnimationFrame(() => {
-                scrollToBottom();
-                setTimeout(() => scrollToBottom(), 200);
-                setTimeout(() => scrollToBottom(), 400);
-                setTimeout(() => scrollToBottom(), 600);
-                setTimeout(() => scrollToBottom(), 800);
-              });
+              scrollToBottomWithRetries([0, 200, 400, 600, 800]);
             }
           }, 100);
         }
@@ -328,9 +320,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
     }
     
     // Multiple scroll attempts for reliability
-    setTimeout(() => scrollToBottom(), 200);
-    setTimeout(() => scrollToBottom(), 400);
-    setTimeout(() => scrollToBottom(), 600);
+    scrollToBottomWithRetries([200, 400, 600]);
   };
 
   // Dismiss keyboard when tapping messages area (WhatsApp-like behavior)
@@ -422,7 +412,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
               placeholder="Start typing..."
               maxLength={2000}
               rows={1}
-              className="flex-1 rounded-full border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-transparent resize-none overflow-hidden"
+              className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-transparent resize-none overflow-hidden"
               style={{
                 minHeight: '42px',
                 maxHeight: '120px',
@@ -742,44 +732,55 @@ export default function LeaguePage() {
     // The individual tab components will show appropriate messages if the GW shouldn't be visible
   }, [league, tab]);
 
+  // Helper function to load and merge messages (reusable)
+  const loadAndMergeMessages = useCallback(async (leagueId: string, isInitialLoad = false) => {
+    const { data, error } = await supabase
+      .from("league_messages")
+      .select("id, league_id, user_id, content, created_at")
+      .eq("league_id", leagueId)
+      .order("created_at", { ascending: false })
+      .limit(500);
+    
+    if (!error && data) {
+      const fetchedMessages = (data as ChatMsg[]) ?? [];
+      const sortedMessages = fetchedMessages.reverse();
+      if (isInitialLoad) {
+        console.log('[Chat] Loaded messages:', sortedMessages.length, 'from database (most recent)');
+      }
+      
+      setChat((prev) => {
+        const existingIds = new Set(prev.map(m => m.id));
+        const newMessages = sortedMessages.filter(m => !existingIds.has(m.id));
+        
+        if (prev.length === 0) {
+          if (isInitialLoad) {
+            console.log('[Chat] Initial load, setting', sortedMessages.length, 'messages');
+          }
+          return sortedMessages;
+        }
+        
+        const combined = [...prev, ...newMessages];
+        const sorted = combined.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        const limited = sorted.length > 500 ? sorted.slice(-500) : sorted;
+        
+        if (isInitialLoad) {
+          console.log('[Chat] Merged messages. Previous:', prev.length, 'New from DB:', newMessages.length, 'Total:', sorted.length, 'After limit:', limited.length);
+        }
+        return limited;
+      });
+    } else if (error) {
+      console.error('[Chat] Error loading messages:', error);
+    }
+  }, []);
+
   /* ---------- realtime chat: load + subscribe ---------- */
   useEffect(() => {
     if (!league?.id) return;
     let alive = true;
 
     const loadMessages = async () => {
-      const { data, error } = await supabase
-        .from("league_messages")
-        .select("id, league_id, user_id, content, created_at")
-        .eq("league_id", league.id)
-        .order("created_at", { ascending: false })
-        .limit(500);
       if (!alive) return;
-      if (!error && data) {
-        const fetchedMessages = (data as ChatMsg[]) ?? [];
-        // Reverse to get oldest first for display, but we fetched newest first
-        const sortedMessages = fetchedMessages.reverse();
-        console.log('[Chat] Loaded messages:', sortedMessages.length, 'from database (most recent)');
-        // Merge with existing messages to avoid losing any that were added via realtime subscription
-        setChat((prev) => {
-          const existingIds = new Set(prev.map(m => m.id));
-          const newMessages = sortedMessages.filter(m => !existingIds.has(m.id));
-          // If we have existing messages, merge; otherwise just use fetched
-          if (prev.length === 0) {
-            console.log('[Chat] Initial load, setting', sortedMessages.length, 'messages');
-            return sortedMessages;
-          }
-          // Combine and sort by created_at, then keep only the most recent 500
-          const combined = [...prev, ...newMessages];
-          const sorted = combined.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-          // Keep only the most recent 500 messages (drop oldest from top)
-          const limited = sorted.length > 500 ? sorted.slice(-500) : sorted;
-          console.log('[Chat] Merged messages. Previous:', prev.length, 'New from DB:', newMessages.length, 'Total:', sorted.length, 'After limit:', limited.length);
-          return limited;
-        });
-      } else if (error) {
-        console.error('[Chat] Error loading messages:', error);
-      }
+      await loadAndMergeMessages(league.id, true);
     };
 
     // Initial load
@@ -844,32 +845,7 @@ export default function LeaguePage() {
     if (tab !== "chat" || !league?.id || !user?.id) return;
     
     // Refetch messages when chat tab becomes active (in case user was on another tab when notification arrived)
-    // Merge with existing messages to avoid losing any that were added via realtime subscription
-    const loadMessages = async () => {
-      const { data, error } = await supabase
-        .from("league_messages")
-        .select("id, league_id, user_id, content, created_at")
-        .eq("league_id", league.id)
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (!error && data) {
-        const fetchedMessages = (data as ChatMsg[]) ?? [];
-        // Reverse to get oldest first for display, but we fetched newest first
-        const sortedMessages = fetchedMessages.reverse();
-        // Merge with existing messages, avoiding duplicates
-        setChat((prev) => {
-          const existingIds = new Set(prev.map(m => m.id));
-          const newMessages = sortedMessages.filter(m => !existingIds.has(m.id));
-          // Combine and sort by created_at, then keep only the most recent 500
-          const combined = [...prev, ...newMessages];
-          const sorted = combined.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-          // Keep only the most recent 500 messages (drop oldest from top)
-          const limited = sorted.length > 500 ? sorted.slice(-500) : sorted;
-          return limited;
-        });
-      }
-    };
-    loadMessages();
+    loadAndMergeMessages(league.id, false);
     
     const mark = async () => {
       await supabase
@@ -1006,7 +982,7 @@ export default function LeaguePage() {
   }
 
   /* ---------- send chat ---------- */
-  async function sendChat() {
+  const sendChat = useCallback(async () => {
     if (!league || !user?.id) return;
     const text = newMsg.trim();
     if (!text) return;
@@ -1094,7 +1070,7 @@ export default function LeaguePage() {
         }
       }, 100);
     }
-  }
+  }, [league, user, newMsg, setNewMsg, setChat, setNotificationStatus]);
 
   /* ---------- load fixtures + picks + submissions + results for selected GW ---------- */
   useEffect(() => {
@@ -1602,6 +1578,20 @@ export default function LeaguePage() {
     return m;
   }, [subs]);
 
+  // Helper to create empty MLT rows (reusable)
+  const createEmptyMltRows = useCallback((memberList: Member[]): MltRow[] => {
+    return memberList.map((m) => ({
+      user_id: m.id,
+      name: m.name,
+      mltPts: 0,
+      ocp: 0,
+      unicorns: 0,
+      wins: 0,
+      draws: 0,
+      form: [],
+    }));
+  }, []);
+
   /* ---------- Compute Mini League Table (season) ---------- */
   useEffect(() => {
     let alive = true;
@@ -1614,18 +1604,7 @@ export default function LeaguePage() {
       // Special handling for "API Test" league - it uses test API data, not regular game data
       if (league?.name === 'API Test') {
         // Show empty table with zero points for all members (test league starts fresh)
-        setMltRows(
-          members.map((m) => ({
-            user_id: m.id,
-            name: m.name,
-            mltPts: 0,
-            ocp: 0,
-            unicorns: 0,
-            wins: 0,
-            draws: 0,
-            form: [],
-          }))
-        );
+        setMltRows(createEmptyMltRows(members));
         setMltLoading(false);
         return;
       }
@@ -1648,18 +1627,7 @@ export default function LeaguePage() {
       });
 
       if (outcomeByGwIdx.size === 0) {
-        setMltRows(
-          members.map((m) => ({
-            user_id: m.id,
-            name: m.name,
-            mltPts: 0,
-            ocp: 0,
-            unicorns: 0,
-            wins: 0,
-            draws: 0,
-            form: [],
-          }))
-        );
+        setMltRows(createEmptyMltRows(members));
         setMltLoading(false);
         return;
       }
@@ -1679,18 +1647,7 @@ export default function LeaguePage() {
 
       // For late-starting leagues, if there are no results for the start gameweek or later, show empty table
       if (!specialLeagues.includes(league?.name || '') && !gw7StartLeagues.includes(league?.name || '') && relevantGws.length === 0) {
-        setMltRows(
-          members.map((m) => ({
-            user_id: m.id,
-            name: m.name,
-            mltPts: 0,
-            ocp: 0,
-            unicorns: 0,
-            wins: 0,
-            draws: 0,
-            form: [],
-          }))
-        );
+        setMltRows(createEmptyMltRows(members));
         setMltLoading(false);
         return;
       }
@@ -1801,7 +1758,7 @@ export default function LeaguePage() {
     return () => {
       alive = false;
     };
-  }, [members, league, currentGw]);
+  }, [members, league, currentGw, createEmptyMltRows]);
 
   /* =========================
      Renderers

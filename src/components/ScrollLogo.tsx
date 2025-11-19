@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export default function ScrollLogo() {
-  const [scrollY, setScrollY] = useState(0);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const logoRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   
   // Handle initial load animation
   useEffect(() => {
@@ -13,37 +14,56 @@ export default function ScrollLogo() {
     return () => clearTimeout(timer);
   }, []);
   
-  // Handle scroll for logo animation
+  // Handle scroll for logo animation using requestAnimationFrame
   useEffect(() => {
+    let rafId: number;
+    
     const handleScroll = () => {
-      setScrollY(window.scrollY);
+      rafId = requestAnimationFrame(() => {
+        const scrollY = window.scrollY;
+        
+        if (containerRef.current && logoRef.current) {
+          // Calculate styles directly without state updates
+          const flipProgress = Math.min(1, scrollY / 300);
+          const rotateY = flipProgress * 180;
+          const logoOpacity = Math.max(0, 1 - scrollY / 250);
+          const logoScale = Math.max(0.4, 1 - scrollY / 400);
+          const logoVisible = scrollY < 400;
+          
+          // Update container height
+          containerRef.current.style.height = logoVisible ? '110px' : '0px';
+          
+          // Update logo transform and opacity
+          if (scrollY > 0) {
+            logoRef.current.style.opacity = logoOpacity.toString();
+            logoRef.current.style.transform = `perspective(1000px) rotateY(${rotateY}deg) scale(${logoScale})`;
+            logoRef.current.style.transition = 'opacity 0.1s ease-out, transform 0.1s ease-out';
+          } else {
+            // Reset to initial state
+            logoRef.current.style.opacity = '1';
+            logoRef.current.style.transform = `perspective(1000px) rotateY(0deg) scale(1)`;
+            logoRef.current.style.transition = 'opacity 0.6s ease-out, transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)';
+          }
+        }
+      });
     };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
-  // Calculate flip progress (0 to 1)
-  const flipProgress = Math.min(1, scrollY / 300); // Complete flip over 300px
-  
-  // 3D flip rotation (0 to 180 degrees)
-  const rotateY = flipProgress * 180; // Flips from 0° to 180°
-  
-  // Fade out as it flips
-  const logoOpacity = Math.max(0, 1 - scrollY / 250); // Fade out over 250px
-  
-  // Slight scale down during flip
-  const logoScale = Math.max(0.4, 1 - scrollY / 400); // Shrink slightly
-  
-  const logoVisible = scrollY < 400; // Hide completely after 400px
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      cancelAnimationFrame(rafId);
+    };
+  }, []); // No dependencies needed as we use refs
 
   // Initial spin-in animation (only on first load)
-  const initialSpin = hasLoaded ? 0 : -360; // Start rotated -360deg, then spin to 0deg
+  const initialSpin = hasLoaded ? 0 : -360;
   
   return (
     <div 
+      ref={containerRef}
       className="w-full flex justify-center items-start transition-all duration-200"
       style={{ 
-        height: logoVisible ? '110px' : '0px',
+        height: '110px', // Default height
         overflow: 'hidden',
         paddingTop: '16px',
         paddingBottom: '4px',
@@ -51,15 +71,13 @@ export default function ScrollLogo() {
       }}
     >
       <div
+        ref={logoRef}
         style={{ 
-          opacity: scrollY === 0 ? (hasLoaded ? 1 : 0) : logoOpacity, // Fade in on load, then use scroll opacity
-          transform: scrollY === 0 
-            ? `perspective(1000px) rotateY(${initialSpin}deg) scale(1)` // Spin in on load
-            : `perspective(1000px) rotateY(${rotateY}deg) scale(${logoScale})`, // Scroll flip effect
+          opacity: hasLoaded ? 1 : 0, 
+          transform: `perspective(1000px) rotateY(${initialSpin}deg) scale(1)`, 
           transformStyle: 'preserve-3d',
-          transition: scrollY === 0 
-            ? 'opacity 0.6s ease-out, transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)' // Smooth spin-in
-            : 'opacity 0.2s ease-out, transform 0.2s ease-out', // Scroll transitions
+          transition: 'opacity 0.6s ease-out, transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          willChange: 'transform, opacity' // Hint to browser for optimization
         }}
       >
         <img 
@@ -72,4 +90,3 @@ export default function ScrollLogo() {
     </div>
   );
 }
-

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { ensurePushSubscribed } from '../lib/pushNotifications';
@@ -183,8 +183,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setHasShownWelcome(true);
   }
 
+  // Memoize the context value to prevent unnecessary re-renders
+  const value = useMemo(() => ({
+    user,
+    session,
+    loading,
+    signOut,
+    showWelcome,
+    dismissWelcome
+  }), [user, session, loading, showWelcome]);
+
   return (
-    <AuthCtx.Provider value={{ user, session, loading, signOut, showWelcome, dismissWelcome }}>
+    <AuthCtx.Provider value={value}>
       {children}
     </AuthCtx.Provider>
   );

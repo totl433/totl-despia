@@ -1,27 +1,36 @@
 // src/main.tsx
 import "./index.css";
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
 
-import TablesPage from "./pages/Tables";
-import LeaguePage from "./pages/League";
-import PredictionsPage from "./pages/Predictions";
-import AdminPage from "./pages/Admin";
-import HomePage from "./pages/Home";
-import GlobalPage from "./pages/Global";
-import CreateLeaguePage from "./pages/CreateLeague";
-import HowToPlayPage from "./pages/HowToPlay";
-import NewPredictionsCentre from "./pages/NewPredictionsCentre";
-import TestApiPredictions from "./pages/TestApiPredictions";
-import TestAdminApi from "./pages/TestAdminApi";
-import ProfilePage from "./pages/Profile";
+// Lazy load pages
+const TablesPage = lazy(() => import("./pages/Tables"));
+const LeaguePage = lazy(() => import("./pages/League"));
+const PredictionsPage = lazy(() => import("./pages/Predictions"));
+const AdminPage = lazy(() => import("./pages/Admin"));
+const HomePage = lazy(() => import("./pages/Home"));
+const GlobalPage = lazy(() => import("./pages/Global"));
+const CreateLeaguePage = lazy(() => import("./pages/CreateLeague"));
+const HowToPlayPage = lazy(() => import("./pages/HowToPlay"));
+const NewPredictionsCentre = lazy(() => import("./pages/NewPredictionsCentre"));
+const TestApiPredictions = lazy(() => import("./pages/TestApiPredictions"));
+const TestAdminApi = lazy(() => import("./pages/TestAdminApi"));
+const ProfilePage = lazy(() => import("./pages/Profile"));
+const SignIn = lazy(() => import("./pages/SignIn"));
+
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import PredictionsBanner from "./components/PredictionsBanner";
 import BottomNav from "./components/BottomNav";
 import FloatingProfile from "./components/FloatingProfile";
 import ScrollLogo from "./components/ScrollLogo";
-import SignIn from "./pages/SignIn";
+
+// Loading Fallback
+const PageLoader = () => (
+  <div className="flex items-center justify-center min-h-[50vh]">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
+  </div>
+);
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -126,22 +135,24 @@ function AppContent() {
       )}
 
       {/* Routes */}
-      <Routes>
-        <Route path="/auth" element={<SignIn />} />
-        <Route path="/new-predictions" element={<RequireAuth><NewPredictionsCentre /></RequireAuth>} />
-        <Route path="/test-api-predictions" element={<RequireAuth><TestApiPredictions /></RequireAuth>} />
-        <Route path="/test-admin-api" element={<RequireAuth><TestAdminApi /></RequireAuth>} />
-        <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
-        <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
-        <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
-        <Route path="/predictions" element={<RequireAuth><PredictionsPage /></RequireAuth>} />
-        <Route path="/global" element={<RequireAuth><GlobalPage /></RequireAuth>} />
-        <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
-        <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
-        <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
-        <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/auth" element={<SignIn />} />
+          <Route path="/new-predictions" element={<RequireAuth><NewPredictionsCentre /></RequireAuth>} />
+          <Route path="/test-api-predictions" element={<RequireAuth><TestApiPredictions /></RequireAuth>} />
+          <Route path="/test-admin-api" element={<RequireAuth><TestAdminApi /></RequireAuth>} />
+          <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
+          <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
+          <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
+          <Route path="/predictions" element={<RequireAuth><PredictionsPage /></RequireAuth>} />
+          <Route path="/global" element={<RequireAuth><GlobalPage /></RequireAuth>} />
+          <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+          <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
+          <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
+          <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
 
       {/* Bottom Navigation - hide on auth page, league pages, and swipe prediction page */}
       {location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions/swipe' && <BottomNav />}
