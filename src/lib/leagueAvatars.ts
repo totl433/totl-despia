@@ -13,6 +13,17 @@ export const LEAGUE_AVATARS = [
 
 export type LeagueAvatar = typeof LEAGUE_AVATARS[number];
 
+// Default ML avatars (ML-avatar-1.png through ML-avatar-5.png)
+export const DEFAULT_ML_AVATARS = [
+  'ML-avatar-1.png',
+  'ML-avatar-2.png',
+  'ML-avatar-3.png',
+  'ML-avatar-4.png',
+  'ML-avatar-5.png',
+] as const;
+
+export type DefaultMlAvatar = typeof DEFAULT_ML_AVATARS[number];
+
 /**
  * Simple hash function to convert a string to a number
  */
@@ -86,5 +97,54 @@ export function getGenericLeaguePhoto(leagueId: string, size: number = 128): str
 export function getGenericLeaguePhotoPicsum(leagueId: string, size: number = 128): string {
   const seed = hashString(leagueId);
   return `https://picsum.photos/seed/${seed}/${size}/${size}`;
+}
+
+/**
+ * Get default ML avatar based on league ID (deterministic)
+ * Returns one of ML-avatar-1.png through ML-avatar-5.png
+ */
+export function getDefaultMlAvatar(leagueId: string): DefaultMlAvatar {
+  const hash = hashString(leagueId);
+  const index = hash % DEFAULT_ML_AVATARS.length;
+  return DEFAULT_ML_AVATARS[index];
+}
+
+/**
+ * Check if a string is a Supabase Storage URL
+ */
+function isSupabaseStorageUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return url.includes('supabase.co/storage/v1/object/public');
+}
+
+/**
+ * Check if a string is a default ML avatar filename
+ */
+function isDefaultMlAvatar(filename: string | null | undefined): boolean {
+  if (!filename) return false;
+  return DEFAULT_ML_AVATARS.includes(filename as DefaultMlAvatar);
+}
+
+/**
+ * Get the avatar URL for a league
+ * Priority:
+ * 1. Custom uploaded avatar (Supabase Storage URL)
+ * 2. Default ML avatar filename in league.avatar field
+ * 3. Deterministic default ML avatar based on league ID
+ */
+export function getLeagueAvatarUrl(league: { id: string; avatar?: string | null }): string {
+  // Priority 1: Custom uploaded avatar (Supabase Storage URL)
+  if (league.avatar && isSupabaseStorageUrl(league.avatar)) {
+    return league.avatar;
+  }
+  
+  // Priority 2: Default ML avatar filename in league.avatar field
+  if (league.avatar && isDefaultMlAvatar(league.avatar)) {
+    return `/assets/league-avatars/${league.avatar}`;
+  }
+  
+  // Priority 3: Deterministic default ML avatar based on league ID
+  const defaultAvatar = getDefaultMlAvatar(league.id);
+  return `/assets/league-avatars/${defaultAvatar}`;
 }
 

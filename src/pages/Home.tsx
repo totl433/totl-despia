@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { getMediumName } from "../lib/teamNames";
-import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePhotoPicsum } from "../lib/leagueAvatars";
+import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePhotoPicsum, getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
@@ -247,7 +247,7 @@ export default function HomePage() {
       // NOTE: Removed start_gw from select as it may not exist or cause 400 error
       const [currentGwResult, userLeaguesResult] = await Promise.all([
         supabase.from("meta").select("current_gw").eq("id", 1).maybeSingle(),
-        supabase.from("league_members").select("leagues(id,name,code,created_at)").eq("user_id", user.id),
+        supabase.from("league_members").select("leagues(id,name,code,created_at,avatar)").eq("user_id", user.id),
       ]);
       
       const currentGw = (currentGwResult.data as any)?.current_gw ?? 1;
@@ -255,11 +255,13 @@ export default function HomePage() {
       const userLeagues = ((userLeaguesResult.data ?? []) as any[])
         .map((r) => r.leagues)
         .filter(Boolean) as League[];
-
-      // Assign avatars to leagues
+      
+      // Preserve avatar from database if it exists, otherwise use deterministic default
+      // The getLeagueAvatarUrl helper will handle the logic
       const ls: League[] = userLeagues.map((league) => ({
         ...league,
-        avatar: getDeterministicLeagueAvatar(league.id),
+        // Keep the avatar field from database (could be Supabase Storage URL, default filename, or null)
+        // getLeagueAvatarUrl() will handle the fallback logic
       }));
       
       // Check if user is in API Test league
@@ -2516,25 +2518,28 @@ export default function HomePage() {
                                   {/* League Avatar Badge */}
                                   <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center overflow-hidden bg-slate-100">
                                     <img 
-                                      src={getGenericLeaguePhoto(l.id, 96)} 
+                                      src={getLeagueAvatarUrl(l)} 
                                       alt={`${l.name} avatar`}
                                       className="w-full h-full object-cover"
+                                      loading="lazy"
+                                      decoding="async"
                                       onError={(e) => {
-                                        // Fallback to Picsum Photos if Unsplash fails
+                                        // Fallback to default ML avatar if custom avatar fails
                                         const target = e.target as HTMLImageElement;
-                                        const fallbackSrc = getGenericLeaguePhotoPicsum(l.id, 96);
+                                        const defaultAvatar = getDefaultMlAvatar(l.id);
+                                        const fallbackSrc = `/assets/league-avatars/${defaultAvatar}`;
                                         if (target.src !== fallbackSrc) {
                                           target.src = fallbackSrc;
                                         } else {
-                                          // If Picsum also fails, show calendar icon
-                                        target.style.display = 'none';
-                                        const parent = target.parentElement;
-                                        if (parent && !parent.querySelector('svg')) {
-                                          parent.innerHTML = `
-                                            <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                            </svg>
-                                          `;
+                                          // If default also fails, show calendar icon
+                                          target.style.display = 'none';
+                                          const parent = target.parentElement;
+                                          if (parent && !parent.querySelector('svg')) {
+                                            parent.innerHTML = `
+                                              <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                              </svg>
+                                            `;
                                           }
                                         }
                                       }}

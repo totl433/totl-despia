@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePhotoPicsum } from "../lib/leagueAvatars";
+import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePhotoPicsum, getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 
@@ -940,25 +940,28 @@ export default function TablesPage() {
                         {/* League Avatar Badge */}
                         <div className="flex-shrink-0 w-14 h-14 rounded-full flex items-center justify-center overflow-hidden bg-slate-100">
                           <img 
-                            src={getGenericLeaguePhoto(r.id, 96)} 
+                            src={getLeagueAvatarUrl(r)} 
                             alt={`${r.name} avatar`}
                             className="w-full h-full object-cover"
+                            loading="lazy"
+                            decoding="async"
                             onError={(e) => {
-                              // Fallback to Picsum Photos if Unsplash fails
+                              // Fallback to default ML avatar if custom avatar fails
                               const target = e.target as HTMLImageElement;
-                              const fallbackSrc = getGenericLeaguePhotoPicsum(r.id, 96);
+                              const defaultAvatar = getDefaultMlAvatar(r.id);
+                              const fallbackSrc = `/assets/league-avatars/${defaultAvatar}`;
                               if (target.src !== fallbackSrc) {
                                 target.src = fallbackSrc;
                               } else {
-                                // If Picsum also fails, show calendar icon
-                              target.style.display = 'none';
-                              const parent = target.parentElement;
-                              if (parent && !parent.querySelector('svg')) {
-                                parent.innerHTML = `
-                                  <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                  </svg>
-                                `;
+                                // If default also fails, show calendar icon
+                                target.style.display = 'none';
+                                const parent = target.parentElement;
+                                if (parent && !parent.querySelector('svg')) {
+                                  parent.innerHTML = `
+                                    <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                  `;
                                 }
                               }
                             }}

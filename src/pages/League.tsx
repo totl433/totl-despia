@@ -4,13 +4,15 @@ import { Link, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { resolveLeagueStartGw as getLeagueStartGw, shouldIncludeGwForLeague } from "../lib/leagueStart";
+import imageCompression from "browser-image-compression";
+import { getLeagueAvatarUrl } from "../lib/leagueAvatars";
 
 const MAX_MEMBERS = 8;
 
 /* =========================
    Types
    ========================= */
-type League = { id: string; name: string; code: string; created_at?: string; created_by?: string };
+type League = { id: string; name: string; code: string; created_at?: string; created_by?: string; avatar?: string | null };
 type Member = { id: string; name: string };
 
 type Fixture = {
@@ -542,6 +544,10 @@ export default function LeaguePage() {
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [showTableModal, setShowTableModal] = useState(false);
   const [showScoringModal, setShowScoringModal] = useState(false);
+  const [showAvatarUpload, setShowAvatarUpload] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null);
+  const [avatarUploadSuccess, setAvatarUploadSuccess] = useState(false);
 
   const [showInvite, setShowInvite] = useState(false);
   const [showJoinConfirm, setShowJoinConfirm] = useState(false);
@@ -881,6 +887,241 @@ export default function LeaguePage() {
     };
     mark();
   }, [tab, league?.id, user?.id]);
+
+  /* ---------- Avatar Upload ---------- */
+  const handleAvatarUpload = async (file: File) => {
+    if (!league || !user?.id || !isAdmin) {
+      setAvatarUploadError("Only admins can upload avatars");
+      return;
+    }
+
+    setUploadingAvatar(true);
+    setAvatarUploadError(null);
+    setAvatarUploadSuccess(false);
+
+    try {
+      // Verify user is authenticated with Supabase
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error('[Avatar Upload] No Supabase session:', sessionError);
+        throw new Error('You must be logged in to upload avatars. Please refresh the page and try again.');
+      }
+      
+      // Log project info for debugging
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const projectRef = supabaseUrl?.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
+      console.log('[Avatar Upload] Supabase project:', {
+        url: supabaseUrl,
+        projectRef: projectRef,
+        userId: session.user.id,
+      });
+      // Validate file type
+      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+      if (!validTypes.includes(file.type)) {
+        throw new Error('Invalid file type. Please upload PNG, JPG, or WebP images.');
+      }
+
+      // Validate file size (max 2MB before compression)
+      const maxSizeBeforeCompression = 2 * 1024 * 1024; // 2MB
+      if (file.size > maxSizeBeforeCompression) {
+        throw new Error('File size too large. Please upload an image smaller than 2MB.');
+      }
+
+      // Compress and resize image for optimal web performance
+      // Target: 50-75KB for good quality while maintaining fast load times
+      // Avatars are small (48-56px displayed), so we can be more aggressive with compression
+      let compressedFile: File = file;
+      const targetSizeKB = 60; // 60KB target - good balance between quality and performance
+      const maxAllowedSize = 80 * 1024; // 80KB max (33% buffer for complex images)
+      
+      console.log(`[Avatar Upload] Starting compression. Original size: ${(file.size / 1024).toFixed(1)}KB`);
+      
+      // Check if browser supports WebP (better compression than JPEG)
+      const supportsWebP = document.createElement('canvas').toDataURL('image/webp').indexOf('data:image/webp') === 0;
+      const preferredFormat = supportsWebP ? 'image/webp' : 'image/jpeg';
+      
+      // Compression configs: Start with good quality, get more aggressive if needed
+      const compressionConfigs = [
+        { maxWidthOrHeight: 256, initialQuality: 0.85, format: preferredFormat }, // High quality first
+        { maxWidthOrHeight: 256, initialQuality: 0.75, format: preferredFormat },
+        { maxWidthOrHeight: 256, initialQuality: 0.65, format: 'image/jpeg' }, // Fallback to JPEG
+        { maxWidthOrHeight: 200, initialQuality: 0.6, format: 'image/jpeg' },
+        { maxWidthOrHeight: 200, initialQuality: 0.5, format: 'image/jpeg' },
+      ];
+      
+      let compressionSuccess = false;
+      
+      for (let i = 0; i < compressionConfigs.length; i++) {
+        const config = compressionConfigs[i];
+        try {
+          const options: any = {
+            maxSizeMB: targetSizeKB / 1024, // 60KB target
+            maxWidthOrHeight: config.maxWidthOrHeight,
+            useWebWorker: true,
+            fileType: config.format,
+            initialQuality: config.initialQuality,
+          };
+
+          compressedFile = await imageCompression(file, options);
+          const actualSizeKB = compressedFile.size / 1024;
+          
+          console.log(`[Avatar Upload] Attempt ${i + 1}: ${actualSizeKB.toFixed(1)}KB (target: ${targetSizeKB}KB, format: ${config.format})`);
+          
+          // If we got under the max allowed size, we're done
+          if (compressedFile.size <= maxAllowedSize) {
+            compressionSuccess = true;
+            console.log(`[Avatar Upload] Compression successful: ${actualSizeKB.toFixed(1)}KB`);
+            break;
+          }
+        } catch (compressionError: any) {
+          console.warn(`[Avatar Upload] Compression attempt ${i + 1} failed:`, compressionError.message);
+          // Continue to next attempt
+        }
+      }
+
+      // Final validation - be more lenient for complex images
+      if (!compressionSuccess || compressedFile.size > maxAllowedSize) {
+        const actualSizeKB = (compressedFile.size / 1024).toFixed(1);
+        // If it's close (within 100KB), allow it but warn
+        if (compressedFile.size <= 100 * 1024) {
+          console.warn(`[Avatar Upload] Image slightly over target (${actualSizeKB}KB) but acceptable`);
+          compressionSuccess = true;
+        } else {
+          throw new Error(
+            `Image is too large (${actualSizeKB}KB). Please use a smaller or simpler image. ` +
+            `Recommended: images under 2MB before upload, with less detail or fewer colors.`
+          );
+        }
+      }
+
+      // Generate unique filename with correct extension based on compressed format
+      let fileExt = 'jpg';
+      if (compressedFile.type.includes('webp')) {
+        fileExt = 'webp';
+      } else if (compressedFile.type.includes('png')) {
+        fileExt = 'png';
+      }
+      const fileName = `${league.id}.${fileExt}`;
+
+      // Try to verify bucket exists (may fail due to permissions, but that's OK)
+      const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+      if (listError) {
+        console.warn('[Avatar Upload] Could not list buckets (this is OK if you lack list permissions):', listError);
+      } else {
+        const bucketExists = buckets?.some(b => {
+          const idMatch = b.id === 'league-avatars';
+          const nameMatch = b.name === 'league-avatars';
+          if (idMatch || nameMatch) {
+            console.log('[Avatar Upload] Found bucket:', { id: b.id, name: b.name });
+          }
+          return idMatch || nameMatch;
+        });
+        console.log('[Avatar Upload] Available buckets:', buckets?.map(b => ({ id: b.id, name: b.name })));
+        if (buckets && buckets.length > 0 && !bucketExists) {
+          console.warn(`[Avatar Upload] Bucket 'league-avatars' not in list. Available: ${buckets.map(b => b.id || b.name).join(', ')}`);
+        }
+      }
+      
+      console.log('[Avatar Upload] Attempting upload to bucket: league-avatars');
+
+      // Upload to Supabase Storage (attempt even if listing failed)
+      const { error: uploadError, data: uploadData } = await supabase.storage
+        .from('league-avatars')
+        .upload(fileName, compressedFile, {
+          upsert: true, // Replace existing file if it exists
+          contentType: compressedFile.type,
+        });
+
+      if (uploadError) {
+        console.error('[Avatar Upload] Upload error details:', {
+          message: uploadError.message,
+          statusCode: uploadError.statusCode,
+          error: uploadError,
+        });
+        throw new Error(`Upload failed: ${uploadError.message}${uploadError.statusCode ? ` (${uploadError.statusCode})` : ''}`);
+      }
+      
+      console.log('[Avatar Upload] Upload successful:', uploadData);
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('league-avatars')
+        .getPublicUrl(fileName);
+
+      if (!urlData?.publicUrl) {
+        throw new Error('Failed to get public URL for uploaded avatar');
+      }
+
+      // Update league avatar in database
+      const { error: updateError } = await supabase
+        .from('leagues')
+        .update({ avatar: urlData.publicUrl })
+        .eq('id', league.id);
+
+      if (updateError) {
+        throw new Error(`Failed to update league: ${updateError.message}`);
+      }
+
+      // Refresh league data
+      const { data: updatedLeague } = await supabase
+        .from('leagues')
+        .select('*')
+        .eq('id', league.id)
+        .single();
+
+      if (updatedLeague) {
+        setLeague(updatedLeague as League);
+      }
+
+      setAvatarUploadSuccess(true);
+      setTimeout(() => {
+        setShowAvatarUpload(false);
+        setAvatarUploadSuccess(false);
+      }, 2000);
+    } catch (error: any) {
+      console.error('Avatar upload error:', error);
+      setAvatarUploadError(error.message || 'Failed to upload avatar. Please try again.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (!league || !user?.id || !isAdmin) return;
+
+    setUploadingAvatar(true);
+    setAvatarUploadError(null);
+
+    try {
+      // Remove avatar from database (set to null)
+      const { error: updateError } = await supabase
+        .from('leagues')
+        .update({ avatar: null })
+        .eq('id', league.id);
+
+      if (updateError) {
+        throw new Error(`Failed to remove avatar: ${updateError.message}`);
+      }
+
+      // Refresh league data
+      const { data: updatedLeague } = await supabase
+        .from('leagues')
+        .select('*')
+        .eq('id', league.id)
+        .single();
+
+      if (updatedLeague) {
+        setLeague(updatedLeague as League);
+      }
+
+      setShowAvatarUpload(false);
+    } catch (error: any) {
+      console.error('Remove avatar error:', error);
+      setAvatarUploadError(error.message || 'Failed to remove avatar. Please try again.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   /* ---------- leave/join/admin ---------- */
   async function leaveLeague() {
@@ -3587,6 +3828,15 @@ export default function LeaguePage() {
                 >
                   ⚙️ Manage
                 </button>
+                <button
+                  onClick={() => {
+                    setShowAvatarUpload(true);
+                    setShowHeaderMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100"
+                >
+                  🖼️ Upload avatar
+                </button>
               </>
             )}
                       <button
@@ -3714,6 +3964,105 @@ export default function LeaguePage() {
                     🗑️ End League
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Avatar Upload Modal */}
+      {isAdmin && showAvatarUpload && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowAvatarUpload(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 relative" onClick={(e) => e.stopPropagation()}>
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setShowAvatarUpload(false);
+                setAvatarUploadError(null);
+                setAvatarUploadSuccess(false);
+              }}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 hover:text-gray-800 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Modal content */}
+            <div className="p-6 pt-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Upload League Avatar</h2>
+              
+              {/* Current avatar preview */}
+              <div className="mb-6">
+                <div className="text-sm text-slate-600 mb-2 font-medium">Current Avatar:</div>
+                <div className="flex items-center gap-4">
+                  <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center">
+                    <img
+                      src={league ? getLeagueAvatarUrl(league) : '/assets/league-avatars/ML-avatar-1.png'}
+                      alt="League avatar"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = '/assets/league-avatars/ML-avatar-1.png';
+                      }}
+                    />
+                  </div>
+                  {league?.avatar && (
+                    <button
+                      onClick={handleRemoveAvatar}
+                      disabled={uploadingAvatar}
+                      className="px-3 py-1.5 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded-md transition-colors font-medium disabled:opacity-50"
+                    >
+                      Remove Avatar
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Upload section */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Upload New Avatar
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        handleAvatarUpload(file);
+                      }
+                    }}
+                    disabled={uploadingAvatar}
+                    className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#1C8376] file:text-white hover:file:bg-emerald-700 file:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <p className="mt-2 text-xs text-slate-500">
+                    Images will be automatically compressed to ~60KB and resized to 256x256px. Max file size: 2MB before compression.
+                  </p>
+                </div>
+
+                {/* Upload progress */}
+                {uploadingAvatar && (
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#1C8376]"></div>
+                    <span>Processing and uploading...</span>
+                  </div>
+                )}
+
+                {/* Success message */}
+                {avatarUploadSuccess && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+                    ✓ Avatar uploaded successfully!
+                  </div>
+                )}
+
+                {/* Error message */}
+                {avatarUploadError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+                    {avatarUploadError}
+                  </div>
+                )}
               </div>
             </div>
           </div>
