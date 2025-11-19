@@ -1158,7 +1158,7 @@ export default function LeaguePage() {
       }
 
       // For API Test league, use test_api_picks and test_api_submissions
-      let pk;
+      let pk: PickRow[] | null = null;
       let submissions;
       
       if (useTestFixtures) {
@@ -1193,7 +1193,6 @@ export default function LeaguePage() {
           .order("fixture_index", { ascending: true });
         
         const currentFixtureIndicesSet = new Set((currentTestFixtures || []).map(f => f.fixture_index));
-        const currentFixturesMap = new Map((currentTestFixtures || []).map(f => [f.fixture_index, f]));
         console.log('[League] Current fixture indices from test_api_fixtures:', Array.from(currentFixtureIndicesSet));
         console.log('[League] Current fixtures:', currentTestFixtures?.map(f => ({ index: f.fixture_index, home: f.home_team, away: f.away_team })));
         
@@ -1229,13 +1228,13 @@ export default function LeaguePage() {
           
           testSubs.forEach((sub) => {
             // Check if this user has picks for ALL current fixtures
-            const userPicks = pk.filter(p => p.user_id === sub.user_id && p.matchday === 1);
-            const picksForCurrentFixtures = userPicks.filter(p => currentFixtureIndicesSet.has(p.fixture_index));
+            const userPicks = (pk || []).filter((p: PickRow) => p.user_id === sub.user_id && (p as any).matchday === 1);
+            const picksForCurrentFixtures = userPicks.filter((p: PickRow) => currentFixtureIndicesSet.has(p.fixture_index));
             const hasAllRequiredPicks = picksForCurrentFixtures.length === requiredFixtureCount && requiredFixtureCount > 0;
             
             // Additional check: verify the picks are for the right number of fixtures
             // If user has more picks than current fixtures, they might be old picks mixed with new ones
-            const uniqueFixtureIndices = new Set(picksForCurrentFixtures.map(p => p.fixture_index));
+            const uniqueFixtureIndices = new Set(picksForCurrentFixtures.map((p: PickRow) => p.fixture_index));
             const hasExactMatch = uniqueFixtureIndices.size === requiredFixtureCount;
             
             // CRITICAL: Check if submission timestamp is recent (after cutoff date)
