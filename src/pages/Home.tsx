@@ -3,12 +3,13 @@ import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { getMediumName } from "../lib/teamNames";
-import WhatsAppBanner from "../components/WhatsAppBanner";
 import { getDeterministicLeagueAvatar, getGenericLeaguePhoto, getGenericLeaguePhotoPicsum } from "../lib/leagueAvatars";
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import { scheduleDeadlineReminder, scheduleLiveGameNotification, scheduleGameweekStartingSoon } from "../lib/notifications";
+import { LeaderboardCard } from "../components/LeaderboardCard";
+import { StreakCard } from "../components/StreakCard";
 // Score update notifications now handled server-side by sendScoreNotifications function
 
 
@@ -171,8 +172,6 @@ export default function HomePage() {
   // NO API calls from client - all API calls go through the scheduled function
   const fetchLiveScore = async (apiMatchId: number, kickoffTime?: string | null) => {
     try {
-      console.log('[Home] fetchLiveScore called for matchId:', apiMatchId, 'kickoffTime:', kickoffTime);
-      
       // Read from Supabase live_scores table (updated by scheduled Netlify function)
       const { data: liveScore, error } = await supabase
         .from('live_scores')
@@ -183,7 +182,6 @@ export default function HomePage() {
       if (error) {
         if (error.code === 'PGRST116') {
           // No row found - scheduled function hasn't run yet or game hasn't started
-          console.log('[Home] No live score found in Supabase for match', apiMatchId, '- scheduled function may not have run yet');
           return null;
         }
         console.error('[Home] Error fetching live score from Supabase:', error);
@@ -191,11 +189,8 @@ export default function HomePage() {
       }
       
       if (!liveScore) {
-        console.warn('[Home] No live score data in Supabase');
         return null;
       }
-      
-      console.log('[Home] Live score from Supabase:', liveScore);
       
       const homeScore = liveScore.home_score ?? 0;
       const awayScore = liveScore.away_score ?? 0;
@@ -221,12 +216,11 @@ export default function HomePage() {
             }
           }
         } catch (e) {
-          console.warn('[Home] Error calculating minute from kickoff time:', e);
+          // Ignore calculation errors
         }
       }
       
       const result = { homeScore, awayScore, status, minute, retryAfter: null as number | null };
-      console.log('[Home] Returning score data from Supabase:', result);
       return result;
     } catch (error: any) {
       console.error('[Home] Error fetching live score from Supabase:', error?.message || error, error?.stack);
@@ -249,8 +243,6 @@ export default function HomePage() {
 
     try {
       // PARALLEL QUERY 1: Fetch current GW and user's leagues simultaneously
-      console.log('[Home] Starting data fetch for user:', user.id);
-      
       // Use direct Supabase calls (same as original working code)
       // NOTE: Removed start_gw from select as it may not exist or cause 400 error
       const [currentGwResult, userLeaguesResult] = await Promise.all([
@@ -258,26 +250,11 @@ export default function HomePage() {
         supabase.from("league_members").select("leagues(id,name,code,created_at)").eq("user_id", user.id),
       ]);
       
-      console.log('[Home] Query results:', {
-        currentGwError: currentGwResult.error,
-        currentGwData: currentGwResult.data,
-        leaguesError: userLeaguesResult.error,
-        leaguesDataLength: userLeaguesResult.data?.length,
-        leaguesData: userLeaguesResult.data,
-      });
-      
       const currentGw = (currentGwResult.data as any)?.current_gw ?? 1;
 
       const userLeagues = ((userLeaguesResult.data ?? []) as any[])
         .map((r) => r.leagues)
         .filter(Boolean) as League[];
-      
-      console.log('[Home] Processed leagues:', userLeagues.length);
-      if (userLeagues.length > 0) {
-        console.log('[Home] League names:', userLeagues.map(l => l.name));
-        } else {
-        console.warn('[Home] NO LEAGUES FOUND! Raw data:', userLeaguesResult.data);
-          }
 
       // Assign avatars to leagues
       const ls: League[] = userLeagues.map((league) => ({
@@ -332,7 +309,6 @@ export default function HomePage() {
             userPicks = picksForCurrentFixtures.map(p => ({ ...p, gw: p.matchday })) as PickRow[];
           } else {
             // Picks don't match current fixtures - ignore them
-            console.log('[Home] Picks found but don\'t match current fixtures - ignoring old picks');
             userPicks = [];
           }
         } else {
@@ -359,24 +335,8 @@ export default function HomePage() {
           const picksAreValid = allFixturesHavePicks && noExtraPicks && picksForCurrentFixtures.length > 0;
           
           submitted = picksAreValid;
-          console.log('[Home] Test API submission check:', {
-            hasSubmission: !!submissionResult.data?.submitted_at,
-            submissionDate: submissionDate?.toISOString(),
-            cutoffDate: cutoffDate.toISOString(),
-            isRecent: isRecentSubmission,
-            picksCount: userPicks.length,
-            picksAreValid,
-            submitted
-          });
         } else {
           submitted = false;
-          if (submissionResult.data?.submitted_at) {
-            console.log('[Home] Test API submission ignored (old submission):', {
-              submissionDate: submissionDate?.toISOString(),
-              cutoffDate: cutoffDate.toISOString(),
-              isRecent: isRecentSubmission
-            });
-          }
         }
       } else {
         // Regular fixtures
@@ -431,20 +391,15 @@ export default function HomePage() {
           score = null;
         }
 
-    // Populate picksMap - only show picks if user has submitted (for test API league)
+      // Populate picksMap - only show picks if user has submitted (for test API league)
       // This prevents showing old unsubmitted picks in the tabs
       const map: Record<number, "H" | "D" | "A"> = {};
       if (submitted || !isInApiTestLeague) {
         // Only populate picks map if submitted (or not test API league)
         userPicks.forEach((p) => {
           map[p.fixture_index] = p.pick;
-          console.log('[Home] Pick loaded:', { fixture_index: p.fixture_index, pick: p.pick, user_id: p.user_id });
         });
-      } else {
-        console.log('[Home] Not showing picks - user has not submitted for test API league');
       }
-      console.log('[Home] Picks map:', map);
-      console.log('[Home] Fixtures:', thisGwFixtures.map(f => ({ fixture_index: f.fixture_index, home: f.home_name || f.home_team, away: f.away_name || f.away_team })));
 
     if (!alive) return;
 
@@ -618,29 +573,21 @@ export default function HomePage() {
     const startPolling = (fixture: Fixture) => {
       const fixtureIndex = fixture.fixture_index;
       if (intervals.has(fixtureIndex)) {
-        console.log('[Home] Already polling fixture', fixtureIndex);
         return; // Already polling
       }
       
-      console.log('[Home] Starting polling for fixture', fixtureIndex, 'api_match_id:', fixture.api_match_id);
-      
       const poll = async () => {
-        console.log('[Home] Polling fixture', fixtureIndex, 'from Supabase at', new Date().toISOString());
         const scoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
         
         // Check if we got no data (Supabase doesn't have it yet - scheduled function may not have run)
         if (!scoreData) {
-          console.log(`[Home] No score data in Supabase for fixture ${fixtureIndex} - scheduled function may not have updated yet`);
           return; // Will retry on next poll
         }
         
         // No rate limiting needed - we're reading from Supabase, not calling API
-        
-        console.log('[Home] Got score data for fixture', fixtureIndex, ':', scoreData);
         const isFinished = scoreData.status === 'FINISHED';
         
         // Update live scores
-        console.log('[Home] Updating liveScores for fixture', fixtureIndex);
         setLiveScores(prev => ({
           ...prev,
           [fixtureIndex]: {
@@ -669,7 +616,6 @@ export default function HomePage() {
         
         // Stop polling if finished
         if (isFinished) {
-          console.log(`[Home] Game ${fixtureIndex} finished - stopping polling`);
           const interval = intervals.get(fixtureIndex);
           if (interval) {
             clearInterval(interval);
@@ -704,7 +650,6 @@ export default function HomePage() {
         
         // Stop if finished
         if (isFinished && isCurrentlyPolling) {
-          console.log(`[Home] Stopping polling for fixture ${fixtureIndex} (finished)`);
           const interval = intervals.get(fixtureIndex);
           if (interval) {
             clearInterval(interval);
@@ -1831,6 +1776,27 @@ export default function HomePage() {
     };
   }, [user?.id, gwPoints, latestGw]);
 
+  // Memoize sorted leagues to avoid re-sorting on every render
+  const sortedLeagues = useMemo(() => {
+    return [...leagues].sort((a, b) => {
+      const unreadA = unreadByLeague?.[a.id] ?? 0;
+      const unreadB = unreadByLeague?.[b.id] ?? 0;
+      if (unreadA > 0 && unreadB === 0) return -1;
+      if (unreadA === 0 && unreadB > 0) return 1;
+      // If same unread status, sort alphabetically
+      return a.name.localeCompare(b.name);
+    });
+  }, [leagues, unreadByLeague]);
+
+  // Memoize live games check
+  const hasLiveGames = useMemo(() => {
+    const fixturesToCheckForLive = isInApiTestLeague ? fixtures.slice(0, 3) : fixtures;
+    return fixturesToCheckForLive.some(f => {
+      const liveScore = liveScores[f.fixture_index];
+      return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+    });
+  }, [isInApiTestLeague, fixtures, liveScores]);
+
   // Realtime: increment unread badge on new messages in any of my leagues
   useEffect(() => {
     const channel = supabase
@@ -1901,17 +1867,13 @@ export default function HomePage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-medium text-slate-500 uppercase tracking-wide">
-          {title}
-        </h2>
+            {title}
+          </h2>
           <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center">
             <span className="text-[10px] text-slate-500 font-bold">i</span>
           </div>
         </div>
-        {headerRight && (
-          <div>
-            {headerRight}
-          </div>
-        )}
+        {headerRight && <div>{headerRight}</div>}
       </div>
       {subtitle && (
         <div className="mt-1 text-sm text-slate-500">{subtitle}</div>
@@ -2226,29 +2188,37 @@ export default function HomePage() {
   const SkeletonLoader = () => (
     <>
       {/* Leaderboard Skeleton */}
-      <Section title="Leaderboards" boxed={false}>
-        <div className="grid grid-cols-2 gap-4">
-          {/* Global Leaderboard Skeleton */}
-          <div className="h-full rounded-3xl border-2 border-slate-200 bg-slate-50/80 p-4 sm:p-6 animate-pulse">
-            <div className="flex items-start gap-3">
-              <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-slate-200 flex-shrink-0" />
-            </div>
-            <div className="mt-2">
-              <div className="h-6 w-32 bg-slate-200 rounded mb-2" />
-              <div className="h-4 w-24 bg-slate-200 rounded" />
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-              <div className="h-5 w-16 bg-slate-200 rounded" />
-              <div className="h-5 w-12 bg-slate-200 rounded" />
-            </div>
-          </div>
-          {/* GW Card Skeleton */}
-          <div className="h-full rounded-3xl border-2 border-slate-200 bg-amber-50/60 p-4 sm:p-6 animate-pulse relative">
-            <div className="absolute top-4 left-4 h-4 w-12 bg-slate-200 rounded" />
-            <div className="absolute bottom-4 left-4 h-4 w-32 bg-slate-200 rounded" />
-            <div className="flex items-center justify-center h-full">
-              <div className="h-16 w-16 bg-slate-200 rounded" />
-            </div>
+      <Section title="Leaderboardz" boxed={false}>
+        <div 
+          className="overflow-x-auto -mx-4 px-4 scrollbar-hide" 
+          style={{ 
+            scrollbarWidth: 'none', 
+            msOverflowStyle: 'none', 
+            WebkitOverflowScrolling: 'touch', 
+            overscrollBehaviorX: 'contain',
+            touchAction: 'pan-x pinch-zoom'
+          }}
+        >
+          <style>{`
+            .scrollbar-hide::-webkit-scrollbar {
+              display: none;
+            }
+          `}</style>
+          <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden animate-pulse">
+                <div className="p-3 h-full flex flex-col relative">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="h-10 w-16 bg-slate-200 rounded" />
+                    <div className="h-4 w-4 bg-slate-200 rounded" />
+                  </div>
+                  <div className="mt-auto">
+                    <div className="h-3 w-20 bg-slate-200 rounded mb-2" />
+                    <div className="h-4 w-16 bg-slate-200 rounded" />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </Section>
@@ -2272,7 +2242,7 @@ export default function HomePage() {
                       <div className="flex items-start gap-3 relative">
                         {/* Avatar skeleton */}
                         <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-200" />
-                        <div className="flex-1 min-w-0 h-12 flex flex-col justify-between">
+                        <div className="flex-1 min-w-0 flex flex-col justify-between">
                           {/* League name skeleton */}
                           <div className="h-5 w-32 bg-slate-200 rounded -mt-0.5" />
                             </div>
@@ -2328,13 +2298,13 @@ export default function HomePage() {
           />
         </div>
       )}
-      <WhatsAppBanner />
+      {/* <WhatsAppBanner /> */}
       {(loading || leagueDataLoading) && isInitialMountRef.current ? (
         <SkeletonLoader />
       ) : (
         <>
-          {/* Leaderboards */}
-          <Section title="Leaderboards" boxed={false}>
+          {/* Leaderboardz */}
+          <Section title="Leaderboardz" boxed={false}>
             <div 
               key={`leaderboard-scroll-${navigationKeyRef.current}`}
               className="overflow-x-auto -mx-4 px-4 scrollbar-hide" 
@@ -2353,206 +2323,54 @@ export default function HomePage() {
               `}</style>
               <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
                 {/* Box 1: Last GW Leaderboard */}
-                <Link to="/global?tab=lastgw" className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block">
-                  <div className="p-3 h-full flex flex-col relative">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-baseline gap-[3px]" style={{ marginTop: '-4px' }}>
-                        {lastGwRank ? (
-                          <>
-                            <span className="text-[#1C8376]" style={{ fontSize: '38px', fontWeight: 'normal', lineHeight: '1' }}>{lastGwRank.score}</span>
-                            <div className="flex items-baseline gap-[4px]">
-                              <span className="text-slate-500" style={{ fontSize: '18px', fontWeight: 'normal', lineHeight: '1' }}>/</span>
-                              <span className="text-slate-500" style={{ fontSize: '18px', fontWeight: 'normal', lineHeight: '1' }}>{lastGwRank.totalFixtures}</span>
-                            </div>
-                          </>
-                        ) : (
-                          <span className="leading-none text-slate-900">—</span>
-                        )}
-                      </div>
-                      <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                    <div className="mt-auto">
-                      <div className="text-xs text-slate-500 mb-2">GAME WEEK {lastGwRank?.gw ?? '—'}</div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs font-semibold text-slate-900">
-                          {lastGwRank && lastGwRank.total > 0 
-                            ? `TOP ${Math.round((lastGwRank.rank / lastGwRank.total) * 100)}%`
-                            : "—"}
-                        </span>
-              </div>
-                    </div>
-                  </div>
-                </Link>
+                <LeaderboardCard
+                  title="Last GW"
+                  linkTo="/global?tab=lastgw"
+                  rank={lastGwRank?.rank ?? null}
+                  total={lastGwRank?.total ?? null}
+                  score={lastGwRank?.score}
+                  gw={lastGwRank?.gw}
+                  totalFixtures={lastGwRank?.totalFixtures}
+                  variant="lastGw"
+                />
 
                 {/* Box 2: 5-WEEK FORM */}
-                <Link to="/global?tab=form5" className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block">
-                  <div className="p-3 h-full flex flex-col">
-                    <div className="flex items-start justify-between mb-2">
-                      <img src="/assets/5-week-form-badge.png" alt="5-Week Form Badge" className="w-[32px] h-[32px]" />
-                      <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                    <div className="mt-auto">
-                      <div className="text-xs text-slate-500 mb-2">5-WEEK FORM</div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs font-semibold text-slate-900">
-                          {fiveGwRank && fiveGwRank.total > 0 
-                            ? `TOP ${Math.round((fiveGwRank.rank / fiveGwRank.total) * 100)}%`
-                            : "—"}
-                        </span>
-                    </div>
-                    </div>
-                  </div>
-                </Link>
+                <LeaderboardCard
+                  title="5-WEEK FORM"
+                  badgeSrc="/assets/5-week-form-badge.png"
+                  badgeAlt="5-Week Form Badge"
+                  linkTo="/global?tab=form5"
+                  rank={fiveGwRank?.rank ?? null}
+                  total={fiveGwRank?.total ?? null}
+                />
 
                 {/* Box 3: 10-WEEK FORM */}
-                <Link to="/global?tab=form10" className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block">
-                  <div className="p-3 h-full flex flex-col">
-                    <div className="flex items-start justify-between mb-2">
-                      <img src="/assets/10-week-form-badge.png" alt="10-Week Form Badge" className="w-[32px] h-[32px]" />
-                      <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                    <div className="mt-auto">
-                      <div className="text-xs text-slate-500 mb-2">10-WEEK FORM</div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs font-semibold text-slate-900">
-                          {tenGwRank && tenGwRank.total > 0 
-                            ? `TOP ${Math.round((tenGwRank.rank / tenGwRank.total) * 100)}%`
-                            : "—"}
-                        </span>
-                    </div>
-                    </div>
-                  </div>
-                </Link>
+                <LeaderboardCard
+                  title="10-WEEK FORM"
+                  badgeSrc="/assets/10-week-form-badge.png"
+                  badgeAlt="10-Week Form Badge"
+                  linkTo="/global?tab=form10"
+                  rank={tenGwRank?.rank ?? null}
+                  total={tenGwRank?.total ?? null}
+                />
 
                 {/* Box 4: SEASON RANK */}
-                <Link to="/global?tab=overall" className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block">
-                  <div className="p-3 h-full flex flex-col">
-                    <div className="flex items-start justify-between mb-2">
-                      <img src="/assets/season-rank-badge.png" alt="Season Rank Badge" className="w-[32px] h-[32px]" />
-                      <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                    <div className="mt-auto">
-                      <div className="text-xs text-slate-500 mb-2">SEASON RANK</div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs font-semibold text-slate-900">
-                          {seasonRank && seasonRank.total > 0 
-                            ? `TOP ${Math.round((seasonRank.rank / seasonRank.total) * 100)}%`
-                            : "—"}
-                        </span>
-                    </div>
-                    </div>
-                  </div>
-                </Link>
+                <LeaderboardCard
+                  title="SEASON RANK"
+                  badgeSrc="/assets/season-rank-badge.png"
+                  badgeAlt="Season Rank Badge"
+                  linkTo="/global?tab=overall"
+                  rank={seasonRank?.rank ?? null}
+                  total={seasonRank?.total ?? null}
+                />
 
                 {/* Streak Box */}
                 {userStreakData && (
-                  <div className="flex-shrink-0 w-[340px] sm:w-[400px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden hover:shadow-md transition-shadow relative">
-                    <div className="p-3 h-full flex flex-col">
-                      {/* Spacer to push content down */}
-                      <div className="flex-1"></div>
-                      
-                      {/* Bar Graph just above text */}
-                      <div className="mb-2 relative" style={{ height: '70px' }}>
-                        {(() => {
-                          const scores = userStreakData.last10GwScores;
-                          const playedScores = scores.filter(s => s.score !== null);
-                          const maxScore = playedScores.length > 0 ? Math.max(...playedScores.map(s => s.score!)) : 10;
-                          const minScore = 0;
-                          const range = maxScore - minScore || 1;
-                          const graphHeight = 60;
-                          
-                          return (
-                            <div className="relative h-full">
-                              {/* Bar Graph */}
-                              <div className="flex items-end justify-between gap-1 h-full px-1">
-                                {scores.map((gwData, _index) => {
-                                  const isPlayed = gwData.score !== null;
-                                  const isLatest = gwData.gw === latestGw;
-                                  const score = gwData.score ?? 0;
-                                  const barHeight = isPlayed ? ((score - minScore) / range) * graphHeight : 0;
-                                  
-                                  return (
-                                    <div
-                                      key={gwData.gw}
-                                      className="flex flex-col items-center justify-end gap-1 flex-1 relative min-w-0"
-                                    >
-                                      {/* Score number above bar */}
-                                      {isPlayed && (
-                                        <div
-                                          className={`text-xs font-bold mb-0.5 leading-none ${
-                                            isLatest ? 'text-[#1C8376]' : 'text-slate-700'
-                                          }`}
-                                        >
-                                          {score}
-                                        </div>
-                                      )}
-                                      
-                                      {/* Bar */}
-                                      <div
-                                        className={`w-full rounded-t transition-all ${
-                                          isPlayed
-                                            ? isLatest
-                                              ? 'bg-[#1C8376]'
-                                              : 'bg-slate-400'
-                                            : 'bg-slate-200'
-                                        }`}
-                                        style={{
-                                          height: `${barHeight}px`,
-                                          minHeight: isPlayed ? '4px' : '0'
-                                        }}
-                                        title={isPlayed ? `GW${gwData.gw}: ${score}` : `GW${gwData.gw}: Not played`}
-                                      />
-                                      
-                                      {/* GW label */}
-                                      <div
-                                        className={`text-[10px] font-medium leading-tight ${
-                                          isPlayed
-                                            ? isLatest
-                                              ? 'text-[#1C8376] font-bold'
-                                              : 'text-slate-700'
-                                            : 'text-slate-400'
-                                        }`}
-                                      >
-                                        GW{gwData.gw}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                      
-                      {/* Bottom text row */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1">
-                          <svg className="w-3 h-3 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                            <circle cx="12" cy="12" r="6" strokeWidth={2} />
-                            <circle cx="12" cy="12" r="2" fill="currentColor" />
-                          </svg>
-                          <span className="text-sm font-semibold text-slate-900">
-                            Your Streak{' '}
-                            <span className="font-bold text-orange-500">
-                              {userStreakData.streak > 0 
-                                ? `${userStreakData.streak} ${userStreakData.streak === 1 ? 'Week' : 'Weeks'}`
-                                : 'Start your streak!'}
-                            </span>
-                          </span>
-                        </div>
-                        <span className="text-[10px] font-medium text-slate-400">Last 10</span>
-                      </div>
-                    </div>
-                  </div>
+                  <StreakCard
+                    streak={userStreakData.streak}
+                    last10GwScores={userStreakData.last10GwScores}
+                    latestGw={latestGw ?? 1}
+                  />
                 )}
               </div>
         </div>
@@ -2560,7 +2378,7 @@ export default function HomePage() {
 
       {/* Mini Leagues section */}
       <section className="mt-6">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-2 pt-5">
           <div className="flex items-center gap-2">
             <h2 className="text-base font-medium text-slate-500 uppercase tracking-wide">
             Mini Leagues
@@ -2571,10 +2389,6 @@ export default function HomePage() {
           </div>
         </div>
         <div>
-          {(() => {
-            console.log('[Home] Mini Leagues render check:', { loading, isInitialMount: isInitialMountRef.current, leaguesLength: leagues.length });
-            return null;
-          })()}
           {(loading || leagueDataLoading) && isInitialMountRef.current && leagues.length === 0 ? (
             <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
               <style>{`
@@ -2594,7 +2408,7 @@ export default function HomePage() {
                         <div className="p-4 bg-white relative">
                           <div className="flex items-start gap-3 relative">
                             <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-200" />
-                            <div className="flex-1 min-w-0 h-12 flex flex-col justify-between">
+                            <div className="flex-1 min-w-0 flex flex-col justify-between">
                               <div className="h-5 w-32 bg-slate-200 rounded -mt-0.5" />
                               </div>
                             <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
@@ -2627,7 +2441,7 @@ export default function HomePage() {
                         <div className="p-4 bg-white relative">
                           <div className="flex items-start gap-3 relative">
                             <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-200" />
-                            <div className="flex-1 min-w-0 h-12 flex flex-col justify-between">
+                            <div className="flex-1 min-w-0 flex flex-col justify-between">
                               <div className="h-5 w-32 bg-slate-200 rounded -mt-0.5" />
                               </div>
                             <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
@@ -2671,16 +2485,6 @@ export default function HomePage() {
               `}</style>
               <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
                 {(() => {
-                  // Sort leagues: those with unread messages first, then alphabetically
-                  const sortedLeagues = [...leagues].sort((a, b) => {
-                    const unreadA = unreadByLeague?.[a.id] ?? 0;
-                    const unreadB = unreadByLeague?.[b.id] ?? 0;
-                    if (unreadA > 0 && unreadB === 0) return -1;
-                    if (unreadA === 0 && unreadB > 0) return 1;
-                    // If same unread status, sort alphabetically
-                    return a.name.localeCompare(b.name);
-                  });
-                  
                   // Group into batches of 3
                   return Array.from({ length: Math.ceil(sortedLeagues.length / 3) }).map((_, batchIdx) => {
                     const startIdx = batchIdx * 3;
@@ -2737,14 +2541,14 @@ export default function HomePage() {
                                     />
                                   </div>
                                   
-                                  <div className="flex-1 min-w-0 h-12 flex flex-col justify-between overflow-hidden">
+                                  <div className="flex-1 min-w-0 flex flex-col gap-1">
                                     {/* League Name */}
                                     <div className="text-base font-semibold text-slate-900 truncate -mt-0.5">
                                       {l.name}
                                     </div>
                                     
                                     {/* Player Chips - ordered by ML table position (1st to last) */}
-                                    <div className="flex items-center overflow-x-hidden overflow-y-hidden mt-1 py-0.5">
+                                    <div className="flex items-center py-0.5">
                                         {(() => {
                                           // Wait for calculation to complete
                                           if (leagueDataLoading) return null;
@@ -2912,37 +2716,26 @@ export default function HomePage() {
             </div>
           </div>
           {/* Centered toggle switch */}
-          {(() => {
-            // Check if any games are live - show filter toggle centered
-            const fixturesToCheckForLive = isInApiTestLeague ? fixtures.slice(0, 3) : fixtures;
-            const hasLiveGames = fixturesToCheckForLive.some(f => {
-              const liveScore = liveScores[f.fixture_index];
-              return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
-            });
-            
-            if (!hasLiveGames) return null;
-            
-            return (
-              <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
-                <span className={`text-[10px] font-medium transition-colors ${!showLiveOnly ? 'text-slate-700' : 'text-slate-400'}`}>ALL</span>
-                <button
-                  onClick={() => setShowLiveOnly(!showLiveOnly)}
-                  className="relative inline-flex items-center rounded-full transition-colors focus:outline-none"
-                  style={{
-                    backgroundColor: showLiveOnly ? '#dc2626' : '#cbd5e1',
-                    width: '48px',
-                    height: '24px',
-                    border: 'none'
-                  }}
-                >
-                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transform transition-transform duration-200 ease-in-out ${showLiveOnly ? 'translate-x-6' : 'translate-x-0.5'}`}></span>
-                </button>
-                <span className={`text-[10px] font-medium transition-colors ${showLiveOnly ? 'text-slate-700' : 'text-slate-400'}`}>
-                  LIVE
-                </span>
-              </div>
-            );
-          })()}
+          {hasLiveGames && (
+            <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
+              <span className={`text-[10px] font-medium transition-colors ${!showLiveOnly ? 'text-slate-700' : 'text-slate-400'}`}>ALL</span>
+              <button
+                onClick={() => setShowLiveOnly(!showLiveOnly)}
+                className="relative inline-flex items-center rounded-full transition-colors focus:outline-none"
+                style={{
+                  backgroundColor: showLiveOnly ? '#dc2626' : '#cbd5e1',
+                  width: '48px',
+                  height: '24px',
+                  border: 'none'
+                }}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transform transition-transform duration-200 ease-in-out ${showLiveOnly ? 'translate-x-6' : 'translate-x-0.5'}`}></span>
+              </button>
+              <span className={`text-[10px] font-medium transition-colors ${showLiveOnly ? 'text-slate-700' : 'text-slate-400'}`}>
+                LIVE
+              </span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             {(() => {
               // Calculate live score for test API users (includes both live and finished games)
@@ -3189,7 +2982,6 @@ export default function HomePage() {
                   <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">
                     {group.items.map((f, index) => {
                         const pick = picksMap[f.fixture_index];
-                        console.log('[Home] Rendering fixture:', { fixture_index: f.fixture_index, pick, home: f.home_name, away: f.away_name });
                         // For test API fixtures, prioritize short names; otherwise use medium names
                         const homeKey = f.home_team || f.home_name || f.home_code || "";
                         const awayKey = f.away_team || f.away_name || f.away_code || "";
