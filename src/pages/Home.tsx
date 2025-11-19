@@ -2989,7 +2989,75 @@ export default function HomePage() {
                 );
               }
               
-              // Show final score if available
+              // For API Test league: Show score when submitted (even if 0), update as games play out
+              if (isInApiTestLeague && fixtures.length > 0 && gwSubmitted) {
+                // Calculate current score from live scores if available, otherwise use gwScore or 0
+                let currentScore = gwScore ?? 0;
+                let totalFixtures = fixtures.length;
+                
+                // If we have live scores, calculate score from them
+                if (fixturesToCheck.length > 0) {
+                  let calculatedScore = 0;
+                  fixturesToCheck.forEach(f => {
+                    const liveScore = liveScores[f.fixture_index];
+                    const pick = picksMap[f.fixture_index];
+                    if (liveScore && pick && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
+                      let isCorrect = false;
+                      if (pick === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrect = true;
+                      else if (pick === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrect = true;
+                      else if (pick === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrect = true;
+                      if (isCorrect) calculatedScore++;
+                    }
+                  });
+                  // Use calculated score if we have live scores, otherwise fall back to gwScore
+                  if (calculatedScore > 0 || fixturesToCheck.some(f => liveScores[f.fixture_index])) {
+                    currentScore = calculatedScore;
+                    totalFixtures = fixturesToCheck.length;
+                  }
+                }
+                
+                // Check if any games are live or finished
+                const hasLiveOrFinished = fixturesToCheck.length > 0 && fixturesToCheck.some(f => {
+                  const liveScore = liveScores[f.fixture_index];
+                  return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
+                });
+                
+                if (hasLiveOrFinished) {
+                  // Show live score with live indicator
+                  const allFinished = fixturesToCheck.every(f => {
+                    const liveScore = liveScores[f.fixture_index];
+                    return liveScore && liveScore.status === 'FINISHED';
+                  });
+                  
+                  return (
+                    <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${allFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
+                      {!allFinished && (
+                        <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                      )}
+                      <span className="text-xs sm:text-sm font-medium opacity-90">{allFinished ? 'Score' : 'Live'}</span>
+                      <span className="flex items-baseline gap-0.5">
+                        <span className="text-lg sm:text-xl font-extrabold">{currentScore}</span>
+                        <span className="text-sm sm:text-base font-medium opacity-90">/</span>
+                        <span className="text-base sm:text-lg font-semibold opacity-80">{totalFixtures}</span>
+                      </span>
+                    </div>
+                  );
+                } else {
+                  // No live scores yet - show static score (0/10 initially)
+                  return (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-600 text-white shadow-lg shadow-slate-500/30">
+                      <span className="text-xs sm:text-sm font-medium opacity-90">Score</span>
+                      <span className="flex items-baseline gap-0.5">
+                        <span className="text-lg sm:text-xl font-extrabold">{currentScore}</span>
+                        <span className="text-sm sm:text-base font-medium opacity-90">/</span>
+                        <span className="text-base sm:text-lg font-semibold opacity-80">{totalFixtures}</span>
+                      </span>
+                    </div>
+                  );
+                }
+              }
+              
+              // Show final score if available (for regular users)
               if (gwScore !== null && Object.keys(resultsMap).length > 0 && Object.keys(resultsMap).length === fixtures.length) {
                 return (
                   <button
