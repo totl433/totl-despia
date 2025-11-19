@@ -11,7 +11,6 @@ type LeaderboardCardProps = {
   score?: number;
   gw?: number;
   totalFixtures?: number;
-  isTied?: boolean;
   subtitle?: string;
   variant?: 'default' | 'lastGw'; // Special variant for Last GW card
 };
@@ -26,7 +25,6 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
   score,
   gw,
   totalFixtures,
-  isTied,
   subtitle,
   variant = 'default',
 }: LeaderboardCardProps) {
