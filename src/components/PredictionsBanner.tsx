@@ -14,7 +14,8 @@ export default function PredictionsBanner() {
   // Hide banner on staging - it links to wrong predictions page
   const isStaging = typeof window !== 'undefined' && (
     window.location.hostname.includes('staging') || 
-    window.location.hostname.includes('netlify.app')
+    window.location.hostname.includes('netlify.app') ||
+    window.location.hostname.includes('totl-staging')
   );
   
   const [visible, setVisible] = React.useState(false);
