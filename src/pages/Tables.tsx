@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, memo } from "react";
 import { Link } from "react-router-dom";
-import { getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
+import { getLeagueAvatarUrl, getDefaultMlAvatar, getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 
