@@ -2992,13 +2992,19 @@ export default function HomePage() {
                 );
               }
               
-              // Show make predictions button
+              // Show make predictions button - for API Test league, show "Make your TEST predictions" button
               if (fixtures.length > 0 && !gwSubmitted && gwScore === null) {
-                // For API Test league, link to test API predictions page
-                const predictionsLink = isInApiTestLeague ? "/test-api-predictions" : "/new-predictions";
-                return (
-                  <Link to={predictionsLink} className="inline-block px-3 py-1 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors no-underline">Make your predictions</Link>
-                );
+                if (isInApiTestLeague) {
+                  return (
+                    <Link to="/test-api-predictions" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-600 text-white shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-all no-underline">
+                      <span className="text-xs sm:text-sm font-semibold">Make your TEST predictions</span>
+                    </Link>
+                  );
+                } else {
+                  return (
+                    <Link to="/new-predictions" className="inline-block px-3 py-1 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors no-underline">Make your predictions</Link>
+                  );
+                }
               }
               
               return null;
