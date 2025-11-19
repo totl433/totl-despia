@@ -372,7 +372,8 @@ export default function HomePage() {
         });
 
     let score: number | null = null;
-        if (outcomeByIdx.size > 0) {
+        // Only calculate score if there are results AND user has picks
+        if (outcomeByIdx.size > 0 && userPicks.length > 0) {
       // Count correct picks
           let s = 0;
           userPicks.forEach((p) => {
@@ -380,6 +381,9 @@ export default function HomePage() {
             if (out && out === p.pick) s += 1;
           });
           score = s;
+        } else if (outcomeByIdx.size === 0 && userPicks.length === 0) {
+          // No results and no picks - score should be null (show "Make predictions" button)
+          score = null;
         }
 
     // Populate picksMap - show picks even if not submitted (for test API users)
