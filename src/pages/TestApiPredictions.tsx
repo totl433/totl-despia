@@ -167,27 +167,116 @@ export default function TestApiPredictions() {
   const [returnToReview, setReturnToReview] = useState(false);
   const [confirmCelebration, setConfirmCelebration] = useState<{ success: boolean; message: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [picksChecked, setPicksChecked] = useState(false); // Track if we've checked for picks
+  const [submissionChecked, setSubmissionChecked] = useState(false); // Track if we've checked submission status
   const [submitted, setSubmitted] = useState(false);
   const [isPastDeadline, setIsPastDeadline] = useState(false);
   const [allMembersSubmitted, setAllMembersSubmitted] = useState(false);
   const [leagueMembers, setLeagueMembers] = useState<Array<{ id: string; name: string }>>([]);
   const [submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new Set());
+  const [apiTestLeagueId, setApiTestLeagueId] = useState<string | null>(null);
   // Live scores for test API fixtures
   const [liveScores, setLiveScores] = useState<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
   // Track when halftime ends for each fixture (when status changes from PAUSED to IN_PLAY)
   const halftimeEndTimeRef = useRef<Record<number, Date>>({});
+  // CRITICAL: Track if we've ever seen submitted=true to prevent swipe view from showing
+  // Use sessionStorage to persist across navigations
+  const getHasEverBeenSubmitted = () => {
+    if (typeof window === 'undefined') return false;
+    const key = `test_api_submitted_${currentTestGw}_${user?.id}`;
+    return sessionStorage.getItem(key) === 'true';
+  };
+  const setHasEverBeenSubmitted = (value: boolean) => {
+    if (typeof window === 'undefined' || !currentTestGw || !user?.id) return;
+    const key = `test_api_submitted_${currentTestGw}_${user?.id}`;
+    if (value) {
+      sessionStorage.setItem(key, 'true');
+    } else {
+      sessionStorage.removeItem(key);
+    }
+  };
+  const hasEverBeenSubmittedRef = useRef<boolean>(getHasEverBeenSubmitted());
+
+  // Cleanup scroll lock on mount - ensure scrolling is restored when component loads
+  // This fixes the issue where scroll lock from SwipePredictions persists when navigating to this page
+  useEffect(() => {
+      const html = document.documentElement;
+      const body = document.body;
+      const root = document.getElementById('root');
+      
+    // Restore scrolling by removing all scroll prevention styles
+    // Use setProperty with empty string to override any !important rules from previous pages
+    html.style.setProperty('overflow', '', 'important');
+    body.style.setProperty('overflow', '', 'important');
+    body.style.setProperty('position', '', 'important');
+    body.style.removeProperty('width');
+    body.style.removeProperty('height');
+    body.style.removeProperty('top');
+    if (root) {
+      root.style.setProperty('overflow', '', 'important');
+    }
+    
+    // Small delay to ensure styles are applied, then remove them completely
+    // This handles cases where styles might be re-applied
+    const timeoutId = setTimeout(() => {
+      html.style.removeProperty('overflow');
+      body.style.removeProperty('overflow');
+      body.style.removeProperty('position');
+      body.style.removeProperty('width');
+      body.style.removeProperty('height');
+      body.style.removeProperty('top');
+      if (root) {
+        root.style.removeProperty('overflow');
+      }
+    }, 100);
+    
+    // Return cleanup to ensure scroll is restored when component unmounts
+    return () => {
+      clearTimeout(timeoutId);
+      html.style.setProperty('overflow', '', 'important');
+      body.style.setProperty('overflow', '', 'important');
+      body.style.setProperty('position', '', 'important');
+      body.style.removeProperty('width');
+      body.style.removeProperty('height');
+      body.style.removeProperty('top');
+      if (root) {
+        root.style.setProperty('overflow', '', 'important');
+      }
+      // Final cleanup after a brief delay
+      setTimeout(() => {
+        html.style.removeProperty('overflow');
+        body.style.removeProperty('overflow');
+        body.style.removeProperty('position');
+        body.style.removeProperty('width');
+        body.style.removeProperty('height');
+        body.style.removeProperty('top');
+        if (root) {
+          root.style.removeProperty('overflow');
+        }
+      }, 50);
+    };
+  }, []); // Run once on mount
 
   useEffect(() => {
-    // Only lock scrolling when in card swipe mode, not on review page
+    // Only lock scrolling when in card swipe mode, not on review page, and not submitted
     const isReviewPage = currentIndex >= fixtures.length;
-    const shouldLockScroll = viewMode === "cards" && !isReviewPage && fixtures.length > 0;
+    const shouldLockScroll = viewMode === "cards" && !isReviewPage && fixtures.length > 0 && !submitted;
     
     const html = document.documentElement;
     const body = document.body;
     const root = document.getElementById('root');
     
     // Restore scrolling by removing all scroll prevention styles
+    // First override any !important rules, then remove the properties
     const restoreScrolling = () => {
+      // Override !important rules first
+      html.style.setProperty('overflow', '', 'important');
+      body.style.setProperty('overflow', '', 'important');
+      body.style.setProperty('position', '', 'important');
+      if (root) {
+        root.style.setProperty('overflow', '', 'important');
+      }
+      // Then remove the properties completely
       html.style.removeProperty('overflow');
       body.style.removeProperty('overflow');
       body.style.removeProperty('position');
@@ -200,7 +289,7 @@ export default function TestApiPredictions() {
     };
     
     if (!shouldLockScroll) {
-      // Restore scrolling if we're on review page or list mode
+      // Restore scrolling if we're on review page, list mode, or submitted
       restoreScrolling();
       // Make sure we clean up any event listeners from previous lock
       return;
@@ -243,7 +332,7 @@ export default function TestApiPredictions() {
       window.removeEventListener('wheel', preventWheel);
       document.removeEventListener('touchmove', preventScroll);
     };
-  }, [viewMode, currentIndex, fixtures.length]);
+  }, [viewMode, currentIndex, fixtures.length, submitted]);
 
   const allPicksMade = useMemo(() => {
     if (fixtures.length === 0) return false;
@@ -260,6 +349,8 @@ export default function TestApiPredictions() {
     (async () => {
       try {
         setLoading(true);
+        setPicksChecked(false); // Reset picks checked state
+        setSubmissionChecked(false); // Reset submission checked state
 
         // Get test GW from meta
         const { data: meta } = await supabase
@@ -329,9 +420,46 @@ export default function TestApiPredictions() {
           setResults(new Map());
         }
 
+        // CRITICAL: Check submission status FIRST before anything else
+        // This prevents the swipe view from showing even briefly
+        let isSubmitted = false;
+        if (user?.id && fixturesData.length > 0) {
+          const { data: submission } = await supabase
+            .from("test_api_submissions")
+            .select("submitted_at")
+            .eq("matchday", testGw)
+            .eq("user_id", user.id)
+            .maybeSingle();
+          
+          if (alive && submission?.submitted_at) {
+            // Submission exists - set submitted immediately to prevent swipe view
+            // We'll validate picks match later, but for now, assume submitted
+            isSubmitted = true;
+            setSubmitted(true);
+            hasEverBeenSubmittedRef.current = true; // Mark that we've seen submitted
+            setHasEverBeenSubmitted(true); // Persist in sessionStorage
+            setSubmissionChecked(true);
+          } else {
+            setSubmitted(false);
+            // Check sessionStorage - if it says submitted, respect it
+            if (hasEverBeenSubmittedRef.current) {
+              setSubmitted(true);
+              isSubmitted = true;
+            }
+            setSubmissionChecked(true);
+          }
+        } else {
+          // No user or no fixtures - mark as checked anyway
+          if (alive) {
+            setSubmitted(false);
+            setSubmissionChecked(true);
+          }
+        }
+
         // Fetch user's picks from TEST API table
         let hasPicks = false;
-        if (user?.id && fixturesData.length > 0) {
+        if (user?.id && fixturesData.length > 0 && !isSubmitted) {
+          // Only fetch picks if not submitted (optimization)
           const { data: pk, error: pkErr } = await supabase
             .from("test_api_picks")
             .select("matchday,fixture_index,pick")
@@ -384,39 +512,45 @@ export default function TestApiPredictions() {
               }
             }
           }
-        }
-        
-        // Check if user has submitted - but only consider it valid if picks match current fixtures
-        let isSubmitted = false;
-        if (user?.id && fixturesData.length > 0) {
-          const { data: submission } = await supabase
-            .from("test_api_submissions")
-            .select("submitted_at")
+        } else if (isSubmitted && user?.id && fixturesData.length > 0) {
+          // User has submitted - fetch picks for display purposes
+          const { data: pk, error: pkErr } = await supabase
+            .from("test_api_picks")
+            .select("matchday,fixture_index,pick")
             .eq("matchday", testGw)
-            .eq("user_id", user.id)
-            .maybeSingle();
+            .eq("user_id", user.id);
+
+          if (!pkErr && pk && pk.length > 0) {
+            const currentFixtureIndices = new Set(fixturesData.map(f => f.fixture_index));
+            const picksForCurrentFixtures = pk.filter((p: any) => currentFixtureIndices.has(p.fixture_index));
+            
+            if (picksForCurrentFixtures.length === fixturesData.length) {
+              const picksMap = new Map<number, Pick>();
+              picksForCurrentFixtures.forEach((p: any) => {
+                picksMap.set(p.fixture_index, {
+                  fixture_index: p.fixture_index,
+                  pick: p.pick,
+                  matchday: p.matchday
+                });
+              });
+              
+              if (alive) {
+                setPicks(picksMap);
+                hasPicks = true;
+              }
+            }
+          }
           
-          // Only consider submitted if picks exist and match current fixtures
-          // If picks don't match (e.g., old Brazil picks vs new PL fixtures), ignore submission
-          if (alive && submission?.submitted_at) {
-            // Check if we have valid picks for current fixtures
-            if (hasPicks) {
-              isSubmitted = true;
-              setSubmitted(true);
-            } else {
+          // Validate submission is still valid (picks match)
+          if (alive && !hasPicks) {
               // Submission exists but picks don't match - clear the submission
-              isSubmitted = false;
               setSubmitted(false);
-              // Clear the invalid submission from database
               await supabase
                 .from("test_api_submissions")
                 .delete()
                 .eq("matchday", testGw)
                 .eq("user_id", user.id);
             }
-          } else {
-            setSubmitted(false);
-          }
         }
         
         // Check if all members have submitted (for API Test league)
@@ -429,6 +563,9 @@ export default function TestApiPredictions() {
             .maybeSingle();
           
           if (apiTestLeague) {
+            if (alive) {
+              setApiTestLeagueId(apiTestLeague.id);
+            }
             // Get all members of API Test league
             const { data: membersData } = await supabase
               .from("league_members")
@@ -497,6 +634,15 @@ export default function TestApiPredictions() {
           }
         }
         
+        // Mark that we've checked for picks
+        if (alive) {
+          setPicksChecked(true);
+          // Ensure submissionChecked is set (in case it wasn't set above)
+          if (!submissionChecked) {
+            setSubmissionChecked(true);
+          }
+        }
+        
         // If user has picks for ALL current fixtures but not submitted, show review mode
         // If no picks or incomplete picks, show swipe mode (currentIndex = 0)
         // If submitted with valid picks, we'll show confirmed predictions view (separate from review)
@@ -514,6 +660,9 @@ export default function TestApiPredictions() {
         }
       } catch (error) {
         console.error('Error loading test API data:', error);
+        if (alive) {
+          setPicksChecked(true); // Mark as checked even on error
+        }
       } finally {
         if (alive) {
           setLoading(false);
@@ -944,6 +1093,8 @@ export default function TestApiPredictions() {
     setPicks(new Map());
     setCurrentIndex(0);
     setSubmitted(false);
+    hasEverBeenSubmittedRef.current = false;
+    setHasEverBeenSubmitted(false); // Clear sessionStorage
     
     // Delete picks from database - CRITICAL: This should remove all picks for this matchday
     // Also delete submission to ensure nothing is marked as confirmed
@@ -1006,11 +1157,11 @@ export default function TestApiPredictions() {
       const picksArray = Array.from(picks.values())
         .filter(pick => pick.matchday === currentTestGw) // Safety: only current matchday
         .map(pick => ({
-          user_id: user.id,
-          matchday: pick.matchday,
-          fixture_index: pick.fixture_index,
-          pick: pick.pick
-        }));
+        user_id: user.id,
+        matchday: pick.matchday,
+        fixture_index: pick.fixture_index,
+        pick: pick.pick
+      }));
 
       if (picksArray.length !== fixtures.length) {
         throw new Error(`Expected ${fixtures.length} picks but got ${picksArray.length}`);
@@ -1048,10 +1199,27 @@ export default function TestApiPredictions() {
 
       console.log('[TestApiPredictions] Successfully confirmed test picks and submission');
       setSubmitted(true);
+      hasEverBeenSubmittedRef.current = true;
+      setHasEverBeenSubmitted(true); // Persist in sessionStorage immediately
       setConfirmCelebration({ success: true, message: "Your test predictions are locked in. Good luck!" });
       setTimeout(() => {
         setConfirmCelebration(null);
       }, 2500);
+
+      // Check if all members have submitted and notify (fire-and-forget)
+      if (apiTestLeagueId && currentTestGw) {
+        fetch('/.netlify/functions/notifyFinalSubmission', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            leagueId: apiTestLeagueId,
+            matchday: currentTestGw,
+            isTestApi: true,
+          }),
+        }).catch(err => {
+          console.error('[TestApiPredictions] Failed to check final submission:', err);
+        });
+      }
     } catch (error) {
       console.error('Error confirming test picks:', error);
       setConfirmCelebration({ success: false, message: "Failed to confirm predictions. Please try again." });
@@ -1059,10 +1227,65 @@ export default function TestApiPredictions() {
     }
   };
 
-  if (loading || !currentTestGw) {
+  // Show loading/skeleton until we've loaded fixtures AND checked for picks AND checked submission status
+  // CRITICAL: Never show swipe view until we know for sure the user hasn't submitted
+  const loadingState = {
+    loading,
+    currentTestGw: !!currentTestGw,
+    picksChecked,
+    submissionChecked,
+    submitted,
+    sessionStorageSubmitted: getHasEverBeenSubmitted(),
+  };
+  console.log('[TestApiPredictions] Render check - loading state:', loadingState);
+  
+  if (loading || !currentTestGw || !picksChecked || !submissionChecked) {
+    console.log('[TestApiPredictions] Showing skeleton loader');
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-        <div className="text-slate-600">Loading test fixtures...</div>
+      <div className="min-h-screen bg-slate-50 flex flex-col">
+        <div className="p-4">
+          <div className="max-w-2xl mx-auto">
+            <div className="relative flex items-center justify-between">
+              <button
+                onClick={() => navigate("/")}
+                className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-800"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+                Back
+              </button>
+              <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">
+                Test API Predictions
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="max-w-2xl mx-auto space-y-6">
+            {/* Skeleton loader */}
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="bg-white rounded-xl shadow-sm p-6 animate-pulse">
+                  <div className="flex items-center justify-between gap-2 mb-4">
+                    <div className="h-4 bg-slate-200 rounded w-24"></div>
+                    <div className="flex items-center gap-2">
+                      <div className="h-6 w-6 bg-slate-200 rounded-full"></div>
+                      <div className="h-4 bg-slate-200 rounded w-16"></div>
+                      <div className="h-6 w-6 bg-slate-200 rounded-full"></div>
+                    </div>
+                    <div className="h-4 bg-slate-200 rounded w-24"></div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 mt-4">
+                    <div className="h-16 bg-slate-100 rounded-xl"></div>
+                    <div className="h-16 bg-slate-100 rounded-xl"></div>
+                    <div className="h-16 bg-slate-100 rounded-xl"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1088,7 +1311,11 @@ export default function TestApiPredictions() {
 
   // Confirmed Predictions View (after submission) - separate from review mode
   // BUT: Only show fixtures if all members have submitted
-  if (submitted) {
+  // Check both state and sessionStorage for maximum safety
+  const isUserSubmitted = submitted || getHasEverBeenSubmitted();
+  console.log('[TestApiPredictions] Checking if submitted - state:', submitted, 'sessionStorage:', getHasEverBeenSubmitted(), 'isUserSubmitted:', isUserSubmitted);
+  if (isUserSubmitted) {
+    console.log('[TestApiPredictions] ✅ Showing submitted view');
     // If not all members have submitted, show "Who's submitted" view (similar to League page)
     if (!allMembersSubmitted && leagueMembers.length > 0) {
       const remaining = leagueMembers.filter(m => !submittedMemberIds.has(m.id)).length;
@@ -1225,35 +1452,35 @@ export default function TestApiPredictions() {
                     {groupIdx === 0 && (() => {
                       // Check if any games have started (live or finished)
                       const hasAnyLiveOrFinished = fixturesToCheck.length > 0 && fixturesToCheck.some(f => {
-                        const liveScore = liveScores[f.fixture_index];
-                        return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
+                      const liveScore = liveScores[f.fixture_index];
+                      return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
                       });
                       
                       // If games have started, show live/score indicator
                       if (hasAnyLiveOrFinished) {
-                        // Check if all fixtures are finished
-                        const checkAllFinished = fixturesToCheck.every(f => {
-                          const liveScore = liveScores[f.fixture_index];
-                          return liveScore && liveScore.status === 'FINISHED';
-                        });
-                        return (
-                          <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${checkAllFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
-                            {!checkAllFinished && liveFixturesCount > 0 && (
-                              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                            )}
-                            {checkAllFinished && (
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                              </svg>
-                            )}
-                            <span className="text-xs sm:text-sm font-medium opacity-90">{checkAllFinished ? 'Score' : 'Live'}</span>
-                            <span className="flex items-baseline gap-0.5">
-                              <span className="text-lg sm:text-xl font-extrabold">{liveScoreCount}</span>
-                              <span className="text-sm sm:text-base font-medium opacity-90">/</span>
-                              <span className="text-base sm:text-lg font-semibold opacity-80">{fixturesToCheck.length}</span>
-                            </span>
-                          </div>
-                        );
+                      // Check if all fixtures are finished
+                      const checkAllFinished = fixturesToCheck.every(f => {
+                        const liveScore = liveScores[f.fixture_index];
+                        return liveScore && liveScore.status === 'FINISHED';
+                      });
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${checkAllFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
+                          {!checkAllFinished && liveFixturesCount > 0 && (
+                            <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                          )}
+                          {checkAllFinished && (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                            </svg>
+                          )}
+                          <span className="text-xs sm:text-sm font-medium opacity-90">{checkAllFinished ? 'Score' : 'Live'}</span>
+                        <span className="flex items-baseline gap-0.5">
+                          <span className="text-lg sm:text-xl font-extrabold">{liveScoreCount}</span>
+                          <span className="text-sm sm:text-base font-medium opacity-90">/</span>
+                          <span className="text-base sm:text-lg font-semibold opacity-80">{fixturesToCheck.length}</span>
+                        </span>
+                      </div>
+                      );
                       }
                       
                       // If no games have started but user has submitted, show "-- / 10" indicator
@@ -1275,7 +1502,7 @@ export default function TestApiPredictions() {
                   </div>
                   <div className="rounded-2xl border bg-slate-50 overflow-hidden">
                     <ul>
-                      {group.items.map((fixture, index)=>{
+                    {group.items.map((fixture, index)=>{
                       const pick = picks.get(fixture.fixture_index);
                       const liveScore = liveScores[fixture.fixture_index];
                       const isLive = liveScore && liveScore.status === 'IN_PLAY';
@@ -1396,19 +1623,19 @@ export default function TestApiPredictions() {
                                     }}
                                   />
                                 )}
-                              </div>
+                                </div>
                               <div className="flex items-center justify-center">
                                 <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{awayName}</span>
                               </div>
                             </div>
                             {/* Score indicator (phase label) */}
                             {liveScore && (isLive || isHalfTime || isFinished) && (
-                              <div className="flex justify-center mt-1">
+                                <div className="flex justify-center mt-1">
                                 <span className={`text-[10px] font-semibold ${isLive || isHalfTime ? 'text-red-600' : 'text-slate-500'}`}>
-                                  {formatMinuteDisplay(liveScore.status, liveScore.minute)}
-                                </span>
-                              </div>
-                            )}
+                                    {formatMinuteDisplay(liveScore.status, liveScore.minute)}
+                                  </span>
+                                </div>
+                              )}
 
                             {/* buttons: Home Win, Draw, Away Win */}
                             <div className="grid grid-cols-3 gap-3 relative mt-4">
@@ -1434,12 +1661,28 @@ export default function TestApiPredictions() {
             })()}
           </div>
         </div>
+            </div>
+    );
+  }
+
+  // NEVER show swipe view if submitted - this is critical!
+  // Use both state, ref, and sessionStorage for maximum safety
+  const checkSubmittedBeforeReview = submitted || hasEverBeenSubmittedRef.current || getHasEverBeenSubmitted();
+  console.log('[TestApiPredictions] Review mode check - submitted:', submitted, 'ref:', hasEverBeenSubmittedRef.current, 'sessionStorage:', getHasEverBeenSubmitted());
+  if (checkSubmittedBeforeReview && !submitted) {
+    // sessionStorage/ref says we've been submitted but state says no - wait for state to catch up
+    console.log('[TestApiPredictions] ⚠️ sessionStorage/ref says submitted but state says no - showing loading');
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-slate-600">Loading...</div>
       </div>
     );
   }
 
   // Review Mode (when picks exist but not submitted)
+  console.log('[TestApiPredictions] Review mode check - currentIndex:', currentIndex, 'fixtures.length:', fixtures.length, 'submitted:', submitted);
   if (currentIndex >= fixtures.length) {
+    console.log('[TestApiPredictions] ✅ Showing review mode');
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
         {confirmCelebration && (
@@ -1695,6 +1938,19 @@ export default function TestApiPredictions() {
     );
   }
 
+  // CRITICAL: Never show swipe view if submitted (triple-check with state, ref, and sessionStorage)
+  const checkSubmittedBeforeSwipe = submitted || hasEverBeenSubmittedRef.current || getHasEverBeenSubmitted();
+  console.log('[TestApiPredictions] 🔴 SWIPE VIEW CHECK - submitted:', submitted, 'ref:', hasEverBeenSubmittedRef.current, 'sessionStorage:', getHasEverBeenSubmitted(), 'checkSubmittedBeforeSwipe:', checkSubmittedBeforeSwipe);
+  if (checkSubmittedBeforeSwipe) {
+    console.log('[TestApiPredictions] 🚫 BLOCKING swipe view - user has submitted');
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-slate-600">Loading...</div>
+      </div>
+    );
+  }
+
+  console.log('[TestApiPredictions] ✅ Showing swipe view - user has NOT submitted');
   return (
     <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col overflow-hidden">
       {viewMode === "cards" && (

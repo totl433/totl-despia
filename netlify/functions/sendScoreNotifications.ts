@@ -257,6 +257,7 @@ async function checkAndSendScoreNotifications() {
     console.log(`[sendScoreNotifications] Sending ${notificationsToSend.length} notifications`);
 
     // Get all users who have picks for these fixtures
+    // Check both regular picks and test_api_picks
     const fixtureIndices = notificationsToSend
       .map(n => fixtureMap.get(n.apiMatchId)?.fixture_index)
       .filter(Boolean);
@@ -266,6 +267,7 @@ async function checkAndSendScoreNotifications() {
       return;
     }
 
+    // Get regular picks
     const { data: picks, error: picksError } = await supabase
       .from('picks')
       .select('user_id, fixture_index, pick, gw')
@@ -276,9 +278,32 @@ async function checkAndSendScoreNotifications() {
       console.error('[sendScoreNotifications] Error fetching picks:', picksError);
     }
 
-    // Group picks by user and fixture
+    // Get test API picks (check test_api_meta for current test GW)
+    const { data: testMeta } = await supabase
+      .from('test_api_meta')
+      .select('current_test_gw')
+      .eq('id', 1)
+      .maybeSingle();
+
+    const testGw = testMeta?.current_test_gw;
+    let testPicks: any[] = [];
+    if (testGw) {
+      const { data: tp, error: testPicksError } = await supabase
+        .from('test_api_picks')
+        .select('user_id, fixture_index, pick, matchday')
+        .eq('matchday', testGw)
+        .in('fixture_index', fixtureIndices);
+
+      if (testPicksError) {
+        console.error('[sendScoreNotifications] Error fetching test_api_picks:', testPicksError);
+      } else {
+        testPicks = tp || [];
+      }
+    }
+
+    // Group picks by user and fixture (combine regular + test picks)
     const picksByUserAndFixture = new Map<string, Map<number, string>>();
-    (picks || []).forEach((pick: any) => {
+    [...(picks || []), ...testPicks].forEach((pick: any) => {
       if (!picksByUserAndFixture.has(pick.user_id)) {
         picksByUserAndFixture.set(pick.user_id, new Map());
       }
@@ -313,66 +338,83 @@ async function checkAndSendScoreNotifications() {
       playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
     });
 
-    // Send notifications
+    // Send notifications - send personalized notifications per user
     let totalSent = 0;
     for (const notification of notificationsToSend) {
       const fixture = fixtureMap.get(notification.apiMatchId);
       const fixtureIndex = fixture?.fixture_index;
 
-      // Find users who have picks for this fixture
+      // Determine result (H/D/A) from score
+      let result: 'H' | 'D' | 'A';
+      if (notification.homeScore > notification.awayScore) {
+        result = 'H';
+      } else if (notification.awayScore > notification.homeScore) {
+        result = 'A';
+      } else {
+        result = 'D';
+      }
+
+      // Find users who have picks for this fixture and send personalized notifications
       const relevantUserIds = Array.from(picksByUserAndFixture.keys()).filter(userId => {
         const userPicks = picksByUserAndFixture.get(userId);
         return userPicks && userPicks.has(fixtureIndex);
       });
 
-      // Get all player IDs for these users
-      const allPlayerIds: string[] = [];
-      relevantUserIds.forEach(userId => {
+      // Send personalized notification to each user
+      for (const userId of relevantUserIds) {
+        const userPicks = picksByUserAndFixture.get(userId);
+        const userPick = userPicks?.get(fixtureIndex);
         const playerIds = playerIdsByUser.get(userId) || [];
-        allPlayerIds.push(...playerIds);
-      });
 
-      if (allPlayerIds.length === 0) {
-        console.log(`[sendScoreNotifications] No player IDs found for fixture ${fixtureIndex}`);
-        continue;
-      }
-
-      // Create notification message
-      const minuteText = formatMinuteDisplay(notification.status, notification.minute);
-      let title: string;
-      let message: string;
-
-      if (notification.isGameFinished) {
-        title = `FT: ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
-        message = `Full time! Game finished.`;
-      } else if (notification.isScoreChange) {
-        title = `⚽ GOAL! ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
-        message = `${minuteText}`;
-      } else {
-        continue; // Skip if no meaningful change
-      }
-
-      // Send notification
-      const result = await sendOneSignalNotification(
-        allPlayerIds,
-        title,
-        message,
-        {
-          type: 'score_update',
-          api_match_id: notification.apiMatchId,
-          fixture_index: fixtureIndex,
-          gw: currentGw,
+        if (playerIds.length === 0 || !userPick) {
+          continue;
         }
-      );
 
-      if (result.success) {
-        totalSent += result.sentTo;
-        console.log(`[sendScoreNotifications] Sent notification for match ${notification.apiMatchId} to ${result.sentTo} devices`);
-      } else {
-        console.error(`[sendScoreNotifications] Failed to send notification for match ${notification.apiMatchId}:`, result.errors);
+        // Check if user got it right
+        const isCorrect = userPick === result;
+
+        // Create notification message
+        const minuteText = formatMinuteDisplay(notification.status, notification.minute);
+        let title: string;
+        let message: string;
+
+        if (notification.isGameFinished) {
+          title = `FT: ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
+          if (isCorrect) {
+            message = `✅ Got it right!`;
+          } else {
+            message = `❌ Wrong pick`;
+          }
+        } else if (notification.isScoreChange) {
+          title = `⚽ GOAL! ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
+          message = `${minuteText}`;
+        } else {
+          continue; // Skip if no meaningful change
+        }
+
+        // Send personalized notification to this user
+        const result = await sendOneSignalNotification(
+          playerIds,
+          title,
+          message,
+          {
+            type: 'score_update',
+            api_match_id: notification.apiMatchId,
+            fixture_index: fixtureIndex,
+            gw: currentGw,
+            is_correct: isCorrect,
+          }
+        );
+
+        if (result.success) {
+          totalSent += result.sentTo;
+          console.log(`[sendScoreNotifications] Sent ${notification.isGameFinished ? 'FT' : 'score'} notification for match ${notification.apiMatchId} to user ${userId} (${result.sentTo} devices)`);
+        } else {
+          console.error(`[sendScoreNotifications] Failed to send notification for match ${notification.apiMatchId} to user ${userId}:`, result.errors);
+        }
       }
 
-      // Update notification state
+      // Update notification state (once per match, not per user)
       await supabase
         .from('notification_state')
         .upsert({
@@ -429,51 +471,137 @@ async function checkAndSendScoreNotifications() {
         if (!gwEndState) {
           console.log(`[sendScoreNotifications] All ${allGwApiMatchIds.length} games finished for GW ${currentGw}, sending end-of-GW notification`);
 
-          // Get all users who have picks for this GW
+          // Get all users who have picks for this GW (regular + test)
           const { data: gwPicks } = await supabase
             .from('picks')
             .select('user_id')
             .eq('gw', currentGw);
 
-          const userIdsWithPicks = [...new Set((gwPicks || []).map((p: any) => p.user_id))];
+          // Get test API picks if test GW matches current GW
+          let testGwPicks: any[] = [];
+          if (testGw === currentGw) {
+            const { data: tp } = await supabase
+              .from('test_api_picks')
+              .select('user_id')
+              .eq('matchday', testGw);
+            testGwPicks = tp || [];
+          }
+
+          const userIdsWithPicks = [...new Set([
+            ...(gwPicks || []).map((p: any) => p.user_id),
+            ...testGwPicks.map((p: any) => p.user_id),
+          ])];
 
           if (userIdsWithPicks.length > 0) {
+            // Calculate scores for each user
+            const userScores = new Map<string, number>();
+            
+            // Get fixtures to map api_match_id to fixture_index
+            const { data: regularGwFixturesForMapping } = await supabase
+              .from('fixtures')
+              .select('api_match_id, fixture_index')
+              .eq('gw', currentGw)
+              .not('api_match_id', 'is', null);
+
+            const { data: testGwFixturesForMapping } = await supabase
+              .from('test_api_fixtures')
+              .select('api_match_id, fixture_index')
+              .eq('test_gw', currentGw)
+              .not('api_match_id', 'is', null);
+
+            const apiMatchToFixtureIndex = new Map<number, number>();
+            [...(regularGwFixturesForMapping || []), ...(testGwFixturesForMapping || [])].forEach((f: any) => {
+              if (f.api_match_id) {
+                apiMatchToFixtureIndex.set(f.api_match_id, f.fixture_index);
+              }
+            });
+
+            // Calculate scores from regular picks
+            const { data: allGwPicks } = await supabase
+              .from('picks')
+              .select('user_id, fixture_index, pick')
+              .eq('gw', currentGw);
+
+            // Get results for all fixtures
+            const { data: allResults } = await supabase
+              .from('live_scores')
+              .select('api_match_id, home_score, away_score')
+              .in('api_match_id', allGwApiMatchIds);
+
+            // Create result map by fixture_index
+            const resultByFixtureIndex = new Map<number, 'H' | 'D' | 'A'>();
+            (allResults || []).forEach((score: any) => {
+              const fixtureIndex = apiMatchToFixtureIndex.get(score.api_match_id);
+              if (fixtureIndex !== undefined) {
+                let result: 'H' | 'D' | 'A';
+                if (score.home_score > score.away_score) result = 'H';
+                else if (score.away_score > score.home_score) result = 'A';
+                else result = 'D';
+                resultByFixtureIndex.set(fixtureIndex, result);
+              }
+            });
+
+            // Calculate scores
+            (allGwPicks || []).forEach((pick: any) => {
+              const result = resultByFixtureIndex.get(pick.fixture_index);
+              if (result && pick.pick === result) {
+                userScores.set(pick.user_id, (userScores.get(pick.user_id) || 0) + 1);
+              }
+            });
+
+            // Get subscriptions
             const { data: subscriptions } = await supabase
               .from('push_subscriptions')
-              .select('player_id')
+              .select('user_id, player_id')
               .in('user_id', userIdsWithPicks)
               .eq('is_active', true);
 
-            const allPlayerIds = (subscriptions || []).map((s: any) => s.player_id).filter(Boolean);
+            // Group player IDs by user
+            const playerIdsByUser = new Map<string, string[]>();
+            (subscriptions || []).forEach((sub: any) => {
+              if (!sub.player_id) return;
+              if (!playerIdsByUser.has(sub.user_id)) {
+                playerIdsByUser.set(sub.user_id, []);
+              }
+              playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
+            });
 
-            if (allPlayerIds.length > 0) {
+            // Send personalized notifications with scores
+            const totalFixtures = allGwApiMatchIds.length;
+            for (const userId of userIdsWithPicks) {
+              const playerIds = playerIdsByUser.get(userId) || [];
+              if (playerIds.length === 0) continue;
+
+              const score = userScores.get(userId) || 0;
               const result = await sendOneSignalNotification(
-                allPlayerIds,
+                playerIds,
                 `Game Week ${currentGw} Ended! 🏆`,
-                `All games finished! Check out the results and see how you scored!`,
+                `You scored ${score}/${totalFixtures}! Check out how you did!`,
                 {
                   type: 'gw_complete',
                   gw: currentGw,
+                  score: score,
+                  total: totalFixtures,
                 }
               );
 
               if (result.success) {
-                console.log(`[sendScoreNotifications] Sent end-of-GW notification to ${result.sentTo} devices`);
-                
-                // Mark that we've sent the end-of-GW notification (use special marker ID)
-                await supabase
-                  .from('notification_state')
-                  .upsert({
-                    api_match_id: 999999 - currentGw, // Special marker ID
-                    last_notified_home_score: 0,
-                    last_notified_away_score: 0,
-                    last_notified_status: 'GW_COMPLETE',
-                    last_notified_at: new Date().toISOString(),
-                  }, {
-                    onConflict: 'api_match_id',
-                  });
+                console.log(`[sendScoreNotifications] Sent end-of-GW notification to user ${userId} (${result.sentTo} devices) - Score: ${score}/${totalFixtures}`);
               }
             }
+            
+            // Mark that we've sent the end-of-GW notification (use special marker ID)
+            await supabase
+              .from('notification_state')
+              .upsert({
+                api_match_id: 999999 - currentGw, // Special marker ID
+                last_notified_home_score: 0,
+                last_notified_away_score: 0,
+                last_notified_status: 'GW_COMPLETE',
+                last_notified_at: new Date().toISOString(),
+              }, {
+                onConflict: 'api_match_id',
+              });
           }
         }
       }

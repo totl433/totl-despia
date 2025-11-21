@@ -949,6 +949,31 @@ export default function NewPredictionsCentre() {
                         return;
                       }
 
+                      // Check if all members have submitted and notify (fire-and-forget)
+                      // Get user's leagues
+                      const { data: userLeagues } = await supabase
+                        .from('league_members')
+                        .select('league_id')
+                        .eq('user_id', user?.id);
+
+                      if (userLeagues && userLeagues.length > 0) {
+                        const matchday = isInApiTestLeague && displayGw === 1 ? 1 : (currentGw ?? 1);
+                        // Call notifyFinalSubmission for each league (fire-and-forget)
+                        userLeagues.forEach(({ league_id }) => {
+                          fetch('/.netlify/functions/notifyFinalSubmission', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              leagueId: league_id,
+                              matchday: matchday,
+                              isTestApi: isInApiTestLeague && displayGw === 1,
+                            }),
+                          }).catch(err => {
+                            console.error('[NewPredictionsCentre] Failed to check final submission:', err);
+                          });
+                        });
+                      }
+
                       console.log('Successfully confirmed picks:', picksArray);
                       setSubmitted(true);
                       setShowConfirmModal(false);

@@ -416,6 +416,30 @@ export default function PredictionsPage() {
       setSubmitted(true);
       // Dispatch custom event to hide banner immediately
       window.dispatchEvent(new CustomEvent('predictionsSubmitted'));
+
+      // Check if all members have submitted in user's leagues and notify (fire-and-forget)
+      // Get user's leagues
+      const { data: userLeagues } = await supabase
+        .from('league_members')
+        .select('league_id')
+        .eq('user_id', user?.id);
+
+      if (userLeagues && userLeagues.length > 0) {
+        // Call notifyFinalSubmission for each league (fire-and-forget)
+        userLeagues.forEach(({ league_id }) => {
+          fetch('/.netlify/functions/notifyFinalSubmission', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              leagueId: league_id,
+              matchday: gw,
+              isTestApi: false,
+            }),
+          }).catch(err => {
+            console.error('[Predictions] Failed to check final submission:', err);
+          });
+        });
+      }
     } else {
       setError(error.message);
     }
