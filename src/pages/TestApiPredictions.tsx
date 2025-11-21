@@ -169,6 +169,9 @@ export default function TestApiPredictions() {
   const [loading, setLoading] = useState(true);
   const [submitted, setSubmitted] = useState(false);
   const [isPastDeadline, setIsPastDeadline] = useState(false);
+  const [allMembersSubmitted, setAllMembersSubmitted] = useState(false);
+  const [leagueMembers, setLeagueMembers] = useState<Array<{ id: string; name: string }>>([]);
+  const [submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new Set());
   // Live scores for test API fixtures
   const [liveScores, setLiveScores] = useState<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
   // Track when halftime ends for each fixture (when status changes from PAUSED to IN_PLAY)
@@ -413,6 +416,84 @@ export default function TestApiPredictions() {
             }
           } else {
             setSubmitted(false);
+          }
+        }
+        
+        // Check if all members have submitted (for API Test league)
+        if (alive && fixturesData.length > 0 && user?.id) {
+          // Get API Test league members
+          const { data: apiTestLeague } = await supabase
+            .from("leagues")
+            .select("id")
+            .eq("name", "API Test")
+            .maybeSingle();
+          
+          if (apiTestLeague) {
+            // Get all members of API Test league
+            const { data: membersData } = await supabase
+              .from("league_members")
+              .select("user_id, profiles!inner(id, name)")
+              .eq("league_id", apiTestLeague.id);
+            
+            if (membersData) {
+              const members = membersData.map((m: any) => ({
+                id: m.user_id,
+                name: m.profiles?.name || "Unknown"
+              }));
+              
+              if (alive) {
+                setLeagueMembers(members);
+              }
+              
+              const memberIds = members.map((m: any) => m.id);
+              
+              // Fetch all submissions for API Test league members
+              const { data: allSubmissions } = await supabase
+                .from("test_api_submissions")
+                .select("user_id, submitted_at")
+                .eq("matchday", testGw)
+                .in("user_id", memberIds)
+                .not("submitted_at", "is", null);
+              
+              // Fetch all picks for validation
+              const { data: allPicks } = await supabase
+                .from("test_api_picks")
+                .select("user_id, fixture_index")
+                .eq("matchday", testGw)
+                .in("user_id", memberIds);
+              
+              const currentFixtureIndicesSet = new Set(fixturesData.map(f => f.fixture_index));
+              const requiredFixtureCount = currentFixtureIndicesSet.size;
+              const cutoffDate = new Date('2025-11-18T00:00:00Z');
+              
+              // Validate submissions - same logic as League.tsx
+              const validSubmissions = new Set<string>();
+              
+              if (allSubmissions && allPicks && requiredFixtureCount > 0) {
+                allSubmissions.forEach((sub: any) => {
+                  const userPicks = (allPicks ?? []).filter((p: any) => p.user_id === sub.user_id);
+                  const picksForCurrentFixtures = userPicks.filter((p: any) => currentFixtureIndicesSet.has(p.fixture_index));
+                  const hasAllRequiredPicks = picksForCurrentFixtures.length === requiredFixtureCount;
+                  
+                  const uniqueFixtureIndices = new Set(picksForCurrentFixtures.map((p: any) => p.fixture_index));
+                  const hasExactMatch = uniqueFixtureIndices.size === requiredFixtureCount;
+                  
+                  const submissionDate = sub.submitted_at ? new Date(sub.submitted_at) : null;
+                  const isRecentSubmission = submissionDate && submissionDate >= cutoffDate;
+                  
+                  if (hasAllRequiredPicks && hasExactMatch && isRecentSubmission) {
+                    validSubmissions.add(sub.user_id);
+                  }
+                });
+              }
+              
+              const allSubmitted = memberIds.length > 0 && validSubmissions.size === memberIds.length;
+              
+              if (alive) {
+                setAllMembersSubmitted(allSubmitted);
+                setSubmittedMemberIds(validSubmissions);
+              }
+            }
           }
         }
         
@@ -1006,7 +1087,81 @@ export default function TestApiPredictions() {
   }
 
   // Confirmed Predictions View (after submission) - separate from review mode
+  // BUT: Only show fixtures if all members have submitted
   if (submitted) {
+    // If not all members have submitted, show "Who's submitted" view (similar to League page)
+    if (!allMembersSubmitted && leagueMembers.length > 0) {
+      const remaining = leagueMembers.filter(m => !submittedMemberIds.has(m.id)).length;
+      
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col">
+          <div className="p-4">
+            <div className="max-w-2xl mx-auto">
+              <div className="relative flex items-center justify-between">
+                <button
+                  onClick={() => navigate("/")}
+                  className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-800"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Back
+                </button>
+                <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">
+                  Confirmed Predictions
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="max-w-2xl mx-auto">
+              <div className="rounded-2xl border bg-white p-4 mb-4">
+                <div className="text-sm font-semibold text-slate-700 mb-3">
+                  Waiting for <span className="font-bold">{remaining}</span> of {leagueMembers.length} to submit...
+                </div>
+                <div className="text-xs text-slate-500 mb-4">
+                  Your predictions have been confirmed. Once all members have submitted, you'll be able to see everyone's picks.
+                </div>
+                <div className="overflow-hidden rounded-lg border">
+                  <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="text-left px-4 py-3 w-2/3 font-semibold text-slate-600">Player</th>
+                        <th className="text-left px-4 py-3 font-semibold text-slate-600">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {leagueMembers
+                        .slice()
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map((member) => {
+                          const isSubmitted = submittedMemberIds.has(member.id);
+                          return (
+                            <tr key={member.id} className="border-t border-slate-200">
+                              <td className="px-4 py-3 font-bold text-slate-900 truncate whitespace-nowrap" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.name}</td>
+                              <td className="px-4 py-3">
+                                {isSubmitted ? (
+                                  <span className="inline-flex items-center justify-center rounded-full bg-[#1C8376]/10 text-[#1C8376]/90 text-xs px-2 py-1 border border-emerald-300 font-bold shadow-sm whitespace-nowrap w-24">
+                                    Submitted
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center justify-center rounded-full bg-amber-50 text-amber-700 text-xs px-2 py-1 border border-amber-200 font-semibold whitespace-nowrap w-24">
+                                    Not yet
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
     // Calculate live score (includes both live and finished games)
     let liveScoreCount = 0;
     let liveFixturesCount = 0;
@@ -1033,7 +1188,7 @@ export default function TestApiPredictions() {
     });
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
+        <div className="min-h-screen bg-slate-50 flex flex-col">
         <div className="p-4">
           <div className="max-w-2xl mx-auto">
             <div className="relative flex items-center justify-between">
@@ -1064,8 +1219,8 @@ export default function TestApiPredictions() {
               if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); }
               return grouped.map((group,groupIdx)=>{
                 return (
-                <div key={groupIdx} className={groupIdx === 0 ? '-mt-2' : ''}>
-                  <div className="text-lg font-semibold text-slate-800 mb-4 flex items-center justify-between">
+                <div key={groupIdx} className={groupIdx > 0 ? "mt-6" : ""}>
+                  <div className="text-sm font-semibold text-slate-700 mb-3 px-1 flex items-center justify-between">
                     <span>{group.label}</span>
                     {groupIdx === 0 && (() => {
                       // Check if any games have started (live or finished)
@@ -1118,8 +1273,9 @@ export default function TestApiPredictions() {
                       return null;
                     })()}
                   </div>
-                  <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">
-                    {group.items.map((fixture, index)=>{
+                  <div className="rounded-2xl border bg-slate-50 overflow-hidden">
+                    <ul>
+                      {group.items.map((fixture, index)=>{
                       const pick = picks.get(fixture.fixture_index);
                       const liveScore = liveScores[fixture.fixture_index];
                       const isLive = liveScore && liveScore.status === 'IN_PLAY';
@@ -1185,11 +1341,8 @@ export default function TestApiPredictions() {
                       };
                       
                       return (
-                        <div key={fixture.id} className={index < group.items.length - 1 ? 'relative' : ''}>
-                          {index < group.items.length - 1 && (
-                            <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-10" />
-                          )}
-                          <div className="p-4 !bg-white relative z-0">
+                        <li key={fixture.id} className={index > 0 ? "border-t" : ""}>
+                          <div className="p-4 bg-white relative">
                             {/* LIVE indicator - red dot top left for live games, always says LIVE */}
                             {(isLive || isHalfTime) && (
                               <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
@@ -1208,52 +1361,57 @@ export default function TestApiPredictions() {
                               </div>
                             )}
                             
-                            {/* header: Home  score/kickoff  Away */}
-                            <div className={`flex flex-col px-2 pb-3 ${isLive ? 'pt-4' : 'pt-1'}`}>
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1 flex-1 justify-end">
-                                  <div className={`break-words ${liveScore && (isLive || isFinished) && liveScore.homeScore > liveScore.awayScore ? 'font-bold' : 'font-medium'}`}>{homeName}</div>
+                            {/* Fixture display - same as Home Page and League Page */}
+                            <div className={`grid grid-cols-3 items-center ${isLive || isHalfTime ? 'pt-4' : ''}`}>
+                              <div className="flex items-center justify-center">
+                                <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{homeName}</span>
+                              </div>
+                              <div className="flex items-center justify-center gap-2">
+                                {fixture.home_code && (
                                   <img 
-                                    src={`/assets/badges/${(fixture.home_code || homeName).toUpperCase()}.png`} 
-                                    alt={homeName}
-                                    className="w-5 h-5"
+                                    src={`/assets/badges/${fixture.home_code.toUpperCase()}.png`} 
+                                    alt={`${homeName} badge`}
+                                    className="h-6 w-6 object-contain"
                                     onError={(e) => {
-                                      e.currentTarget.style.display = 'none';
+                                      (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
                                     }}
                                   />
-                                </div>
-                                <div className="px-4 flex items-center">
-                                  {liveScore && (isLive || isFinished) ? (
+                                )}
+                                <div className="text-[15px] sm:text-base font-semibold text-slate-600">
+                                  {liveScore && (isLive || isHalfTime || isFinished) ? (
                                     <span className="font-bold text-base text-slate-900">
                                       {liveScore.homeScore} - {liveScore.awayScore}
                                     </span>
                                   ) : (
-                                    <span className="text-slate-500 text-sm">{kickoff}</span>
+                                    <span>{kickoff}</span>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-1 flex-1 justify-start">
+                                {fixture.away_code && (
                                   <img 
-                                    src={`/assets/badges/${(fixture.away_code || awayName).toUpperCase()}.png`} 
-                                    alt={awayName}
-                                    className="w-5 h-5"
+                                    src={`/assets/badges/${fixture.away_code.toUpperCase()}.png`} 
+                                    alt={`${awayName} badge`}
+                                    className="h-6 w-6 object-contain"
                                     onError={(e) => {
-                                      e.currentTarget.style.display = 'none';
+                                      (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
                                     }}
                                   />
-                                  <div className={`break-words ${liveScore && (isLive || isFinished) && liveScore.awayScore > liveScore.homeScore ? 'font-bold' : 'font-medium'}`}>{awayName}</div>
-                                </div>
+                                )}
                               </div>
-                              {liveScore && (isLive || isFinished) && (
-                                <div className="flex justify-center mt-1">
-                                  <span className={`text-[10px] font-semibold ${isLive ? 'text-red-600' : 'text-slate-500'}`}>
-                                    {formatMinuteDisplay(liveScore.status, liveScore.minute)}
-                                  </span>
-                                </div>
-                              )}
+                              <div className="flex items-center justify-center">
+                                <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{awayName}</span>
+                              </div>
                             </div>
+                            {/* Score indicator (phase label) */}
+                            {liveScore && (isLive || isHalfTime || isFinished) && (
+                              <div className="flex justify-center mt-1">
+                                <span className={`text-[10px] font-semibold ${isLive || isHalfTime ? 'text-red-600' : 'text-slate-500'}`}>
+                                  {formatMinuteDisplay(liveScore.status, liveScore.minute)}
+                                </span>
+                              </div>
+                            )}
 
                             {/* buttons: Home Win, Draw, Away Win */}
-                            <div className="grid grid-cols-3 gap-3 relative">
+                            <div className="grid grid-cols-3 gap-3 relative mt-4">
                               <div className={`${getButtonClass(homeState)} flex items-center justify-center`}>
                                 <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Home Win</span>
                               </div>
@@ -1265,25 +1423,15 @@ export default function TestApiPredictions() {
                               </div>
                             </div>
                           </div>
-                        </div>
+                        </li>
                       );
                     })}
+                    </ul>
                   </div>
                 </div>
                 );
               });
             })()}
-          </div>
-        </div>
-        <div className="p-6 bg-white shadow-lg">
-          <div className="max-w-2xl mx-auto text-center">
-            <div className="text-lg font-bold text-green-600 mb-2">✅ Predictions Submitted! (TEST)</div>
-            <div className="text-sm text-slate-600 mb-4">
-              Your test predictions for Test GW {currentTestGw} have been confirmed.
-            </div>
-            {myScore > 0 && (
-              <div className="mt-4 text-3xl font-bold text-purple-700">{myScore}/{fixtures.length}</div>
-            )}
           </div>
         </div>
       </div>
@@ -1293,14 +1441,22 @@ export default function TestApiPredictions() {
   // Review Mode (when picks exist but not submitted)
   if (currentIndex >= fixtures.length) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
+        <div className="min-h-screen bg-slate-50 flex flex-col">
         {confirmCelebration && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
             <div className="relative overflow-hidden rounded-3xl bg-white px-10 py-8 text-center shadow-2xl max-w-sm mx-4">
               <div className="absolute -top-16 -left-10 h-32 w-32 rounded-full bg-emerald-200/40 blur-2xl" />
               <div className="absolute -bottom-14 -right-12 h-32 w-32 rounded-full bg-cyan-200/40 blur-2xl" />
               <div className="relative z-10 space-y-4">
-                <div className="text-5xl">{confirmCelebration.success ? "🎉" : "📝"}</div>
+                {confirmCelebration.success ? (
+                  <svg className="w-16 h-16 mx-auto text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-16 h-16 mx-auto text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                )}
                 <div className={`text-2xl font-extrabold ${confirmCelebration.success ? "text-emerald-700" : "text-amber-600"}`}>
                   {confirmCelebration.success ? "Good Luck!" : "Not Quite Yet!"}
                 </div>
@@ -1392,7 +1548,7 @@ export default function TestApiPredictions() {
                             </div>
                             <div className="flex-1 min-w-0 text-left"><span className="text-sm font-semibold text-slate-800 truncate inline-block">{fixture.away_team || fixture.away_name}</span></div>
                           </div>
-                          <div className="grid grid-cols-3 gap-3">
+                          <div className="grid grid-cols-3 gap-3 mt-4">
                             <button 
                               onClick={()=>{
                                 if (isPastDeadline || submitted) return;
@@ -1496,7 +1652,7 @@ export default function TestApiPredictions() {
             )}
             {submitted ? (
               <div className="text-center py-6">
-                <div className="text-lg font-bold text-green-600 mb-2">✅ Predictions Submitted! (TEST)</div>
+                <div className="text-lg font-bold text-slate-800 mb-2">Predictions Submitted (TEST)</div>
                 <div className="text-sm text-slate-600">
                   Your test predictions for Test GW {currentTestGw} have been confirmed.
                 </div>
@@ -1506,14 +1662,14 @@ export default function TestApiPredictions() {
               </div>
             ) : isPastDeadline ? (
               <div className="text-center py-6">
-                <div className="text-lg font-bold text-red-600 mb-2">⚠️ Deadline Passed</div>
+                <div className="text-lg font-bold text-red-600 mb-2">Deadline Passed</div>
                 <div className="text-sm text-slate-600">
                   Predictions are now closed.
                 </div>
               </div>
             ) : (
               <>
-                {!allPicksMade && (<div className="text-center text-sm text-amber-600 mb-2">⚠️ You haven't made all your predictions yet</div>)}
+                {!allPicksMade && (<div className="text-center text-sm text-amber-600 mb-2">You haven't made all your predictions yet</div>)}
                 <div className="grid gap-3">
                   <button 
                     onClick={handleStartOver}

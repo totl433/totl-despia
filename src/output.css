@@ -2399,6 +2399,11 @@ video {
   padding-bottom: 2rem;
 }
 
+.px-2\.5{
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+}
+
 .pb-0{
   padding-bottom: 0px;
 }
@@ -4100,6 +4105,10 @@ select option {
 .after\:to-transparent::after{
   content: var(--tw-content);
   --tw-gradient-to: transparent var(--tw-gradient-to-position);
+}
+
+.last\:border-b-0:last-child{
+  border-bottom-width: 0px;
 }
 
 .hover\:bg-\[\#178f72\]:hover{
