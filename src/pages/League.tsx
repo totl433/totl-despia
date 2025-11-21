@@ -116,21 +116,28 @@ function Chip({
   letter,
   correct,
   unicorn,
-  finished,
+  hasSubmitted,
 }: {
   letter: string;
   correct: boolean | null;
   unicorn: boolean;
-  finished?: boolean;
+  hasSubmitted?: boolean;
 }) {
-  const tone =
-    correct === null
-      ? "bg-slate-100 text-slate-600 border-slate-200"
-      : correct && finished
-      ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s] ring-2 ring-yellow-300/60"
-      : correct && !finished
-      ? "bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-lg shadow-emerald-500/50"
-      : "bg-slate-50 text-slate-400 border-slate-200";
+  // Logic matches Home Page and Tables page:
+  // - Green when member has submitted (even if no result yet)
+  // - Shiny when correct (only when result exists and pick matches)
+  // - Grey when member hasn't submitted
+  let tone: string;
+  if (correct === true) {
+    // Shiny gradient for correct picks (only when result exists and matches)
+    tone = "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s] ring-2 ring-yellow-300/60";
+  } else if (hasSubmitted) {
+    // Green when submitted (even if no result or incorrect)
+    tone = "bg-emerald-600 text-white border-emerald-600";
+  } else {
+    // Grey when not submitted
+    tone = "bg-slate-100 text-slate-600 border-slate-200";
+  }
 
   return (
     <span
@@ -1318,17 +1325,68 @@ export default function LeaguePage() {
 
     (async () => {
       // Special handling for API Test league - use test_api_fixtures for GW 1
+      // CRITICAL: Only use test API tables if league name is EXACTLY 'API Test'
+      // All other leagues MUST use main database tables (fixtures, picks, gw_submissions)
       const isApiTestLeague = league?.name === 'API Test';
       // For API Test league, only allow "gw" tab if all members have submitted
       // Check if all submitted for GW 1 (we'll check this properly after loading submissions)
       const useTestFixtures = isApiTestLeague && (tab === "gw" || tab === "gwr");
-      console.log('[League] Data fetch:', { isApiTestLeague, tab, useTestFixtures, leagueName: league?.name });
+      console.log('[League] Data fetch:', { 
+        isApiTestLeague, 
+        tab, 
+        useTestFixtures, 
+        leagueName: league?.name,
+        willUseTestTables: useTestFixtures,
+        willUseMainTables: !useTestFixtures
+      });
       
       // For API Test league in predictions/results tabs, always use GW 1
       let gwForData = tab === "gwr" ? selectedGw : tab === "gw" ? currentGw : currentGw;
       if (isApiTestLeague && (tab === "gw" || tab === "gwr")) {
         gwForData = 1; // Force GW 1 for API Test league
       }
+      
+      // For predictions tab with regular leagues, try to detect the GW from submissions
+      // This ensures we show picks even if currentGw hasn't been updated yet or if members submitted for a different GW
+      if (tab === "gw" && !isApiTestLeague && memberIds.length > 0) {
+        // Get the most recent GW that members have submitted for
+        const { data: submissionsCheck } = await supabase
+          .from("gw_submissions")
+          .select("gw")
+          .in("user_id", memberIds)
+          .not("submitted_at", "is", null)
+          .order("gw", { ascending: false })
+          .limit(10); // Check last 10 GWs
+        
+        // Try to find a GW that has both submissions AND fixtures
+        if (submissionsCheck && submissionsCheck.length > 0) {
+          const submittedGws = [...new Set(submissionsCheck.map(s => s.gw))].sort((a, b) => (b || 0) - (a || 0));
+          
+          for (const submittedGw of submittedGws) {
+            if (submittedGw) {
+              // Check if fixtures exist for this GW
+              const { data: fixtureCheck } = await supabase
+                .from("fixtures")
+                .select("gw")
+                .eq("gw", submittedGw)
+                .limit(1);
+              
+              if (fixtureCheck && fixtureCheck.length > 0) {
+                console.log('[League] Found fixtures for GW', submittedGw, 'from submissions - using this GW (currentGw was', gwForData, ')');
+                gwForData = submittedGw;
+                break; // Use the most recent GW with fixtures
+              }
+            }
+          }
+        }
+        
+        // If we still don't have a valid gwForData, use currentGw if it exists
+        if (!gwForData && currentGw) {
+          gwForData = currentGw;
+          console.log('[League] Using currentGw as fallback:', currentGw);
+        }
+      }
+      
       console.log('[League] gwForData:', gwForData, 'memberIds:', memberIds);
       
       if (!gwForData && !useTestFixtures) {
@@ -1352,15 +1410,26 @@ export default function LeaguePage() {
         // Map test_gw to gw for consistency
         fx = testFx?.map(f => ({ ...f, gw: f.test_gw })) || null;
       } else {
-        // Regular fixtures
+        // Regular fixtures - ALWAYS use main database table for non-API Test leagues
+        // CRITICAL: Never use test_api_fixtures for regular leagues
+        // Regular fixtures - ALWAYS use main database table for non-API Test leagues
+        // CRITICAL: Never use test_api_fixtures for regular leagues
+        // NOTE: fixtures table does NOT have api_match_id column (only test_api_fixtures has it)
+        console.log('[League] Fetching from MAIN database table (fixtures) for regular league, GW:', gwForData);
         const { data: regularFx } = await supabase
           .from("fixtures")
           .select(
-            "id,gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time,api_match_id"
+            "id,gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time"
           )
           .eq("gw", gwForData)
           .order("fixture_index", { ascending: true });
-        fx = regularFx;
+        
+        // Map to include api_match_id as null (for consistency with API Test fixtures)
+        fx = regularFx?.map((f: any) => ({
+          ...f,
+          api_match_id: null
+        })) || null;
+        console.log('[League] Fetched fixtures from main database:', regularFx?.length || 0, 'fixtures');
       }
 
       if (!alive) return;
@@ -1499,13 +1568,16 @@ export default function LeaguePage() {
         console.log('[League] Test API submissions fetched (filtered to only current fixtures):', submissions);
         console.log('[League] Valid submissions count:', validSubmissions.length, 'out of', testSubs?.length || 0, 'total');
       } else {
-        // Regular picks and submissions
+        // Regular picks and submissions - ALWAYS use main database tables for non-API Test leagues
+        // CRITICAL: Never use test_api_picks or test_api_submissions for regular leagues
+        console.log('[League] Fetching from MAIN database tables (picks, gw_submissions) for regular league');
         const { data: regularPicks } = await supabase
           .from("picks")
           .select("user_id,gw,fixture_index,pick")
           .eq("gw", gwForData)
           .in("user_id", memberIds);
         pk = regularPicks;
+        console.log('[League] Fetched picks from main database:', regularPicks?.length || 0, 'picks');
         
         const { data: regularSubs } = await supabase
           .from("gw_submissions")
@@ -1513,6 +1585,7 @@ export default function LeaguePage() {
           .eq("gw", gwForData)
           .in("user_id", memberIds);
         submissions = regularSubs;
+        console.log('[League] Fetched submissions from main database:', regularSubs?.length || 0, 'submissions');
       }
       
       if (!alive) return;
@@ -2327,13 +2400,16 @@ export default function LeaguePage() {
       picks.forEach((p) => {
         if (p.gw !== picksGw) return;
         
-        // CRITICAL: For API Test league, only include picks from users who have submitted (confirmed) their predictions
-        const hasSubmitted = submittedMap.get(`${p.user_id}:${picksGw}`);
-        if (!hasSubmitted) {
-          if (isApiTestLeague && picksGw === 1) {
-            console.log('[League] Filtering out unsubmitted pick:', { user_id: p.user_id, fixture_index: p.fixture_index, userName: members.find(m => m.id === p.user_id)?.name });
+        // CRITICAL: For API Test league ONLY, only include picks from users who have submitted (confirmed) their predictions
+        // For regular leagues, show ALL picks regardless of submission status
+        if (isApiTestLeague) {
+          const hasSubmitted = submittedMap.get(`${p.user_id}:${picksGw}`);
+          if (!hasSubmitted) {
+            if (picksGw === 1) {
+              console.log('[League] API Test: Filtering out unsubmitted pick:', { user_id: p.user_id, fixture_index: p.fixture_index, userName: members.find(m => m.id === p.user_id)?.name });
+            }
+            return;
           }
-          return;
         }
         
         // CRITICAL: Only include picks for current fixtures (filter out old picks like Brazil)
@@ -2762,9 +2838,10 @@ export default function LeaguePage() {
                                   {row.map((p, idx) => {
                                     const m = members.find((mm) => mm.id === p.user_id);
                                     const letter = initials(m?.name ?? "?");
-                                    // Show correct=true when pick matches result (both live and finished)
-                                    // But only show shiny when finished
-                                    const isCorrect = (actualResult && actualResult === want) ? true : null;
+                                    // Check if this member has submitted
+                                    const hasSubmitted = submittedMap.has(`${p.user_id}:${picksGw}`);
+                                    // Show correct=true only when result exists AND pick matches result
+                                    const isCorrect = actualResult && actualResult === want ? true : null;
                                     
                                     if (allPicked) {
                                       // Stack effect - use relative positioning with negative margins
@@ -2779,13 +2856,13 @@ export default function LeaguePage() {
                                             zIndex: idx
                                           }}
                                         >
-                                          <Chip letter={letter} correct={isCorrect} unicorn={false} finished={isFinished} />
+                                          <Chip letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} />
                                         </span>
                                       );
                                     }
                                     
                                     return (
-                                      <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} finished={isFinished} />
+                                      <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} />
                                     );
                                   })}
                                 </div>
@@ -2970,7 +3047,10 @@ export default function LeaguePage() {
                                     {row.map((p, idx) => {
                                       const m = members.find((mm) => mm.id === p.user_id);
                                       const letter = initials(m?.name ?? "?");
-                                      const isCorrect = actualResult ? actualResult === want : null;
+                                      // Check if this member has submitted
+                                      const hasSubmitted = submittedMap.has(`${p.user_id}:${picksGw}`);
+                                      // Show correct=true only when result exists AND pick matches result
+                                      const isCorrect = actualResult && actualResult === want ? true : null;
                                       
                                       if (allPicked) {
                                         // Stack effect - use relative positioning with negative margins
@@ -2985,13 +3065,13 @@ export default function LeaguePage() {
                                               zIndex: idx
                                             }}
                                           >
-                                            <Chip letter={letter} correct={isCorrect} unicorn={false} finished={true} />
+                                            <Chip letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} />
                                           </span>
                                         );
                                       }
                                       
                                       return (
-                                        <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} finished={true} />
+                                        <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} />
                                       );
                                     })}
                                   </div>

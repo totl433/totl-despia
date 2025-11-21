@@ -177,36 +177,33 @@ export default function TestApiPredictions() {
   useEffect(() => {
     // Only lock scrolling when in card swipe mode, not on review page
     const isReviewPage = currentIndex >= fixtures.length;
-    const shouldLockScroll = viewMode === "cards" && !isReviewPage;
+    const shouldLockScroll = viewMode === "cards" && !isReviewPage && fixtures.length > 0;
     
-    if (!shouldLockScroll) {
-      // Restore scrolling if we're on review page or list mode
-      const html = document.documentElement;
-      const body = document.body;
-      const root = document.getElementById('root');
-      
+    const html = document.documentElement;
+    const body = document.body;
+    const root = document.getElementById('root');
+    
+    // Restore scrolling by removing all scroll prevention styles
+    const restoreScrolling = () => {
       html.style.removeProperty('overflow');
       body.style.removeProperty('overflow');
       body.style.removeProperty('position');
       body.style.removeProperty('width');
       body.style.removeProperty('height');
+      body.style.removeProperty('top');
       if (root) {
         root.style.removeProperty('overflow');
       }
+    };
+    
+    if (!shouldLockScroll) {
+      // Restore scrolling if we're on review page or list mode
+      restoreScrolling();
+      // Make sure we clean up any event listeners from previous lock
       return;
     }
     
     window.scrollTo({ top: 0, behavior: "auto" });
-    // Prevent body scrolling - override global CSS !important rules
-    const html = document.documentElement;
-    const body = document.body;
-    const root = document.getElementById('root');
-    
-    // Store original values
-    const originalHtmlOverflow = html.style.overflow;
-    const originalBodyOverflow = body.style.overflow;
-    const originalBodyPosition = body.style.position;
-    const originalRootOverflow = root?.style.overflow;
     
     // Set overflow hidden with !important via style attribute
     html.style.setProperty('overflow', 'hidden', 'important');
@@ -214,6 +211,7 @@ export default function TestApiPredictions() {
     body.style.setProperty('position', 'fixed', 'important');
     body.style.setProperty('width', '100%', 'important');
     body.style.setProperty('height', '100%', 'important');
+    body.style.setProperty('top', '0', 'important');
     if (root) {
       root.style.setProperty('overflow', 'hidden', 'important');
     }
@@ -237,16 +235,8 @@ export default function TestApiPredictions() {
     document.addEventListener('touchmove', preventScroll, { passive: false });
     
     return () => {
-      // Restore original values
-      html.style.overflow = originalHtmlOverflow;
-      body.style.overflow = originalBodyOverflow;
-      body.style.position = originalBodyPosition;
-      body.style.width = '';
-      body.style.height = '';
-      if (root) {
-        root.style.overflow = originalRootOverflow || '';
-      }
-      
+      // Always restore scrolling on cleanup
+      restoreScrolling();
       window.removeEventListener('wheel', preventWheel);
       document.removeEventListener('touchmove', preventScroll);
     };
@@ -874,20 +864,34 @@ export default function TestApiPredictions() {
     setCurrentIndex(0);
     setSubmitted(false);
     
-    // Delete picks from database
+    // Delete picks from database - CRITICAL: This should remove all picks for this matchday
+    // Also delete submission to ensure nothing is marked as confirmed
     try {
-      await supabase
+      // Delete submission FIRST to ensure nothing is marked as confirmed
+      const { error: submissionError } = await supabase
+        .from('test_api_submissions')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('matchday', currentTestGw);
+      
+      if (submissionError) {
+        console.error('Error deleting test_api_submission:', submissionError);
+      } else {
+        console.log('[TestApiPredictions] Successfully deleted submission on Start Over');
+      }
+      
+      // Delete picks from database
+      const { error: picksError } = await supabase
         .from('test_api_picks')
         .delete()
         .eq('user_id', user.id)
         .eq('matchday', currentTestGw);
       
-      // Delete submission if exists
-      await supabase
-        .from('test_api_submissions')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('matchday', currentTestGw);
+      if (picksError) {
+        console.error('Error deleting test_api_picks:', picksError);
+      } else {
+        console.log('[TestApiPredictions] Successfully deleted picks on Start Over');
+      }
     } catch (error) {
       console.error('Error resetting picks:', error);
     }
@@ -903,13 +907,33 @@ export default function TestApiPredictions() {
     if (!user?.id || !currentTestGw) return;
 
     try {
-      // Save all picks
-      const picksArray = Array.from(picks.values()).map(pick => ({
-        user_id: user.id,
-        matchday: pick.matchday,
-        fixture_index: pick.fixture_index,
-        pick: pick.pick
-      }));
+      // CRITICAL: Ensure we're not already submitted (safety check)
+      const { data: existingSubmission } = await supabase
+        .from('test_api_submissions')
+        .select('submitted_at')
+        .eq('user_id', user.id)
+        .eq('matchday', currentTestGw)
+        .maybeSingle();
+      
+      if (existingSubmission?.submitted_at) {
+        console.warn('[TestApiPredictions] Already submitted - this should not happen if Start Over worked');
+        setSubmitted(true);
+        return;
+      }
+      
+      // Save all picks - CRITICAL: Only save picks that match current fixtures
+      const picksArray = Array.from(picks.values())
+        .filter(pick => pick.matchday === currentTestGw) // Safety: only current matchday
+        .map(pick => ({
+          user_id: user.id,
+          matchday: pick.matchday,
+          fixture_index: pick.fixture_index,
+          pick: pick.pick
+        }));
+
+      if (picksArray.length !== fixtures.length) {
+        throw new Error(`Expected ${fixtures.length} picks but got ${picksArray.length}`);
+      }
 
       const { error: picksError } = await supabase
         .from('test_api_picks')
@@ -918,9 +942,13 @@ export default function TestApiPredictions() {
           ignoreDuplicates: false 
         });
 
-      if (picksError) throw picksError;
+      if (picksError) {
+        console.error('[TestApiPredictions] Error saving picks:', picksError);
+        throw picksError;
+      }
 
-      // Save submission
+      // Save submission - CRITICAL: Only create submission after picks are saved successfully
+      // This ensures picks and submission are in sync
       const { error: submissionError } = await supabase
         .from('test_api_submissions')
         .upsert({
@@ -931,8 +959,13 @@ export default function TestApiPredictions() {
           onConflict: 'user_id,matchday'
         });
 
-      if (submissionError) throw submissionError;
+      if (submissionError) {
+        console.error('[TestApiPredictions] Error saving submission:', submissionError);
+        // If submission fails, try to clean up picks? No - leave picks but don't mark as submitted
+        throw submissionError;
+      }
 
+      console.log('[TestApiPredictions] Successfully confirmed test picks and submission');
       setSubmitted(true);
       setConfirmCelebration({ success: true, message: "Your test predictions are locked in. Good luck!" });
       setTimeout(() => {
@@ -1034,33 +1067,55 @@ export default function TestApiPredictions() {
                 <div key={groupIdx} className={groupIdx === 0 ? '-mt-2' : ''}>
                   <div className="text-lg font-semibold text-slate-800 mb-4 flex items-center justify-between">
                     <span>{group.label}</span>
-                    {groupIdx === 0 && fixturesToCheck.length > 0 && fixturesToCheck.some(f => {
-                      const liveScore = liveScores[f.fixture_index];
-                      return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
-                    }) && (() => {
-                      // Check if all fixtures are finished
-                      const checkAllFinished = fixturesToCheck.every(f => {
+                    {groupIdx === 0 && (() => {
+                      // Check if any games have started (live or finished)
+                      const hasAnyLiveOrFinished = fixturesToCheck.length > 0 && fixturesToCheck.some(f => {
                         const liveScore = liveScores[f.fixture_index];
-                        return liveScore && liveScore.status === 'FINISHED';
+                        return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
                       });
-                      return (
-                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${checkAllFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
-                          {!checkAllFinished && liveFixturesCount > 0 && (
-                            <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                          )}
-                          {checkAllFinished && (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                            </svg>
-                          )}
-                          <span className="text-xs sm:text-sm font-medium opacity-90">{checkAllFinished ? 'Score' : 'Live'}</span>
-                        <span className="flex items-baseline gap-0.5">
-                          <span className="text-lg sm:text-xl font-extrabold">{liveScoreCount}</span>
-                          <span className="text-sm sm:text-base font-medium opacity-90">/</span>
-                          <span className="text-base sm:text-lg font-semibold opacity-80">{fixturesToCheck.length}</span>
-                        </span>
-                      </div>
-                      );
+                      
+                      // If games have started, show live/score indicator
+                      if (hasAnyLiveOrFinished) {
+                        // Check if all fixtures are finished
+                        const checkAllFinished = fixturesToCheck.every(f => {
+                          const liveScore = liveScores[f.fixture_index];
+                          return liveScore && liveScore.status === 'FINISHED';
+                        });
+                        return (
+                          <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${checkAllFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
+                            {!checkAllFinished && liveFixturesCount > 0 && (
+                              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                            )}
+                            {checkAllFinished && (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                              </svg>
+                            )}
+                            <span className="text-xs sm:text-sm font-medium opacity-90">{checkAllFinished ? 'Score' : 'Live'}</span>
+                            <span className="flex items-baseline gap-0.5">
+                              <span className="text-lg sm:text-xl font-extrabold">{liveScoreCount}</span>
+                              <span className="text-sm sm:text-base font-medium opacity-90">/</span>
+                              <span className="text-base sm:text-lg font-semibold opacity-80">{fixturesToCheck.length}</span>
+                            </span>
+                          </div>
+                        );
+                      }
+                      
+                      // If no games have started but user has submitted, show "-- / 10" indicator
+                      if (submitted && fixtures.length > 0) {
+                        return (
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500 text-white shadow-lg shadow-amber-500/30">
+                            <span className="text-xs sm:text-sm font-medium opacity-90">Score</span>
+                            <span className="flex items-baseline gap-0.5">
+                              <span className="text-lg sm:text-xl font-extrabold">--</span>
+                              <span className="text-sm sm:text-base font-medium opacity-90">/</span>
+                              <span className="text-base sm:text-lg font-semibold opacity-80">{fixtures.length}</span>
+                            </span>
+                          </div>
+                        );
+                      }
+                      
+                      return null;
                     })()}
                   </div>
                   <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">

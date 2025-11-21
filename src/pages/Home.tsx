@@ -24,6 +24,7 @@ type LeagueData = {
   submittedMembers?: string[] | Set<string>; // Array or Set of user IDs who have submitted for current GW
   sortedMemberIds?: string[]; // Member IDs in ML table order (1st to last)
   latestGwWinners?: string[] | Set<string>; // Array or Set of members who topped the most recent completed GW
+  latestRelevantGw?: number | null; // The GW number that latestGwWinners is from (needed to know when to hide shiny chips)
 };
 
 // Helper function to get initials from name
@@ -284,10 +285,12 @@ export default function HomePage() {
       
       if (isInApiTestLeague) {
         // Fetch from test API tables - include api_match_id for live scores
-        [fixturesResult, picksResult, resultsResult, submissionResult] = await Promise.all([
+        // CRITICAL: For Test API, we DON'T use gw_results for score calculation
+        // We only use live_scores (which is fetched later and checked via testApiResultsByFixtureIdx)
+        // So set gwResults to empty array to ensure no score is calculated from old gw_results data
+        [fixturesResult, picksResult, submissionResult] = await Promise.all([
           supabase.from("test_api_fixtures").select("id,test_gw,fixture_index,api_match_id,home_code,away_code,home_team,away_team,home_name,away_name,kickoff_time").eq("test_gw", 1).order("fixture_index", { ascending: true }),
           supabase.from("test_api_picks").select("user_id,matchday,fixture_index,pick").eq("user_id", user.id).eq("matchday", 1),
-          supabase.from("gw_results").select("gw,fixture_index,result").eq("gw", 1), // Results still use gw_results with gw=1
           supabase.from("test_api_submissions").select("submitted_at").eq("user_id", user.id).eq("matchday", 1).maybeSingle(),
         ]);
         
@@ -295,49 +298,67 @@ export default function HomePage() {
         const testFixtures = (fixturesResult.data as any[]) ?? [];
         thisGwFixtures = testFixtures.map(f => ({ ...f, gw: f.test_gw })) as Fixture[];
         
-        // Validate picks - only use picks that match ALL current fixtures
-        // If picks don't match (e.g., old Brazil picks vs new PL fixtures), ignore them
+        // Validate picks - only use picks if user has submitted
+        // CRITICAL: If user hit "Start Over", there should be no submission, so ignore ALL picks
+        const hasSubmissionRecord = !!submissionResult.data?.submitted_at;
         const testPicks = (picksResult.data as any[]) ?? [];
+        
+        // SIMPLE RULE: If user hit "Start Over" (no submission), OR if picks don't match fixtures exactly, 
+        // treat it as NOT submitted - don't show picks or scores
+        // First, check if picks match current fixtures exactly
+        let picksMatchCurrentFixtures = false;
         if (testPicks.length > 0 && thisGwFixtures.length > 0) {
           const currentFixtureIndices = new Set(thisGwFixtures.map(f => f.fixture_index));
           const picksForCurrentFixtures = testPicks.filter((p: any) => currentFixtureIndices.has(p.fixture_index));
           
-          // Only use picks if all fixtures have picks and no extra picks exist
+          // Only consider valid if picks match ALL fixtures exactly
           const allFixturesHavePicks = thisGwFixtures.every(f => picksForCurrentFixtures.some((p: any) => p.fixture_index === f.fixture_index));
           const noExtraPicks = picksForCurrentFixtures.length === thisGwFixtures.length;
-          const picksAreValid = allFixturesHavePicks && noExtraPicks && picksForCurrentFixtures.length > 0;
+          picksMatchCurrentFixtures = allFixturesHavePicks && noExtraPicks && picksForCurrentFixtures.length === thisGwFixtures.length;
           
-          if (picksAreValid) {
+          if (picksMatchCurrentFixtures) {
             userPicks = picksForCurrentFixtures.map(p => ({ ...p, gw: p.matchday })) as PickRow[];
           } else {
-            // Picks don't match current fixtures - ignore them
+            // Picks don't match current fixtures exactly - ignore them
             userPicks = [];
           }
         } else {
-          userPicks = testPicks.map(p => ({ ...p, gw: p.matchday })) as PickRow[];
+          // No picks or no fixtures - set empty
+          userPicks = [];
         }
         
-        gwResults = (resultsResult.data as ResultRow[]) ?? [];
+        // CRITICAL: For Test API, we don't use gw_results - set to empty array
+        // Score will only be calculated from live_scores (via testApiResultsByFixtureIdx)
+        gwResults = [];
         
-        // Only consider submitted if:
-        // 1. Submission exists with non-null submitted_at
-        // 2. Submission timestamp is recent (after Nov 18, 2025 - when new fixtures were loaded)
-        // 3. Picks exist and match ALL current fixtures
-        // This filters out old submissions from previous test runs (like Brazil picks)
-        const cutoffDate = new Date('2025-11-18T00:00:00Z'); // Nov 18, 2025 - when new fixtures were loaded
-        const submissionDate = submissionResult.data?.submitted_at ? new Date(submissionResult.data.submitted_at) : null;
-        const isRecentSubmission = submissionDate && submissionDate >= cutoffDate;
+        // CRITICAL: Only consider submitted if:
+        // 1. Submission record exists AND
+        // 2. Picks exist AND match ALL current fixtures EXACTLY
+        // If EITHER fails, treat as NOT submitted - clear picks and hide everything
+        // This ensures if user hit "Start Over" (no picks), we treat as NOT submitted
+        const hasValidPicks = picksMatchCurrentFixtures && testPicks.length === thisGwFixtures.length;
+        submitted = hasSubmissionRecord && hasValidPicks && testPicks.length > 0;
         
-        if (isRecentSubmission && userPicks.length > 0) {
-          // Check if picks match all current fixtures
-          const currentFixtureIndices = new Set(thisGwFixtures.map(f => f.fixture_index));
-          const picksForCurrentFixtures = userPicks.filter((p: any) => currentFixtureIndices.has(p.fixture_index));
-          const allFixturesHavePicks = thisGwFixtures.every(f => picksForCurrentFixtures.some((p: any) => p.fixture_index === f.fixture_index));
-          const noExtraPicks = picksForCurrentFixtures.length === thisGwFixtures.length;
-          const picksAreValid = allFixturesHavePicks && noExtraPicks && picksForCurrentFixtures.length > 0;
-          
-          submitted = picksAreValid;
-        } else {
+        // CRITICAL: If NOT submitted, clear picks to ensure nothing shows (no buttons, no scores)
+        if (!submitted) {
+          userPicks = [];
+        }
+        
+        console.log('[Home] Test API submission check (FINAL):', {
+          hasSubmissionRecord,
+          submissionDate: submissionResult.data?.submitted_at,
+          testPicksCount: testPicks.length,
+          validUserPicksCount: userPicks.length,
+          fixturesCount: thisGwFixtures.length,
+          picksMatchCurrentFixtures,
+          hasValidPicks,
+          submitted,
+          action: submitted ? 'SHOWING picks/score' : 'HIDING picks/score - NOT SUBMITTED'
+        });
+        
+        // EXTRA CHECK: If userPicks is empty but submitted is true, something is wrong - force submitted = false
+        if (submitted && userPicks.length === 0) {
+          console.warn('[Home] Test API WARNING: submitted=true but userPicks is empty - forcing submitted=false');
           submitted = false;
         }
       } else {
@@ -384,20 +405,37 @@ export default function HomePage() {
             if (out && out === p.pick) s += 1;
           });
           score = s;
-        } else if (outcomeByIdx.size === 0 && userPicks.length === 0) {
-          // No results and no picks - score should be null (show "Make predictions" button)
-          score = null;
         } else if (!submitted && isInApiTestLeague) {
           // For test API league, if not submitted, don't show score even if picks exist
           // This prevents showing scores from old unsubmitted picks
           score = null;
+        } else if (isInApiTestLeague && outcomeByIdx.size === 0) {
+          // CRITICAL: For Test API league, if no results yet (games haven't started), 
+          // score should be null even if user has submitted picks
+          // This prevents showing "Score 0/10" or "Score 3/10" before games start
+          score = null;
+        } else if (outcomeByIdx.size === 0 && userPicks.length === 0) {
+          // No results and no picks - score should be null (show "Make predictions" button)
+          score = null;
         }
 
       // Populate picksMap - only show picks if user has submitted (for test API league)
-      // This prevents showing old unsubmitted picks in the tabs
+      // CRITICAL: For Test API league, ONLY show picks if submitted = true
+      // If user hit "Start Over" (deleted submission), picks should NOT show
       const map: Record<number, "H" | "D" | "A"> = {};
-      if (submitted || !isInApiTestLeague) {
-        // Only populate picks map if submitted (or not test API league)
+      if (isInApiTestLeague) {
+        // For Test API league: ONLY show picks if submitted
+        // If no submission exists (hit Start Over), don't show any picks
+        if (submitted) {
+          userPicks.forEach((p) => {
+            map[p.fixture_index] = p.pick;
+          });
+        } else {
+          // No submission - clear any picks that might exist
+          console.log('[Home] Test API: No submission, clearing picks from picksMap');
+        }
+      } else {
+        // Regular leagues: always show picks
         userPicks.forEach((p) => {
           map[p.fixture_index] = p.pick;
         });
@@ -817,7 +855,61 @@ export default function HomePage() {
       
       // Fetch picks per league (like League page does) to avoid Supabase 1000 row limit
       // Store picks by league ID for lookup
+      // For API Test league, use test_api_picks and matchday=1
       const picksByLeague = new Map<string, PickRow[]>();
+      
+      // Check if API Test league exists
+      const apiTestLeague = leagues.find(l => l.name === "API Test");
+      
+      // Fetch test API fixtures and live scores if API Test league exists
+      let testApiFixtures: any[] = [];
+      let testApiLiveScores: Record<number, { homeScore: number; awayScore: number; status: string }> = {};
+      let testApiResultsByFixtureIdx = new Map<number, "H" | "D" | "A">();
+      
+      if (apiTestLeague) {
+        // Fetch test API fixtures
+        const { data: testFixturesData } = await supabase
+          .from("test_api_fixtures")
+          .select("fixture_index,api_match_id")
+          .eq("test_gw", 1)
+          .order("fixture_index", { ascending: true });
+        
+        testApiFixtures = testFixturesData ?? [];
+        
+        // Fetch live scores for test fixtures (first 3 fixtures only)
+        if (testApiFixtures.length > 0) {
+          const fixturesToCheck = testApiFixtures.slice(0, 3).filter(f => f.api_match_id);
+          const apiMatchIds = fixturesToCheck.map(f => f.api_match_id);
+          
+          if (apiMatchIds.length > 0) {
+            const { data: liveScoresData } = await supabase
+              .from("live_scores")
+              .select("api_match_id,home_score,away_score,status")
+              .in("api_match_id", apiMatchIds);
+            
+            // Build results map from live scores
+            (liveScoresData ?? []).forEach((score: any) => {
+              const fixture = fixturesToCheck.find(f => f.api_match_id === score.api_match_id);
+              if (fixture && (score.status === 'IN_PLAY' || score.status === 'PAUSED' || score.status === 'FINISHED')) {
+                testApiLiveScores[fixture.fixture_index] = {
+                  homeScore: score.home_score ?? 0,
+                  awayScore: score.away_score ?? 0,
+                  status: score.status
+                };
+                
+                // Determine outcome from scores
+                if (score.home_score > score.away_score) {
+                  testApiResultsByFixtureIdx.set(fixture.fixture_index, 'H');
+                } else if (score.away_score > score.home_score) {
+                  testApiResultsByFixtureIdx.set(fixture.fixture_index, 'A');
+                } else {
+                  testApiResultsByFixtureIdx.set(fixture.fixture_index, 'D');
+                }
+              }
+            });
+          }
+        }
+      }
       
       for (const league of leagues) {
         const members = membersByLeague[league.id] ?? [];
@@ -826,6 +918,28 @@ export default function HomePage() {
           continue;
         }
         
+        // For API Test league, use test_api_picks with matchday=1
+        if (league.name === "API Test") {
+          const memberIds = members.map(m => m.id);
+          const { data: testApiPicks } = await supabase
+            .from("test_api_picks")
+            .select("user_id,matchday,fixture_index,pick")
+            .eq("matchday", 1)
+            .in("user_id", memberIds);
+          
+          // Convert test_api_picks to PickRow format (map matchday to gw=1 for consistency)
+          const convertedPicks: PickRow[] = (testApiPicks ?? []).map((p: any) => ({
+            user_id: p.user_id,
+            gw: 1, // Map matchday=1 to gw=1 for consistency
+            fixture_index: p.fixture_index,
+            pick: p.pick
+          }));
+          
+          picksByLeague.set(league.id, convertedPicks);
+          continue;
+        }
+        
+        // Regular leagues: use picks table
         const leagueStartGw = leagueStartGws.get(league.id) ?? currentGw;
         const relevantGws = gwsWithResults.filter(g => g >= leagueStartGw);
         
@@ -850,8 +964,11 @@ export default function HomePage() {
         members.forEach(m => allMemberIds.add(m.id));
       });
       
-      // BATCH: Fetch all submissions for current GW in one query
-      const { data: allSubmissionsBatch } = allMemberIds.size > 0
+      // BATCH: Fetch all submissions for current GW in one query (regular leagues)
+      // CRITICAL: test_api_submissions should ONLY be used for API Test league
+      // Regular leagues should ONLY use gw_submissions
+      // We keep them separate to ensure proper isolation
+      const { data: allSubmissionsData } = allMemberIds.size > 0
         ? await supabase
             .from("gw_submissions")
             .select("user_id")
@@ -859,7 +976,71 @@ export default function HomePage() {
             .in("user_id", Array.from(allMemberIds))
         : { data: [] };
       
-      const submittedUserIdsBatch = new Set((allSubmissionsBatch ?? []).map((s: any) => s.user_id));
+      // CRITICAL: Only fetch test_api_submissions for API Test league members
+      // This ensures test API submissions are ONLY used for API Test league
+      // Keep them separate from regular submissions
+      // IMPORTANT: Validate submissions the same way League.tsx does - ensure users have picks for ALL current fixtures
+      const testApiSubmittedUserIds = new Set<string>();
+      if (apiTestLeague) {
+        const apiTestMemberIds = membersByLeague[apiTestLeague.id]?.map(m => m.id) ?? [];
+        if (apiTestMemberIds.length > 0) {
+          // Fetch submissions
+          const { data: testSubsData } = await supabase
+            .from("test_api_submissions")
+            .select("user_id,submitted_at")
+            .eq("matchday", 1)
+            .in("user_id", apiTestMemberIds)
+            .not("submitted_at", "is", null);
+          
+          // Fetch picks for validation
+          const { data: testApiPicksForValidation } = await supabase
+            .from("test_api_picks")
+            .select("user_id,fixture_index")
+            .eq("matchday", 1)
+            .in("user_id", apiTestMemberIds);
+          
+          // Fetch current fixtures to validate picks match
+          const { data: currentTestFixtures } = await supabase
+            .from("test_api_fixtures")
+            .select("fixture_index")
+            .eq("test_gw", 1)
+            .order("fixture_index", { ascending: true });
+          
+          if (currentTestFixtures && testApiPicksForValidation && testSubsData) {
+            const currentFixtureIndicesSet = new Set(currentTestFixtures.map(f => f.fixture_index));
+            const requiredFixtureCount = currentFixtureIndicesSet.size;
+            const cutoffDate = new Date('2025-11-18T00:00:00Z'); // Same cutoff as League.tsx
+            
+            // Only count submissions if user has picks for ALL current fixtures AND submission is recent
+            testSubsData.forEach((sub: any) => {
+              const userPicks = (testApiPicksForValidation ?? []).filter((p: any) => p.user_id === sub.user_id);
+              const picksForCurrentFixtures = userPicks.filter((p: any) => currentFixtureIndicesSet.has(p.fixture_index));
+              const hasAllRequiredPicks = picksForCurrentFixtures.length === requiredFixtureCount && requiredFixtureCount > 0;
+              
+              const uniqueFixtureIndices = new Set(picksForCurrentFixtures.map((p: any) => p.fixture_index));
+              const hasExactMatch = uniqueFixtureIndices.size === requiredFixtureCount;
+              
+              const submissionDate = sub.submitted_at ? new Date(sub.submitted_at) : null;
+              const isRecentSubmission = submissionDate && submissionDate >= cutoffDate;
+              
+              // Only count as submitted if all conditions met
+              if (hasAllRequiredPicks && hasExactMatch && isRecentSubmission) {
+                testApiSubmittedUserIds.add(sub.user_id);
+                console.log('[Home] ✅ API Test League: User', sub.user_id, 'is VALIDLY submitted for chips. Picks:', picksForCurrentFixtures.length, 'Required:', requiredFixtureCount);
+              } else {
+                const reasons = [];
+                if (!hasAllRequiredPicks) reasons.push(`has ${picksForCurrentFixtures.length} picks (need ${requiredFixtureCount})`);
+                if (!hasExactMatch) reasons.push(`duplicate/extra picks`);
+                if (!isRecentSubmission) reasons.push(`old submission (${sub.submitted_at})`);
+                console.log('[Home] ❌ API Test League: User', sub.user_id, 'is NOT validly submitted for chips. Reasons:', reasons.join(', '));
+              }
+            });
+          }
+        }
+      }
+      
+      // Regular submissions for regular leagues ONLY
+      const submittedUserIdsBatch = new Set((allSubmissionsData ?? []).map((s: any) => s.user_id));
 
       const leagueDataMap: Record<string, LeagueData> = {};
       
@@ -876,11 +1057,170 @@ export default function HomePage() {
               userPosition: null,
               positionChange: null,
               sortedMemberIds: [],
-              latestGwWinners: []
+              latestGwWinners: [],
+              latestRelevantGw: null
             };
             continue;
           }
 
+          // Check if this is API Test league
+          const isApiTestLeague = league.name === "API Test";
+          
+          // For API Test league, use test API data and live scores
+          if (isApiTestLeague) {
+            // Check if we have results for current test fixtures (from live_scores)
+            // Only show shiny chips if results exist for current fixtures
+            const hasResultsForCurrentFixtures = testApiResultsByFixtureIdx.size > 0 && testApiFixtures.length > 0;
+            
+            // Use picks from test_api_picks
+            const picksAll = picksByLeague.get(league.id) ?? [];
+            const memberIds = members.map(m => m.id);
+            
+            if (!hasResultsForCurrentFixtures || picksAll.length === 0) {
+              // No results for current fixtures or no picks - show alphabetical, no winners
+              // BUT still include submittedMembers so chips can show green for submitted users
+              const alphabeticalIds = members.sort((a, b) => a.name.localeCompare(b.name)).map(m => m.id);
+              const memberIds = members.map(m => m.id);
+              
+              // Use batched submissions data (filtered for this league's members)
+              // CRITICAL: For API Test league, ONLY use test_api_submissions (NOT regular submissions)
+              const submittedMembers = new Set<string>();
+              memberIds.forEach(id => {
+                // Only check test_api_submissions for API Test league
+                if (testApiSubmittedUserIds.has(id)) {
+                  submittedMembers.add(id);
+                }
+              });
+              
+              leagueDataMap[league.id] = {
+                id: league.id,
+                members: members.sort((a, b) => a.name.localeCompare(b.name)),
+                userPosition: null,
+                positionChange: null,
+                sortedMemberIds: alphabeticalIds,
+                submittedMembers: Array.from(submittedMembers),
+                latestGwWinners: [],
+                latestRelevantGw: null // null means no results for current fixtures - don't show shiny chips
+              };
+              continue;
+            }
+            
+            // Calculate ML table from test API data
+            // Use test_api_results (from live_scores) instead of gw_results
+            const perGw = new Map<number, Map<string, { user_id: string; score: number; unicorns: number }>>();
+            const gwWinners = new Map<number, Set<string>>();
+            
+            // For API Test, we only have GW 1 (matchday=1 maps to gw=1)
+            const g = 1;
+            const map = new Map<string, { user_id: string; score: number; unicorns: number }>();
+            members.forEach((m) => map.set(m.id, { user_id: m.id, score: 0, unicorns: 0 }));
+            perGw.set(g, map);
+            
+            // Calculate scores from test API picks and results
+            testApiResultsByFixtureIdx.forEach((out, fixtureIdx) => {
+              const thesePicks = picksAll.filter((p) => p.gw === g && p.fixture_index === fixtureIdx);
+              const correctUsers = thesePicks.filter((p) => p.pick === out).map((p) => p.user_id);
+              
+              const scoreMap = perGw.get(g)!;
+              thesePicks.forEach((p) => {
+                if (p.pick === out) {
+                  const row = scoreMap.get(p.user_id)!;
+                  row.score += 1;
+                }
+              });
+              
+              if (correctUsers.length === 1 && members.length >= 3) {
+                const uid = correctUsers[0];
+                const row = scoreMap.get(uid)!;
+                row.unicorns += 1;
+              }
+            });
+            
+            // Calculate winners for test API GW 1
+            const gwRows = Array.from(perGw.get(g)!.values());
+            gwRows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns);
+            if (gwRows.length > 0) {
+              const top = gwRows[0];
+              const coTop = gwRows.filter((r) => r.score === top.score && r.unicorns === top.unicorns);
+              const winners = new Set(coTop.map((r) => r.user_id));
+              gwWinners.set(g, winners);
+            }
+            
+            // Build ML table from test API data
+            const mltPts = new Map<string, number>();
+            const ocp = new Map<string, number>();
+            const unis = new Map<string, number>();
+            members.forEach((m) => {
+              mltPts.set(m.id, 0);
+              ocp.set(m.id, 0);
+              unis.set(m.id, 0);
+            });
+            
+            gwRows.forEach((r) => {
+              ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);
+              unis.set(r.user_id, (unis.get(r.user_id) ?? 0) + r.unicorns);
+            });
+            
+            if (gwRows.length > 0) {
+              const top = gwRows[0];
+              const coTop = gwRows.filter((r) => r.score === top.score && r.unicorns === top.unicorns);
+              if (coTop.length === 1) {
+                mltPts.set(top.user_id, (mltPts.get(top.user_id) ?? 0) + 3);
+              } else {
+                coTop.forEach((r) => {
+                  mltPts.set(r.user_id, (mltPts.get(r.user_id) ?? 0) + 1);
+                });
+              }
+            }
+            
+            // Build ML table rows
+            const mltRows = members.map((m) => ({
+              user_id: m.id,
+              name: m.name,
+              mltPts: mltPts.get(m.id) ?? 0,
+              unicorns: unis.get(m.id) ?? 0,
+              ocp: ocp.get(m.id) ?? 0,
+            }));
+            
+            const sortedMltRows = [...mltRows].sort((a, b) => 
+              b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
+            );
+            
+            const sortedMemberIds = sortedMltRows.map(r => r.user_id);
+            const userIndex = sortedMltRows.findIndex(r => r.user_id === user.id);
+            const userPosition = userIndex !== -1 ? userIndex + 1 : null;
+            
+            // For API Test: latestRelevantGw should be 1 if we have results, null otherwise
+            // This controls whether shiny chips show (only if latestRelevantGw === gw which is 1 for API Test)
+            const latestRelevantGw = hasResultsForCurrentFixtures ? 1 : null;
+            const latestGwWinners = hasResultsForCurrentFixtures && gwWinners.has(1) 
+              ? Array.from(gwWinners.get(1) ?? new Set<string>())
+              : [];
+            
+            // Use batched submissions data (filtered for this league's members)
+            // CRITICAL: For API Test league, ONLY use test_api_submissions (NOT regular submissions)
+            const submittedMembers = new Set<string>();
+            memberIds.forEach(id => {
+              // Only check test_api_submissions for API Test league
+              if (testApiSubmittedUserIds.has(id)) {
+                submittedMembers.add(id);
+              }
+            });
+            
+            leagueDataMap[league.id] = {
+              id: league.id,
+              members: members.sort((a, b) => a.name.localeCompare(b.name)),
+              userPosition,
+              positionChange: null,
+              submittedMembers: Array.from(submittedMembers),
+              sortedMemberIds: [...sortedMemberIds],
+              latestGwWinners,
+              latestRelevantGw
+            };
+            continue;
+          }
+          
+          // Regular leagues: Continue with existing logic
           // Simple: Calculate ML table exactly like League page does, then find user's position
           if (outcomeByGwIdx.size === 0) {
             const alphabeticalIds = members.sort((a, b) => a.name.localeCompare(b.name)).map(m => m.id);
@@ -890,7 +1230,8 @@ export default function HomePage() {
               userPosition: null,
               positionChange: null,
               sortedMemberIds: alphabeticalIds,
-              latestGwWinners: []
+              latestGwWinners: [],
+              latestRelevantGw: null
             };
             continue;
           }
@@ -912,7 +1253,8 @@ export default function HomePage() {
               userPosition: null,
               positionChange: null,
               sortedMemberIds: alphabeticalIds,
-              latestGwWinners: []
+              latestGwWinners: [],
+              latestRelevantGw: null
             };
             continue;
           }
@@ -1199,12 +1541,25 @@ export default function HomePage() {
           }
           
           // Use batched submissions data (filtered for this league's members)
+          // CRITICAL: For API Test league, ONLY use test_api_submissions (testApiSubmittedUserIds)
+          // For regular leagues, ONLY use gw_submissions (submittedUserIdsBatch)
+          // This ensures test API data NEVER affects regular leagues
           const submittedMembers = new Set<string>();
-          memberIds.forEach(id => {
-            if (submittedUserIdsBatch.has(id)) {
-              submittedMembers.add(id);
-            }
+          if (isApiTestLeague) {
+            // For API Test league, ONLY check test_api_submissions (NOT regular submissions)
+            memberIds.forEach(id => {
+              if (testApiSubmittedUserIds.has(id)) {
+                submittedMembers.add(id);
+              }
             });
+          } else {
+            // For regular leagues, ONLY check gw_submissions (NOT test API submissions)
+            memberIds.forEach(id => {
+              if (submittedUserIdsBatch.has(id)) {
+                submittedMembers.add(id);
+              }
+            });
+          }
           
           
           // Store data - CRITICAL: sortedMemberIds must be stored correctly
@@ -1216,7 +1571,8 @@ export default function HomePage() {
             positionChange: null,
             submittedMembers: Array.from(submittedMembers), // Convert Set to Array for storage
             sortedMemberIds: [...sortedMemberIds], // Store COPY of ML table order from sortedMltRows
-            latestGwWinners: Array.from(latestGwWinners) // Convert Set to Array for storage
+            latestGwWinners: Array.from(latestGwWinners), // Convert Set to Array for storage
+            latestRelevantGw: latestRelevantGw // Store the GW number that winners are from
           };
           
           // CRITICAL DEBUG: Verify stored data for Prem Predictions
@@ -1241,7 +1597,8 @@ export default function HomePage() {
             userPosition: null,
             positionChange: null,
             sortedMemberIds: [],
-            latestGwWinners: []
+            latestGwWinners: [],
+            latestRelevantGw: null
           };
         }
       }
@@ -2580,6 +2937,8 @@ export default function HomePage() {
                                               ? data.latestGwWinners 
                                               : new Set(data?.latestGwWinners ?? []);
                                             
+                                            const isApiTestLeague = l.name === "API Test";
+                                            
                                             return alphabeticalMembers.slice(0, 8).map((member, index) => {
                                               const hasSubmitted = submittedSet.has(member.id);
                                               const isLatestWinner = winnersSet.has(member.id);
@@ -2587,12 +2946,19 @@ export default function HomePage() {
                                               // GPU-optimized: Use CSS classes instead of inline styles
                                               let chipClassName = 'chip-container rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
                                               
-                                              if (isLatestWinner) {
+                                              // Only show shiny chip if latestRelevantGw matches current GW (same GW)
+                                              // If current GW > latestRelevantGw, a new GW has been published - hide shiny chips
+                                              const shouldShowShiny = isLatestWinner && data.latestRelevantGw !== null && data.latestRelevantGw === gw;
+                                              if (shouldShowShiny) {
                                                 // Shiny chip for last GW winner (already GPU-optimized with transforms)
                                                 chipClassName += ' bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 font-semibold relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]';
                                               } else if (hasSubmitted) {
                                                 // Green = picked (GPU-optimized class)
                                                 chipClassName += ' chip-green';
+                                                // Add bold blue border for Test API submissions
+                                                if (isApiTestLeague) {
+                                                  chipClassName += ' border-2 border-blue-600';
+                                                }
                                               } else {
                                                 // Grey = not picked (GPU-optimized class)
                                                 chipClassName += ' chip-grey';
@@ -2628,6 +2994,9 @@ export default function HomePage() {
                                             ? data.latestGwWinners 
                                             : new Set(data?.latestGwWinners ?? []);
                                           
+                                          // Check if this is API Test league
+                                          const isApiTestLeague = l.name === "API Test";
+                                          
                                           // CRITICAL: Ensure we're using the exact order from sortedMemberIds
                                           return orderedMembers.slice(0, 8).map((member, index) => {
                                             const hasSubmitted = submittedSet.has(member.id);
@@ -2636,12 +3005,19 @@ export default function HomePage() {
                                             // GPU-optimized: Use CSS classes instead of inline styles
                                             let chipClassName = 'chip-container rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
                                             
-                                            if (isLatestWinner) {
+                                            // Only show shiny chip if latestRelevantGw matches currentGw (same GW)
+                                            // If currentGw > latestRelevantGw, a new GW has been published - hide shiny chips
+                                            const shouldShowShiny = isLatestWinner && data.latestRelevantGw !== null && data.latestRelevantGw === gw;
+                                            if (shouldShowShiny) {
                                               // Shiny chip for last GW winner (already GPU-optimized with transforms)
                                               chipClassName += ' bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 font-semibold relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]';
                                             } else if (hasSubmitted) {
                                               // Green = picked (GPU-optimized class)
                                               chipClassName += ' chip-green';
+                                              // Add bold blue border for Test API submissions
+                                              if (isApiTestLeague) {
+                                                chipClassName += ' border-2 border-blue-600';
+                                              }
                                             } else {
                                               // Grey = not picked (GPU-optimized class)
                                               chipClassName += ' chip-grey';
@@ -2824,10 +3200,10 @@ export default function HomePage() {
                 );
               }
               
-              // For API Test league: Show score when submitted (even if 0), update as games play out
+              // For API Test league: Only show score when games have started/finished
+              // CRITICAL: Don't show score if games haven't started yet (hasAnyLiveOrFinished = false)
               if (isInApiTestLeague && fixtures.length > 0 && gwSubmitted) {
                 // Calculate current score from live scores for ALL fixtures
-                let currentScore = gwScore ?? 0;
                 const totalFixtures = fixtures.length;
                 
                 // Calculate score from live scores for all fixtures
@@ -2855,11 +3231,8 @@ export default function HomePage() {
                   }
                 });
                 
-                // Use calculated score if we have live scores, otherwise use gwScore or 0
-                if (hasAnyLiveOrFinished) {
-                  currentScore = calculatedScore;
-                }
-                
+                // CRITICAL: Only show score if games have started (hasAnyLiveOrFinished = true)
+                // If no games have started but user has submitted, show "Score -- / 10" with "Game Week starting soon"
                 if (hasAnyLiveOrFinished) {
                   // Show live score with live indicator
                   return (
@@ -2869,19 +3242,21 @@ export default function HomePage() {
                       )}
                       <span className="text-xs sm:text-sm font-medium opacity-90">{allFinished ? 'Score' : 'Live'}</span>
                       <span className="flex items-baseline gap-0.5">
-                        <span className="text-lg sm:text-xl font-extrabold">{currentScore}</span>
+                        <span className="text-lg sm:text-xl font-extrabold">{calculatedScore}</span>
                         <span className="text-sm sm:text-base font-medium opacity-90">/</span>
                         <span className="text-base sm:text-lg font-semibold opacity-80">{totalFixtures}</span>
                       </span>
                     </div>
                   );
                 } else {
-                  // No live scores yet - show static score (0/10 initially)
+                  // No games started yet, but user has submitted - show "Score -- / 10"
+                  // Style it similar to live score indicator but with a different color (amber) to indicate "coming soon"
+                  // No pulsing dot - that's reserved for LIVE games only
                   return (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-600 text-white shadow-lg shadow-slate-500/30">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500 text-white shadow-lg shadow-amber-500/30">
                       <span className="text-xs sm:text-sm font-medium opacity-90">Score</span>
                       <span className="flex items-baseline gap-0.5">
-                        <span className="text-lg sm:text-xl font-extrabold">{currentScore}</span>
+                        <span className="text-lg sm:text-xl font-extrabold">--</span>
                         <span className="text-sm sm:text-base font-medium opacity-90">/</span>
                         <span className="text-base sm:text-lg font-semibold opacity-80">{totalFixtures}</span>
                       </span>
@@ -3130,18 +3505,22 @@ export default function HomePage() {
                         )}
                       </div>
 
-                      {/* buttons: Home Win, Draw, Away Win */}
-                      <div className="grid grid-cols-3 gap-3 relative">
-                        <div className={`${getButtonClass(homeState)} flex items-center justify-center`}>
-                          <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Home Win</span>
+                      {/* buttons: Home Win, Draw, Away Win - only show if user has made predictions (for Test API) or always show (for regular leagues) */}
+                      {/* For Test API league: only show buttons if user has submitted (has picks in picksMap) */}
+                      {/* For regular leagues: always show buttons */}
+                      {(!isInApiTestLeague || pick !== undefined) && (
+                        <div className="grid grid-cols-3 gap-3 relative">
+                          <div className={`${getButtonClass(homeState)} flex items-center justify-center`}>
+                            <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Home Win</span>
+                          </div>
+                          <div className={`${getButtonClass(drawState)} flex items-center justify-center`}>
+                            <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Draw</span>
+                          </div>
+                          <div className={`${getButtonClass(awayState)} flex items-center justify-center`}>
+                            <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Away Win</span>
+                          </div>
                         </div>
-                        <div className={`${getButtonClass(drawState)} flex items-center justify-center`}>
-                          <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Draw</span>
-                        </div>
-                        <div className={`${getButtonClass(awayState)} flex items-center justify-center`}>
-                          <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Away Win</span>
-                        </div>
-                      </div>
+                      )}
                                 
                                 {/* Debug API Pull History - only for API Test League */}
                                 {isInApiTestLeague && apiPullHistoryRef.current[f.fixture_index] && apiPullHistoryRef.current[f.fixture_index].length > 0 && (

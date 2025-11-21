@@ -24,6 +24,7 @@ type LeagueData = {
   submittedMembers?: Set<string>; // Set of user IDs who have submitted for current GW
   sortedMemberIds?: string[]; // Member IDs in ML table order (1st to last)
   latestGwWinners?: Set<string>; // Members who topped the most recent completed GW
+  latestRelevantGw?: number | null; // The GW number that latestGwWinners is from (needed to know when to hide shiny chips)
 };
 
 
@@ -94,6 +95,7 @@ export default function TablesPage() {
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>({});
   const [leagueData, setLeagueData] = useState<Record<string, LeagueData>>({});
   const [unreadByLeague, setUnreadByLeague] = useState<Record<string, number>>({});
+  const [currentGw, setCurrentGw] = useState<number | null>(null);
 
   async function load() {
     setLoading(true);
@@ -377,6 +379,8 @@ export default function TablesPage() {
       ]);
       
       const currentGw = (metaResult.data as any)?.current_gw ?? 1;
+      if (alive) setCurrentGw(currentGw);
+      
       const { data: allResults } = allResultsResult;
       
       const resultList = (allResults as ResultRowRaw[]) ?? [];
@@ -498,7 +502,10 @@ export default function TablesPage() {
       }
       
       // OPTIMIZED: Fetch all submissions for current GW in one query
+      // CRITICAL: Separate regular submissions from Test API submissions
       const allMemberIdsArray = Array.from(new Set(Array.from(membersByLeagueId.values()).flat().map(m => m.id)));
+      
+      // Fetch regular submissions
       const { data: allSubmissionsData } = allMemberIdsArray.length > 0
         ? await supabase
             .from("gw_submissions")
@@ -509,6 +516,61 @@ export default function TablesPage() {
       
       const submittedUserIdsSet = new Set((allSubmissionsData ?? []).map((s: any) => s.user_id));
       
+      // CRITICAL: Fetch and validate Test API submissions separately
+      // Find API Test league members
+      const apiTestLeague = rows.find(r => r.name === "API Test");
+      const testApiSubmittedUserIds = new Set<string>();
+      if (apiTestLeague) {
+        const apiTestMemberIds = membersByLeagueId.get(apiTestLeague.id)?.map(m => m.id) ?? [];
+        if (apiTestMemberIds.length > 0) {
+          // Fetch test API submissions
+          const { data: testSubsData } = await supabase
+            .from("test_api_submissions")
+            .select("user_id,submitted_at")
+            .eq("matchday", 1)
+            .in("user_id", apiTestMemberIds)
+            .not("submitted_at", "is", null);
+          
+          // Fetch picks for validation
+          const { data: testApiPicksForValidation } = await supabase
+            .from("test_api_picks")
+            .select("user_id,fixture_index")
+            .eq("matchday", 1)
+            .in("user_id", apiTestMemberIds);
+          
+          // Fetch current fixtures to validate picks match
+          const { data: currentTestFixtures } = await supabase
+            .from("test_api_fixtures")
+            .select("fixture_index")
+            .eq("test_gw", 1)
+            .order("fixture_index", { ascending: true });
+          
+          if (currentTestFixtures && testApiPicksForValidation && testSubsData) {
+            const currentFixtureIndicesSet = new Set(currentTestFixtures.map(f => f.fixture_index));
+            const requiredFixtureCount = currentFixtureIndicesSet.size;
+            const cutoffDate = new Date('2025-11-18T00:00:00Z'); // Same cutoff as League.tsx and Home.tsx
+            
+            // Only count submissions if user has picks for ALL current fixtures AND submission is recent
+            testSubsData.forEach((sub: any) => {
+              const userPicks = (testApiPicksForValidation ?? []).filter((p: any) => p.user_id === sub.user_id);
+              const picksForCurrentFixtures = userPicks.filter((p: any) => currentFixtureIndicesSet.has(p.fixture_index));
+              const hasAllRequiredPicks = picksForCurrentFixtures.length === requiredFixtureCount && requiredFixtureCount > 0;
+              
+              const uniqueFixtureIndices = new Set(picksForCurrentFixtures.map((p: any) => p.fixture_index));
+              const hasExactMatch = uniqueFixtureIndices.size === requiredFixtureCount;
+              
+              const submissionDate = sub.submitted_at ? new Date(sub.submitted_at) : null;
+              const isRecentSubmission = submissionDate && submissionDate >= cutoffDate;
+              
+              // Only count as submitted if all conditions met
+              if (hasAllRequiredPicks && hasExactMatch && isRecentSubmission) {
+                testApiSubmittedUserIds.add(sub.user_id);
+              }
+            });
+          }
+        }
+      }
+      
       // Process leagues in parallel
       await Promise.all(rows.map(async (row) => {
         try {
@@ -517,15 +579,26 @@ export default function TablesPage() {
           
           // Special handling for "API Test" league - show zero points (test league)
           const leagueMeta = leaguesMetaMap.get(row.id);
-          if (leagueMeta?.name === 'API Test') {
+          if (row.name === 'API Test' || leagueMeta?.name === 'API Test') {
             const alphabeticalIds = members.sort((a, b) => a.name.localeCompare(b.name)).map(m => m.id);
+            
+            // Check which members have submitted for Test API - use testApiSubmittedUserIds
+            const submittedMembers = new Set<string>();
+            members.forEach(member => {
+              if (testApiSubmittedUserIds.has(member.id)) {
+                submittedMembers.add(member.id);
+              }
+            });
+            
             leagueDataMap[row.id] = {
               id: row.id,
               members: members.sort((a, b) => a.name.localeCompare(b.name)),
               userPosition: alphabeticalIds.indexOf(user.id) + 1 || null,
               positionChange: null,
               sortedMemberIds: alphabeticalIds,
-              latestGwWinners: new Set()
+              latestGwWinners: new Set(),
+              latestRelevantGw: null, // No results for API Test
+              submittedMembers // Use Test API submissions
             };
             return; // Skip calculation - test league shows zero points
           }
@@ -734,7 +807,8 @@ export default function TablesPage() {
             positionChange: null,
             submittedMembers,
             sortedMemberIds: [...sortedMemberIds], // Store COPY of ML table order from sortedMltRows
-            latestGwWinners: new Set(latestGwWinners)
+            latestGwWinners: new Set(latestGwWinners),
+            latestRelevantGw: latestRelevantGw // Store the GW number that winners are from
           };
           
           leagueDataMap[row.id] = storedData;
@@ -747,7 +821,8 @@ export default function TablesPage() {
             userPosition: null,
             positionChange: null,
             sortedMemberIds: [],
-            latestGwWinners: new Set()
+            latestGwWinners: new Set(),
+            latestRelevantGw: null
           };
         }
       }));
@@ -905,6 +980,7 @@ export default function TablesPage() {
                   unread={unreadByLeague?.[r.id] ?? 0}
                   submissions={leagueSubmissions[r.id]}
                   leagueDataLoading={leagueDataLoading}
+                  currentGw={currentGw}
                 />
               ))}
             </div>
@@ -960,6 +1036,7 @@ type MiniLeagueCardProps = {
   unread: number;
   submissions?: { allSubmitted: boolean; submittedCount: number; totalCount: number };
   leagueDataLoading: boolean;
+  currentGw: number | null;
 };
 
 const MiniLeagueCard = memo(function MiniLeagueCard({
@@ -968,6 +1045,7 @@ const MiniLeagueCard = memo(function MiniLeagueCard({
   unread,
   submissions,
   leagueDataLoading,
+  currentGw,
 }: MiniLeagueCardProps) {
   const members = data?.members ?? [];
   const userPosition = data?.userPosition;
@@ -988,24 +1066,38 @@ const MiniLeagueCard = memo(function MiniLeagueCard({
     const submittedSet = toStringSet(data.submittedMembers);
     const winnersSet = toStringSet(data.latestGwWinners);
 
+    // Check if this is API Test league
+    const isApiTestLeague = row.name === "API Test";
+    
     return orderedMembers.slice(0, 8).map((member, index) => {
       const hasSubmitted = submittedSet.has(member.id);
       const isLatestWinner = winnersSet.has(member.id);
 
-      let chipClassName =
-        "chip-container rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6";
-
-      if (isLatestWinner) {
-        chipClassName +=
-          " bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 font-semibold relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]";
+      // GPU-optimized: Use CSS classes instead of inline styles
+      let chipClassName = 'chip-container rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
+      
+      // Only show shiny chip if latestRelevantGw matches currentGw (same GW)
+      // If currentGw > latestRelevantGw, a new GW has been published - hide shiny chips
+      const shouldShowShiny = isLatestWinner && data.latestRelevantGw !== null && currentGw !== null && data.latestRelevantGw === currentGw;
+      
+      if (shouldShowShiny) {
+        // Shiny chip for last GW winner (already GPU-optimized with transforms)
+        chipClassName += ' bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 font-semibold relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]';
       } else if (hasSubmitted) {
-        chipClassName += " chip-green";
+        // Green = picked (GPU-optimized class)
+        chipClassName += ' chip-green';
+        // Add bold blue border for Test API submissions
+        if (isApiTestLeague) {
+          chipClassName += ' border-2 border-blue-600';
+        }
       } else {
-        chipClassName += " chip-grey";
+        // Grey = not picked (GPU-optimized class)
+        chipClassName += ' chip-grey';
       }
 
+      // GPU-optimized: Use transform instead of marginLeft
       if (index > 0) {
-        chipClassName += " chip-overlap";
+        chipClassName += ' chip-overlap';
       }
 
       return (
@@ -1014,7 +1106,7 @@ const MiniLeagueCard = memo(function MiniLeagueCard({
         </div>
       );
     });
-  }, [data, leagueDataLoading]);
+  }, [data, leagueDataLoading, row.name, currentGw]);
 
   const extraMembers = useMemo(() => {
     if (!data) return 0;

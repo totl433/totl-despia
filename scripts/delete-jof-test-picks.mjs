@@ -60,14 +60,28 @@ async function deleteJofTestPicks() {
     // Step 2: Delete picks
     if (picks && picks.length > 0) {
       console.log('\n🗑️ Deleting picks...');
-      const { error: deletePicksError } = await supabase
+      const { data: deletePicksData, error: deletePicksError, count: deletePicksCount } = await supabase
         .from('test_api_picks')
         .delete()
         .eq('user_id', jofUserId)
-        .eq('matchday', 1);
+        .eq('matchday', 1)
+        .select(); // Add select() to see what was deleted
       
-      if (deletePicksError) throw deletePicksError;
-      console.log(`   ✅ Deleted ${picks.length} picks`);
+      if (deletePicksError) {
+        console.error('   ❌ Error deleting picks:', deletePicksError);
+        console.error('   Error details:', JSON.stringify(deletePicksError, null, 2));
+        throw deletePicksError;
+      }
+      const deletedCount = deletePicksData?.length || deletePicksCount || 0;
+      if (deletedCount === 0) {
+        console.warn('   ⚠️  WARNING: Delete command succeeded but 0 rows were deleted. This might be due to RLS restrictions.');
+        console.warn('   💡 Solution: Delete manually via Supabase dashboard or use service role key.');
+      } else {
+        console.log(`   ✅ Deleted ${deletedCount} picks`);
+        if (deletePicksData && deletePicksData.length > 0) {
+          console.log(`   📋 Deleted picks for fixture indices: ${deletePicksData.map(p => p.fixture_index).join(', ')}`);
+        }
+      }
     } else {
       console.log('\n   ℹ️ No picks found to delete');
     }
@@ -75,14 +89,28 @@ async function deleteJofTestPicks() {
     // Step 3: Delete submission
     if (submission) {
       console.log('\n🗑️ Deleting submission...');
-      const { error: deleteSubmissionError } = await supabase
+      const { data: deleteSubData, error: deleteSubmissionError, count: deleteSubCount } = await supabase
         .from('test_api_submissions')
         .delete()
         .eq('user_id', jofUserId)
-        .eq('matchday', 1);
+        .eq('matchday', 1)
+        .select(); // Add select() to see what was deleted
       
-      if (deleteSubmissionError) throw deleteSubmissionError;
-      console.log(`   ✅ Deleted submission`);
+      if (deleteSubmissionError) {
+        console.error('   ❌ Error deleting submission:', deleteSubmissionError);
+        console.error('   Error details:', JSON.stringify(deleteSubmissionError, null, 2));
+        throw deleteSubmissionError;
+      }
+      const deletedSubCount = deleteSubData?.length || deleteSubCount || 0;
+      if (deletedSubCount === 0) {
+        console.warn('   ⚠️  WARNING: Delete command succeeded but 0 rows were deleted. This might be due to RLS restrictions.');
+        console.warn('   💡 Solution: Delete manually via Supabase dashboard or use service role key.');
+      } else {
+        console.log(`   ✅ Deleted submission`);
+        if (deleteSubData && deleteSubData.length > 0) {
+          console.log(`   📋 Submission deleted (was submitted at: ${deleteSubData[0].submitted_at})`);
+        }
+      }
     } else {
       console.log('\n   ℹ️ No submission found to delete');
     }
