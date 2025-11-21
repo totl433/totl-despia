@@ -2306,6 +2306,19 @@ export default function LeaguePage() {
             </button>
           </div>
         </div>
+
+        {league?.name === 'API Test' && (
+          <div className="mt-4" style={{ marginLeft: '-1rem', marginRight: '-1rem', width: 'calc(100% + 2rem)', paddingLeft: 0, paddingRight: 0 }}>
+            <video 
+              src="/assets/Animation/Unicorn_Small.mov" 
+              autoPlay 
+              loop 
+              muted 
+              playsInline
+              style={{ width: '100%', height: 'auto', display: 'block', padding: 0, margin: 0 }}
+            />
+          </div>
+        )}
       </div>
     );
   }
@@ -3945,15 +3958,6 @@ export default function LeaguePage() {
             {tab === "gwr" && <GwResultsTab />}
           </div>
 
-          {/* API Test League Notice - at bottom of page */}
-          {league?.name === 'API Test' && (
-            <div className="mt-6 mb-4 px-4 py-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <div className="text-sm text-yellow-800">
-                <strong>⚠️ Test League:</strong> This league uses test API data and starts from Test GW 1 with zero points. It does not affect your main game scores.
-              </div>
-            </div>
-          )}
-
       </div>
       )}
 
@@ -4318,6 +4322,15 @@ export default function LeaguePage() {
                 {ending ? "Ending..." : "Yes, End League"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* API Test League Notice - at bottom of page */}
+      {league?.name === 'API Test' && (
+        <div className="mt-6 mb-4 px-4 py-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="text-sm text-yellow-800">
+            <strong>⚠️ Test League:</strong> This league uses test API data and starts from Test GW 1 with zero points. It does not affect your main game scores.
           </div>
         </div>
       )}

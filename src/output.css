@@ -1079,6 +1079,10 @@ video {
   height: 100vh;
 }
 
+.h-auto{
+  height: auto;
+}
+
 .max-h-60{
   max-height: 15rem;
 }
@@ -4366,6 +4370,11 @@ select option {
   .sm\:mx-0{
     margin-left: 0px;
     margin-right: 0px;
+  }
+
+  .sm\:-mx-4{
+    margin-left: -1rem;
+    margin-right: -1rem;
   }
 
   .sm\:block{
