@@ -115,7 +115,12 @@ export default function TestDespia() {
     // Test 4: Native Storage Read
     try {
       if (typeof despia === 'function') {
-        const storageData = await despia('readvalue://', ['storedValues']);
+        // Add timeout to prevent hanging
+        const storagePromise = Promise.resolve(despia('readvalue://', ['storedValues']));
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout after 3 seconds')), 3000)
+        );
+        const storageData = await Promise.race([storagePromise, timeoutPromise]);
         testResults.push({
           name: 'Native Storage Read',
           status: 'pass',
@@ -143,7 +148,12 @@ export default function TestDespia() {
       if (typeof despia === 'function') {
         const testData = { test: true, timestamp: Date.now() };
         const encoded = encodeURIComponent(JSON.stringify(testData));
-        await despia(`writevalue://${encoded}`);
+        // Add timeout to prevent hanging
+        const writePromise = Promise.resolve(despia(`writevalue://${encoded}`));
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout after 3 seconds')), 3000)
+        );
+        await Promise.race([writePromise, timeoutPromise]);
         testResults.push({
           name: 'Native Storage Write',
           status: 'pass',
@@ -169,6 +179,10 @@ export default function TestDespia() {
     // Test 6: Push Notification Registration (if user logged in)
     if (user && session && playerId) {
       try {
+        // Add timeout to prevent hanging
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        
         const response = await fetch('/.netlify/functions/registerPlayer', {
           method: 'POST',
           headers: {
@@ -179,8 +193,10 @@ export default function TestDespia() {
             playerId: playerId,
             platform: 'ios', // Could detect platform
           }),
+          signal: controller.signal,
         });
 
+        clearTimeout(timeoutId);
         const result = await response.json();
         if (response.ok) {
           testResults.push({
@@ -197,11 +213,11 @@ export default function TestDespia() {
             details: result
           });
         }
-      } catch (e) {
+      } catch (e: any) {
         testResults.push({
           name: 'Push Registration',
           status: 'fail',
-          message: `Registration error: ${String(e)}`,
+          message: `Registration error: ${e.name === 'AbortError' ? 'Request timed out' : String(e)}`,
           details: { error: String(e) }
         });
       }
@@ -216,7 +232,12 @@ export default function TestDespia() {
     // Test 7: Check Push Permissions
     try {
       if (typeof despia === 'function') {
-        const permissionCheck = await despia('checkNativePushPermissions://', ['nativePushEnabled']);
+        // Add timeout to prevent hanging
+        const permissionPromise = Promise.resolve(despia('checkNativePushPermissions://', ['nativePushEnabled']));
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout after 3 seconds')), 3000)
+        );
+        const permissionCheck = await Promise.race([permissionPromise, timeoutPromise]);
         testResults.push({
           name: 'Push Permissions',
           status: permissionCheck ? 'pass' : 'fail',
