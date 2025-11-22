@@ -686,7 +686,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!isInApiTestLeague || !fixtures.length) return;
     
-    const fixturesToPoll = fixtures.slice(0, 3).filter(f => f.api_match_id && f.kickoff_time);
+    const fixturesToPoll = fixtures.filter(f => f.api_match_id && f.kickoff_time);
     if (fixturesToPoll.length === 0) return;
     
     const intervals = new Map<number, ReturnType<typeof setInterval>>();
@@ -985,7 +985,7 @@ export default function HomePage() {
         
         // Fetch live scores for test fixtures (first 3 fixtures only)
         if (testApiFixtures.length > 0) {
-          const fixturesToCheck = testApiFixtures.slice(0, 3).filter(f => f.api_match_id);
+          const fixturesToCheck = testApiFixtures.filter(f => f.api_match_id);
           const apiMatchIds = fixturesToCheck.map(f => f.api_match_id);
           
           if (apiMatchIds.length > 0) {
@@ -2272,7 +2272,7 @@ export default function HomePage() {
 
   // Memoize live games check
   const hasLiveGames = useMemo(() => {
-    const fixturesToCheckForLive = isInApiTestLeague ? fixtures.slice(0, 3) : fixtures;
+    const fixturesToCheckForLive = fixtures;
     return fixturesToCheckForLive.some(f => {
       const liveScore = liveScores[f.fixture_index];
       return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');

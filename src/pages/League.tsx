@@ -1750,7 +1750,7 @@ export default function LeaguePage() {
     // Poll for all leagues, not just API Test
     if (!fixtures.length || tab !== 'gwr') return;
     
-    const fixturesToPoll = fixtures.slice(0, 3).filter((f: any) => f.api_match_id && f.kickoff_time);
+    const fixturesToPoll = fixtures.filter((f: any) => f.api_match_id && f.kickoff_time);
     if (fixturesToPoll.length === 0) return;
     
     const intervals = new Map<number, ReturnType<typeof setInterval>>();
@@ -2793,11 +2793,23 @@ export default function LeaguePage() {
 
         {/* API Test league "who picked who" view when all submitted - ONLY show if all submitted */}
         {league?.name === 'API Test' && allSubmitted && sections.length > 0 && !showSubmissionStatus && (() => {
-          // Use actual live scores
-          const combinedLiveScores = liveScores;
+          // Check if any games are live or finished - match Home page logic exactly
+          const fixturesToCheck = sections.flatMap(sec => sec.items);
+          // Create a Set of fixture_indices for quick lookup
+          const currentFixtureIndices = new Set(fixturesToCheck.map(f => f.fixture_index));
           
-          // Check if any games are live or finished
-          const fixturesToCheck = sections.flatMap(sec => sec.items).slice(0, 3);
+          // Filter liveScores to only include scores for fixtures in current GW
+          const filteredLiveScores: Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }> = {};
+          Object.keys(liveScores).forEach(key => {
+            const fixtureIndex = parseInt(key, 10);
+            if (currentFixtureIndices.has(fixtureIndex)) {
+              filteredLiveScores[fixtureIndex] = liveScores[fixtureIndex];
+            }
+          });
+          
+          // Use filtered live scores
+          const combinedLiveScores = filteredLiveScores;
+          
           const hasLiveGames = fixturesToCheck.some(f => {
             const score = combinedLiveScores[f.fixture_index];
             return score && (score.status === 'IN_PLAY' || score.status === 'PAUSED');
@@ -2808,6 +2820,36 @@ export default function LeaguePage() {
           });
           const hasStarted = hasLiveGames || allGamesFinished || fixturesToCheck.some(f => combinedLiveScores[f.fixture_index]);
           
+          // Count live fixtures where user has correct predictions (matches Home page logic)
+          let liveFixturesCount = 0;
+          if (user?.id) {
+            fixturesToCheck.forEach(f => {
+              const liveScore = combinedLiveScores[f.fixture_index];
+              const isLive = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+              const isFinished = liveScore && liveScore.status === 'FINISHED';
+              
+              // Count both live and finished games (like Home page)
+              if (liveScore && (isLive || isFinished)) {
+                // Get user's pick for this fixture
+                const userPicks = picksByFixture.get(f.fixture_index) ?? [];
+                const userPick = userPicks.find(p => p.user_id === user.id);
+                
+                if (userPick) {
+                  // Determine if pick is correct based on live score (matches Home page logic)
+                  let isCorrect = false;
+                  if (userPick.pick === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrect = true;
+                  else if (userPick.pick === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrect = true;
+                  else if (userPick.pick === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrect = true;
+                  
+                  // Only count if user's pick is correct
+                  if (isCorrect) {
+                    liveFixturesCount++;
+                  }
+                }
+              }
+            });
+          }
+          
           return (
             <div className="mt-3 space-y-6">
               {sections.map((sec, si) => (
@@ -2817,13 +2859,7 @@ export default function LeaguePage() {
                     {si === 0 && (
                       <>
                         {hasLiveGames && (() => {
-                          // Count live fixtures (IN_PLAY or PAUSED/HALF_TIME) for current GW
-                          const allGwFixtures = sections.flatMap(sec => sec.items);
-                          const liveFixturesCount = allGwFixtures.filter((f: any) => {
-                            const score = combinedLiveScores[f.fixture_index];
-                            return score && (score.status === 'IN_PLAY' || score.status === 'PAUSED' || score.status === 'HALF_TIME' || score.status === 'HT');
-                          }).length;
-                          const totalFixtures = allGwFixtures.length;
+                          const totalFixtures = fixturesToCheck.length;
                           
                           return (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600 text-white text-sm font-bold border border-red-700 shadow-sm" style={{ marginTop: '-2px' }}>
@@ -3260,7 +3296,7 @@ export default function LeaguePage() {
     // For API Test league, ONLY use live scores (ignore database results)
     if (isApiTestLeague && resGw === 1) {
       // Check live scores for first 3 fixtures - count both live and finished fixtures
-      const fixturesToCheck = fixtures.slice(0, 3);
+      const fixturesToCheck = fixtures;
       fixturesToCheck.forEach((f: any) => {
         const liveScore = liveScores[f.fixture_index];
         if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
@@ -3351,7 +3387,7 @@ export default function LeaguePage() {
     let hasStartedFixtures = false; // Track if at least one game has started
     if (isApiTestLeague && resGw === 1) {
       // For API Test league, check if all fixtures (first 3) have finished
-      const fixturesToCheck = fixtures.slice(0, 3);
+      const fixturesToCheck = fixtures;
       if (fixturesToCheck.length > 0) {
         allFixturesFinished = fixturesToCheck.every((f: any) => {
           const liveScore = liveScores[f.fixture_index];

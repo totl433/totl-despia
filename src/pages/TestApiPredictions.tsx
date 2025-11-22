@@ -748,7 +748,7 @@ export default function TestApiPredictions() {
     if (!fixtures.length) return;
     
     // Only poll first 3 fixtures
-    const fixturesToPoll = fixtures.slice(0, 3).filter(f => f.api_match_id && f.kickoff_time);
+    const fixturesToPoll = fixtures.filter(f => f.api_match_id && f.kickoff_time);
     if (fixturesToPoll.length === 0) return;
     
     const intervals = new Map<number, ReturnType<typeof setInterval>>();
@@ -942,7 +942,7 @@ export default function TestApiPredictions() {
     const newResults = new Map<number, "H" | "D" | "A">();
     
     // Check live scores for first 3 fixtures
-    const fixturesToCheck = fixtures.slice(0, 3);
+    const fixturesToCheck = fixtures;
     fixturesToCheck.forEach((f) => {
       const liveScore = liveScores[f.fixture_index];
       if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
@@ -1456,6 +1456,32 @@ export default function TestApiPredictions() {
                       return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
                       });
                       
+                      // Calculate live and finished counts
+                      let liveFixturesCount = 0;
+                      let finishedFixturesCount = 0;
+                      let finishedScoreCount = 0;
+                      
+                      if (hasAnyLiveOrFinished) {
+                        fixtures.forEach(f => {
+                          const liveScore = liveScores[f.fixture_index];
+                          const isLive = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+                          const isFinished = liveScore && liveScore.status === 'FINISHED';
+                          
+                          if (isLive) liveFixturesCount++;
+                          if (isFinished) {
+                            finishedFixturesCount++;
+                            const pick = picks.get(f.fixture_index);
+                            if (pick) {
+                              let isCorrect = false;
+                              if (pick === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrect = true;
+                              else if (pick === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrect = true;
+                              else if (pick === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrect = true;
+                              if (isCorrect) finishedScoreCount++;
+                            }
+                          }
+                        });
+                      }
+                      
                       // If games have started, show live/score indicator
                       if (hasAnyLiveOrFinished) {
                       // Check if all fixtures are finished - use all fixtures
@@ -1463,6 +1489,24 @@ export default function TestApiPredictions() {
                         const liveScore = liveScores[f.fixture_index];
                         return liveScore && liveScore.status === 'FINISHED';
                       });
+                      
+                      // If no live games but some finished games, show "Score X/Y" with clock icon (amber)
+                      if (liveFixturesCount === 0 && finishedFixturesCount > 0 && !checkAllFinished) {
+                        return (
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white bg-amber-500 shadow-lg shadow-amber-500/30">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span className="text-xs sm:text-sm font-medium opacity-90">Score</span>
+                            <span className="flex items-baseline gap-0.5">
+                              <span className="text-lg sm:text-xl font-extrabold">{finishedScoreCount}</span>
+                              <span className="text-sm sm:text-base font-medium opacity-90">/</span>
+                              <span className="text-base sm:text-lg font-semibold opacity-80">{fixtures.length}</span>
+                            </span>
+                          </div>
+                        );
+                      }
+                      
                       return (
                         <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${checkAllFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
                           {!checkAllFinished && liveFixturesCount > 0 && (
