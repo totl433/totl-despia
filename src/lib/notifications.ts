@@ -50,6 +50,9 @@ export function scheduleDeadlineReminder(
   }
 }
 
+// Track scheduled "Gameweek Starting Soon" notifications to prevent duplicates
+const GWS_STARTING_SOON_KEY_PREFIX = 'scheduled_gw_starting_soon_';
+
 /**
  * Schedule a "Game Week Starting Soon" notification
  * @param firstKickoffTime - ISO string of first kickoff time
@@ -59,18 +62,73 @@ export function scheduleGameweekStartingSoon(
   firstKickoffTime: string,
   gameweek: number
 ) {
+  // Create a unique key for this gameweek notification
+  const notificationKey = `gw${gameweek}-${firstKickoffTime}`;
+  const storageKey = `${GWS_STARTING_SOON_KEY_PREFIX}${notificationKey}`;
+  const now = Date.now();
+  
+  // Check localStorage first (persists across re-renders and page reloads)
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      const lastScheduled = parseInt(stored, 10);
+      // If scheduled within the last 24 hours, skip (gameweek should have started by then)
+      if (lastScheduled && (now - lastScheduled) < 24 * 60 * 60 * 1000) {
+        console.log('[Notifications] Skipping duplicate "Gameweek Starting Soon" notification (from localStorage):', {
+          gameweek,
+          firstKickoffTime,
+          timeSinceLastScheduled: Math.floor((now - lastScheduled) / 1000),
+          seconds: 'seconds'
+        });
+        return;
+      }
+    }
+  } catch (e) {
+    // localStorage might not be available, continue with scheduling
+    console.warn('[Notifications] localStorage not available for gameweek starting soon check');
+  }
+  
   const kickoff = new Date(firstKickoffTime);
   const notificationTime = new Date(kickoff.getTime() - 10 * 60 * 1000); // 10 minutes before
-  const now = new Date();
-  const secondsUntilNotification = Math.max(0, Math.floor((notificationTime.getTime() - now.getTime()) / 1000));
+  const nowDate = new Date();
+  const secondsUntilNotification = Math.max(0, Math.floor((notificationTime.getTime() - nowDate.getTime()) / 1000));
   
   if (secondsUntilNotification > 0 && secondsUntilNotification < 7 * 24 * 60 * 60) { // Max 7 days
+    console.log('[Notifications] Scheduling "Gameweek Starting Soon" notification:', {
+      gameweek,
+      firstKickoffTime,
+      secondsUntilNotification,
+      scheduledAt: new Date().toISOString()
+    });
+    
     sendLocalNotification(
       secondsUntilNotification,
       `Gameweek ${gameweek} Starting Soon! ⚽`,
       `The action begins in 10 minutes! Get ready for some football magic! 🎯`,
       `${window.location.origin}/league/api-test`
     );
+    
+    // Record that we've scheduled this notification in localStorage (persists across re-renders)
+    try {
+      localStorage.setItem(storageKey, now.toString());
+      // Clean up old entries (older than 7 days) to prevent localStorage bloat
+      const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(GWS_STARTING_SOON_KEY_PREFIX)) {
+          const value = localStorage.getItem(key);
+          if (value) {
+            const timestamp = parseInt(value, 10);
+            if (timestamp < sevenDaysAgo) {
+              localStorage.removeItem(key);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // localStorage might be full or unavailable, that's okay
+      console.warn('[Notifications] Could not save gameweek starting soon to localStorage:', e);
+    }
   }
 }
 
