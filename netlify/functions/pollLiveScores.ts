@@ -196,9 +196,101 @@ export const handler: Handler = async (event) => {
   // 1. Scheduled function (Netlify cron) - event will have event.source = 'netlify-scheduled-function'
   // 2. Manual HTTP call (GET or POST)
   
-  console.log('[pollLiveScores] Invoked', event.source || 'manually');
+  // Only run on staging environment
+  const context = process.env.CONTEXT || process.env.BRANCH || 'unknown';
+  const isStaging = context === 'deploy-preview' || context === 'Staging' || process.env.BRANCH === 'Staging';
+  
+  if (!isStaging) {
+    console.log(`[pollLiveScores] Skipping - not staging environment (context: ${context}, branch: ${process.env.BRANCH || 'unknown'})`);
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: false, message: 'Only runs on staging', context }),
+    };
+  }
+  
+  // Use meta table to store lock timestamp with aggressive check
+  const MIN_RUN_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes minimum between runs (increased from 3)
   
   try {
+    // Add small random delay (0-2 seconds) to prevent thundering herd
+    const randomDelay = Math.floor(Math.random() * 2000);
+    await new Promise(resolve => setTimeout(resolve, randomDelay));
+    
+    // Check lock immediately before starting work
+    const { data: metaData, error: metaError } = await supabase
+      .from('meta')
+      .select('last_poll_time')
+      .eq('id', 1)
+      .maybeSingle();
+    
+    if (metaError && metaError.code !== 'PGRST116') {
+      console.warn('[pollLiveScores] Error checking lock:', metaError);
+    } else if (metaData) {
+      const lastPollTime = (metaData as any).last_poll_time;
+      if (lastPollTime) {
+        const lastPoll = new Date(lastPollTime).getTime();
+        const now = Date.now();
+        const timeSinceLastRun = now - lastPoll;
+        
+        if (timeSinceLastRun < MIN_RUN_INTERVAL_MS) {
+          console.log(`[pollLiveScores] Ran ${Math.floor(timeSinceLastRun / 1000)}s ago, skipping (minimum interval: ${MIN_RUN_INTERVAL_MS / 1000}s)`);
+          return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ success: false, message: 'Too soon since last run, skipped' }),
+          };
+        }
+      }
+    }
+    
+    // Update lock timestamp IMMEDIATELY to claim the lock
+    const lockTimestamp = new Date().toISOString();
+    const { error: updateError } = await supabase
+      .from('meta')
+      .upsert({ id: 1, last_poll_time: lockTimestamp } as any, { onConflict: 'id' });
+    
+    if (updateError) {
+      console.warn('[pollLiveScores] Failed to update lock timestamp:', updateError);
+    }
+    
+    // Double-check: If another function updated the lock between our check and update, bail out
+    // Wait a tiny bit then check again
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    const { data: doubleCheckData } = await supabase
+      .from('meta')
+      .select('last_poll_time')
+      .eq('id', 1)
+      .maybeSingle();
+    
+    if (doubleCheckData) {
+      const doubleCheckTime = new Date((doubleCheckData as any).last_poll_time).getTime();
+      const ourLockTime = new Date(lockTimestamp).getTime();
+      // If the lock time changed significantly (more than 1 second), someone else got it
+      if (Math.abs(doubleCheckTime - ourLockTime) > 1000) {
+        console.log('[pollLiveScores] Lock was updated by another invocation, skipping');
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ success: false, message: 'Lock acquired by another invocation' }),
+        };
+      }
+    }
+    
+    // Log more details about the invocation
+    const invocationSource = event.source || 'unknown';
+    const hasHttpMethod = !!event.httpMethod;
+    const isScheduled = invocationSource === 'netlify-scheduled-function';
+    console.log('[pollLiveScores] Invoked:', {
+      source: invocationSource,
+      hasHttpMethod,
+      isScheduled,
+      httpMethod: event.httpMethod || 'none',
+      path: event.path || 'none',
+      rawUrl: event.rawUrl || 'none'
+    });
+    
     await pollAllLiveScores();
     return {
       statusCode: 200,

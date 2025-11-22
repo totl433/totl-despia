@@ -1505,8 +1505,12 @@ export default function TestApiPredictions() {
                     {group.items.map((fixture, index)=>{
                       const pick = picks.get(fixture.fixture_index);
                       const liveScore = liveScores[fixture.fixture_index];
+                      // PAUSED is halftime - include it for score counting but separate for animations
                       const isLive = liveScore && liveScore.status === 'IN_PLAY';
                       const isHalfTime = liveScore && (liveScore.status === 'PAUSED' || liveScore.status === 'HALF_TIME' || liveScore.status === 'HT');
+                      const isFinished = liveScore && liveScore.status === 'FINISHED';
+                      // For score counting purposes, include halftime as "ongoing"
+                      const isOngoing = isLive || isHalfTime;
                       
                       // Get team names (use short names first)
                       const homeName = fixture.home_team || fixture.home_name || "";
@@ -1520,21 +1524,20 @@ export default function TestApiPredictions() {
                             return `${hh}:${mm}`;
                           })()
                         : "—";
-                      
-                      // Determine button states (use live score if available)
-                      const isFinished = liveScore && liveScore.status === 'FINISHED';
 
                       const getButtonState = (side: "H" | "D" | "A") => {
                         const isPicked = pick?.pick === side;
                         let isCorrectResult = false;
                         if (liveScore) {
+                          // For live/finished matches, show which outcome is correct
                           if (side === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrectResult = true;
                           else if (side === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrectResult = true;
                           else if (side === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrectResult = true;
                         }
+                        // Don't show results for non-live games - they should just show picked state
                         const isCorrect = isPicked && isCorrectResult;
-                        // Wrong if picked but not correct result (for both live and finished games)
-                        const isWrong = isPicked && (isLive || isFinished) && !isCorrectResult;
+                        // Wrong if picked but not correct result (for both live/halftime and finished games)
+                        const isWrong = isPicked && (isOngoing || isFinished) && !isCorrectResult;
                         return { isPicked, isCorrectResult, isCorrect, isWrong };
                       };
 
@@ -1543,27 +1546,51 @@ export default function TestApiPredictions() {
                       const awayState = getButtonState("A");
 
                       // Button styling helper (matching Home Page)
-                      const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }) => {
+                      const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }, side?: "H" | "D" | "A") => {
                         const base = "h-16 rounded-xl border text-sm font-medium transition-all flex items-center justify-center select-none";
-                        // Shiny gradient ONLY when game is FINISHED and pick is correct
-                        if (state.isCorrect && isFinished) {
-                          return `${base} bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white border-4 border-emerald-600 shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]`;
-                        } else if (state.isCorrect && isLive) {
-                          // Live and correct - pulse in emerald green
-                          return `${base} bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-lg shadow-emerald-500/50`;
-                        } else if (state.isCorrectResult && isFinished) {
-                          // Correct outcome (but user didn't pick it) - grey with thick green border
-                          return `${base} bg-slate-50 text-slate-600 border-4 border-emerald-600`;
-                        } else if (state.isWrong && isFinished) {
-                          // Wrong pick in finished game - grey background with flashing red border and strikethrough
-                          return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
-                        } else if (state.isWrong && isLive) {
-                          // Wrong pick in live game - grey background with flashing red border, no strikethrough until FT
-                          return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
-                        } else if (state.isPicked) {
-                          return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+                        // PRIORITY: Check live/ongoing FIRST - never show shiny during live games
+                        if (isLive || isOngoing) {
+                          // Game is live or ongoing
+                          if (state.isCorrect) {
+                            // Live and correct - pulse in emerald green
+                            return `${base} bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-lg shadow-emerald-500/50`;
+                          } else if (state.isPicked) {
+                            // While game is live and picked but not correct yet - show green tab
+                            return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+                          } else if (side === "D" && state.isCorrectResult && !state.isPicked) {
+                            // Draw box: gently pulse when current live score is a draw (even if not picked)
+                            return `${base} bg-slate-50 text-slate-600 border-2 border-slate-300 animate-pulse`;
+                          } else if (state.isWrong) {
+                            // Wrong pick in live game - grey background with flashing red border, NO strikethrough until FT
+                            return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
+                          } else {
+                            return `${base} bg-slate-50 text-slate-600 border-slate-200`;
+                          }
+                        } else if (isFinished) {
+                          // Game is finished (not live)
+                          if (state.isCorrect) {
+                            // Shiny gradient ONLY when game is FINISHED and pick is correct
+                            return `${base} bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white border-4 border-emerald-600 shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]`;
+                          } else if (state.isCorrectResult && !state.isPicked) {
+                            // Correct outcome (but user didn't pick it) - grey with thick green border
+                            return `${base} bg-slate-50 text-slate-600 border-4 border-emerald-600`;
+                          } else if (state.isWrong) {
+                            // Wrong pick in finished game - grey background with flashing red border and strikethrough
+                            return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
+                          } else if (state.isPicked) {
+                            // Picked but result doesn't match (shouldn't happen if logic is correct)
+                            return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+                          } else {
+                            return `${base} bg-slate-50 text-slate-600 border-slate-200`;
+                          }
                         } else {
-                          return `${base} bg-slate-50 text-slate-600 border-slate-200`;
+                          // Game hasn't started yet
+                          if (state.isPicked) {
+                            // Picked but game hasn't started yet - show green tab
+                            return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+                          } else {
+                            return `${base} bg-slate-50 text-slate-600 border-slate-200`;
+                          }
                         }
                       };
                       
@@ -1639,13 +1666,13 @@ export default function TestApiPredictions() {
 
                             {/* buttons: Home Win, Draw, Away Win */}
                             <div className="grid grid-cols-3 gap-3 relative mt-4">
-                              <div className={`${getButtonClass(homeState)} flex items-center justify-center`}>
+                              <div className={`${getButtonClass(homeState, "H")} flex items-center justify-center`}>
                                 <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Home Win</span>
                               </div>
-                              <div className={`${getButtonClass(drawState)} flex items-center justify-center`}>
+                              <div className={`${getButtonClass(drawState, "D")} flex items-center justify-center`}>
                                 <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Draw</span>
                               </div>
-                              <div className={`${getButtonClass(awayState)} flex items-center justify-center`}>
+                              <div className={`${getButtonClass(awayState, "A")} flex items-center justify-center`}>
                                 <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Away Win</span>
                               </div>
                             </div>

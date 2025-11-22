@@ -676,6 +676,10 @@ video {
   visibility: visible;
 }
 
+.static{
+  position: static;
+}
+
 .fixed{
   position: fixed;
 }
@@ -2885,6 +2889,11 @@ video {
   color: rgb(133 77 14 / var(--tw-text-opacity, 1));
 }
 
+.text-red-900{
+  --tw-text-opacity: 1;
+  color: rgb(127 29 29 / var(--tw-text-opacity, 1));
+}
+
 .underline{
   text-decoration-line: underline;
 }
@@ -2927,6 +2936,10 @@ video {
 
 .opacity-90{
   opacity: 0.9;
+}
+
+.opacity-75{
+  opacity: 0.75;
 }
 
 .shadow{
