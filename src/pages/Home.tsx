@@ -657,7 +657,7 @@ export default function HomePage() {
     }
   }, [user?.id]); // Note: This function uses many state setters which are stable, so only user?.id is needed
 
-  // Pull-to-refresh hook - only enable when user is loaded and not currently loading
+  // Pull-to-refresh hook - DISABLED for now to fix link clicks on mobile
   const {
     containerRef,
     pullDistance,
@@ -670,8 +670,8 @@ export default function HomePage() {
       isInitialMountRef.current = true;
       await fetchHomeData(true);
     },
-    enabled: !!user?.id && !loading && !isInitialMountRef.current,
-    enableMouse: true, // Enable mouse drag for testing in desktop browsers
+    enabled: false, // Disabled to fix link clicks on mobile
+    enableMouse: false,
   });
 
   // Create a stable key for fixtures to prevent unnecessary effect re-runs
@@ -2795,7 +2795,7 @@ export default function HomePage() {
                 msOverflowStyle: 'none', 
                 WebkitOverflowScrolling: 'touch', 
                 overscrollBehaviorX: 'contain',
-                touchAction: 'pan-x pinch-zoom'
+                touchAction: 'pan-x pan-y pinch-zoom'
               }}
             >
               <style>{`

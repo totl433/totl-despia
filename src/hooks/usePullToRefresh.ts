@@ -76,12 +76,22 @@ export function usePullToRefresh({
       if (isRefreshingRef.current) return;
       if (e.touches.length !== 1) return; // Only handle single touch
       
+      // Don't interfere with clicks on links, buttons, or other interactive elements
+      const target = e.target as HTMLElement;
+      if (target) {
+        // Check if target is a link, button, or inside a link/button
+        const isInteractive = target.closest('a, button, [role="button"], [onClick]');
+        if (isInteractive) {
+          return; // Let the click/tap go through
+        }
+      }
+      
       scrollTopRef.current = getScrollTop();
       
       // Only start pull if at the top of the scroll (with small tolerance for native apps)
       // Check if touch is within container or allow from anywhere if at top
-      const target = e.target as Node;
-      const isInContainer = container.contains(target) || container === target;
+      const targetNode = e.target as Node;
+      const isInContainer = container.contains(targetNode) || container === targetNode;
       
       if (scrollTopRef.current <= 5 && isInContainer) {
         touchStartY.current = e.touches[0].clientY;
@@ -93,6 +103,19 @@ export function usePullToRefresh({
     const handleTouchMove = (e: TouchEvent) => {
       if (isRefreshingRef.current || touchStartY.current === null) return;
       if (e.touches.length !== 1) return; // Only handle single touch
+      
+      // Don't interfere with clicks on links, buttons, or other interactive elements
+      const target = e.target as HTMLElement;
+      if (target) {
+        const isInteractive = target.closest('a, button, [role="button"], [onClick]');
+        if (isInteractive) {
+          // Reset pull state and let the interaction go through
+          touchStartY.current = null;
+          touchStartX.current = null;
+          setState(prev => ({ ...prev, isPulling: false, pullDistance: 0 }));
+          return;
+        }
+      }
       
       const currentY = e.touches[0].clientY;
       const currentX = e.touches[0].clientX;
