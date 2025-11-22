@@ -1470,12 +1470,12 @@ export default function TestApiPredictions() {
                           if (isLive) liveFixturesCount++;
                           if (isFinished) {
                             finishedFixturesCount++;
-                            const pick = picks.get(f.fixture_index);
-                            if (pick) {
+                            const pickObj = picks.get(f.fixture_index);
+                            if (pickObj) {
                               let isCorrect = false;
-                              if (pick === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrect = true;
-                              else if (pick === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrect = true;
-                              else if (pick === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrect = true;
+                              if (pickObj.pick === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrect = true;
+                              else if (pickObj.pick === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrect = true;
+                              else if (pickObj.pick === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrect = true;
                               if (isCorrect) finishedScoreCount++;
                             }
                           }
