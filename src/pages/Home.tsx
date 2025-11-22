@@ -124,6 +124,7 @@ export default function HomePage() {
   const [resultsMap, setResultsMap] = useState<Record<number, "H" | "D" | "A">>({});
   const [loading, setLoading] = useState(true);
   const [leagueDataLoading, setLeagueDataLoading] = useState(true);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [_globalCount, setGlobalCount] = useState<number | null>(null);
@@ -630,6 +631,7 @@ export default function HomePage() {
           setFixtures([]);
           setGwSubmitted(false);
           setGwScore(null);
+          setLeaderboardLoading(true);
           setPicksMap({});
           setResultsMap({});
         } else {
@@ -836,6 +838,7 @@ export default function HomePage() {
       setFixtures([]);
       setGwSubmitted(false);
       setGwScore(null);
+      setLeaderboardLoading(true);
       setPicksMap({});
       setResultsMap({});
       setError(null);
@@ -852,6 +855,7 @@ export default function HomePage() {
       setResultsMap({});
       setError(null);
       setRetryCount(0);
+      setLeaderboardLoading(true);
     }
     
     // Increment navigation key to force scroll containers to recreate
@@ -1941,8 +1945,12 @@ export default function HomePage() {
 
   // Calculate leaderboard rankings for different time periods using v_gw_points and v_ocp_overall
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setLeaderboardLoading(false);
+      return;
+    }
     
+    setLeaderboardLoading(true);
     let alive = true;
     (async () => {
       try {
@@ -2194,6 +2202,10 @@ export default function HomePage() {
         }
       } catch (e) {
         console.error('Error calculating leaderboard rankings:', e);
+      } finally {
+        if (alive) {
+          setLeaderboardLoading(false);
+        }
       }
     })();
     
@@ -2783,7 +2795,7 @@ export default function HomePage() {
         </div>
       )}
       
-      {(loading || leagueDataLoading) && isInitialMountRef.current ? (
+      {(loading || leaderboardLoading || leagueDataLoading) ? (
         <SkeletonLoader />
       ) : (
         <>
@@ -2873,7 +2885,7 @@ export default function HomePage() {
           </div>
         </div>
         <div>
-          {(loading || leagueDataLoading) && isInitialMountRef.current && leagues.length === 0 ? (
+          {(loading || leagueDataLoading) && leagues.length === 0 ? (
             <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
@@ -2906,7 +2918,7 @@ export default function HomePage() {
                 ))}
                               </div>
                             </div>
-          ) : (loading || leagueDataLoading) && isInitialMountRef.current && leagues.length > 0 ? (
+          ) : (loading || leagueDataLoading) && leagues.length > 0 ? (
             <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
               <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
