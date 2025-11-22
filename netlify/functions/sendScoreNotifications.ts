@@ -175,29 +175,84 @@ async function checkAndSendScoreNotifications() {
       stateMap.set(state.api_match_id, state);
     });
 
-    // Get fixtures to get team names and filter to current GW
-    // Check both regular fixtures (for current GW) and test fixtures (any GW)
-    const { data: regularFixtures } = await supabase
+    // Get fixtures to get team names, kickoff times
+    // Query ALL fixtures that match the live scores (not just current GW)
+    // This is important because live scores might be from previous GWs or test GWs
+    const { data: regularFixtures, error: regularError } = await supabase
       .from('fixtures')
-      .select('api_match_id, fixture_index, home_team, away_team, gw')
-      .eq('gw', currentGw)
+      .select('api_match_id, fixture_index, home_team, away_team, gw, kickoff_time')
       .in('api_match_id', apiMatchIds);
 
+    if (regularError) {
+      console.error('[sendScoreNotifications] Error fetching regular fixtures:', regularError);
+    }
+
     // Test fixtures might be for any test GW, so get all that match
-    const { data: testFixtures } = await supabase
+    const { data: testFixtures, error: testError } = await supabase
       .from('test_api_fixtures')
-      .select('api_match_id, fixture_index, home_team, away_team, test_gw')
+      .select('api_match_id, fixture_index, home_team, away_team, test_gw, kickoff_time')
       .in('api_match_id', apiMatchIds);
+
+    if (testError) {
+      console.error('[sendScoreNotifications] Error fetching test fixtures:', testError);
+    }
 
     const allFixtures = [
       ...(testFixtures || []),
       ...(regularFixtures || []),
     ];
 
+    console.log(`[sendScoreNotifications] Found ${regularFixtures?.length || 0} regular fixtures, ${testFixtures?.length || 0} test fixtures`);
+    console.log(`[sendScoreNotifications] Live score api_match_ids: ${apiMatchIds.join(', ')}`);
+    console.log(`[sendScoreNotifications] Fixture api_match_ids: ${allFixtures.map((f: any) => f.api_match_id).join(', ')}`);
+    
+    // Check for type mismatches - log the actual types
+    if (apiMatchIds.length > 0 && allFixtures.length > 0) {
+      const liveScoreId = apiMatchIds[0];
+      const fixtureId = allFixtures[0].api_match_id;
+      console.log(`[sendScoreNotifications] Type check - Live score ID type: ${typeof liveScoreId}, Fixture ID type: ${typeof fixtureId}`);
+      console.log(`[sendScoreNotifications] Type check - Live score ID value: ${liveScoreId}, Fixture ID value: ${fixtureId}`);
+    }
+    
+    // For each missing api_match_id, try to find it with different type conversions
+    const missingIds = apiMatchIds.filter(id => !allFixtures.some((f: any) => f.api_match_id == id));
+    if (missingIds.length > 0) {
+      console.log(`[sendScoreNotifications] Missing api_match_ids: ${missingIds.join(', ')}`);
+      // Try querying with string versions
+      const stringIds = missingIds.map(id => String(id));
+      const { data: testFixturesString } = await supabase
+        .from('test_api_fixtures')
+        .select('api_match_id, fixture_index, home_team, away_team')
+        .in('api_match_id', stringIds);
+      if (testFixturesString && testFixturesString.length > 0) {
+        console.log(`[sendScoreNotifications] Found ${testFixturesString.length} fixtures when querying with string IDs`);
+        allFixtures.push(...testFixturesString);
+      }
+    }
+
     const fixtureMap = new Map<number, any>();
     allFixtures.forEach((f: any) => {
       fixtureMap.set(f.api_match_id, f);
     });
+
+    // Filter out live scores that don't have matching fixtures
+    const relevantLiveScores = liveScores.filter(score => fixtureMap.has(score.api_match_id));
+    
+    if (relevantLiveScores.length === 0) {
+      console.log('[sendScoreNotifications] No relevant live scores found (no matching fixtures)');
+      return;
+    }
+
+    if (relevantLiveScores.length < liveScores.length) {
+      const skippedCount = liveScores.length - relevantLiveScores.length;
+      const skippedIds = liveScores
+        .filter(score => !fixtureMap.has(score.api_match_id))
+        .map(score => score.api_match_id);
+      console.log(`[sendScoreNotifications] Filtered out ${skippedCount} live scores with no matching fixtures: ${skippedIds.join(', ')}`);
+      console.log(`[sendScoreNotifications] These api_match_ids exist in live_scores but not in fixtures/test_api_fixtures tables`);
+    }
+
+    console.log(`[sendScoreNotifications] Checking ${relevantLiveScores.length} relevant live scores for notifications`);
 
     // Check each live score for changes
     const notificationsToSend: Array<{
@@ -211,14 +266,25 @@ async function checkAndSendScoreNotifications() {
       isFinished: boolean;
       isScoreChange: boolean;
       isGameFinished: boolean;
+      isKickoff: boolean;
+      kickoffTime?: string;
     }> = [];
+    
+    // Track kickoffs by time slot for grouping
+    const kickoffsByTimeSlot = new Map<string, Array<{
+      apiMatchId: number;
+      homeTeam: string;
+      awayTeam: string;
+      fixtureIndex: number;
+    }>>();
 
-    for (const score of liveScores) {
+    for (const score of relevantLiveScores) {
       const state = stateMap.get(score.api_match_id);
       const fixture = fixtureMap.get(score.api_match_id);
 
+      // This should never happen since we filtered above, but keep as safety check
       if (!fixture) {
-        console.warn(`[sendScoreNotifications] No fixture found for api_match_id ${score.api_match_id}`);
+        console.warn(`[sendScoreNotifications] No fixture found for api_match_id ${score.api_match_id} (should have been filtered)`);
         continue;
       }
 
@@ -241,8 +307,35 @@ async function checkAndSendScoreNotifications() {
       
       const statusChanged = isNewMatch || (state && state.last_notified_status !== status);
       const justFinished = !isNewMatch && state.last_notified_status !== 'FINISHED' && isFinished;
+      
+      // Detect kickoff: status changed from SCHEDULED/TIMED to IN_PLAY
+      const justKickedOff = !isNewMatch && 
+        state.last_notified_status !== 'IN_PLAY' && 
+        state.last_notified_status !== 'PAUSED' &&
+        state.last_notified_status !== 'FINISHED' &&
+        (status === 'IN_PLAY' || status === 'PAUSED');
+
+      // Track kickoffs for grouping (only if status is IN_PLAY and score is 0-0)
+      if (justKickedOff && status === 'IN_PLAY' && homeScore === 0 && awayScore === 0 && fixture.kickoff_time) {
+        const kickoffTime = new Date(fixture.kickoff_time);
+        // Round to nearest 15 minutes for grouping (e.g., 3:00pm, 3:15pm, etc.)
+        const minutes = kickoffTime.getMinutes();
+        const roundedMinutes = Math.floor(minutes / 15) * 15;
+        const timeSlot = `${kickoffTime.getHours()}:${String(roundedMinutes).padStart(2, '0')}`;
+        
+        if (!kickoffsByTimeSlot.has(timeSlot)) {
+          kickoffsByTimeSlot.set(timeSlot, []);
+        }
+        kickoffsByTimeSlot.get(timeSlot)!.push({
+          apiMatchId: score.api_match_id,
+          homeTeam: fixture.home_team || 'Home',
+          awayTeam: fixture.away_team || 'Away',
+          fixtureIndex: fixture.fixture_index,
+        });
+      }
 
       // Only notify on actual score changes (goals), new matches with scores, or game finishing
+      // (kickoffs are handled separately below)
       if (scoreChanged || isNewMatchWithScore || justFinished) {
         notificationsToSend.push({
           apiMatchId: score.api_match_id,
@@ -255,16 +348,60 @@ async function checkAndSendScoreNotifications() {
           isFinished,
           isScoreChange: (scoreChanged || isNewMatchWithScore) && !justFinished,
           isGameFinished: justFinished,
+          isKickoff: false,
+        });
+      }
+    }
+
+    // Add grouped kickoff notifications
+    for (const [timeSlot, kickoffs] of kickoffsByTimeSlot.entries()) {
+      if (kickoffs.length === 0) continue;
+      
+      // For single game, send specific notification
+      // For multiple games (e.g., 3pm kickoffs), send generic notification
+      if (kickoffs.length === 1) {
+        const kickoff = kickoffs[0];
+        notificationsToSend.push({
+          apiMatchId: kickoff.apiMatchId,
+          homeTeam: kickoff.homeTeam,
+          awayTeam: kickoff.awayTeam,
+          homeScore: 0,
+          awayScore: 0,
+          status: 'IN_PLAY',
+          minute: null,
+          isFinished: false,
+          isScoreChange: false,
+          isGameFinished: false,
+          isKickoff: true,
+          kickoffTime: timeSlot,
+        });
+      } else {
+        // Multiple games kicking off at same time - send one notification per game but with generic message
+        kickoffs.forEach(kickoff => {
+          notificationsToSend.push({
+            apiMatchId: kickoff.apiMatchId,
+            homeTeam: kickoff.homeTeam,
+            awayTeam: kickoff.awayTeam,
+            homeScore: 0,
+            awayScore: 0,
+            status: 'IN_PLAY',
+            minute: null,
+            isFinished: false,
+            isScoreChange: false,
+            isGameFinished: false,
+            isKickoff: true,
+            kickoffTime: timeSlot,
+          });
         });
       }
     }
 
     if (notificationsToSend.length === 0) {
-      console.log('[sendScoreNotifications] No score changes detected, no notifications to send');
+      console.log('[sendScoreNotifications] No score changes or kickoffs detected, no notifications to send');
       return;
     }
 
-    console.log(`[sendScoreNotifications] Sending ${notificationsToSend.length} notifications`);
+    console.log(`[sendScoreNotifications] Sending ${notificationsToSend.length} notifications (${kickoffsByTimeSlot.size} kickoff groups)`);
 
     // Get all users who have picks for these fixtures
     // Check both regular picks and test_api_picks
@@ -388,7 +525,19 @@ async function checkAndSendScoreNotifications() {
         let title: string;
         let message: string;
 
-        if (notification.isGameFinished) {
+        if (notification.isKickoff) {
+          // Check if this is part of a grouped kickoff (multiple games at same time)
+          const kickoffGroup = kickoffsByTimeSlot.get(notification.kickoffTime || '');
+          if (kickoffGroup && kickoffGroup.length > 1) {
+            // Generic notification for multiple games kicking off
+            title = `⚽ Games Starting!`;
+            message = `${kickoffGroup.length} games kicking off now`;
+          } else {
+            // Single game kickoff
+            title = `⚽ ${notification.homeTeam} vs ${notification.awayTeam}`;
+            message = `Kickoff!`;
+          }
+        } else if (notification.isGameFinished) {
           title = `FT: ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
           if (isCorrect) {
             message = `✅ Got it right!`;
@@ -403,7 +552,7 @@ async function checkAndSendScoreNotifications() {
         }
 
         // Send personalized notification to this user
-        const result = await sendOneSignalNotification(
+        const sendResult = await sendOneSignalNotification(
           playerIds,
           title,
           message,
@@ -416,11 +565,12 @@ async function checkAndSendScoreNotifications() {
           }
         );
 
-        if (result.success) {
-          totalSent += result.sentTo;
-          console.log(`[sendScoreNotifications] Sent ${notification.isGameFinished ? 'FT' : 'score'} notification for match ${notification.apiMatchId} to user ${userId} (${result.sentTo} devices)`);
+        if (sendResult.success) {
+          totalSent += sendResult.sentTo;
+          const notificationType = notification.isKickoff ? 'kickoff' : notification.isGameFinished ? 'FT' : 'score';
+          console.log(`[sendScoreNotifications] Sent ${notificationType} notification for match ${notification.apiMatchId} to user ${userId} (${sendResult.sentTo} devices)`);
         } else {
-          console.error(`[sendScoreNotifications] Failed to send notification for match ${notification.apiMatchId} to user ${userId}:`, result.errors);
+          console.error(`[sendScoreNotifications] Failed to send notification for match ${notification.apiMatchId} to user ${userId}:`, sendResult.errors);
         }
       }
 
@@ -583,7 +733,7 @@ async function checkAndSendScoreNotifications() {
               if (playerIds.length === 0) continue;
 
               const score = userScores.get(userId) || 0;
-              const result = await sendOneSignalNotification(
+              const sendResult = await sendOneSignalNotification(
                 playerIds,
                 `Game Week ${currentGw} Ended! 🏆`,
                 `You scored ${score}/${totalFixtures}! Check out how you did!`,
@@ -595,8 +745,8 @@ async function checkAndSendScoreNotifications() {
                 }
               );
 
-              if (result.success) {
-                console.log(`[sendScoreNotifications] Sent end-of-GW notification to user ${userId} (${result.sentTo} devices) - Score: ${score}/${totalFixtures}`);
+              if (sendResult.success) {
+                console.log(`[sendScoreNotifications] Sent end-of-GW notification to user ${userId} (${sendResult.sentTo} devices) - Score: ${score}/${totalFixtures}`);
               }
             }
             
