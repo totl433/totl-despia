@@ -25,6 +25,7 @@ import PredictionsBanner from "./components/PredictionsBanner";
 import BottomNav from "./components/BottomNav";
 import FloatingProfile from "./components/FloatingProfile";
 import ScrollLogo from "./components/ScrollLogo";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 // Loading Fallback
 const PageLoader = () => (
@@ -136,25 +137,27 @@ function AppContent() {
       )}
 
       {/* Routes */}
-      <Suspense fallback={<PageLoader />}>
-        <Routes>
-          <Route path="/auth" element={<SignIn />} />
-          <Route path="/new-predictions" element={<RequireAuth><NewPredictionsCentre /></RequireAuth>} />
-          <Route path="/test-api-predictions" element={<RequireAuth><TestApiPredictions /></RequireAuth>} />
-          <Route path="/test-admin-api" element={<RequireAuth><TestAdminApi /></RequireAuth>} />
-          <Route path="/test-despia" element={<RequireAuth><TestDespia /></RequireAuth>} />
-          <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
-          <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
-          <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
-          <Route path="/predictions" element={<RequireAuth><PredictionsPage /></RequireAuth>} />
-          <Route path="/global" element={<RequireAuth><GlobalPage /></RequireAuth>} />
-          <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
-          <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
-          <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
-          <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/auth" element={<SignIn />} />
+            <Route path="/new-predictions" element={<RequireAuth><NewPredictionsCentre /></RequireAuth>} />
+            <Route path="/test-api-predictions" element={<RequireAuth><TestApiPredictions /></RequireAuth>} />
+            <Route path="/test-admin-api" element={<RequireAuth><TestAdminApi /></RequireAuth>} />
+            <Route path="/test-despia" element={<RequireAuth><TestDespia /></RequireAuth>} />
+            <Route path="/" element={<RequireAuth><ErrorBoundary><HomePage /></ErrorBoundary></RequireAuth>} />
+            <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
+            <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
+            <Route path="/predictions" element={<RequireAuth><PredictionsPage /></RequireAuth>} />
+            <Route path="/global" element={<RequireAuth><GlobalPage /></RequireAuth>} />
+            <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+            <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
+            <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
+            <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
 
       {/* Bottom Navigation - hide on auth page, league pages, and swipe prediction page */}
       {location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions/swipe' && <BottomNav />}

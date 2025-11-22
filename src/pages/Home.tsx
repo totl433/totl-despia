@@ -124,6 +124,8 @@ export default function HomePage() {
   const [resultsMap, setResultsMap] = useState<Record<number, "H" | "D" | "A">>({});
   const [loading, setLoading] = useState(true);
   const [leagueDataLoading, setLeagueDataLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [_globalCount, setGlobalCount] = useState<number | null>(null);
   const [_globalRank, setGlobalRank] = useState<number | null>(null);
   const [_prevGlobalRank, setPrevGlobalRank] = useState<number | null>(null);
@@ -242,6 +244,7 @@ export default function HomePage() {
     
     if (showLoading) {
         setLoading(true);
+        setError(null);
       }
 
     try {
@@ -559,6 +562,8 @@ export default function HomePage() {
       setPicksMap(map);
       setUnreadByLeague(unreadCounts);
       setLeagueSubmissions(submissionStatus);
+      setError(null); // Clear any previous errors on success
+      setRetryCount(0); // Reset retry count on success
       // Use setTimeout to ensure state updates are batched and prevent flickering
       setTimeout(() => {
         if (alive) {
@@ -566,7 +571,7 @@ export default function HomePage() {
         }
       }, 0);
     }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Home] Error loading home page data:', error);
       if (alive) {
         setLoading(false);
@@ -575,6 +580,20 @@ export default function HomePage() {
         setFixtures([]);
         setGwSubmitted(false);
         setGwScore(null);
+        
+        // Set error message for user
+        const errorMessage = error?.message || 'Failed to load data. Please check your connection.';
+        setError(errorMessage);
+        
+        // Auto-retry up to 3 times with exponential backoff
+        if (retryCount < 3) {
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 5000); // 1s, 2s, 4s
+          console.log(`[Home] Retrying in ${delay}ms (attempt ${retryCount + 1}/3)`);
+          setTimeout(() => {
+            setRetryCount(prev => prev + 1);
+            fetchHomeData(false);
+          }, delay);
+        }
       }
     }
   }, [user?.id]); // Note: This function uses many state setters which are stable, so only user?.id is needed
@@ -2664,6 +2683,27 @@ export default function HomePage() {
         </div>
       )}
       {/* <WhatsAppBanner /> */}
+      {error && retryCount >= 3 && (
+        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="font-semibold text-red-900 mb-1">Failed to load data</div>
+              <div className="text-sm text-red-700 mb-3">{error}</div>
+              <button
+                onClick={() => {
+                  setError(null);
+                  setRetryCount(0);
+                  fetchHomeData(true);
+                }}
+                className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {(loading || leagueDataLoading) && isInitialMountRef.current ? (
         <SkeletonLoader />
       ) : (
