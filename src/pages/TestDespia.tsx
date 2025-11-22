@@ -232,18 +232,24 @@ export default function TestDespia() {
     // Test 7: Check Push Permissions
     try {
       if (typeof despia === 'function') {
-        // Add timeout to prevent hanging
-        const permissionPromise = Promise.resolve(despia('checkNativePushPermissions://', ['nativePushEnabled']));
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout after 3 seconds')), 3000)
-        );
-        const permissionCheck = await Promise.race([permissionPromise, timeoutPromise]);
-        testResults.push({
-          name: 'Push Permissions',
-          status: permissionCheck ? 'pass' : 'fail',
-          message: permissionCheck ? 'Push notifications enabled' : 'Push notifications disabled',
-          details: { enabled: permissionCheck }
-        });
+        // This API is synchronous, not async - it returns data directly
+        const permissionData = despia('checkNativePushPermissions://', ['nativePushEnabled']);
+        if (permissionData && typeof permissionData === 'object' && 'nativePushEnabled' in permissionData) {
+          const isEnabled = Boolean(permissionData.nativePushEnabled);
+          testResults.push({
+            name: 'Push Permissions',
+            status: isEnabled ? 'pass' : 'fail',
+            message: isEnabled ? 'Push notifications enabled in iOS Settings' : 'Push notifications disabled - enable in iOS Settings',
+            details: { enabled: isEnabled, permissionData }
+          });
+        } else {
+          testResults.push({
+            name: 'Push Permissions',
+            status: 'fail',
+            message: 'Could not read permission status - API returned unexpected format',
+            details: { permissionData, type: typeof permissionData }
+          });
+        }
       } else {
         testResults.push({
           name: 'Push Permissions',
