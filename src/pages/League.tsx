@@ -550,6 +550,8 @@ export default function LeaguePage() {
   const [availableGws, setAvailableGws] = useState<number[]>([]);
   // Live scores for test API fixtures
   const [liveScores, setLiveScores] = useState<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
+  // Ref to track current liveScores without causing re-renders
+  const liveScoresRef = useRef<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
   // Track previous positions for animation (using ref to persist across renders)
   const prevPositionsRef = useRef<Map<string, number>>(new Map());
   const [positionChangeKeys, setPositionChangeKeys] = useState<Set<string>>(new Set());
@@ -1691,6 +1693,11 @@ export default function LeaguePage() {
     }
   };
 
+  // Sync ref with liveScores state whenever it changes
+  useEffect(() => {
+    liveScoresRef.current = liveScores;
+  }, [liveScores]);
+
   // Fetch existing live scores immediately, then poll for updates
   useEffect(() => {
     // Load live scores for all leagues
@@ -1759,16 +1766,24 @@ export default function LeaguePage() {
         
         const isFinished = scoreData.status === 'FINISHED';
         
-        // Update live scores
-        setLiveScores(prev => ({
-          ...prev,
-          [fixtureIndex]: {
-            homeScore: scoreData.homeScore,
-            awayScore: scoreData.awayScore,
-            status: scoreData.status,
-            minute: scoreData.minute ?? null
+        // Update live scores using functional update to avoid dependency on liveScores
+        setLiveScores(prev => {
+          // Check if already finished to avoid unnecessary updates
+          const current = prev[fixtureIndex];
+          if (current?.status === 'FINISHED' && isFinished) {
+            return prev; // No change needed
           }
-        }));
+          
+          return {
+            ...prev,
+            [fixtureIndex]: {
+              homeScore: scoreData.homeScore,
+              awayScore: scoreData.awayScore,
+              status: scoreData.status,
+              minute: scoreData.minute ?? null
+            }
+          };
+        });
         
         // Stop polling if finished
         if (isFinished) {
@@ -1787,6 +1802,7 @@ export default function LeaguePage() {
     };
     
     // Check which fixtures should be polled
+    // Use ref to access current liveScores without causing re-renders
     const checkFixtures = () => {
       const now = new Date();
       fixturesToPoll.forEach((fixture: any) => {
@@ -1796,7 +1812,7 @@ export default function LeaguePage() {
         const kickoffTime = new Date(fixture.kickoff_time);
         const kickoffHasPassed = kickoffTime.getTime() <= now.getTime();
         const isCurrentlyPolling = intervals.has(fixtureIndex);
-        const currentScore = liveScores[fixtureIndex];
+        const currentScore = liveScoresRef.current[fixtureIndex];
         const isFinished = currentScore?.status === 'FINISHED';
         
         // Stop if finished
@@ -1824,7 +1840,7 @@ export default function LeaguePage() {
       intervals.forEach(clearInterval);
       clearInterval(checkInterval);
     };
-  }, [league?.name, fixtures.map((f: any) => f.api_match_id).join(','), tab, liveScores]);
+  }, [league?.name, fixtures.map((f: any) => f.api_match_id).join(','), tab]); // Removed liveScores from dependencies
 
   // Set default tab to "gwr" (GW Results) if gameweek is live or finished within 12 hours
   // Only runs once on initial load when on chat tab - never auto-switches after user manually selects a tab
