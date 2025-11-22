@@ -226,14 +226,21 @@ async function checkAndSendScoreNotifications() {
 
       // Check if this is a new match (no state) or if scores changed
       const isNewMatch = !state;
-      const scoreChanged = isNewMatch || 
+      
+      // Only count as score change if scores actually changed (not just a new match with 0-0)
+      const scoreChanged = !isNewMatch && (
         state.last_notified_home_score !== homeScore || 
-        state.last_notified_away_score !== awayScore;
-      const statusChanged = isNewMatch || state.last_notified_status !== status;
+        state.last_notified_away_score !== awayScore
+      );
+      
+      // For new matches, only notify if there's an actual score (not 0-0)
+      const isNewMatchWithScore = isNewMatch && (homeScore > 0 || awayScore > 0);
+      
+      const statusChanged = isNewMatch || (state && state.last_notified_status !== status);
       const justFinished = !isNewMatch && state.last_notified_status !== 'FINISHED' && isFinished;
 
-      // Only notify on score changes or game finishing
-      if (scoreChanged || justFinished) {
+      // Only notify on actual score changes (goals), new matches with scores, or game finishing
+      if (scoreChanged || isNewMatchWithScore || justFinished) {
         notificationsToSend.push({
           apiMatchId: score.api_match_id,
           homeTeam: fixture.home_team || 'Home',
@@ -243,7 +250,7 @@ async function checkAndSendScoreNotifications() {
           status,
           minute: score.minute,
           isFinished,
-          isScoreChange: scoreChanged && !justFinished,
+          isScoreChange: (scoreChanged || isNewMatchWithScore) && !justFinished,
           isGameFinished: justFinished,
         });
       }
@@ -613,7 +620,35 @@ async function checkAndSendScoreNotifications() {
 }
 
 export const handler: Handler = async (event) => {
-  console.log('[sendScoreNotifications] Invoked', event.source || 'manually');
+  // Only run on staging environment (same as pollLiveScores)
+  const context = process.env.CONTEXT || process.env.NETLIFY_CONTEXT || 'unknown';
+  const branch = process.env.BRANCH || process.env.HEAD || process.env.COMMIT_REF || 'unknown';
+  const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || '';
+  
+  const isStaging = 
+    context === 'deploy-preview' || 
+    context === 'branch-deploy' ||
+    branch === 'Staging' || 
+    branch.toLowerCase() === 'staging' ||
+    siteUrl.toLowerCase().includes('staging') ||
+    siteUrl.toLowerCase().includes('deploy-preview');
+  
+  console.log('[sendScoreNotifications] Invoked', {
+    source: event.source || 'manually',
+    context,
+    branch,
+    siteUrl: siteUrl ? siteUrl.substring(0, 50) + '...' : 'none',
+    isStaging
+  });
+  
+  if (!isStaging) {
+    console.log('[sendScoreNotifications] Skipping - not staging environment');
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: false, message: 'Only runs on staging', context, branch }),
+    };
+  }
   
   try {
     await checkAndSendScoreNotifications();
