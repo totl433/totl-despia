@@ -282,7 +282,8 @@ export const handler: Handler = async (event) => {
   }
   
   // Use meta table to store lock timestamp with aggressive check
-  const MIN_RUN_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes minimum between runs (increased from 3)
+  // With 1-minute schedule, we allow runs every 30 seconds minimum (to handle slight overlaps)
+  const MIN_RUN_INTERVAL_MS = 30 * 1000; // 30 seconds minimum between runs
   
   try {
     // Add small random delay (0-2 seconds) to prevent thundering herd

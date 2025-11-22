@@ -5,9 +5,9 @@
 [functions]
   directory = "netlify/functions"
 
-# Scheduled function to poll live scores every 5 minutes
+# Scheduled function to poll live scores every 1 minute
 [functions."pollLiveScores"]
-  schedule = "*/5 * * * *"
+  schedule = "*/1 * * * *"
 
 # Scheduled function to send score notifications every 2 minutes
 [functions."sendScoreNotifications"]
