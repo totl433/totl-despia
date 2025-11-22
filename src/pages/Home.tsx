@@ -564,6 +564,10 @@ export default function HomePage() {
       setLeagueSubmissions(submissionStatus);
       setError(null); // Clear any previous errors on success
       setRetryCount(0); // Reset retry count on success
+      // Mark initial mount as complete after successful load
+      if (isInitialMountRef.current) {
+        isInitialMountRef.current = false;
+      }
       // Use setTimeout to ensure state updates are batched and prevent flickering
       setTimeout(() => {
         if (alive) {
@@ -772,7 +776,27 @@ export default function HomePage() {
   useEffect(() => {
     if (!user?.id) {
       setLoading(false);
+      // Clear all data when user logs out
+      setLeagues([]);
+      setFixtures([]);
+      setGwSubmitted(false);
+      setGwScore(null);
+      setPicksMap({});
+      setResultsMap({});
+      setError(null);
       return;
+    }
+    
+    // On initial mount, clear all state to prevent showing stale data
+    if (isInitialMountRef.current) {
+      setLeagues([]);
+      setFixtures([]);
+      setGwSubmitted(false);
+      setGwScore(null);
+      setPicksMap({});
+      setResultsMap({});
+      setError(null);
+      setRetryCount(0);
     }
     
     // Increment navigation key to force scroll containers to recreate
