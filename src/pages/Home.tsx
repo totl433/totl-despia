@@ -2671,6 +2671,24 @@ export default function HomePage() {
   // Simple skeleton loader
   const SkeletonLoader = () => (
     <>
+      {/* Unicorn Loading Animation */}
+      <div className="flex justify-center items-center py-8">
+        <style>{`
+          .unicorn-loader {
+            width: 64px;
+            height: 64px;
+            background: url("/assets/Animation/unicorn_simplified_sprite.svg") 0 0 no-repeat;
+            background-size: 320px 64px;
+            image-rendering: pixelated;
+            animation: unicorn-run 0.6s steps(5) infinite;
+          }
+          @keyframes unicorn-run {
+            to { background-position: -320px 0; }
+          }
+        `}</style>
+        <div className="unicorn-loader" />
+      </div>
+
       {/* Leaderboard Skeleton */}
       <Section title="Leaderboardz" boxed={false}>
         <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain', touchAction: 'pan-x pan-y pinch-zoom' }}>
