@@ -3478,29 +3478,49 @@ export default function HomePage() {
                 // Button styling helper
                 const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }, side?: "H" | "D" | "A") => {
                   const base = "h-16 rounded-xl border text-sm font-medium transition-all flex items-center justify-center select-none";
-                  // Shiny gradient ONLY when game is FINISHED and pick is correct
-                  if (state.isCorrect && isFinished) {
-                    return `${base} bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white border-4 border-emerald-600 shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]`;
-                  } else if (state.isPicked && (isLive || isOngoing)) {
-                    // While game is live, just show green tab for ALL picked options (same color regardless of correctness)
-                    return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
-                  } else if (side === "D" && state.isCorrectResult && (isLive || isOngoing) && !state.isPicked) {
-                    // Draw box: gently pulse when current live score is a draw (even if not picked)
-                    return `${base} bg-slate-50 text-slate-600 border-2 border-slate-300 animate-pulse`;
-                  } else if (state.isCorrectResult && isFinished) {
-                    // Correct outcome (but user didn't pick it) - grey with thick green border
-                    return `${base} bg-slate-50 text-slate-600 border-4 border-emerald-600`;
-                  } else if (state.isWrong && isFinished) {
-                    // Wrong pick in finished game - grey background with flashing red border and strikethrough
-                    return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
-                  } else if (state.isWrong && (isLive || isHalfTime)) {
-                    // Wrong pick in live game - grey background with flashing red border, NO strikethrough until FT
-                    return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
-                  } else if (state.isPicked) {
-                    // Picked but game hasn't started yet - show green tab
-                    return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+                  // PRIORITY: Check live/ongoing FIRST - never show shiny during live games
+                  if (isLive || isOngoing) {
+                    // Game is live or ongoing
+                    if (state.isCorrect) {
+                      // Live and correct - pulse in emerald green
+                      return `${base} bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-lg shadow-emerald-500/50`;
+                    } else if (state.isPicked) {
+                      // While game is live and picked but not correct yet - show green tab
+                      return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+                    } else if (side === "D" && state.isCorrectResult && !state.isPicked) {
+                      // Draw box: gently pulse when current live score is a draw (even if not picked)
+                      return `${base} bg-slate-50 text-slate-600 border-2 border-slate-300 animate-pulse`;
+                    } else if (state.isWrong) {
+                      // Wrong pick in live game - grey background with flashing red border, NO strikethrough until FT
+                      return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
+                    } else {
+                      return `${base} bg-slate-50 text-slate-600 border-slate-200`;
+                    }
+                  } else if (isFinished) {
+                    // Game is finished (not live)
+                    if (state.isCorrect) {
+                      // Shiny gradient ONLY when game is FINISHED and pick is correct
+                      return `${base} bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white border-4 border-emerald-600 shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]`;
+                    } else if (state.isCorrectResult && !state.isPicked) {
+                      // Correct outcome (but user didn't pick it) - grey with thick green border
+                      return `${base} bg-slate-50 text-slate-600 border-4 border-emerald-600`;
+                    } else if (state.isWrong) {
+                      // Wrong pick in finished game - grey background with flashing red border and strikethrough
+                      return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
+                    } else if (state.isPicked) {
+                      // Picked but result doesn't match (shouldn't happen if logic is correct)
+                      return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+                    } else {
+                      return `${base} bg-slate-50 text-slate-600 border-slate-200`;
+                    }
                   } else {
-                    return `${base} bg-slate-50 text-slate-600 border-slate-200`;
+                    // Game hasn't started yet
+                    if (state.isPicked) {
+                      // Picked but game hasn't started yet - show green tab
+                      return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+                    } else {
+                      return `${base} bg-slate-50 text-slate-600 border-slate-200`;
+                    }
                   }
                 };
 
