@@ -140,11 +140,11 @@ async function checkAndSendScoreNotifications() {
 
     const currentGw = (metaData as any)?.current_gw ?? 1;
 
-    // Get all live scores for current GW
+    // Get all live scores (don't filter by GW - test fixtures might have different GW)
+    // We'll match them to fixtures later
     const { data: liveScores, error: scoresError } = await supabase
       .from('live_scores')
       .select('*')
-      .eq('gw', currentGw)
       .in('status', ['IN_PLAY', 'PAUSED', 'FINISHED']);
 
     if (scoresError) {
@@ -175,15 +175,18 @@ async function checkAndSendScoreNotifications() {
       stateMap.set(state.api_match_id, state);
     });
 
-    // Get fixtures to get team names
-    const { data: testFixtures } = await supabase
-      .from('test_api_fixtures')
-      .select('api_match_id, fixture_index, home_team, away_team')
-      .in('api_match_id', apiMatchIds);
-
+    // Get fixtures to get team names and filter to current GW
+    // Check both regular fixtures (for current GW) and test fixtures (any GW)
     const { data: regularFixtures } = await supabase
       .from('fixtures')
-      .select('api_match_id, fixture_index, home_team, away_team')
+      .select('api_match_id, fixture_index, home_team, away_team, gw')
+      .eq('gw', currentGw)
+      .in('api_match_id', apiMatchIds);
+
+    // Test fixtures might be for any test GW, so get all that match
+    const { data: testFixtures } = await supabase
+      .from('test_api_fixtures')
+      .select('api_match_id, fixture_index, home_team, away_team, test_gw')
       .in('api_match_id', apiMatchIds);
 
     const allFixtures = [
