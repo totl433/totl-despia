@@ -96,37 +96,27 @@ async function pollAllLiveScores() {
       }
     });
 
-    // Filter fixtures to only poll games that are actually live (between kickoff and full-time)
-    // A match typically lasts ~105 minutes (90 + 15 min stoppage + potential extra time)
-    // Add a small buffer (5 minutes) to catch late updates
+    // Filter fixtures to only poll games that have started (or should have started)
+    // We continue polling until the API explicitly says the game is FINISHED
     const now = Date.now();
-    const MAX_MATCH_DURATION_MS = 110 * 60 * 1000; // 110 minutes in milliseconds
     
     const fixturesToPoll = allFixtures.filter(f => {
-      // Skip if already finished
+      // Skip if already finished (according to our database)
       if (finishedMatchIds.has(f.api_match_id)) {
         return false;
       }
       
-      // If we have a kickoff time, only poll if the game should be live
+      // If we have a kickoff time, only poll if the game has started (or should have started)
       if (f.kickoff_time) {
         try {
           const kickoffTime = new Date(f.kickoff_time).getTime();
-          const matchEndTime = kickoffTime + MAX_MATCH_DURATION_MS;
-          
-          // Only poll if:
-          // 1. Current time is after kickoff (game has started or should have started)
-          // 2. Current time is before match end time (game hasn't finished yet)
-          // 3. Or if we don't have a status yet (first time polling this game)
           const hasStarted = now >= kickoffTime;
-          const hasntFinished = now < matchEndTime;
-          const isInLiveWindow = hasStarted && hasntFinished;
           
-          // Also check if we already have a status - if it's SCHEDULED and past kickoff, poll it
-          const existingScore = (existingScores || []).find((s: any) => s.api_match_id === f.api_match_id);
-          const needsInitialPoll = !existingScore || existingScore.status === 'SCHEDULED' || existingScore.status === 'TIMED';
-          
-          return isInLiveWindow || (hasStarted && needsInitialPoll);
+          // Poll if:
+          // 1. Game has started (current time >= kickoff time)
+          // 2. Game is not yet marked as FINISHED in our database
+          // We continue polling until the API tells us it's FINISHED
+          return hasStarted;
         } catch (e) {
           // If we can't parse the kickoff time, include it to be safe
           console.warn(`[pollLiveScores] Error parsing kickoff_time for fixture ${f.api_match_id}:`, e);
@@ -134,7 +124,15 @@ async function pollAllLiveScores() {
         }
       }
       
-      // If no kickoff time, include it (shouldn't happen, but be safe)
+      // If no kickoff time, check if we have an existing status
+      // If status exists and is not FINISHED, poll it
+      // If no status exists, poll it (might be a game without kickoff time)
+      const existingScore = (existingScores || []).find((s: any) => s.api_match_id === f.api_match_id);
+      if (existingScore) {
+        return existingScore.status !== 'FINISHED';
+      }
+      
+      // No kickoff time and no existing status - include it to be safe
       return true;
     });
 
@@ -144,11 +142,9 @@ async function pollAllLiveScores() {
     }
 
     const skippedCount = allFixtures.length - fixturesToPoll.length;
-    const skippedReasons = {
-      finished: Array.from(finishedMatchIds).length,
-      notStarted: allFixtures.length - Array.from(finishedMatchIds).length - fixturesToPoll.length
-    };
-    console.log(`[pollLiveScores] Polling ${fixturesToPoll.length} fixtures (skipped ${skippedCount}: ${skippedReasons.finished} finished, ${skippedReasons.notStarted} not yet started)`);
+    const finishedCount = Array.from(finishedMatchIds).length;
+    const notStartedCount = skippedCount - finishedCount;
+    console.log(`[pollLiveScores] Polling ${fixturesToPoll.length} fixtures (skipped ${skippedCount}: ${finishedCount} finished, ${notStartedCount} not yet started)`);
 
     // Poll each fixture with a small delay to avoid rate limits
     const updates: any[] = [];
