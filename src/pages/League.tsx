@@ -2800,12 +2800,27 @@ export default function LeaguePage() {
                     <div className="text-slate-700 font-normal text-lg">{sec.label}</div>
                     {si === 0 && (
                       <>
-                        {hasLiveGames && (
-                          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-red-600 text-white text-sm font-bold border border-red-700 shadow-sm" style={{ marginTop: '-2px' }}>
-                            <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
-                            LIVE
-                          </span>
-                        )}
+                        {hasLiveGames && (() => {
+                          // Count live fixtures (IN_PLAY or PAUSED/HALF_TIME) for current GW
+                          const allGwFixtures = sections.flatMap(sec => sec.items);
+                          const liveFixturesCount = allGwFixtures.filter((f: any) => {
+                            const score = combinedLiveScores[f.fixture_index];
+                            return score && (score.status === 'IN_PLAY' || score.status === 'PAUSED' || score.status === 'HALF_TIME' || score.status === 'HT');
+                          }).length;
+                          const totalFixtures = allGwFixtures.length;
+                          
+                          return (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600 text-white text-sm font-bold border border-red-700 shadow-sm" style={{ marginTop: '-2px' }}>
+                              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+                              <span className="text-xs sm:text-sm font-medium opacity-90">Live</span>
+                              <span className="flex items-baseline gap-0.5">
+                                <span className="text-base sm:text-lg font-extrabold">{liveFixturesCount}</span>
+                                <span className="text-xs sm:text-sm font-medium opacity-90">/</span>
+                                <span className="text-sm sm:text-base font-semibold opacity-80">{totalFixtures}</span>
+                              </span>
+                            </span>
+                          );
+                        })()}
                         {allGamesFinished && (
                           <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#1C8376]/10 text-[#1C8376]/90 text-sm font-bold border border-emerald-300 shadow-sm" style={{ marginTop: '-2px' }}>
                             Round Complete!
