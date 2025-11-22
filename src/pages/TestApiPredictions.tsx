@@ -1590,7 +1590,7 @@ export default function TestApiPredictions() {
                       const awayState = getButtonState("A");
 
                       // Button styling helper (matching Home Page)
-                      const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }, side?: "H" | "D" | "A") => {
+                      const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }, _side?: "H" | "D" | "A") => {
                         const base = "h-16 rounded-xl border text-sm font-medium transition-all flex items-center justify-center select-none";
                         // PRIORITY: Check live/ongoing FIRST - never show shiny during live games
                         if (isLive || isOngoing) {

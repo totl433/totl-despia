@@ -797,8 +797,6 @@ export default function HomePage() {
     // Schedule notifications (only once per fixture, localStorage prevents duplicates)
     fixturesToPoll.forEach((fixture) => {
       if (!fixture.api_match_id || !fixture.kickoff_time) return;
-      const kickoffTime = new Date(fixture.kickoff_time);
-      const now = new Date();
       const fixtureIndex = fixture.fixture_index;
       
       // NOTE: Kickoff notifications are now handled server-side by sendScoreNotifications
@@ -3473,7 +3471,7 @@ export default function HomePage() {
                 const awayState = getButtonState("A");
 
                 // Button styling helper
-                const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }, side?: "H" | "D" | "A") => {
+                const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }, _side?: "H" | "D" | "A") => {
                   const base = "h-16 rounded-xl border text-sm font-medium transition-all flex items-center justify-center select-none";
                   // PRIORITY: Check live/ongoing FIRST - never show shiny during live games
                   if (isLive || isOngoing) {
