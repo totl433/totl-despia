@@ -1807,6 +1807,15 @@ video {
   border-color: rgb(253 224 71 / var(--tw-border-opacity, 1));
 }
 
+.border-amber-600\/60{
+  border-color: rgb(217 119 6 / 0.6);
+}
+
+.border-slate-700{
+  --tw-border-opacity: 1;
+  border-color: rgb(51 65 85 / var(--tw-border-opacity, 1));
+}
+
 .border-t-transparent{
   border-top-color: transparent;
 }
@@ -2908,6 +2917,10 @@ video {
 
 .decoration-black{
   text-decoration-color: #000;
+}
+
+.decoration-white{
+  text-decoration-color: #fff;
 }
 
 .decoration-2{
