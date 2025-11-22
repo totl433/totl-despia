@@ -151,6 +151,8 @@ export default function HomePage() {
   const prevScoresRef = useRef<Record<number, { homeScore: number; awayScore: number }>>({});
   // Track if "Game Week Starting Soon" notification has been scheduled
   const gameweekStartingSoonScheduledRef = useRef(false);
+  // Track if deadline reminder notification has been scheduled
+  const deadlineReminderScheduledRef = useRef(false);
   // Track API pull history for debugging (fixture_index -> array of pulls)
   const apiPullHistoryRef = useRef<Record<number, Array<{
     timestamp: Date;
@@ -729,7 +731,11 @@ export default function HomePage() {
       if (fixtureIndex === 0 && fixture.kickoff_time) {
         const firstKickoff = new Date(fixture.kickoff_time);
         const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
-        scheduleDeadlineReminder(deadlineTime.toISOString(), 1, 2);
+        
+        if (!deadlineReminderScheduledRef.current) {
+          scheduleDeadlineReminder(deadlineTime.toISOString(), 1, 2);
+          deadlineReminderScheduledRef.current = true;
+        }
         
         if (!gameweekStartingSoonScheduledRef.current) {
           scheduleGameweekStartingSoon(fixture.kickoff_time, 1);
