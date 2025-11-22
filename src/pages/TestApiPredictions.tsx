@@ -1601,8 +1601,8 @@ export default function TestApiPredictions() {
                           } else if (state.isPicked) {
                             // While game is live and picked but not correct yet - show green tab
                             return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
-                          } else if (side === "D" && state.isCorrectResult && !state.isPicked) {
-                            // Draw box: gently pulse when current live score is a draw (even if not picked)
+                          } else if (state.isCorrectResult && !state.isPicked) {
+                            // Correct outcome (but user didn't pick it) - gently pulse to show it's currently correct
                             return `${base} bg-slate-50 text-slate-600 border-2 border-slate-300 animate-pulse`;
                           } else if (state.isWrong) {
                             // Wrong pick in live game - grey background with flashing red border, NO strikethrough until FT
