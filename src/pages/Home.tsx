@@ -863,8 +863,8 @@ export default function HomePage() {
 
   // Fetch member data and calculate positions for each league
   useEffect(() => {
-    if (!leagues.length || !user?.id || !gw) {
-      console.log('Skipping position calculation:', { leaguesLength: leagues.length, userId: user?.id, gw });
+    if (!leagues.length || !user?.id) {
+      console.log('Skipping position calculation:', { leaguesLength: leagues.length, userId: user?.id });
       setLeagueDataLoading(false);
       return;
     }
@@ -875,9 +875,9 @@ export default function HomePage() {
     let alive = true;
     (async () => {
       try {
-        // Get current GW
+        // Get current GW from meta (don't depend on gw state)
         const { data: metaData } = await supabase.from("meta").select("current_gw").eq("id", 1).maybeSingle();
-      const currentGw = (metaData as any)?.current_gw ?? gw;
+        const currentGw = (metaData as any)?.current_gw ?? 1;
       
       // PARALLEL: Fetch all results and all league members in parallel
       const [allResultsData, membersData] = await Promise.all([
@@ -1771,7 +1771,7 @@ export default function HomePage() {
     return () => {
       alive = false;
     };
-  }, [leagues, user?.id, gw]);
+  }, [leagues, user?.id]);
 
   useEffect(() => {
     let alive = true;
