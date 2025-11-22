@@ -3479,15 +3479,15 @@ export default function HomePage() {
                     if (state.isCorrect) {
                       // Live and correct - pulse in emerald green
                       return `${base} bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-lg shadow-emerald-500/50`;
+                    } else if (state.isWrong) {
+                      // Wrong pick in live game - keep green tab but show strikethrough
+                      return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
                     } else if (state.isPicked) {
                       // While game is live and picked but not correct yet - show green tab
                       return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
                     } else if (state.isCorrectResult && !state.isPicked) {
                       // Correct outcome (but user didn't pick it) - gently pulse to show it's currently correct
                       return `${base} bg-slate-50 text-slate-600 border-2 border-slate-300 animate-pulse`;
-                    } else if (state.isWrong) {
-                      // Wrong pick in live game - grey background with flashing red border, NO strikethrough until FT
-                      return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
                     } else {
                       return `${base} bg-slate-50 text-slate-600 border-slate-200`;
                     }
@@ -3595,13 +3595,13 @@ export default function HomePage() {
                       {(!isInApiTestLeague || pick !== undefined) && (
                         <div className="grid grid-cols-3 gap-3 relative">
                           <div className={`${getButtonClass(homeState, "H")} flex items-center justify-center`}>
-                            <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Home Win</span>
+                            <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>Home Win</span>
                           </div>
                           <div className={`${getButtonClass(drawState, "D")} flex items-center justify-center`}>
-                            <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Draw</span>
+                            <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>Draw</span>
                           </div>
                           <div className={`${getButtonClass(awayState, "A")} flex items-center justify-center`}>
-                            <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Away Win</span>
+                            <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>Away Win</span>
                           </div>
                         </div>
                       )}
