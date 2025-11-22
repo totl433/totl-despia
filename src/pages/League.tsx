@@ -117,20 +117,36 @@ function Chip({
   correct,
   unicorn,
   hasSubmitted,
+  isLive,
+  isOngoing,
+  isFinished,
 }: {
   letter: string;
   correct: boolean | null;
   unicorn: boolean;
   hasSubmitted?: boolean;
+  isLive?: boolean;
+  isOngoing?: boolean;
+  isFinished?: boolean;
 }) {
-  // Logic matches Home Page and Tables page:
-  // - Green when member has submitted (even if no result yet)
-  // - Shiny when correct (only when result exists and pick matches)
+  // Logic matches Home Page:
+  // - Pulsing green when correct during live/ongoing games
+  // - Shiny gradient when correct in finished games
+  // - Green when submitted (even if no result or incorrect)
   // - Grey when member hasn't submitted
   let tone: string;
   if (correct === true) {
-    // Shiny gradient for correct picks (only when result exists and matches)
-    tone = "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s] ring-2 ring-yellow-300/60";
+    // PRIORITY: Check live/ongoing FIRST - never show shiny during live games
+    if (isLive || isOngoing) {
+      // Live and correct - pulse in emerald green
+      tone = "bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-lg shadow-emerald-500/50";
+    } else if (isFinished) {
+      // Shiny gradient for correct picks in finished games
+      tone = "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s] ring-2 ring-yellow-300/60";
+    } else {
+      // Correct but game hasn't started - show emerald green (no pulse, no shiny)
+      tone = "bg-emerald-600 text-white border-emerald-600";
+    }
   } else if (hasSubmitted) {
     // Green when submitted (even if no result or incorrect)
     tone = "bg-emerald-600 text-white border-emerald-600";
@@ -2883,13 +2899,13 @@ export default function LeaguePage() {
                                             zIndex: idx
                                           }}
                                         >
-                                          <Chip letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} />
+                                          <Chip letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
                                         </span>
                                       );
                                     }
                                     
                                     return (
-                                      <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} />
+                                      <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
                                     );
                                   })}
                                 </div>
@@ -3052,6 +3068,13 @@ export default function LeaguePage() {
 
                           const fxIdx = f.fixture_index;
                           const these = picksByFixture.get(fxIdx) ?? [];
+                          
+                          // Get live score for this fixture
+                          const liveScore = liveScores[fxIdx];
+                          const isLive = liveScore && liveScore.status === 'IN_PLAY';
+                          const isHalfTime = liveScore && (liveScore.status === 'PAUSED' || liveScore.status === 'HALF_TIME' || liveScore.status === 'HT');
+                          const isFinished = liveScore && liveScore.status === 'FINISHED';
+                          const isOngoing = isLive || isHalfTime;
 
                           const toChips = (want: "H" | "D" | "A") => {
                             const filtered = these.filter((p) => p.pick === want);
@@ -3092,13 +3115,13 @@ export default function LeaguePage() {
                                               zIndex: idx
                                             }}
                                           >
-                                            <Chip letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} />
+                                            <Chip letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
                                           </span>
                                         );
                                       }
                                       
                                       return (
-                                        <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} />
+                                        <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
                                       );
                                     })}
                                   </div>
