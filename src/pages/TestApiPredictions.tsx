@@ -1392,8 +1392,8 @@ export default function TestApiPredictions() {
     // Calculate live score (includes both live and finished games)
     let liveScoreCount = 0;
     let liveFixturesCount = 0;
-    const fixturesToCheck = fixtures.slice(0, 3);
-    fixturesToCheck.forEach(f => {
+    // Use all fixtures for live indicator, not just first 3
+    fixtures.forEach(f => {
       const liveScore = liveScores[f.fixture_index];
       const isLive = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
       const isFinished = liveScore && liveScore.status === 'FINISHED';
@@ -1450,16 +1450,16 @@ export default function TestApiPredictions() {
                   <div className="text-sm font-semibold text-slate-700 mb-3 px-1 flex items-center justify-between">
                     <span>{group.label}</span>
                     {groupIdx === 0 && (() => {
-                      // Check if any games have started (live or finished)
-                      const hasAnyLiveOrFinished = fixturesToCheck.length > 0 && fixturesToCheck.some(f => {
+                      // Check if any games have started (live or finished) - use all fixtures
+                      const hasAnyLiveOrFinished = fixtures.length > 0 && fixtures.some(f => {
                       const liveScore = liveScores[f.fixture_index];
                       return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
                       });
                       
                       // If games have started, show live/score indicator
                       if (hasAnyLiveOrFinished) {
-                      // Check if all fixtures are finished
-                      const checkAllFinished = fixturesToCheck.every(f => {
+                      // Check if all fixtures are finished - use all fixtures
+                      const checkAllFinished = fixtures.every(f => {
                         const liveScore = liveScores[f.fixture_index];
                         return liveScore && liveScore.status === 'FINISHED';
                       });
@@ -1477,7 +1477,7 @@ export default function TestApiPredictions() {
                         <span className="flex items-baseline gap-0.5">
                           <span className="text-lg sm:text-xl font-extrabold">{liveScoreCount}</span>
                           <span className="text-sm sm:text-base font-medium opacity-90">/</span>
-                          <span className="text-base sm:text-lg font-semibold opacity-80">{fixturesToCheck.length}</span>
+                          <span className="text-base sm:text-lg font-semibold opacity-80">{fixtures.length}</span>
                         </span>
                       </div>
                       );
