@@ -3468,23 +3468,6 @@ export default function HomePage() {
                   const isCorrect = isPicked && isCorrectResult;
                   // Wrong if picked but not correct result (for both live/halftime and finished games)
                   const isWrong = isPicked && (isOngoing || isFinished) && !isCorrectResult;
-                  
-                  // Debug logging for Away Win buttons
-                  if (side === 'A' && isPicked && (isLive || isOngoing)) {
-                    console.log('[Home] Away Win button state:', {
-                      fixtureIndex: f.fixture_index,
-                      teams: `${homeName} vs ${awayName}`,
-                      isPicked,
-                      isCorrectResult,
-                      isCorrect,
-                      isWrong,
-                      liveScore: liveScore ? { homeScore: liveScore.homeScore, awayScore: liveScore.awayScore, status: liveScore.status } : null,
-                      isLive,
-                      isOngoing,
-                      isFinished
-                    });
-                  }
-                  
                   return { isPicked, isCorrectResult, isCorrect, isWrong };
                 };
 
@@ -3504,8 +3487,8 @@ export default function HomePage() {
                     } else if (state.isPicked) {
                       // While game is live and picked but not correct yet - show green tab
                       return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
-                    } else if (side === "D" && state.isCorrectResult && !state.isPicked) {
-                      // Draw box: gently pulse when current live score is a draw (even if not picked)
+                    } else if (state.isCorrectResult && !state.isPicked) {
+                      // Correct outcome (but user didn't pick it) - gently pulse to show it's currently correct
                       return `${base} bg-slate-50 text-slate-600 border-2 border-slate-300 animate-pulse`;
                     } else if (state.isWrong) {
                       // Wrong pick in live game - grey background with flashing red border, NO strikethrough until FT
