@@ -1711,13 +1711,13 @@ export default function TestApiPredictions() {
                             {/* buttons: Home Win, Draw, Away Win */}
                             <div className="grid grid-cols-3 gap-3 relative mt-4">
                               <div className={`${getButtonClass(homeState, "H")} flex items-center justify-center`}>
-                                <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Home Win</span>
+                                <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>Home Win</span>
                               </div>
                               <div className={`${getButtonClass(drawState, "D")} flex items-center justify-center`}>
-                                <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Draw</span>
+                                <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>Draw</span>
                               </div>
                               <div className={`${getButtonClass(awayState, "A")} flex items-center justify-center`}>
-                                <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Away Win</span>
+                                <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>Away Win</span>
                               </div>
                             </div>
                           </div>
