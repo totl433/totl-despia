@@ -633,6 +633,7 @@ export default function HomePage() {
           setGwScore(null);
           setPicksMap({});
           setResultsMap({});
+          setLeaderboardDataLoading(true); // Reset leaderboard loading on error
         } else {
           // If we have leagues, keep them but clear fixtures/score
           // This allows user to see their leagues even if current GW data fails
@@ -1961,7 +1962,13 @@ export default function HomePage() {
           .maybeSingle();
         if (lErr) throw lErr;
         const latestGw = latest?.gw ?? null;
-        if (!latestGw) return;
+        if (!latestGw) {
+          // No results yet - still mark as loaded
+          if (alive) {
+            setLeaderboardDataLoading(false);
+          }
+          return;
+        }
 
         // Get total fixtures for latest GW
         const { data: fixturesData } = await supabase
