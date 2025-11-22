@@ -622,11 +622,23 @@ export default function HomePage() {
       console.error('[Home] Error loading home page data:', error);
       if (alive) {
         setLoading(false);
-        // Don't clear leagues if we already have them - just log the error
-        // setLeagues([]); // REMOVED - don't clear existing leagues on error
-        setFixtures([]);
-        setGwSubmitted(false);
-        setGwScore(null);
+        
+        // On initial mount or if we don't have leagues yet, clear everything
+        // This prevents showing stale data when there's an error
+        if (isInitialMountRef.current || leagues.length === 0) {
+          setLeagues([]);
+          setFixtures([]);
+          setGwSubmitted(false);
+          setGwScore(null);
+          setPicksMap({});
+          setResultsMap({});
+        } else {
+          // If we have leagues, keep them but clear fixtures/score
+          // This allows user to see their leagues even if current GW data fails
+          setFixtures([]);
+          setGwSubmitted(false);
+          setGwScore(null);
+        }
         
         // Set error message for user
         const errorMessage = error?.message || 'Failed to load data. Please check your connection.';
