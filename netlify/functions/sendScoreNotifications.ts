@@ -321,11 +321,12 @@ async function checkAndSendScoreNotifications() {
         state.last_notified_away_score !== awayScore
       );
       
-      // For new matches, only notify if there's an actual score (not 0-0)
-      const isNewMatchWithScore = isNewMatch && (homeScore > 0 || awayScore > 0);
+      // For new matches, only notify if there's an actual score (not 0-0) OR if it's finished
+      const isNewMatchWithScore = isNewMatch && ((homeScore > 0 || awayScore > 0) || isFinished);
       
       const statusChanged = isNewMatch || (state && state.last_notified_status !== status);
-      const justFinished = !isNewMatch && state.last_notified_status !== 'FINISHED' && isFinished;
+      const justFinished = (!isNewMatch && state.last_notified_status !== 'FINISHED' && isFinished) || 
+                           (isNewMatch && isFinished); // Also treat new finished matches as "just finished"
       
       // Detect kickoff: status changed from SCHEDULED/TIMED to IN_PLAY
       const justKickedOff = !isNewMatch && 
@@ -356,6 +357,9 @@ async function checkAndSendScoreNotifications() {
       // Only notify on actual score changes (goals), new matches with scores, or game finishing
       // (kickoffs are handled separately below)
       if (scoreChanged || isNewMatchWithScore || justFinished) {
+        // Determine if this is a finished game notification
+        const isFinishedNotification = justFinished || (isNewMatch && isFinished);
+        
         notificationsToSend.push({
           apiMatchId: score.api_match_id,
           homeTeam: fixture.home_team || 'Home',
@@ -365,8 +369,8 @@ async function checkAndSendScoreNotifications() {
           status,
           minute: score.minute,
           isFinished,
-          isScoreChange: (scoreChanged || isNewMatchWithScore) && !justFinished,
-          isGameFinished: justFinished,
+          isScoreChange: (scoreChanged || (isNewMatchWithScore && !isFinished)) && !isFinishedNotification,
+          isGameFinished: isFinishedNotification,
           isKickoff: false,
         });
       }
