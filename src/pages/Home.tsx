@@ -256,6 +256,17 @@ export default function HomePage() {
         supabase.from("league_members").select("leagues(id,name,code,created_at,avatar)").eq("user_id", user.id),
       ]);
       
+      // Check for errors in queries
+      if (currentGwResult.error) {
+        console.error('[Home] Error fetching current GW:', currentGwResult.error);
+        throw new Error(`Failed to load current gameweek: ${currentGwResult.error.message}`);
+      }
+      
+      if (userLeaguesResult.error) {
+        console.error('[Home] Error fetching user leagues:', userLeaguesResult.error);
+        throw new Error(`Failed to load leagues: ${userLeaguesResult.error.message}`);
+      }
+      
       const currentGw = (currentGwResult.data as any)?.current_gw ?? 1;
 
       const userLeagues = ((userLeaguesResult.data ?? []) as any[])
@@ -298,6 +309,20 @@ export default function HomePage() {
           supabase.from("test_api_picks").select("user_id,matchday,fixture_index,pick").eq("user_id", user.id).eq("matchday", 1),
           supabase.from("test_api_submissions").select("submitted_at").eq("user_id", user.id).eq("matchday", 1).maybeSingle(),
         ]);
+        
+        // Check for errors in test API queries
+        if (fixturesResult.error) {
+          console.error('[Home] Error fetching test API fixtures:', fixturesResult.error);
+          throw new Error(`Failed to load fixtures: ${fixturesResult.error.message}`);
+        }
+        if (picksResult.error) {
+          console.error('[Home] Error fetching test API picks:', picksResult.error);
+          throw new Error(`Failed to load picks: ${picksResult.error.message}`);
+        }
+        if (submissionResult.error) {
+          console.error('[Home] Error fetching test API submission:', submissionResult.error);
+          throw new Error(`Failed to load submission: ${submissionResult.error.message}`);
+        }
         
         // Map test_gw/matchday to gw for consistency
         const testFixtures = (fixturesResult.data as any[]) ?? [];
@@ -374,6 +399,24 @@ export default function HomePage() {
           supabase.from("gw_results").select("gw,fixture_index,result").eq("gw", currentGw),
           supabase.from("gw_submissions").select("submitted_at").eq("user_id", user.id).eq("gw", currentGw).maybeSingle(),
         ]);
+        
+        // Check for errors in regular queries
+        if (fixturesResult.error) {
+          console.error('[Home] Error fetching fixtures:', fixturesResult.error);
+          throw new Error(`Failed to load fixtures: ${fixturesResult.error.message}`);
+        }
+        if (picksResult.error) {
+          console.error('[Home] Error fetching picks:', picksResult.error);
+          throw new Error(`Failed to load picks: ${picksResult.error.message}`);
+        }
+        if (resultsResult.error) {
+          console.error('[Home] Error fetching results:', resultsResult.error);
+          throw new Error(`Failed to load results: ${resultsResult.error.message}`);
+        }
+        if (submissionResult.error) {
+          console.error('[Home] Error fetching submission:', submissionResult.error);
+          throw new Error(`Failed to load submission: ${submissionResult.error.message}`);
+        }
         
         thisGwFixtures = (fixturesResult.data as Fixture[]) ?? [];
         userPicks = (picksResult.data as PickRow[]) ?? [];
