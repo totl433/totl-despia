@@ -1998,6 +1998,7 @@ export default function HomePage() {
 
         // Box 1: Last GW Leaderboard (same logic as Global page with joint ranking)
         const lastGwPoints = gwPoints.filter(gp => gp.gw === latestGw);
+        console.log('[Home] Leaderboard calculation:', { latestGw, lastGwPointsCount: lastGwPoints.length, userId: user.id, gwPointsCount: gwPoints.length });
         if (lastGwPoints.length > 0 && alive) {
           const sorted = lastGwPoints
             .map(gp => ({
@@ -2020,6 +2021,7 @@ export default function HomePage() {
           });
           
           const userEntry = ranked.find(gp => gp.user_id === user.id);
+          console.log('[Home] Last GW userEntry:', { found: !!userEntry, totalRanked: ranked.length, userEntry });
           if (userEntry) {
             // Check if this rank has multiple players
             const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
