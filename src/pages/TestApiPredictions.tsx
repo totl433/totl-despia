@@ -1615,12 +1615,12 @@ export default function TestApiPredictions() {
                           if (state.isCorrect) {
                             // Shiny gradient for correct finished picks (no green border)
                             return `${base} bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]`;
+                          } else if (state.isWrong) {
+                            // Wrong pick in finished game - keep green tab with strikethrough
+                            return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
                           } else if (state.isCorrectResult && !state.isPicked) {
                             // Correct outcome (but user didn't pick it) - grey with thick green border
                             return `${base} bg-slate-50 text-slate-600 border-4 border-emerald-600`;
-                          } else if (state.isWrong) {
-                            // Wrong pick in finished game - grey background with flashing red border and strikethrough
-                            return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
                           } else if (state.isPicked) {
                             // Picked but result doesn't match (shouldn't happen if logic is correct)
                             return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
