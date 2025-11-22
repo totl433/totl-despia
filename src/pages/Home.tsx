@@ -2785,11 +2785,7 @@ export default function HomePage() {
         </div>
       )}
       
-      {(loading && isInitialMountRef.current && leagues.length === 0) ? (
-        <SkeletonLoader />
-      ) : (
-        <>
-          {/* Leaderboardz */}
+      {/* Leaderboardz */}
           <Section title="Leaderboardz" boxed={false}>
             <div 
               key={`leaderboard-scroll-${navigationKeyRef.current}`}
@@ -3733,8 +3729,6 @@ export default function HomePage() {
           </div>
         )}
       </section>
-        </>
-      )}
     </div>
   );
 }
