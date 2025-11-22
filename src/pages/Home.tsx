@@ -2795,7 +2795,7 @@ export default function HomePage() {
         </div>
       )}
       
-      {(loading || leaderboardLoading || leagueDataLoading) ? (
+      {(loading && isInitialMountRef.current && leagues.length === 0) ? (
         <SkeletonLoader />
       ) : (
         <>
