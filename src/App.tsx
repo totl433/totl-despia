@@ -32,6 +32,7 @@ export default function App() {
       <Routes>
         {/* Full-screen route without header/banner */}
         <Route path="/new-predictions" element={<NewPredictionsCentre />} />
+        <Route path="/test-despia" element={<TestDespia />} />
         
         {/* Regular routes with header/banner */}
         <Route path="*" element={
@@ -46,7 +47,6 @@ export default function App() {
                 <Route path="/predictions" element={<PredictionsPage />} />
                 <Route path="/admin" element={<AdminPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/test-despia" element={<TestDespia />} />
               </Routes>
             </main>
           </div>
