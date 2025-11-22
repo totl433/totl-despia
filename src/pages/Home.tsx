@@ -2651,6 +2651,72 @@ export default function HomePage() {
   };
 
 
+  // Simple skeleton loader
+  const SkeletonLoader = () => (
+    <>
+      {/* Leaderboard Skeleton */}
+      <Section title="Leaderboardz" boxed={false}>
+        <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain', touchAction: 'pan-x pan-y pinch-zoom' }}>
+          <style>{`.scrollbar-hide::-webkit-scrollbar { display: none; }`}</style>
+          <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden animate-pulse">
+                <div className="p-3 h-full flex flex-col relative">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="h-10 w-16 bg-slate-200 rounded" />
+                    <div className="h-4 w-4 bg-slate-200 rounded" />
+                  </div>
+                  <div className="mt-auto">
+                    <div className="h-3 w-20 bg-slate-200 rounded mb-2" />
+                    <div className="h-4 w-16 bg-slate-200 rounded" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Section>
+
+      {/* Mini Leagues Skeleton */}
+      <section className="mt-6">
+        <div className="flex items-center justify-between mb-2 pt-5">
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-medium text-slate-500 uppercase tracking-wide">Mini Leagues</h2>
+            <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center">
+              <span className="text-[10px] text-slate-500 font-bold">i</span>
+            </div>
+          </div>
+        </div>
+        <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
+          <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex flex-col gap-2">
+                {[1, 2, 3].map((j) => (
+                  <div key={j} className="rounded-xl border bg-white overflow-hidden shadow-sm w-[320px] animate-pulse" style={{ borderRadius: '12px' }}>
+                    <div className="p-4 bg-white relative">
+                      <div className="flex items-start gap-3 relative">
+                        <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-200" />
+                        <div className="flex-1 min-w-0 flex flex-col justify-between">
+                          <div className="h-5 w-32 bg-slate-200 rounded -mt-0.5" />
+                        </div>
+                        <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
+                          <div className="h-6 w-6 rounded-full bg-slate-200" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </>
+  );
+
+  // Show skeleton until ALL data is ready
+  const isDataReady = !loading && !leagueDataLoading && leagues.length > 0;
+
   return (
     <div 
       ref={containerRef}
@@ -2697,7 +2763,11 @@ export default function HomePage() {
         </div>
       )}
       
-      {/* Leaderboardz */}
+      {!isDataReady ? (
+        <SkeletonLoader />
+      ) : (
+        <>
+          {/* Leaderboardz */}
           <Section title="Leaderboardz" boxed={false}>
             <div 
               key={`leaderboard-scroll-${navigationKeyRef.current}`}
@@ -2783,73 +2853,7 @@ export default function HomePage() {
           </div>
         </div>
         <div>
-          {(loading || leagueDataLoading) && leagues.length === 0 ? (
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
-              <style>{`
-                .scrollbar-hide::-webkit-scrollbar {
-                  display: none;
-                }
-              `}</style>
-              <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="flex flex-col gap-2">
-                    {[1, 2, 3].map((j) => (
-                      <div
-                        key={j}
-                        className="rounded-xl border bg-white overflow-hidden shadow-sm w-[320px] animate-pulse"
-                        style={{ borderRadius: '12px' }}
-                      >
-                        <div className="p-4 bg-white relative">
-                          <div className="flex items-start gap-3 relative">
-                            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-200" />
-                            <div className="flex-1 min-w-0 flex flex-col justify-between">
-                              <div className="h-5 w-32 bg-slate-200 rounded -mt-0.5" />
-                              </div>
-                            <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
-                              <div className="h-6 w-6 rounded-full bg-slate-200" />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                                  ))}
-                                </div>
-                ))}
-                              </div>
-                            </div>
-          ) : (loading || leagueDataLoading) && leagues.length > 0 ? (
-            <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
-              <style>{`
-                .scrollbar-hide::-webkit-scrollbar {
-                  display: none;
-                }
-              `}</style>
-              <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="flex flex-col gap-2">
-                    {[1, 2, 3].map((j) => (
-                      <div
-                        key={j}
-                        className="rounded-xl border bg-white overflow-hidden shadow-sm w-[320px] animate-pulse"
-                        style={{ borderRadius: '12px' }}
-                      >
-                        <div className="p-4 bg-white relative">
-                          <div className="flex items-start gap-3 relative">
-                            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-200" />
-                            <div className="flex-1 min-w-0 flex flex-col justify-between">
-                              <div className="h-5 w-32 bg-slate-200 rounded -mt-0.5" />
-                              </div>
-                            <div className="absolute top-4 right-4 flex flex-col items-end gap-1">
-                              <div className="h-6 w-6 rounded-full bg-slate-200" />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : !loading && leagues.length === 0 ? (
+          {!loading && leagues.length === 0 ? (
             <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
               <div className="text-slate-600 mb-3">You don't have any mini leagues yet.</div>
               <Link 
@@ -3641,6 +3645,8 @@ export default function HomePage() {
           </div>
         )}
       </section>
+        </>
+      )}
     </div>
   );
 }
