@@ -250,63 +250,110 @@ export const handler: Handler = async (event) => {
     await new Promise(resolve => setTimeout(resolve, randomDelay));
     
     // Check lock immediately before starting work
-    const { data: metaData, error: metaError } = await supabase
-      .from('meta')
-      .select('last_poll_time')
-      .eq('id', 1)
-      .maybeSingle();
-    
-    if (metaError && metaError.code !== 'PGRST116') {
-      console.warn('[pollLiveScores] Error checking lock:', metaError);
-    } else if (metaData) {
-      const lastPollTime = (metaData as any).last_poll_time;
-      if (lastPollTime) {
-        const lastPoll = new Date(lastPollTime).getTime();
-        const now = Date.now();
-        const timeSinceLastRun = now - lastPoll;
-        
-        if (timeSinceLastRun < MIN_RUN_INTERVAL_MS) {
-          console.log(`[pollLiveScores] Ran ${Math.floor(timeSinceLastRun / 1000)}s ago, skipping (minimum interval: ${MIN_RUN_INTERVAL_MS / 1000}s)`);
-          return {
-            statusCode: 200,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ success: false, message: 'Too soon since last run, skipped' }),
-          };
+    // Try to read last_poll_time, but handle gracefully if column doesn't exist yet
+    let lastPollTime: string | null = null;
+    try {
+      const { data: metaData, error: metaError } = await supabase
+        .from('meta')
+        .select('last_poll_time')
+        .eq('id', 1)
+        .maybeSingle();
+      
+      if (metaError) {
+        // If column doesn't exist (PGRST204 or 42703), that's ok - we'll create it
+        if (metaError.code === 'PGRST204' || metaError.code === '42703') {
+          console.log('[pollLiveScores] last_poll_time column does not exist yet - will be created on first run');
+        } else if (metaError.code !== 'PGRST116') {
+          console.warn('[pollLiveScores] Error checking lock:', metaError);
         }
+      } else if (metaData) {
+        lastPollTime = (metaData as any).last_poll_time;
+        if (lastPollTime) {
+          const lastPoll = new Date(lastPollTime).getTime();
+          const now = Date.now();
+          const timeSinceLastRun = now - lastPoll;
+          
+          if (timeSinceLastRun < MIN_RUN_INTERVAL_MS) {
+            console.log(`[pollLiveScores] Ran ${Math.floor(timeSinceLastRun / 1000)}s ago, skipping (minimum interval: ${MIN_RUN_INTERVAL_MS / 1000}s)`);
+            return {
+              statusCode: 200,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ success: false, message: 'Too soon since last run, skipped' }),
+            };
+          }
+        }
+      }
+    } catch (e: any) {
+      // Column might not exist - that's ok, continue
+      if (e.code !== 'PGRST204' && e.code !== '42703') {
+        console.warn('[pollLiveScores] Error checking lock (non-fatal):', e);
       }
     }
     
     // Update lock timestamp IMMEDIATELY to claim the lock
+    // Use upsert to create/update the meta row with last_poll_time
     const lockTimestamp = new Date().toISOString();
-    const { error: updateError } = await supabase
-      .from('meta')
-      .upsert({ id: 1, last_poll_time: lockTimestamp } as any, { onConflict: 'id' });
-    
-    if (updateError) {
-      console.warn('[pollLiveScores] Failed to update lock timestamp:', updateError);
+    try {
+      // First try to update existing row
+      const { error: updateError } = await supabase
+        .from('meta')
+        .update({ last_poll_time: lockTimestamp } as any)
+        .eq('id', 1);
+      
+      if (updateError) {
+        // If update fails (maybe column doesn't exist or row doesn't exist), try upsert
+        if (updateError.code === 'PGRST204' || updateError.code === '42703') {
+          console.log('[pollLiveScores] last_poll_time column missing - attempting to add via upsert (may require manual migration)');
+        }
+        // Try upsert as fallback
+        const { error: upsertError } = await supabase
+          .from('meta')
+          .upsert({ id: 1, last_poll_time: lockTimestamp, current_gw: 12 } as any, { onConflict: 'id' });
+        
+        if (upsertError && upsertError.code !== 'PGRST204' && upsertError.code !== '42703') {
+          console.warn('[pollLiveScores] Failed to update lock timestamp:', upsertError);
+        }
+      }
+    } catch (e: any) {
+      // If column doesn't exist, we can't use the lock mechanism
+      // Log but continue - the function will still run, just without lock protection
+      if (e.code === 'PGRST204' || e.code === '42703') {
+        console.warn('[pollLiveScores] Cannot use lock mechanism - last_poll_time column does not exist. Please run the migration: supabase/sql/add_poll_lock_column.sql');
+      } else {
+        console.warn('[pollLiveScores] Error updating lock (non-fatal):', e);
+      }
     }
     
     // Double-check: If another function updated the lock between our check and update, bail out
-    // Wait a tiny bit then check again
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    const { data: doubleCheckData } = await supabase
-      .from('meta')
-      .select('last_poll_time')
-      .eq('id', 1)
-      .maybeSingle();
-    
-    if (doubleCheckData) {
-      const doubleCheckTime = new Date((doubleCheckData as any).last_poll_time).getTime();
-      const ourLockTime = new Date(lockTimestamp).getTime();
-      // If the lock time changed significantly (more than 1 second), someone else got it
-      if (Math.abs(doubleCheckTime - ourLockTime) > 1000) {
-        console.log('[pollLiveScores] Lock was updated by another invocation, skipping');
-        return {
-          statusCode: 200,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ success: false, message: 'Lock acquired by another invocation' }),
-        };
+    // Wait a tiny bit then check again (only if we successfully set the lock)
+    if (lastPollTime !== undefined) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      try {
+        const { data: doubleCheckData } = await supabase
+          .from('meta')
+          .select('last_poll_time')
+          .eq('id', 1)
+          .maybeSingle();
+        
+        if (doubleCheckData) {
+          const doubleCheckTime = new Date((doubleCheckData as any).last_poll_time).getTime();
+          const ourLockTime = new Date(lockTimestamp).getTime();
+          // If the lock time changed significantly (more than 1 second), someone else got it
+          if (Math.abs(doubleCheckTime - ourLockTime) > 1000) {
+            console.log('[pollLiveScores] Lock was updated by another invocation, skipping');
+            return {
+              statusCode: 200,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ success: false, message: 'Lock acquired by another invocation' }),
+            };
+          }
+        }
+      } catch (e: any) {
+        // Ignore errors in double-check
+        if (e.code !== 'PGRST204' && e.code !== '42703') {
+          console.warn('[pollLiveScores] Error in double-check (non-fatal):', e);
+        }
       }
     }
     
