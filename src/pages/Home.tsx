@@ -3182,7 +3182,7 @@ export default function HomePage() {
               let finishedFixturesCount = 0;
               let fixturesToCheck: typeof fixtures = [];
               if (isInApiTestLeague && fixtures.length > 0) {
-                fixturesToCheck = fixtures.slice(0, 3); // Only first 3 fixtures
+                fixturesToCheck = fixtures; // Use all fixtures in the active gameweek
               fixturesToCheck.forEach(f => {
                 const liveScore = liveScores[f.fixture_index];
                 const isLive = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
@@ -3222,36 +3222,41 @@ export default function HomePage() {
                 // If no live games but some finished games, show "Score X/Y" with clock icon
                 if (liveFixturesCount === 0 && finishedFixturesCount > 0 && !allFinished) {
                   return (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg bg-slate-600 shadow-slate-500/30">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="text-xs sm:text-sm font-medium opacity-90">Score</span>
-                      <span className="flex items-baseline gap-0.5">
-                        <span className="text-lg sm:text-xl font-extrabold">{finishedScoreCount}</span>
-                        <span className="text-sm sm:text-base font-medium opacity-90">/</span>
-                        <span className="text-base sm:text-lg font-semibold opacity-80">{finishedFixturesCount}</span>
-                      </span>
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white bg-slate-600">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-xs sm:text-sm font-medium opacity-90">Score</span>
+                        <span className="flex items-baseline gap-0.5">
+                          <span className="text-lg sm:text-xl font-extrabold">{finishedScoreCount}</span>
+                          <span className="text-sm sm:text-base font-medium opacity-90">/</span>
+                          <span className="text-base sm:text-lg font-semibold opacity-80">{fixtures.length}</span>
+                        </span>
+                      </div>
                     </div>
                   );
                 }
                 
+                const completedGamesCount = finishedFixturesCount;
                 return (
-                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${allFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
-                    {!allFinished && liveFixturesCount > 0 && (
-                    <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                    )}
-                    {allFinished && (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                      </svg>
-                    )}
-                    <span className="text-xs sm:text-sm font-medium opacity-90">{allFinished ? 'Score' : 'Live'}</span>
-                    <span className="flex items-baseline gap-0.5">
-                      <span className="text-lg sm:text-xl font-extrabold">{liveScoreCount}</span>
-                      <span className="text-sm sm:text-base font-medium opacity-90">/</span>
-                      <span className="text-base sm:text-lg font-semibold opacity-80">{fixturesToCheck.length}</span>
-                    </span>
+                  <div className="flex flex-col items-center gap-2">
+                    <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white ${allFinished ? 'bg-slate-600' : 'bg-red-600'}`}>
+                      {!allFinished && liveFixturesCount > 0 && (
+                      <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                      )}
+                      {allFinished && (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                        </svg>
+                      )}
+                      <span className="text-xs sm:text-sm font-medium opacity-90">{allFinished ? 'Score' : 'Live'}</span>
+                      <span className="flex items-baseline gap-0.5">
+                        <span className="text-lg sm:text-xl font-extrabold">{liveScoreCount}</span>
+                        <span className="text-sm sm:text-base font-medium opacity-90">/</span>
+                        <span className="text-base sm:text-lg font-semibold opacity-80">{fixtures.length}</span>
+                      </span>
+                    </div>
                   </div>
                 );
               }
@@ -3266,13 +3271,16 @@ export default function HomePage() {
                 let calculatedScore = 0;
                 let hasAnyLiveOrFinished = false;
                 let allFinished = true;
+                let completedGamesCount = 0;
                 
                 fixtures.forEach(f => {
                   const liveScore = liveScores[f.fixture_index];
                   const pick = picksMap[f.fixture_index];
                   if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
                     hasAnyLiveOrFinished = true;
-                    if (liveScore.status !== 'FINISHED') {
+                    if (liveScore.status === 'FINISHED') {
+                      completedGamesCount++;
+                    } else {
                       allFinished = false;
                     }
                     if (pick) {
@@ -3292,16 +3300,18 @@ export default function HomePage() {
                 if (hasAnyLiveOrFinished) {
                   // Show live score with live indicator
                   return (
-                    <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${allFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
-                      {!allFinished && (
-                        <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                      )}
-                      <span className="text-xs sm:text-sm font-medium opacity-90">{allFinished ? 'Score' : 'Live'}</span>
-                      <span className="flex items-baseline gap-0.5">
-                        <span className="text-lg sm:text-xl font-extrabold">{calculatedScore}</span>
-                        <span className="text-sm sm:text-base font-medium opacity-90">/</span>
-                        <span className="text-base sm:text-lg font-semibold opacity-80">{totalFixtures}</span>
-                      </span>
+                    <div className="flex flex-col items-center gap-2">
+                      <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white ${allFinished ? 'bg-slate-600' : 'bg-red-600'}`}>
+                        {!allFinished && (
+                          <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                        )}
+                        <span className="text-xs sm:text-sm font-medium opacity-90">{allFinished ? 'Score' : 'Live'}</span>
+                        <span className="flex items-baseline gap-0.5">
+                          <span className="text-lg sm:text-xl font-extrabold">{calculatedScore}</span>
+                          <span className="text-sm sm:text-base font-medium opacity-90">/</span>
+                          <span className="text-base sm:text-lg font-semibold opacity-80">{totalFixtures}</span>
+                        </span>
+                      </div>
                     </div>
                   );
                 } else {
@@ -3467,14 +3477,17 @@ export default function HomePage() {
                 const awayState = getButtonState("A");
 
                 // Button styling helper
-                const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }) => {
+                const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }, side?: "H" | "D" | "A") => {
                   const base = "h-16 rounded-xl border text-sm font-medium transition-all flex items-center justify-center select-none";
                   // Shiny gradient ONLY when game is FINISHED and pick is correct
                   if (state.isCorrect && isFinished) {
                     return `${base} bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white border-4 border-emerald-600 shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]`;
-                  } else if (state.isCorrect && isLive) {
-                    // Live and correct - pulse in emerald green
-                    return `${base} bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-lg shadow-emerald-500/50`;
+                  } else if (state.isPicked && (isLive || isOngoing)) {
+                    // While game is live, just show green tab for ALL picked options (same color regardless of correctness)
+                    return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+                  } else if (side === "D" && state.isCorrectResult && (isLive || isOngoing) && !state.isPicked) {
+                    // Draw box: gently pulse when current live score is a draw (even if not picked)
+                    return `${base} bg-slate-50 text-slate-600 border-2 border-slate-300 animate-pulse`;
                   } else if (state.isCorrectResult && isFinished) {
                     // Correct outcome (but user didn't pick it) - grey with thick green border
                     return `${base} bg-slate-50 text-slate-600 border-4 border-emerald-600`;
@@ -3485,6 +3498,7 @@ export default function HomePage() {
                     // Wrong pick in live game - grey background with flashing red border, NO strikethrough until FT
                     return `${base} bg-slate-50 text-slate-600 border-4 animate-[flash-border_1s_ease-in-out_infinite]`;
                   } else if (state.isPicked) {
+                    // Picked but game hasn't started yet - show green tab
                     return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
                   } else {
                     return `${base} bg-slate-50 text-slate-600 border-slate-200`;
@@ -3566,13 +3580,13 @@ export default function HomePage() {
                       {/* For regular leagues: always show buttons */}
                       {(!isInApiTestLeague || pick !== undefined) && (
                         <div className="grid grid-cols-3 gap-3 relative">
-                          <div className={`${getButtonClass(homeState)} flex items-center justify-center`}>
+                          <div className={`${getButtonClass(homeState, "H")} flex items-center justify-center`}>
                             <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Home Win</span>
                           </div>
-                          <div className={`${getButtonClass(drawState)} flex items-center justify-center`}>
+                          <div className={`${getButtonClass(drawState, "D")} flex items-center justify-center`}>
                             <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Draw</span>
                           </div>
-                          <div className={`${getButtonClass(awayState)} flex items-center justify-center`}>
+                          <div className={`${getButtonClass(awayState, "A")} flex items-center justify-center`}>
                             <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-black" : ""}`}>Away Win</span>
                           </div>
                         </div>
