@@ -124,6 +124,7 @@ export default function HomePage() {
   const [resultsMap, setResultsMap] = useState<Record<number, "H" | "D" | "A">>({});
   const [loading, setLoading] = useState(true);
   const [leagueDataLoading, setLeagueDataLoading] = useState(true);
+  const [leaderboardDataLoading, setLeaderboardDataLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [_globalCount, setGlobalCount] = useState<number | null>(null);
@@ -852,6 +853,7 @@ export default function HomePage() {
       setResultsMap({});
       setError(null);
       setRetryCount(0);
+      setLeaderboardDataLoading(true);
     }
     
     // Increment navigation key to force scroll containers to recreate
@@ -1942,9 +1944,11 @@ export default function HomePage() {
   // Calculate leaderboard rankings for different time periods using v_gw_points and v_ocp_overall
   useEffect(() => {
     if (!user?.id) {
+      setLeaderboardDataLoading(false);
       return;
     }
     
+    setLeaderboardDataLoading(true);
     let alive = true;
     (async () => {
       try {
@@ -2196,6 +2200,10 @@ export default function HomePage() {
         }
       } catch (e) {
         console.error('Error calculating leaderboard rankings:', e);
+      } finally {
+        if (alive) {
+          setLeaderboardDataLoading(false);
+        }
       }
     })();
     
@@ -2715,7 +2723,7 @@ export default function HomePage() {
   );
 
   // Show skeleton until ALL data is ready
-  const isDataReady = !loading && !leagueDataLoading && leagues.length > 0;
+  const isDataReady = !loading && !leagueDataLoading && !leaderboardDataLoading && leagues.length > 0;
 
   return (
     <div 
