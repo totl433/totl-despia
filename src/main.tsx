@@ -16,6 +16,7 @@ const HowToPlayPage = lazy(() => import("./pages/HowToPlay"));
 const NewPredictionsCentre = lazy(() => import("./pages/NewPredictionsCentre"));
 const TestApiPredictions = lazy(() => import("./pages/TestApiPredictions"));
 const TestAdminApi = lazy(() => import("./pages/TestAdminApi"));
+const TestDespia = lazy(() => import("./pages/TestDespia"));
 const ProfilePage = lazy(() => import("./pages/Profile"));
 const SignIn = lazy(() => import("./pages/SignIn"));
 
@@ -141,6 +142,7 @@ function AppContent() {
           <Route path="/new-predictions" element={<RequireAuth><NewPredictionsCentre /></RequireAuth>} />
           <Route path="/test-api-predictions" element={<RequireAuth><TestApiPredictions /></RequireAuth>} />
           <Route path="/test-admin-api" element={<RequireAuth><TestAdminApi /></RequireAuth>} />
+          <Route path="/test-despia" element={<RequireAuth><TestDespia /></RequireAuth>} />
           <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
           <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
           <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
