@@ -178,13 +178,32 @@ async function checkAndSendScoreNotifications() {
     // Get fixtures to get team names, kickoff times
     // Query ALL fixtures that match the live scores (not just current GW)
     // This is important because live scores might be from previous GWs or test GWs
-    const { data: regularFixtures, error: regularError } = await supabase
-      .from('fixtures')
-      .select('api_match_id, fixture_index, home_team, away_team, gw, kickoff_time')
-      .in('api_match_id', apiMatchIds);
-
-    if (regularError) {
-      console.error('[sendScoreNotifications] Error fetching regular fixtures:', regularError);
+    // Note: Regular fixtures table may not have api_match_id column, so we'll only query test fixtures
+    // Regular fixtures are for the main game which doesn't use live API scores
+    let regularFixtures: any[] = [];
+    try {
+      const { data, error: regularError } = await supabase
+        .from('fixtures')
+        .select('api_match_id, fixture_index, home_team, away_team, gw, kickoff_time')
+        .in('api_match_id', apiMatchIds);
+      
+      if (regularError) {
+        // If api_match_id column doesn't exist, that's fine - regular fixtures don't use live scores
+        if (regularError.code === '42703') {
+          console.log('[sendScoreNotifications] Regular fixtures table does not have api_match_id column (expected for main game)');
+        } else {
+          console.error('[sendScoreNotifications] Error fetching regular fixtures:', regularError);
+        }
+      } else {
+        regularFixtures = data || [];
+      }
+    } catch (error: any) {
+      // Handle case where column doesn't exist
+      if (error.code === '42703') {
+        console.log('[sendScoreNotifications] Regular fixtures table does not have api_match_id column (expected for main game)');
+      } else {
+        console.error('[sendScoreNotifications] Error fetching regular fixtures:', error);
+      }
     }
 
     // Test fixtures might be for any test GW, so get all that match
@@ -592,11 +611,21 @@ async function checkAndSendScoreNotifications() {
 
     // Check if all games in the GW are finished (end-of-GW detection)
     // Get ALL fixtures for this GW (regular + test) to check if all are finished
-    const { data: regularGwFixtures } = await supabase
-      .from('fixtures')
-      .select('api_match_id')
-      .eq('gw', currentGw)
-      .not('api_match_id', 'is', null);
+    // Note: Regular fixtures table may not have api_match_id column
+    let regularGwFixtures: any[] = [];
+    try {
+      const { data } = await supabase
+        .from('fixtures')
+        .select('api_match_id')
+        .eq('gw', currentGw)
+        .not('api_match_id', 'is', null);
+      regularGwFixtures = data || [];
+    } catch (error: any) {
+      // Regular fixtures table doesn't have api_match_id - that's fine
+      if (error.code !== '42703') {
+        console.error('[sendScoreNotifications] Error fetching regular GW fixtures:', error);
+      }
+    }
 
     const { data: testGwFixtures } = await supabase
       .from('test_api_fixtures')
@@ -657,11 +686,21 @@ async function checkAndSendScoreNotifications() {
             const userScores = new Map<string, number>();
             
             // Get fixtures to map api_match_id to fixture_index
-            const { data: regularGwFixturesForMapping } = await supabase
-              .from('fixtures')
-              .select('api_match_id, fixture_index')
-              .eq('gw', currentGw)
-              .not('api_match_id', 'is', null);
+            // Note: Regular fixtures table may not have api_match_id column
+            let regularGwFixturesForMapping: any[] = [];
+            try {
+              const { data } = await supabase
+                .from('fixtures')
+                .select('api_match_id, fixture_index')
+                .eq('gw', currentGw)
+                .not('api_match_id', 'is', null);
+              regularGwFixturesForMapping = data || [];
+            } catch (error: any) {
+              // Regular fixtures table doesn't have api_match_id - that's fine
+              if (error.code !== '42703') {
+                console.error('[sendScoreNotifications] Error fetching regular GW fixtures for mapping:', error);
+              }
+            }
 
             const { data: testGwFixturesForMapping } = await supabase
               .from('test_api_fixtures')
