@@ -7,7 +7,7 @@ import { getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
-import { scheduleDeadlineReminder, scheduleLiveGameNotification, scheduleGameweekStartingSoon } from "../lib/notifications";
+import { scheduleDeadlineReminder, scheduleGameweekStartingSoon } from "../lib/notifications";
 import { LeaderboardCard } from "../components/LeaderboardCard";
 import { StreakCard } from "../components/StreakCard";
 // Score update notifications now handled server-side by sendScoreNotifications function
@@ -801,12 +801,9 @@ export default function HomePage() {
       const now = new Date();
       const fixtureIndex = fixture.fixture_index;
       
-      // Schedule "Game Starting Now" notification - localStorage prevents duplicates even if effect re-runs
-      if (kickoffTime > now) {
-        const homeName = fixture.home_name || fixture.home_team || 'Home';
-        const awayName = fixture.away_name || fixture.away_team || 'Away';
-        scheduleLiveGameNotification(fixture.kickoff_time, homeName, awayName);
-      }
+      // NOTE: Kickoff notifications are now handled server-side by sendScoreNotifications
+      // which sends push notifications when games actually start (status changes to IN_PLAY)
+      // This is more reliable than client-side scheduling based on kickoff time
       
       if (fixtureIndex === 0 && fixture.kickoff_time) {
         const firstKickoff = new Date(fixture.kickoff_time);
