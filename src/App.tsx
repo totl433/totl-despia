@@ -9,6 +9,7 @@ import PredictionsPage from "./pages/Predictions";
 import AdminPage from "./pages/Admin";
 import NewPredictionsCentre from "./pages/NewPredictionsCentre";
 import ProfilePage from "./pages/Profile";
+import TestDespia from "./pages/TestDespia";
 
 export default function App() {
   const [oldSchoolMode, setOldSchoolMode] = useState(false);
@@ -45,6 +46,7 @@ export default function App() {
                 <Route path="/predictions" element={<PredictionsPage />} />
                 <Route path="/admin" element={<AdminPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/test-despia" element={<TestDespia />} />
               </Routes>
             </main>
           </div>

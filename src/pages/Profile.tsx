@@ -590,6 +590,12 @@ export default function Profile() {
                 >
                   Test API Admin (Staging)
                 </Link>
+                <Link
+                  to="/test-despia"
+                  className="block w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors text-center"
+                >
+                  Test Despia Integration
+                </Link>
               </div>
             </div>
           )}
