@@ -80,7 +80,7 @@ async function pollAllLiveScores() {
       return;
     }
 
-    console.log(`[pollLiveScores] Polling ${allFixtures.length} fixtures for GW ${currentGw}`);
+    console.log(`[pollLiveScores] Found ${allFixtures.length} fixtures for GW ${currentGw}`);
 
     // Check current status of fixtures in database to skip FINISHED games
     const apiMatchIds = allFixtures.map(f => f.api_match_id);
@@ -96,15 +96,59 @@ async function pollAllLiveScores() {
       }
     });
 
-    // Filter out finished fixtures - no need to poll them
-    const fixturesToPoll = allFixtures.filter(f => !finishedMatchIds.has(f.api_match_id));
+    // Filter fixtures to only poll games that are actually live (between kickoff and full-time)
+    // A match typically lasts ~105 minutes (90 + 15 min stoppage + potential extra time)
+    // Add a small buffer (5 minutes) to catch late updates
+    const now = Date.now();
+    const MAX_MATCH_DURATION_MS = 110 * 60 * 1000; // 110 minutes in milliseconds
+    
+    const fixturesToPoll = allFixtures.filter(f => {
+      // Skip if already finished
+      if (finishedMatchIds.has(f.api_match_id)) {
+        return false;
+      }
+      
+      // If we have a kickoff time, only poll if the game should be live
+      if (f.kickoff_time) {
+        try {
+          const kickoffTime = new Date(f.kickoff_time).getTime();
+          const matchEndTime = kickoffTime + MAX_MATCH_DURATION_MS;
+          
+          // Only poll if:
+          // 1. Current time is after kickoff (game has started or should have started)
+          // 2. Current time is before match end time (game hasn't finished yet)
+          // 3. Or if we don't have a status yet (first time polling this game)
+          const hasStarted = now >= kickoffTime;
+          const hasntFinished = now < matchEndTime;
+          const isInLiveWindow = hasStarted && hasntFinished;
+          
+          // Also check if we already have a status - if it's SCHEDULED and past kickoff, poll it
+          const existingScore = (existingScores || []).find((s: any) => s.api_match_id === f.api_match_id);
+          const needsInitialPoll = !existingScore || existingScore.status === 'SCHEDULED' || existingScore.status === 'TIMED';
+          
+          return isInLiveWindow || (hasStarted && needsInitialPoll);
+        } catch (e) {
+          // If we can't parse the kickoff time, include it to be safe
+          console.warn(`[pollLiveScores] Error parsing kickoff_time for fixture ${f.api_match_id}:`, e);
+          return true;
+        }
+      }
+      
+      // If no kickoff time, include it (shouldn't happen, but be safe)
+      return true;
+    });
 
     if (fixturesToPoll.length === 0) {
       console.log('[pollLiveScores] All fixtures are finished, skipping polling');
       return;
     }
 
-    console.log(`[pollLiveScores] Polling ${fixturesToPoll.length} live fixtures (skipping ${allFixtures.length - fixturesToPoll.length} finished)`);
+    const skippedCount = allFixtures.length - fixturesToPoll.length;
+    const skippedReasons = {
+      finished: Array.from(finishedMatchIds).length,
+      notStarted: allFixtures.length - Array.from(finishedMatchIds).length - fixturesToPoll.length
+    };
+    console.log(`[pollLiveScores] Polling ${fixturesToPoll.length} fixtures (skipped ${skippedCount}: ${skippedReasons.finished} finished, ${skippedReasons.notStarted} not yet started)`);
 
     // Poll each fixture with a small delay to avoid rate limits
     const updates: any[] = [];
