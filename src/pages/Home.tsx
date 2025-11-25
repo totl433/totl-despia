@@ -2666,8 +2666,8 @@ export default function HomePage() {
   // Simple skeleton loader
   const SkeletonLoader = () => (
     <>
-      {/* Leaderboard Skeleton */}
-      <Section title="Leaderboardz" boxed={false}>
+      {/* LEADERBOARDS v0.1 Skeleton */}
+      <Section title="LEADERBOARDS v0.1" boxed={false}>
         <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain', touchAction: 'pan-x pan-y pinch-zoom' }}>
           <style>{`.scrollbar-hide::-webkit-scrollbar { display: none; }`}</style>
           <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
@@ -2779,8 +2779,8 @@ export default function HomePage() {
         <SkeletonLoader />
       ) : (
         <>
-          {/* Leaderboardz */}
-          <Section title="Leaderboardz" boxed={false}>
+          {/* LEADERBOARDS v0.1 */}
+          <Section title="LEADERBOARDS v0.1" boxed={false}>
             <div 
               key={`leaderboard-scroll-${navigationKeyRef.current}`}
               className="overflow-x-auto -mx-4 px-4 scrollbar-hide" 
