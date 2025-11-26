@@ -285,7 +285,7 @@ export const handler: Handler = async (event, context) => {
       .eq('api_match_id', apiMatchId)
       .maybeSingle();
 
-    console.log(`[sendScoreNotificationsWebhook] Processing match ${apiMatchId}:`, {
+    console.log(`[sendScoreNotificationsWebhook] [${requestId}] Processing match ${apiMatchId}:`, {
       scoreChange: isScoreChange,
       goalsChanged,
       homeScore: `${oldHomeScore} -> ${homeScore}`,
@@ -321,7 +321,7 @@ export const handler: Handler = async (event, context) => {
       const previousGoalsArray = Array.isArray(previousGoals) ? previousGoals : [];
       const previousGoalsHash = JSON.stringify(previousGoalsArray.map(normalizeGoalKey).sort());
       
-      console.log(`[sendScoreNotificationsWebhook] Goal hash comparison:`, {
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] Goal hash comparison:`, {
         currentHash: currentGoalsHash.substring(0, 100),
         previousHash: previousGoalsHash.substring(0, 100),
         hashMatch: currentGoalsHash === previousGoalsHash,
@@ -361,14 +361,14 @@ export const handler: Handler = async (event, context) => {
         return isNew;
       });
 
-      console.log(`[sendScoreNotificationsWebhook] Goal comparison:`, {
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] Goal comparison:`, {
         currentGoals: goals.map((g: any) => `${g.scorer} ${g.minute}'`),
         previousGoals: previousGoalsArray.map((g: any) => `${g.scorer} ${g.minute}'`),
         newGoalsCount: newGoals.length,
       });
 
       if (newGoals.length === 0) {
-        console.log(`[sendScoreNotificationsWebhook] 🚫 SKIPPING - no new goals detected`, {
+        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - no new goals detected`, {
           currentGoalsCount: goals.length,
           previousGoalsCount: previousGoalsArray.length,
           currentGoals: goals.map((g: any) => `${g.scorer} ${g.minute}'`),
