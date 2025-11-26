@@ -715,7 +715,7 @@ export default function LeaguePage() {
   const [currentTestGw, setCurrentTestGw] = useState<number | null>(null);
   
   // Fetch current test GW for API Test league
-  // For GW T1, prioritize test_gw = 1
+  // Use current_test_gw from meta as primary source (supports GW T2, T3, etc.)
   useEffect(() => {
     if (!isApiTestLeague) {
       setCurrentTestGw(null);
@@ -724,30 +724,41 @@ export default function LeaguePage() {
     
     let alive = true;
     (async () => {
-      // Check if GW T1 exists first
-      const { data: t1Data } = await supabase
-        .from("test_api_fixtures")
-        .select("test_gw")
-        .eq("test_gw", 1)
-        .limit(1)
+      // Get current_test_gw from meta first
+      const { data: testMetaData } = await supabase
+        .from("test_api_meta")
+        .select("current_test_gw")
+        .eq("id", 1)
         .maybeSingle();
       
-      if (t1Data) {
-        // GW T1 exists - use it
-        if (alive) {
-          setCurrentTestGw(1);
-        }
-      } else {
-        // Fallback to current_test_gw from meta if GW T1 doesn't exist
-        const { data: testMetaData } = await supabase
-          .from("test_api_meta")
-          .select("current_test_gw")
-          .eq("id", 1)
+      let testGw = testMetaData?.current_test_gw ?? 1;
+      
+      // Verify that fixtures exist for this test_gw, otherwise fall back to GW T1
+      if (testGw && testGw !== 1) {
+        const { data: fixturesCheck } = await supabase
+          .from("test_api_fixtures")
+          .select("test_gw")
+          .eq("test_gw", testGw)
+          .limit(1)
           .maybeSingle();
         
-        if (alive) {
-          setCurrentTestGw(testMetaData?.current_test_gw ?? 1);
+        // If no fixtures for current_test_gw, fall back to GW T1
+        if (!fixturesCheck) {
+          const { data: t1Data } = await supabase
+            .from("test_api_fixtures")
+            .select("test_gw")
+            .eq("test_gw", 1)
+            .limit(1)
+            .maybeSingle();
+          
+          if (t1Data) {
+            testGw = 1; // Fallback to GW T1
+          }
         }
+      }
+      
+      if (alive) {
+        setCurrentTestGw(testGw);
       }
     })();
     
@@ -1435,31 +1446,45 @@ export default function LeaguePage() {
       const isApiTestLeague = league?.name === 'API Test';
       
       // Fetch current test GW from meta table for API Test league
-      // For GW T1, prioritize test_gw = 1
+      // Use current_test_gw from meta as primary source (supports GW T2, T3, etc.)
       let testGwForData = currentTestGw ?? 1; // Use state if available, otherwise default to 1
       if (isApiTestLeague) {
-        // First, check if GW T1 exists
-        const { data: t1Data } = await supabase
-          .from("test_api_fixtures")
-          .select("test_gw")
-          .eq("test_gw", 1)
-          .limit(1)
+        // Get current_test_gw from meta
+        const { data: testMetaData } = await supabase
+          .from("test_api_meta")
+          .select("current_test_gw")
+          .eq("id", 1)
           .maybeSingle();
         
-        if (t1Data) {
-          // GW T1 exists - use it
-          testGwForData = 1;
-          console.log('[League] GW T1 found, using test_gw = 1');
-        } else {
-          // Fallback to current_test_gw from meta if GW T1 doesn't exist
-          const { data: testMetaData } = await supabase
-            .from("test_api_meta")
-            .select("current_test_gw")
-            .eq("id", 1)
+        testGwForData = testMetaData?.current_test_gw ?? 1;
+        
+        // Verify that fixtures exist for this test_gw, otherwise fall back to GW T1
+        if (testGwForData && testGwForData !== 1) {
+          const { data: fixturesCheck } = await supabase
+            .from("test_api_fixtures")
+            .select("test_gw")
+            .eq("test_gw", testGwForData)
+            .limit(1)
             .maybeSingle();
           
-          testGwForData = testMetaData?.current_test_gw ?? 1;
-          console.log('[League] GW T1 not found, using current_test_gw from meta:', testGwForData);
+          // If no fixtures for current_test_gw, fall back to GW T1
+          if (!fixturesCheck) {
+            const { data: t1Data } = await supabase
+              .from("test_api_fixtures")
+              .select("test_gw")
+              .eq("test_gw", 1)
+              .limit(1)
+              .maybeSingle();
+            
+            if (t1Data) {
+              testGwForData = 1; // Fallback to GW T1
+              console.log('[League] No fixtures for current_test_gw, falling back to GW T1');
+            }
+          } else {
+            console.log('[League] Using current_test_gw from meta:', testGwForData);
+          }
+        } else {
+          console.log('[League] Using GW T1 or current_test_gw:', testGwForData);
         }
       }
       
@@ -3888,8 +3913,8 @@ export default function LeaguePage() {
               >
                 {(() => {
                   const resGw = league?.name === 'API Test' ? (currentTestGw ?? 1) : (selectedGw || currentGw);
-                  // For API Test league, show "GW T1" if test_gw = 1
-                  const displayGw = league?.name === 'API Test' && resGw === 1 ? 'T1' : resGw;
+                  // For API Test league, show "GW T1", "GW T2", etc. based on test_gw
+                  const displayGw = league?.name === 'API Test' ? `T${resGw}` : resGw;
                   // Check if GW is live: first game started AND last game not finished
                   const now = new Date();
                   const firstFixture = fixtures[0];
@@ -3937,8 +3962,8 @@ export default function LeaguePage() {
                   (tab === "gw" ? "text-[#1C8376]" : "text-slate-400")
                 }
               >
-                <span className="hidden sm:inline">{league?.name === 'API Test' ? `GW ${(currentTestGw ?? 1) === 1 ? 'T1' : (currentTestGw ?? 1)} Predictions` : (currentGw ? `GW ${currentGw} Predictions` : "GW Predictions")}</span>
-                <span className="sm:hidden whitespace-pre-line">{league?.name === 'API Test' ? `GW${(currentTestGw ?? 1) === 1 ? 'T1' : (currentTestGw ?? 1)}\nPredictions` : (currentGw ? `GW${currentGw}\nPredictions` : "GW\nPredictions")}</span>
+                <span className="hidden sm:inline">{league?.name === 'API Test' ? `GW T${currentTestGw ?? 1} Predictions` : (currentGw ? `GW ${currentGw} Predictions` : "GW Predictions")}</span>
+                <span className="sm:hidden whitespace-pre-line">{league?.name === 'API Test' ? `GWT${currentTestGw ?? 1}\nPredictions` : (currentGw ? `GW${currentGw}\nPredictions` : "GW\nPredictions")}</span>
                 {tab === "gw" && (
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
                 )}
