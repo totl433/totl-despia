@@ -1507,16 +1507,17 @@ export default function TestApiPredictions() {
               if (hasAnyLiveOrFinished) {
                 fixtures.forEach(f => {
                   const liveScore = liveScores[f.fixture_index];
-                  const isFinished = liveScore && liveScore.status === 'FINISHED';
-                  if (isFinished) {
-                    const pickObj = picks.get(f.fixture_index);
-                    if (pickObj) {
-                      let isCorrect = false;
-                      if (pickObj.pick === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrect = true;
-                      else if (pickObj.pick === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrect = true;
-                      else if (pickObj.pick === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrect = true;
-                      if (isCorrect) currentScore++;
-                    }
+                  const pickObj = picks.get(f.fixture_index);
+                  
+                  if (liveScore && pickObj) {
+                    // Check if pick is currently correct (for both live and finished games)
+                    let isCorrect = false;
+                    if (pickObj.pick === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrect = true;
+                    else if (pickObj.pick === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrect = true;
+                    else if (pickObj.pick === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrect = true;
+                    
+                    // Count correct picks for both live and finished games
+                    if (isCorrect) currentScore++;
                   }
                 });
               } else if (submitted) {
