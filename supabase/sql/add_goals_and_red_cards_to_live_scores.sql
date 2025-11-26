@@ -9,3 +9,4 @@ ADD COLUMN IF NOT EXISTS red_cards JSONB;
 COMMENT ON COLUMN live_scores.goals IS 'JSONB array of goals: [{minute, scorer, scorerId, team, teamId}]';
 COMMENT ON COLUMN live_scores.red_cards IS 'JSONB array of red cards: [{minute, player, playerId, team, teamId}]';
 
+

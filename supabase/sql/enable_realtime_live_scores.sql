@@ -7,3 +7,4 @@ ALTER PUBLICATION supabase_realtime ADD TABLE live_scores;
 -- Verify it's enabled (this will show the table in the replication list)
 -- You can check in Supabase Dashboard → Database → Replication
 
+

@@ -46,10 +46,11 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
     let alive = true;
+    let pollInterval: number | null = null;
+    let lastUpdateTime = Date.now();
 
-    async function setupSubscription() {
+    async function fetchLiveScores() {
       try {
-        // First, fetch initial live scores
         let query = supabase
           .from('live_scores')
           .select('*');
@@ -62,10 +63,10 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
           query = query.in('api_match_id', apiMatchIds);
         }
 
-        const { data: initialData, error: fetchError } = await query;
+        const { data, error: fetchError } = await query;
 
         if (fetchError) {
-          console.error('[useLiveScores] Error fetching initial scores:', fetchError);
+          console.error('[useLiveScores] Error fetching scores:', fetchError);
           if (alive) {
             setError(fetchError.message);
             setLoading(false);
@@ -73,64 +74,83 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
           return;
         }
 
-        // Initialize map with initial data
-        const initialMap = new Map<number, LiveScore>();
-        (initialData || []).forEach((score: LiveScore) => {
-          initialMap.set(score.api_match_id, score);
+        // Initialize map with fetched data
+        const fetchedMap = new Map<number, LiveScore>();
+        (data || []).forEach((score: LiveScore) => {
+          fetchedMap.set(score.api_match_id, score);
         });
 
         if (alive) {
-          setLiveScores(initialMap);
+          setLiveScores((prev) => {
+            // Check if anything actually changed
+            let hasChanges = false;
+            const updated = new Map(prev);
+            
+            fetchedMap.forEach((newScore, apiMatchId) => {
+              const prevScore = prev.get(apiMatchId);
+              if (!prevScore || 
+                  prevScore.home_score !== newScore.home_score ||
+                  prevScore.away_score !== newScore.away_score ||
+                  prevScore.status !== newScore.status ||
+                  prevScore.minute !== newScore.minute ||
+                  JSON.stringify(prevScore.goals) !== JSON.stringify(newScore.goals) ||
+                  JSON.stringify(prevScore.red_cards) !== JSON.stringify(newScore.red_cards)) {
+                updated.set(apiMatchId, newScore);
+                hasChanges = true;
+              }
+            });
+            
+            // Check for deleted scores
+            prev.forEach((_, apiMatchId) => {
+              if (!fetchedMap.has(apiMatchId)) {
+                updated.delete(apiMatchId);
+                hasChanges = true;
+              }
+            });
+            
+            return hasChanges ? new Map(updated) : prev;
+          });
+          setLoading(false);
+          lastUpdateTime = Date.now();
+        }
+      } catch (err: any) {
+        console.error('[useLiveScores] Error fetching scores:', err);
+        if (alive) {
+          setError(err?.message || 'Failed to fetch live scores');
           setLoading(false);
         }
+      }
+    }
+
+    async function setupSubscription() {
+      try {
+        // First, fetch initial live scores
+        await fetchLiveScores();
 
         // Set up real-time subscription
-        // Subscribe to ALL changes on live_scores table, then filter in the callback
-        // This ensures we catch all updates even if filters don't match exactly
         const channelName = `live_scores_${gw || 'all'}_${apiMatchIds?.join('-') || 'all'}_${Date.now()}`;
         
-        console.log('[useLiveScores] Setting up real-time subscription:', {
-          channelName,
-          gw,
-          apiMatchIds: apiMatchIds?.length || 0,
-          initialDataCount: initialMap.size
-        });
-        
-        // Subscribe WITHOUT any filter to catch ALL changes
-        // We'll filter in the callback based on our criteria
         channel = supabase
           .channel(channelName)
           .on(
             'postgres_changes',
             {
-              event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+              event: '*',
               schema: 'public',
               table: 'live_scores',
-              // NO FILTER - subscribe to ALL changes on the table
             },
             (payload) => {
-              console.log('[useLiveScores] 🔵 Real-time update received:', {
-                eventType: payload.eventType,
-                apiMatchId: (payload.new as LiveScore)?.api_match_id || (payload.old as LiveScore)?.api_match_id,
-                minute: (payload.new as LiveScore)?.minute,
-                status: (payload.new as LiveScore)?.status,
-                homeScore: (payload.new as LiveScore)?.home_score,
-                awayScore: (payload.new as LiveScore)?.away_score,
-              });
-
               if (!alive) return;
 
-              // Filter in the callback based on our criteria
+              console.log('[useLiveScores] Real-time update received:', payload.eventType, payload.new?.api_match_id);
+
               const shouldInclude = (score: LiveScore | null) => {
                 if (!score) return false;
                 
-                // If we have a gw filter, check it
                 if (gw !== undefined && score.gw !== gw) {
                   return false;
                 }
                 
-                // If we have apiMatchIds filter, check it
-                // BUT: if apiMatchIds is empty or undefined, include all
                 if (apiMatchIds && apiMatchIds.length > 0) {
                   if (!apiMatchIds.includes(score.api_match_id)) {
                     return false;
@@ -148,7 +168,6 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
                   const newScore = payload.new as LiveScore;
                   if (shouldInclude(newScore)) {
                     const prevScore = prev.get(newScore.api_match_id);
-                    // Check if score, status, minute, goals, or red cards changed
                     const scoreChanged = !prevScore || 
                       prevScore.home_score !== newScore.home_score ||
                       prevScore.away_score !== newScore.away_score ||
@@ -158,29 +177,11 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
                       JSON.stringify(prevScore.red_cards) !== JSON.stringify(newScore.red_cards);
                     
                     if (scoreChanged) {
-                      console.log('[useLiveScores] ✅ Updating live score:', {
-                        apiMatchId: newScore.api_match_id,
-                        minute: newScore.minute,
-                        prevMinute: prevScore?.minute,
-                        status: newScore.status,
-                        homeScore: newScore.home_score,
-                        awayScore: newScore.away_score,
-                      });
                       updated.set(newScore.api_match_id, newScore);
                       hasChanges = true;
-                    } else {
-                      console.log('[useLiveScores] ⏭️ Skipping update (no changes detected):', {
-                        apiMatchId: newScore.api_match_id,
-                        minute: newScore.minute,
-                        prevMinute: prevScore?.minute,
-                      });
+                      lastUpdateTime = Date.now();
+                      console.log('[useLiveScores] Updated score for match', newScore.api_match_id, 'minute:', newScore.minute);
                     }
-                  } else {
-                    console.log('[useLiveScores] ⏭️ Skipping update (filtered out):', {
-                      apiMatchId: newScore.api_match_id,
-                      gw: newScore.gw,
-                      requestedGw: gw,
-                    });
                   }
                 } else if (payload.eventType === 'DELETE') {
                   const oldScore = payload.old as LiveScore;
@@ -190,33 +191,61 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
                   }
                 }
 
-                // Always return a new Map instance to ensure React detects the change
                 return hasChanges ? new Map(updated) : new Map(prev);
               });
             }
           )
           .subscribe((status) => {
-            console.log('[useLiveScores] 📡 Subscription status:', status);
+            console.log('[useLiveScores] Subscription status:', status);
             if (status === 'SUBSCRIBED') {
-              console.log('[useLiveScores] ✅ Successfully subscribed to live_scores table');
-            } else if (status === 'CHANNEL_ERROR') {
-              console.error('[useLiveScores] ❌ Channel error:', status);
+              console.log('[useLiveScores] Successfully subscribed to real-time updates');
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+              console.error('[useLiveScores] Channel error:', status);
               if (alive) {
-                setError('Failed to subscribe to live scores');
-              }
-            } else if (status === 'TIMED_OUT') {
-              console.error('[useLiveScores] ⏱️ Subscription timed out');
-              if (alive) {
-                setError('Subscription timed out - check Supabase real-time settings');
+                setError('Real-time subscription failed, using polling fallback');
+                // Start polling as fallback
+                if (!pollInterval) {
+                  pollInterval = window.setInterval(() => {
+                    if (alive) {
+                      fetchLiveScores();
+                    }
+                  }, 5000); // Poll every 5 seconds if real-time fails
+                }
               }
             }
           });
+
+        // Fallback polling: If no real-time updates received for 30 seconds, start polling
+        const fallbackCheck = setInterval(() => {
+          const timeSinceLastUpdate = Date.now() - lastUpdateTime;
+          if (timeSinceLastUpdate > 30000 && !pollInterval) {
+            console.warn('[useLiveScores] No real-time updates for 30s, starting polling fallback');
+            pollInterval = window.setInterval(() => {
+              if (alive) {
+                fetchLiveScores();
+              }
+            }, 5000);
+          }
+        }, 10000); // Check every 10 seconds
+
+        // Cleanup fallback check on unmount
+        return () => {
+          clearInterval(fallbackCheck);
+        };
 
       } catch (err: any) {
         console.error('[useLiveScores] Error setting up subscription:', err);
         if (alive) {
           setError(err?.message || 'Failed to set up live scores subscription');
           setLoading(false);
+          // Start polling as fallback
+          if (!pollInterval) {
+            pollInterval = window.setInterval(() => {
+              if (alive) {
+                fetchLiveScores();
+              }
+            }, 5000);
+          }
         }
       }
     }
@@ -227,6 +256,9 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
       alive = false;
       if (channel) {
         supabase.removeChannel(channel);
+      }
+      if (pollInterval) {
+        clearInterval(pollInterval);
       }
     };
   }, [gw, apiMatchIds ? apiMatchIds.join(',') : undefined]);
