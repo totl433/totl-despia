@@ -197,7 +197,6 @@ export const handler: Handler = async (event, context) => {
     const apiMatchId = record.api_match_id;
     console.log(`[sendScoreNotificationsWebhook] [${requestId}] Processing match ${apiMatchId}`);
 
-    const apiMatchId = record.api_match_id;
     const homeScore = record.home_score ?? 0;
     const awayScore = record.away_score ?? 0;
     const status = record.status;
