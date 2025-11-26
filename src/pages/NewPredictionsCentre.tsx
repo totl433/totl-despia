@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { getMediumName } from "../lib/teamNames";
+import { useLiveScores } from "../hooks/useLiveScores";
 
 function sideName(f: any, side: "home" | "away") {
   const nm = f?.[`${side}_name`];
@@ -51,6 +52,7 @@ export default function NewPredictionsCentre() {
   const [picks, setPicks] = useState<Map<number, Pick>>(new Map());
   const [results, setResults] = useState<Map<number, "H" | "D" | "A">>(new Map());
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>("");
   const [submitted, setSubmitted] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -59,6 +61,18 @@ export default function NewPredictionsCentre() {
   const [isPastDeadline, setIsPastDeadline] = useState(false);
   const [score, setScore] = useState<number | null>(null);
   const [topPercent, setTopPercent] = useState<number | null>(null);
+  const [isInApiTestLeague, setIsInApiTestLeague] = useState(false);
+  const [displayGw, setDisplayGw] = useState<number | null>(null);
+
+  // Get api_match_ids from fixtures for real-time subscription
+  const apiMatchIds = useMemo(() => {
+    return fixtures
+      .map(f => (f as any).api_match_id)
+      .filter((id): id is number => id !== null && id !== undefined);
+  }, [fixtures]);
+
+  // Subscribe to real-time live scores updates
+  const { liveScores: liveScoresMap } = useLiveScores(currentGw || undefined, apiMatchIds.length > 0 ? apiMatchIds : undefined);
 
   // Debug: Log when isPastDeadline changes
   useEffect(() => {
@@ -121,33 +135,142 @@ export default function NewPredictionsCentre() {
     let alive = true;
     (async () => {
       try {
+        // Check if user is in API Test league
+        let apiTestLeague = false;
+        if (user?.id) {
+          try {
+            // First get all user's leagues
+            const { data: userLeagues, error: leaguesError } = await supabase
+              .from("league_members")
+              .select("leagues(id,name)")
+              .eq("user_id", user.id);
+            
+            // If error, log but don't fail - just don't use test fixtures
+            if (leaguesError) {
+              console.warn('[NewPredictionsCentre] Error checking leagues (non-fatal):', leaguesError);
+              apiTestLeague = false;
+            } else if (userLeagues) {
+              // Check if any league has name "API Test"
+              apiTestLeague = userLeagues.some((row: any) => row.leagues?.name === "API Test");
+            }
+          } catch (error: any) {
+            console.error('[NewPredictionsCentre] Error checking API Test membership:', error);
+            // If check fails, default to false (don't use test fixtures)
+            apiTestLeague = false;
+          }
+        }
+        if (alive) setIsInApiTestLeague(apiTestLeague);
+        
         // Fetch current gameweek from meta table
-        const { data: meta } = await supabase
+        const { data: meta, error: metaError } = await supabase
           .from("meta")
           .select("current_gw")
           .eq("id", 1)
           .maybeSingle();
-        const currentGw = (meta as any)?.current_gw ?? 1;
-        setCurrentGw(currentGw);
         
-        // Fetch fixtures for current gameweek
-        const { data: fx, error: fxErr } = await supabase
-          .from("fixtures")
-          .select(
-            "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
-          )
-          .eq("gw", currentGw)
-          .order("fixture_index", { ascending: true });
+        if (metaError) {
+          console.error('[NewPredictionsCentre] Error fetching current GW:', metaError);
+          // Default to GW 1 if we can't fetch
+          if (alive) {
+            setError(`Failed to load gameweek: ${metaError.message || 'Unknown error'}`);
+            setLoading(false);
+          }
+          return;
+        }
+        
+        const currentGw = (meta as any)?.current_gw ?? 1;
+        
+        // For API Test league members, always show Test GW 1 fixtures if they exist
+        // (regardless of main game's current GW)
+        let fx;
+        let gwToDisplay = currentGw;
+        if (apiTestLeague) {
+          try {
+            // Check if test fixtures exist for GW 1
+            const testFxResult = await supabase
+              .from("test_api_fixtures")
+              .select(
+                "id,test_gw as gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
+              )
+              .eq("test_gw", 1)
+              .order("fixture_index", { ascending: true });
+            
+            // Check if result is valid (not HTML error page)
+            // Handle common Supabase errors gracefully
+            if (testFxResult.error) {
+              const errorCode = (testFxResult.error as any)?.code;
+              const errorMessage = testFxResult.error.message || '';
+              
+              // If table doesn't exist (PGRST116) or 404 error, fall back silently
+              if (errorCode === 'PGRST116' || errorMessage.includes('404') || errorMessage.includes('does not exist')) {
+                console.log('[NewPredictionsCentre] Test fixtures table not found, using regular fixtures');
+                fx = await supabase
+                  .from("fixtures")
+                  .select(
+                    "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
+                  )
+                  .eq("gw", currentGw)
+                  .order("fixture_index", { ascending: true });
+              } else {
+                // Other errors - log and fall back
+                console.error('[NewPredictionsCentre] Error fetching test fixtures:', testFxResult.error);
+                throw testFxResult.error;
+              }
+            } else if (testFxResult.data && testFxResult.data.length > 0) {
+              // If test fixtures exist and no error, use them and set display GW to 1
+              fx = { data: testFxResult.data, error: null };
+              gwToDisplay = 1; // Show as GW 1 for API Test league
+              console.log('[NewPredictionsCentre] Using test fixtures for GW 1:', testFxResult.data.length, 'fixtures');
+            } else {
+              // No test fixtures found, fall back to regular fixtures
+              console.log('[NewPredictionsCentre] No test fixtures found, using regular fixtures');
+              fx = await supabase
+                .from("fixtures")
+                .select(
+                  "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
+                )
+                .eq("gw", currentGw)
+                .order("fixture_index", { ascending: true });
+            }
+          } catch (testError: any) {
+            console.error('[NewPredictionsCentre] Error fetching test fixtures, falling back to regular:', testError);
+            // Fall back to regular fixtures on any error
+            fx = await supabase
+              .from("fixtures")
+              .select(
+                "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
+              )
+              .eq("gw", currentGw)
+              .order("fixture_index", { ascending: true });
+          }
+        } else {
+          // Regular fixtures
+          fx = await supabase
+            .from("fixtures")
+            .select(
+              "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
+            )
+            .eq("gw", currentGw)
+            .order("fixture_index", { ascending: true });
+        }
+        
+        const { data: fxData, error: fxErr } = fx;
 
         if (fxErr) {
           console.error('Error fetching fixtures:', fxErr);
+          if (alive) {
+            setLoading(false);
+            setError(`Failed to load fixtures: ${fxErr.message || 'Unknown error'}`);
+          }
           return;
         }
 
-        const realFixtures: Fixture[] = (fx as Fixture[]) ?? [];
+        const realFixtures: Fixture[] = (fxData as Fixture[]) ?? [];
         if (alive) {
           setFixtures(realFixtures);
-          console.log('Loaded', realFixtures.length, 'real GW', currentGw, 'fixtures');
+          setCurrentGw(gwToDisplay); // Set to 1 if showing test fixtures, otherwise currentGw
+          if (alive) setDisplayGw(gwToDisplay);
+          console.log('Loaded', realFixtures.length, 'fixtures for GW', gwToDisplay, apiTestLeague && gwToDisplay === 1 ? '(Test GW 1)' : '');
           
           // Check if we're past the deadline
           if (realFixtures.length > 0 && realFixtures[0].kickoff_time) {
@@ -175,17 +298,19 @@ export default function NewPredictionsCentre() {
           }
         }
 
-        // Fetch user's picks for current gameweek
+        // Fetch user's picks for the gameweek being displayed
+        // For API Test league showing test fixtures, fetch picks for GW 1
+        const picksGw = apiTestLeague && gwToDisplay === 1 ? 1 : currentGw;
         if (user?.id) {
           const { data: pk, error: pkErr } = await supabase
             .from("picks")
             .select("gw,fixture_index,pick")
-            .eq("gw", currentGw)
+            .eq("gw", picksGw)
             .eq("user_id", user.id);
 
           if (pkErr) {
             console.error('Error fetching picks:', pkErr);
-            return;
+            // Don't return - continue without picks
           }
 
           const picksMap = new Map<number, Pick>();
@@ -208,7 +333,7 @@ export default function NewPredictionsCentre() {
           const { data: submission } = await supabase
             .from("gw_submissions")
             .select("submitted_at")
-            .eq("gw", currentGw)
+            .eq("gw", picksGw)
             .eq("user_id", user.id)
             .maybeSingle();
           
@@ -218,11 +343,13 @@ export default function NewPredictionsCentre() {
           }
         }
 
-        // Fetch results for current gameweek
+        // Fetch results for the gameweek being displayed
+        // For API Test league showing test fixtures, fetch results for GW 1
+        const resultsGw = apiTestLeague && gwToDisplay === 1 ? 1 : currentGw;
         const { data: rs, error: rsErr } = await supabase
           .from("gw_results")
           .select("gw,fixture_index,result")
-          .eq("gw", currentGw);
+          .eq("gw", resultsGw);
 
         if (!rsErr && rs) {
           const resultsMap = new Map<number, "H" | "D" | "A">();
@@ -237,8 +364,27 @@ export default function NewPredictionsCentre() {
             console.log('Loaded', resultsMap.size, 'results for GW', currentGw);
           }
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error loading GW data:', error);
+        if (alive) {
+          setLoading(false);
+          // Handle different error types
+          let errorMessage = 'Unknown error';
+          if (error?.message) {
+            errorMessage = error.message;
+          } else if (typeof error === 'string') {
+            errorMessage = error;
+          } else if (error?.toString) {
+            errorMessage = error.toString();
+          }
+          
+          // Check if error message contains JSON parsing error
+          if (errorMessage.includes('Unexpected token') || errorMessage.includes('is not valid JSON')) {
+            errorMessage = 'Server returned invalid response. Please check your connection and try again.';
+          }
+          
+          setError(`Failed to load matches: ${errorMessage}`);
+        }
       } finally {
         if (alive) {
           setLoading(false);
@@ -250,6 +396,28 @@ export default function NewPredictionsCentre() {
       alive = false;
     };
   }, [user?.id]);
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto px-4">
+          <div className="text-red-600 font-semibold text-lg mb-2">Failed to Load Matches</div>
+          <div className="text-slate-600 text-sm mb-4">{error}</div>
+          <button
+            onClick={() => {
+              setError("");
+              setLoading(true);
+              window.location.reload();
+            }}
+            className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Show loading state
   if (loading || !currentGw || fixtures.length === 0) {
@@ -266,11 +434,11 @@ export default function NewPredictionsCentre() {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 py-4">
           {/* Page Header */}
-          <div className="text-center mb-6">
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Predictions Centre</h1>
-            <div className="mt-0 mb-4 text-sm text-slate-600">
-              Call every game, lock in your results,<br />and climb the table.
-            </div>
+          <div className="mb-6">
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Predictions Centre</h2>
+            <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
+              Call every game, lock in your results, and climb the table.
+            </p>
           </div>
 
           {/* Current Gameweek banner - show different content based on submitted state */}
@@ -316,6 +484,10 @@ export default function NewPredictionsCentre() {
               const userPick = picks.get(fixture.fixture_index);
               const result = results.get(fixture.fixture_index);
               
+              // Get live score for this fixture (real-time updates)
+              const apiMatchId = (fixture as any).api_match_id;
+              const liveScore = apiMatchId ? liveScoresMap.get(apiMatchId) : null;
+              
               // Format kickoff time - using same logic as original Predictions page
               const kickoff = fixture.kickoff_time
                 ? (() => {
@@ -325,6 +497,19 @@ export default function NewPredictionsCentre() {
                     return `${hh}:${mm}`;
                   })()
                 : "—";
+              
+              // Format live score display
+              const showLiveScore = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
+              const scoreDisplay = showLiveScore 
+                ? `${liveScore.home_score ?? 0}-${liveScore.away_score ?? 0}`
+                : kickoff;
+              const statusDisplay = liveScore?.status === 'IN_PLAY' 
+                ? (liveScore.minute ? `${liveScore.minute}'` : 'LIVE')
+                : liveScore?.status === 'PAUSED'
+                ? 'HT'
+                : liveScore?.status === 'FINISHED'
+                ? 'FT'
+                : null;
               
               const home = sideName(fixture, "home");
               const away = sideName(fixture, "away");
@@ -347,8 +532,17 @@ export default function NewPredictionsCentre() {
                         }}
                       />
                               </div>
-                    <div className="text-slate-500 text-sm px-4">
-                      {kickoff}
+                    <div className="text-slate-500 text-sm px-4 text-center">
+                      {showLiveScore ? (
+                        <div className="flex flex-col items-center gap-0.5">
+                          <div className="font-bold text-slate-900 text-base">{scoreDisplay}</div>
+                          {statusDisplay && (
+                            <div className="text-xs text-slate-500">{statusDisplay}</div>
+                          )}
+                        </div>
+                      ) : (
+                        kickoff
+                      )}
                             </div>
                     <div className="flex items-center gap-1 flex-1 justify-start">
                       <img 
@@ -646,18 +840,36 @@ export default function NewPredictionsCentre() {
                   onClick={async () => {
                     try {
                       // Convert picks map to array for database insertion
-                      const picksArray = Array.from(picks.values()).map(pick => ({
-                        user_id: user?.id,
-                        gw: pick.gw,
-                        fixture_index: pick.fixture_index,
-                        pick: pick.pick
-                      }));
+                      const picksArray = Array.from(picks.values()).map(pick => {
+                        if (isInApiTestLeague && displayGw === 1) {
+                          // For test API users, save to test_api_picks with matchday
+                          return {
+                            user_id: user?.id,
+                            matchday: 1,
+                            fixture_index: pick.fixture_index,
+                            pick: pick.pick
+                          };
+                        } else {
+                          // Regular users save to picks table
+                          return {
+                            user_id: user?.id,
+                            gw: pick.gw,
+                            fixture_index: pick.fixture_index,
+                            pick: pick.pick
+                          };
+                        }
+                      });
 
                       // Insert/update picks in database
+                      const tableName = isInApiTestLeague && displayGw === 1 ? 'test_api_picks' : 'picks';
+                      const conflictColumns = isInApiTestLeague && displayGw === 1 
+                        ? 'user_id,matchday,fixture_index' 
+                        : 'user_id,gw,fixture_index';
+                      
                       const { error } = await supabase
-                        .from('picks')
+                        .from(tableName)
                         .upsert(picksArray, { 
-                          onConflict: 'user_id,gw,fixture_index',
+                          onConflict: conflictColumns,
                           ignoreDuplicates: false 
                         });
 
@@ -706,18 +918,36 @@ export default function NewPredictionsCentre() {
                   onClick={async () => {
                     try {
                       // Convert picks map to array for database insertion
-                      const picksArray = Array.from(picks.values()).map(pick => ({
-                        user_id: user?.id,
-                        gw: pick.gw,
-                        fixture_index: pick.fixture_index,
-                        pick: pick.pick
-                      }));
+                      const picksArray = Array.from(picks.values()).map(pick => {
+                        if (isInApiTestLeague && displayGw === 1) {
+                          // For test API users, save to test_api_picks with matchday
+                          return {
+                            user_id: user?.id,
+                            matchday: 1,
+                            fixture_index: pick.fixture_index,
+                            pick: pick.pick
+                          };
+                        } else {
+                          // Regular users save to picks table
+                          return {
+                            user_id: user?.id,
+                            gw: pick.gw,
+                            fixture_index: pick.fixture_index,
+                            pick: pick.pick
+                          };
+                        }
+                      });
 
                       // Insert/update picks in database
+                      const tableName = isInApiTestLeague && displayGw === 1 ? 'test_api_picks' : 'picks';
+                      const conflictColumns = isInApiTestLeague && displayGw === 1 
+                        ? 'user_id,matchday,fixture_index' 
+                        : 'user_id,gw,fixture_index';
+                      
                       const { error: picksError } = await supabase
-                        .from('picks')
+                        .from(tableName)
                         .upsert(picksArray, { 
-                          onConflict: 'user_id,gw,fixture_index',
+                          onConflict: conflictColumns,
                           ignoreDuplicates: false 
                         });
 
@@ -727,21 +957,58 @@ export default function NewPredictionsCentre() {
                         return;
                       }
 
-                      // Record submission in gw_submissions table
+                      // Record submission in appropriate table
+                      const submissionTable = isInApiTestLeague && displayGw === 1 ? 'test_api_submissions' : 'gw_submissions';
+                      const submissionData = isInApiTestLeague && displayGw === 1
+                        ? {
+                            user_id: user?.id,
+                            matchday: 1,
+                            submitted_at: new Date().toISOString()
+                          }
+                        : {
+                            user_id: user?.id,
+                            gw: currentGw ?? 1,
+                            submitted_at: new Date().toISOString()
+                          };
+                      const submissionConflict = isInApiTestLeague && displayGw === 1 
+                        ? 'user_id,matchday' 
+                        : 'user_id,gw';
+                      
                       const { error: submissionError } = await supabase
-                        .from('gw_submissions')
-                        .upsert({
-                          user_id: user?.id,
-                          gw: currentGw,
-                          submitted_at: new Date().toISOString()
-                        }, {
-                          onConflict: 'user_id,gw'
+                        .from(submissionTable)
+                        .upsert(submissionData, {
+                          onConflict: submissionConflict
                         });
 
                       if (submissionError) {
                         console.error('Error recording submission:', submissionError);
                         alert('Failed to record submission. Please try again.');
                         return;
+                      }
+
+                      // Check if all members have submitted and notify (fire-and-forget)
+                      // Get user's leagues
+                      const { data: userLeagues } = await supabase
+                        .from('league_members')
+                        .select('league_id')
+                        .eq('user_id', user?.id);
+
+                      if (userLeagues && userLeagues.length > 0) {
+                        const matchday = isInApiTestLeague && displayGw === 1 ? 1 : (currentGw ?? 1);
+                        // Call notifyFinalSubmission for each league (fire-and-forget)
+                        userLeagues.forEach(({ league_id }) => {
+                          fetch('/.netlify/functions/notifyFinalSubmission', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              leagueId: league_id,
+                              matchday: matchday,
+                              isTestApi: isInApiTestLeague && displayGw === 1,
+                            }),
+                          }).catch(err => {
+                            console.error('[NewPredictionsCentre] Failed to check final submission:', err);
+                          });
+                        });
                       }
 
                       console.log('Successfully confirmed picks:', picksArray);

@@ -416,6 +416,30 @@ export default function PredictionsPage() {
       setSubmitted(true);
       // Dispatch custom event to hide banner immediately
       window.dispatchEvent(new CustomEvent('predictionsSubmitted'));
+
+      // Check if all members have submitted in user's leagues and notify (fire-and-forget)
+      // Get user's leagues
+      const { data: userLeagues } = await supabase
+        .from('league_members')
+        .select('league_id')
+        .eq('user_id', user?.id);
+
+      if (userLeagues && userLeagues.length > 0) {
+        // Call notifyFinalSubmission for each league (fire-and-forget)
+        userLeagues.forEach(({ league_id }) => {
+          fetch('/.netlify/functions/notifyFinalSubmission', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              leagueId: league_id,
+              matchday: gw,
+              isTestApi: false,
+            }),
+          }).catch(err => {
+            console.error('[Predictions] Failed to check final submission:', err);
+          });
+        });
+      }
     } else {
       setError(error.message);
     }
@@ -453,15 +477,13 @@ export default function PredictionsPage() {
   }
 
   return (
-    <div className={`max-w-2xl mx-auto px-4 py-8 ${oldSchoolMode ? 'oldschool-theme' : ''}`}>
-      {/* header */}
-      <div className="text-center">
-        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Predictions Center</h1>
-        <div className="mt-0 mb-6 text-base text-slate-500">
-          Call every game, lock in your results,<br />and climb the table.
-        </div>
+    <div className={`min-h-screen bg-slate-50 ${oldSchoolMode ? 'oldschool-theme' : ''}`}>
+      <div className="max-w-6xl mx-auto px-4 py-4">
+        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Predictions Center</h2>
+        <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
+          Call every game, lock in your results, and climb the table.
+        </p>
         <div className="text-slate-600 text-lg font-semibold mt-1">Game Week {gwOr(gw)}</div>
-      </div>
 
       {/* status / summary */}
       <div className="mt-3">
@@ -478,7 +500,6 @@ export default function PredictionsPage() {
             </div>
           </div>
         ) : null}
-
       </div>
 
       {/* error banner */}
@@ -740,7 +761,7 @@ export default function PredictionsPage() {
           </div>
         </div>
       )}
-
+      </div>
     </div>
   );
 }

@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getMediumName } from "../lib/teamNames";
+import { useAuth } from "../context/AuthContext";
 
 type Fixture = {
   id: string;
@@ -74,6 +75,7 @@ function formatKickoff(iso: string | null | undefined): string {
 }
 
 export default function AdminPage() {
+  const { user, session } = useAuth();
   const [gw, setGw] = useState(1);
   const [fixtureText, setFixtureText] = useState("");
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
@@ -86,6 +88,12 @@ export default function AdminPage() {
   const [resultsPublished, setResultsPublished] = useState(false);
   const [tab, setTab] = useState<"fixtures" | "results">("fixtures");
   const hasFixtures = fixtures.length > 0;
+  const [playerId, setPlayerId] = useState<string | null>(null);
+  const [nativePushEnabled, setNativePushEnabled] = useState<boolean | null>(null);
+  const [checkingPid, setCheckingPid] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [registerResult, setRegisterResult] = useState<string | null>(null);
+  const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
 
   // On first load, jump to the most recently published fixtures (current_gw)
   useEffect(() => {
@@ -242,6 +250,42 @@ export default function AdminPage() {
       
       // Dispatch event to notify PredictionsBanner that fixtures have been published
       window.dispatchEvent(new CustomEvent('fixturesPublished'));
+
+      // Broadcast push to all users (with error handling)
+      try {
+        const pushRes = await fetch('/.netlify/functions/sendPushAll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: `GW${gw} Published`,
+            message: `Game Week ${gw} fixtures are live. Make your predictions!`,
+            data: { type: 'fixtures_published', gw }
+          })
+        });
+
+        const pushData = await pushRes.json().catch(() => ({}));
+        
+        if (pushRes.ok && pushData.ok) {
+          const sentTo = pushData.sentTo || 0;
+          const checked = pushData.checked || 0;
+          if (sentTo > 0) {
+            console.log(`[Admin] Push notification sent to ${sentTo} subscribed devices (checked ${checked} total)`);
+            setOk(`Gameweek ${gw} activated! Push notification sent to ${sentTo} devices.`);
+          } else if (pushData.warning) {
+            console.warn(`[Admin] Push notification warning: ${pushData.warning}`);
+            setOk(`Gameweek ${gw} activated! (No subscribed devices found for push notifications)`);
+          }
+        } else {
+          console.error('[Admin] Push notification failed:', pushData);
+          const errorMsg = pushData.oneSignalErrors 
+            ? `OneSignal Error: ${JSON.stringify(pushData.oneSignalErrors)}`
+            : pushData.error || 'Failed to send push notification';
+          setError(`Gameweek activated, but push notification failed: ${errorMsg}`);
+        }
+      } catch (pushErr: any) {
+        console.error('[Admin] Push notification error:', pushErr);
+        setError(`Gameweek activated, but push notification failed: ${pushErr.message || 'Network error'}`);
+      }
     } catch (e: any) {
       setError(e.message ?? "Failed to activate gameweek.");
     } finally {
@@ -300,6 +344,42 @@ export default function AdminPage() {
       
       // Dispatch event to refresh banners across the site
       window.dispatchEvent(new CustomEvent('resultsPublished', { detail: { gw } }));
+
+      // Broadcast push to all users (with error handling)
+      try {
+        const pushRes = await fetch('/.netlify/functions/sendPushAll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: `GW${gw} Results`,
+            message: `Results for Game Week ${gw} are published. See how you scored!`,
+            data: { type: 'results_published', gw }
+          })
+        });
+
+        const pushData = await pushRes.json().catch(() => ({}));
+        
+        if (pushRes.ok && pushData.ok) {
+          const sentTo = pushData.sentTo || 0;
+          const checked = pushData.checked || 0;
+          if (sentTo > 0) {
+            console.log(`[Admin] Push notification sent to ${sentTo} subscribed devices (checked ${checked} total)`);
+            setOk(`GW ${gw} results published! Push notification sent to ${sentTo} devices.`);
+          } else if (pushData.warning) {
+            console.warn(`[Admin] Push notification warning: ${pushData.warning}`);
+            setOk(`GW ${gw} results published! (No subscribed devices found for push notifications)`);
+          }
+        } else {
+          console.error('[Admin] Push notification failed:', pushData);
+          const errorMsg = pushData.oneSignalErrors 
+            ? `OneSignal Error: ${JSON.stringify(pushData.oneSignalErrors)}`
+            : pushData.error || 'Failed to send push notification';
+          setError(`Results published, but push notification failed: ${errorMsg}`);
+        }
+      } catch (pushErr: any) {
+        console.error('[Admin] Push notification error:', pushErr);
+        setError(`Results published, but push notification failed: ${pushErr.message || 'Network error'}`);
+      }
     } catch (e: any) {
       setError(e.message ?? "Failed to save results.");
     } finally {
@@ -329,6 +409,110 @@ export default function AdminPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
       <h1 className="mb-6 text-2xl font-semibold">⚙️ Admin</h1>
+
+      {isAdmin && (
+        <div className="mb-6 rounded border bg-white p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="font-semibold">OneSignal Player ID (native)</div>
+              <div className="text-sm text-slate-600">Works only inside the Despia native wrapper</div>
+              {playerId && (
+                <div className="mt-1 text-sm font-mono break-all">{playerId}</div>
+              )}
+              {nativePushEnabled != null && (
+                <div className="mt-1 text-xs text-slate-500">nativePushEnabled: {String(nativePushEnabled)}</div>
+              )}
+              {registerResult && (
+                <div className={`mt-1 text-xs ${registerResult.includes('Success') ? 'text-green-600' : 'text-red-600'}`}>{registerResult}</div>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  setCheckingPid(true);
+                  setPlayerId(null);
+                  setNativePushEnabled(null);
+                  try {
+                    const g: any = (globalThis as any);
+                    if (g && g.despia) {
+                      const d = g.despia;
+                      const pid = d?.onesignalplayerid || null;
+                      setPlayerId(pid);
+                      try {
+                        const data = typeof d === 'function' ? d('checkNativePushPermissions://', ['nativePushEnabled']) : null;
+                        if (data && typeof data === 'object' && 'nativePushEnabled' in data) {
+                          setNativePushEnabled(Boolean((data as any).nativePushEnabled));
+                        }
+                      } catch {}
+                    } else {
+                      try {
+                        const modName = 'despia-native';
+                        // @ts-ignore - vite ignore comment prevents pre-bundling
+                        const mod = await import(/* @vite-ignore */ modName);
+                        const despia: any = mod?.default;
+                        const pid = despia?.onesignalplayerid || null;
+                        setPlayerId(pid);
+                        try {
+                          const data = typeof despia === 'function' ? despia('checkNativePushPermissions://', ['nativePushEnabled']) : null;
+                          if (data && typeof data === 'object' && 'nativePushEnabled' in data) {
+                            setNativePushEnabled(Boolean((data as any).nativePushEnabled));
+                          }
+                        } catch {}
+                      } catch {
+                        setPlayerId(null);
+                      }
+                    }
+                  } finally {
+                    setCheckingPid(false);
+                  }
+                }}
+                className="rounded bg-slate-900 px-3 py-2 text-white disabled:opacity-50 text-sm"
+                disabled={checkingPid}
+              >
+                {checkingPid ? 'Checking…' : 'Show Player ID'}
+              </button>
+              <button
+                onClick={async () => {
+                  if (!playerId) {
+                    setRegisterResult('Please check Player ID first');
+                    return;
+                  }
+                  setRegistering(true);
+                  setRegisterResult(null);
+                  try {
+                    if (!user || !session?.access_token) {
+                      setRegisterResult('Error: Not signed in');
+                      return;
+                    }
+                    const res = await fetch('/.netlify/functions/registerPlayer', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${session.access_token}`,
+                      },
+                      body: JSON.stringify({ playerId, platform: 'ios' }),
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                      setRegisterResult(`Success! Registered ${playerId.slice(0, 8)}…`);
+                    } else {
+                      setRegisterResult(`Error: ${data.error || 'Unknown error'}`);
+                    }
+                  } catch (err: any) {
+                    setRegisterResult(`Error: ${err.message || 'Failed to register'}`);
+                  } finally {
+                    setRegistering(false);
+                  }
+                }}
+                className="rounded bg-emerald-600 px-3 py-2 text-white disabled:opacity-50 text-sm"
+                disabled={registering || !playerId}
+              >
+                {registering ? 'Registering…' : 'Register Device'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* GW selector */}
       <div className="mb-6">

@@ -1,6 +1,9 @@
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+
+// Profile page with push notification diagnostics
 
 interface UserStats {
   totalPredictions: number;
@@ -11,9 +14,91 @@ interface UserStats {
 }
 
 export default function Profile() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, session } = useAuth();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [registering, setRegistering] = useState(false);
+  const [registerResult, setRegisterResult] = useState<string | null>(null);
+  const [checkingSubscription, setCheckingSubscription] = useState(false);
+  const [subscriptionDetails, setSubscriptionDetails] = useState<any>(null);
+  const [despiaDetected, setDespiaDetected] = useState<boolean | null>(null);
+  const [playerId, setPlayerId] = useState<string | null>(null);
+  
+  // Admin check
+  const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
+
+  // Poll for Despia API availability (it may be injected after page load)
+  useEffect(() => {
+    let attempts = 0;
+    const maxAttempts = 40; // Check for 20 seconds (40 * 500ms) - Despia might inject late
+    
+    const checkDespia = () => {
+      // Try multiple ways to find Despia API - check all possible locations
+      const possibleLocations = [
+        (globalThis as any)?.despia,
+        (typeof window !== 'undefined' ? (window as any)?.despia : null),
+        (globalThis as any)?.Despia,
+        (typeof window !== 'undefined' ? (window as any)?.Despia : null),
+        (globalThis as any)?.DESPIA,
+        (typeof window !== 'undefined' ? (window as any)?.DESPIA : null),
+        (globalThis as any)?.OneSignal,
+        (typeof window !== 'undefined' ? (window as any)?.OneSignal : null),
+        // Check if it's nested somewhere
+        (globalThis as any)?.webkit?.messageHandlers?.despia,
+        (typeof window !== 'undefined' ? (window as any)?.webkit?.messageHandlers?.despia : null),
+      ];
+      
+      const despia: any = possibleLocations.find(loc => loc != null) || null;
+      
+      // Also check all global properties for anything that looks like Despia
+      let foundInGlobals = null;
+      try {
+        const globals = typeof window !== 'undefined' ? window : globalThis;
+        for (const key in globals) {
+          if (key.toLowerCase().includes('despia') || key.toLowerCase().includes('onesignal')) {
+            foundInGlobals = { key, value: (globals as any)[key] };
+            break;
+          }
+        }
+      } catch (e) {
+        // Ignore errors when checking globals
+      }
+      
+      // Check for direct global properties (Despia exposes onesignalplayerid directly)
+      const directPlayerId = 
+        (globalThis as any)?.onesignalplayerid ||
+        (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null) ||
+        (globalThis as any)?.oneSignalPlayerId ||
+        (typeof window !== 'undefined' ? (window as any)?.oneSignalPlayerId : null);
+      
+      if (despia || foundInGlobals || directPlayerId) {
+        console.log('[Profile] Native API detected:', {
+          despia: !!despia,
+          foundInGlobals,
+          directPlayerId: directPlayerId ? String(directPlayerId).slice(0, 12) + '…' : null,
+          despiaKeys: despia ? Object.keys(despia) : [],
+          hasOneSignalRequestPermission: despia && typeof despia.oneSignalRequestPermission === 'function',
+          hasRequestPermission: despia && typeof despia.requestPermission === 'function',
+          playerId: despia ? (despia.onesignalplayerid || despia.oneSignalPlayerId) : directPlayerId,
+        });
+        setDespiaDetected(true);
+        const pid = despia ? (despia.onesignalplayerid || despia.oneSignalPlayerId) : directPlayerId;
+        if (pid) setPlayerId(String(pid));
+        return true;
+      }
+      
+      attempts++;
+      if (attempts < maxAttempts) {
+        setTimeout(checkDespia, 500);
+      } else {
+        console.warn('[Profile] Native API not detected after', maxAttempts, 'attempts');
+        setDespiaDetected(false);
+      }
+      return false;
+    };
+    
+    checkDespia();
+  }, []);
 
   useEffect(() => {
     fetchUserStats();
@@ -199,6 +284,321 @@ export default function Profile() {
               </div>
             </div>
           </div>
+
+          {/* Advanced - Self-Serve Fix Screen */}
+          <div className="mt-6 pt-6 border-t border-slate-200">
+            <h3 className="text-lg font-semibold text-slate-800 mb-3">Advanced</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              Check and fix your notification settings to receive chat notifications in mini-leagues.
+            </p>
+
+            {/* Status Display */}
+            <div className="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                <div className="text-slate-600 mb-1">OS Permission:</div>
+                <div className="font-semibold text-slate-800">
+                  {(() => {
+                    if (despiaDetected === null) return '⏳ Checking...';
+                    if (despiaDetected === false) return '❓ Unknown (not native app)';
+                    // If we have Player ID, we're in native app
+                    const directPid = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
+                    if (directPid || playerId) {
+                      // We have Player ID, so we're in native app
+                      // Permission status can be checked via despia('checkNativePushPermissions://', ['nativePushEnabled'])
+                      // but we'll show a generic message since we can't check it synchronously in render
+                      return '✅ Native app (use "Enable Notifications" to check status)';
+                    }
+                    return '❓ Unknown (not native app)';
+                  })()}
+                </div>
+                </div>
+                <div>
+                <div className="text-slate-600 mb-1">OneSignal Status:</div>
+                <div className="font-semibold text-slate-800">
+                  {(() => {
+                    if (despiaDetected === null) return '⏳ Checking...';
+                    if (despiaDetected === false) return '❌ Not initialized';
+                    // Check both nested (despia object) and direct (global property)
+                    const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                    const directPid = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
+                    const pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId || directPid || playerId;
+                    return pid ? '✅ Player ID found' : '❌ Not initialized';
+                  })()}
+                </div>
+                </div>
+                <div className="col-span-2">
+                <div className="text-slate-600 mb-1">Player ID:</div>
+                <div className="font-mono text-xs text-slate-700 break-all">
+                  {(() => {
+                    if (despiaDetected === null) return 'Checking...';
+                    // Check both nested (despia object) and direct (global property)
+                    const despia: any = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                    const directPid = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
+                    const pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId || directPid || playerId;
+                    if (!pid) return 'Not available';
+                    const pidStr = String(pid);
+                    return pidStr.slice(0, 8) + '…' + pidStr.slice(-4);
+                  })()}
+                </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Debug Info (for troubleshooting) */}
+            <div className="mb-4 p-3 bg-slate-100 rounded-lg border border-slate-300 text-xs">
+              <div className="font-semibold text-slate-700 mb-2">🔍 Debug Info:</div>
+              <div className="space-y-1 text-slate-600 font-mono break-all">
+                <div>User Agent: {typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 50) + '…' : 'N/A'}</div>
+                <div>globalThis.despia: {((globalThis as any)?.despia ? '✅ Found' : '❌ Not found')}</div>
+                <div>window.despia: {(typeof window !== 'undefined' && (window as any)?.despia ? '✅ Found' : '❌ Not found')}</div>
+                <div>globalThis.Despia: {((globalThis as any)?.Despia ? '✅ Found' : '❌ Not found')}</div>
+                <div>window.Despia: {(typeof window !== 'undefined' && (window as any)?.Despia ? '✅ Found' : '❌ Not found')}</div>
+                <div>globalThis.OneSignal: {((globalThis as any)?.OneSignal ? '✅ Found' : '❌ Not found')}</div>
+                <div>window.OneSignal: {(typeof window !== 'undefined' && (window as any)?.OneSignal ? '✅ Found' : '❌ Not found')}</div>
+                {(() => {
+                  // Check all possible locations
+                  const possibleLocations = [
+                    (globalThis as any)?.despia,
+                    (typeof window !== 'undefined' ? (window as any)?.despia : null),
+                    (globalThis as any)?.Despia,
+                    (typeof window !== 'undefined' ? (window as any)?.Despia : null),
+                    (globalThis as any)?.DESPIA,
+                    (typeof window !== 'undefined' ? (window as any)?.DESPIA : null),
+                  ];
+                  const despia: any = possibleLocations.find(loc => loc != null) || null;
+                  
+                  // Also check for any global properties with "despia" or "onesignal" in the name
+                  let foundGlobals: string[] = [];
+                  try {
+                    const globals = typeof window !== 'undefined' ? window : globalThis;
+                    for (const key in globals) {
+                      if (key.toLowerCase().includes('despia') || key.toLowerCase().includes('onesignal')) {
+                        foundGlobals.push(key);
+                      }
+                    }
+                  } catch (e) {
+                    // Ignore
+                  }
+                  
+                  if (foundGlobals.length > 0) {
+                    return (
+                      <div className="mt-2 text-green-600">
+                        ✅ Found global properties: {foundGlobals.join(', ')}
+                      </div>
+                    );
+                  }
+                  
+                  if (despia) {
+                    return (
+                      <>
+                        <div className="mt-2 font-semibold">Despia Object Found:</div>
+                        <div>Keys: {Object.keys(despia).slice(0, 10).join(', ')}{Object.keys(despia).length > 10 ? '…' : ''}</div>
+                        <div>oneSignalRequestPermission: {typeof despia.oneSignalRequestPermission === 'function' ? '✅ Function' : '❌ Not a function'}</div>
+                        <div>requestPermission: {typeof despia.requestPermission === 'function' ? '✅ Function' : '❌ Not a function'}</div>
+                        <div>onesignalplayerid: {despia.onesignalplayerid ? '✅ ' + String(despia.onesignalplayerid).slice(0, 12) + '…' : '❌'}</div>
+                        <div>oneSignalPlayerId: {despia.oneSignalPlayerId ? '✅ ' + String(despia.oneSignalPlayerId).slice(0, 12) + '…' : '❌'}</div>
+                      </>
+                    );
+                  }
+                  return <div className="mt-2 text-red-600">❌ No Despia object found in any location</div>;
+                })()}
+                <div className="mt-2 text-xs text-slate-500">Polling: {despiaDetected === null ? '⏳ Checking...' : despiaDetected ? '✅ Detected' : '❌ Not detected'}</div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-2">
+              <button
+                onClick={async () => {
+                  if (!session?.access_token) {
+                    setRegisterResult('Error: Not signed in');
+                    return;
+                  }
+                  setRegistering(true);
+                  setRegisterResult(null);
+                  try {
+                    const { ensurePushSubscribed } = await import('../lib/pushNotifications');
+                    const result = await ensurePushSubscribed(session);
+                    
+                    if (result.ok) {
+                      setRegisterResult(`✅ Successfully enabled notifications! Player ID: ${result.playerId?.slice(0, 8)}…`);
+                      setTimeout(() => setRegisterResult(null), 5000);
+                    } else {
+                      const reasonMap: Record<string, string> = {
+                        'permission-denied': 'Permission denied. Please enable notifications in iOS Settings.',
+                        'no-player-id': 'OneSignal not initialized. Please wait a few seconds and try again.',
+                        'api-not-available': 'Not available in browser. Please use the native app.',
+                        'no-session': 'Not signed in. Please sign in and try again.',
+                        'unknown': 'Unknown error. Please try again or contact support.',
+                      };
+                      setRegisterResult(`⚠️ ${reasonMap[result.reason || 'unknown'] || 'Failed to enable notifications'}`);
+                    }
+                  } catch (err: any) {
+                    setRegisterResult(`❌ Error: ${err.message || 'Failed to enable notifications'}`);
+                  } finally {
+                    setRegistering(false);
+                  }
+                }}
+                disabled={registering || !session?.access_token}
+                className="w-full py-3 bg-white border border-slate-300 hover:bg-slate-50 disabled:bg-gray-100 disabled:opacity-50 text-slate-600 hover:text-slate-800 font-medium rounded-xl transition-colors"
+              >
+                {registering ? 'Enabling...' : 'Enable Notifications'}
+              </button>
+
+              <button
+                onClick={async () => {
+                  // Try to import despia-native as documented
+                  let despia: any = null;
+                  try {
+                    const despiaModule = await import('despia-native');
+                    despia = despiaModule.default;
+                  } catch (e) {
+                    // Fallback: check global properties
+                    despia = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+                  }
+                  
+                  // From docs: despia("settingsapp://")
+                  if (despia && typeof despia === 'function') {
+                    try {
+                      despia('settingsapp://');
+                    } catch (e) {
+                      alert('Please go to iOS Settings → TotL → Notifications and enable notifications');
+                    }
+                  } else {
+                    alert('Please go to iOS Settings → TotL → Notifications and enable notifications');
+                  }
+                }}
+                className="w-full py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-medium rounded-xl transition-colors text-sm hidden"
+              >
+                ⚙️ Open OS Settings
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (!session?.access_token) {
+                    setRegisterResult('Error: Not signed in');
+                    return;
+                  }
+                  setCheckingSubscription(true);
+                  setRegisterResult(null);
+                  setSubscriptionDetails(null);
+                  try {
+                    const res = await fetch('/.netlify/functions/checkMySubscription', {
+                      headers: {
+                        Authorization: `Bearer ${session.access_token}`,
+                      },
+                    });
+                    const data = await res.json();
+                    setSubscriptionDetails(data);
+                    
+                    if (data.subscribed) {
+                      setRegisterResult('✅ Device is subscribed! Notifications should work.');
+                    } else {
+                      const reasons = data.reasons || [];
+                      const suggestion = data.suggestion || 'Enable notifications in iOS Settings';
+                      setRegisterResult(`⚠️ Not subscribed: ${reasons.join('; ')}. ${suggestion}`);
+                    }
+                  } catch (err: any) {
+                    setRegisterResult(`❌ Error checking subscription: ${err.message}`);
+                  } finally {
+                    setCheckingSubscription(false);
+                  }
+                }}
+                disabled={checkingSubscription || !session?.access_token}
+                className="w-full py-3 bg-white border border-slate-300 hover:bg-slate-50 disabled:bg-gray-100 disabled:opacity-50 text-slate-600 hover:text-slate-800 font-medium rounded-xl transition-colors"
+              >
+                {checkingSubscription ? 'Checking...' : 'Check Subscription Status'}
+              </button>
+
+              <button
+                onClick={async () => {
+                  // Try to import despia-native as documented, then check direct global property
+                  let pid: string | null = null;
+                  try {
+                    const despiaModule = await import('despia-native');
+                    const despia = despiaModule.default;
+                    pid = despia?.onesignalplayerid || despia?.oneSignalPlayerId || null;
+                  } catch (e) {
+                    // Fallback: check direct global property (Despia's actual implementation)
+                    pid = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
+                  }
+                  
+                  // Also check playerId state
+                  pid = pid || playerId;
+                  
+                  if (pid) {
+                    await navigator.clipboard.writeText(String(pid));
+                    setRegisterResult('✅ Player ID copied to clipboard');
+                    setTimeout(() => setRegisterResult(null), 2000);
+                  } else {
+                    setRegisterResult('⚠️ Player ID not available');
+                  }
+                }}
+                className="w-full py-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-600 hover:text-slate-800 font-medium rounded-xl transition-colors"
+              >
+                Copy Player ID
+              </button>
+            </div>
+
+            {registerResult && (
+              <div className={`mt-3 p-3 rounded-lg text-sm ${
+                registerResult.includes('✅') ? 'bg-green-50 text-green-800 border border-green-200' :
+                registerResult.includes('⚠️') ? 'bg-amber-50 text-amber-800 border border-amber-200' :
+                'bg-red-50 text-red-800 border border-red-200'
+              }`}>
+                {registerResult}
+              </div>
+            )}
+
+            {subscriptionDetails && subscriptionDetails.details && (
+              <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                <div className="font-semibold text-slate-700 mb-2">📊 OneSignal Status Details:</div>
+                <div className="space-y-1 text-slate-600 font-mono">
+                  <div>Has Token: {subscriptionDetails.details.hasToken ? '✅ Yes' : '❌ No'}</div>
+                  <div>Invalid: {subscriptionDetails.details.invalid ? '❌ Yes' : '✅ No'}</div>
+                  <div>Notification Types: {subscriptionDetails.details.notificationTypes ?? 'null'}</div>
+                  <div>Device Type: {subscriptionDetails.details.deviceType || 'N/A'}</div>
+                  <div>Last Active: {subscriptionDetails.details.lastActive ? new Date(subscriptionDetails.details.lastActive).toLocaleString() : 'Never'}</div>
+                  {subscriptionDetails.reasons && subscriptionDetails.reasons.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-slate-300">
+                      <div className="font-semibold text-red-600">Issues Found:</div>
+                      {subscriptionDetails.reasons.map((reason: string, i: number) => (
+                        <div key={i} className="text-red-600">• {reason}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Admin Links */}
+          {isAdmin && (
+            <div className="mt-6 pt-6 border-t border-slate-200">
+              <h3 className="text-lg font-semibold text-slate-800 mb-3">Admin</h3>
+              <div className="space-y-2">
+                <Link
+                  to="/admin"
+                  className="block w-full py-3 bg-slate-600 hover:bg-slate-700 text-white font-semibold rounded-xl transition-colors text-center"
+                >
+                  Admin Panel
+                </Link>
+                <Link
+                  to="/test-admin-api"
+                  className="block w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-xl transition-colors text-center"
+                >
+                  Test API Admin (Staging)
+                </Link>
+                <Link
+                  to="/test-despia"
+                  className="block w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors text-center"
+                >
+                  Test Despia Integration
+                </Link>
+              </div>
+            </div>
+          )}
 
           {/* Sign Out Button */}
           <button

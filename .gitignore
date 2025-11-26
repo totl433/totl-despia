@@ -1,1 +1,12 @@
 node_modules
+
+# Local Netlify folder
+.netlify
+
+# Environment variables (contain secrets)
+.env
+.env.local
+.env*.local
+
+*storybook.log
+storybook-static

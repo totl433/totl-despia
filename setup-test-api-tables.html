@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test API Tables Setup</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .step {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 6px;
+            border-left: 4px solid #3b82f6;
+        }
+        .step-number {
+            font-weight: bold;
+            color: #3b82f6;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        .sql-container {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            margin: 15px 0;
+            position: relative;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .copy-btn:hover {
+            background: #2563eb;
+        }
+        .copy-btn.copied {
+            background: #10b981;
+        }
+        a {
+            color: #3b82f6;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .link-box {
+            background: #eff6ff;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+        code {
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Test API Tables Setup</h1>
+        
+        <div class="step">
+            <div class="step-number">Step 1: Open Supabase SQL Editor</div>
+            <div class="link-box">
+                <a href="https://supabase.com/dashboard/project/gyjagrtwrhctmgkootjj/sql/new" target="_blank">
+                    👉 Click here to open SQL Editor
+                </a>
+            </div>
+            <p>Sign in to your Supabase account if prompted.</p>
+        </div>
+
+        <div class="step">
+            <div class="step-number">Step 2: Copy the SQL below</div>
+            <p>Click the "Copy SQL" button to copy all the SQL to your clipboard.</p>
+            <div class="sql-container">
+                <button class="copy-btn" onclick="copySQL()">Copy SQL</button>
+                <pre id="sql-content">-- Create test_api_meta table
+CREATE TABLE IF NOT EXISTS test_api_meta (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  current_test_gw INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create test_api_fixtures table
+CREATE TABLE IF NOT EXISTS test_api_fixtures (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  test_gw INTEGER NOT NULL,
+  fixture_index INTEGER NOT NULL,
+  api_match_id INTEGER NOT NULL,
+  home_team TEXT NOT NULL,
+  away_team TEXT NOT NULL,
+  home_code TEXT,
+  away_code TEXT,
+  home_name TEXT,
+  away_name TEXT,
+  kickoff_time TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(test_gw, fixture_index)
+);
+
+-- Create test_api_picks table
+CREATE TABLE IF NOT EXISTS test_api_picks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  matchday INTEGER NOT NULL,
+  fixture_index INTEGER NOT NULL,
+  pick TEXT NOT NULL CHECK (pick IN ('H', 'D', 'A')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, matchday, fixture_index)
+);
+
+-- Create test_api_submissions table
+CREATE TABLE IF NOT EXISTS test_api_submissions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  matchday INTEGER NOT NULL,
+  submitted_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, matchday)
+);
+
+-- Create indexes for better query performance
+CREATE INDEX IF NOT EXISTS idx_test_api_fixtures_test_gw ON test_api_fixtures(test_gw);
+CREATE INDEX IF NOT EXISTS idx_test_api_fixtures_fixture_index ON test_api_fixtures(fixture_index);
+CREATE INDEX IF NOT EXISTS idx_test_api_picks_user_matchday ON test_api_picks(user_id, matchday);
+CREATE INDEX IF NOT EXISTS idx_test_api_picks_matchday ON test_api_picks(matchday);
+CREATE INDEX IF NOT EXISTS idx_test_api_submissions_user_matchday ON test_api_submissions(user_id, matchday);
+
+-- Insert initial meta record
+INSERT INTO test_api_meta (id, current_test_gw) 
+VALUES (1, 1)
+ON CONFLICT (id) DO NOTHING;
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE test_api_meta ENABLE ROW LEVEL SECURITY;
+ALTER TABLE test_api_fixtures ENABLE ROW LEVEL SECURITY;
+ALTER TABLE test_api_picks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE test_api_submissions ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for test_api_meta (read-only for authenticated users)
+CREATE POLICY "Anyone can read test_api_meta" ON test_api_meta
+  FOR SELECT USING (true);
+
+-- RLS Policies for test_api_fixtures (read-only for authenticated users)
+CREATE POLICY "Anyone can read test_api_fixtures" ON test_api_fixtures
+  FOR SELECT USING (true);
+
+-- RLS Policies for test_api_picks (users can read/write their own picks)
+CREATE POLICY "Users can read all test_api_picks" ON test_api_picks
+  FOR SELECT USING (true);
+
+CREATE POLICY "Users can insert their own test_api_picks" ON test_api_picks
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own test_api_picks" ON test_api_picks
+  FOR UPDATE USING (auth.uid() = user_id);
+
+-- RLS Policies for test_api_submissions (users can read all, insert/update their own)
+CREATE POLICY "Users can read all test_api_submissions" ON test_api_submissions
+  FOR SELECT USING (true);
+
+CREATE POLICY "Users can insert their own test_api_submissions" ON test_api_submissions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own test_api_submissions" ON test_api_submissions
+  FOR UPDATE USING (auth.uid() = user_id);</pre>
+            </div>
+        </div>
+
+        <div class="step">
+            <div class="step-number">Step 3: Paste and Run</div>
+            <p>In the Supabase SQL Editor:</p>
+            <ol>
+                <li>Paste the SQL (Cmd+V or Ctrl+V)</li>
+                <li>Click the <strong>"Run"</strong> button</li>
+                <li>Wait for the success message</li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <div class="step-number">Step 4: Verify</div>
+            <p>After running the SQL, verify the tables were created by running:</p>
+            <code>node scripts/check-test-api-gw.mjs</code>
+        </div>
+
+        <div class="step">
+            <div class="step-number">Step 5: Save Your Fixtures</div>
+            <p>Once the tables are created, go back to the <strong>Test API Admin</strong> page and save your 3 fixtures again!</p>
+        </div>
+    </div>
+
+    <script>
+        function copySQL() {
+            const sqlContent = document.getElementById('sql-content').textContent;
+            navigator.clipboard.writeText(sqlContent).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                const originalText = btn.textContent;
+                btn.textContent = '✓ Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                alert('Failed to copy. Please select and copy manually.');
+            });
+        }
+    </script>
+</body>
+</html>
+

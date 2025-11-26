@@ -71,3 +71,55 @@ export default defineConfig([
   },
 ])
 ```
+
+## Push Notifications (OneSignal via Despia + Supabase + Netlify Functions)
+
+Backend endpoints are provided to register OneSignal Player IDs and send notifications.
+
+### Environment variables
+
+For broadcast-only notifications (send to all subscribed users):
+- `ONESIGNAL_APP_ID`
+- `ONESIGNAL_REST_API_KEY`
+
+For targeted notifications by user (optional):
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY` (used to verify user tokens)
+- `SUPABASE_SERVICE_ROLE_KEY` (used for DB writes in functions)
+
+### Database (optional for targeted sends)
+
+Run the SQL in `supabase/sql/push_subscriptions.sql` on your Supabase project to create the `push_subscriptions` table and policies.
+
+### Endpoints
+
+- Broadcast to all: `POST /.netlify/functions/sendPushAll`
+  - Body: `{ "title": "string", "message": "string", "data": { ... } }`
+  - Sends to OneSignal `included_segments: ["Subscribed Users"]`.
+
+- Register Player ID (optional, for targeted sends): `POST /.netlify/functions/registerPlayer`
+  - Headers: `Authorization: Bearer <supabase-access-token>`
+  - Body: `{ "playerId": "string", "platform": "ios|android" }`
+
+- Send targeted push (optional): `POST /.netlify/functions/sendPush`
+  - Body: `{ "userIds": ["uuid"], "playerIds": ["string"], "title": "string", "message": "string", "data": { ... } }`
+
+### Client integration (native)
+
+Use `despia-native` on the client to obtain the OneSignal Player ID when you need targeted messaging.
+
+```ts
+import despia from 'despia-native'
+
+// Example: send the player ID to the backend (optional for targeted)
+await fetch('/.netlify/functions/registerPlayer', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${supabaseAccessToken}`,
+  },
+  body: JSON.stringify({ playerId: despia.onesignalplayerid, platform: 'ios' }),
+})
+```
+
+Reference: Despia OneSignal guide: https://lovable.despia.com/default-guide/native-features/onesignal

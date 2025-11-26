@@ -32,6 +32,7 @@ type TeamKey =
 function norm(s: string): string {
   return String(s || '')
     .toLowerCase()
+    .replace(/\s+fc\s*$/i, '') // Remove "FC" at end first
     .replace(/&/g, 'and')
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
@@ -46,22 +47,22 @@ const CLUBS: Record<
   'arsenal': {
     medium: 'Arsenal',
     slug: 'arsenal',
-    aliases: ['arsenal', 'ars', 'the arsenal'],
+    aliases: ['arsenal', 'arsenal fc', 'ars', 'the arsenal'],
   },
   'aston-villa': {
     medium: 'Villa',
     slug: 'aston-villa',
-    aliases: ['aston villa', 'villa', 'avl'],
+    aliases: ['aston villa', 'aston villa fc', 'villa', 'avl'],
   },
   'bournemouth': {
     medium: 'Bournemouth',
     slug: 'bournemouth',
-    aliases: ['bournemouth', 'afc bournemouth', 'bou'],
+    aliases: ['bournemouth', 'afc bournemouth', 'bournemouth fc', 'bou'],
   },
   'brentford': {
     medium: 'Brentford',
     slug: 'brentford',
-    aliases: ['brentford', 'bre'],
+    aliases: ['brentford', 'brentford fc', 'bre'],
   },
   'brighton': {
     medium: 'Brighton',
@@ -70,28 +71,31 @@ const CLUBS: Record<
       'brighton',
       'brighton and hove albion',
       'brighton & hove albion',
+      'brighton and hove albion fc',
+      'brighton & hove albion fc',
+      'brighton hove',
       'bha',
     ],
   },
   'chelsea': {
     medium: 'Chelsea',
     slug: 'chelsea',
-    aliases: ['chelsea', 'che'],
+    aliases: ['chelsea', 'chelsea fc', 'che'],
   },
   'crystal-palace': {
     medium: 'Palace',
     slug: 'crystal-palace',
-    aliases: ['crystal palace', 'palace', 'cry'],
+    aliases: ['crystal palace', 'crystal palace fc', 'palace', 'cry'],
   },
   'everton': {
     medium: 'Everton',
     slug: 'everton',
-    aliases: ['everton', 'eve'],
+    aliases: ['everton', 'everton fc', 'eve'],
   },
   'fulham': {
     medium: 'Fulham',
     slug: 'fulham',
-    aliases: ['fulham', 'ful'],
+    aliases: ['fulham', 'fulham fc', 'ful'],
   },
   'ipswich': {
     medium: 'Ipswich',
@@ -101,7 +105,7 @@ const CLUBS: Record<
   'leeds': {
     medium: 'Leeds',
     slug: 'leeds',
-    aliases: ['leeds', 'leeds united', 'lee'],
+    aliases: ['leeds', 'leeds united', 'leeds united fc', 'lee'],
   },
   'leicester': {
     medium: 'Leicester',
@@ -111,57 +115,57 @@ const CLUBS: Record<
   'liverpool': {
     medium: 'Liverpool',
     slug: 'liverpool',
-    aliases: ['liverpool', 'liv'],
+    aliases: ['liverpool', 'liverpool fc', 'liv'],
   },
   'man-city': {
     medium: 'Man City',
     slug: 'man-city',
-    aliases: ['manchester city', 'man city', 'mci', 'city'],
+    aliases: ['manchester city', 'manchester city fc', 'man city', 'mci', 'city'],
   },
   'man-united': {
     medium: 'Man United',
     slug: 'man-united',
-    aliases: ['manchester united', 'man united', 'man utd', 'mun', 'united'],
+    aliases: ['manchester united', 'manchester united fc', 'man united', 'man utd', 'mun', 'united'],
   },
   'newcastle': {
     medium: 'Newcastle',
     slug: 'newcastle',
-    aliases: ['newcastle', 'newcastle united', 'new'],
+    aliases: ['newcastle', 'newcastle united', 'newcastle united fc', 'new'],
   },
   'nottingham-forest': {
     medium: 'Forest',
     slug: 'nottingham-forest',
-    aliases: ['nottingham forest', 'forest', 'nfo', 'not'],
+    aliases: ['nottingham forest', 'nottingham forest fc', 'nottingham', 'forest', 'nfo', 'not'],
   },
   'southampton': {
     medium: 'Southampton',
     slug: 'southampton',
-    aliases: ['southampton', 'sou'],
+    aliases: ['southampton', 'southampton fc', 'sou'],
   },
   'spurs': {
     medium: 'Spurs',
     slug: 'spurs',
-    aliases: ['tottenham', 'tottenham hotspur', 'spurs', 'tot'],
+    aliases: ['tottenham', 'tottenham hotspur', 'tottenham hotspur fc', 'spurs', 'tot'],
   },
   'west-ham': {
     medium: 'West Ham',
     slug: 'west-ham',
-    aliases: ['west ham', 'west ham united', 'whu'],
+    aliases: ['west ham', 'west ham united', 'west ham united fc', 'whu'],
   },
   'wolves': {
     medium: 'Wolves',
     slug: 'wolves',
-    aliases: ['wolves', 'wolverhampton wanderers', 'wolverhampton', 'wol'],
+    aliases: ['wolves', 'wolverhampton wanderers', 'wolverhampton wanderers fc', 'wolverhampton', 'wol'],
   },
   'sunderland': {
     medium: 'Sunderland',
     slug: 'sunderland',
-    aliases: ['sunderland', 'sun'],
+    aliases: ['sunderland', 'sunderland fc', 'sun'],
   },
   'burnley': {
     medium: 'Burnley',
     slug: 'burnley',
-    aliases: ['burnley', 'bur'],
+    aliases: ['burnley', 'burnley fc', 'bur'],
   },
 };
 
