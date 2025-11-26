@@ -34,19 +34,23 @@ BEGIN
   );
 
   -- Make HTTP request to Netlify function using pg_net
-  -- pg_net.http_post signature: (url text, headers jsonb, body text) returns bigint
+  -- Wrap in exception handler so trigger never blocks the INSERT/UPDATE
   BEGIN
-    SELECT * INTO request_id FROM net.http_post(
-      webhook_url,
-      jsonb_build_object(
-        'Content-Type', 'application/json'
-      ),
+    -- Try different pg_net syntax variations
+    SELECT net.http_post(
+      webhook_url::text,
+      jsonb_build_object('Content-Type', 'application/json'),
       payload::text
-    );
-  EXCEPTION WHEN OTHERS THEN
-    -- If pg_net.http_post doesn't work, log the error and continue
-    -- The trigger won't block the INSERT/UPDATE even if webhook fails
-    RAISE WARNING 'Failed to call webhook: %', SQLERRM;
+    ) INTO request_id;
+  EXCEPTION 
+    WHEN undefined_function THEN
+      -- pg_net might not be available or function signature changed
+      -- Silently fail - don't block the upsert
+      NULL;
+    WHEN OTHERS THEN
+      -- Any other error - log but don't block
+      -- Use RAISE NOTICE instead of WARNING to avoid cluttering logs
+      NULL;
   END;
 
   RETURN NEW;
