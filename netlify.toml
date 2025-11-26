@@ -10,10 +10,10 @@
 [functions."pollLiveScores"]
   schedule = "* * * * *"  # Every minute (5 fields: minute hour day month weekday)
 
-# Scheduled function to send score notifications every 2 minutes
-# DISABLED: Now using webhook for instant notifications (sendScoreNotificationsWebhook)
-# [functions."sendScoreNotifications"]
-#   schedule = "*/2 * * * *"
+# Scheduled function to send score notifications every minute
+# Runs every minute to catch 15-minute pre-kickoff window and score updates
+[functions."sendScoreNotifications"]
+  schedule = "* * * * *"  # Every minute (5 fields: minute hour day month weekday)
 
 # Ignore secrets scanning for helper scripts and .env file
 [build.environment]

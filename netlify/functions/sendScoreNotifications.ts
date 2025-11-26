@@ -335,10 +335,23 @@ async function checkAndSendScoreNotifications() {
     
     // Check for 15-minute pre-kickoff notifications (for fixtures that haven't started yet)
     const now = new Date();
+    // For test fixtures, prioritize GW T1 (test_gw = 1) if it exists
+    let testGwForQuery = currentTestGw;
+    if (testGwForQuery === null) {
+      // If currentTestGw is null, check if GW T1 exists
+      const { data: t1Check } = await supabase
+        .from('test_api_fixtures')
+        .select('test_gw')
+        .eq('test_gw', 1)
+        .limit(1)
+        .maybeSingle();
+      testGwForQuery = t1Check ? 1 : null;
+    }
+    
     const { data: upcomingFixtures } = await supabase
       .from('test_api_fixtures')
       .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, test_gw')
-      .eq('test_gw', currentTestGw || 0)
+      .eq('test_gw', testGwForQuery || 0)
       .not('kickoff_time', 'is', null);
     
     if (upcomingFixtures) {
