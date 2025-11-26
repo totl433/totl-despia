@@ -841,20 +841,24 @@ async function checkAndSendScoreNotifications() {
           
           // Only send notification if there are actually new goals
           if (newGoals.length > 0) {
-            // Show scorer name(s) in notification
-            const goalTexts = newGoals.map((g: any) => {
-              const scorer = g.scorer || 'Unknown';
-              const minute = g.minute !== null && g.minute !== undefined ? `${g.minute}'` : '';
-              return `${scorer}${minute ? ` ${minute}` : ''}`;
+            // Sort new goals by minute (most recent first) and only show the newest one
+            const sortedNewGoals = newGoals.sort((a: any, b: any) => {
+              const aMin = a.minute ?? 0;
+              const bMin = b.minute ?? 0;
+              return bMin - aMin; // Descending order (newest first)
             });
             
-            title = `⚽ GOAL! ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
-            message = goalTexts.join(', ');
+            // Only show the newest goal scorer
+            const newestGoal = sortedNewGoals[0];
+            const scorer = newestGoal.scorer || 'Unknown';
+            const minute = newestGoal.minute !== null && newestGoal.minute !== undefined ? `${newestGoal.minute}'` : '';
             
-            console.log(`[sendScoreNotifications] Found ${newGoals.length} new goal(s) for match ${notification.apiMatchId}:`, {
-              previousGoalsCount: previousGoals.length,
-              currentGoalsCount: currentGoals.length,
-              newGoals: newGoals.map((g: any) => `${g.scorer} ${g.minute}'`)
+            title = `⚽ GOAL! ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
+            message = `${scorer}${minute ? ` ${minute}` : ''}`;
+            
+            console.log(`[sendScoreNotifications] Found ${newGoals.length} new goal(s) for match ${notification.apiMatchId}, showing newest:`, {
+              newestGoal: `${scorer} ${minute}`,
+              allNewGoals: newGoals.map((g: any) => `${g.scorer} ${g.minute}'`)
             });
           } else {
             // No new goals detected - skip this notification
@@ -893,7 +897,8 @@ async function checkAndSendScoreNotifications() {
         }
       }
 
-      // Update notification state (once per match, not per user)
+      // Update notification state IMMEDIATELY after sending notifications (once per match, not per user)
+      // This prevents duplicate notifications if the function runs again before all users are notified
       // Store goals and red cards for next comparison
       await supabase
         .from('notification_state')
@@ -908,6 +913,8 @@ async function checkAndSendScoreNotifications() {
         } as any, {
           onConflict: 'api_match_id',
         });
+      
+      console.log(`[sendScoreNotifications] Updated notification state for match ${notification.apiMatchId} to prevent duplicates`);
     }
 
     console.log(`[sendScoreNotifications] Total notifications sent: ${totalSent}`);
