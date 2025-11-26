@@ -133,11 +133,12 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
                   const newScore = payload.new as LiveScore;
                   if (shouldInclude(newScore)) {
                     const prevScore = prev.get(newScore.api_match_id);
-                    // Check if score, status, goals, or red cards changed
+                    // Check if score, status, minute, goals, or red cards changed
                     const scoreChanged = !prevScore || 
                       prevScore.home_score !== newScore.home_score ||
                       prevScore.away_score !== newScore.away_score ||
                       prevScore.status !== newScore.status ||
+                      prevScore.minute !== newScore.minute ||
                       JSON.stringify(prevScore.goals) !== JSON.stringify(newScore.goals) ||
                       JSON.stringify(prevScore.red_cards) !== JSON.stringify(newScore.red_cards);
                     
