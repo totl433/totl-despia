@@ -242,12 +242,21 @@ export const handler: Handler = async (event, context) => {
     const fixtureGw = fixture.gw || currentGw;
     const isTestFixture = fixtureGw === testGw;
 
-    // Get notification state
+    // Get notification state - fetch fresh from database
     const { data: state } = await supabase
       .from('notification_state')
       .select('*')
       .eq('api_match_id', apiMatchId)
       .maybeSingle();
+
+    console.log(`[sendScoreNotificationsWebhook] Processing match ${apiMatchId}:`, {
+      scoreChange: isScoreChange,
+      homeScore: `${oldHomeScore} -> ${homeScore}`,
+      awayScore: `${oldAwayScore} -> ${awayScore}`,
+      goalsCount: Array.isArray(goals) ? goals.length : 0,
+      previousGoalsCount: state?.last_notified_goals ? (Array.isArray(state.last_notified_goals) ? state.last_notified_goals.length : 0) : 0,
+      oldGoalsCount: Array.isArray(oldGoals) ? oldGoals.length : 0,
+    });
 
     // Process goals - check for new goals
     // Also handle score changes even if goals array is empty (for manual updates)
@@ -402,11 +411,31 @@ export const handler: Handler = async (event, context) => {
       const newGoals = goals.filter((g: any) => {
         if (!g || typeof g !== 'object') return false;
         const key = normalizeGoalKey(g);
-        return !previousGoalKeys.has(key);
+        const isNew = !previousGoalKeys.has(key);
+        if (isNew) {
+          console.log(`[sendScoreNotificationsWebhook] ✅ NEW GOAL DETECTED:`, {
+            scorer: g.scorer,
+            minute: g.minute,
+            teamId: g.teamId,
+            key,
+          });
+        }
+        return isNew;
+      });
+
+      console.log(`[sendScoreNotificationsWebhook] Goal comparison:`, {
+        currentGoals: goals.map((g: any) => `${g.scorer} ${g.minute}'`),
+        previousGoals: previousGoalsArray.map((g: any) => `${g.scorer} ${g.minute}'`),
+        newGoalsCount: newGoals.length,
       });
 
       if (newGoals.length === 0) {
-        console.log(`[sendScoreNotificationsWebhook] 🚫 SKIPPING - no new goals`);
+        console.log(`[sendScoreNotificationsWebhook] 🚫 SKIPPING - no new goals detected`, {
+          currentGoalsCount: goals.length,
+          previousGoalsCount: previousGoalsArray.length,
+          currentGoals: goals.map((g: any) => `${g.scorer} ${g.minute}'`),
+          previousGoals: previousGoalsArray.map((g: any) => `${g.scorer} ${g.minute}'`),
+        });
         // Update state but don't send notification
         await supabase
           .from('notification_state')
