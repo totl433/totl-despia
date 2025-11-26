@@ -212,14 +212,29 @@ async function pollAllLiveScores() {
       const homeScore = matchData.score?.fullTime?.home ?? matchData.score?.halfTime?.home ?? matchData.score?.current?.home ?? 0;
       const awayScore = matchData.score?.fullTime?.away ?? matchData.score?.halfTime?.away ?? matchData.score?.current?.away ?? 0;
       const status = matchData.status || 'SCHEDULED';
-      let minute: number | null = matchData.minute ?? null;
+      
+      // Try multiple possible locations for minute in API response
+      // The API might provide it as: matchData.minute, matchData.currentMinute, or in score object
+      let minute: number | null = matchData.minute ?? 
+                                  matchData.currentMinute ?? 
+                                  matchData.score?.minute ?? 
+                                  null;
+
+      console.log(`[pollLiveScores] Match ${apiMatchId} - API minute value:`, {
+        minute: matchData.minute,
+        currentMinute: matchData.currentMinute,
+        scoreMinute: matchData.score?.minute,
+        status,
+        homeScore,
+        awayScore
+      });
 
       // For finished games, always set minute to null (FT doesn't need minute)
       if (status === 'FINISHED') {
         minute = null;
       }
       // If API doesn't provide a minute but game is live/paused, derive it from kickoff time
-      else if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED')) {
+      else if ((minute === null || minute === undefined || minute === 0) && (status === 'IN_PLAY' || status === 'PAUSED')) {
         const kickoffISO = fixture.kickoff_time || matchData.utcDate;
         if (kickoffISO) {
           try {
@@ -229,12 +244,18 @@ async function pollAllLiveScores() {
 
             // Only trust reasonable values
             if (diffMinutes > 0 && diffMinutes < 130) {
+              console.log(`[pollLiveScores] Derived minute from kickoff time for match ${apiMatchId}: ${diffMinutes} minutes`);
               minute = diffMinutes;
             }
           } catch (e) {
             console.warn('[pollLiveScores] Error deriving minute from kickoff time:', e);
           }
         }
+      }
+      
+      // Log final minute value being stored
+      if (status === 'IN_PLAY' || status === 'PAUSED') {
+        console.log(`[pollLiveScores] Match ${apiMatchId} - Final minute value to store: ${minute}`);
       }
 
       // Extract goals and bookings from API response
