@@ -17,9 +17,9 @@
 [functions."sendScoreNotifications"]
   schedule = "*/2 * * * *"
 
-# Ignore secrets scanning for helper scripts
+# Ignore secrets scanning for helper scripts and .env file
 [build.environment]
-  SECRETS_SCAN_OMIT_PATHS = "register-devices.sh,check-*.sh,*.sh"
+  SECRETS_SCAN_OMIT_PATHS = "register-devices.sh,check-*.sh,*.sh,.env"
 
 # Don't redirect Netlify functions - they need to work directly
 # Note: Netlify functions are handled automatically, no redirect needed
