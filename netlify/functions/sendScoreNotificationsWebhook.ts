@@ -277,121 +277,6 @@ export const handler: Handler = async (event, context) => {
     // We compare against state.last_notified_goals (what we've already notified), not old_record.goals
     if (Array.isArray(goals) && goals.length > 0) {
       // Always check for new goals compared to what we've notified about
-        // Score changed but no goals data - send simple score update notification
-        let picks: any[] = [];
-        if (isTestFixture && testGw) {
-          const { data: testPicks } = await supabase
-            .from('test_api_picks')
-            .select('user_id, pick')
-            .eq('matchday', testGw)
-            .eq('fixture_index', fixture.fixture_index);
-          picks = testPicks || [];
-        } else {
-          const { data: regularPicks } = await supabase
-            .from('picks')
-            .select('user_id, pick')
-            .eq('gw', fixtureGw)
-            .eq('fixture_index', fixture.fixture_index);
-          picks = regularPicks || [];
-        }
-
-        if (picks.length === 0) {
-          console.log(`[sendScoreNotificationsWebhook] No picks found for fixture ${fixture.fixture_index}`);
-          return {
-            statusCode: 200,
-            headers,
-            body: JSON.stringify({ message: 'No picks found' }),
-          };
-        }
-
-        // Check if we've already notified for this exact score recently
-        if (state?.last_notified_at) {
-          const lastNotifiedTime = new Date(state.last_notified_at).getTime();
-          const now = Date.now();
-          const twoMinutes = 2 * 60 * 1000;
-          if (now - lastNotifiedTime < twoMinutes && 
-              state.last_notified_home_score === homeScore && 
-              state.last_notified_away_score === awayScore) {
-            console.log(`[sendScoreNotificationsWebhook] 🚫 SKIPPING - already notified for this score`);
-            return {
-              statusCode: 200,
-              headers,
-              body: JSON.stringify({ message: 'Already notified' }),
-            };
-          }
-        }
-
-        // Get push subscriptions
-        const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
-        const { data: subscriptions } = await supabase
-          .from('push_subscriptions')
-          .select('user_id, player_id')
-          .in('user_id', userIds)
-          .eq('is_active', true);
-
-        const playerIdsByUser = new Map<string, string[]>();
-        (subscriptions || []).forEach((sub: any) => {
-          if (!sub.player_id) return;
-          if (!playerIdsByUser.has(sub.user_id)) {
-            playerIdsByUser.set(sub.user_id, []);
-          }
-          playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
-        });
-
-        // Send notification to each user
-        let totalSent = 0;
-        const title = `⚽ GOAL! ${fixture.home_team} ${homeScore}-${awayScore} ${fixture.away_team}`;
-        const message = `Score updated`;
-
-        for (const pick of picks) {
-          const playerIds = playerIdsByUser.get(pick.user_id) || [];
-          if (playerIds.length === 0) continue;
-
-          const result = await sendOneSignalNotification(
-            playerIds,
-            title,
-            message,
-            {
-              type: 'goal',
-              api_match_id: apiMatchId,
-              fixture_index: fixture.fixture_index,
-              gw: fixtureGw,
-            }
-          );
-
-          if (result.success) {
-            totalSent += result.sentTo;
-            console.log(`[sendScoreNotificationsWebhook] Sent score update notification to user ${pick.user_id} (${result.sentTo} devices)`);
-          }
-        }
-
-        // Update state
-        await supabase
-          .from('notification_state')
-          .upsert({
-            api_match_id: apiMatchId,
-            last_notified_home_score: homeScore,
-            last_notified_away_score: awayScore,
-            last_notified_status: status,
-            last_notified_at: new Date().toISOString(),
-            last_notified_goals: goals || [],
-            last_notified_red_cards: redCards || null,
-          } as any, {
-            onConflict: 'api_match_id',
-          });
-
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({
-            message: 'Score update notification sent',
-            sentTo: totalSent,
-          }),
-        };
-      }
-
-      // Original logic for when goals array exists and has items
-      if (Array.isArray(goals) && goals.length > 0) {
       const normalizeGoalKey = (g: any): string => {
         if (!g || typeof g !== 'object') return '';
         const scorer = (g.scorer || '').toString().trim().toLowerCase();
@@ -585,7 +470,121 @@ export const handler: Handler = async (event, context) => {
           newGoals: newGoals.length,
         }),
       };
+    }
+
+    // Handle score changes without goals (for manual updates)
+    if (isScoreChange && (!Array.isArray(goals) || goals.length === 0)) {
+      // Score changed but no goals data - send simple score update notification
+      let picks: any[] = [];
+      if (isTestFixture && testGw) {
+        const { data: testPicks } = await supabase
+          .from('test_api_picks')
+          .select('user_id, pick')
+          .eq('matchday', testGw)
+          .eq('fixture_index', fixture.fixture_index);
+        picks = testPicks || [];
+      } else {
+        const { data: regularPicks } = await supabase
+          .from('picks')
+          .select('user_id, pick')
+          .eq('gw', fixtureGw)
+          .eq('fixture_index', fixture.fixture_index);
+        picks = regularPicks || [];
       }
+
+      if (picks.length === 0) {
+        console.log(`[sendScoreNotificationsWebhook] No picks found for fixture ${fixture.fixture_index}`);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ message: 'No picks found' }),
+        };
+      }
+
+      // Check if we've already notified for this exact score recently
+      if (state?.last_notified_at) {
+        const lastNotifiedTime = new Date(state.last_notified_at).getTime();
+        const now = Date.now();
+        const twoMinutes = 2 * 60 * 1000;
+        if (now - lastNotifiedTime < twoMinutes && 
+            state.last_notified_home_score === homeScore && 
+            state.last_notified_away_score === awayScore) {
+          console.log(`[sendScoreNotificationsWebhook] 🚫 SKIPPING - already notified for this score`);
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ message: 'Already notified' }),
+          };
+        }
+      }
+
+      // Get push subscriptions
+      const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
+      const { data: subscriptions } = await supabase
+        .from('push_subscriptions')
+        .select('user_id, player_id')
+        .in('user_id', userIds)
+        .eq('is_active', true);
+
+      const playerIdsByUser = new Map<string, string[]>();
+      (subscriptions || []).forEach((sub: any) => {
+        if (!sub.player_id) return;
+        if (!playerIdsByUser.has(sub.user_id)) {
+          playerIdsByUser.set(sub.user_id, []);
+        }
+        playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
+      });
+
+      // Send notification to each user
+      let totalSent = 0;
+      const title = `⚽ GOAL! ${fixture.home_team} ${homeScore}-${awayScore} ${fixture.away_team}`;
+      const message = `Score updated`;
+
+      for (const pick of picks) {
+        const playerIds = playerIdsByUser.get(pick.user_id) || [];
+        if (playerIds.length === 0) continue;
+
+        const result = await sendOneSignalNotification(
+          playerIds,
+          title,
+          message,
+          {
+            type: 'goal',
+            api_match_id: apiMatchId,
+            fixture_index: fixture.fixture_index,
+            gw: fixtureGw,
+          }
+        );
+
+        if (result.success) {
+          totalSent += result.sentTo;
+          console.log(`[sendScoreNotificationsWebhook] Sent score update notification to user ${pick.user_id} (${result.sentTo} devices)`);
+        }
+      }
+
+      // Update state
+      await supabase
+        .from('notification_state')
+        .upsert({
+          api_match_id: apiMatchId,
+          last_notified_home_score: homeScore,
+          last_notified_away_score: awayScore,
+          last_notified_status: status,
+          last_notified_at: new Date().toISOString(),
+          last_notified_goals: goals || [],
+          last_notified_red_cards: redCards || null,
+        } as any, {
+          onConflict: 'api_match_id',
+        });
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          message: 'Score update notification sent',
+          sentTo: totalSent,
+        }),
+      };
     }
 
     // Handle kickoff
