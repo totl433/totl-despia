@@ -326,15 +326,28 @@ async function pollAllLiveScores() {
       } else {
         console.log(`[pollLiveScores] Successfully updated ${updates.length} live scores`);
         
-        // Trigger notifications by calling webhook function directly
-        // This ensures notifications work even if database trigger isn't set up
-        // Use multiple env vars to determine the correct URL (same logic as handler)
+        // Only trigger webhook for records that actually changed (to prevent unnecessary calls)
         const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://totl-staging.netlify.app';
         const webhookUrl = `${siteUrl}/.netlify/functions/sendScoreNotificationsWebhook`;
         
-        // Call webhook for each updated record (fire and forget - don't wait)
+        let webhookCalls = 0;
+        // Call webhook only for records with actual changes
         for (const update of updates) {
           const oldRecord = existingMap.get(update.api_match_id) || null;
+          
+          // Check if there's an actual change worth notifying about
+          if (oldRecord) {
+            const scoreChanged = (update.home_score !== oldRecord.home_score) || (update.away_score !== oldRecord.away_score);
+            const statusChanged = update.status !== oldRecord.status;
+            const goalsChanged = JSON.stringify(update.goals || []) !== JSON.stringify(oldRecord.goals || []);
+            const redCardsChanged = JSON.stringify(update.red_cards || []) !== JSON.stringify(oldRecord.red_cards || []);
+            
+            // Only call webhook if something actually changed
+            if (!scoreChanged && !statusChanged && !goalsChanged && !redCardsChanged) {
+              console.log(`[pollLiveScores] Skipping webhook for match ${update.api_match_id} - no changes detected`);
+              continue;
+            }
+          }
           
           // Build webhook payload
           const webhookPayload = {
@@ -352,9 +365,11 @@ async function pollAllLiveScores() {
           }).catch((err) => {
             console.error(`[pollLiveScores] Failed to trigger webhook for match ${update.api_match_id}:`, err);
           });
+          
+          webhookCalls++;
         }
         
-        console.log(`[pollLiveScores] Triggered webhook notifications for ${updates.length} matches`);
+        console.log(`[pollLiveScores] Triggered webhook notifications for ${webhookCalls} matches (${updates.length} total updates)`);
       }
     }
 
