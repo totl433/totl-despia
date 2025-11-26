@@ -253,9 +253,14 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
       }
       
       const goalTeam = goal.team || '';
+      // Normalize goal team name - handle case variations like "Paris Saint-germain" vs "Paris Saint-Germain"
       const normalizedGoalTeam = getMediumName(goalTeam);
+      // Also get raw normalized version for better matching
+      const goalTeamNormalized = goalTeam.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
       const normalizedHomeTeam = liveScore.home_team ? getMediumName(liveScore.home_team) : homeName;
       const normalizedAwayTeam = liveScore.away_team ? getMediumName(liveScore.away_team) : awayName;
+      const homeTeamNormalized = normalizedHomeTeam.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const awayTeamNormalized = normalizedAwayTeam.toLowerCase().replace(/[^a-z0-9]/g, '');
       
       const goalTeamNoPrefix = removePrefix(normalizedGoalTeam);
       const homeTeamNoPrefix = removePrefix(normalizedHomeTeam);
@@ -281,7 +286,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
         
         // Special handling for common abbreviations
         const abbreviationMap: Record<string, string[]> = {
-          'psg': ['parissaintgermain', 'paris saint germain', 'paris saint-germain'],
+          'psg': ['parissaintgermain', 'paris saint germain', 'paris saint-germain', 'paris saintgermain'],
           'spurs': ['tottenham', 'tottenham hotspur'],
           'man city': ['manchester city'],
           'man united': ['manchester united'],
@@ -292,10 +297,26 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
           const n1IsAbbr = n1 === abbr;
           const n2IsAbbr = n2 === abbr;
           
-          if (n1IsAbbr && fullNames.some(full => n2.includes(full.replace(/[^a-z0-9]/g, '')))) {
+          // Check if n1 is the abbreviation and n2 contains any of the full names
+          if (n1IsAbbr && fullNames.some(full => {
+            const fullNormalized = full.replace(/[^a-z0-9]/g, '');
+            return n2.includes(fullNormalized) || fullNormalized.includes(n2);
+          })) {
             return true;
           }
-          if (n2IsAbbr && fullNames.some(full => n1.includes(full.replace(/[^a-z0-9]/g, '')))) {
+          // Check if n2 is the abbreviation and n1 contains any of the full names
+          if (n2IsAbbr && fullNames.some(full => {
+            const fullNormalized = full.replace(/[^a-z0-9]/g, '');
+            return n1.includes(fullNormalized) || fullNormalized.includes(n1);
+          })) {
+            return true;
+          }
+          // Also check if both are variations of the same team (e.g., "parissaintgermain" vs "parissaintgermain")
+          if (fullNames.some(full => {
+            const fullNormalized = full.replace(/[^a-z0-9]/g, '');
+            return (n1.includes(fullNormalized) || fullNormalized.includes(n1)) &&
+                   (n2.includes(fullNormalized) || fullNormalized.includes(n2));
+          })) {
             return true;
           }
         }
@@ -312,6 +333,17 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
         liveScore.home_team || ''
       ].filter(Boolean);
       
+      // Check normalized versions for PSG matching (handles "parissaintgermain" variations)
+      const matchesHomeNormalized = goalTeamNormalized === homeTeamNormalized ||
+                                     (goalTeamNormalized.includes('parissaintgermain') && homeTeamNormalized === 'psg') ||
+                                     (homeTeamNormalized.includes('parissaintgermain') && goalTeamNormalized === 'psg') ||
+                                     (goalTeamNormalized.includes('parissaintgermain') && homeTeamNormalized.includes('parissaintgermain'));
+      
+      const matchesAwayNormalized = goalTeamNormalized === awayTeamNormalized ||
+                                    (goalTeamNormalized.includes('parissaintgermain') && awayTeamNormalized === 'psg') ||
+                                    (awayTeamNormalized.includes('parissaintgermain') && goalTeamNormalized === 'psg') ||
+                                    (goalTeamNormalized.includes('parissaintgermain') && awayTeamNormalized.includes('parissaintgermain'));
+      
       const matchesHome = normalizedGoalTeam === normalizedHomeTeam ||
              goalTeamNoPrefix === homeTeamNoPrefix ||
              goalStartsWithTeam(normalizedGoalTeam, normalizedHomeTeam) ||
@@ -319,6 +351,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
              normalizedGoalTeam === getMediumName(f.home_team || '') ||
              normalizedGoalTeam === getMediumName(f.home_name || '') ||
              goalTeam.toLowerCase() === homeName.toLowerCase() ||
+             matchesHomeNormalized ||
              homeTeamVariations.some(variant => 
                goalTeam.toLowerCase() === variant.toLowerCase() ||
                areSimilarNames(goalTeam, variant) ||
@@ -341,6 +374,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
              normalizedGoalTeam === getMediumName(f.away_team || '') ||
              normalizedGoalTeam === getMediumName(f.away_name || '') ||
              goalTeam.toLowerCase() === awayName.toLowerCase() ||
+             matchesAwayNormalized ||
              awayTeamVariations.some(variant => 
                goalTeam.toLowerCase() === variant.toLowerCase() ||
                areSimilarNames(goalTeam, variant) ||
@@ -383,41 +417,61 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
     }
     
     // CRITICAL: Re-check and correct misassigned goals using score
-    // If the score doesn't match our assignments, we need to fix them
+    // The score is the source of truth - if our assignments don't match, fix them
     const finalHomeCount = homeGoalsByName.length;
     const finalAwayCount = awayGoalsByName.length;
+    const totalGoals = allGoals.length;
     
-    // If we have too many goals assigned to one team, move the excess to the other
-    if (finalHomeCount > homeScore && finalAwayCount < awayScore) {
-      // Too many home goals, not enough away goals - move excess to away
-      const excess = finalHomeCount - homeScore;
-      const needed = awayScore - finalAwayCount;
-      const toMove = Math.min(excess, needed);
+    // If total goals don't match score, we have a problem - but still try to fix assignments
+    if (totalGoals !== (homeScore + awayScore)) {
+      console.warn('[FixtureCard] Goal count mismatch:', {
+        totalGoals,
+        homeScore,
+        awayScore,
+        expectedTotal: homeScore + awayScore
+      });
+    }
+    
+    // Force correction: ensure home/away goal counts match the score exactly
+    // If they don't match, reassign goals to make them match
+    if (finalHomeCount !== homeScore || finalAwayCount !== awayScore) {
+      console.log('[FixtureCard] Score-based correction needed:', {
+        homeCount: finalHomeCount,
+        homeScore,
+        awayCount: finalAwayCount,
+        awayScore,
+        totalGoals
+      });
       
-      // Move the most recently scored goals (highest minute) from home to away
-      const sortedHomeGoals = [...homeGoalsByName].sort((a, b) => (b.minute ?? 0) - (a.minute ?? 0));
-      for (let i = 0; i < toMove; i++) {
-        const goal = sortedHomeGoals[i];
-        const index = homeGoalsByName.indexOf(goal);
-        if (index > -1) {
-          homeGoalsByName.splice(index, 1);
-          awayGoalsByName.push(goal);
+      // Calculate what we need
+      const homeGoalsNeeded = homeScore - finalHomeCount;
+      const awayGoalsNeeded = awayScore - finalAwayCount;
+      
+      if (homeGoalsNeeded > 0 && awayGoalsNeeded < 0) {
+        // Need to move goals from away to home
+        const toMove = Math.min(Math.abs(awayGoalsNeeded), homeGoalsNeeded);
+        const sortedAwayGoals = [...awayGoalsByName].sort((a, b) => (b.minute ?? 0) - (a.minute ?? 0));
+        for (let i = 0; i < toMove; i++) {
+          const goal = sortedAwayGoals[i];
+          const index = awayGoalsByName.indexOf(goal);
+          if (index > -1) {
+            awayGoalsByName.splice(index, 1);
+            homeGoalsByName.push(goal);
+            console.log('[FixtureCard] Moved goal from away to home:', goal.scorer, goal.minute);
+          }
         }
-      }
-    } else if (finalAwayCount > awayScore && finalHomeCount < homeScore) {
-      // Too many away goals, not enough home goals - move excess to home
-      const excess = finalAwayCount - awayScore;
-      const needed = homeScore - finalHomeCount;
-      const toMove = Math.min(excess, needed);
-      
-      // Move the most recently scored goals (highest minute) from away to home
-      const sortedAwayGoals = [...awayGoalsByName].sort((a, b) => (b.minute ?? 0) - (a.minute ?? 0));
-      for (let i = 0; i < toMove; i++) {
-        const goal = sortedAwayGoals[i];
-        const index = awayGoalsByName.indexOf(goal);
-        if (index > -1) {
-          awayGoalsByName.splice(index, 1);
-          homeGoalsByName.push(goal);
+      } else if (awayGoalsNeeded > 0 && homeGoalsNeeded < 0) {
+        // Need to move goals from home to away
+        const toMove = Math.min(Math.abs(homeGoalsNeeded), awayGoalsNeeded);
+        const sortedHomeGoals = [...homeGoalsByName].sort((a, b) => (b.minute ?? 0) - (a.minute ?? 0));
+        for (let i = 0; i < toMove; i++) {
+          const goal = sortedHomeGoals[i];
+          const index = homeGoalsByName.indexOf(goal);
+          if (index > -1) {
+            homeGoalsByName.splice(index, 1);
+            awayGoalsByName.push(goal);
+            console.log('[FixtureCard] Moved goal from home to away:', goal.scorer, goal.minute);
+          }
         }
       }
     }
