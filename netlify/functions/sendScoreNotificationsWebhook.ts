@@ -435,13 +435,33 @@ export const handler: Handler = async (event, context) => {
       const newestGoal = newGoals.sort((a: any, b: any) => (b.minute ?? 0) - (a.minute ?? 0))[0];
       const scorer = newestGoal.scorer || 'Unknown';
       const goalMinute = newestGoal.minute !== null && newestGoal.minute !== undefined ? `${newestGoal.minute}'` : '';
+      
+      // Determine which team scored (FotMob style)
+      const scoringTeam = newestGoal.team || '';
+      const normalizedScoringTeam = scoringTeam.toLowerCase().trim();
+      const normalizedHomeTeam = (fixture.home_team || '').toLowerCase().trim();
+      const normalizedAwayTeam = (fixture.away_team || '').toLowerCase().trim();
+      
+      const isHomeTeam = normalizedScoringTeam === normalizedHomeTeam ||
+                         normalizedScoringTeam.includes(normalizedHomeTeam) ||
+                         normalizedHomeTeam.includes(normalizedScoringTeam);
+      
+      // Format score with new goal highlighted (FotMob style)
+      // Example: "Team A 1 - [2] Team B" or "Team A [1] - 0 Team B"
+      let scoreDisplay: string;
+      if (isHomeTeam) {
+        scoreDisplay = `${fixture.home_team} [${homeScore}] - ${awayScore} ${fixture.away_team}`;
+      } else {
+        scoreDisplay = `${fixture.home_team} ${homeScore} - [${awayScore}] ${fixture.away_team}`;
+      }
 
       for (const pick of picks) {
         const playerIds = playerIdsByUser.get(pick.user_id) || [];
         if (playerIds.length === 0) continue;
 
-        const title = `⚽ GOAL! ${fixture.home_team} ${homeScore}-${awayScore} ${fixture.away_team}`;
-        const message = `${scorer}${goalMinute ? ` ${goalMinute}` : ''}`;
+        const teamName = isHomeTeam ? fixture.home_team : fixture.away_team;
+        const title = `${teamName} scores!`;
+        const message = `${goalMinute} ${scorer}\n${scoreDisplay}`;
 
         const result = await sendOneSignalNotification(
           playerIds,
