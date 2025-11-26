@@ -200,11 +200,23 @@ export const handler: Handler = async (event, context) => {
     const oldStatus = old_record?.status;
     const oldGoals = old_record?.goals || [];
 
+    // Check if goals array changed (compare JSON strings to detect any changes)
+    const goalsChanged = JSON.stringify(goals || []) !== JSON.stringify(oldGoals || []);
+
     // Check if this is a score change
     const isScoreChange = homeScore !== oldHomeScore || awayScore !== oldAwayScore;
     const isStatusChange = status !== oldStatus;
     const isKickoff = oldStatus !== 'IN_PLAY' && status === 'IN_PLAY' && homeScore === 0 && awayScore === 0;
     const isFinished = status === 'FINISHED' || status === 'FT';
+
+    console.log(`[sendScoreNotificationsWebhook] Change detection:`, {
+      scoreChange: isScoreChange,
+      goalsChanged,
+      homeScore: `${oldHomeScore} -> ${homeScore}`,
+      awayScore: `${oldAwayScore} -> ${awayScore}`,
+      currentGoalsCount: Array.isArray(goals) ? goals.length : 0,
+      oldGoalsCount: Array.isArray(oldGoals) ? oldGoals.length : 0,
+    });
 
     // Get fixture info
     const { data: fixture } = await supabase
@@ -260,7 +272,8 @@ export const handler: Handler = async (event, context) => {
 
     // Process goals - check for new goals
     // Also handle score changes even if goals array is empty (for manual updates)
-    if (isScoreChange) {
+    // OR if goals array changed (even if score didn't change yet)
+    if (isScoreChange || goalsChanged) {
       // If no goals array or empty, create a simple notification for score change
       if (!Array.isArray(goals) || goals.length === 0) {
         // Score changed but no goals data - send simple score update notification
