@@ -865,14 +865,15 @@ export const handler: Handler = async (event, context) => {
             }
           }
           
-          // Mark GW as notified
+          // Mark GW as notified by updating the current match's state with special status
+          // This marks that we've sent the end-of-GW notification
           await supabase
             .from('notification_state')
             .upsert({
-              api_match_id: `gw_${fixtureGw}`,
+              api_match_id: apiMatchId,
               last_notified_at: new Date().toISOString(),
-              last_notified_home_score: null,
-              last_notified_away_score: null,
+              last_notified_home_score: homeScore,
+              last_notified_away_score: awayScore,
               last_notified_status: 'GW_FINISHED',
             } as any, {
               onConflict: 'api_match_id',
