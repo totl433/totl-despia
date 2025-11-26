@@ -238,48 +238,176 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
     if (!showGoals) return null;
 
     const allGoals = liveScore.goals || [];
+    const homeScore = liveScore.homeScore || 0;
+    const awayScore = liveScore.awayScore || 0;
     
-    // Filter goals for this team
-    const teamGoals = allGoals.filter((goal: any) => {
-      if (!goal || !goal.team) return false;
-      const goalTeam = goal.team || '';
+    // Count goals by team name matching (for name-based matching)
+    const homeGoalsByName: any[] = [];
+    const awayGoalsByName: any[] = [];
+    const unmatchedGoals: any[] = [];
+    
+    allGoals.forEach((goal: any) => {
+      if (!goal || !goal.team) {
+        unmatchedGoals.push(goal);
+        return;
+      }
       
+      const goalTeam = goal.team || '';
       const normalizedGoalTeam = getMediumName(goalTeam);
-      const normalizedTeam = isHome 
-        ? (liveScore.home_team ? getMediumName(liveScore.home_team) : homeName)
-        : (liveScore.away_team ? getMediumName(liveScore.away_team) : awayName);
+      const normalizedHomeTeam = liveScore.home_team ? getMediumName(liveScore.home_team) : homeName;
+      const normalizedAwayTeam = liveScore.away_team ? getMediumName(liveScore.away_team) : awayName;
       
       const goalTeamNoPrefix = removePrefix(normalizedGoalTeam);
-      const teamNameNoPrefix = removePrefix(normalizedTeam);
-      // Only check the appropriate team name (home or away), not both
-      const fixtureTeamName = isHome ? homeName : awayName;
-      const fixtureTeamNameNoPrefix = removePrefix(fixtureTeamName);
+      const homeTeamNoPrefix = removePrefix(normalizedHomeTeam);
+      const awayTeamNoPrefix = removePrefix(normalizedAwayTeam);
       
-      // Helper to check if goal team name starts with fixture team name (handles "Grêmio Fbpa" vs "Grêmio")
+      // Helper to check if goal team name starts with fixture team name
       const goalStartsWithTeam = (goalTeamName: string, teamNameToMatch: string) => {
         const goalLower = goalTeamName.toLowerCase().trim();
         const teamLower = teamNameToMatch.toLowerCase().trim();
         return goalLower === teamLower || goalLower.startsWith(teamLower + ' ');
       };
       
-      // Match against the specific team we're looking for (not both teams)
-      const matches = normalizedGoalTeam === normalizedTeam ||
-             normalizedGoalTeam === teamName ||
-             goalTeamNoPrefix === teamNameNoPrefix ||
-             goalTeamNoPrefix === fixtureTeamNameNoPrefix ||
-             goalStartsWithTeam(normalizedGoalTeam, normalizedTeam) ||
-             goalStartsWithTeam(normalizedGoalTeam, teamName) ||
-             goalStartsWithTeam(normalizedGoalTeam, fixtureTeamName) ||
-             goalStartsWithTeam(goalTeamNoPrefix, teamNameNoPrefix) ||
-             goalStartsWithTeam(goalTeamNoPrefix, fixtureTeamNameNoPrefix) ||
-             normalizedGoalTeam === getMediumName(isHome ? (f.home_team || '') : (f.away_team || '')) ||
-             normalizedGoalTeam === getMediumName(isHome ? (f.home_name || '') : (f.away_name || '')) ||
-             goalTeam.toLowerCase() === teamName.toLowerCase() ||
-             goalTeam.toLowerCase() === fixtureTeamName.toLowerCase() ||
-             (goalTeamNoPrefix && teamNameNoPrefix && goalTeamNoPrefix.toLowerCase() === teamNameNoPrefix.toLowerCase());
+      // Helper to check if names are similar (handles "PSG" vs "Paris Saint-Germain", etc.)
+      const areSimilarNames = (name1: string, name2: string) => {
+        const n1 = name1.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const n2 = name2.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (n1.length >= 3 && n2.length >= 3) {
+          // Check if one contains the other
+          if (n1.includes(n2) || n2.includes(n1)) {
+            return true;
+          }
+        }
+        
+        // Special handling for common abbreviations
+        const abbreviationMap: Record<string, string[]> = {
+          'psg': ['parissaintgermain', 'paris saint germain', 'paris saint-germain'],
+          'spurs': ['tottenham', 'tottenham hotspur'],
+          'man city': ['manchester city'],
+          'man united': ['manchester united'],
+        };
+        
+        // Check if either name is an abbreviation of the other
+        for (const [abbr, fullNames] of Object.entries(abbreviationMap)) {
+          const n1IsAbbr = n1 === abbr;
+          const n2IsAbbr = n2 === abbr;
+          
+          if (n1IsAbbr && fullNames.some(full => n2.includes(full.replace(/[^a-z0-9]/g, '')))) {
+            return true;
+          }
+          if (n2IsAbbr && fullNames.some(full => n1.includes(full.replace(/[^a-z0-9]/g, '')))) {
+            return true;
+          }
+        }
+        
+        return false;
+      };
       
-      return matches;
+      // Try to match to home team - check all variations
+      const homeTeamVariations = [
+        homeName,
+        normalizedHomeTeam,
+        f.home_team || '',
+        f.home_name || '',
+        liveScore.home_team || ''
+      ].filter(Boolean);
+      
+      const matchesHome = normalizedGoalTeam === normalizedHomeTeam ||
+             goalTeamNoPrefix === homeTeamNoPrefix ||
+             goalStartsWithTeam(normalizedGoalTeam, normalizedHomeTeam) ||
+             goalStartsWithTeam(goalTeamNoPrefix, homeTeamNoPrefix) ||
+             normalizedGoalTeam === getMediumName(f.home_team || '') ||
+             normalizedGoalTeam === getMediumName(f.home_name || '') ||
+             goalTeam.toLowerCase() === homeName.toLowerCase() ||
+             homeTeamVariations.some(variant => 
+               goalTeam.toLowerCase() === variant.toLowerCase() ||
+               areSimilarNames(goalTeam, variant) ||
+               areSimilarNames(normalizedGoalTeam, getMediumName(variant))
+             );
+      
+      // Try to match to away team - check all variations
+      const awayTeamVariations = [
+        awayName,
+        normalizedAwayTeam,
+        f.away_team || '',
+        f.away_name || '',
+        liveScore.away_team || ''
+      ].filter(Boolean);
+      
+      const matchesAway = normalizedGoalTeam === normalizedAwayTeam ||
+             goalTeamNoPrefix === awayTeamNoPrefix ||
+             goalStartsWithTeam(normalizedGoalTeam, normalizedAwayTeam) ||
+             goalStartsWithTeam(goalTeamNoPrefix, awayTeamNoPrefix) ||
+             normalizedGoalTeam === getMediumName(f.away_team || '') ||
+             normalizedGoalTeam === getMediumName(f.away_name || '') ||
+             goalTeam.toLowerCase() === awayName.toLowerCase() ||
+             awayTeamVariations.some(variant => 
+               goalTeam.toLowerCase() === variant.toLowerCase() ||
+               areSimilarNames(goalTeam, variant) ||
+               areSimilarNames(normalizedGoalTeam, getMediumName(variant))
+             );
+      
+      if (matchesHome && !matchesAway) {
+        homeGoalsByName.push(goal);
+      } else if (matchesAway && !matchesHome) {
+        awayGoalsByName.push(goal);
+      } else {
+        unmatchedGoals.push(goal);
+      }
     });
+    
+    // Use score-based fallback for unmatched goals
+    // If we have unmatched goals and the score tells us which team scored, assign them
+    const homeGoalCount = homeGoalsByName.length;
+    const awayGoalCount = awayGoalsByName.length;
+    const unmatchedCount = unmatchedGoals.length;
+    
+    // If we have unmatched goals, try to assign them based on score
+    if (unmatchedCount > 0) {
+      const homeGoalsNeeded = homeScore - homeGoalCount;
+      const awayGoalsNeeded = awayScore - awayGoalCount;
+      
+      // Assign unmatched goals based on what's needed
+      let homeAssigned = 0;
+      let awayAssigned = 0;
+      
+      unmatchedGoals.forEach((goal) => {
+        if (homeAssigned < homeGoalsNeeded && homeGoalsNeeded > 0) {
+          homeGoalsByName.push(goal);
+          homeAssigned++;
+        } else if (awayAssigned < awayGoalsNeeded && awayGoalsNeeded > 0) {
+          awayGoalsByName.push(goal);
+          awayAssigned++;
+        } else {
+          // If we can't determine, try to match by teamId if available
+          // For now, assign to home if isHome, away if not
+          if (isHome && homeGoalsNeeded > 0) {
+            homeGoalsByName.push(goal);
+          } else if (!isHome && awayGoalsNeeded > 0) {
+            awayGoalsByName.push(goal);
+          }
+        }
+      });
+    }
+    
+    // Debug logging for PSG/Paris Saint-Germain
+    if ((teamName.toLowerCase().includes('psg') || teamName.toLowerCase().includes('paris'))) {
+      console.log('[FixtureCard] PSG goal matching debug:', {
+        teamName,
+        isHome,
+        homeScore,
+        awayScore,
+        homeGoalCount: homeGoalsByName.length,
+        awayGoalCount: awayGoalsByName.length,
+        unmatchedCount,
+        allGoals: allGoals.map((g: any) => ({ team: g.team, scorer: g.scorer, minute: g.minute, teamId: g.teamId })),
+        homeGoals: homeGoalsByName.map((g: any) => ({ team: g.team, scorer: g.scorer, minute: g.minute })),
+        awayGoals: awayGoalsByName.map((g: any) => ({ team: g.team, scorer: g.scorer, minute: g.minute }))
+      });
+    }
+    
+    // Select goals for the team we're rendering
+    const teamGoals = isHome ? homeGoalsByName : awayGoalsByName;
     
 
     // Group goals by scorer
