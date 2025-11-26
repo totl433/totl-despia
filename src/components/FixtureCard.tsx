@@ -356,18 +356,18 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
       }
     });
     
-    // Use score-based fallback for unmatched goals
-    // If we have unmatched goals and the score tells us which team scored, assign them
+    // Use score-based fallback for unmatched goals AND to correct misassigned goals
+    // The API sometimes returns wrong teamId (e.g., Randal Kolo Muani showing as Spurs when he's PSG)
     const homeGoalCount = homeGoalsByName.length;
     const awayGoalCount = awayGoalsByName.length;
     const unmatchedCount = unmatchedGoals.length;
     
-    // If we have unmatched goals, try to assign them based on score
+    // Calculate what we actually need based on the score
+    const homeGoalsNeeded = homeScore - homeGoalCount;
+    const awayGoalsNeeded = awayScore - awayGoalCount;
+    
+    // If we have unmatched goals, assign them based on what's needed
     if (unmatchedCount > 0) {
-      const homeGoalsNeeded = homeScore - homeGoalCount;
-      const awayGoalsNeeded = awayScore - awayGoalCount;
-      
-      // Assign unmatched goals based on what's needed
       let homeAssigned = 0;
       let awayAssigned = 0;
       
@@ -378,16 +378,48 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
         } else if (awayAssigned < awayGoalsNeeded && awayGoalsNeeded > 0) {
           awayGoalsByName.push(goal);
           awayAssigned++;
-        } else {
-          // If we can't determine, try to match by teamId if available
-          // For now, assign to home if isHome, away if not
-          if (isHome && homeGoalsNeeded > 0) {
-            homeGoalsByName.push(goal);
-          } else if (!isHome && awayGoalsNeeded > 0) {
-            awayGoalsByName.push(goal);
-          }
         }
       });
+    }
+    
+    // CRITICAL: Re-check and correct misassigned goals using score
+    // If the score doesn't match our assignments, we need to fix them
+    const finalHomeCount = homeGoalsByName.length;
+    const finalAwayCount = awayGoalsByName.length;
+    
+    // If we have too many goals assigned to one team, move the excess to the other
+    if (finalHomeCount > homeScore && finalAwayCount < awayScore) {
+      // Too many home goals, not enough away goals - move excess to away
+      const excess = finalHomeCount - homeScore;
+      const needed = awayScore - finalAwayCount;
+      const toMove = Math.min(excess, needed);
+      
+      // Move the most recently scored goals (highest minute) from home to away
+      const sortedHomeGoals = [...homeGoalsByName].sort((a, b) => (b.minute ?? 0) - (a.minute ?? 0));
+      for (let i = 0; i < toMove; i++) {
+        const goal = sortedHomeGoals[i];
+        const index = homeGoalsByName.indexOf(goal);
+        if (index > -1) {
+          homeGoalsByName.splice(index, 1);
+          awayGoalsByName.push(goal);
+        }
+      }
+    } else if (finalAwayCount > awayScore && finalHomeCount < homeScore) {
+      // Too many away goals, not enough home goals - move excess to home
+      const excess = finalAwayCount - awayScore;
+      const needed = homeScore - finalHomeCount;
+      const toMove = Math.min(excess, needed);
+      
+      // Move the most recently scored goals (highest minute) from away to home
+      const sortedAwayGoals = [...awayGoalsByName].sort((a, b) => (b.minute ?? 0) - (a.minute ?? 0));
+      for (let i = 0; i < toMove; i++) {
+        const goal = sortedAwayGoals[i];
+        const index = awayGoalsByName.indexOf(goal);
+        if (index > -1) {
+          awayGoalsByName.splice(index, 1);
+          homeGoalsByName.push(goal);
+        }
+      }
     }
     
     // Debug logging for PSG/Paris Saint-Germain
