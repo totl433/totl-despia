@@ -1,5 +1,5 @@
 import React from "react";
-import { getMediumName } from "../lib/teamNames";
+import { getMediumName, areTeamNamesSimilar } from "../lib/teamNames";
 
 // Helper function to format minute display
 function formatMinuteDisplay(status: string, minute: number | null | undefined, isTestApi: boolean = false): string {
@@ -273,56 +273,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
         return goalLower === teamLower || goalLower.startsWith(teamLower + ' ');
       };
       
-      // Helper to check if names are similar (handles "PSG" vs "Paris Saint-Germain", etc.)
-      const areSimilarNames = (name1: string, name2: string) => {
-        const n1 = name1.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const n2 = name2.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (n1.length >= 3 && n2.length >= 3) {
-          // Check if one contains the other
-          if (n1.includes(n2) || n2.includes(n1)) {
-            return true;
-          }
-        }
-        
-        // Special handling for common abbreviations
-        const abbreviationMap: Record<string, string[]> = {
-          'psg': ['parissaintgermain', 'paris saint germain', 'paris saint-germain', 'paris saintgermain'],
-          'spurs': ['tottenham', 'tottenham hotspur'],
-          'man city': ['manchester city'],
-          'man united': ['manchester united'],
-        };
-        
-        // Check if either name is an abbreviation of the other
-        for (const [abbr, fullNames] of Object.entries(abbreviationMap)) {
-          const n1IsAbbr = n1 === abbr;
-          const n2IsAbbr = n2 === abbr;
-          
-          // Check if n1 is the abbreviation and n2 contains any of the full names
-          if (n1IsAbbr && fullNames.some(full => {
-            const fullNormalized = full.replace(/[^a-z0-9]/g, '');
-            return n2.includes(fullNormalized) || fullNormalized.includes(n2);
-          })) {
-            return true;
-          }
-          // Check if n2 is the abbreviation and n1 contains any of the full names
-          if (n2IsAbbr && fullNames.some(full => {
-            const fullNormalized = full.replace(/[^a-z0-9]/g, '');
-            return n1.includes(fullNormalized) || fullNormalized.includes(n1);
-          })) {
-            return true;
-          }
-          // Also check if both are variations of the same team (e.g., "parissaintgermain" vs "parissaintgermain")
-          if (fullNames.some(full => {
-            const fullNormalized = full.replace(/[^a-z0-9]/g, '');
-            return (n1.includes(fullNormalized) || fullNormalized.includes(n1)) &&
-                   (n2.includes(fullNormalized) || fullNormalized.includes(n2));
-          })) {
-            return true;
-          }
-        }
-        
-        return false;
-      };
+      // Use shared utility function for team name matching (handles "PSG" vs "Paris Saint-Germain", etc.)
       
       // Try to match to home team - check all variations
       const homeTeamVariations = [
@@ -354,8 +305,8 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
              matchesHomeNormalized ||
              homeTeamVariations.some(variant => 
                goalTeam.toLowerCase() === variant.toLowerCase() ||
-               areSimilarNames(goalTeam, variant) ||
-               areSimilarNames(normalizedGoalTeam, getMediumName(variant))
+               areTeamNamesSimilar(goalTeam, variant) ||
+               areTeamNamesSimilar(normalizedGoalTeam, getMediumName(variant))
              );
       
       // Try to match to away team - check all variations
@@ -377,8 +328,8 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
              matchesAwayNormalized ||
              awayTeamVariations.some(variant => 
                goalTeam.toLowerCase() === variant.toLowerCase() ||
-               areSimilarNames(goalTeam, variant) ||
-               areSimilarNames(normalizedGoalTeam, getMediumName(variant))
+               areTeamNamesSimilar(goalTeam, variant) ||
+               areTeamNamesSimilar(normalizedGoalTeam, getMediumName(variant))
              );
       
       if (matchesHome && !matchesAway) {

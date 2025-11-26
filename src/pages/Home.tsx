@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
-import { getMediumName, getTeamBadgePath } from "../lib/teamNames";
+import { getMediumName, getTeamBadgePath, areTeamNamesSimilar } from "../lib/teamNames";
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
@@ -3566,7 +3566,7 @@ export default function HomePage() {
                                 const normalizedGoalTeam = getMediumName(goalTeam);
                                 const normalizedHomeTeam = liveScore.home_team ? getMediumName(liveScore.home_team) : homeName;
                                 
-                                // Try multiple matching strategies
+                                // Try multiple matching strategies using shared utility
                                 const matches = normalizedGoalTeam === normalizedHomeTeam ||
                                        normalizedGoalTeam === homeName ||
                                        normalizedGoalTeam === getMediumName(f.home_team || '') ||
@@ -3574,7 +3574,12 @@ export default function HomePage() {
                                        goalTeam.toLowerCase() === (liveScore.home_team || '').toLowerCase() ||
                                        goalTeam.toLowerCase() === homeName.toLowerCase() ||
                                        goalTeam.toLowerCase() === (f.home_team || '').toLowerCase() ||
-                                       goalTeam.toLowerCase() === (f.home_name || '').toLowerCase();
+                                       goalTeam.toLowerCase() === (f.home_name || '').toLowerCase() ||
+                                       areTeamNamesSimilar(goalTeam, homeName) ||
+                                       areTeamNamesSimilar(goalTeam, normalizedHomeTeam) ||
+                                       areTeamNamesSimilar(goalTeam, f.home_team || '') ||
+                                       areTeamNamesSimilar(goalTeam, f.home_name || '') ||
+                                       areTeamNamesSimilar(goalTeam, liveScore.home_team || '');
                                 
                                 // Debug logging for unmatched goals
                                 if (!matches && allGoals.length > 0) {
@@ -3728,7 +3733,7 @@ export default function HomePage() {
                                 const normalizedGoalTeam = getMediumName(goalTeam);
                                 const normalizedAwayTeam = liveScore.away_team ? getMediumName(liveScore.away_team) : awayName;
                                 
-                                // Try multiple matching strategies
+                                // Try multiple matching strategies using shared utility
                                 return normalizedGoalTeam === normalizedAwayTeam ||
                                        normalizedGoalTeam === awayName ||
                                        normalizedGoalTeam === getMediumName(f.away_team || '') ||
@@ -3736,7 +3741,12 @@ export default function HomePage() {
                                        goalTeam.toLowerCase() === (liveScore.away_team || '').toLowerCase() ||
                                        goalTeam.toLowerCase() === awayName.toLowerCase() ||
                                        goalTeam.toLowerCase() === (f.away_team || '').toLowerCase() ||
-                                       goalTeam.toLowerCase() === (f.away_name || '').toLowerCase();
+                                       goalTeam.toLowerCase() === (f.away_name || '').toLowerCase() ||
+                                       areTeamNamesSimilar(goalTeam, awayName) ||
+                                       areTeamNamesSimilar(goalTeam, normalizedAwayTeam) ||
+                                       areTeamNamesSimilar(goalTeam, f.away_team || '') ||
+                                       areTeamNamesSimilar(goalTeam, f.away_name || '') ||
+                                       areTeamNamesSimilar(goalTeam, liveScore.away_team || '');
                               });
                               
                               // Filter red cards for away team

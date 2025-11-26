@@ -206,3 +206,67 @@ export function getTeamBadgePath(input: string): string {
 export const ALL_BADGE_SLUGS: string[] = (Object.keys(CLUBS) as TeamKey[]).map(
   (k) => CLUBS[k].slug
 );
+
+/** 
+ * Check if two team names match, handling abbreviations and variations.
+ * Useful for matching goal data from APIs where team names might differ.
+ */
+export function areTeamNamesSimilar(name1: string, name2: string): boolean {
+  if (!name1 || !name2) return false;
+  
+  const n1 = name1.toLowerCase().trim();
+  const n2 = name2.toLowerCase().trim();
+  
+  // Exact match
+  if (n1 === n2) return true;
+  
+  // Normalize by removing non-alphanumeric characters for comparison
+  const n1Normalized = n1.replace(/[^a-z0-9]/g, '');
+  const n2Normalized = n2.replace(/[^a-z0-9]/g, '');
+  
+  // Check if one contains the other (handles "Paris Saint-Germain" vs "PSG")
+  if (n1Normalized.length >= 3 && n2Normalized.length >= 3) {
+    if (n1Normalized.includes(n2Normalized) || n2Normalized.includes(n1Normalized)) {
+      return true;
+    }
+  }
+  
+  // Special abbreviation mappings for teams not in CLUBS registry
+  const abbreviationMap: Record<string, string[]> = {
+    'psg': ['parissaintgermain', 'paris saint germain', 'paris saint-germain', 'paris saintgermain'],
+    'spurs': ['tottenham', 'tottenham hotspur'],
+    'man city': ['manchester city'],
+    'man united': ['manchester united'],
+  };
+  
+  // Check abbreviation map
+  for (const [abbr, fullNames] of Object.entries(abbreviationMap)) {
+    const n1IsAbbr = n1Normalized === abbr;
+    const n2IsAbbr = n2Normalized === abbr;
+    
+    if (n1IsAbbr && fullNames.some(full => {
+      const fullNormalized = full.replace(/[^a-z0-9]/g, '');
+      return n2Normalized.includes(fullNormalized) || fullNormalized.includes(n2Normalized);
+    })) {
+      return true;
+    }
+    
+    if (n2IsAbbr && fullNames.some(full => {
+      const fullNormalized = full.replace(/[^a-z0-9]/g, '');
+      return n1Normalized.includes(fullNormalized) || fullNormalized.includes(n1Normalized);
+    })) {
+      return true;
+    }
+    
+    // Check if both are variations of the same team
+    if (fullNames.some(full => {
+      const fullNormalized = full.replace(/[^a-z0-9]/g, '');
+      return (n1Normalized.includes(fullNormalized) || fullNormalized.includes(n1Normalized)) &&
+             (n2Normalized.includes(fullNormalized) || fullNormalized.includes(n2Normalized));
+    })) {
+      return true;
+    }
+  }
+  
+  return false;
+}
