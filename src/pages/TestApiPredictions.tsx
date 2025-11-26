@@ -162,7 +162,6 @@ export default function TestApiPredictions() {
   const [submissionChecked, setSubmissionChecked] = useState(false); // Track if we've checked submission status
   const [submitted, setSubmitted] = useState(false);
   const [topPercent, setTopPercent] = useState<number | null>(null);
-  const [isPastDeadline, setIsPastDeadline] = useState(false);
   const [allMembersSubmitted, setAllMembersSubmitted] = useState(false);
   const [leagueMembers, setLeagueMembers] = useState<Array<{ id: string; name: string }>>([]);
   const [submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new Set());
@@ -400,32 +399,6 @@ export default function TestApiPredictions() {
         if (alive) {
           setFixtures(fixturesData);
           
-          // Check if we're past the deadline
-          // For test API fixtures, deadline is 5 minutes before kickoff (instead of 75 minutes)
-          if (fixturesData.length > 0 && fixturesData[0].kickoff_time) {
-            const earliestKickoff = fixturesData.reduce((earliest, fixture) => {
-              if (!fixture.kickoff_time) return earliest;
-              const fixtureTime = new Date(fixture.kickoff_time);
-              return !earliest || fixtureTime < earliest ? fixtureTime : earliest;
-            }, null as Date | null);
-            
-            if (earliestKickoff) {
-              // Test API: 5 minutes before kickoff (instead of 75 minutes for regular games)
-              const deadlineTime = new Date(earliestKickoff.getTime() - (5 * 60 * 1000));
-              const now = new Date();
-              const isPast = now.getTime() > deadlineTime.getTime();
-              console.log('[TestApiPredictions] Deadline check:', {
-                earliestKickoff: earliestKickoff.toISOString(),
-                deadlineTime: deadlineTime.toISOString(),
-                now: now.toISOString(),
-                isPastDeadline: isPast,
-                minutesUntilDeadline: Math.round((deadlineTime.getTime() - now.getTime()) / (60 * 1000))
-              });
-              setIsPastDeadline(isPast);
-            } else {
-              setIsPastDeadline(false);
-            }
-          }
 
           // Initialize empty results map
           setResults(new Map());
@@ -1068,13 +1041,13 @@ export default function TestApiPredictions() {
   }, [fixtures, results, picks]);
 
   const handleStart = (clientX: number, clientY: number) => {
-    if (isAnimating || isPastDeadline || submitted) return;
+    if (isAnimating || submitted) return;
     setIsDragging(true);
     startPosRef.current = { x: clientX, y: clientY };
     setShowFeedback(null);
   };
   const handleMove = (clientX: number, clientY: number) => {
-    if (!isDragging || isAnimating || isPastDeadline || submitted) return;
+    if (!isDragging || isAnimating || submitted) return;
     const deltaX = clientX - startPosRef.current.x;
     const deltaY = clientY - startPosRef.current.y;
     const rotation = deltaX * 0.1;
@@ -1088,7 +1061,7 @@ export default function TestApiPredictions() {
     }
   };
   const handleEnd = () => {
-    if (!isDragging || isAnimating || isPastDeadline || submitted) return;
+    if (!isDragging || isAnimating || submitted) return;
     setIsDragging(false);
     const { x, y } = cardState;
     const threshold = 100;
@@ -1134,7 +1107,7 @@ export default function TestApiPredictions() {
     }, 300);
   };
   const handleButtonClick = (pick: "H" | "D" | "A") => { 
-    if (!isAnimating && !isPastDeadline && !submitted) animateCardOut(pick); 
+    if (!isAnimating && !submitted) animateCardOut(pick); 
   };
   
   const savePick = async (pick: "H" | "D" | "A") => {
@@ -2090,13 +2063,13 @@ export default function TestApiPredictions() {
                           <div className="grid grid-cols-3 gap-3 mt-4">
                             <button 
                               onClick={()=>{
-                                if (isPastDeadline || submitted) return;
+                                if (submitted) return;
                                 const np=new Map(picks);
                                 np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"H",matchday:currentTestGw!});
                                 setPicks(np);
                                 savePick("H");
                               }} 
-                              disabled={isPastDeadline || submitted}
+                              disabled={submitted}
                               className={`h-16 rounded-xl border text-sm font-medium transition-colors flex items-center justify-center ${
                                 pick?.pick==="H"
                                   ? result && result === "H" && pick.pick === result
@@ -2106,7 +2079,7 @@ export default function TestApiPredictions() {
                                     : "bg-purple-600 text-white border-purple-600"
                                   : result === "H"
                                   ? "bg-gray-300 text-slate-700 border-gray-400"
-                                  : isPastDeadline || submitted
+                                  : submitted
                                   ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
                                   : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
                               }`}
@@ -2115,13 +2088,13 @@ export default function TestApiPredictions() {
                             </button>
                             <button 
                               onClick={()=>{
-                                if (isPastDeadline || submitted) return;
+                                if (submitted) return;
                                 const np=new Map(picks);
                                 np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"D",matchday:currentTestGw!});
                                 setPicks(np);
                                 savePick("D");
                               }} 
-                              disabled={isPastDeadline || submitted}
+                              disabled={submitted}
                               className={`h-16 rounded-xl border text-sm font-medium transition-colors flex items-center justify-center ${
                                 pick?.pick==="D"
                                   ? result && result === "D" && pick.pick === result
@@ -2131,7 +2104,7 @@ export default function TestApiPredictions() {
                                     : "bg-purple-600 text-white border-purple-600"
                                   : result === "D"
                                   ? "bg-gray-300 text-slate-700 border-gray-400"
-                                  : isPastDeadline || submitted
+                                  : submitted
                                   ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
                                   : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
                               }`}
@@ -2140,13 +2113,13 @@ export default function TestApiPredictions() {
                             </button>
                             <button 
                               onClick={()=>{
-                                if (isPastDeadline || submitted) return;
+                                if (submitted) return;
                                 const np=new Map(picks);
                                 np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"A",matchday:currentTestGw!});
                                 setPicks(np);
                                 savePick("A");
                               }} 
-                              disabled={isPastDeadline || submitted}
+                              disabled={submitted}
                               className={`h-16 rounded-xl border text-sm font-medium transition-colors flex items-center justify-center ${
                                 pick?.pick==="A"
                                   ? result && result === "A" && pick.pick === result
@@ -2156,7 +2129,7 @@ export default function TestApiPredictions() {
                                     : "bg-purple-600 text-white border-purple-600"
                                   : result === "A"
                                   ? "bg-gray-300 text-slate-700 border-gray-400"
-                                  : isPastDeadline || submitted
+                                  : submitted
                                   ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
                                   : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
                               }`}
@@ -2175,20 +2148,6 @@ export default function TestApiPredictions() {
         </div>
         <div className="p-6 bg-white shadow-lg">
           <div className="max-w-2xl mx-auto space-y-4">
-            {fixtures.length>0 && fixtures[0].kickoff_time && (
-              <div className="rounded-2xl border border-emerald-200 bg-white px-4 py-3 shadow-sm flex items-center justify-between">
-                <div className="flex items-center gap-2 text-emerald-700">
-                  <span className="text-lg">⏱️</span>
-                  <span className="text-sm font-semibold">Deadline</span>
-                </div>
-                <div className="text-right">
-                  <div className="text-base font-bold text-emerald-900">
-                    {new Date(new Date(fixtures[0].kickoff_time).getTime() - (75*60*1000)).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}
-                  </div>
-                  <div className="text-[11px] font-medium text-emerald-600">75 mins before first kickoff</div>
-                </div>
-              </div>
-            )}
             {submitted ? (
               <div className="text-center py-6">
                 <div className="text-lg font-bold text-slate-800 mb-2">Predictions Submitted (TEST)</div>
@@ -2199,20 +2158,13 @@ export default function TestApiPredictions() {
                   <div className="mt-4 text-2xl font-bold text-purple-700">{myScore}/{fixtures.length}</div>
                 )}
               </div>
-            ) : isPastDeadline ? (
-              <div className="text-center py-6">
-                <div className="text-lg font-bold text-red-600 mb-2">Deadline Passed</div>
-                <div className="text-sm text-slate-600">
-                  Predictions are now closed.
-                </div>
-              </div>
             ) : (
               <>
                 {!allPicksMade && (<div className="text-center text-sm text-amber-600 mb-2">You haven't made all your predictions yet</div>)}
                 <div className="grid gap-3">
                   <button 
                     onClick={handleStartOver}
-                    disabled={submitted || isPastDeadline}
+                    disabled={submitted}
                     className="w-full py-3 bg-slate-200 text-slate-700 rounded-2xl font-semibold hover:bg-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Start Over
@@ -2342,8 +2294,8 @@ export default function TestApiPredictions() {
                 ref={cardRef}
                 className="absolute inset-0 z-10 cursor-grab active:cursor-grabbing"
                 style={{ transform: `translate(${cardState.x}px, ${cardState.y}px) rotate(${cardState.rotation}deg) scale(${cardState.scale})`, opacity: cardState.opacity, transition: (isDragging || isResettingRef.current) ? "none" : "all 0.3s ease-out", touchAction: "none" }}
-                onMouseDown={(e)=>!isPastDeadline && !submitted && handleStart(e.clientX,e.clientY)} 
-                onMouseMove={(e)=>!isPastDeadline && !submitted && handleMove(e.clientX,e.clientY)} 
+                onMouseDown={(e)=>!submitted && handleStart(e.clientX,e.clientY)} 
+                onMouseMove={(e)=>!submitted && handleMove(e.clientX,e.clientY)} 
                 onMouseUp={handleEnd} 
                 onMouseLeave={handleEnd}
                 onTouchStart={handleTouchStart} 
@@ -2393,7 +2345,7 @@ export default function TestApiPredictions() {
               <div className="flex items-stretch justify-center gap-3">
                 <button
                   onClick={()=>handleButtonClick("H")}
-                  disabled={isAnimating || isPastDeadline || submitted}
+                  disabled={isAnimating || submitted}
                   className="flex-1 py-4 rounded-2xl font-semibold transition-all flex items-center justify-center bg-[#d7e6e3] text-slate-700 disabled:opacity-70"
                   style={{ backgroundColor: cardState.x < -30 ? `rgba(34, 197, 94, ${Math.min(0.8, Math.abs(cardState.x) / 150)})` : undefined, color: cardState.x < -30 ? '#fff' : undefined }}
                 >
@@ -2401,7 +2353,7 @@ export default function TestApiPredictions() {
                 </button>
                 <button
                   onClick={()=>handleButtonClick("D")}
-                  disabled={isAnimating || isPastDeadline || submitted}
+                  disabled={isAnimating || submitted}
                   className="flex-1 py-4 rounded-2xl font-semibold transition-all flex items-center justify-center bg-[#d7e6e3] text-slate-700 disabled:opacity-70"
                   style={{ backgroundColor: cardState.y > 30 ? `rgba(59, 130, 246, ${Math.min(0.8, cardState.y / 150)})` : undefined, color: cardState.y > 30 ? '#fff' : undefined }}
                 >
@@ -2409,7 +2361,7 @@ export default function TestApiPredictions() {
                 </button>
                 <button
                   onClick={()=>handleButtonClick("A")}
-                  disabled={isAnimating || isPastDeadline || submitted}
+                  disabled={isAnimating || submitted}
                   className="flex-1 py-4 rounded-2xl font-semibold transition-all flex items-center justify-center bg-[#d7e6e3] text-slate-700 disabled:opacity-70"
                   style={{ backgroundColor: cardState.x > 30 ? `rgba(34, 197, 94, ${Math.min(0.8, cardState.x / 150)})` : undefined, color: cardState.x > 30 ? '#fff' : undefined }}
                 >
