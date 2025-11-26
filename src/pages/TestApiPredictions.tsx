@@ -1149,17 +1149,16 @@ export default function TestApiPredictions() {
       }
       
       // Delete ALL picks from database for this matchday
-      const { error: picksError, count } = await supabase
+      const { error: picksError } = await supabase
         .from('test_api_picks')
         .delete()
         .eq('user_id', user.id)
-        .eq('matchday', currentTestGw)
-        .select('*', { count: 'exact', head: true });
+        .eq('matchday', currentTestGw);
       
       if (picksError) {
         console.error('[TestApiPredictions] ❌ Error deleting test_api_picks:', picksError);
       } else {
-        console.log(`[TestApiPredictions] ✅ Successfully deleted ${count || 0} picks on Start Over`);
+        console.log(`[TestApiPredictions] ✅ Successfully deleted picks on Start Over`);
       }
       
       // Reset ALL state after successful deletion
@@ -1977,7 +1976,6 @@ export default function TestApiPredictions() {
     setHasEverBeenSubmitted(false);
     hasEverBeenSubmittedRef.current = false;
   }
-  const checkSubmittedBeforeReview = submitted;
   console.log('[TestApiPredictions] Review mode check - submitted:', submitted, 'ref:', hasEverBeenSubmittedRef.current, 'sessionStorage:', sessionStorageSubmittedReview);
 
   // Review Mode (when picks exist but not submitted)

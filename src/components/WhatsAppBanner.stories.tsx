@@ -12,7 +12,12 @@ type Story = StoryObj<typeof WhatsAppBanner>
 
 export const Default: Story = {
   render: () => {
-    localStorage.removeItem('whatsappBannerSeen')
+    // Clear localStorage synchronously before rendering
+    // This must happen in the render function, not in useEffect
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem('whatsappBannerSeen')
+    }
+    
     return (
       <div className="max-w-2xl">
         <WhatsAppBanner />

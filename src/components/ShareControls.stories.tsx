@@ -17,7 +17,7 @@ const ensureMocks = () => {
 }
 
 const meta: Meta<typeof ShareControls> = {
-  title: 'Components/ShareControls',
+  title: 'Components/Deprecated/ShareControls',
   component: ShareControls,
   args: {
     name: 'TOTL Mini League',
@@ -27,7 +27,7 @@ const meta: Meta<typeof ShareControls> = {
   parameters: {
     docs: {
       description: {
-        component: 'Copy/share controls that rely on Clipboard + Web Share APIs. The story stubs those browser APIs for review.',
+        component: '⚠️ **DEPRECATED** - This component is no longer used in the app. Kept for reference only.\n\nCopy/share controls that rely on Clipboard + Web Share APIs. The story stubs those browser APIs for review.',
       },
     },
   },

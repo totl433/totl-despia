@@ -2,12 +2,12 @@ import type { Meta, StoryObj } from '@storybook/react'
 import SiteHeader from './SiteHeader'
 
 const meta: Meta<typeof SiteHeader> = {
-  title: 'Components/SiteHeader',
+  title: 'Components/Deprecated/SiteHeader',
   component: SiteHeader,
   parameters: {
     docs: {
       description: {
-        component: 'Top navigation bar that reads from the Auth context and router.',
+        component: '⚠️ **DEPRECATED** - This component is no longer used in the app. Kept for reference only.\n\nTop navigation bar that reads from the Auth context and router.',
       },
     },
   },

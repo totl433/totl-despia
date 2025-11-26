@@ -25,12 +25,19 @@ const seedPicks = () => {
 }
 
 const meta: Meta<typeof GWPickMatrix> = {
-  title: 'Components/GWPickMatrix',
+  title: 'Components/Deprecated/GWPickMatrix',
   component: GWPickMatrix,
   args: {
     gw: 20,
     members,
     fixtures,
+  },
+  parameters: {
+    docs: {
+      description: {
+        component: '⚠️ **DEPRECATED** - This component is no longer used in the app. Kept for reference only.\n\nDisplays a matrix of gameweek picks showing which members picked Home/Draw/Away for each fixture.',
+      },
+    },
   },
 }
 

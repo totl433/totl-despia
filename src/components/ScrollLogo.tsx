@@ -31,7 +31,7 @@ export default function ScrollLogo() {
           const logoVisible = scrollY < 400;
           
           // Update container height
-          containerRef.current.style.height = logoVisible ? '110px' : '0px';
+          containerRef.current.style.height = logoVisible ? '130px' : '0px';
           
           // Update logo transform and opacity
           if (scrollY > 0) {
@@ -63,10 +63,10 @@ export default function ScrollLogo() {
       ref={containerRef}
       className="w-full flex justify-center items-start transition-all duration-200"
       style={{ 
-        height: '110px', // Default height
+        height: '130px', // Default height
         overflow: 'hidden',
-        paddingTop: '16px',
-        paddingBottom: '4px',
+        paddingTop: '4px',
+        paddingBottom: '0px',
         perspective: '1000px', // Enable 3D perspective
       }}
     >
@@ -83,7 +83,7 @@ export default function ScrollLogo() {
         <img 
           src="/assets/badges/totl-logo1.svg" 
           alt="TOTL" 
-          className="h-[74px] sm:h-[92px]"
+          className="h-[88px] sm:h-[110px]"
           style={{ filter: 'brightness(0)', backfaceVisibility: 'hidden' }}
         />
       </div>
