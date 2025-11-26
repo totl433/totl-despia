@@ -387,9 +387,24 @@ export const handler: Handler = async (event, context) => {
       };
 
       const currentGoalsHash = JSON.stringify(goals.map(normalizeGoalKey).sort());
-      const previousGoals = state?.last_notified_goals || oldGoals || [];
+      
+      // Use state as primary source, but fall back to old_record if state is missing
+      // This handles cases where webhook fires before state is updated
+      let previousGoals = state?.last_notified_goals;
+      if (!previousGoals || !Array.isArray(previousGoals) || previousGoals.length === 0) {
+        // Fall back to old_record goals if state doesn't have goals yet
+        previousGoals = oldGoals || [];
+      }
       const previousGoalsArray = Array.isArray(previousGoals) ? previousGoals : [];
       const previousGoalsHash = JSON.stringify(previousGoalsArray.map(normalizeGoalKey).sort());
+      
+      console.log(`[sendScoreNotificationsWebhook] Goal hash comparison:`, {
+        currentHash: currentGoalsHash.substring(0, 100),
+        previousHash: previousGoalsHash.substring(0, 100),
+        hashMatch: currentGoalsHash === previousGoalsHash,
+        currentGoalsCount: goals.length,
+        previousGoalsCount: previousGoalsArray.length,
+      });
 
       // Skip if we've already notified for these exact goals (within last 2 minutes)
       if (previousGoalsHash === currentGoalsHash && state?.last_notified_at) {
