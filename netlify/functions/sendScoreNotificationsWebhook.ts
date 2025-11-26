@@ -286,6 +286,36 @@ export const handler: Handler = async (event, context) => {
       .eq('api_match_id', apiMatchId)
       .maybeSingle();
 
+    // EARLY CHECK: If goals exist and we've already notified for them recently, skip immediately
+    // This prevents race conditions where two webhook calls read the same state
+    if (Array.isArray(goals) && goals.length > 0 && state?.last_notified_goals && Array.isArray(state.last_notified_goals)) {
+      const normalizeGoalKey = (g: any): string => {
+        if (!g || typeof g !== 'object') return '';
+        const scorer = (g.scorer || '').toString().trim().toLowerCase();
+        const minute = g.minute !== null && g.minute !== undefined ? String(g.minute) : '';
+        const teamId = g.teamId !== null && g.teamId !== undefined ? String(g.teamId) : '';
+        return `${scorer}|${minute}|${teamId}`;
+      };
+      
+      const currentGoalsHash = JSON.stringify(goals.map(normalizeGoalKey).sort());
+      const previousGoalsHash = JSON.stringify(state.last_notified_goals.map(normalizeGoalKey).sort());
+      
+      if (currentGoalsHash === previousGoalsHash && state.last_notified_at) {
+        const lastNotifiedTime = new Date(state.last_notified_at).getTime();
+        const now = Date.now();
+        const oneMinute = 60 * 1000;
+        // If we notified for these exact goals in the last minute, skip immediately
+        if (now - lastNotifiedTime < oneMinute) {
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 EARLY SKIP - already notified for these goals within last minute`);
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ message: 'Already notified (early check)' }),
+          };
+        }
+      }
+    }
+
     console.log(`[sendScoreNotificationsWebhook] [${requestId}] Processing match ${apiMatchId}:`, {
       scoreChange: isScoreChange,
       goalsChanged,
