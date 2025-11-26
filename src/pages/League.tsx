@@ -7,6 +7,7 @@ import { resolveLeagueStartGw as getLeagueStartGw, shouldIncludeGwForLeague } fr
 import imageCompression from "browser-image-compression";
 import { getLeagueAvatarUrl } from "../lib/leagueAvatars";
 import { useLiveScores } from "../hooks/useLiveScores";
+import { getTeamBadgePath } from "../lib/teamNames";
 
 const MAX_MEMBERS = 8;
 
@@ -27,6 +28,8 @@ type Fixture = {
   away_code?: string | null;
   home_name?: string | null;
   away_name?: string | null;
+  home_crest?: string | null;
+  away_crest?: string | null;
   kickoff_time?: string | null;
 };
 
@@ -1536,7 +1539,7 @@ export default function LeaguePage() {
         const { data: testFx } = await supabase
           .from("test_api_fixtures")
           .select(
-            "id,test_gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time,api_match_id"
+            "id,test_gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,home_crest,away_crest,kickoff_time,api_match_id"
           )
           .eq("test_gw", testGwForData)
           .order("fixture_index", { ascending: true });
@@ -2980,12 +2983,17 @@ export default function LeaguePage() {
                                 <div className="flex items-center justify-center gap-2">
                                   {homeKey && (
                                     <img 
-                                      src={`/assets/badges/${homeKey}.png`} 
+                                      src={f.home_crest || getTeamBadgePath(f.home_code || f.home_team || f.home_name || homeKey || '')} 
                                       alt={`${homeName} badge`} 
                                       className="h-6 w-6 object-contain"
                                       onError={(e) => {
-                                        // Reduce opacity if badge fails to load, don't hide completely
-                                        (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
+                                        const target = e.currentTarget as HTMLImageElement;
+                                        const fallbackSrc = getTeamBadgePath(f.home_code || f.home_team || f.home_name || homeKey || '');
+                                        if (target.src !== fallbackSrc) {
+                                          target.src = fallbackSrc;
+                                        } else {
+                                          target.style.opacity = "0.35";
+                                        }
                                       }}
                                     />
                                   )}
@@ -3000,12 +3008,17 @@ export default function LeaguePage() {
                                   </div>
                                   {awayKey && (
                                     <img 
-                                      src={`/assets/badges/${awayKey}.png`} 
+                                      src={f.away_crest || getTeamBadgePath(f.away_code || f.away_team || f.away_name || awayKey || '')} 
                                       alt={`${awayName} badge`} 
                                       className="h-6 w-6 object-contain"
                                       onError={(e) => {
-                                        // Reduce opacity if badge fails to load, don't hide completely
-                                        (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
+                                        const target = e.currentTarget as HTMLImageElement;
+                                        const fallbackSrc = getTeamBadgePath(f.away_code || f.away_team || f.away_name || awayKey || '');
+                                        if (target.src !== fallbackSrc) {
+                                          target.src = fallbackSrc;
+                                        } else {
+                                          target.style.opacity = "0.35";
+                                        }
                                       }}
                                     />
                                   )}
@@ -3172,8 +3185,8 @@ export default function LeaguePage() {
                             );
                           };
 
-                          const homeBadge = `/assets/badges/${homeCode.toUpperCase()}.png`;
-                          const awayBadge = `/assets/badges/${awayCode.toUpperCase()}.png`;
+                          const homeBadge = f.home_crest || getTeamBadgePath(f.home_code || f.home_team || f.home_name || homeCode || '');
+                          const awayBadge = f.away_crest || getTeamBadgePath(f.away_code || f.away_team || f.away_name || awayCode || '');
 
                           return (
                             <li key={`${f.gw}-${f.fixture_index}`} className={idx > 0 ? "border-t" : ""}>
@@ -3184,11 +3197,37 @@ export default function LeaguePage() {
                                     <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{homeName}</span>
                                   </div>
                                   <div className="flex items-center justify-center gap-2">
-                                    <img src={homeBadge} alt={`${homeName} badge`} className="h-6 w-6" />
+                                    <img 
+                                      src={homeBadge} 
+                                      alt={`${homeName} badge`} 
+                                      className="h-6 w-6"
+                                      onError={(e) => {
+                                        const target = e.currentTarget as HTMLImageElement;
+                                        const fallbackSrc = getTeamBadgePath(f.home_code || f.home_team || f.home_name || homeCode || '');
+                                        if (target.src !== fallbackSrc) {
+                                          target.src = fallbackSrc;
+                                        } else {
+                                          target.style.opacity = "0.35";
+                                        }
+                                      }}
+                                    />
                                     <div className="text-[15px] sm:text-base font-semibold text-slate-600">
                                       {timeStr}
                                     </div>
-                                    <img src={awayBadge} alt={`${awayName} badge`} className="h-6 w-6" />
+                                    <img 
+                                      src={awayBadge} 
+                                      alt={`${awayName} badge`} 
+                                      className="h-6 w-6"
+                                      onError={(e) => {
+                                        const target = e.currentTarget as HTMLImageElement;
+                                        const fallbackSrc = getTeamBadgePath(f.away_code || f.away_team || f.away_name || awayCode || '');
+                                        if (target.src !== fallbackSrc) {
+                                          target.src = fallbackSrc;
+                                        } else {
+                                          target.style.opacity = "0.35";
+                                        }
+                                      }}
+                                    />
                                   </div>
                                   <div className="flex items-center justify-center">
                                     <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{awayName}</span>
