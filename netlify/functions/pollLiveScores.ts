@@ -305,6 +305,15 @@ async function pollAllLiveScores() {
 
     // Upsert all updates to Supabase
     if (updates.length > 0) {
+      // First, fetch existing records to compare (for old_record in webhook)
+      const apiMatchIds = updates.map(u => u.api_match_id);
+      const { data: existingRecords } = await supabase
+        .from('live_scores')
+        .select('*')
+        .in('api_match_id', apiMatchIds);
+      
+      const existingMap = new Map((existingRecords || []).map((r: any) => [r.api_match_id, r]));
+
       const { error: upsertError } = await supabase
         .from('live_scores')
         .upsert(updates, {
@@ -316,6 +325,36 @@ async function pollAllLiveScores() {
         console.error('[pollLiveScores] Error upserting live scores:', upsertError);
       } else {
         console.log(`[pollLiveScores] Successfully updated ${updates.length} live scores`);
+        
+        // Trigger notifications by calling webhook function directly
+        // This ensures notifications work even if database trigger isn't set up
+        // Use multiple env vars to determine the correct URL (same logic as handler)
+        const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://totl-staging.netlify.app';
+        const webhookUrl = `${siteUrl}/.netlify/functions/sendScoreNotificationsWebhook`;
+        
+        // Call webhook for each updated record (fire and forget - don't wait)
+        for (const update of updates) {
+          const oldRecord = existingMap.get(update.api_match_id) || null;
+          
+          // Build webhook payload
+          const webhookPayload = {
+            type: oldRecord ? 'UPDATE' : 'INSERT',
+            table: 'live_scores',
+            record: update,
+            old_record: oldRecord,
+          };
+          
+          // Fire and forget - don't block on webhook calls
+          fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(webhookPayload),
+          }).catch((err) => {
+            console.error(`[pollLiveScores] Failed to trigger webhook for match ${update.api_match_id}:`, err);
+          });
+        }
+        
+        console.log(`[pollLiveScores] Triggered webhook notifications for ${updates.length} matches`);
       }
     }
 
