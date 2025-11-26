@@ -1709,10 +1709,25 @@ export default function TestApiPredictions() {
                                   {/* Home Team Goals and Red Cards (chronologically sorted) */}
                                   {liveScore && (isOngoing || isFinished) && (() => {
                                     // Filter goals for home team
+                                    // Match by team name - use liveScore.home_team as the source of truth (already normalized)
                                     const homeGoals = (liveScore.goals || []).filter((goal: any) => {
+                                      if (!goal || !goal.team) return false;
                                       const goalTeam = goal.team || '';
+                                      
+                                      // Primary match: compare normalized team names
+                                      // The goal.team is already normalized by pollLiveScores function
                                       const normalizedGoalTeam = getMediumName(goalTeam);
-                                      return normalizedGoalTeam === homeName || normalizedGoalTeam === getMediumName(fixture.home_team || '');
+                                      const normalizedHomeTeam = liveScore.home_team ? getMediumName(liveScore.home_team) : homeName;
+                                      
+                                      // Try multiple matching strategies
+                                      return normalizedGoalTeam === normalizedHomeTeam ||
+                                             normalizedGoalTeam === homeName ||
+                                             normalizedGoalTeam === getMediumName(fixture.home_team || '') ||
+                                             normalizedGoalTeam === getMediumName(fixture.home_name || '') ||
+                                             goalTeam.toLowerCase() === (liveScore.home_team || '').toLowerCase() ||
+                                             goalTeam.toLowerCase() === homeName.toLowerCase() ||
+                                             goalTeam.toLowerCase() === (fixture.home_team || '').toLowerCase() ||
+                                             goalTeam.toLowerCase() === (fixture.home_name || '').toLowerCase();
                                     });
                                     
                                     // Filter red cards for home team
@@ -1773,13 +1788,13 @@ export default function TestApiPredictions() {
                                         {timeline.map((event, idx) => {
                                           if (event.type === 'goal') {
                                             return (
-                                              <span key={idx} className="text-[10px] text-slate-600">
+                                              <span key={idx} className="text-[11px] text-slate-600">
                                                 {event.scorer} {event.minutes!.sort((a, b) => a - b).map(m => `${m}'`).join(', ')}
                                               </span>
                                             );
                                           } else {
                                             return (
-                                              <span key={idx} className="text-[10px] text-slate-600">
+                                              <span key={idx} className="text-[11px] text-slate-600">
                                                 🟥 {event.player} {event.minute}'
                                               </span>
                                             );
@@ -1822,10 +1837,25 @@ export default function TestApiPredictions() {
                                   {/* Away Team Goals and Red Cards (chronologically sorted) */}
                                   {liveScore && (isOngoing || isFinished) && (() => {
                                     // Filter goals for away team
+                                    // Match by team name - use liveScore.away_team as the source of truth (already normalized)
                                     const awayGoals = (liveScore.goals || []).filter((goal: any) => {
+                                      if (!goal || !goal.team) return false;
                                       const goalTeam = goal.team || '';
+                                      
+                                      // Primary match: compare normalized team names
+                                      // The goal.team is already normalized by pollLiveScores function
                                       const normalizedGoalTeam = getMediumName(goalTeam);
-                                      return normalizedGoalTeam === awayName || normalizedGoalTeam === getMediumName(fixture.away_team || '');
+                                      const normalizedAwayTeam = liveScore.away_team ? getMediumName(liveScore.away_team) : awayName;
+                                      
+                                      // Try multiple matching strategies
+                                      return normalizedGoalTeam === normalizedAwayTeam ||
+                                             normalizedGoalTeam === awayName ||
+                                             normalizedGoalTeam === getMediumName(fixture.away_team || '') ||
+                                             normalizedGoalTeam === getMediumName(fixture.away_name || '') ||
+                                             goalTeam.toLowerCase() === (liveScore.away_team || '').toLowerCase() ||
+                                             goalTeam.toLowerCase() === awayName.toLowerCase() ||
+                                             goalTeam.toLowerCase() === (fixture.away_team || '').toLowerCase() ||
+                                             goalTeam.toLowerCase() === (fixture.away_name || '').toLowerCase();
                                     });
                                     
                                     // Filter red cards for away team
@@ -1886,13 +1916,13 @@ export default function TestApiPredictions() {
                                         {timeline.map((event, idx) => {
                                           if (event.type === 'goal') {
                                             return (
-                                              <span key={idx} className="text-[10px] text-slate-600">
+                                              <span key={idx} className="text-[11px] text-slate-600">
                                                 {event.scorer} {event.minutes!.sort((a, b) => a - b).map(m => `${m}'`).join(', ')}
                                               </span>
                                             );
                                           } else {
                                             return (
-                                              <span key={idx} className="text-[10px] text-slate-600">
+                                              <span key={idx} className="text-[11px] text-slate-600">
                                                 🟥 {event.player} {event.minute}'
                                               </span>
                                             );
