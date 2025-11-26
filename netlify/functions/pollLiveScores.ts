@@ -347,6 +347,13 @@ async function pollAllLiveScores() {
               console.log(`[pollLiveScores] Skipping webhook for match ${update.api_match_id} - no changes detected`);
               continue;
             }
+            
+            // Log what changed for debugging
+            if (goalsChanged) {
+              const oldGoals = (oldRecord.goals || []).map((g: any) => `${g.scorer} ${g.minute}'`).join(', ');
+              const newGoals = (update.goals || []).map((g: any) => `${g.scorer} ${g.minute}'`).join(', ');
+              console.log(`[pollLiveScores] Goals changed for match ${update.api_match_id}: [${oldGoals}] -> [${newGoals}]`);
+            }
           }
           
           // Build webhook payload
@@ -357,13 +364,22 @@ async function pollAllLiveScores() {
             old_record: oldRecord,
           };
           
+          const callId = Math.random().toString(36).substring(7);
+          console.log(`[pollLiveScores] [${callId}] Calling webhook for match ${update.api_match_id}`, {
+            hasOldRecord: !!oldRecord,
+            oldGoalsCount: oldRecord?.goals?.length || 0,
+            newGoalsCount: update.goals?.length || 0,
+          });
+          
           // Fire and forget - don't block on webhook calls
           fetch(webhookUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(webhookPayload),
+          }).then(() => {
+            console.log(`[pollLiveScores] [${callId}] Webhook call completed for match ${update.api_match_id}`);
           }).catch((err) => {
-            console.error(`[pollLiveScores] Failed to trigger webhook for match ${update.api_match_id}:`, err);
+            console.error(`[pollLiveScores] [${callId}] Failed to trigger webhook for match ${update.api_match_id}:`, err);
           });
           
           webhookCalls++;
