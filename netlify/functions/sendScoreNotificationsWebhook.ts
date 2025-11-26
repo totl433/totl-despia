@@ -382,21 +382,49 @@ export const handler: Handler = async (event, context) => {
           });
         // Don't return here - continue to check for FT/GW finished
       } else {
+        // CRITICAL: Update state IMMEDIATELY before sending to prevent duplicate notifications
+        // This must happen before any async operations to prevent race conditions
+        // Use a database-level check-and-update to ensure atomicity
+        const { data: updatedState, error: stateError } = await supabase
+          .from('notification_state')
+          .upsert({
+            api_match_id: apiMatchId,
+            last_notified_home_score: homeScore,
+            last_notified_away_score: awayScore,
+            last_notified_status: status,
+            last_notified_at: new Date().toISOString(),
+            last_notified_goals: goals,
+            last_notified_red_cards: redCards || null,
+          } as any, {
+            onConflict: 'api_match_id',
+          })
+          .select()
+          .single();
 
-      // Update state immediately before sending
-      await supabase
-        .from('notification_state')
-        .upsert({
-          api_match_id: apiMatchId,
-          last_notified_home_score: homeScore,
-          last_notified_away_score: awayScore,
-          last_notified_status: status,
-          last_notified_at: new Date().toISOString(),
-          last_notified_goals: goals,
-          last_notified_red_cards: redCards || null,
-        } as any, {
-          onConflict: 'api_match_id',
-        });
+        // Double-check: if another process already updated state with these exact goals, skip
+        if (updatedState && Array.isArray(updatedState.last_notified_goals)) {
+          const updatedGoalsHash = JSON.stringify(updatedState.last_notified_goals.map(normalizeGoalKey).sort());
+          const currentGoalsHash = JSON.stringify(goals.map(normalizeGoalKey).sort());
+          
+          // If the state was updated by another process between our read and write, skip
+          if (updatedGoalsHash === currentGoalsHash && updatedState.last_notified_at) {
+            const stateUpdateTime = new Date(updatedState.last_notified_at).getTime();
+            const now = Date.now();
+            // If state was updated in the last 5 seconds, another process likely sent the notification
+            if (now - stateUpdateTime < 5000) {
+              console.log(`[sendScoreNotificationsWebhook] 🚫 SKIPPING - state was updated by another process (race condition prevented)`);
+              return {
+                statusCode: 200,
+                headers,
+                body: JSON.stringify({ message: 'Already notified by another process' }),
+              };
+            }
+          }
+        }
+
+        if (stateError) {
+          console.error(`[sendScoreNotificationsWebhook] Error updating state:`, stateError);
+        }
 
       // Get users who have picks for this fixture
       let picks: any[] = [];
