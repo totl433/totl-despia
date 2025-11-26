@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { getMediumName } from "../lib/teamNames";
+import PickButton from "../components/PickButton";
 
 
 function sideName(f: any, side: "home" | "away") {
@@ -65,38 +66,7 @@ function outcomeOf(r: ResultRow | null | undefined): "H" | "D" | "A" | null {
   return null;
 }
 
-/* -----------------------------------------------
-   Big, touch-friendly button (interactive)
------------------------------------------------- */
-function PickButton({
-  label,
-  active,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={cls(
-        "h-16 rounded-xl border text-sm font-medium transition-colors",
-        "flex items-center justify-center",
-        active
-          ? "bg-emerald-600 text-white border-emerald-600"
-          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100",
-        disabled && "opacity-60 cursor-not-allowed"
-      )}
-    >
-      {label}
-    </button>
-  );
-}
+// PickButton is now imported from components
 
 /* -----------------------------------------------
    Read-only result button (same size as PickButton)

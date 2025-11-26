@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { TouchEventHandler } from "react";
 import { useAuth } from "../context/AuthContext";
-import ClubBadge from "../components/ClubBadge";
+import TeamBadge from "../components/TeamBadge";
 import { useNavigate } from "react-router-dom";
 
 type Fixture = {
@@ -403,9 +403,9 @@ export default function SwipePredictions() {
                           <div className="flex items-center justify-between gap-2 mb-4">
                             <div className="flex-1 min-w-0 text-right"><span className="text-sm font-semibold text-slate-800 truncate inline-block">{fixture.home_name || fixture.home_team}</span></div>
                             <div className="flex items-center gap-2 flex-shrink-0">
-                              <ClubBadge code={fixture.home_code || ""} size={28} />
+                              <TeamBadge code={fixture.home_code || ""} size={28} />
                               <div className="text-slate-400 font-medium text-sm">{fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : ''}</div>
-                              <ClubBadge code={fixture.away_code || ""} size={28} />
+                              <TeamBadge code={fixture.away_code || ""} size={28} />
                             </div>
                             <div className="flex-1 min-w-0 text-left"><span className="text-sm font-semibold text-slate-800 truncate inline-block">{fixture.away_name || fixture.away_team}</span></div>
                           </div>
@@ -515,9 +515,9 @@ export default function SwipePredictions() {
                       <div className="p-8">
                         {nextFixture.kickoff_time && (<div className="text-center mb-6"><div className="text-sm text-slate-500 font-medium">{new Date(nextFixture.kickoff_time).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}</div></div>)}
                         <div className="flex items-center justify-center gap-4 mb-6">
-                          <div className="flex flex-col items-center"><ClubBadge code={nextFixture.home_code || ""} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{nextFixture.home_name || nextFixture.home_team}</div></div>
+                          <div className="flex flex-col items-center"><TeamBadge code={nextFixture.home_code || ""} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{nextFixture.home_name || nextFixture.home_team}</div></div>
                           <div className="flex flex-col items-center mb-8">{nextFixture.kickoff_time && (<div className="text-sm text-slate-700">{new Date(nextFixture.kickoff_time).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>)}</div>
-                          <div className="flex flex-col items-center"><ClubBadge code={nextFixture.away_code || ""} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{nextFixture.away_name || nextFixture.away_team}</div></div>
+                          <div className="flex flex-col items-center"><TeamBadge code={nextFixture.away_code || ""} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{nextFixture.away_name || nextFixture.away_team}</div></div>
                         </div>
                       </div>
                       <div className="h-48 relative overflow-hidden">
@@ -546,9 +546,9 @@ export default function SwipePredictions() {
                     </div>
                     {currentFixture.kickoff_time && (<div className="text-center mb-6"><div className="text-sm text-slate-500 font-medium">{new Date(currentFixture.kickoff_time).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}</div></div>)}
                     <div className="flex items-center justify-center gap-4 mb-6">
-                      <div className="flex flex-col items-center"><ClubBadge code={currentFixture.home_code || ""} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{currentFixture.home_name || currentFixture.home_team}</div></div>
+                      <div className="flex flex-col items-center"><TeamBadge code={currentFixture.home_code || ""} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{currentFixture.home_name || currentFixture.home_team}</div></div>
                       <div className="flex flex-col items-center mb-8">{currentFixture.kickoff_time && (<div className="text-sm text-slate-700">{new Date(currentFixture.kickoff_time).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>)}</div>
-                      <div className="flex flex-col items-center"><ClubBadge code={currentFixture.away_code || ""} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{currentFixture.away_name || currentFixture.away_team}</div></div>
+                      <div className="flex flex-col items-center"><TeamBadge code={currentFixture.away_code || ""} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{currentFixture.away_name || currentFixture.away_team}</div></div>
                     </div>
                     {(() => {
                       const fixtureResult = results.get(currentFixture.fixture_index);

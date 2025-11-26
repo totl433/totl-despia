@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Section from "../components/Section";
 
 export default function HowToPlayPage() {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -17,45 +18,6 @@ export default function HowToPlayPage() {
     }));
   };
 
-  const Section: React.FC<{
-    id: string;
-    title: string;
-    icon: string;
-    children: React.ReactNode;
-  }> = ({ id, title, icon, children }) => {
-    const isOpen = openSections[id];
-    
-    return (
-      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
-        <button
-          onClick={() => toggleSection(id)}
-          className="w-full px-6 py-4 text-left bg-gradient-to-r from-slate-50 to-slate-100 hover:from-slate-100 hover:to-slate-200 transition-colors border-b border-slate-200"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">{icon}</span>
-              <h2 className="text-lg font-bold text-slate-800">{title}</h2>
-            </div>
-            <svg
-              className={`w-5 h-5 text-slate-600 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
-        </button>
-        
-        {isOpen && (
-          <div className="px-6 py-4 text-slate-700">
-            {children}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-6xl px-4 py-4 pb-16">
@@ -67,7 +29,7 @@ export default function HowToPlayPage() {
 
         {/* Sections */}
         <div className="space-y-4">
-          <Section id="predictions" title="Predictions Centre" icon="🎯">
+          <Section id="predictions" title="Predictions Centre" icon="🎯" collapsible defaultOpen={openSections.predictions} onToggle={(isOpen) => setOpenSections(prev => ({ ...prev, predictions: isOpen }))}>
             <div className="space-y-4">
               <p className="text-base leading-relaxed">
                 Before each Premier League Gameweek, head to the <strong>Predictions Centre</strong> and make your
@@ -90,7 +52,7 @@ export default function HowToPlayPage() {
             </div>
           </Section>
 
-          <Section id="mini-leagues" title="Mini-Leagues" icon="🏆">
+          <Section id="mini-leagues" title="Mini-Leagues" icon="🏆" collapsible defaultOpen={openSections['mini-leagues']} onToggle={(isOpen) => setOpenSections(prev => ({ ...prev, 'mini-leagues': isOpen }))}>
             <div className="space-y-4">
               <p className="text-base leading-relaxed">
                 Want to play with your friends? Create a <strong>Mini-League</strong> and invite up to <strong>8 players</strong> to join.
@@ -132,7 +94,7 @@ export default function HowToPlayPage() {
             </div>
           </Section>
 
-          <Section id="unicorns" title="Unicorns" icon="🦄">
+          <Section id="unicorns" title="Unicorns" icon="🦄" collapsible defaultOpen={openSections.unicorns} onToggle={(isOpen) => setOpenSections(prev => ({ ...prev, unicorns: isOpen }))}>
             <div className="space-y-4">
               <p className="text-base leading-relaxed">
                 In Mini-Leagues with <strong>3 or more players</strong>, if you're the <strong>only person</strong> to correctly predict a
@@ -149,7 +111,7 @@ export default function HowToPlayPage() {
             </div>
           </Section>
 
-          <Section id="leaderboard" title="Leaderboard" icon="📈">
+          <Section id="leaderboard" title="Leaderboard" icon="📈" collapsible defaultOpen={openSections.leaderboard} onToggle={(isOpen) => setOpenSections(prev => ({ ...prev, leaderboard: isOpen }))}>
             <div className="space-y-4">
               <p className="text-base leading-relaxed">
                 The <strong>Leaderboard</strong> shows how you stack up against everyone else playing TOTL.
@@ -164,7 +126,7 @@ export default function HowToPlayPage() {
             </div>
           </Section>
 
-          <Section id="form" title="Form Leaderboards" icon="⚡">
+          <Section id="form" title="Form Leaderboards" icon="⚡" collapsible defaultOpen={openSections.form} onToggle={(isOpen) => setOpenSections(prev => ({ ...prev, form: isOpen }))}>
             <div className="space-y-4">
               <p className="text-base leading-relaxed">
                 <strong>Form Leaderboards</strong> focus on how you're performing <strong>right now</strong>, not over the whole season.
@@ -202,7 +164,7 @@ export default function HowToPlayPage() {
             </div>
           </Section>
 
-          <Section id="summary" title="That's It" icon="🎉">
+          <Section id="summary" title="That's It" icon="🎉" collapsible defaultOpen={openSections.summary} onToggle={(isOpen) => setOpenSections(prev => ({ ...prev, summary: isOpen }))}>
             <div className="space-y-4">
               <div className="bg-gradient-to-r from-emerald-50 to-blue-50 border border-emerald-200 rounded-lg p-4">
                 <h3 className="font-semibold text-emerald-800 mb-2">🏆 Your Mission</h3>
