@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { getMediumName } from "../lib/teamNames";
+import { useLiveScores } from "../hooks/useLiveScores";
 
 function sideName(f: any, side: "home" | "away") {
   const nm = f?.[`${side}_name`];
@@ -62,6 +63,16 @@ export default function NewPredictionsCentre() {
   const [topPercent, setTopPercent] = useState<number | null>(null);
   const [isInApiTestLeague, setIsInApiTestLeague] = useState(false);
   const [displayGw, setDisplayGw] = useState<number | null>(null);
+
+  // Get api_match_ids from fixtures for real-time subscription
+  const apiMatchIds = useMemo(() => {
+    return fixtures
+      .map(f => (f as any).api_match_id)
+      .filter((id): id is number => id !== null && id !== undefined);
+  }, [fixtures]);
+
+  // Subscribe to real-time live scores updates
+  const { liveScores: liveScoresMap } = useLiveScores(currentGw || undefined, apiMatchIds.length > 0 ? apiMatchIds : undefined);
 
   // Debug: Log when isPastDeadline changes
   useEffect(() => {
@@ -473,6 +484,10 @@ export default function NewPredictionsCentre() {
               const userPick = picks.get(fixture.fixture_index);
               const result = results.get(fixture.fixture_index);
               
+              // Get live score for this fixture (real-time updates)
+              const apiMatchId = (fixture as any).api_match_id;
+              const liveScore = apiMatchId ? liveScoresMap.get(apiMatchId) : null;
+              
               // Format kickoff time - using same logic as original Predictions page
               const kickoff = fixture.kickoff_time
                 ? (() => {
@@ -482,6 +497,19 @@ export default function NewPredictionsCentre() {
                     return `${hh}:${mm}`;
                   })()
                 : "—";
+              
+              // Format live score display
+              const showLiveScore = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
+              const scoreDisplay = showLiveScore 
+                ? `${liveScore.home_score ?? 0}-${liveScore.away_score ?? 0}`
+                : kickoff;
+              const statusDisplay = liveScore?.status === 'IN_PLAY' 
+                ? (liveScore.minute ? `${liveScore.minute}'` : 'LIVE')
+                : liveScore?.status === 'PAUSED'
+                ? 'HT'
+                : liveScore?.status === 'FINISHED'
+                ? 'FT'
+                : null;
               
               const home = sideName(fixture, "home");
               const away = sideName(fixture, "away");
@@ -504,8 +532,17 @@ export default function NewPredictionsCentre() {
                         }}
                       />
                               </div>
-                    <div className="text-slate-500 text-sm px-4">
-                      {kickoff}
+                    <div className="text-slate-500 text-sm px-4 text-center">
+                      {showLiveScore ? (
+                        <div className="flex flex-col items-center gap-0.5">
+                          <div className="font-bold text-slate-900 text-base">{scoreDisplay}</div>
+                          {statusDisplay && (
+                            <div className="text-xs text-slate-500">{statusDisplay}</div>
+                          )}
+                        </div>
+                      ) : (
+                        kickoff
+                      )}
                             </div>
                     <div className="flex items-center gap-1 flex-1 justify-start">
                       <img 

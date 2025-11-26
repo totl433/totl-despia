@@ -10,6 +10,7 @@ import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import { scheduleDeadlineReminder, scheduleGameweekStartingSoon } from "../lib/notifications";
 import { LeaderboardCard } from "../components/LeaderboardCard";
 import { StreakCard } from "../components/StreakCard";
+import { useLiveScores } from "../hooks/useLiveScores";
 // Score update notifications now handled server-side by sendScoreNotifications function
 
 
@@ -55,7 +56,8 @@ function rowToOutcome(r: ResultRowRaw): "H" | "D" | "A" | null {
 }
 
 // Helper function to format minute display
-function formatMinuteDisplay(status: string, minute: number | null | undefined): string {
+// For test API fixtures, show actual minutes instead of "First Half"/"Second Half"
+function formatMinuteDisplay(status: string, minute: number | null | undefined, isTestApi: boolean = false): string {
   if (status === 'FINISHED') {
     return 'FT';
   }
@@ -65,6 +67,10 @@ function formatMinuteDisplay(status: string, minute: number | null | undefined):
   if (status === 'IN_PLAY') {
     if (minute === null || minute === undefined) {
       return 'LIVE';
+    }
+    // For test API, always show actual minutes
+    if (isTestApi) {
+      return `${minute}'`;
     }
     // First half: 1-45 minutes
     if (minute >= 1 && minute <= 45) {
@@ -147,9 +153,7 @@ export default function HomePage() {
   const leagueIdsRef = useRef<Set<string>>(new Set());
   const isInitialMountRef = useRef(true);
   const navigationKeyRef = useRef(0);
-  
-  // Live scores for test API fixtures
-  const [liveScores, setLiveScores] = useState<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
+
   // Track previous scores to avoid duplicate notifications
   const prevScoresRef = useRef<Record<number, { homeScore: number; awayScore: number }>>({});
   // Track if "Game Week Starting Soon" notification has been scheduled
@@ -173,6 +177,52 @@ export default function HomePage() {
   const [expandedDebugLog, setExpandedDebugLog] = useState<Record<number, boolean>>({});
   const [isInApiTestLeague, setIsInApiTestLeague] = useState(false);
   const [showLiveOnly, setShowLiveOnly] = useState(false);
+
+  // Get api_match_ids from fixtures for real-time subscription
+  const apiMatchIds = useMemo(() => {
+    if (!fixtures || fixtures.length === 0) return [];
+    return fixtures
+      .map(f => f.api_match_id)
+      .filter((id): id is number => id !== null && id !== undefined);
+  }, [fixtures]);
+
+  // Subscribe to real-time live scores updates (replaces polling)
+  // Subscribe to ALL gameweeks (undefined = all) so we catch updates for any GW
+  // The hook will filter in the callback based on apiMatchIds
+  const { liveScores: liveScoresMap } = useLiveScores(
+    undefined, // Don't filter by GW - listen to all gameweeks
+    apiMatchIds.length > 0 ? apiMatchIds : undefined
+  );
+
+  // Convert Map to Record format for backward compatibility with existing code
+  const liveScores = useMemo(() => {
+    const result: Record<number, { 
+      homeScore: number; 
+      awayScore: number; 
+      status: string; 
+      minute?: number | null;
+      goals?: any[] | null;
+      red_cards?: any[] | null;
+    }> = {};
+    if (!fixtures || fixtures.length === 0) return result;
+    fixtures.forEach(fixture => {
+      const apiMatchId = fixture.api_match_id;
+      if (apiMatchId) {
+        const liveScore = liveScoresMap.get(apiMatchId);
+        if (liveScore) {
+          result[fixture.fixture_index] = {
+            homeScore: liveScore.home_score ?? 0,
+            awayScore: liveScore.away_score ?? 0,
+            status: liveScore.status || 'SCHEDULED',
+            minute: liveScore.minute ?? null,
+            goals: liveScore.goals ?? null,
+            red_cards: liveScore.red_cards ?? null
+          };
+        }
+      }
+    });
+    return result;
+  }, [liveScoresMap, fixtures]);
 
   // Fetch live score from Supabase ONLY (updated by scheduled Netlify function)
   // NO API calls from client - all API calls go through the scheduled function
@@ -301,14 +351,23 @@ export default function HomePage() {
       let submitted: boolean;
       
       if (isInApiTestLeague) {
+        // Get current test GW from meta
+        const { data: testMeta } = await supabase
+          .from("test_api_meta")
+          .select("current_test_gw")
+          .eq("id", 1)
+          .maybeSingle();
+        
+        const testGw = testMeta?.current_test_gw ?? 1;
+        
         // Fetch from test API tables - include api_match_id for live scores
         // CRITICAL: For Test API, we DON'T use gw_results for score calculation
         // We only use live_scores (which is fetched later and checked via testApiResultsByFixtureIdx)
         // So set gwResults to empty array to ensure no score is calculated from old gw_results data
         [fixturesResult, picksResult, submissionResult] = await Promise.all([
-          supabase.from("test_api_fixtures").select("id,test_gw,fixture_index,api_match_id,home_code,away_code,home_team,away_team,home_name,away_name,kickoff_time").eq("test_gw", 1).order("fixture_index", { ascending: true }),
-          supabase.from("test_api_picks").select("user_id,matchday,fixture_index,pick").eq("user_id", user.id).eq("matchday", 1),
-          supabase.from("test_api_submissions").select("submitted_at").eq("user_id", user.id).eq("matchday", 1).maybeSingle(),
+          supabase.from("test_api_fixtures").select("id,test_gw,fixture_index,api_match_id,home_code,away_code,home_team,away_team,home_name,away_name,kickoff_time").eq("test_gw", testGw).order("fixture_index", { ascending: true }),
+          supabase.from("test_api_picks").select("user_id,matchday,fixture_index,pick").eq("user_id", user.id).eq("matchday", testGw),
+          supabase.from("test_api_submissions").select("submitted_at").eq("user_id", user.id).eq("matchday", testGw).maybeSingle(),
         ]);
         
         // Check for errors in test API queries
@@ -594,8 +653,13 @@ export default function HomePage() {
         }
       }
 
-    // Don't show "coming soon" message
-    setNextGwComing(null);
+    // Show "coming soon" message if there are no fixtures for current GW
+    // This means the next GW is coming soon
+    if (thisGwFixtures.length === 0 && currentGw) {
+      setNextGwComing(currentGw + 1);
+    } else {
+      setNextGwComing(null);
+    }
 
     if (alive) {
       // Set all data atomically to prevent flickering
@@ -683,118 +747,15 @@ export default function HomePage() {
   );
 
   // Simple live score polling - poll fixtures whose kickoff has passed
+  // Real-time live scores are now handled by useLiveScores hook above
+  // No polling needed - scores update instantly when Netlify writes to live_scores table
+  
+  // Schedule notifications (only once per fixture, localStorage prevents duplicates)
   useEffect(() => {
     if (!isInApiTestLeague || !fixtures.length) return;
     
     const fixturesToPoll = fixtures.filter(f => f.api_match_id && f.kickoff_time);
-    if (fixturesToPoll.length === 0) return;
     
-    const intervals = new Map<number, ReturnType<typeof setInterval>>();
-    
-    // Simple polling function - reads from Supabase (no rate limits!)
-    const startPolling = (fixture: Fixture) => {
-      const fixtureIndex = fixture.fixture_index;
-      if (intervals.has(fixtureIndex)) {
-        return; // Already polling
-      }
-      
-      const poll = async () => {
-        const scoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
-        
-        // Check if we got no data (Supabase doesn't have it yet - scheduled function may not have run)
-        if (!scoreData) {
-          return; // Will retry on next poll
-        }
-        
-        // No rate limiting needed - we're reading from Supabase, not calling API
-        const isFinished = scoreData.status === 'FINISHED';
-        
-        // Update live scores
-        setLiveScores(prev => ({
-          ...prev,
-          [fixtureIndex]: {
-            homeScore: scoreData.homeScore,
-            awayScore: scoreData.awayScore,
-            status: scoreData.status,
-            minute: scoreData.minute ?? null
-          }
-        }));
-        
-        // Score change notifications are now handled server-side by sendScoreNotifications function
-        // This runs every 2 minutes and checks the live_scores table for changes
-        // Removed client-side notifications to avoid flakey behavior
-        
-        // Still track previous scores for local state management
-        const prevScore = prevScoresRef.current[fixtureIndex];
-        if (prevScore) {
-          // Just update prev score, no notifications
-        }
-        
-        // Update prev score
-        prevScoresRef.current[fixtureIndex] = {
-          homeScore: scoreData.homeScore,
-          awayScore: scoreData.awayScore
-        };
-        
-        // Stop polling if finished
-        if (isFinished) {
-          const interval = intervals.get(fixtureIndex);
-          if (interval) {
-            clearInterval(interval);
-            intervals.delete(fixtureIndex);
-          }
-          // NOTE: We intentionally do NOT auto-save final scores to gw_results here.
-          // Main game GW results should ONLY come from the Admin results flow,
-          // so that test API fixtures can never overwrite real game data.
-        }
-      };
-      
-      // Poll Supabase every 10 seconds (fast, no rate limits!)
-      const interval = setInterval(poll, 10 * 1000); // Every 10 seconds - Supabase is fast!
-      intervals.set(fixtureIndex, interval);
-      
-      // Poll immediately on mount
-      poll();
-    };
-    
-    // Check which fixtures should be polled
-    const checkFixtures = () => {
-      const now = new Date();
-      fixturesToPoll.forEach(fixture => {
-        if (!fixture.api_match_id || !fixture.kickoff_time) return;
-        
-        const fixtureIndex = fixture.fixture_index;
-        const kickoffTime = new Date(fixture.kickoff_time);
-        const kickoffHasPassed = kickoffTime.getTime() <= now.getTime();
-        const isCurrentlyPolling = intervals.has(fixtureIndex);
-        const currentScore = liveScores[fixtureIndex];
-        const isFinished = currentScore?.status === 'FINISHED';
-        
-        // Stop if finished
-        if (isFinished && isCurrentlyPolling) {
-          const interval = intervals.get(fixtureIndex);
-          if (interval) {
-            clearInterval(interval);
-            intervals.delete(fixtureIndex);
-          }
-          return;
-        }
-        
-        // Start polling if kickoff passed and not finished
-        if (kickoffHasPassed && !isFinished && !isCurrentlyPolling) {
-          startPolling(fixture);
-        }
-      });
-    };
-    
-    // REMOVED: checkForMissingResults function
-    // This was causing test API results to overwrite finished GW results in gw_results table
-    // Main game GW results should ONLY come from Admin results screen, never auto-saved from API
-    
-    checkFixtures();
-    const checkInterval = setInterval(checkFixtures, 60000); // Check every 1 minute (local check only, no API calls)
-    
-    // Schedule notifications (only once per fixture, localStorage prevents duplicates)
     fixturesToPoll.forEach((fixture) => {
       if (!fixture.api_match_id || !fixture.kickoff_time) return;
       const fixtureIndex = fixture.fixture_index;
@@ -818,12 +779,7 @@ export default function HomePage() {
         }
       }
     });
-    
-    return () => {
-      intervals.forEach(clearInterval);
-      clearInterval(checkInterval);
-    };
-  }, [isInApiTestLeague, fixtures.length, fixturesKey]);
+  }, [isInApiTestLeague, fixtures]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -963,17 +919,28 @@ export default function HomePage() {
       // Check if API Test league exists
       const apiTestLeague = leagues.find(l => l.name === "API Test");
       
+      // Fetch current test GW from meta table if API Test league exists
+      let currentTestGw = 1; // Default to 1
+      if (apiTestLeague) {
+        const { data: testMetaData } = await supabase
+          .from("test_api_meta")
+          .select("current_test_gw")
+          .eq("id", 1)
+          .maybeSingle();
+        currentTestGw = testMetaData?.current_test_gw ?? 1;
+      }
+      
       // Fetch test API fixtures and live scores if API Test league exists
       let testApiFixtures: any[] = [];
       let testApiLiveScores: Record<number, { homeScore: number; awayScore: number; status: string }> = {};
       let testApiResultsByFixtureIdx = new Map<number, "H" | "D" | "A">();
       
       if (apiTestLeague) {
-        // Fetch test API fixtures
+        // Fetch test API fixtures for current test GW
         const { data: testFixturesData } = await supabase
           .from("test_api_fixtures")
           .select("fixture_index,api_match_id")
-          .eq("test_gw", 1)
+          .eq("test_gw", currentTestGw)
           .order("fixture_index", { ascending: true });
         
         testApiFixtures = testFixturesData ?? [];
@@ -1020,19 +987,19 @@ export default function HomePage() {
           continue;
         }
         
-        // For API Test league, use test_api_picks with matchday=1
+        // For API Test league, use test_api_picks with current test GW
         if (league.name === "API Test") {
           const memberIds = members.map(m => m.id);
           const { data: testApiPicks } = await supabase
             .from("test_api_picks")
             .select("user_id,matchday,fixture_index,pick")
-            .eq("matchday", 1)
+            .eq("matchday", currentTestGw)
             .in("user_id", memberIds);
           
           // Convert test_api_picks to PickRow format (map matchday to gw=1 for consistency)
           const convertedPicks: PickRow[] = (testApiPicks ?? []).map((p: any) => ({
             user_id: p.user_id,
-            gw: 1, // Map matchday=1 to gw=1 for consistency
+            gw: 1, // Map matchday to gw=1 for consistency
             fixture_index: p.fixture_index,
             pick: p.pick
           }));
@@ -1086,26 +1053,26 @@ export default function HomePage() {
       if (apiTestLeague) {
         const apiTestMemberIds = membersByLeague[apiTestLeague.id]?.map(m => m.id) ?? [];
         if (apiTestMemberIds.length > 0) {
-          // Fetch submissions
+          // Fetch submissions for current test GW
           const { data: testSubsData } = await supabase
             .from("test_api_submissions")
             .select("user_id,submitted_at")
-            .eq("matchday", 1)
+            .eq("matchday", currentTestGw)
             .in("user_id", apiTestMemberIds)
             .not("submitted_at", "is", null);
           
-          // Fetch picks for validation
+          // Fetch picks for validation (for current test GW)
           const { data: testApiPicksForValidation } = await supabase
             .from("test_api_picks")
             .select("user_id,fixture_index")
-            .eq("matchday", 1)
+            .eq("matchday", currentTestGw)
             .in("user_id", apiTestMemberIds);
           
-          // Fetch current fixtures to validate picks match
+          // Fetch current fixtures to validate picks match (for current test GW)
           const { data: currentTestFixtures } = await supabase
             .from("test_api_fixtures")
             .select("fixture_index")
-            .eq("test_gw", 1)
+            .eq("test_gw", currentTestGw)
             .order("fixture_index", { ascending: true });
           
           if (currentTestFixtures && testApiPicksForValidation && testSubsData) {
@@ -3422,13 +3389,11 @@ export default function HomePage() {
                   <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">
                     {group.items.map((f, index) => {
                         const pick = picksMap[f.fixture_index];
-                        // For test API fixtures, prioritize short names; otherwise use medium names
+                        // Always use medium names from teamNames.ts for consistency
                         const homeKey = f.home_team || f.home_name || f.home_code || "";
                         const awayKey = f.away_team || f.away_name || f.away_code || "";
-
-                        // For test API fixtures, use short names directly; otherwise use getMediumName
-                        const homeName = isInApiTestLeague ? (f.home_team || f.home_name || "") : getMediumName(homeKey);
-                        const awayName = isInApiTestLeague ? (f.away_team || f.away_name || "") : getMediumName(awayKey);
+                        const homeName = getMediumName(homeKey);
+                        const awayName = getMediumName(awayKey);
 
                 const kickoff = f.kickoff_time
                                       ? (() => {
@@ -3535,58 +3500,220 @@ export default function HomePage() {
                         </div>
                       )}
                       {/* FT indicator for finished games - grey, no pulse */}
-                      {isFinished && !isLive && !isHalfTime && (
-                        <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
-                          <span className="text-xs font-semibold text-slate-500">
-                            FT
-                          </span>
-                        </div>
-                      )}
                       
                       {/* header: Home  score/kickoff  Away */}
                       <div className={`flex flex-col px-2 pb-3 ${isOngoing ? 'pt-4' : 'pt-1'}`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1 flex-1 justify-end">
-                            <div className={`break-words ${liveScore && (isOngoing || isFinished) && liveScore.homeScore > liveScore.awayScore ? 'font-bold' : 'font-medium'}`}>{homeName}</div>
-                            <img 
-                              src={`/assets/badges/${(f.home_code || homeKey).toUpperCase()}.png`} 
-                              alt={homeName}
-                              className="w-5 h-5"
-                              onError={(e) => {
-                                // Reduce opacity if badge fails to load, don't hide completely
-                                (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
-                              }}
-                            />
+                        <div className="flex items-start justify-between">
+                          {/* Home Team */}
+                          <div className="flex-1 flex flex-col items-end">
+                            <div className="flex items-center gap-1">
+                              <div className={`break-words ${liveScore && (isOngoing || isFinished) && liveScore.homeScore > liveScore.awayScore ? 'font-bold' : 'font-medium'}`}>{homeName}</div>
+                              <img 
+                                src={`/assets/badges/${(f.home_code || homeKey).toUpperCase()}.png`} 
+                                alt={homeName}
+                                className="w-5 h-5"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
+                                }}
+                              />
+                            </div>
+                            {/* Home Team Goals and Red Cards (chronologically sorted) */}
+                            {liveScore && (isOngoing || isFinished) && (() => {
+                              // Filter goals for home team
+                              const homeGoals = (liveScore.goals || []).filter((goal: any) => {
+                                const goalTeam = goal.team || '';
+                                const normalizedGoalTeam = getMediumName(goalTeam);
+                                return normalizedGoalTeam === homeName || normalizedGoalTeam === getMediumName(f.home_team || '');
+                              });
+                              
+                              // Filter red cards for home team
+                              const homeRedCards = (liveScore.red_cards || []).filter((card: any) => {
+                                const cardTeam = card.team || '';
+                                const normalizedCardTeam = getMediumName(cardTeam);
+                                return normalizedCardTeam === homeName || normalizedCardTeam === getMediumName(f.home_team || '');
+                              });
+                              
+                              // Create combined timeline of goals and red cards
+                              type TimelineEvent = { type: 'goal' | 'red_card'; minute: number | null; scorer?: string; player?: string; minutes?: number[] };
+                              const timeline: TimelineEvent[] = [];
+                              
+                              // Add goals (grouped by scorer)
+                              const goalsByScorer = new Map<string, number[]>();
+                              homeGoals.forEach((goal: any) => {
+                                const scorer = goal.scorer || 'Unknown';
+                                const minute = goal.minute;
+                                if (!goalsByScorer.has(scorer)) {
+                                  goalsByScorer.set(scorer, []);
+                                }
+                                if (minute !== null && minute !== undefined) {
+                                  goalsByScorer.get(scorer)!.push(minute);
+                                }
+                              });
+                              
+                              // Add each goal group as a timeline event (use first minute for sorting)
+                              goalsByScorer.forEach((minutes, scorer) => {
+                                const sortedMinutes = minutes.sort((a, b) => a - b);
+                                timeline.push({
+                                  type: 'goal',
+                                  minute: sortedMinutes[0],
+                                  scorer,
+                                  minutes: sortedMinutes,
+                                });
+                              });
+                              
+                              // Add red cards
+                              homeRedCards.forEach((card: any) => {
+                                timeline.push({
+                                  type: 'red_card',
+                                  minute: card.minute,
+                                  player: card.player || 'Unknown',
+                                });
+                              });
+                              
+                              // Sort by minute (null minutes go to end)
+                              timeline.sort((a, b) => {
+                                if (a.minute === null) return 1;
+                                if (b.minute === null) return -1;
+                                return a.minute - b.minute;
+                              });
+                              
+                              if (timeline.length === 0) return null;
+                              
+                              return (
+                                <div className="mt-3 mb-2 flex flex-col items-end gap-0.5">
+                                  {timeline.map((event, idx) => {
+                                    if (event.type === 'goal') {
+                                      return (
+                                        <span key={idx} className="text-[10px] text-slate-600">
+                                          {event.scorer} {event.minutes!.sort((a, b) => a - b).map(m => `${m}'`).join(', ')}
+                                        </span>
+                                      );
+                                    } else {
+                                      return (
+                                        <span key={idx} className="text-[10px] text-slate-600">
+                                          🟥 {event.player} {event.minute}'
+                                        </span>
+                                      );
+                                    }
+                                  })}
+                                </div>
+                              );
+                            })()}
                           </div>
-                          <div className="px-4 flex items-center">
+                          
+                          {/* Score / Kickoff Time */}
+                          <div className="px-4 flex flex-col items-center">
                             {liveScore && (isOngoing || isFinished) ? (
-                              <span className="font-bold text-base text-slate-900">
-                                {liveScore.homeScore} - {liveScore.awayScore}
-                              </span>
+                              <>
+                                <span className="font-bold text-base text-slate-900">
+                                  {liveScore.homeScore} - {liveScore.awayScore}
+                                </span>
+                                <span className={`text-[10px] font-semibold mt-0.5 ${isOngoing ? 'text-red-600' : 'text-slate-500'}`}>
+                                  {formatMinuteDisplay(liveScore.status, liveScore.minute, isInApiTestLeague)}
+                                </span>
+                              </>
                             ) : (
                               <span className="text-slate-500 text-sm">{kickoff}</span>
                             )}
                           </div>
-                          <div className="flex items-center gap-1 flex-1 justify-start">
-                            <img 
-                              src={`/assets/badges/${(f.away_code || awayKey).toUpperCase()}.png`} 
-                              alt={awayName}
-                              className="w-5 h-5"
-                              onError={(e) => {
-                                // Reduce opacity if badge fails to load, don't hide completely
-                                (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
-                              }}
-                            />
-                            <div className={`break-words ${liveScore && (isOngoing || isFinished) && liveScore.awayScore > liveScore.homeScore ? 'font-bold' : 'font-medium'}`}>{awayName}</div>
+                          
+                          {/* Away Team */}
+                          <div className="flex-1 flex flex-col items-start">
+                            <div className="flex items-center gap-1">
+                              <img 
+                                src={`/assets/badges/${(f.away_code || awayKey).toUpperCase()}.png`} 
+                                alt={awayName}
+                                className="w-5 h-5"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
+                                }}
+                              />
+                              <div className={`break-words ${liveScore && (isOngoing || isFinished) && liveScore.awayScore > liveScore.homeScore ? 'font-bold' : 'font-medium'}`}>{awayName}</div>
+                            </div>
+                            {/* Away Team Goals and Red Cards (chronologically sorted) */}
+                            {liveScore && (isOngoing || isFinished) && (() => {
+                              // Filter goals for away team
+                              const awayGoals = (liveScore.goals || []).filter((goal: any) => {
+                                const goalTeam = goal.team || '';
+                                const normalizedGoalTeam = getMediumName(goalTeam);
+                                return normalizedGoalTeam === awayName || normalizedGoalTeam === getMediumName(f.away_team || '');
+                              });
+                              
+                              // Filter red cards for away team
+                              const awayRedCards = (liveScore.red_cards || []).filter((card: any) => {
+                                const cardTeam = card.team || '';
+                                const normalizedCardTeam = getMediumName(cardTeam);
+                                return normalizedCardTeam === awayName || normalizedCardTeam === getMediumName(f.away_team || '');
+                              });
+                              
+                              // Create combined timeline of goals and red cards
+                              type TimelineEvent = { type: 'goal' | 'red_card'; minute: number | null; scorer?: string; player?: string; minutes?: number[] };
+                              const timeline: TimelineEvent[] = [];
+                              
+                              // Add goals (grouped by scorer)
+                              const goalsByScorer = new Map<string, number[]>();
+                              awayGoals.forEach((goal: any) => {
+                                const scorer = goal.scorer || 'Unknown';
+                                const minute = goal.minute;
+                                if (!goalsByScorer.has(scorer)) {
+                                  goalsByScorer.set(scorer, []);
+                                }
+                                if (minute !== null && minute !== undefined) {
+                                  goalsByScorer.get(scorer)!.push(minute);
+                                }
+                              });
+                              
+                              // Add each goal group as a timeline event (use first minute for sorting)
+                              goalsByScorer.forEach((minutes, scorer) => {
+                                const sortedMinutes = minutes.sort((a, b) => a - b);
+                                timeline.push({
+                                  type: 'goal',
+                                  minute: sortedMinutes[0],
+                                  scorer,
+                                  minutes: sortedMinutes,
+                                });
+                              });
+                              
+                              // Add red cards
+                              awayRedCards.forEach((card: any) => {
+                                timeline.push({
+                                  type: 'red_card',
+                                  minute: card.minute,
+                                  player: card.player || 'Unknown',
+                                });
+                              });
+                              
+                              // Sort by minute (null minutes go to end)
+                              timeline.sort((a, b) => {
+                                if (a.minute === null) return 1;
+                                if (b.minute === null) return -1;
+                                return a.minute - b.minute;
+                              });
+                              
+                              if (timeline.length === 0) return null;
+                              
+                              return (
+                                <div className="mt-3 mb-2 flex flex-col items-start gap-0.5">
+                                  {timeline.map((event, idx) => {
+                                    if (event.type === 'goal') {
+                                      return (
+                                        <span key={idx} className="text-[10px] text-slate-600">
+                                          {event.scorer} {event.minutes!.sort((a, b) => a - b).map(m => `${m}'`).join(', ')}
+                                        </span>
+                                      );
+                                    } else {
+                                      return (
+                                        <span key={idx} className="text-[10px] text-slate-600">
+                                          🟥 {event.player} {event.minute}'
+                                        </span>
+                                      );
+                                    }
+                                  })}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
-                        {liveScore && (isOngoing || isFinished) && (
-                          <div className="flex justify-center mt-1">
-                            <span className={`text-[10px] font-semibold ${isOngoing ? 'text-red-600' : 'text-slate-500'}`}>
-                              {formatMinuteDisplay(liveScore.status, liveScore.minute)}
-                            </span>
-                          </div>
-                        )}
                       </div>
 
                       {/* buttons: Home Win, Draw, Away Win - only show if user has made predictions (for Test API) or always show (for regular leagues) */}

@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { resolveLeagueStartGw as getLeagueStartGw, shouldIncludeGwForLeague } from "../lib/leagueStart";
 import imageCompression from "browser-image-compression";
 import { getLeagueAvatarUrl } from "../lib/leagueAvatars";
+import { useLiveScores } from "../hooks/useLiveScores";
 
 const MAX_MEMBERS = 8;
 
@@ -548,8 +549,7 @@ export default function LeaguePage() {
   const [latestResultsGw, setLatestResultsGw] = useState<number | null>(null);
   const [selectedGw, setSelectedGw] = useState<number | null>(null);
   const [availableGws, setAvailableGws] = useState<number[]>([]);
-  // Live scores for test API fixtures
-  const [liveScores, setLiveScores] = useState<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
+
   // Ref to track current liveScores without causing re-renders
   const liveScoresRef = useRef<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
   // Track previous positions for animation (using ref to persist across renders)
@@ -607,7 +607,6 @@ export default function LeaguePage() {
       const { data: testGwData } = await supabase
         .from("test_api_fixtures")
         .select("test_gw, kickoff_time")
-        .eq("test_gw", 1)
         .order("fixture_index", { ascending: true });
       
       // Group by GW to find first kickoff for each GW
@@ -699,6 +698,74 @@ export default function LeaguePage() {
   const [picks, setPicks] = useState<PickRow[]>([]);
   const [subs, setSubs] = useState<SubmissionRow[]>([]);
   const [results, setResults] = useState<ResultRowRaw[]>([]);
+
+  // Get api_match_ids from fixtures for real-time subscription
+  const apiMatchIds = useMemo(() => {
+    if (!fixtures || fixtures.length === 0) return [];
+    return fixtures
+      .map(f => f.api_match_id)
+      .filter((id): id is number => id !== null && id !== undefined);
+  }, [fixtures]);
+
+  // Subscribe to real-time live scores updates (replaces polling)
+  const isApiTestLeague = useMemo(() => league?.name === 'API Test', [league?.name]);
+  const [currentTestGw, setCurrentTestGw] = useState<number | null>(null);
+  
+  // Fetch current test GW for API Test league
+  useEffect(() => {
+    if (!isApiTestLeague) {
+      setCurrentTestGw(null);
+      return;
+    }
+    
+    let alive = true;
+    (async () => {
+      const { data: testMetaData } = await supabase
+        .from("test_api_meta")
+        .select("current_test_gw")
+        .eq("id", 1)
+        .maybeSingle();
+      
+      if (alive) {
+        setCurrentTestGw(testMetaData?.current_test_gw ?? 1);
+      }
+    })();
+    
+    return () => {
+      alive = false;
+    };
+  }, [isApiTestLeague]);
+  
+  const gwForSubscription = useMemo(() => {
+    if (isApiTestLeague && currentTestGw !== null) return currentTestGw;
+    return selectedGw || currentGw || undefined;
+  }, [isApiTestLeague, currentTestGw, selectedGw, currentGw]);
+  
+  const { liveScores: liveScoresMap } = useLiveScores(
+    gwForSubscription,
+    apiMatchIds.length > 0 ? apiMatchIds : undefined
+  );
+
+  // Convert Map to Record format for backward compatibility with existing code
+  const liveScores = useMemo(() => {
+    const result: Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }> = {};
+    if (!fixtures || fixtures.length === 0) return result;
+    fixtures.forEach(fixture => {
+      const apiMatchId = fixture.api_match_id;
+      if (apiMatchId) {
+        const liveScore = liveScoresMap.get(apiMatchId);
+        if (liveScore) {
+          result[fixture.fixture_index] = {
+            homeScore: liveScore.home_score ?? 0,
+            awayScore: liveScore.away_score ?? 0,
+            status: liveScore.status || 'SCHEDULED',
+            minute: liveScore.minute ?? null
+          };
+        }
+      }
+    });
+    return result;
+  }, [liveScoresMap, fixtures]);
 
   // MLT rows
   const [mltRows, setMltRows] = useState<MltRow[]>([]);
@@ -1342,26 +1409,41 @@ export default function LeaguePage() {
     let alive = true;
 
     (async () => {
-      // Special handling for API Test league - use test_api_fixtures for GW 1
+      // Special handling for API Test league - use test_api_fixtures for current test GW
       // CRITICAL: Only use test API tables if league name is EXACTLY 'API Test'
       // All other leagues MUST use main database tables (fixtures, picks, gw_submissions)
       const isApiTestLeague = league?.name === 'API Test';
+      
+      // Fetch current test GW from meta table for API Test league
+      let testGwForData = currentTestGw ?? 1; // Use state if available, otherwise default to 1
+      if (isApiTestLeague) {
+        const { data: testMetaData } = await supabase
+          .from("test_api_meta")
+          .select("current_test_gw")
+          .eq("id", 1)
+          .maybeSingle();
+        
+        testGwForData = testMetaData?.current_test_gw ?? 1;
+        console.log('[League] Current test GW from meta:', testGwForData);
+      }
+      
       // For API Test league, only allow "gw" tab if all members have submitted
-      // Check if all submitted for GW 1 (we'll check this properly after loading submissions)
+      // Check if all submitted for current test GW (we'll check this properly after loading submissions)
       const useTestFixtures = isApiTestLeague && (tab === "gw" || tab === "gwr");
       console.log('[League] Data fetch:', { 
         isApiTestLeague, 
         tab, 
         useTestFixtures, 
         leagueName: league?.name,
+        testGwForData,
         willUseTestTables: useTestFixtures,
         willUseMainTables: !useTestFixtures
       });
       
-      // For API Test league in predictions/results tabs, always use GW 1
+      // For API Test league in predictions/results tabs, use current test GW
       let gwForData = tab === "gwr" ? selectedGw : tab === "gw" ? currentGw : currentGw;
       if (isApiTestLeague && (tab === "gw" || tab === "gwr")) {
-        gwForData = 1; // Force GW 1 for API Test league
+        gwForData = testGwForData; // Use current test GW for API Test league
       }
       
       // For predictions tab with regular leagues, try to detect the GW from submissions
@@ -1417,13 +1499,13 @@ export default function LeaguePage() {
       
       let fx;
       if (useTestFixtures) {
-        // Fetch from test_api_fixtures for API Test league GW 1
+        // Fetch from test_api_fixtures for API Test league current test GW
         const { data: testFx } = await supabase
           .from("test_api_fixtures")
           .select(
             "id,test_gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time,api_match_id"
           )
-          .eq("test_gw", 1)
+          .eq("test_gw", testGwForData)
           .order("fixture_index", { ascending: true });
         // Map test_gw to gw for consistency
         fx = testFx?.map(f => ({ ...f, gw: f.test_gw })) || null;
@@ -1465,21 +1547,21 @@ export default function LeaguePage() {
       let submissions;
       
       if (useTestFixtures) {
-        // Fetch from test_api_picks for API Test league
+        // Fetch from test_api_picks for API Test league current test GW
         const { data: testPicks } = await supabase
           .from("test_api_picks")
           .select("user_id,matchday,fixture_index,pick")
-          .eq("matchday", 1)
+          .eq("matchday", testGwForData)
           .in("user_id", memberIds);
         // Map matchday to gw for consistency
         pk = testPicks?.map(p => ({ ...p, gw: p.matchday })) || null;
         
-        // Fetch from test_api_submissions for API Test league
+        // Fetch from test_api_submissions for API Test league current test GW
         // IMPORTANT: Only get submissions that have a non-null submitted_at (actually submitted)
         const { data: testSubs, error: testSubsError } = await supabase
           .from("test_api_submissions")
           .select("user_id,matchday,submitted_at")
-          .eq("matchday", 1)
+          .eq("matchday", testGwForData)
           .not("submitted_at", "is", null)  // CRITICAL: Only count submissions with non-null submitted_at
           .in("user_id", memberIds);
         if (testSubsError) {
@@ -1492,7 +1574,7 @@ export default function LeaguePage() {
         const { data: currentTestFixtures } = await supabase
           .from("test_api_fixtures")
           .select("fixture_index,home_team,away_team,home_code,away_code,kickoff_time")
-          .eq("test_gw", 1)
+          .eq("test_gw", testGwForData)
           .order("fixture_index", { ascending: true });
         
         const currentFixtureIndicesSet = new Set((currentTestFixtures || []).map(f => f.fixture_index));
@@ -1531,7 +1613,7 @@ export default function LeaguePage() {
           
           testSubs.forEach((sub) => {
             // Check if this user has picks for ALL current fixtures
-            const userPicks = (pk || []).filter((p: PickRow) => p.user_id === sub.user_id && (p as any).matchday === 1);
+            const userPicks = (pk || []).filter((p: PickRow) => p.user_id === sub.user_id && (p as any).matchday === testGwForData);
             const picksForCurrentFixtures = userPicks.filter((p: PickRow) => currentFixtureIndicesSet.has(p.fixture_index));
             const hasAllRequiredPicks = picksForCurrentFixtures.length === requiredFixtureCount && requiredFixtureCount > 0;
             
@@ -1698,149 +1780,8 @@ export default function LeaguePage() {
     liveScoresRef.current = liveScores;
   }, [liveScores]);
 
-  // Fetch existing live scores immediately, then poll for updates
-  useEffect(() => {
-    // Load live scores for all leagues
-    if (!fixtures.length || tab !== 'gwr') return;
-    
-    const fixturesWithApi = fixtures.filter((f: any) => f.api_match_id);
-    if (fixturesWithApi.length === 0) return;
-    
-    // Immediately fetch all existing live scores from Supabase
-    const loadExistingScores = async () => {
-      console.log('[League] Loading existing live scores from Supabase for', fixturesWithApi.length, 'fixtures');
-      
-      // Fetch all live scores in parallel
-      const scorePromises = fixturesWithApi.map(async (fixture: any) => {
-        const scoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
-        if (!scoreData) return null;
-        
-        return {
-          fixtureIndex: fixture.fixture_index,
-          scoreData
-        };
-      });
-      
-      const results = await Promise.all(scorePromises);
-      
-      // Update live scores state with all fetched scores
-      setLiveScores(prev => {
-        const updated = { ...prev };
-        results.forEach(result => {
-          if (result) {
-            updated[result.fixtureIndex] = {
-              homeScore: result.scoreData.homeScore,
-              awayScore: result.scoreData.awayScore,
-              status: result.scoreData.status,
-              minute: result.scoreData.minute ?? null
-            };
-          }
-        });
-        return updated;
-      });
-      
-      console.log('[League] Loaded', results.filter(r => r !== null).length, 'existing live scores');
-    };
-    
-    loadExistingScores();
-  }, [fixtures.map((f: any) => `${f.fixture_index}-${f.api_match_id}`).join(','), tab]);
-
-  // Simple live score polling - poll fixtures whose kickoff has passed
-  useEffect(() => {
-    // Poll for all leagues, not just API Test
-    if (!fixtures.length || tab !== 'gwr') return;
-    
-    const fixturesToPoll = fixtures.filter((f: any) => f.api_match_id && f.kickoff_time);
-    if (fixturesToPoll.length === 0) return;
-    
-    const intervals = new Map<number, ReturnType<typeof setInterval>>();
-    
-    // Simple polling function - reads from Supabase (no rate limits!)
-    const startPolling = (fixture: any) => {
-      const fixtureIndex = fixture.fixture_index;
-      if (intervals.has(fixtureIndex)) return; // Already polling
-      
-      const poll = async () => {
-        const scoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
-        if (!scoreData) return;
-        
-        const isFinished = scoreData.status === 'FINISHED';
-        
-        // Update live scores using functional update to avoid dependency on liveScores
-        setLiveScores(prev => {
-          // Check if already finished to avoid unnecessary updates
-          const current = prev[fixtureIndex];
-          if (current?.status === 'FINISHED' && isFinished) {
-            return prev; // No change needed
-          }
-          
-          return {
-            ...prev,
-            [fixtureIndex]: {
-              homeScore: scoreData.homeScore,
-              awayScore: scoreData.awayScore,
-              status: scoreData.status,
-              minute: scoreData.minute ?? null
-            }
-          };
-        });
-        
-        // Stop polling if finished
-        if (isFinished) {
-          const interval = intervals.get(fixtureIndex);
-          if (interval) {
-            clearInterval(interval);
-            intervals.delete(fixtureIndex);
-          }
-        }
-      };
-      
-      // Poll immediately, then every 10 seconds
-      poll(); // Fetch immediately
-      const interval = setInterval(poll, 10 * 1000); // Every 10 seconds - Supabase is fast!
-      intervals.set(fixtureIndex, interval);
-    };
-    
-    // Check which fixtures should be polled
-    // Use ref to access current liveScores without causing re-renders
-    const checkFixtures = () => {
-      const now = new Date();
-      fixturesToPoll.forEach((fixture: any) => {
-        if (!fixture.api_match_id || !fixture.kickoff_time) return;
-        
-        const fixtureIndex = fixture.fixture_index;
-        const kickoffTime = new Date(fixture.kickoff_time);
-        const kickoffHasPassed = kickoffTime.getTime() <= now.getTime();
-        const isCurrentlyPolling = intervals.has(fixtureIndex);
-        const currentScore = liveScoresRef.current[fixtureIndex];
-        const isFinished = currentScore?.status === 'FINISHED';
-        
-        // Stop if finished
-        if (isFinished && isCurrentlyPolling) {
-          console.log(`[League] Stopping polling for fixture ${fixtureIndex} (finished)`);
-          const interval = intervals.get(fixtureIndex);
-          if (interval) {
-            clearInterval(interval);
-            intervals.delete(fixtureIndex);
-          }
-          return;
-        }
-        
-        // Start polling if kickoff passed and not finished
-        if (kickoffHasPassed && !isFinished && !isCurrentlyPolling) {
-          startPolling(fixture);
-        }
-      });
-    };
-    
-    checkFixtures();
-    const checkInterval = setInterval(checkFixtures, 60000); // Check every 1 minute (local check only, no API calls)
-    
-    return () => {
-      intervals.forEach(clearInterval);
-      clearInterval(checkInterval);
-    };
-  }, [league?.name, fixtures.map((f: any) => f.api_match_id).join(','), tab]); // Removed liveScores from dependencies
+  // Real-time live scores are now handled by useLiveScores hook above
+  // No polling needed - scores update instantly when Netlify writes to live_scores table
 
   // Set default tab to "gwr" (GW Results) if gameweek is live or finished within 12 hours
   // Only runs once on initial load when on chat tab - never auto-switches after user manually selects a tab
@@ -2356,7 +2297,7 @@ export default function LeaguePage() {
   }
 
   function GwPicksTab() {
-    const picksGw = league?.name === 'API Test' ? 1 : currentGw;
+    const picksGw = league?.name === 'API Test' ? (currentTestGw ?? 1) : currentGw;
     if (!picksGw) {
       return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No current game week available.</div>;
     }
@@ -2415,7 +2356,7 @@ export default function LeaguePage() {
     const allSubmitted = members.length > 0 && members.every((m) => submittedMap.get(`${m.id}:${picksGw}`));
     
     // Debug logging for API Test league
-    if (isApiTestLeague && picksGw === 1) {
+    if (isApiTestLeague && picksGw === (currentTestGw ?? 1)) {
       console.log('[League] API Test filtering:', {
         currentFixtureIndices: Array.from(currentFixtureIndices),
         totalPicks: picks.length,
@@ -2428,7 +2369,7 @@ export default function LeaguePage() {
       
       // Log all picks to see what we're dealing with
       const allPicksForGw = picks.filter(p => p.gw === picksGw);
-      console.log('[League] All picks for GW1:', allPicksForGw.map(p => ({
+      console.log(`[League] All picks for GW${picksGw}:`, allPicksForGw.map(p => ({
         user_id: p.user_id,
         userName: members.find(m => m.id === p.user_id)?.name,
         fixture_index: p.fixture_index,
@@ -3271,7 +3212,7 @@ export default function LeaguePage() {
   }
 
   function GwResultsTab() {
-    const resGw = league?.name === 'API Test' ? 1 : selectedGw;
+    const resGw = league?.name === 'API Test' ? (currentTestGw ?? 1) : selectedGw;
     
     if (!resGw || (availableGws.length === 0 && league?.name !== 'API Test')) {
       return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No game week selected.</div>;
@@ -3294,7 +3235,7 @@ export default function LeaguePage() {
     const isApiTestLeague = league?.name === 'API Test';
     
     // For API Test league, ONLY use live scores (ignore database results)
-    if (isApiTestLeague && resGw === 1) {
+    if (isApiTestLeague && resGw === (currentTestGw ?? 1)) {
       // Check live scores for first 3 fixtures - count both live and finished fixtures
       const fixturesToCheck = fixtures;
       fixturesToCheck.forEach((f: any) => {
@@ -3385,7 +3326,7 @@ export default function LeaguePage() {
     let hasLiveFixtures = false;
     let hasStartingSoonFixtures = false;
     let hasStartedFixtures = false; // Track if at least one game has started
-    if (isApiTestLeague && resGw === 1) {
+    if (isApiTestLeague && resGw === (currentTestGw ?? 1)) {
       // For API Test league, check if all fixtures (first 3) have finished
       const fixturesToCheck = fixtures;
       if (fixturesToCheck.length > 0) {
@@ -3873,7 +3814,7 @@ export default function LeaguePage() {
                 }
               >
                 {(() => {
-                  const resGw = league?.name === 'API Test' ? 1 : (selectedGw || currentGw);
+                  const resGw = league?.name === 'API Test' ? (currentTestGw ?? 1) : (selectedGw || currentGw);
                   // Check if GW is live: first game started AND last game not finished
                   const now = new Date();
                   const firstFixture = fixtures[0];
@@ -3921,8 +3862,8 @@ export default function LeaguePage() {
                   (tab === "gw" ? "text-[#1C8376]" : "text-slate-400")
                 }
               >
-                <span className="hidden sm:inline">{league?.name === 'API Test' ? 'GW 1 Predictions' : (currentGw ? `GW ${currentGw} Predictions` : "GW Predictions")}</span>
-                <span className="sm:hidden whitespace-pre-line">{league?.name === 'API Test' ? 'GW1\nPredictions' : (currentGw ? `GW${currentGw}\nPredictions` : "GW\nPredictions")}</span>
+                <span className="hidden sm:inline">{league?.name === 'API Test' ? `GW ${currentTestGw ?? 1} Predictions` : (currentGw ? `GW ${currentGw} Predictions` : "GW Predictions")}</span>
+                <span className="sm:hidden whitespace-pre-line">{league?.name === 'API Test' ? `GW${currentTestGw ?? 1}\nPredictions` : (currentGw ? `GW${currentGw}\nPredictions` : "GW\nPredictions")}</span>
                 {tab === "gw" && (
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
                 )}

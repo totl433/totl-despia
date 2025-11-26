@@ -139,6 +139,15 @@ async function checkAndSendScoreNotifications() {
     }
 
     const currentGw = (metaData as any)?.current_gw ?? 1;
+    
+    // Get current test GW for test API fixtures
+    const { data: testMetaData } = await supabase
+      .from('test_api_meta')
+      .select('current_test_gw')
+      .eq('id', 1)
+      .maybeSingle();
+    
+    const currentTestGw = testMetaData?.current_test_gw;
 
     // Get all live scores (don't filter by GW - test fixtures might have different GW)
     // We'll match them to fixtures later
@@ -287,6 +296,8 @@ async function checkAndSendScoreNotifications() {
       isGameFinished: boolean;
       isKickoff: boolean;
       kickoffTime?: string;
+      goals?: any[]; // Goals data for scorer notifications
+      redCards?: any[]; // Red cards data for red card notifications
     }> = [];
     
     // Track kickoffs by time slot for grouping
@@ -296,6 +307,56 @@ async function checkAndSendScoreNotifications() {
       awayTeam: string;
       fixtureIndex: number;
     }>>();
+    
+    // Track 15-minute pre-kickoff notifications
+    const preKickoffNotifications: Array<{
+      apiMatchId: number;
+      homeTeam: string;
+      awayTeam: string;
+      fixtureIndex: number;
+      kickoffTime: string;
+    }> = [];
+    
+    // Check for 15-minute pre-kickoff notifications (for fixtures that haven't started yet)
+    const now = new Date();
+    const { data: upcomingFixtures } = await supabase
+      .from('test_api_fixtures')
+      .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, test_gw')
+      .eq('test_gw', currentTestGw || 0)
+      .not('kickoff_time', 'is', null);
+    
+    if (upcomingFixtures) {
+      for (const fixture of upcomingFixtures) {
+        if (!fixture.kickoff_time) continue;
+        
+        const kickoffTime = new Date(fixture.kickoff_time);
+        const timeUntilKickoff = kickoffTime.getTime() - now.getTime();
+        const minutesUntilKickoff = Math.floor(timeUntilKickoff / (1000 * 60));
+        
+        // Check if we're 15 minutes before kickoff (within 15-16 minute window)
+        if (minutesUntilKickoff >= 14 && minutesUntilKickoff <= 16) {
+          // Check if we've already sent this notification
+          const { data: preKickoffState } = await supabase
+            .from('notification_state')
+            .select('*')
+            .eq('api_match_id', fixture.api_match_id)
+            .maybeSingle();
+          
+          // Check if we've already notified for 15-min pre-kickoff
+          const hasPreKickoffNotified = preKickoffState?.last_notified_status === 'PRE_KICKOFF_15MIN';
+          
+          if (!hasPreKickoffNotified) {
+            preKickoffNotifications.push({
+              apiMatchId: fixture.api_match_id,
+              homeTeam: fixture.home_team || 'Home',
+              awayTeam: fixture.away_team || 'Away',
+              fixtureIndex: fixture.fixture_index,
+              kickoffTime: fixture.kickoff_time,
+            });
+          }
+        }
+      }
+    }
 
     for (const score of relevantLiveScores) {
       const state = stateMap.get(score.api_match_id);
@@ -360,6 +421,10 @@ async function checkAndSendScoreNotifications() {
         // Determine if this is a finished game notification
         const isFinishedNotification = justFinished || (isNewMatch && isFinished);
         
+        // Get goals and red cards from live score
+        const goals = score.goals || null;
+        const redCards = score.red_cards || null;
+        
         notificationsToSend.push({
           apiMatchId: score.api_match_id,
           homeTeam: fixture.home_team || 'Home',
@@ -372,6 +437,8 @@ async function checkAndSendScoreNotifications() {
           isScoreChange: (scoreChanged || (isNewMatchWithScore && !isFinished)) && !isFinishedNotification,
           isGameFinished: isFinishedNotification,
           isKickoff: false,
+          goals: goals ? (Array.isArray(goals) ? goals : []) : null,
+          redCards: redCards ? (Array.isArray(redCards) ? redCards : []) : null,
         });
       }
     }
@@ -416,6 +483,81 @@ async function checkAndSendScoreNotifications() {
             kickoffTime: timeSlot,
           });
         });
+      }
+    }
+
+    // Add 15-minute pre-kickoff notifications
+    if (preKickoffNotifications.length > 0) {
+      console.log(`[sendScoreNotifications] Found ${preKickoffNotifications.length} fixtures 15 minutes before kickoff`);
+      
+      // Get users who have picks for these fixtures
+      const preKickoffFixtureIndices = preKickoffNotifications.map(n => n.fixtureIndex);
+      const { data: preKickoffPicks } = await supabase
+        .from('test_api_picks')
+        .select('user_id, fixture_index')
+        .eq('matchday', currentTestGw || 0)
+        .in('fixture_index', preKickoffFixtureIndices);
+      
+      const preKickoffUserIds = [...new Set((preKickoffPicks || []).map((p: any) => p.user_id))];
+      
+      if (preKickoffUserIds.length > 0) {
+        const { data: preKickoffSubs } = await supabase
+          .from('push_subscriptions')
+          .select('user_id, player_id')
+          .in('user_id', preKickoffUserIds)
+          .eq('is_active', true);
+        
+        const preKickoffPlayerIdsByUser = new Map<string, string[]>();
+        (preKickoffSubs || []).forEach((sub: any) => {
+          if (!sub.player_id) return;
+          if (!preKickoffPlayerIdsByUser.has(sub.user_id)) {
+            preKickoffPlayerIdsByUser.set(sub.user_id, []);
+          }
+          preKickoffPlayerIdsByUser.get(sub.user_id)!.push(sub.player_id);
+        });
+        
+        for (const preKickoff of preKickoffNotifications) {
+          const fixture = fixtureMap.get(preKickoff.apiMatchId);
+          const fixtureIndex = fixture?.fixture_index;
+          
+          const relevantUserIds = preKickoffUserIds.filter(userId => {
+            const userPicks = (preKickoffPicks || []).find((p: any) => p.user_id === userId && p.fixture_index === fixtureIndex);
+            return !!userPicks;
+          });
+          
+          for (const userId of relevantUserIds) {
+            const playerIds = preKickoffPlayerIdsByUser.get(userId) || [];
+            if (playerIds.length === 0) continue;
+            
+            const sendResult = await sendOneSignalNotification(
+              playerIds,
+              `⚽ ${preKickoff.homeTeam} vs ${preKickoff.awayTeam}`,
+              `Fixture will start in 15 minutes!`,
+              {
+                type: 'pre_kickoff',
+                api_match_id: preKickoff.apiMatchId,
+                fixture_index: fixtureIndex,
+              }
+            );
+            
+            if (sendResult.success) {
+              console.log(`[sendScoreNotifications] Sent 15-min pre-kickoff notification for match ${preKickoff.apiMatchId} to user ${userId}`);
+            }
+          }
+          
+          // Mark that we've sent the 15-min pre-kickoff notification
+          await supabase
+            .from('notification_state')
+            .upsert({
+              api_match_id: preKickoff.apiMatchId,
+              last_notified_home_score: 0,
+              last_notified_away_score: 0,
+              last_notified_status: 'PRE_KICKOFF_15MIN',
+              last_notified_at: new Date().toISOString(),
+            } as any, {
+              onConflict: 'api_match_id',
+            });
+        }
       }
     }
 
@@ -530,6 +672,54 @@ async function checkAndSendScoreNotifications() {
         return userPicks && userPicks.has(fixtureIndex);
       });
 
+      // Check for new red cards separately (before processing score changes)
+      const state = stateMap.get(notification.apiMatchId);
+      const previousRedCards = state?.last_notified_red_cards || [];
+      const currentRedCards = notification.redCards || [];
+      
+      // Find new red cards (red cards that weren't in the previous notification)
+      const previousRedCardKeys = new Set(previousRedCards.map((c: any) => `${c.player}-${c.minute}`));
+      const newRedCards = currentRedCards.filter((c: any) => !previousRedCardKeys.has(`${c.player}-${c.minute}`));
+      
+      // Send red card notifications if there are new red cards
+      if (newRedCards.length > 0) {
+        const relevantUserIdsForRedCard = Array.from(picksByUserAndFixture.keys()).filter(userId => {
+          const userPicks = picksByUserAndFixture.get(userId);
+          return userPicks && userPicks.has(fixtureIndex);
+        });
+        
+        for (const userId of relevantUserIdsForRedCard) {
+          const playerIds = playerIdsByUser.get(userId) || [];
+          if (playerIds.length === 0) continue;
+          
+          for (const redCard of newRedCards) {
+            const player = redCard.player || 'Unknown';
+            const minute = redCard.minute !== null && redCard.minute !== undefined ? `${redCard.minute}'` : '';
+            const team = redCard.team || '';
+            
+            const redCardTitle = `🟥 RED CARD! ${notification.homeTeam} vs ${notification.awayTeam}`;
+            const redCardMessage = `${player}${team ? ` (${team})` : ''}${minute ? ` ${minute}` : ''}`;
+            
+            const redCardResult = await sendOneSignalNotification(
+              playerIds,
+              redCardTitle,
+              redCardMessage,
+              {
+                type: 'red_card',
+                api_match_id: notification.apiMatchId,
+                fixture_index: fixtureIndex,
+                gw: currentGw,
+              }
+            );
+            
+            if (redCardResult.success) {
+              totalSent += redCardResult.sentTo;
+              console.log(`[sendScoreNotifications] Sent red card notification for match ${notification.apiMatchId} to user ${userId} (${redCardResult.sentTo} devices)`);
+            }
+          }
+        }
+      }
+
       // Send personalized notification to each user
       for (const userId of relevantUserIds) {
         const userPicks = picksByUserAndFixture.get(userId);
@@ -568,8 +758,29 @@ async function checkAndSendScoreNotifications() {
             message = `❌ Wrong pick`;
           }
         } else if (notification.isScoreChange) {
-          title = `⚽ GOAL! ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
-          message = `${minuteText}`;
+          // Get the latest goal(s) - compare previous goals with current goals
+          const previousGoals = state?.last_notified_goals || [];
+          const currentGoals = notification.goals || [];
+          
+          // Find new goals (goals that weren't in the previous notification)
+          const previousGoalKeys = new Set(previousGoals.map((g: any) => `${g.scorer}-${g.minute}`));
+          const newGoals = currentGoals.filter((g: any) => !previousGoalKeys.has(`${g.scorer}-${g.minute}`));
+          
+          if (newGoals.length > 0) {
+            // Show scorer name(s) in notification
+            const goalTexts = newGoals.map((g: any) => {
+              const scorer = g.scorer || 'Unknown';
+              const minute = g.minute !== null && g.minute !== undefined ? `${g.minute}'` : '';
+              return `${scorer}${minute ? ` ${minute}` : ''}`;
+            });
+            
+            title = `⚽ GOAL! ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
+            message = goalTexts.join(', ');
+          } else {
+            // Fallback if we can't determine new goals
+            title = `⚽ GOAL! ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
+            message = `${minuteText}`;
+          }
         } else {
           continue; // Skip if no meaningful change
         }
@@ -598,6 +809,7 @@ async function checkAndSendScoreNotifications() {
       }
 
       // Update notification state (once per match, not per user)
+      // Store goals and red cards for next comparison
       await supabase
         .from('notification_state')
         .upsert({
@@ -606,7 +818,9 @@ async function checkAndSendScoreNotifications() {
           last_notified_away_score: notification.awayScore,
           last_notified_status: notification.status,
           last_notified_at: new Date().toISOString(),
-        }, {
+          last_notified_goals: notification.goals || null,
+          last_notified_red_cards: notification.redCards || null,
+        } as any, {
           onConflict: 'api_match_id',
         });
     }
@@ -631,10 +845,11 @@ async function checkAndSendScoreNotifications() {
       }
     }
 
+    // For test API, check current_test_gw instead of currentGw
     const { data: testGwFixtures } = await supabase
       .from('test_api_fixtures')
       .select('api_match_id')
-      .eq('test_gw', currentGw)
+      .eq('test_gw', currentTestGw || currentGw) // Use currentTestGw if available, otherwise fallback to currentGw
       .not('api_match_id', 'is', null);
 
     const allGwApiMatchIds = [
@@ -654,15 +869,20 @@ async function checkAndSendScoreNotifications() {
         allGwScores.every((score: any) => score.status === 'FINISHED');
 
       if (allFinished) {
+        // For test API, use test GW in marker ID; for regular, use currentGw
+        const gwForMarker = currentTestGw || currentGw;
+        const markerId = currentTestGw ? (999999 - currentTestGw - 100000) : (999999 - currentGw); // Different range for test GWs
+        
         // Check if we've already sent end-of-GW notification (use a special marker)
         const { data: gwEndState } = await supabase
           .from('notification_state')
           .select('*')
-          .eq('api_match_id', 999999 - currentGw) // Use a special marker ID
+          .eq('api_match_id', markerId) // Use marker ID based on GW type
           .maybeSingle();
 
         if (!gwEndState) {
-          console.log(`[sendScoreNotifications] All ${allGwApiMatchIds.length} games finished for GW ${currentGw}, sending end-of-GW notification`);
+          const gwLabel = currentTestGw ? `Test GW ${currentTestGw}` : `GW ${currentGw}`;
+          console.log(`[sendScoreNotifications] All ${allGwApiMatchIds.length} games finished for ${gwLabel}, sending end-of-GW notification`);
 
           // Get all users who have picks for this GW (regular + test)
           const { data: gwPicks } = await supabase
@@ -670,13 +890,13 @@ async function checkAndSendScoreNotifications() {
             .select('user_id')
             .eq('gw', currentGw);
 
-          // Get test API picks if test GW matches current GW
+          // Get test API picks if test GW matches current test GW
           let testGwPicks: any[] = [];
-          if (testGw === currentGw) {
+          if (currentTestGw) {
             const { data: tp } = await supabase
               .from('test_api_picks')
               .select('user_id')
-              .eq('matchday', testGw);
+              .eq('matchday', currentTestGw);
             testGwPicks = tp || [];
           }
 
@@ -709,7 +929,7 @@ async function checkAndSendScoreNotifications() {
             const { data: testGwFixturesForMapping } = await supabase
               .from('test_api_fixtures')
               .select('api_match_id, fixture_index')
-              .eq('test_gw', currentGw)
+              .eq('test_gw', currentTestGw || currentGw) // Use currentTestGw if available
               .not('api_match_id', 'is', null);
 
             const apiMatchToFixtureIndex = new Map<number, number>();
@@ -776,15 +996,17 @@ async function checkAndSendScoreNotifications() {
               if (playerIds.length === 0) continue;
 
               const score = userScores.get(userId) || 0;
+              const gwLabel = currentTestGw ? `Test GW ${currentTestGw}` : `GW ${currentGw}`;
               const sendResult = await sendOneSignalNotification(
                 playerIds,
-                `Game Week ${currentGw} Ended! 🏆`,
+                `${gwLabel} Ended! 🏆`,
                 `You scored ${score}/${totalFixtures}! Check out how you did!`,
                 {
                   type: 'gw_complete',
-                  gw: currentGw,
+                  gw: currentTestGw || currentGw,
                   score: score,
                   total: totalFixtures,
+                  is_test_api: !!currentTestGw,
                 }
               );
 
@@ -794,15 +1016,16 @@ async function checkAndSendScoreNotifications() {
             }
             
             // Mark that we've sent the end-of-GW notification (use special marker ID)
+            const markerId = currentTestGw ? (999999 - currentTestGw - 100000) : (999999 - currentGw);
             await supabase
               .from('notification_state')
               .upsert({
-                api_match_id: 999999 - currentGw, // Special marker ID
+                api_match_id: markerId, // Special marker ID (different range for test GWs)
                 last_notified_home_score: 0,
                 last_notified_away_score: 0,
                 last_notified_status: 'GW_COMPLETE',
                 last_notified_at: new Date().toISOString(),
-              }, {
+              } as any, {
                 onConflict: 'api_match_id',
               });
           }

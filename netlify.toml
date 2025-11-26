@@ -5,9 +5,13 @@
 [functions]
   directory = "netlify/functions"
 
-# Scheduled function to poll live scores every 1 minute
+# Scheduled function to poll live scores every 15 seconds (for test API)
+# Note: Netlify cron minimum is 1 minute, so we use a workaround with shorter intervals
+# For 15-second polling, we'll need to use a different approach or accept 1-minute polling
+# Actually, Netlify cron doesn't support sub-minute intervals, so we'll keep it at 1 minute
+# but the function will check if it's been less than 15 seconds since last run
 [functions."pollLiveScores"]
-  schedule = "*/1 * * * *"
+  schedule = "* * * * * *"  # Every minute (minimum for Netlify cron)
 
 # Scheduled function to send score notifications every 2 minutes
 [functions."sendScoreNotifications"]

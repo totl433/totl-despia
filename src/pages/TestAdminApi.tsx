@@ -73,14 +73,15 @@ export default function TestAdminApi() {
   const { user } = useAuth();
   const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
 
-  // API Test league always uses Test GW 1
+  // Allow selecting which Test GW to manage
+  const [testGw, setTestGw] = useState(1);
   const [availableMatches, setAvailableMatches] = useState<ApiMatch[]>([]);
   const [selectedFixtures, setSelectedFixtures] = useState<Map<number, TestFixture>>(new Map());
   const [saving, setSaving] = useState(false);
   const [fetchingMatches, setFetchingMatches] = useState(false);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
-  const [competition, setCompetition] = useState("PL");
+  const [competition, setCompetition] = useState("BSA"); // Default to Brazil for GW2
   const [apiError, setApiError] = useState<string | null>(null);
   const [autoLoading, setAutoLoading] = useState(false);
   const [clearingPicks, setClearingPicks] = useState(false);
@@ -245,11 +246,11 @@ export default function TestAdminApi() {
         
         // API Test league always uses Test GW 1, so we don't need to set state
 
-        // Load existing fixtures for Test GW 1
+        // Load existing fixtures for current test GW
         const { data: fixtures, error: fixturesError } = await supabase
           .from("test_api_fixtures")
           .select("*")
-          .eq("test_gw", 1)
+          .eq("test_gw", testGw)
           .order("fixture_index", { ascending: true });
 
         // Silently ignore 404s - table may not exist yet
@@ -273,7 +274,7 @@ export default function TestAdminApi() {
     return () => {
       alive = false;
     };
-  }, [isAdmin]);
+  }, [isAdmin, testGw]);
 
   if (!isAdmin) {
     return (
@@ -309,7 +310,7 @@ export default function TestAdminApi() {
       const nextIndex = maxIndex + 1;
       
       const fixture: TestFixture = {
-        test_gw: 1,
+        test_gw: testGw,
         fixture_index: nextIndex,
         api_match_id: match.id,
         home_team: match.homeTeam.shortName,
@@ -329,7 +330,7 @@ export default function TestAdminApi() {
   };
 
   const clearAllPicks = async () => {
-    if (!confirm("Clear all picks and submissions for Test GW 1? This will reset all users' predictions.")) {
+    if (!confirm(`Clear all picks and submissions for Test GW ${testGw}? This will reset all users' predictions.`)) {
       return;
     }
 
@@ -341,14 +342,14 @@ export default function TestAdminApi() {
       await supabase
         .from("test_api_picks")
         .delete()
-        .eq("matchday", 1);
+        .eq("matchday", testGw);
       
       await supabase
         .from("test_api_submissions")
         .delete()
-        .eq("matchday", 1);
+        .eq("matchday", testGw);
 
-      setOk("All picks and submissions cleared! Users can now make fresh predictions.");
+      setOk(`All picks and submissions cleared for Test GW ${testGw}! Users can now make fresh predictions.`);
     } catch (e: any) {
       setError(e.message ?? "Failed to clear picks.");
     } finally {
@@ -367,23 +368,23 @@ export default function TestAdminApi() {
     setOk("");
 
     try {
-      // Delete existing fixtures for Test GW 1
+      // Delete existing fixtures for current test GW
       await supabase
         .from("test_api_fixtures")
         .delete()
-        .eq("test_gw", 1);
+        .eq("test_gw", testGw);
 
-      // Clear all picks and submissions for Test GW 1 (matchday 1)
+      // Clear all picks and submissions for current test GW
       // This resets the predictions page so users can swipe/pick the new games fresh
       await supabase
         .from("test_api_picks")
         .delete()
-        .eq("matchday", 1);
+        .eq("matchday", testGw);
       
       await supabase
         .from("test_api_submissions")
         .delete()
-        .eq("matchday", 1);
+        .eq("matchday", testGw);
 
       // Insert selected fixtures
       const fixturesToInsert = Array.from(selectedFixtures.values()).map(f => ({
@@ -407,12 +408,12 @@ export default function TestAdminApi() {
 
       if (insertError) throw insertError;
 
-      // Update current test GW in meta (always 1 for API Test league)
+      // Update current test GW in meta
       await supabase
         .from("test_api_meta")
-        .upsert({ id: 1, current_test_gw: 1 }, { onConflict: 'id' });
+        .upsert({ id: 1, current_test_gw: testGw }, { onConflict: 'id' });
 
-      setOk(`Test Gameweek 1 saved with ${selectedFixtures.size} fixtures! All picks and submissions have been reset.`);
+      setOk(`Test Gameweek ${testGw} saved with ${selectedFixtures.size} fixtures! All picks and submissions have been reset.`);
     } catch (e: any) {
       setError(e.message ?? "Failed to save test gameweek.");
     } finally {
@@ -453,8 +454,29 @@ export default function TestAdminApi() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-4">
               <label className="font-medium text-slate-700">Test Gameweek:</label>
-              <span className="text-lg font-semibold text-slate-900">1</span>
-              <span className="text-sm text-slate-500">(API Test league always uses GW 1)</span>
+              <select
+                value={testGw}
+                onChange={(e) => {
+                  const newGw = parseInt(e.target.value, 10);
+                  setTestGw(newGw);
+                  setSelectedFixtures(new Map());
+                  setOk("");
+                  setError("");
+                  // Set competition to BSA for GW2, PL for others
+                  if (newGw === 2) {
+                    setCompetition("BSA");
+                  } else {
+                    setCompetition("PL");
+                  }
+                }}
+                className="border rounded px-3 py-1 text-lg font-semibold"
+              >
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
             </div>
             <button
               onClick={clearAllPicks}
@@ -610,7 +632,7 @@ export default function TestAdminApi() {
           <div className="bg-white rounded-xl shadow-md p-4 mb-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-slate-800">
-                Selected Fixtures for Test GW 1 ({selectedFixtures.size})
+                Selected Fixtures for Test GW {testGw} ({selectedFixtures.size})
               </h3>
               <button
                 onClick={() => {
@@ -644,7 +666,7 @@ export default function TestAdminApi() {
               disabled={saving}
               className="mt-4 w-full py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 font-semibold"
             >
-              {saving ? "Saving..." : `Save Test Gameweek 1 (${selectedFixtures.size} fixtures)`}
+              {saving ? "Saving..." : `Save Test Gameweek ${testGw} (${selectedFixtures.size} fixtures)`}
             </button>
           </div>
         )}

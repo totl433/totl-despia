@@ -6,6 +6,51 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY || 'ed3153d132b847db836289243894706e';
 const FOOTBALL_DATA_BASE_URL = 'https://api.football-data.org/v4';
 
+/**
+ * Normalize team name from API to our canonical medium name
+ * This ensures consistency across the app regardless of API variations
+ */
+function normalizeTeamName(apiTeamName: string | null | undefined): string | null {
+  if (!apiTeamName) return null;
+  
+  const normalized = apiTeamName
+    .toLowerCase()
+    .replace(/\s+fc\s*$/i, '') // Remove "FC" at end
+    .replace(/\s+&amp;\s+/g, ' ') // Replace &amp; with space
+    .replace(/\s*&\s*/g, ' ') // Replace & with space
+    .replace(/\s+/g, ' ') // Normalize multiple spaces
+    .trim();
+  
+  // Map common API variations to our canonical medium names
+  const teamNameMap: Record<string, string> = {
+    'manchester city': 'Man City',
+    'manchester united': 'Man United',
+    'newcastle united': 'Newcastle',
+    'west ham united': 'West Ham',
+    'tottenham hotspur': 'Spurs',
+    'wolverhampton wanderers': 'Wolves',
+    'brighton and hove albion': 'Brighton',
+    'brighton hove albion': 'Brighton',
+    'leeds united': 'Leeds',
+    'nottingham forest': 'Forest',
+    'crystal palace': 'Palace',
+    'aston villa': 'Villa',
+  };
+  
+  // Check if we have a mapping
+  if (teamNameMap[normalized]) {
+    return teamNameMap[normalized];
+  }
+  
+  // If no mapping, capitalize first letter of each word (fallback)
+  return apiTeamName
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+    .replace(/\s+FC\s*$/i, '')
+    .trim();
+}
+
 // Initialize Supabase admin client
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -192,6 +237,30 @@ async function pollAllLiveScores() {
         }
       }
 
+      // Extract goals and bookings from API response
+      // Goals array contains: { minute, scorer: { name, id }, team: { id, name } }
+      // Bookings array contains: { minute, player: { name, id }, team: { id, name }, card: "YELLOW_CARD" | "RED_CARD" }
+      // Normalize team names to our canonical medium names for consistency
+      const goals = (matchData.goals || []).map((goal: any) => ({
+        minute: goal.minute ?? null,
+        scorer: goal.scorer?.name ?? null,
+        scorerId: goal.scorer?.id ?? null,
+        team: normalizeTeamName(goal.team?.name) ?? null, // Normalize to canonical name
+        teamId: goal.team?.id ?? null,
+      }));
+
+      // Filter bookings to only include red cards
+      // API returns "RED" not "RED_CARD" for red cards
+      const redCards = (matchData.bookings || [])
+        .filter((booking: any) => booking.card === 'RED_CARD' || booking.card === 'RED')
+        .map((booking: any) => ({
+          minute: booking.minute ?? null,
+          player: booking.player?.name ?? null,
+          playerId: booking.player?.id ?? null,
+          team: normalizeTeamName(booking.team?.name) ?? null, // Normalize to canonical name
+          teamId: booking.team?.id ?? null,
+        }));
+
       updates.push({
         api_match_id: apiMatchId,
         gw: fixture.gw || currentGw,
@@ -203,9 +272,13 @@ async function pollAllLiveScores() {
         home_team: fixture.home_team || matchData.homeTeam?.name,
         away_team: fixture.away_team || matchData.awayTeam?.name,
         kickoff_time: fixture.kickoff_time || matchData.utcDate,
+        goals: goals.length > 0 ? goals : null,
+        red_cards: redCards.length > 0 ? redCards : null,
       });
 
-      console.log(`[pollLiveScores] Updated match ${apiMatchId}: ${homeScore}-${awayScore} (${status})`);
+      const goalsCount = goals.length;
+      const redCardsCount = redCards.length;
+      console.log(`[pollLiveScores] Updated match ${apiMatchId}: ${homeScore}-${awayScore} (${status}) - ${goalsCount} goals, ${redCardsCount} red cards`);
     }
 
     // Upsert all updates to Supabase
@@ -282,8 +355,9 @@ export const handler: Handler = async (event) => {
   }
   
   // Use meta table to store lock timestamp with aggressive check
-  // With 1-minute schedule, we allow runs every 30 seconds minimum (to handle slight overlaps)
-  const MIN_RUN_INTERVAL_MS = 30 * 1000; // 30 seconds minimum between runs
+  // For test API, we want 15-second polling, but Netlify cron minimum is 1 minute
+  // So we allow runs every 15 seconds minimum (to handle manual triggers or multiple scheduled functions)
+  const MIN_RUN_INTERVAL_MS = 15 * 1000; // 15 seconds minimum between runs (for test API)
   
   try {
     // Add small random delay (0-2 seconds) to prevent thundering herd

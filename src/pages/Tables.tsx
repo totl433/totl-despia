@@ -206,13 +206,49 @@ export default function TablesPage() {
       // Get all member IDs across all leagues
       const allMemberIds = Array.from(new Set(Array.from(membersByLeague.values()).flat()));
       
+      // Check if API Test league exists and get current test GW
+      const apiTestLeague = leagues.find(l => l.name === "API Test");
+      let currentTestGw: number | null = null;
+      let testApiSubmittedUserIds = new Set<string>();
+      
+      if (apiTestLeague) {
+        // Fetch current test GW from meta table
+        const { data: testMetaData } = await supabase
+          .from("test_api_meta")
+          .select("current_test_gw")
+          .eq("id", 1)
+          .maybeSingle();
+        
+        currentTestGw = testMetaData?.current_test_gw ?? 1;
+        
+        // Get API Test league member IDs
+        const apiTestMemberIds = membersByLeague.get(apiTestLeague.id) ?? [];
+        if (apiTestMemberIds.length > 0) {
+          // Fetch test API submissions for current test GW
+          const { data: testSubsData } = await supabase
+            .from("test_api_submissions")
+            .select("user_id")
+            .eq("matchday", currentTestGw)
+            .in("user_id", apiTestMemberIds)
+            .not("submitted_at", "is", null);
+          
+          testApiSubmittedUserIds = new Set((testSubsData ?? []).map((s: any) => s.user_id));
+        }
+      }
+      
       if (allMemberIds.length > 0) {
-        // Single query for all submissions
-        const { data: allSubmissions } = await supabase
+        // Single query for all regular submissions (excluding API Test league members)
+        const regularMemberIds = apiTestLeague 
+          ? allMemberIds.filter(id => !membersByLeague.get(apiTestLeague.id)?.includes(id))
+          : allMemberIds;
+        
+        const { data: allSubmissions } = regularMemberIds.length > 0
+          ? await supabase
               .from("gw_submissions")
               .select("user_id")
               .eq("gw", currentGw)
-          .in("user_id", allMemberIds);
+              .in("user_id", regularMemberIds)
+          : { data: [] };
 
         const submittedUserIds = new Set((allSubmissions ?? []).map((s: any) => s.user_id));
         
@@ -220,15 +256,19 @@ export default function TablesPage() {
         for (const league of leagues) {
           const memberIds = membersByLeague.get(league.id) ?? [];
           const totalCount = memberIds.length;
-          const submittedCount = memberIds.filter(id => submittedUserIds.has(id)).length;
           
-            submissionStatus[league.id] = {
+          // Use test API submissions for API Test league, regular submissions for others
+          const submittedCount = league.id === apiTestLeague?.id
+            ? memberIds.filter(id => testApiSubmittedUserIds.has(id)).length
+            : memberIds.filter(id => submittedUserIds.has(id)).length;
+          
+          submissionStatus[league.id] = {
             allSubmitted: submittedCount === totalCount && totalCount > 0,
-              submittedCount,
-              totalCount
-            };
+            submittedCount,
+            totalCount
+          };
         }
-          } else {
+      } else {
         // No members, set defaults
         for (const league of leagues) {
           submissionStatus[league.id] = {
@@ -334,10 +374,13 @@ export default function TablesPage() {
       return;
     }
     
-    // Check cache first
+    // Check cache first, but invalidate if test GW might have changed
+    // (We can't easily check test GW in cache key, so we'll just reduce cache duration for now)
     if (tablesPageCache && tablesPageCache.userId === user.id && tablesPageCache.rows.length > 0) {
       const cacheAge = Date.now() - tablesPageCache.lastFetched;
-      if (cacheAge < CACHE_DURATION) {
+      // Reduced cache duration to 30 seconds to avoid stale test GW data
+      const effectiveCacheDuration = 30 * 1000; // 30 seconds instead of 2 minutes
+      if (cacheAge < effectiveCacheDuration) {
         // Show cached data immediately (non-blocking)
         setRows(tablesPageCache.rows);
         setLeagueSubmissions(tablesPageCache.leagueSubmissions);
@@ -520,37 +563,54 @@ export default function TablesPage() {
       // Find API Test league members
       const apiTestLeague = rows.find(r => r.name === "API Test");
       const testApiSubmittedUserIds = new Set<string>();
+      let currentTestGw = 1; // Default to 1, will be updated if API Test league exists
       if (apiTestLeague) {
+        // Fetch current test GW from meta table
+        const { data: testMetaData } = await supabase
+          .from("test_api_meta")
+          .select("current_test_gw")
+          .eq("id", 1)
+          .maybeSingle();
+        
+        currentTestGw = testMetaData?.current_test_gw ?? 1;
+        
         const apiTestMemberIds = membersByLeagueId.get(apiTestLeague.id)?.map(m => m.id) ?? [];
         if (apiTestMemberIds.length > 0) {
-          // Fetch test API submissions
+          // Fetch test API submissions for current test GW
           const { data: testSubsData } = await supabase
             .from("test_api_submissions")
             .select("user_id,submitted_at")
-            .eq("matchday", 1)
+            .eq("matchday", currentTestGw)
             .in("user_id", apiTestMemberIds)
             .not("submitted_at", "is", null);
           
-          // Fetch picks for validation
+          // Fetch picks for validation (for current test GW)
           const { data: testApiPicksForValidation } = await supabase
             .from("test_api_picks")
             .select("user_id,fixture_index")
-            .eq("matchday", 1)
+            .eq("matchday", currentTestGw)
             .in("user_id", apiTestMemberIds);
           
-          // Fetch current fixtures to validate picks match
+          // Fetch current fixtures to validate picks match (for current test GW)
           const { data: currentTestFixtures } = await supabase
             .from("test_api_fixtures")
             .select("fixture_index")
-            .eq("test_gw", 1)
+            .eq("test_gw", currentTestGw)
             .order("fixture_index", { ascending: true });
           
           if (currentTestFixtures && testApiPicksForValidation && testSubsData) {
             const currentFixtureIndicesSet = new Set(currentTestFixtures.map(f => f.fixture_index));
             const requiredFixtureCount = currentFixtureIndicesSet.size;
-            const cutoffDate = new Date('2025-11-18T00:00:00Z'); // Same cutoff as League.tsx and Home.tsx
             
-            // Only count submissions if user has picks for ALL current fixtures AND submission is recent
+            console.log(`[Tables] Checking Test API submissions for GW ${currentTestGw}:`, {
+              currentTestGw,
+              submissionCount: testSubsData.length,
+              fixtureCount: requiredFixtureCount,
+              fixtureIndices: Array.from(currentFixtureIndicesSet),
+            });
+            
+            // Only count submissions if user has picks for ALL current fixtures
+            // No cutoff date needed - we're already filtering by matchday (currentTestGw)
             testSubsData.forEach((sub: any) => {
               const userPicks = (testApiPicksForValidation ?? []).filter((p: any) => p.user_id === sub.user_id);
               const picksForCurrentFixtures = userPicks.filter((p: any) => currentFixtureIndicesSet.has(p.fixture_index));
@@ -559,13 +619,28 @@ export default function TablesPage() {
               const uniqueFixtureIndices = new Set(picksForCurrentFixtures.map((p: any) => p.fixture_index));
               const hasExactMatch = uniqueFixtureIndices.size === requiredFixtureCount;
               
-              const submissionDate = sub.submitted_at ? new Date(sub.submitted_at) : null;
-              const isRecentSubmission = submissionDate && submissionDate >= cutoffDate;
+              console.log(`[Tables] User ${sub.user_id} submission check:`, {
+                userPicksCount: userPicks.length,
+                picksForCurrentFixtures: picksForCurrentFixtures.length,
+                requiredCount: requiredFixtureCount,
+                hasAllRequiredPicks,
+                hasExactMatch,
+                willBeCounted: hasAllRequiredPicks && hasExactMatch,
+              });
               
-              // Only count as submitted if all conditions met
-              if (hasAllRequiredPicks && hasExactMatch && isRecentSubmission) {
+              // Only count as submitted if user has picks for ALL current fixtures
+              // We're already filtering by matchday, so no need for cutoff date
+              if (hasAllRequiredPicks && hasExactMatch) {
                 testApiSubmittedUserIds.add(sub.user_id);
               }
+            });
+            
+            console.log(`[Tables] Final Test API submitted users for GW ${currentTestGw}:`, Array.from(testApiSubmittedUserIds));
+          } else {
+            console.log(`[Tables] Missing data for Test API validation:`, {
+              hasCurrentTestFixtures: !!currentTestFixtures,
+              hasTestApiPicks: !!testApiPicksForValidation,
+              hasTestSubsData: !!testSubsData,
             });
           }
         }
@@ -588,6 +663,12 @@ export default function TablesPage() {
               if (testApiSubmittedUserIds.has(member.id)) {
                 submittedMembers.add(member.id);
               }
+            });
+            
+            console.log(`[Tables] API Test league submittedMembers for GW ${currentTestGw ?? 'unknown'}:`, {
+              testApiSubmittedUserIds: Array.from(testApiSubmittedUserIds),
+              submittedMembers: Array.from(submittedMembers),
+              memberIds: members.map(m => m.id),
             });
             
             leagueDataMap[row.id] = {

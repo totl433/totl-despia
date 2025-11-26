@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import ClubBadge from "../components/ClubBadge";
 import { useNavigate } from "react-router-dom";
+import { getMediumName } from "../lib/teamNames";
 
 // Generate a color from a string (team name or code)
 function stringToColor(str: string): string {
@@ -29,6 +30,7 @@ function getTeamColor(code: string | null | undefined, name: string | null | und
 }
 
 // Helper function to format minute display
+// For test API, always show actual minutes
 function formatMinuteDisplay(status: string, minute: number | null | undefined): string {
   if (status === 'FINISHED') {
     return 'FT';
@@ -40,19 +42,8 @@ function formatMinuteDisplay(status: string, minute: number | null | undefined):
     if (minute === null || minute === undefined) {
       return 'LIVE';
     }
-    // First half: 1-45 minutes
-    if (minute >= 1 && minute <= 45) {
-      return 'First Half';
-    }
-    // Stoppage time in first half: > 45 but before halftime (typically 45-50)
-    // Show "45+" until status becomes PAUSED (halftime)
-    if (minute > 45 && minute <= 50) {
-      return '45+';
-    }
-    // Second half: after halftime, typically minute > 50
-    if (minute > 50) {
-      return 'Second Half';
-    }
+    // For test API, always show actual minutes
+    return `${minute}'`;
   }
   // Fallback
   return 'LIVE';
@@ -170,13 +161,21 @@ export default function TestApiPredictions() {
   const [picksChecked, setPicksChecked] = useState(false); // Track if we've checked for picks
   const [submissionChecked, setSubmissionChecked] = useState(false); // Track if we've checked submission status
   const [submitted, setSubmitted] = useState(false);
+  const [topPercent, setTopPercent] = useState<number | null>(null);
   const [isPastDeadline, setIsPastDeadline] = useState(false);
   const [allMembersSubmitted, setAllMembersSubmitted] = useState(false);
   const [leagueMembers, setLeagueMembers] = useState<Array<{ id: string; name: string }>>([]);
   const [submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new Set());
   const [apiTestLeagueId, setApiTestLeagueId] = useState<string | null>(null);
   // Live scores for test API fixtures
-  const [liveScores, setLiveScores] = useState<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
+  const [liveScores, setLiveScores] = useState<Record<number, { 
+    homeScore: number; 
+    awayScore: number; 
+    status: string; 
+    minute?: number | null;
+    goals?: any[] | null;
+    red_cards?: any[] | null;
+  }>>({});
   // Track when halftime ends for each fixture (when status changes from PAUSED to IN_PLAY)
   const halftimeEndTimeRef = useRef<Record<number, Date>>({});
   // CRITICAL: Track if we've ever seen submitted=true to prevent swipe view from showing
@@ -402,6 +401,7 @@ export default function TestApiPredictions() {
           setFixtures(fixturesData);
           
           // Check if we're past the deadline
+          // For test API fixtures, deadline is 5 minutes before kickoff (instead of 75 minutes)
           if (fixturesData.length > 0 && fixturesData[0].kickoff_time) {
             const earliestKickoff = fixturesData.reduce((earliest, fixture) => {
               if (!fixture.kickoff_time) return earliest;
@@ -410,9 +410,20 @@ export default function TestApiPredictions() {
             }, null as Date | null);
             
             if (earliestKickoff) {
-              const deadlineTime = new Date(earliestKickoff.getTime() - (75 * 60 * 1000));
+              // Test API: 5 minutes before kickoff (instead of 75 minutes for regular games)
+              const deadlineTime = new Date(earliestKickoff.getTime() - (5 * 60 * 1000));
               const now = new Date();
-              setIsPastDeadline(now.getTime() > deadlineTime.getTime());
+              const isPast = now.getTime() > deadlineTime.getTime();
+              console.log('[TestApiPredictions] Deadline check:', {
+                earliestKickoff: earliestKickoff.toISOString(),
+                deadlineTime: deadlineTime.toISOString(),
+                now: now.toISOString(),
+                isPastDeadline: isPast,
+                minutesUntilDeadline: Math.round((deadlineTime.getTime() - now.getTime()) / (60 * 1000))
+              });
+              setIsPastDeadline(isPast);
+            } else {
+              setIsPastDeadline(false);
             }
           }
 
@@ -734,7 +745,15 @@ export default function TestApiPredictions() {
         }
       }
       
-      const result = { homeScore, awayScore, status, minute, retryAfter: null as number | null };
+      const result = { 
+        homeScore, 
+        awayScore, 
+        status, 
+        minute, 
+        retryAfter: null as number | null,
+        goals: liveScore.goals || null,
+        red_cards: liveScore.red_cards || null
+      };
       console.log('[TestApiPredictions] Returning score data from Supabase:', result);
       return result;
     } catch (error: any) {
@@ -829,7 +848,9 @@ export default function TestApiPredictions() {
                 homeScore: scoreData.homeScore,
                 awayScore: scoreData.awayScore,
                 status: scoreData.status,
-                minute: finalMinute ?? null
+                minute: finalMinute ?? null,
+                goals: scoreData.goals || null,
+                red_cards: scoreData.red_cards || null
               }
             }));
             
@@ -880,7 +901,9 @@ export default function TestApiPredictions() {
                         homeScore: resumeScoreData.homeScore,
                         awayScore: resumeScoreData.awayScore,
                         status: resumeScoreData.status,
-                        minute: resumeScoreData.minute ?? null
+                        minute: resumeScoreData.minute ?? null,
+                        goals: resumeScoreData.goals || null,
+                        red_cards: resumeScoreData.red_cards || null
                       }
                     }));
                     
@@ -959,6 +982,68 @@ export default function TestApiPredictions() {
     
     setResults(newResults);
   }, [liveScores, fixtures]);
+
+  // Calculate top percentage when we have results and picks
+  useEffect(() => {
+    if (!currentTestGw || !user?.id || results.size === 0 || fixtures.length === 0) {
+      setTopPercent(null);
+      return;
+    }
+
+    // Calculate current user's score
+    let myScore = 0;
+    fixtures.forEach(f => {
+      const r = results.get(f.fixture_index);
+      const p = picks.get(f.fixture_index);
+      if (r && p && r === p.pick) {
+        myScore++;
+      }
+    });
+
+    // Only calculate if user has a score
+    if (myScore === 0) {
+      setTopPercent(null);
+      return;
+    }
+
+    // Calculate top percentage
+    (async () => {
+      try {
+        // Get all users' picks for this test GW
+        const { data: allPicks } = await supabase
+          .from("test_api_picks")
+          .select("user_id, fixture_index, pick")
+          .eq("matchday", currentTestGw);
+        
+        if (allPicks) {
+          // Group picks by user and calculate each user's score
+          const userScores = new Map<string, number>();
+          allPicks.forEach((p) => {
+            const result = results.get(p.fixture_index);
+            const userScore = userScores.get(p.user_id) || 0;
+            if (result && result === p.pick) {
+              userScores.set(p.user_id, userScore + 1);
+            } else {
+              userScores.set(p.user_id, userScore);
+            }
+          });
+          
+          // Convert to array and sort descending
+          const scores = Array.from(userScores.values()).sort((a, b) => b - a);
+          
+          // Calculate what percentage of users scored the same or less
+          const betterOrEqual = scores.filter(s => s >= myScore).length;
+          const totalUsers = scores.length;
+          const percent = totalUsers > 0 ? Math.round((betterOrEqual / totalUsers) * 100) : null;
+          
+          setTopPercent(percent);
+        }
+      } catch (error) {
+        console.error('[TestApiPredictions] Error calculating top percent:', error);
+        setTopPercent(null);
+      }
+    })();
+  }, [results, picks, fixtures, currentTestGw, user?.id]);
 
   // Keep cards view - don't auto-switch to list view
   // useEffect(() => {
@@ -1335,7 +1420,7 @@ export default function TestApiPredictions() {
                   Back
                 </button>
                 <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">
-                  Confirmed Predictions
+                  Game Week {currentTestGw}
                 </span>
               </div>
             </div>
@@ -1429,121 +1514,100 @@ export default function TestApiPredictions() {
                 Back
               </button>
               <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">
-                Confirmed Predictions
+                Game Week {currentTestGw}
               </span>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 pb-4">
-          <div className="max-w-2xl mx-auto space-y-6 [&>div:first-child]:mt-0">
+          <div className="max-w-2xl mx-auto">
+            {/* Score indicator at the top - full width with progress bar */}
             {(() => {
-              const grouped: Array<{ label: string; items: typeof fixtures }>=[];
-              let currentDate=''; let currentGroup: typeof fixtures = [];
-              fixtures.forEach((fixture)=>{
-                const fixtureDate = fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) : 'No date';
-                if (fixtureDate!==currentDate){ if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); } currentDate=fixtureDate; currentGroup=[fixture]; } else { currentGroup.push(fixture); }
+              // Check if any games have started (live or finished)
+              const hasAnyLiveOrFinished = fixtures.length > 0 && fixtures.some(f => {
+                const liveScore = liveScores[f.fixture_index];
+                return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
               });
-              if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); }
-              return grouped.map((group,groupIdx)=>{
+              
+              // Calculate current score
+              let currentScore = 0;
+              if (hasAnyLiveOrFinished) {
+                fixtures.forEach(f => {
+                  const liveScore = liveScores[f.fixture_index];
+                  const isFinished = liveScore && liveScore.status === 'FINISHED';
+                  if (isFinished) {
+                    const pickObj = picks.get(f.fixture_index);
+                    if (pickObj) {
+                      let isCorrect = false;
+                      if (pickObj.pick === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrect = true;
+                      else if (pickObj.pick === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrect = true;
+                      else if (pickObj.pick === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrect = true;
+                      if (isCorrect) currentScore++;
+                    }
+                  }
+                });
+              } else if (submitted) {
+                // Calculate score from results if available
+                fixtures.forEach(f => {
+                  const r = results.get(f.fixture_index);
+                  const p = picks.get(f.fixture_index);
+                  if (r && p && r === p.pick) {
+                    currentScore++;
+                  }
+                });
+              }
+              
+              // Check if all fixtures are finished
+              const checkAllFinished = fixtures.length > 0 && fixtures.every(f => {
+                const liveScore = liveScores[f.fixture_index];
+                return liveScore && liveScore.status === 'FINISHED';
+              });
+              
+              // Show score indicator if games have started/finished or user has submitted
+              if (hasAnyLiveOrFinished || (submitted && fixtures.length > 0)) {
+                const displayScore = hasAnyLiveOrFinished ? currentScore : (submitted ? myScore : 0);
+                const scorePercentage = fixtures.length > 0 ? (displayScore / fixtures.length) * 100 : 0;
+                
                 return (
-                <div key={groupIdx} className={groupIdx > 0 ? "mt-6" : ""}>
-                  <div className="text-sm font-semibold text-slate-700 mb-3 px-1 flex items-center justify-between">
-                    <span>{group.label}</span>
-                    {groupIdx === 0 && (() => {
-                      // Check if any games have started (live or finished) - use all fixtures
-                      const hasAnyLiveOrFinished = fixtures.length > 0 && fixtures.some(f => {
-                      const liveScore = liveScores[f.fixture_index];
-                      return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
-                      });
-                      
-                      // Calculate live and finished counts
-                      let liveFixturesCount = 0;
-                      let finishedFixturesCount = 0;
-                      let finishedScoreCount = 0;
-                      
-                      if (hasAnyLiveOrFinished) {
-                        fixtures.forEach(f => {
-                          const liveScore = liveScores[f.fixture_index];
-                          const isLive = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
-                          const isFinished = liveScore && liveScore.status === 'FINISHED';
-                          
-                          if (isLive) liveFixturesCount++;
-                          if (isFinished) {
-                            finishedFixturesCount++;
-                            const pickObj = picks.get(f.fixture_index);
-                            if (pickObj) {
-                              let isCorrect = false;
-                              if (pickObj.pick === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrect = true;
-                              else if (pickObj.pick === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrect = true;
-                              else if (pickObj.pick === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrect = true;
-                              if (isCorrect) finishedScoreCount++;
-                            }
-                          }
-                        });
-                      }
-                      
-                      // If games have started, show live/score indicator
-                      if (hasAnyLiveOrFinished) {
-                      // Check if all fixtures are finished - use all fixtures
-                      const checkAllFinished = fixtures.every(f => {
-                        const liveScore = liveScores[f.fixture_index];
-                        return liveScore && liveScore.status === 'FINISHED';
-                      });
-                      
-                      // If no live games but some finished games, show "Score X/Y" with clock icon (amber)
-                      if (liveFixturesCount === 0 && finishedFixturesCount > 0 && !checkAllFinished) {
-                        return (
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white bg-amber-500 shadow-lg shadow-amber-500/30">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span className="text-xs sm:text-sm font-medium opacity-90">Score</span>
-                            <span className="flex items-baseline gap-0.5">
-                              <span className="text-lg sm:text-xl font-extrabold">{finishedScoreCount}</span>
-                              <span className="text-sm sm:text-base font-medium opacity-90">/</span>
-                              <span className="text-base sm:text-lg font-semibold opacity-80">{fixtures.length}</span>
-                            </span>
+                  <div className="mb-4 rounded-xl border bg-gradient-to-br from-[#1C8376]/5 to-blue-50/50 shadow-sm px-6 py-5">
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-3 mb-3">
+                        <div className="text-4xl font-extrabold text-[#1C8376]">{displayScore}/{fixtures.length}</div>
+                        {topPercent !== null && (
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-yellow-100 to-orange-100 border border-yellow-300">
+                            <span className="text-sm font-bold text-orange-700">Top {topPercent}%</span>
                           </div>
-                        );
-                      }
-                      
-                      return (
-                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white shadow-lg ${checkAllFinished ? 'bg-slate-600 shadow-slate-500/30' : 'bg-red-600 shadow-red-500/30'}`}>
-                          {!checkAllFinished && liveFixturesCount > 0 && (
-                            <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                          )}
-                          {checkAllFinished && (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                            </svg>
-                          )}
-                          <span className="text-xs sm:text-sm font-medium opacity-90">{checkAllFinished ? 'Score' : 'Live'}</span>
-                        <span className="flex items-baseline gap-0.5">
-                          <span className="text-lg sm:text-xl font-extrabold">{liveScoreCount}</span>
-                          <span className="text-sm sm:text-base font-medium opacity-90">/</span>
-                          <span className="text-base sm:text-lg font-semibold opacity-80">{fixtures.length}</span>
-                        </span>
+                        )}
                       </div>
-                      );
-                      }
-                      
-                      // If no games have started but user has submitted, show "-- / 10" indicator
-                      if (submitted && fixtures.length > 0) {
-                        return (
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500 text-white shadow-lg shadow-amber-500/30">
-                            <span className="text-xs sm:text-sm font-medium opacity-90">Score</span>
-                            <span className="flex items-baseline gap-0.5">
-                              <span className="text-lg sm:text-xl font-extrabold">--</span>
-                              <span className="text-sm sm:text-base font-medium opacity-90">/</span>
-                              <span className="text-base sm:text-lg font-semibold opacity-80">{fixtures.length}</span>
-                            </span>
-                          </div>
-                        );
-                      }
-                      
-                      return null;
-                    })()}
+                      <div className="mb-3 bg-slate-200 rounded-full h-2 overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-[#1C8376] to-blue-500 transition-all duration-500" 
+                          style={{ width: `${scorePercentage}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
+                );
+              }
+              
+              return null;
+            })()}
+            
+            <div className="space-y-6 [&>div:first-child]:mt-0">
+              {(() => {
+                const grouped: Array<{ label: string; items: typeof fixtures }>=[];
+                let currentDate=''; let currentGroup: typeof fixtures = [];
+                fixtures.forEach((fixture)=>{
+                  const fixtureDate = fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) : 'No date';
+                  if (fixtureDate!==currentDate){ if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); } currentDate=fixtureDate; currentGroup=[fixture]; } else { currentGroup.push(fixture); }
+                });
+                if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); }
+                return grouped.map((group,groupIdx)=>{
+                  return (
+                  <div key={groupIdx} className={groupIdx > 0 ? "mt-6" : ""}>
+                    <div className="text-sm font-semibold text-slate-700 mb-3 px-1">
+                      <span>{group.label}</span>
+                    </div>
                   <div className="rounded-2xl border bg-slate-50 overflow-hidden">
                     <ul>
                     {group.items.map((fixture, index)=>{
@@ -1556,9 +1620,11 @@ export default function TestApiPredictions() {
                       // For score counting purposes, include halftime as "ongoing"
                       const isOngoing = isLive || isHalfTime;
                       
-                      // Get team names (use short names first)
-                      const homeName = fixture.home_team || fixture.home_name || "";
-                      const awayName = fixture.away_team || fixture.away_name || "";
+                      // Always use medium names from teamNames.ts for consistency
+                      const homeKey = fixture.home_team || fixture.home_name || fixture.home_code || "";
+                      const awayKey = fixture.away_team || fixture.away_name || fixture.away_code || "";
+                      const homeName = getMediumName(homeKey);
+                      const awayName = getMediumName(awayKey);
                       
                       const kickoff = fixture.kickoff_time
                         ? (() => {
@@ -1650,63 +1716,221 @@ export default function TestApiPredictions() {
                                 </span>
                               </div>
                             )}
-                            {/* FT indicator for finished games - grey, no pulse */}
-                            {isFinished && !isLive && !isHalfTime && (
-                              <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
-                                <span className="text-xs font-semibold text-slate-500">
-                                  FT
-                                </span>
-                              </div>
-                            )}
                             
                             {/* Fixture display - same as Home Page and League Page */}
-                            <div className={`grid grid-cols-3 items-center ${isLive || isHalfTime ? 'pt-4' : ''}`}>
-                              <div className="flex items-center justify-center">
-                                <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{homeName}</span>
-                              </div>
-                              <div className="flex items-center justify-center gap-2">
-                                {fixture.home_code && (
-                                  <img 
-                                    src={`/assets/badges/${fixture.home_code.toUpperCase()}.png`} 
-                                    alt={`${homeName} badge`}
-                                    className="h-6 w-6 object-contain"
-                                    onError={(e) => {
-                                      (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
-                                    }}
-                                  />
-                                )}
-                                <div className="text-[15px] sm:text-base font-semibold text-slate-600">
-                                  {liveScore && (isLive || isHalfTime || isFinished) ? (
-                                    <span className="font-bold text-base text-slate-900">
-                                      {liveScore.homeScore} - {liveScore.awayScore}
-                                    </span>
+                            <div className={`flex flex-col px-2 pb-3 ${isOngoing ? 'pt-4' : 'pt-1'}`}>
+                              <div className="flex items-start justify-between">
+                                {/* Home Team */}
+                                <div className="flex-1 flex flex-col items-end">
+                                  <div className="flex items-center gap-1">
+                                    <div className={`break-words ${liveScore && (isOngoing || isFinished) && liveScore.homeScore > liveScore.awayScore ? 'font-bold' : 'font-medium'}`}>{homeName}</div>
+                                    <img 
+                                      src={`/assets/badges/${(fixture.home_code || homeKey).toUpperCase()}.png`} 
+                                      alt={homeName}
+                                      className="w-5 h-5"
+                                      onError={(e) => {
+                                        (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
+                                      }}
+                                    />
+                                  </div>
+                                  {/* Home Team Goals and Red Cards (chronologically sorted) */}
+                                  {liveScore && (isOngoing || isFinished) && (() => {
+                                    // Filter goals for home team
+                                    const homeGoals = (liveScore.goals || []).filter((goal: any) => {
+                                      const goalTeam = goal.team || '';
+                                      const normalizedGoalTeam = getMediumName(goalTeam);
+                                      return normalizedGoalTeam === homeName || normalizedGoalTeam === getMediumName(fixture.home_team || '');
+                                    });
+                                    
+                                    // Filter red cards for home team
+                                    const homeRedCards = (liveScore.red_cards || []).filter((card: any) => {
+                                      const cardTeam = card.team || '';
+                                      const normalizedCardTeam = getMediumName(cardTeam);
+                                      return normalizedCardTeam === homeName || normalizedCardTeam === getMediumName(fixture.home_team || '');
+                                    });
+                                    
+                                    // Create combined timeline of goals and red cards
+                                    type TimelineEvent = { type: 'goal' | 'red_card'; minute: number | null; scorer?: string; player?: string; minutes?: number[] };
+                                    const timeline: TimelineEvent[] = [];
+                                    
+                                    // Add goals (grouped by scorer)
+                                    const goalsByScorer = new Map<string, number[]>();
+                                    homeGoals.forEach((goal: any) => {
+                                      const scorer = goal.scorer || 'Unknown';
+                                      const minute = goal.minute;
+                                      if (!goalsByScorer.has(scorer)) {
+                                        goalsByScorer.set(scorer, []);
+                                      }
+                                      if (minute !== null && minute !== undefined) {
+                                        goalsByScorer.get(scorer)!.push(minute);
+                                      }
+                                    });
+                                    
+                                    // Add each goal group as a timeline event (use first minute for sorting)
+                                    goalsByScorer.forEach((minutes, scorer) => {
+                                      const sortedMinutes = minutes.sort((a, b) => a - b);
+                                      timeline.push({
+                                        type: 'goal',
+                                        minute: sortedMinutes[0],
+                                        scorer,
+                                        minutes: sortedMinutes,
+                                      });
+                                    });
+                                    
+                                    // Add red cards
+                                    homeRedCards.forEach((card: any) => {
+                                      timeline.push({
+                                        type: 'red_card',
+                                        minute: card.minute,
+                                        player: card.player || 'Unknown',
+                                      });
+                                    });
+                                    
+                                    // Sort by minute (null minutes go to end)
+                                    timeline.sort((a, b) => {
+                                      if (a.minute === null) return 1;
+                                      if (b.minute === null) return -1;
+                                      return a.minute - b.minute;
+                                    });
+                                    
+                                    if (timeline.length === 0) return null;
+                                    
+                                    return (
+                                      <div className="mt-3 mb-2 flex flex-col items-end gap-0.5">
+                                        {timeline.map((event, idx) => {
+                                          if (event.type === 'goal') {
+                                            return (
+                                              <span key={idx} className="text-[10px] text-slate-600">
+                                                {event.scorer} {event.minutes!.sort((a, b) => a - b).map(m => `${m}'`).join(', ')}
+                                              </span>
+                                            );
+                                          } else {
+                                            return (
+                                              <span key={idx} className="text-[10px] text-slate-600">
+                                                🟥 {event.player} {event.minute}'
+                                              </span>
+                                            );
+                                          }
+                                        })}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                                
+                                {/* Score / Kickoff Time */}
+                                <div className="px-4 flex flex-col items-center">
+                                  {liveScore && (isOngoing || isFinished) ? (
+                                    <>
+                                      <span className="font-bold text-base text-slate-900">
+                                        {liveScore.homeScore} - {liveScore.awayScore}
+                                      </span>
+                                      <span className={`text-[10px] font-semibold mt-0.5 ${isOngoing ? 'text-red-600' : 'text-slate-500'}`}>
+                                        {formatMinuteDisplay(liveScore.status, liveScore.minute)}
+                                      </span>
+                                    </>
                                   ) : (
-                                    <span>{kickoff}</span>
+                                    <span className="text-slate-500 text-sm">{kickoff}</span>
                                   )}
                                 </div>
-                                {fixture.away_code && (
-                                  <img 
-                                    src={`/assets/badges/${fixture.away_code.toUpperCase()}.png`} 
-                                    alt={`${awayName} badge`}
-                                    className="h-6 w-6 object-contain"
-                                    onError={(e) => {
-                                      (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
-                                    }}
-                                  />
-                                )}
+                                
+                                {/* Away Team */}
+                                <div className="flex-1 flex flex-col items-start">
+                                  <div className="flex items-center gap-1">
+                                    <img 
+                                      src={`/assets/badges/${(fixture.away_code || awayKey).toUpperCase()}.png`} 
+                                      alt={awayName}
+                                      className="w-5 h-5"
+                                      onError={(e) => {
+                                        (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
+                                      }}
+                                    />
+                                    <div className={`break-words ${liveScore && (isOngoing || isFinished) && liveScore.awayScore > liveScore.homeScore ? 'font-bold' : 'font-medium'}`}>{awayName}</div>
+                                  </div>
+                                  {/* Away Team Goals and Red Cards (chronologically sorted) */}
+                                  {liveScore && (isOngoing || isFinished) && (() => {
+                                    // Filter goals for away team
+                                    const awayGoals = (liveScore.goals || []).filter((goal: any) => {
+                                      const goalTeam = goal.team || '';
+                                      const normalizedGoalTeam = getMediumName(goalTeam);
+                                      return normalizedGoalTeam === awayName || normalizedGoalTeam === getMediumName(fixture.away_team || '');
+                                    });
+                                    
+                                    // Filter red cards for away team
+                                    const awayRedCards = (liveScore.red_cards || []).filter((card: any) => {
+                                      const cardTeam = card.team || '';
+                                      const normalizedCardTeam = getMediumName(cardTeam);
+                                      return normalizedCardTeam === awayName || normalizedCardTeam === getMediumName(fixture.away_team || '');
+                                    });
+                                    
+                                    // Create combined timeline of goals and red cards
+                                    type TimelineEvent = { type: 'goal' | 'red_card'; minute: number | null; scorer?: string; player?: string; minutes?: number[] };
+                                    const timeline: TimelineEvent[] = [];
+                                    
+                                    // Add goals (grouped by scorer)
+                                    const goalsByScorer = new Map<string, number[]>();
+                                    awayGoals.forEach((goal: any) => {
+                                      const scorer = goal.scorer || 'Unknown';
+                                      const minute = goal.minute;
+                                      if (!goalsByScorer.has(scorer)) {
+                                        goalsByScorer.set(scorer, []);
+                                      }
+                                      if (minute !== null && minute !== undefined) {
+                                        goalsByScorer.get(scorer)!.push(minute);
+                                      }
+                                    });
+                                    
+                                    // Add each goal group as a timeline event (use first minute for sorting)
+                                    goalsByScorer.forEach((minutes, scorer) => {
+                                      const sortedMinutes = minutes.sort((a, b) => a - b);
+                                      timeline.push({
+                                        type: 'goal',
+                                        minute: sortedMinutes[0],
+                                        scorer,
+                                        minutes: sortedMinutes,
+                                      });
+                                    });
+                                    
+                                    // Add red cards
+                                    awayRedCards.forEach((card: any) => {
+                                      timeline.push({
+                                        type: 'red_card',
+                                        minute: card.minute,
+                                        player: card.player || 'Unknown',
+                                      });
+                                    });
+                                    
+                                    // Sort by minute (null minutes go to end)
+                                    timeline.sort((a, b) => {
+                                      if (a.minute === null) return 1;
+                                      if (b.minute === null) return -1;
+                                      return a.minute - b.minute;
+                                    });
+                                    
+                                    if (timeline.length === 0) return null;
+                                    
+                                    return (
+                                      <div className="mt-3 mb-2 flex flex-col items-start gap-0.5">
+                                        {timeline.map((event, idx) => {
+                                          if (event.type === 'goal') {
+                                            return (
+                                              <span key={idx} className="text-[10px] text-slate-600">
+                                                {event.scorer} {event.minutes!.sort((a, b) => a - b).map(m => `${m}'`).join(', ')}
+                                              </span>
+                                            );
+                                          } else {
+                                            return (
+                                              <span key={idx} className="text-[10px] text-slate-600">
+                                                🟥 {event.player} {event.minute}'
+                                              </span>
+                                            );
+                                          }
+                                        })}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
-                              <div className="flex items-center justify-center">
-                                <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{awayName}</span>
                               </div>
                             </div>
-                            {/* Score indicator (phase label) */}
-                            {liveScore && (isLive || isHalfTime || isFinished) && (
-                                <div className="flex justify-center mt-1">
-                                <span className={`text-[10px] font-semibold ${isLive || isHalfTime ? 'text-red-600' : 'text-slate-500'}`}>
-                                    {formatMinuteDisplay(liveScore.status, liveScore.minute)}
-                                  </span>
-                                </div>
-                              )}
 
                             {/* buttons: Home Win, Draw, Away Win */}
                             <div className="grid grid-cols-3 gap-3 relative mt-4">
@@ -1732,7 +1956,8 @@ export default function TestApiPredictions() {
             })()}
           </div>
         </div>
-            </div>
+        </div>
+      </div>
     );
   }
 
@@ -1742,7 +1967,7 @@ export default function TestApiPredictions() {
   console.log('[TestApiPredictions] Review mode check - submitted:', submitted, 'ref:', hasEverBeenSubmittedRef.current, 'sessionStorage:', getHasEverBeenSubmitted());
   if (checkSubmittedBeforeReview && !submitted) {
     // sessionStorage/ref says we've been submitted but state says no - wait for state to catch up
-    console.log('[TestApiPredictions] ⚠️ sessionStorage/ref says submitted but state says no - showing loading');
+    console.log('[TestApiPredictions] WARNING: sessionStorage/ref says submitted but state says no - showing loading');
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-slate-600">Loading...</div>

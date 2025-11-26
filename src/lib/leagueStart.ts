@@ -127,16 +127,17 @@ export function shouldIncludeGwForLeague(
   gw: number,
   gwDeadlines: Map<number, Date>
 ): boolean {
-  // Special handling for API Test league - always include GW 1 (Test GW 1)
-  if (league?.name === "API Test" && gw === 1) {
+  // Special handling for API Test league - always include any test GW (1, 2, 3, etc.)
+  // Test GWs are independent of regular GWs, so we don't filter them
+  if (league?.name === "API Test") {
     return true;
   }
   
   const override = getLeagueStartOverride(league?.name);
   if (typeof override === "number") {
-    // For API Test with override 999, only include GW 1 (handled above)
+    // For API Test with override 999, always include (handled above)
     if (override === 999) {
-      return false; // All other GWs excluded for API Test
+      return true; // All test GWs allowed for API Test
     }
     return gw >= override;
   }
