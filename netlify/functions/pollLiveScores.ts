@@ -220,14 +220,7 @@ async function pollAllLiveScores() {
                                                  matchData.score?.minute ?? 
                                                  null;
 
-      console.log(`[pollLiveScores] Match ${apiMatchId} - API minute value:`, {
-        minute: matchData.minute,
-        currentMinute: matchData.currentMinute,
-        scoreMinute: matchData.score?.minute,
-        status,
-        homeScore,
-        awayScore
-      });
+      console.log(`[pollLiveScores] Match ${apiMatchId} - API minute: ${apiMinute ?? 'null'}, status: ${status}, score: ${homeScore}-${awayScore}`);
 
       // For finished games, always set minute to null (FT doesn't need minute)
       // For all other games, use the API minute directly
