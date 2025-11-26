@@ -3564,9 +3564,21 @@ export default function HomePage() {
                               
                               // Filter red cards for home team
                               const homeRedCards = (liveScore.red_cards || []).filter((card: any) => {
+                                if (!card || !card.team) return false;
                                 const cardTeam = card.team || '';
+                                
+                                // Use same robust matching logic as goals
                                 const normalizedCardTeam = getMediumName(cardTeam);
-                                return normalizedCardTeam === homeName || normalizedCardTeam === getMediumName(f.home_team || '');
+                                const normalizedHomeTeam = liveScore.home_team ? getMediumName(liveScore.home_team) : homeName;
+                                
+                                return normalizedCardTeam === normalizedHomeTeam ||
+                                       normalizedCardTeam === homeName ||
+                                       normalizedCardTeam === getMediumName(f.home_team || '') ||
+                                       normalizedCardTeam === getMediumName(f.home_name || '') ||
+                                       cardTeam.toLowerCase() === (liveScore.home_team || '').toLowerCase() ||
+                                       cardTeam.toLowerCase() === homeName.toLowerCase() ||
+                                       cardTeam.toLowerCase() === (f.home_team || '').toLowerCase() ||
+                                       cardTeam.toLowerCase() === (f.home_name || '').toLowerCase();
                               });
                               
                               // Create combined timeline of goals and red cards
@@ -3692,9 +3704,21 @@ export default function HomePage() {
                               
                               // Filter red cards for away team
                               const awayRedCards = (liveScore.red_cards || []).filter((card: any) => {
+                                if (!card || !card.team) return false;
                                 const cardTeam = card.team || '';
+                                
+                                // Use same robust matching logic as goals
                                 const normalizedCardTeam = getMediumName(cardTeam);
-                                return normalizedCardTeam === awayName || normalizedCardTeam === getMediumName(f.away_team || '');
+                                const normalizedAwayTeam = liveScore.away_team ? getMediumName(liveScore.away_team) : awayName;
+                                
+                                return normalizedCardTeam === normalizedAwayTeam ||
+                                       normalizedCardTeam === awayName ||
+                                       normalizedCardTeam === getMediumName(f.away_team || '') ||
+                                       normalizedCardTeam === getMediumName(f.away_name || '') ||
+                                       cardTeam.toLowerCase() === (liveScore.away_team || '').toLowerCase() ||
+                                       cardTeam.toLowerCase() === awayName.toLowerCase() ||
+                                       cardTeam.toLowerCase() === (f.away_team || '').toLowerCase() ||
+                                       cardTeam.toLowerCase() === (f.away_name || '').toLowerCase();
                               });
                               
                               // Create combined timeline of goals and red cards
