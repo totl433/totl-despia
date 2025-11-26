@@ -325,67 +325,8 @@ async function pollAllLiveScores() {
         console.error('[pollLiveScores] Error upserting live scores:', upsertError);
       } else {
         console.log(`[pollLiveScores] Successfully updated ${updates.length} live scores`);
-        
-        // Only trigger webhook for records that actually changed (to prevent unnecessary calls)
-        const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://totl-staging.netlify.app';
-        const webhookUrl = `${siteUrl}/.netlify/functions/sendScoreNotificationsWebhook`;
-        
-        let webhookCalls = 0;
-        // Call webhook only for records with actual changes
-        for (const update of updates) {
-          const oldRecord = existingMap.get(update.api_match_id) || null;
-          
-          // Check if there's an actual change worth notifying about
-          if (oldRecord) {
-            const scoreChanged = (update.home_score !== oldRecord.home_score) || (update.away_score !== oldRecord.away_score);
-            const statusChanged = update.status !== oldRecord.status;
-            const goalsChanged = JSON.stringify(update.goals || []) !== JSON.stringify(oldRecord.goals || []);
-            const redCardsChanged = JSON.stringify(update.red_cards || []) !== JSON.stringify(oldRecord.red_cards || []);
-            
-            // Only call webhook if something actually changed
-            if (!scoreChanged && !statusChanged && !goalsChanged && !redCardsChanged) {
-              console.log(`[pollLiveScores] Skipping webhook for match ${update.api_match_id} - no changes detected`);
-              continue;
-            }
-            
-            // Log what changed for debugging
-            if (goalsChanged) {
-              const oldGoals = (oldRecord.goals || []).map((g: any) => `${g.scorer} ${g.minute}'`).join(', ');
-              const newGoals = (update.goals || []).map((g: any) => `${g.scorer} ${g.minute}'`).join(', ');
-              console.log(`[pollLiveScores] Goals changed for match ${update.api_match_id}: [${oldGoals}] -> [${newGoals}]`);
-            }
-          }
-          
-          // Build webhook payload
-          const webhookPayload = {
-            type: oldRecord ? 'UPDATE' : 'INSERT',
-            table: 'live_scores',
-            record: update,
-            old_record: oldRecord,
-          };
-          
-          const callId = Math.random().toString(36).substring(7);
-          console.log(`[pollLiveScores] [${callId}] Calling webhook for match ${update.api_match_id}`, {
-            hasOldRecord: !!oldRecord,
-            oldGoalsCount: oldRecord?.goals?.length || 0,
-            newGoalsCount: update.goals?.length || 0,
-          });
-          
-          // Fire and forget - don't block on webhook calls
-          fetch(webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(webhookPayload),
-          }).then(() => {
-            console.log(`[pollLiveScores] [${callId}] Webhook call completed for match ${update.api_match_id}`);
-          }).catch((err) => {
-            console.error(`[pollLiveScores] [${callId}] Failed to trigger webhook for match ${update.api_match_id}:`, err);
-          });
-          
-          webhookCalls++;
-        }
-        
-        console.log(`[pollLiveScores] Triggered webhook notifications for ${webhookCalls} matches (${updates.length} total updates)`);
+        // Note: Webhooks are now handled by Supabase Dashboard webhook (see SUPABASE_WEBHOOK_SETUP.md)
+        // Supabase will automatically call sendScoreNotificationsWebhook when live_scores is updated
       }
     }
 
