@@ -760,6 +760,107 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
+    // Handle half-time
+    if (isHalfTime) {
+      // Check if we've already sent a half-time notification for this match
+      const hasNotifiedHalfTime = state?.last_notified_status === 'PAUSED';
+      
+      if (hasNotifiedHalfTime) {
+        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - already sent half-time notification for match ${apiMatchId}`);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ message: 'Already notified for half-time' }),
+        };
+      }
+
+      // Update state IMMEDIATELY before sending notifications
+      await supabase
+        .from('notification_state')
+        .upsert({
+          api_match_id: apiMatchId,
+          last_notified_home_score: homeScore,
+          last_notified_away_score: awayScore,
+          last_notified_status: 'PAUSED',
+          last_notified_at: new Date().toISOString(),
+          last_notified_goals: goals || [],
+          last_notified_red_cards: redCards || null,
+        } as any, {
+          onConflict: 'api_match_id',
+        });
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] ✅ State updated IMMEDIATELY for half-time match ${apiMatchId}`);
+
+      // Get users who have picks
+      let picks: any[] = [];
+      if (isTestFixture && testGwForPicks) {
+        const { data: testPicks } = await supabase
+          .from('test_api_picks')
+          .select('user_id')
+          .eq('matchday', testGwForPicks)
+          .eq('fixture_index', normalizedFixture.fixture_index);
+        picks = testPicks || [];
+      } else {
+        const { data: regularPicks } = await supabase
+          .from('picks')
+          .select('user_id')
+          .eq('gw', fixtureGw)
+          .eq('fixture_index', normalizedFixture.fixture_index);
+        picks = regularPicks || [];
+      }
+
+      const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
+      const { data: subscriptions } = await supabase
+        .from('push_subscriptions')
+        .select('user_id, player_id')
+        .in('user_id', userIds)
+        .eq('is_active', true);
+
+      const playerIdsByUser = new Map<string, string[]>();
+      (subscriptions || []).forEach((sub: any) => {
+        if (!sub.player_id) return;
+        if (!playerIdsByUser.has(sub.user_id)) {
+          playerIdsByUser.set(sub.user_id, []);
+        }
+        playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
+      });
+
+      let totalSent = 0;
+      const htMinute = minute !== null && minute !== undefined ? `${minute}'` : '';
+      for (const userId of userIds) {
+        const playerIds = playerIdsByUser.get(userId) || [];
+        if (playerIds.length === 0) continue;
+
+        const title = `⏸️ Half-Time`;
+        const message = `${normalizedFixture.home_team} ${homeScore}-${awayScore} ${normalizedFixture.away_team}${htMinute ? ` ${htMinute}` : ''}`;
+
+        const result = await sendOneSignalNotification(
+          playerIds,
+          title,
+          message,
+          {
+            type: 'half_time',
+            api_match_id: apiMatchId,
+            fixture_index: normalizedFixture.fixture_index,
+            gw: fixtureGw,
+          }
+        );
+
+        if (result.success) {
+          totalSent += result.sentTo;
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] Sent half-time notification to user ${userId} (${result.sentTo} devices)`);
+        }
+      }
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          message: 'Half-time notification sent',
+          sentTo: totalSent,
+        }),
+      };
+    }
+
     // Handle game finished (check this even if there were no new goals)
     if (isFinished && oldStatus !== 'FINISHED' && oldStatus !== 'FT') {
       console.log(`[sendScoreNotificationsWebhook] 🏁 Game finished detected for match ${apiMatchId}`);
