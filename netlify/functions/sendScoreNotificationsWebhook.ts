@@ -151,7 +151,14 @@ export const handler: Handler = async (event, context) => {
   try {
     // Parse webhook payload from Supabase
     const webhookPayload = JSON.parse(event.body || '{}');
-    console.log('[sendScoreNotificationsWebhook] Webhook received:', JSON.stringify(webhookPayload, null, 2));
+    const requestId = Math.random().toString(36).substring(7);
+    console.log(`[sendScoreNotificationsWebhook] [${requestId}] Webhook received:`, {
+      type: webhookPayload.type,
+      table: webhookPayload.table,
+      api_match_id: webhookPayload.record?.api_match_id || webhookPayload.new?.api_match_id,
+      hasOldRecord: !!webhookPayload.old_record || !!webhookPayload.old,
+      timestamp: new Date().toISOString(),
+    });
 
     // Supabase webhook format can vary:
     // Format 1: { type: 'UPDATE', table: 'live_scores', record: {...}, old_record: {...} }
@@ -179,13 +186,16 @@ export const handler: Handler = async (event, context) => {
     }
 
     if (table !== 'live_scores' || !record) {
-      console.log('[sendScoreNotificationsWebhook] Ignoring webhook - not a live_scores update');
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] Ignoring webhook - not a live_scores update`);
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({ message: 'Ignored - not a live_scores update' }),
       };
     }
+    
+    const apiMatchId = record.api_match_id;
+    console.log(`[sendScoreNotificationsWebhook] [${requestId}] Processing match ${apiMatchId}`);
 
     const apiMatchId = record.api_match_id;
     const homeScore = record.home_score ?? 0;
@@ -326,7 +336,7 @@ export const handler: Handler = async (event, context) => {
         const now = Date.now();
         const twoMinutes = 2 * 60 * 1000;
         if (now - lastNotifiedTime < twoMinutes) {
-          console.log(`[sendScoreNotificationsWebhook] 🚫 SKIPPING - already notified for these goals`);
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - already notified for these goals`);
           return {
             statusCode: 200,
             headers,
@@ -342,7 +352,7 @@ export const handler: Handler = async (event, context) => {
         const key = normalizeGoalKey(g);
         const isNew = !previousGoalKeys.has(key);
         if (isNew) {
-          console.log(`[sendScoreNotificationsWebhook] ✅ NEW GOAL DETECTED:`, {
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] ✅ NEW GOAL DETECTED:`, {
             scorer: g.scorer,
             minute: g.minute,
             teamId: g.teamId,
@@ -412,7 +422,7 @@ export const handler: Handler = async (event, context) => {
             const now = Date.now();
             // If state was updated in the last 5 seconds, another process likely sent the notification
             if (now - stateUpdateTime < 5000) {
-              console.log(`[sendScoreNotificationsWebhook] 🚫 SKIPPING - state was updated by another process (race condition prevented)`);
+              console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - state was updated by another process (race condition prevented)`);
               return {
                 statusCode: 200,
                 headers,
@@ -517,7 +527,7 @@ export const handler: Handler = async (event, context) => {
 
         if (result.success) {
           totalSent += result.sentTo;
-          console.log(`[sendScoreNotificationsWebhook] Sent goal notification to user ${pick.user_id} (${result.sentTo} devices)`);
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] Sent goal notification to user ${pick.user_id} (${result.sentTo} devices)`);
         }
       }
 
