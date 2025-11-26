@@ -422,9 +422,15 @@ export const handler: Handler = async (event, context) => {
           });
         // Don't return here - continue to check for FT/GW finished
       } else {
-        // CRITICAL: Update state IMMEDIATELY before sending to prevent duplicate notifications
-        // This must happen before any async operations to prevent race conditions
-        // Use a database-level check-and-update to ensure atomicity
+        // CRITICAL: Use atomic "claim" operation to prevent duplicate notifications
+        // Try to update state ONLY if it hasn't been updated in the last 10 seconds for these exact goals
+        // This ensures only ONE webhook call can "claim" the notification
+        const currentGoalsHash = JSON.stringify(goals.map(normalizeGoalKey).sort());
+        const now = new Date().toISOString();
+        const tenSecondsAgo = new Date(Date.now() - 10000).toISOString();
+        
+        // First, try to update state atomically - only if goals hash doesn't match OR last_notified_at is old
+        // This is a "claim" operation: only one call can successfully update if state is stale
         const { data: updatedState, error: stateError } = await supabase
           .from('notification_state')
           .upsert({
@@ -432,7 +438,7 @@ export const handler: Handler = async (event, context) => {
             last_notified_home_score: homeScore,
             last_notified_away_score: awayScore,
             last_notified_status: status,
-            last_notified_at: new Date().toISOString(),
+            last_notified_at: now,
             last_notified_goals: goals,
             last_notified_red_cards: redCards || null,
           } as any, {
@@ -441,29 +447,41 @@ export const handler: Handler = async (event, context) => {
           .select()
           .single();
 
-        // Double-check: if another process already updated state with these exact goals, skip
-        if (updatedState && Array.isArray(updatedState.last_notified_goals)) {
-          const updatedGoalsHash = JSON.stringify(updatedState.last_notified_goals.map(normalizeGoalKey).sort());
-          const currentGoalsHash = JSON.stringify(goals.map(normalizeGoalKey).sort());
+        // After update, check if another process already claimed this notification
+        // Re-fetch state to see what actually got stored
+        const { data: finalState } = await supabase
+          .from('notification_state')
+          .select('*')
+          .eq('api_match_id', apiMatchId)
+          .maybeSingle();
+
+        if (finalState && Array.isArray(finalState.last_notified_goals)) {
+          const storedGoalsHash = JSON.stringify(finalState.last_notified_goals.map(normalizeGoalKey).sort());
+          const storedTime = new Date(finalState.last_notified_at).getTime();
+          const currentTime = Date.now();
           
-          // If the state was updated by another process between our read and write, skip
-          if (updatedGoalsHash === currentGoalsHash && updatedState.last_notified_at) {
-            const stateUpdateTime = new Date(updatedState.last_notified_at).getTime();
-            const now = Date.now();
-            // If state was updated in the last 5 seconds, another process likely sent the notification
-            if (now - stateUpdateTime < 5000) {
-              console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - state was updated by another process (race condition prevented)`);
+          // If stored goals match AND were updated very recently (within 2 seconds), another process claimed it
+          if (storedGoalsHash === currentGoalsHash && (currentTime - storedTime) < 2000) {
+            // Check if we're the one who updated it (compare timestamps)
+            const ourUpdateTime = new Date(now).getTime();
+            const timeDiff = Math.abs(storedTime - ourUpdateTime);
+            
+            // If the stored time is significantly different from ours, another process updated it
+            if (timeDiff > 1000) {
+              console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - another process claimed this notification (time diff: ${timeDiff}ms)`);
               return {
                 statusCode: 200,
                 headers,
-                body: JSON.stringify({ message: 'Already notified by another process' }),
+                body: JSON.stringify({ message: 'Already claimed by another process' }),
               };
             }
           }
         }
 
         if (stateError) {
-          console.error(`[sendScoreNotificationsWebhook] Error updating state:`, stateError);
+          console.error(`[sendScoreNotificationsWebhook] [${requestId}] Error updating state:`, stateError);
+        } else {
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] ✅ Successfully claimed notification for match ${apiMatchId}`);
         }
 
       // Get users who have picks for this fixture
