@@ -12,7 +12,7 @@ type AuthState = {
   dismissWelcome: () => void;
 };
 
-const AuthCtx = createContext<AuthState>({
+export const AuthContext = createContext<AuthState>({
   user: null,
   session: null,
   loading: true,
@@ -194,10 +194,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }), [user, session, loading, showWelcome]);
 
   return (
-    <AuthCtx.Provider value={value}>
+    <AuthContext.Provider value={value}>
       {children}
-    </AuthCtx.Provider>
+    </AuthContext.Provider>
   );
 }
 
-export const useAuth = () => useContext(AuthCtx);
+export const useAuth = () => useContext(AuthContext);
