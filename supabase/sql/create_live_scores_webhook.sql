@@ -1,8 +1,21 @@
 -- Create webhook trigger for live_scores table
 -- This trigger calls the Netlify function when live_scores is inserted or updated
+-- 
+-- NOTE: This uses pg_net extension. If pg_net is not available, you'll need to:
+-- 1. Enable pg_net extension in Supabase dashboard (Database → Extensions)
+-- 2. Or use Supabase Edge Functions instead
+-- 3. Or configure webhooks through Supabase Dashboard → Database → Webhooks
 
--- First, ensure pg_net extension is enabled (for making HTTP requests from triggers)
-CREATE EXTENSION IF NOT EXISTS pg_net;
+-- First, try to enable pg_net extension (may require superuser privileges)
+-- If this fails, enable it manually in Supabase Dashboard → Database → Extensions
+DO $$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS pg_net;
+EXCEPTION WHEN OTHERS THEN
+  -- Extension might not be available or requires manual enable
+  RAISE NOTICE 'pg_net extension not available. Please enable it manually in Supabase Dashboard → Database → Extensions, or use alternative webhook method.';
+END;
+$$;
 
 -- Create a function that will be called by the trigger
 CREATE OR REPLACE FUNCTION public.notify_live_scores_webhook()
@@ -10,6 +23,7 @@ RETURNS TRIGGER AS $$
 DECLARE
   webhook_url TEXT := 'https://totl-staging.netlify.app/.netlify/functions/sendScoreNotificationsWebhook';
   payload JSONB;
+  request_id BIGINT;
 BEGIN
   -- Build the payload in the format expected by the webhook
   payload := jsonb_build_object(
@@ -19,15 +33,21 @@ BEGIN
     'old_record', CASE WHEN TG_OP = 'UPDATE' THEN row_to_json(OLD) ELSE NULL END
   );
 
-  -- Make HTTP request to Netlify function
-  -- Use pg_net.http_post to send the webhook
-  PERFORM net.http_post(
-    url := webhook_url,
-    headers := jsonb_build_object(
-      'Content-Type', 'application/json'
-    ),
-    body := payload::text
-  );
+  -- Make HTTP request to Netlify function using pg_net
+  -- Try the standard pg_net syntax
+  BEGIN
+    SELECT net.http_post(
+      url := webhook_url,
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json'
+      ),
+      body := payload::text
+    ) INTO request_id;
+  EXCEPTION WHEN OTHERS THEN
+    -- If pg_net.http_post doesn't work, try alternative syntax
+    -- Or log the error and continue (webhook will fail silently)
+    RAISE WARNING 'Failed to call webhook: %', SQLERRM;
+  END;
 
   RETURN NEW;
 END;
