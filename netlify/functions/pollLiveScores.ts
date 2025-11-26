@@ -230,59 +230,12 @@ async function pollAllLiveScores() {
       });
 
       // For finished games, always set minute to null (FT doesn't need minute)
-      let minute: number | null;
-      let derivedMinute: number | null = null; // Declare outside if block for logging
+      // For all other games, use the API minute directly
+      const minute = status === 'FINISHED' ? null : (apiMinute ?? null);
       
-      if (status === 'FINISHED') {
-        minute = null;
-      }
-      // For live/paused games, try to get accurate minute
-      else if (status === 'IN_PLAY' || status === 'PAUSED') {
-        // First, try to derive minute from kickoff time (most reliable)
-        const kickoffISO = fixture.kickoff_time || matchData.utcDate;
-        
-        if (kickoffISO) {
-          try {
-            const matchStart = new Date(kickoffISO);
-            const now = new Date();
-            const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
-
-            // Only trust reasonable values
-            if (diffMinutes > 0 && diffMinutes < 130) {
-              derivedMinute = diffMinutes;
-              console.log(`[pollLiveScores] Derived minute from kickoff time for match ${apiMatchId}: ${derivedMinute} minutes`);
-            }
-          } catch (e) {
-            console.warn('[pollLiveScores] Error deriving minute from kickoff time:', e);
-          }
-        }
-        
-        // Use API minute if it's reasonable and matches derived minute (or if derived failed)
-        // If API minute is stuck at 1 or seems wrong, prefer derived minute
-        if (apiMinute !== null && apiMinute !== undefined && apiMinute > 0) {
-          // If API minute is suspiciously low (1-5) but game has been running longer, use derived
-          if (apiMinute <= 5 && derivedMinute && derivedMinute > 10) {
-            console.log(`[pollLiveScores] API minute (${apiMinute}) seems stuck, using derived minute (${derivedMinute})`);
-            minute = derivedMinute;
-          } else {
-            // Use API minute if it's reasonable
-            minute = apiMinute;
-          }
-        } else if (derivedMinute) {
-          // Fall back to derived minute if API doesn't provide one
-          minute = derivedMinute;
-        } else {
-          // Last resort: use API minute even if null/undefined
-          minute = apiMinute ?? null;
-        }
-      } else {
-        // For SCHEDULED/TIMED games, use API minute or null
-        minute = apiMinute ?? null;
-      }
-      
-      // Log final minute value being stored
+      // Log minute value being stored
       if (status === 'IN_PLAY' || status === 'PAUSED') {
-        console.log(`[pollLiveScores] Match ${apiMatchId} - Final minute value to store: ${minute} (API: ${apiMinute}, Derived: ${derivedMinute ?? 'N/A'})`);
+        console.log(`[pollLiveScores] Match ${apiMatchId} - Storing minute: ${minute} (from API)`);
       }
 
       // Extract goals and bookings from API response
