@@ -11,8 +11,9 @@
   schedule = "* * * * *"  # Every minute (5 fields: minute hour day month weekday)
 
 # Scheduled function to send score notifications every 2 minutes
-[functions."sendScoreNotifications"]
-  schedule = "*/2 * * * *"
+# DISABLED: Now using webhook for instant notifications (sendScoreNotificationsWebhook)
+# [functions."sendScoreNotifications"]
+#   schedule = "*/2 * * * *"
 
 # Ignore secrets scanning for helper scripts and .env file
 [build.environment]
