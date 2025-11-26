@@ -390,11 +390,27 @@ async function checkAndSendScoreNotifications() {
                            (isNewMatch && isFinished); // Also treat new finished matches as "just finished"
       
       // Detect kickoff: status changed from SCHEDULED/TIMED to IN_PLAY
-      const justKickedOff = !isNewMatch && 
-        state.last_notified_status !== 'IN_PLAY' && 
-        state.last_notified_status !== 'PAUSED' &&
-        state.last_notified_status !== 'FINISHED' &&
-        (status === 'IN_PLAY' || status === 'PAUSED');
+      // Also detect kickoff for new matches that are IN_PLAY with 0-0 score
+      const justKickedOff = (
+        // Existing match that just started
+        (!isNewMatch && 
+         state.last_notified_status !== 'IN_PLAY' && 
+         state.last_notified_status !== 'PAUSED' &&
+         state.last_notified_status !== 'FINISHED' &&
+         (status === 'IN_PLAY' || status === 'PAUSED')) ||
+        // New match that's IN_PLAY with 0-0 score (kickoff)
+        (isNewMatch && status === 'IN_PLAY' && homeScore === 0 && awayScore === 0)
+      );
+
+      if (justKickedOff) {
+        console.log(`[sendScoreNotifications] 🔵 KICKOFF DETECTED for match ${score.api_match_id}: ${fixture.home_team} vs ${fixture.away_team}`, {
+          isNewMatch,
+          previousStatus: state?.last_notified_status || 'none',
+          currentStatus: status,
+          homeScore,
+          awayScore
+        });
+      }
 
       // Track kickoffs for grouping (only if status is IN_PLAY and score is 0-0)
       if (justKickedOff && status === 'IN_PLAY' && homeScore === 0 && awayScore === 0 && fixture.kickoff_time) {
@@ -444,13 +460,17 @@ async function checkAndSendScoreNotifications() {
     }
 
     // Add grouped kickoff notifications
+    console.log(`[sendScoreNotifications] 🔵 Processing ${kickoffsByTimeSlot.size} kickoff time slot(s)`);
     for (const [timeSlot, kickoffs] of kickoffsByTimeSlot.entries()) {
       if (kickoffs.length === 0) continue;
+      
+      console.log(`[sendScoreNotifications] 🔵 Kickoff time slot ${timeSlot}: ${kickoffs.length} game(s)`);
       
       // For single game, send specific notification
       // For multiple games (e.g., 3pm kickoffs), send generic notification
       if (kickoffs.length === 1) {
         const kickoff = kickoffs[0];
+        console.log(`[sendScoreNotifications] 🔵 Adding single kickoff notification for ${kickoff.homeTeam} vs ${kickoff.awayTeam}`);
         notificationsToSend.push({
           apiMatchId: kickoff.apiMatchId,
           homeTeam: kickoff.homeTeam,
