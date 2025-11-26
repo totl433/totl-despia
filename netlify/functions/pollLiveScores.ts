@@ -231,6 +231,8 @@ async function pollAllLiveScores() {
 
       // For finished games, always set minute to null (FT doesn't need minute)
       let minute: number | null;
+      let derivedMinute: number | null = null; // Declare outside if block for logging
+      
       if (status === 'FINISHED') {
         minute = null;
       }
@@ -238,7 +240,6 @@ async function pollAllLiveScores() {
       else if (status === 'IN_PLAY' || status === 'PAUSED') {
         // First, try to derive minute from kickoff time (most reliable)
         const kickoffISO = fixture.kickoff_time || matchData.utcDate;
-        let derivedMinute: number | null = null;
         
         if (kickoffISO) {
           try {
