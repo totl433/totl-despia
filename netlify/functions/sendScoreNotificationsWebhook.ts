@@ -516,15 +516,38 @@ export const handler: Handler = async (event, context) => {
       const scorer = newestGoal.scorer || 'Unknown';
       const goalMinute = newestGoal.minute !== null && newestGoal.minute !== undefined ? `${newestGoal.minute}'` : '';
       
-      // Determine which team scored (FotMob style)
-      const scoringTeam = newestGoal.team || '';
-      const normalizedScoringTeam = scoringTeam.toLowerCase().trim();
-      const normalizedHomeTeam = (normalizedFixture.home_team || '').toLowerCase().trim();
-      const normalizedAwayTeam = (normalizedFixture.away_team || '').toLowerCase().trim();
+      // Determine which team scored - use score change (most reliable)
+      // Compare current score to old score to see which team scored
+      const homeScoreIncreased = homeScore > (oldHomeScore || 0);
+      const awayScoreIncreased = awayScore > (oldAwayScore || 0);
       
-      const isHomeTeam = normalizedScoringTeam === normalizedHomeTeam ||
-                         normalizedScoringTeam.includes(normalizedHomeTeam) ||
-                         normalizedHomeTeam.includes(normalizedScoringTeam);
+      // If both increased (shouldn't happen, but handle it), use teamId from goal if available
+      let isHomeTeam: boolean;
+      if (homeScoreIncreased && !awayScoreIncreased) {
+        isHomeTeam = true;
+      } else if (awayScoreIncreased && !homeScoreIncreased) {
+        isHomeTeam = false;
+      } else {
+        // Fallback: try to match by teamId or team name
+        const goalTeamId = newestGoal.teamId;
+        const scoringTeam = newestGoal.team || '';
+        const normalizedScoringTeam = scoringTeam.toLowerCase().trim();
+        const normalizedHomeTeam = (normalizedFixture.home_team || '').toLowerCase().trim();
+        const normalizedAwayTeam = (normalizedFixture.away_team || '').toLowerCase().trim();
+        
+        // Try name matching as fallback
+        isHomeTeam = normalizedScoringTeam === normalizedHomeTeam ||
+                     normalizedScoringTeam.includes(normalizedHomeTeam) ||
+                     normalizedHomeTeam.includes(normalizedScoringTeam);
+        
+        console.log(`[sendScoreNotificationsWebhook] [${requestId}] Could not determine scoring team from score change, using name matching:`, {
+          goalTeamId,
+          scoringTeam,
+          isHomeTeam,
+          homeTeam: normalizedFixture.home_team,
+          awayTeam: normalizedFixture.away_team,
+        });
+      }
       
       // Format score with new goal highlighted (FotMob style)
       // Example: "Team A 1 - [2] Team B" or "Team A [1] - 0 Team B"
