@@ -263,19 +263,20 @@ export const handler: Handler = async (event, context) => {
 
     console.log(`[sendScoreNotificationsWebhook] Processing match ${apiMatchId}:`, {
       scoreChange: isScoreChange,
+      goalsChanged,
       homeScore: `${oldHomeScore} -> ${homeScore}`,
       awayScore: `${oldAwayScore} -> ${awayScore}`,
       goalsCount: Array.isArray(goals) ? goals.length : 0,
       previousGoalsCount: state?.last_notified_goals ? (Array.isArray(state.last_notified_goals) ? state.last_notified_goals.length : 0) : 0,
       oldGoalsCount: Array.isArray(oldGoals) ? oldGoals.length : 0,
+      hasGoals: Array.isArray(goals) && goals.length > 0,
     });
 
-    // Process goals - check for new goals
-    // Also handle score changes even if goals array is empty (for manual updates)
-    // OR if goals array changed (even if score didn't change yet)
-    if (isScoreChange || goalsChanged) {
-      // If no goals array or empty, create a simple notification for score change
-      if (!Array.isArray(goals) || goals.length === 0) {
+    // Process goals - ALWAYS check for new goals if goals exist, regardless of score change
+    // This handles cases where webhook fires after goal is already in database
+    // We compare against state.last_notified_goals (what we've already notified), not old_record.goals
+    if (Array.isArray(goals) && goals.length > 0) {
+      // Always check for new goals compared to what we've notified about
         // Score changed but no goals data - send simple score update notification
         let picks: any[] = [];
         if (isTestFixture && testGw) {
