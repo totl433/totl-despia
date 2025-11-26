@@ -79,7 +79,7 @@ type TablesPageCache = {
   userId: string | null;
 };
 
-const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
+// const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes (unused)
 let tablesPageCache: TablesPageCache | null = null;
 
 export default function TablesPage() {

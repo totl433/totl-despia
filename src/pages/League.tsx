@@ -1710,70 +1710,71 @@ export default function LeaguePage() {
   // Fetch live scores from Football Data API
   // Fetch live score from Supabase ONLY (updated by scheduled Netlify function)
   // NO API calls from client - all API calls go through the scheduled function
-  const fetchLiveScore = async (apiMatchId: number, kickoffTime?: string | null) => {
-    try {
-      console.log('[League] fetchLiveScore called for matchId:', apiMatchId, 'kickoffTime:', kickoffTime);
-      
-      // Read from Supabase live_scores table (updated by scheduled Netlify function)
-      const { data: liveScore, error } = await supabase
-        .from('live_scores')
-        .select('*')
-        .eq('api_match_id', apiMatchId)
-        .single();
-      
-      if (error) {
-        if (error.code === 'PGRST116') {
-          // No row found - scheduled function hasn't run yet or game hasn't started
-          console.log('[League] No live score found in Supabase for match', apiMatchId, '- scheduled function may not have run yet');
-          return null;
-        }
-        console.error('[League] Error fetching live score from Supabase:', error);
-        return null;
-      }
-      
-      if (!liveScore) {
-        console.warn('[League] No live score data in Supabase');
-        return null;
-      }
-      
-      console.log('[League] Live score from Supabase:', liveScore);
-      
-      const homeScore = liveScore.home_score ?? 0;
-      const awayScore = liveScore.away_score ?? 0;
-      const status = liveScore.status || 'SCHEDULED';
-      let minute = liveScore.minute;
-      
-      // If minute is not provided, calculate from kickoff time (fallback)
-      if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED') && kickoffTime) {
-        try {
-          const matchStart = new Date(kickoffTime);
-          const now = new Date();
-          const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
-          
-          if (diffMinutes > 0 && diffMinutes < 120) {
-            if (status === 'PAUSED') {
-              minute = null;
-            } else if (status === 'IN_PLAY') {
-              if (diffMinutes <= 50) {
-                minute = diffMinutes;
-              } else {
-                minute = 46 + Math.max(0, diffMinutes - 50);
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[League] Error calculating minute from kickoff time:', e);
-        }
-      }
-      
-      const result = { homeScore, awayScore, status, minute, retryAfter: null as number | null };
-      console.log('[League] Returning score data from Supabase:', result);
-      return result;
-    } catch (error: any) {
-      console.error('[League] Error fetching live score from Supabase:', error?.message || error, error?.stack);
-      return null;
-    }
-  };
+  // NOTE: This function is no longer used - we use useLiveScores hook instead
+  // const fetchLiveScore = async (apiMatchId: number, kickoffTime?: string | null) => {
+  //   try {
+  //     console.log('[League] fetchLiveScore called for matchId:', apiMatchId, 'kickoffTime:', kickoffTime);
+  //     
+  //     // Read from Supabase live_scores table (updated by scheduled Netlify function)
+  //     const { data: liveScore, error } = await supabase
+  //       .from('live_scores')
+  //       .select('*')
+  //       .eq('api_match_id', apiMatchId)
+  //       .single();
+  //     
+  //     if (error) {
+  //       if (error.code === 'PGRST116') {
+  //         // No row found - scheduled function hasn't run yet or game hasn't started
+  //         console.log('[League] No live score found in Supabase for match', apiMatchId, '- scheduled function may not have run yet');
+  //         return null;
+  //       }
+  //       console.error('[League] Error fetching live score from Supabase:', error);
+  //       return null;
+  //     }
+  //     
+  //     if (!liveScore) {
+  //       console.warn('[League] No live score data in Supabase');
+  //       return null;
+  //     }
+  //     
+  //     console.log('[League] Live score from Supabase:', liveScore);
+  //     
+  //     const homeScore = liveScore.home_score ?? 0;
+  //     const awayScore = liveScore.away_score ?? 0;
+  //     const status = liveScore.status || 'SCHEDULED';
+  //     let minute = liveScore.minute;
+  //     
+  //     // If minute is not provided, calculate from kickoff time (fallback)
+  //     if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED') && kickoffTime) {
+  //       try {
+  //         const matchStart = new Date(kickoffTime);
+  //         const now = new Date();
+  //         const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
+  //         
+  //         if (diffMinutes > 0 && diffMinutes < 120) {
+  //           if (status === 'PAUSED') {
+  //             minute = null;
+  //           } else if (status === 'IN_PLAY') {
+  //             if (diffMinutes <= 50) {
+  //               minute = diffMinutes;
+  //             } else {
+  //               minute = 46 + Math.max(0, diffMinutes - 50);
+  //             }
+  //           }
+  //         }
+  //       } catch (e) {
+  //         console.warn('[League] Error calculating minute from kickoff time:', e);
+  //       }
+  //     }
+  //     
+  //     const result = { homeScore, awayScore, status, minute, retryAfter: null as number | null };
+  //     console.log('[League] Returning score data from Supabase:', result);
+  //     return result;
+  //   } catch (error: any) {
+  //     console.error('[League] Error fetching live score from Supabase:', error?.message || error, error?.stack);
+  //     return null;
+  //   }
+  // };
 
   // Sync ref with liveScores state whenever it changes
   useEffect(() => {

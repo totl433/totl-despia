@@ -155,7 +155,7 @@ export default function HomePage() {
   const navigationKeyRef = useRef(0);
 
   // Track previous scores to avoid duplicate notifications
-  const prevScoresRef = useRef<Record<number, { homeScore: number; awayScore: number }>>({});
+  // const prevScoresRef = useRef<Record<number, { homeScore: number; awayScore: number }>>({});
   // Track if "Game Week Starting Soon" notification has been scheduled
   const gameweekStartingSoonScheduledRef = useRef(false);
   // Track if deadline reminder notification has been scheduled
@@ -226,63 +226,64 @@ export default function HomePage() {
 
   // Fetch live score from Supabase ONLY (updated by scheduled Netlify function)
   // NO API calls from client - all API calls go through the scheduled function
-  const fetchLiveScore = async (apiMatchId: number, kickoffTime?: string | null) => {
-    try {
-      // Read from Supabase live_scores table (updated by scheduled Netlify function)
-      const { data: liveScore, error } = await supabase
-        .from('live_scores')
-        .select('*')
-        .eq('api_match_id', apiMatchId)
-        .single();
-      
-      if (error) {
-        if (error.code === 'PGRST116') {
-          // No row found - scheduled function hasn't run yet or game hasn't started
-          return null;
-        }
-        console.error('[Home] Error fetching live score from Supabase:', error);
-        return null;
-      }
-      
-      if (!liveScore) {
-        return null;
-      }
-      
-      const homeScore = liveScore.home_score ?? 0;
-      const awayScore = liveScore.away_score ?? 0;
-      const status = liveScore.status || 'SCHEDULED';
-      let minute = liveScore.minute;
-      
-      // If minute is not provided, calculate from kickoff time (fallback)
-      if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED') && kickoffTime) {
-        try {
-          const matchStart = new Date(kickoffTime);
-          const now = new Date();
-          const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
-          
-          if (diffMinutes > 0 && diffMinutes < 120) {
-            if (status === 'PAUSED') {
-              minute = null;
-            } else if (status === 'IN_PLAY') {
-              if (diffMinutes <= 50) {
-                minute = diffMinutes;
-              } else {
-                minute = 46 + Math.max(0, diffMinutes - 50);
-              }
-            }
-          }
-        } catch (e) {
-          // Ignore calculation errors
-        }
-      }
-      
-      const result = { homeScore, awayScore, status, minute, retryAfter: null as number | null };
-      return result;
-    } catch (error: any) {
-      console.error('[Home] Error fetching live score from Supabase:', error?.message || error, error?.stack);
-      return null;
-    }
-  };
+  // NOTE: This function is no longer used - we use useLiveScores hook instead
+  // const fetchLiveScore = async (apiMatchId: number, kickoffTime?: string | null) => {
+  //   try {
+  //     // Read from Supabase live_scores table (updated by scheduled Netlify function)
+  //     const { data: liveScore, error } = await supabase
+  //       .from('live_scores')
+  //       .select('*')
+  //       .eq('api_match_id', apiMatchId)
+  //       .single();
+  //     
+  //     if (error) {
+  //       if (error.code === 'PGRST116') {
+  //         // No row found - scheduled function hasn't run yet or game hasn't started
+  //         return null;
+  //       }
+  //       console.error('[Home] Error fetching live score from Supabase:', error);
+  //       return null;
+  //     }
+  //     
+  //     if (!liveScore) {
+  //       return null;
+  //     }
+  //     
+  //     const homeScore = liveScore.home_score ?? 0;
+  //     const awayScore = liveScore.away_score ?? 0;
+  //     const status = liveScore.status || 'SCHEDULED';
+  //     let minute = liveScore.minute;
+  //     
+  //     // If minute is not provided, calculate from kickoff time (fallback)
+  //     if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED') && kickoffTime) {
+  //       try {
+  //         const matchStart = new Date(kickoffTime);
+  //         const now = new Date();
+  //         const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
+  //         
+  //         if (diffMinutes > 0 && diffMinutes < 120) {
+  //           if (status === 'PAUSED') {
+  //             minute = null;
+  //           } else if (status === 'IN_PLAY') {
+  //             if (diffMinutes <= 50) {
+  //               minute = diffMinutes;
+  //             } else {
+  //               minute = 46 + Math.max(0, diffMinutes - 50);
+  //             }
+  //           }
+  //         }
+  //       } catch (e) {
+  //         // Ignore calculation errors
+  //       }
+  //     }
+  //     
+  //     const result = { homeScore, awayScore, status, minute, retryAfter: null as number | null };
+  //     return result;
+  //   } catch (error: any) {
+  //     console.error('[Home] Error fetching live score from Supabase:', error?.message || error, error?.stack);
+  //     return null;
+  //   }
+  // };
 
   // Extract data fetching into a reusable function for pull-to-refresh
   const fetchHomeData = useCallback(async (showLoading = true) => {
@@ -740,11 +741,11 @@ export default function HomePage() {
     enableMouse: false,
   });
 
-  // Create a stable key for fixtures to prevent unnecessary effect re-runs
-  const fixturesKey = useMemo(() => 
-    fixtures.map(f => `${f.fixture_index}-${f.api_match_id}`).join(','),
-    [fixtures]
-  );
+  // Create a stable key for fixtures to prevent unnecessary effect re-runs (unused)
+  // const fixturesKey = useMemo(() => 
+  //   fixtures.map(f => `${f.fixture_index}-${f.api_match_id}`).join(','),
+  // [fixtures]
+  // );
 
   // Simple live score polling - poll fixtures whose kickoff has passed
   // Real-time live scores are now handled by useLiveScores hook above

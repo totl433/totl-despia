@@ -22,11 +22,12 @@
   SECRETS_SCAN_OMIT_PATHS = "register-devices.sh,check-*.sh,*.sh"
 
 # Don't redirect Netlify functions - they need to work directly
-[[redirects]]
-  from = "/.netlify/functions/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
-  force = true
+# Note: Netlify functions are handled automatically, no redirect needed
+# [[redirects]]
+#   from = "/.netlify/functions/*"
+#   to = "/.netlify/functions/:splat"
+#   status = 200
+#   force = true
 
 # Don't redirect static assets - serve them directly
 [[redirects]]

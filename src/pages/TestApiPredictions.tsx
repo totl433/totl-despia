@@ -1558,10 +1558,10 @@ export default function TestApiPredictions() {
               }
               
               // Check if all fixtures are finished
-              const checkAllFinished = fixtures.length > 0 && fixtures.every(f => {
-                const liveScore = liveScores[f.fixture_index];
-                return liveScore && liveScore.status === 'FINISHED';
-              });
+              // const checkAllFinished = fixtures.length > 0 && fixtures.every(f => {
+              //   const liveScore = liveScores[f.fixture_index];
+              //   return liveScore && liveScore.status === 'FINISHED';
+              // });
               
               // Show score indicator if games have started/finished or user has submitted
               if (hasAnyLiveOrFinished || (submitted && fixtures.length > 0)) {
