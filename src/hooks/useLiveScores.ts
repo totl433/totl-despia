@@ -89,6 +89,13 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
         // This ensures we catch all updates even if filters don't match exactly
         const channelName = `live_scores_${gw || 'all'}_${apiMatchIds?.join('-') || 'all'}_${Date.now()}`;
         
+        console.log('[useLiveScores] Setting up real-time subscription:', {
+          channelName,
+          gw,
+          apiMatchIds: apiMatchIds?.length || 0,
+          initialDataCount: initialMap.size
+        });
+        
         // Subscribe WITHOUT any filter to catch ALL changes
         // We'll filter in the callback based on our criteria
         channel = supabase
@@ -102,6 +109,14 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
               // NO FILTER - subscribe to ALL changes on the table
             },
             (payload) => {
+              console.log('[useLiveScores] 🔵 Real-time update received:', {
+                eventType: payload.eventType,
+                apiMatchId: (payload.new as LiveScore)?.api_match_id || (payload.old as LiveScore)?.api_match_id,
+                minute: (payload.new as LiveScore)?.minute,
+                status: (payload.new as LiveScore)?.status,
+                homeScore: (payload.new as LiveScore)?.home_score,
+                awayScore: (payload.new as LiveScore)?.away_score,
+              });
 
               if (!alive) return;
 
@@ -143,9 +158,29 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
                       JSON.stringify(prevScore.red_cards) !== JSON.stringify(newScore.red_cards);
                     
                     if (scoreChanged) {
+                      console.log('[useLiveScores] ✅ Updating live score:', {
+                        apiMatchId: newScore.api_match_id,
+                        minute: newScore.minute,
+                        prevMinute: prevScore?.minute,
+                        status: newScore.status,
+                        homeScore: newScore.home_score,
+                        awayScore: newScore.away_score,
+                      });
                       updated.set(newScore.api_match_id, newScore);
                       hasChanges = true;
+                    } else {
+                      console.log('[useLiveScores] ⏭️ Skipping update (no changes detected):', {
+                        apiMatchId: newScore.api_match_id,
+                        minute: newScore.minute,
+                        prevMinute: prevScore?.minute,
+                      });
                     }
+                  } else {
+                    console.log('[useLiveScores] ⏭️ Skipping update (filtered out):', {
+                      apiMatchId: newScore.api_match_id,
+                      gw: newScore.gw,
+                      requestedGw: gw,
+                    });
                   }
                 } else if (payload.eventType === 'DELETE') {
                   const oldScore = payload.old as LiveScore;
@@ -161,10 +196,18 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
             }
           )
           .subscribe((status) => {
-            if (status === 'CHANNEL_ERROR') {
-              console.error('[useLiveScores] Channel error:', status);
+            console.log('[useLiveScores] 📡 Subscription status:', status);
+            if (status === 'SUBSCRIBED') {
+              console.log('[useLiveScores] ✅ Successfully subscribed to live_scores table');
+            } else if (status === 'CHANNEL_ERROR') {
+              console.error('[useLiveScores] ❌ Channel error:', status);
               if (alive) {
                 setError('Failed to subscribe to live scores');
+              }
+            } else if (status === 'TIMED_OUT') {
+              console.error('[useLiveScores] ⏱️ Subscription timed out');
+              if (alive) {
+                setError('Subscription timed out - check Supabase real-time settings');
               }
             }
           });

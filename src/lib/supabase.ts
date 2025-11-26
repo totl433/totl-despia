@@ -35,6 +35,11 @@ if (!url || !anon) {
       autoRefreshToken: true,     // refresh tokens in the background
       detectSessionInUrl: true,   // handle OAuth/magic link redirects
     },
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
+    },
   })
 }
 
