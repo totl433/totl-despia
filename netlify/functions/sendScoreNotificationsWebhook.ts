@@ -777,6 +777,111 @@ export const handler: Handler = async (event, context) => {
         }
       }
 
+      // Check if all games in this GW are finished (end of gameweek)
+      // Only check if this is the last game to finish
+      const { data: allLiveScores } = await supabase
+        .from('live_scores')
+        .select('api_match_id, status, gw')
+        .eq('gw', fixtureGw);
+      
+      const allFinished = (allLiveScores || []).every((score: any) => 
+        score.status === 'FINISHED' || score.status === 'FT'
+      );
+      
+      if (allFinished) {
+        console.log(`[sendScoreNotificationsWebhook] 🎉 All games finished for GW ${fixtureGw} - sending end of GW notification`);
+        
+        // Get all users who have picks for this GW
+        let allPicks: any[] = [];
+        if (isTestFixture && testGw) {
+          const { data: testPicks } = await supabase
+            .from('test_api_picks')
+            .select('user_id')
+            .eq('matchday', testGw);
+          allPicks = testPicks || [];
+        } else {
+          const { data: regularPicks } = await supabase
+            .from('picks')
+            .select('user_id')
+            .eq('gw', fixtureGw);
+          allPicks = regularPicks || [];
+        }
+        
+        const allUserIds = Array.from(new Set(allPicks.map((p: any) => p.user_id)));
+        const { data: allSubscriptions } = await supabase
+          .from('push_subscriptions')
+          .select('user_id, player_id')
+          .in('user_id', allUserIds)
+          .eq('is_active', true);
+        
+        const allPlayerIdsByUser = new Map<string, string[]>();
+        (allSubscriptions || []).forEach((sub: any) => {
+          if (!sub.player_id) return;
+          if (!allPlayerIdsByUser.has(sub.user_id)) {
+            allPlayerIdsByUser.set(sub.user_id, []);
+          }
+          allPlayerIdsByUser.get(sub.user_id)!.push(sub.player_id);
+        });
+        
+        // Check if we've already notified for end of GW
+        // Check if any match in this GW has status 'GW_FINISHED' (our marker)
+        const { data: gwFinishedCheck } = await supabase
+          .from('notification_state')
+          .select('last_notified_status')
+          .eq('last_notified_status', 'GW_FINISHED')
+          .limit(1);
+        
+        // Also check if we notified recently (within last hour) to avoid duplicates
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const { data: recentNotifications } = await supabase
+          .from('notification_state')
+          .select('last_notified_at, last_notified_status')
+          .gte('last_notified_at', oneHourAgo)
+          .eq('last_notified_status', 'GW_FINISHED')
+          .limit(1);
+        
+        if (!recentNotifications || recentNotifications.length === 0) {
+          // Send end of GW notification to all users
+          let gwTotalSent = 0;
+          for (const userId of allUserIds) {
+            const playerIds = allPlayerIdsByUser.get(userId) || [];
+            if (playerIds.length === 0) continue;
+            
+            const gwTitle = `🎉 Gameweek ${fixtureGw} Complete!`;
+            const gwMessage = `All games finished. Check your results!`;
+            
+            const gwResult = await sendOneSignalNotification(
+              playerIds,
+              gwTitle,
+              gwMessage,
+              {
+                type: 'gameweek_finished',
+                gw: fixtureGw,
+              }
+            );
+            
+            if (gwResult.success) {
+              gwTotalSent += gwResult.sentTo;
+            }
+          }
+          
+          // Mark GW as notified
+          await supabase
+            .from('notification_state')
+            .upsert({
+              api_match_id: `gw_${fixtureGw}`,
+              last_notified_at: new Date().toISOString(),
+              last_notified_home_score: null,
+              last_notified_away_score: null,
+              last_notified_status: 'GW_FINISHED',
+            } as any, {
+              onConflict: 'api_match_id',
+            });
+          
+          console.log(`[sendScoreNotificationsWebhook] Sent end of GW ${fixtureGw} notification to ${gwTotalSent} users`);
+        }
+      }
+
       return {
         statusCode: 200,
         headers,
