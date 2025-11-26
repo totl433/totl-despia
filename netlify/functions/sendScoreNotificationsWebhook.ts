@@ -367,7 +367,8 @@ export const handler: Handler = async (event, context) => {
           currentGoals: goals.map((g: any) => `${g.scorer} ${g.minute}'`),
           previousGoals: previousGoalsArray.map((g: any) => `${g.scorer} ${g.minute}'`),
         });
-        // Update state but don't send notification
+        // Update state but don't send goal notification
+        // Continue to check for FT/GW finished below
         await supabase
           .from('notification_state')
           .upsert({
@@ -381,12 +382,8 @@ export const handler: Handler = async (event, context) => {
           } as any, {
             onConflict: 'api_match_id',
           });
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ message: 'No new goals' }),
-        };
-      }
+        // Don't return here - continue to check for FT/GW finished
+      } else {
 
       // Update state immediately before sending
       await supabase
@@ -487,7 +484,7 @@ export const handler: Handler = async (event, context) => {
           {
             type: 'goal',
             api_match_id: apiMatchId,
-            fixture_index: fixture.fixture_index,
+            fixture_index: normalizedFixture.fixture_index,
             gw: fixtureGw,
           }
         );
@@ -498,15 +495,16 @@ export const handler: Handler = async (event, context) => {
         }
       }
 
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          message: 'Notification sent',
-          sentTo: totalSent,
-          newGoals: newGoals.length,
-        }),
-      };
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            message: 'Goal notification sent',
+            sentTo: totalSent,
+            newGoals: newGoals.length,
+          }),
+        };
+      }
     }
 
     // Handle score changes without goals (for manual updates)
@@ -588,7 +586,7 @@ export const handler: Handler = async (event, context) => {
           {
             type: 'goal',
             api_match_id: apiMatchId,
-            fixture_index: fixture.fixture_index,
+            fixture_index: normalizedFixture.fixture_index,
             gw: fixtureGw,
           }
         );
@@ -675,7 +673,7 @@ export const handler: Handler = async (event, context) => {
           {
             type: 'kickoff',
             api_match_id: apiMatchId,
-            fixture_index: fixture.fixture_index,
+            fixture_index: normalizedFixture.fixture_index,
             gw: fixtureGw,
           }
         );
@@ -710,8 +708,9 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
-    // Handle game finished
+    // Handle game finished (check this even if there were no new goals)
     if (isFinished && oldStatus !== 'FINISHED' && oldStatus !== 'FT') {
+      console.log(`[sendScoreNotificationsWebhook] 🏁 Game finished detected for match ${apiMatchId}`);
       // Get users who have picks
       let picks: any[] = [];
         if (isTestFixture && testGw) {
@@ -767,7 +766,7 @@ export const handler: Handler = async (event, context) => {
           {
             type: 'game_finished',
             api_match_id: apiMatchId,
-            fixture_index: fixture.fixture_index,
+            fixture_index: normalizedFixture.fixture_index,
             gw: fixtureGw,
           }
         );
