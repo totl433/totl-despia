@@ -446,23 +446,65 @@ async function checkAndSendScoreNotifications() {
         
         // For score changes, check if there are actually new goals before adding to notifications
         if (isScoreChange && goals && Array.isArray(goals) && goals.length > 0) {
-          // Check if there are actually new goals (not already notified)
-          const previousGoals = state?.last_notified_goals || [];
-          
           // Normalize goal keys for comparison
           const normalizeGoalKey = (g: any): string => {
+            if (!g || typeof g !== 'object') return '';
             const scorer = (g.scorer || '').toString().trim().toLowerCase();
             const minute = g.minute !== null && g.minute !== undefined ? String(g.minute) : '';
             const teamId = g.teamId !== null && g.teamId !== undefined ? String(g.teamId) : '';
             return `${scorer}|${minute}|${teamId}`;
           };
           
-          const previousGoalKeys = new Set(previousGoals.map(normalizeGoalKey));
-          const hasNewGoals = goals.some((g: any) => !previousGoalKeys.has(normalizeGoalKey(g)));
+          // Get fresh state from database RIGHT NOW to avoid race conditions
+          // This ensures we have the latest state even if another function invocation updated it
+          const { data: freshState } = await supabase
+            .from('notification_state')
+            .select('last_notified_goals, last_notified_at, last_notified_home_score, last_notified_away_score')
+            .eq('api_match_id', score.api_match_id)
+            .maybeSingle();
+          
+          // Check if we've notified for this exact score recently (within last 3 minutes)
+          // This prevents duplicate notifications if the function runs multiple times
+          if (freshState?.last_notified_at) {
+            const lastNotifiedTime = new Date(freshState.last_notified_at).getTime();
+            const now = Date.now();
+            const timeSinceLastNotification = now - lastNotifiedTime;
+            const threeMinutes = 3 * 60 * 1000;
+            
+            // If we notified recently AND the score matches, skip
+            if (timeSinceLastNotification < threeMinutes && 
+                freshState.last_notified_home_score === homeScore && 
+                freshState.last_notified_away_score === awayScore) {
+              console.log(`[sendScoreNotifications] Skipping match ${score.api_match_id} - notified ${Math.floor(timeSinceLastNotification / 1000)}s ago for same score (${homeScore}-${awayScore})`);
+              continue;
+            }
+          }
+          
+          const previousGoals = freshState?.last_notified_goals || state?.last_notified_goals || [];
+          
+          // Ensure previousGoals is an array
+          const previousGoalsArray = Array.isArray(previousGoals) ? previousGoals : [];
+          const previousGoalKeys = new Set(previousGoalsArray.map(normalizeGoalKey));
+          
+          // Find new goals (goals that weren't in the previous notification)
+          const newGoals = goals.filter((g: any) => {
+            if (!g || typeof g !== 'object') return false;
+            const key = normalizeGoalKey(g);
+            const isNew = !previousGoalKeys.has(key);
+            if (!isNew) {
+              console.log(`[sendScoreNotifications] Goal already notified: ${g.scorer} ${g.minute}' (key: ${key})`);
+            }
+            return isNew;
+          });
           
           // Only add notification if there are actually new goals
-          if (!hasNewGoals) {
-            console.log(`[sendScoreNotifications] Skipping match ${score.api_match_id} - score changed but no new goals detected`);
+          if (newGoals.length === 0) {
+            console.log(`[sendScoreNotifications] Skipping match ${score.api_match_id} - no new goals detected`, {
+              previousGoalsCount: previousGoalsArray.length,
+              currentGoalsCount: goals.length,
+              previousGoalKeys: Array.from(previousGoalKeys),
+              currentGoalKeys: goals.map(normalizeGoalKey)
+            });
             // Still update the state to reflect the current score, but don't send notification
             await supabase
               .from('notification_state')
@@ -480,9 +522,17 @@ async function checkAndSendScoreNotifications() {
             continue; // Skip adding to notificationsToSend
           }
           
+          console.log(`[sendScoreNotifications] ✅ Found ${newGoals.length} NEW goal(s) for match ${score.api_match_id}`, {
+            previousGoalsCount: previousGoalsArray.length,
+            currentGoalsCount: goals.length,
+            newGoals: newGoals.map((g: any) => `${g.scorer} ${g.minute}'`),
+            previousGoalKeys: Array.from(previousGoalKeys).slice(0, 5), // First 5 for debugging
+            newGoalKeys: newGoals.map(normalizeGoalKey).slice(0, 5)
+          });
+          
           // CRITICAL: Update state IMMEDIATELY after detecting new goals, BEFORE adding to notificationsToSend
           // This prevents duplicate notifications if the function runs again while notifications are being sent
-          await supabase
+          const updateResult = await supabase
             .from('notification_state')
             .upsert({
               api_match_id: score.api_match_id,
@@ -496,7 +546,11 @@ async function checkAndSendScoreNotifications() {
               onConflict: 'api_match_id',
             });
           
-          console.log(`[sendScoreNotifications] Updated state IMMEDIATELY for match ${score.api_match_id} to prevent duplicates`);
+          if (updateResult.error) {
+            console.error(`[sendScoreNotifications] ❌ Error updating state for match ${score.api_match_id}:`, updateResult.error);
+          } else {
+            console.log(`[sendScoreNotifications] ✅ Updated state IMMEDIATELY for match ${score.api_match_id} to prevent duplicates`);
+          }
         }
         
         notificationsToSend.push({
