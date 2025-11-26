@@ -142,8 +142,6 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
             (payload) => {
               if (!alive) return;
 
-              console.log('[useLiveScores] Real-time update received:', payload.eventType, payload.new?.api_match_id);
-
               const shouldInclude = (score: LiveScore | null) => {
                 if (!score) return false;
                 
@@ -166,6 +164,7 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
 
                 if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
                   const newScore = payload.new as LiveScore;
+                  console.log('[useLiveScores] Real-time update received:', payload.eventType, newScore?.api_match_id);
                   if (shouldInclude(newScore)) {
                     const prevScore = prev.get(newScore.api_match_id);
                     const scoreChanged = !prevScore || 

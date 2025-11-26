@@ -174,6 +174,8 @@ export default function TestApiPredictions() {
     minute?: number | null;
     goals?: any[] | null;
     red_cards?: any[] | null;
+    home_team?: string | null;
+    away_team?: string | null;
   }>>({});
   // Track when halftime ends for each fixture (when status changes from PAUSED to IN_PLAY)
   const halftimeEndTimeRef = useRef<Record<number, Date>>({});
@@ -725,7 +727,9 @@ export default function TestApiPredictions() {
         minute, 
         retryAfter: null as number | null,
         goals: liveScore.goals || null,
-        red_cards: liveScore.red_cards || null
+        red_cards: liveScore.red_cards || null,
+        home_team: liveScore.home_team || null,
+        away_team: liveScore.away_team || null
       };
       console.log('[TestApiPredictions] Returning score data from Supabase:', result);
       return result;
@@ -823,7 +827,9 @@ export default function TestApiPredictions() {
                 status: scoreData.status,
                 minute: finalMinute ?? null,
                 goals: scoreData.goals || null,
-                red_cards: scoreData.red_cards || null
+                red_cards: scoreData.red_cards || null,
+                home_team: scoreData.home_team || null,
+                away_team: scoreData.away_team || null
               }
             }));
             
