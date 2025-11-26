@@ -96,19 +96,36 @@ async function pollAllLiveScores() {
 
     const currentGw = (metaData as any)?.current_gw ?? 1;
 
+    // For test_api_fixtures, prioritize test_gw = 1 (GW T1)
+    // First check if GW T1 exists
+    const { data: t1Data } = await supabase
+      .from('test_api_fixtures')
+      .select('test_gw')
+      .eq('test_gw', 1)
+      .limit(1)
+      .maybeSingle();
+    
+    const testGwToUse = t1Data ? 1 : null; // Use GW T1 if it exists
+    
     // Get all fixtures for current GW that have api_match_id
     // Check both regular fixtures and test_api_fixtures
-    // NOTE: test_api_fixtures may be for any GW, so we query ALL of them (not filtered by test_gw)
+    // For test_api_fixtures, prioritize test_gw = 1 if it exists, otherwise get all
     const [regularFixtures, testFixtures] = await Promise.all([
       supabase
         .from('fixtures')
         .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, gw')
         .eq('gw', currentGw)
         .not('api_match_id', 'is', null),
-      supabase
-        .from('test_api_fixtures')
-        .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, test_gw')
-        .not('api_match_id', 'is', null),
+      testGwToUse !== null
+        ? supabase
+            .from('test_api_fixtures')
+            .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, test_gw')
+            .eq('test_gw', testGwToUse)
+            .not('api_match_id', 'is', null)
+        : supabase
+            .from('test_api_fixtures')
+            .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, test_gw')
+            .not('api_match_id', 'is', null),
     ]);
 
     const allFixtures = [
@@ -121,11 +138,22 @@ async function pollAllLiveScores() {
     ];
 
     if (allFixtures.length === 0) {
-      console.log('[pollLiveScores] No fixtures with api_match_id found for GW', currentGw);
+      console.log('[pollLiveScores] No fixtures with api_match_id found');
+      if (testGwToUse !== null) {
+        console.log(`[pollLiveScores] Checked regular GW ${currentGw} and test GW ${testGwToUse}`);
+      } else {
+        console.log(`[pollLiveScores] Checked regular GW ${currentGw} and all test fixtures`);
+      }
       return;
     }
 
-    console.log(`[pollLiveScores] Found ${allFixtures.length} fixtures for GW ${currentGw}`);
+    const regularCount = (regularFixtures.data || []).length;
+    const testCount = (testFixtures.data || []).length;
+    if (testGwToUse !== null) {
+      console.log(`[pollLiveScores] Found ${allFixtures.length} fixtures (${regularCount} regular GW ${currentGw}, ${testCount} test GW ${testGwToUse})`);
+    } else {
+      console.log(`[pollLiveScores] Found ${allFixtures.length} fixtures (${regularCount} regular GW ${currentGw}, ${testCount} test fixtures)`);
+    }
 
     // Check current status of fixtures in database to skip FINISHED games
     const apiMatchIds = allFixtures.map(f => f.api_match_id);
