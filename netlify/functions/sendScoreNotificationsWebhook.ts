@@ -216,6 +216,7 @@ export const handler: Handler = async (event, context) => {
     const isScoreChange = homeScore !== oldHomeScore || awayScore !== oldAwayScore;
     const isStatusChange = status !== oldStatus;
     const isKickoff = oldStatus !== 'IN_PLAY' && status === 'IN_PLAY' && homeScore === 0 && awayScore === 0;
+    const isHalfTime = oldStatus === 'IN_PLAY' && status === 'PAUSED';
     const isFinished = status === 'FINISHED' || status === 'FT';
 
     console.log(`[sendScoreNotificationsWebhook] Change detection:`, {
