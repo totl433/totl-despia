@@ -1432,16 +1432,32 @@ export default function LeaguePage() {
       const isApiTestLeague = league?.name === 'API Test';
       
       // Fetch current test GW from meta table for API Test league
+      // For GW T1, prioritize test_gw = 1
       let testGwForData = currentTestGw ?? 1; // Use state if available, otherwise default to 1
       if (isApiTestLeague) {
-        const { data: testMetaData } = await supabase
-          .from("test_api_meta")
-          .select("current_test_gw")
-          .eq("id", 1)
+        // First, check if GW T1 exists
+        const { data: t1Data } = await supabase
+          .from("test_api_fixtures")
+          .select("test_gw")
+          .eq("test_gw", 1)
+          .limit(1)
           .maybeSingle();
         
-        testGwForData = testMetaData?.current_test_gw ?? 1;
-        console.log('[League] Current test GW from meta:', testGwForData);
+        if (t1Data) {
+          // GW T1 exists - use it
+          testGwForData = 1;
+          console.log('[League] GW T1 found, using test_gw = 1');
+        } else {
+          // Fallback to current_test_gw from meta if GW T1 doesn't exist
+          const { data: testMetaData } = await supabase
+            .from("test_api_meta")
+            .select("current_test_gw")
+            .eq("id", 1)
+            .maybeSingle();
+          
+          testGwForData = testMetaData?.current_test_gw ?? 1;
+          console.log('[League] GW T1 not found, using current_test_gw from meta:', testGwForData);
+        }
       }
       
       // For API Test league, only allow "gw" tab if all members have submitted
