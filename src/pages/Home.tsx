@@ -3867,6 +3867,8 @@ export default function HomePage() {
             })()}
           </div>
         )}
+        {/* Bottom padding to prevent games from being hidden under bottom nav */}
+        <div className="h-20"></div>
       </section>
         </>
       )}

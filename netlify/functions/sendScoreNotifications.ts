@@ -441,6 +441,45 @@ async function checkAndSendScoreNotifications() {
         const goals = score.goals || null;
         const redCards = score.red_cards || null;
         
+        // For score changes, check if there are actually new goals before adding to notifications
+        const isScoreChange = (scoreChanged || (isNewMatchWithScore && !isFinished)) && !isFinishedNotification;
+        
+        if (isScoreChange && goals && Array.isArray(goals) && goals.length > 0) {
+          // Check if there are actually new goals (not already notified)
+          const previousGoals = state?.last_notified_goals || [];
+          
+          // Normalize goal keys for comparison
+          const normalizeGoalKey = (g: any): string => {
+            const scorer = (g.scorer || '').toString().trim().toLowerCase();
+            const minute = g.minute !== null && g.minute !== undefined ? String(g.minute) : '';
+            const teamId = g.teamId !== null && g.teamId !== undefined ? String(g.teamId) : '';
+            return `${scorer}|${minute}|${teamId}`;
+          };
+          
+          const previousGoalKeys = new Set(previousGoals.map(normalizeGoalKey));
+          const hasNewGoals = goals.some((g: any) => !previousGoalKeys.has(normalizeGoalKey(g)));
+          
+          // Only add notification if there are actually new goals
+          if (!hasNewGoals) {
+            console.log(`[sendScoreNotifications] Skipping match ${score.api_match_id} - score changed but no new goals detected`);
+            // Still update the state to reflect the current score, but don't send notification
+            await supabase
+              .from('notification_state')
+              .upsert({
+                api_match_id: score.api_match_id,
+                last_notified_home_score: homeScore,
+                last_notified_away_score: awayScore,
+                last_notified_status: status,
+                last_notified_at: new Date().toISOString(),
+                last_notified_goals: goals,
+                last_notified_red_cards: redCards || null,
+              } as any, {
+                onConflict: 'api_match_id',
+              });
+            continue; // Skip adding to notificationsToSend
+          }
+        }
+        
         notificationsToSend.push({
           apiMatchId: score.api_match_id,
           homeTeam: fixture.home_team || 'Home',
@@ -450,7 +489,7 @@ async function checkAndSendScoreNotifications() {
           status,
           minute: score.minute,
           isFinished,
-          isScoreChange: (scoreChanged || (isNewMatchWithScore && !isFinished)) && !isFinishedNotification,
+          isScoreChange: isScoreChange,
           isGameFinished: isFinishedNotification,
           isKickoff: false,
           goals: goals ? (Array.isArray(goals) ? goals : []) : null,
