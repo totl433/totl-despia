@@ -187,12 +187,45 @@ export default function NewPredictionsCentre() {
         if (apiTestLeague) {
           try {
             // Check if test fixtures exist for GW 1
+            // Get current_test_gw from meta first
+            const { data: testMeta } = await supabase
+              .from("test_api_meta")
+              .select("current_test_gw")
+              .eq("id", 1)
+              .maybeSingle();
+            
+            let testGw = testMeta?.current_test_gw ?? 1;
+            
+            // Verify that fixtures exist for this test_gw, otherwise fall back to GW T1
+            if (testGw && testGw !== 1) {
+              const { data: fixturesCheck } = await supabase
+                .from("test_api_fixtures")
+                .select("test_gw")
+                .eq("test_gw", testGw)
+                .limit(1)
+                .maybeSingle();
+              
+              // If no fixtures for current_test_gw, fall back to GW T1
+              if (!fixturesCheck) {
+                const { data: t1Data } = await supabase
+                  .from("test_api_fixtures")
+                  .select("test_gw")
+                  .eq("test_gw", 1)
+                  .limit(1)
+                  .maybeSingle();
+                
+                if (t1Data) {
+                  testGw = 1; // Fallback to GW T1
+                }
+              }
+            }
+            
             const testFxResult = await supabase
               .from("test_api_fixtures")
               .select(
                 "id,test_gw as gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
               )
-              .eq("test_gw", 1)
+              .eq("test_gw", testGw)
               .order("fixture_index", { ascending: true });
             
             // Check if result is valid (not HTML error page)
