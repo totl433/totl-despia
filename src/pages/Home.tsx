@@ -153,7 +153,7 @@ export default function HomePage() {
   const leagueIdsRef = useRef<Set<string>>(new Set());
   const isInitialMountRef = useRef(true);
   const navigationKeyRef = useRef(0);
-
+  
   // Track previous scores to avoid duplicate notifications
   // const prevScoresRef = useRef<Record<number, { homeScore: number; awayScore: number }>>({});
   // Track if "Game Week Starting Soon" notification has been scheduled
@@ -203,6 +203,8 @@ export default function HomePage() {
       minute?: number | null;
       goals?: any[] | null;
       red_cards?: any[] | null;
+      home_team?: string | null;
+      away_team?: string | null;
     }> = {};
     if (!fixtures || fixtures.length === 0) return result;
     fixtures.forEach(fixture => {
@@ -216,12 +218,14 @@ export default function HomePage() {
             status: liveScore.status || 'SCHEDULED',
             minute: liveScore.minute ?? null,
             goals: liveScore.goals ?? null,
-            red_cards: liveScore.red_cards ?? null
+            red_cards: liveScore.red_cards ?? null,
+            home_team: liveScore.home_team ?? null,
+            away_team: liveScore.away_team ?? null
           };
         }
       }
     });
-    return result;
+      return result;
   }, [liveScoresMap, fixtures]);
 
   // Fetch live score from Supabase ONLY (updated by scheduled Netlify function)
@@ -659,7 +663,7 @@ export default function HomePage() {
     if (thisGwFixtures.length === 0 && currentGw) {
       setNextGwComing(currentGw + 1);
     } else {
-      setNextGwComing(null);
+    setNextGwComing(null);
     }
 
     if (alive) {
@@ -3508,16 +3512,16 @@ export default function HomePage() {
                           {/* Home Team */}
                           <div className="flex-1 flex flex-col items-end">
                             <div className="flex items-center gap-1">
-                              <div className={`break-words ${liveScore && (isOngoing || isFinished) && liveScore.homeScore > liveScore.awayScore ? 'font-bold' : 'font-medium'}`}>{homeName}</div>
-                              <img 
-                                src={`/assets/badges/${(f.home_code || homeKey).toUpperCase()}.png`} 
-                                alt={homeName}
-                                className="w-5 h-5"
-                                onError={(e) => {
-                                  (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
-                                }}
-                              />
-                            </div>
+                            <div className={`break-words ${liveScore && (isOngoing || isFinished) && liveScore.homeScore > liveScore.awayScore ? 'font-bold' : 'font-medium'}`}>{homeName}</div>
+                            <img 
+                              src={`/assets/badges/${(f.home_code || homeKey).toUpperCase()}.png`} 
+                              alt={homeName}
+                              className="w-5 h-5"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
+                              }}
+                            />
+                          </div>
                             {/* Home Team Goals and Red Cards (chronologically sorted) */}
                             {liveScore && (isOngoing || isFinished) && (() => {
                               // Filter goals for home team
@@ -3637,9 +3641,9 @@ export default function HomePage() {
                           <div className="px-4 flex flex-col items-center">
                             {liveScore && (isOngoing || isFinished) ? (
                               <>
-                                <span className="font-bold text-base text-slate-900">
-                                  {liveScore.homeScore} - {liveScore.awayScore}
-                                </span>
+                              <span className="font-bold text-base text-slate-900">
+                                {liveScore.homeScore} - {liveScore.awayScore}
+                              </span>
                                 <span className={`text-[10px] font-semibold mt-0.5 ${isOngoing ? 'text-red-600' : 'text-slate-500'}`}>
                                   {formatMinuteDisplay(liveScore.status, liveScore.minute, isInApiTestLeague)}
                                 </span>
@@ -3652,16 +3656,16 @@ export default function HomePage() {
                           {/* Away Team */}
                           <div className="flex-1 flex flex-col items-start">
                             <div className="flex items-center gap-1">
-                              <img 
-                                src={`/assets/badges/${(f.away_code || awayKey).toUpperCase()}.png`} 
-                                alt={awayName}
-                                className="w-5 h-5"
-                                onError={(e) => {
-                                  (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
-                                }}
-                              />
-                              <div className={`break-words ${liveScore && (isOngoing || isFinished) && liveScore.awayScore > liveScore.homeScore ? 'font-bold' : 'font-medium'}`}>{awayName}</div>
-                            </div>
+                            <img 
+                              src={`/assets/badges/${(f.away_code || awayKey).toUpperCase()}.png`} 
+                              alt={awayName}
+                              className="w-5 h-5"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
+                              }}
+                            />
+                            <div className={`break-words ${liveScore && (isOngoing || isFinished) && liveScore.awayScore > liveScore.homeScore ? 'font-bold' : 'font-medium'}`}>{awayName}</div>
+                          </div>
                             {/* Away Team Goals and Red Cards (chronologically sorted) */}
                             {liveScore && (isOngoing || isFinished) && (() => {
                               // Filter goals for away team
@@ -3746,7 +3750,7 @@ export default function HomePage() {
                                       return (
                                         <span key={idx} className="text-[11px] text-slate-600">
                                           {event.scorer} {event.minutes!.sort((a, b) => a - b).map(m => `${m}'`).join(', ')}
-                                        </span>
+                            </span>
                                       );
                                     } else {
                                       return (
@@ -3756,7 +3760,7 @@ export default function HomePage() {
                                       );
                                     }
                                   })}
-                                </div>
+                          </div>
                               );
                             })()}
                           </div>
