@@ -442,7 +442,12 @@ async function checkAndSendScoreNotifications() {
       }
 
       // Track kickoffs for grouping (only if status is IN_PLAY and score is 0-0)
-      if (justKickedOff && status === 'IN_PLAY' && homeScore === 0 && awayScore === 0 && fixture.kickoff_time) {
+      // BUT only if we haven't already sent a kickoff notification
+      const hasNotifiedKickoff = state?.last_notified_status === 'IN_PLAY' && 
+                                 state?.last_notified_home_score === 0 && 
+                                 state?.last_notified_away_score === 0;
+      
+      if (justKickedOff && status === 'IN_PLAY' && homeScore === 0 && awayScore === 0 && fixture.kickoff_time && !hasNotifiedKickoff) {
         const kickoffTime = new Date(fixture.kickoff_time);
         // Round to nearest 15 minutes for grouping (e.g., 3:00pm, 3:15pm, etc.)
         const minutes = kickoffTime.getMinutes();
@@ -458,6 +463,8 @@ async function checkAndSendScoreNotifications() {
           awayTeam: fixture.away_team || 'Away',
           fixtureIndex: fixture.fixture_index,
         });
+      } else if (justKickedOff && hasNotifiedKickoff) {
+        console.log(`[sendScoreNotifications] 🚫 SKIPPING kickoff for match ${score.api_match_id} - already notified`);
       }
 
       // Only notify on actual score changes (goals), new matches with scores, or game finishing
@@ -620,11 +627,31 @@ async function checkAndSendScoreNotifications() {
     }
 
     // Add grouped kickoff notifications
+    // CRITICAL: Update state IMMEDIATELY for all kickoffs BEFORE adding to notificationsToSend
+    // This prevents duplicate notifications if function runs again while processing
     console.log(`[sendScoreNotifications] 🔵 Processing ${kickoffsByTimeSlot.size} kickoff time slot(s)`);
     for (const [timeSlot, kickoffs] of kickoffsByTimeSlot.entries()) {
       if (kickoffs.length === 0) continue;
       
       console.log(`[sendScoreNotifications] 🔵 Kickoff time slot ${timeSlot}: ${kickoffs.length} game(s)`);
+      
+      // Update state IMMEDIATELY for all kickoffs in this time slot
+      for (const kickoff of kickoffs) {
+        await supabase
+          .from('notification_state')
+          .upsert({
+            api_match_id: kickoff.apiMatchId,
+            last_notified_home_score: 0,
+            last_notified_away_score: 0,
+            last_notified_status: 'IN_PLAY',
+            last_notified_at: new Date().toISOString(),
+            last_notified_goals: null,
+            last_notified_red_cards: null,
+          } as any, {
+            onConflict: 'api_match_id',
+          });
+        console.log(`[sendScoreNotifications] ✅ State updated IMMEDIATELY for kickoff match ${kickoff.apiMatchId}`);
+      }
       
       // For single game, send specific notification
       // For multiple games (e.g., 3pm kickoffs), send generic notification

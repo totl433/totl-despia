@@ -639,6 +639,23 @@ export const handler: Handler = async (event, context) => {
         };
       }
 
+      // CRITICAL: Update state IMMEDIATELY before sending notifications
+      // This prevents duplicate notifications if webhook fires multiple times
+      await supabase
+        .from('notification_state')
+        .upsert({
+          api_match_id: apiMatchId,
+          last_notified_home_score: 0,
+          last_notified_away_score: 0,
+          last_notified_status: 'IN_PLAY',
+          last_notified_at: new Date().toISOString(),
+          last_notified_goals: null,
+          last_notified_red_cards: null,
+        } as any, {
+          onConflict: 'api_match_id',
+        });
+      console.log(`[sendScoreNotificationsWebhook] ✅ State updated IMMEDIATELY for kickoff match ${apiMatchId}`);
+
       // Get users who have picks
       let picks: any[] = [];
       if (isTestFixture && testGw) {
@@ -697,21 +714,6 @@ export const handler: Handler = async (event, context) => {
           totalSent += result.sentTo;
         }
       }
-
-      // Update state
-      await supabase
-        .from('notification_state')
-        .upsert({
-          api_match_id: apiMatchId,
-          last_notified_home_score: homeScore,
-          last_notified_away_score: awayScore,
-          last_notified_status: status,
-          last_notified_at: new Date().toISOString(),
-          last_notified_goals: goals,
-          last_notified_red_cards: redCards || null,
-        } as any, {
-          onConflict: 'api_match_id',
-        });
 
       return {
         statusCode: 200,
