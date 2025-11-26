@@ -624,6 +624,21 @@ export const handler: Handler = async (event, context) => {
 
     // Handle kickoff
     if (isKickoff) {
+      // Check if we've already sent a kickoff notification for this match
+      // Only send if we haven't notified for kickoff yet
+      const hasNotifiedKickoff = state?.last_notified_status === 'IN_PLAY' && 
+                                 state?.last_notified_home_score === 0 && 
+                                 state?.last_notified_away_score === 0;
+      
+      if (hasNotifiedKickoff) {
+        console.log(`[sendScoreNotificationsWebhook] 🚫 SKIPPING - already sent kickoff notification for match ${apiMatchId}`);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ message: 'Already notified for kickoff' }),
+        };
+      }
+
       // Get users who have picks
       let picks: any[] = [];
       if (isTestFixture && testGw) {
