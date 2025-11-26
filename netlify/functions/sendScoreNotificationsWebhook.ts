@@ -528,77 +528,145 @@ export const handler: Handler = async (event, context) => {
         playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
       });
 
-      // Send notification to each user
+      // Send notification for each new goal individually
+      // This ensures we correctly identify which team scored even when multiple goals happen quickly
       let totalSent = 0;
-      const newestGoal = newGoals.sort((a: any, b: any) => (b.minute ?? 0) - (a.minute ?? 0))[0];
-      const scorer = newestGoal.scorer || 'Unknown';
-      const goalMinute = newestGoal.minute !== null && newestGoal.minute !== undefined ? `${newestGoal.minute}'` : '';
       
-      // Determine which team scored - use score change (most reliable)
-      // Compare current score to old score to see which team scored
-      const homeScoreIncreased = homeScore > (oldHomeScore || 0);
-      const awayScoreIncreased = awayScore > (oldAwayScore || 0);
+      // Sort new goals by minute (most recent first for notification)
+      const sortedNewGoals = [...newGoals].sort((a: any, b: any) => (b.minute ?? 0) - (a.minute ?? 0));
       
-      // If both increased (shouldn't happen, but handle it), use teamId from goal if available
-      let isHomeTeam: boolean;
-      if (homeScoreIncreased && !awayScoreIncreased) {
-        isHomeTeam = true;
-      } else if (awayScoreIncreased && !homeScoreIncreased) {
-        isHomeTeam = false;
-      } else {
-        // Fallback: try to match by teamId or team name
-        const goalTeamId = newestGoal.teamId;
-        const scoringTeam = newestGoal.team || '';
-        const normalizedScoringTeam = scoringTeam.toLowerCase().trim();
+      // Count goals by team to help with assignment
+      const homeGoalsByTeam: any[] = [];
+      const awayGoalsByTeam: any[] = [];
+      const unmatchedGoals: any[] = [];
+      
+      // First pass: try to match each goal to a team by name
+      sortedNewGoals.forEach((goal: any) => {
+        const goalTeam = goal.team || '';
+        const normalizedGoalTeam = goalTeam.toLowerCase().trim();
         const normalizedHomeTeam = (normalizedFixture.home_team || '').toLowerCase().trim();
         const normalizedAwayTeam = (normalizedFixture.away_team || '').toLowerCase().trim();
         
-        // Try name matching as fallback
-        isHomeTeam = normalizedScoringTeam === normalizedHomeTeam ||
-                     normalizedScoringTeam.includes(normalizedHomeTeam) ||
-                     normalizedHomeTeam.includes(normalizedScoringTeam);
-        
-        console.log(`[sendScoreNotificationsWebhook] [${requestId}] Could not determine scoring team from score change, using name matching:`, {
-          goalTeamId,
-          scoringTeam,
-          isHomeTeam,
-          homeTeam: normalizedFixture.home_team,
-          awayTeam: normalizedFixture.away_team,
-        });
-      }
-      
-      // Format score with new goal highlighted (FotMob style)
-      // Example: "Team A 1 - [2] Team B" or "Team A [1] - 0 Team B"
-      let scoreDisplay: string;
-      if (isHomeTeam) {
-        scoreDisplay = `${normalizedFixture.home_team} [${homeScore}] - ${awayScore} ${normalizedFixture.away_team}`;
-      } else {
-        scoreDisplay = `${normalizedFixture.home_team} ${homeScore} - [${awayScore}] ${normalizedFixture.away_team}`;
-      }
-
-      for (const pick of picks) {
-        const playerIds = playerIdsByUser.get(pick.user_id) || [];
-        if (playerIds.length === 0) continue;
-
-        const teamName = isHomeTeam ? normalizedFixture.home_team : normalizedFixture.away_team;
-        const title = `${teamName} scores!`;
-        const message = `${goalMinute} ${scorer}\n${scoreDisplay}`;
-
-        const result = await sendOneSignalNotification(
-          playerIds,
-          title,
-          message,
-          {
-            type: 'goal',
-            api_match_id: apiMatchId,
-            fixture_index: normalizedFixture.fixture_index,
-            gw: fixtureGw,
+        // Helper to check if names are similar (handles "PSG" vs "Paris Saint-Germain", etc.)
+        const areSimilarNames = (name1: string, name2: string) => {
+          const n1 = name1.replace(/[^a-z0-9]/g, '');
+          const n2 = name2.replace(/[^a-z0-9]/g, '');
+          if (n1.length >= 3 && n2.length >= 3) {
+            return n1.includes(n2) || n2.includes(n1);
           }
-        );
+          return false;
+        };
+        
+        // Check abbreviation map
+        const abbreviationMap: Record<string, string[]> = {
+          'psg': ['parissaintgermain', 'paris saint germain', 'paris saint-germain'],
+          'spurs': ['tottenham', 'tottenham hotspur'],
+          'man city': ['manchester city'],
+          'man united': ['manchester united'],
+        };
+        
+        let matchesHome = normalizedGoalTeam === normalizedHomeTeam ||
+                         normalizedGoalTeam.includes(normalizedHomeTeam) ||
+                         normalizedHomeTeam.includes(normalizedGoalTeam) ||
+                         areSimilarNames(normalizedGoalTeam, normalizedHomeTeam);
+        
+        let matchesAway = normalizedGoalTeam === normalizedAwayTeam ||
+                         normalizedGoalTeam.includes(normalizedAwayTeam) ||
+                         normalizedAwayTeam.includes(normalizedGoalTeam) ||
+                         areSimilarNames(normalizedGoalTeam, normalizedAwayTeam);
+        
+        // Check abbreviation map
+        for (const [abbr, fullNames] of Object.entries(abbreviationMap)) {
+          const goalIsAbbr = normalizedGoalTeam === abbr;
+          const homeIsAbbr = normalizedHomeTeam === abbr;
+          const awayIsAbbr = normalizedAwayTeam === abbr;
+          
+          if (goalIsAbbr && fullNames.some(full => normalizedHomeTeam.includes(full.replace(/[^a-z0-9]/g, '')))) {
+            matchesHome = true;
+          }
+          if (goalIsAbbr && fullNames.some(full => normalizedAwayTeam.includes(full.replace(/[^a-z0-9]/g, '')))) {
+            matchesAway = true;
+          }
+          if (homeIsAbbr && fullNames.some(full => normalizedGoalTeam.includes(full.replace(/[^a-z0-9]/g, '')))) {
+            matchesHome = true;
+          }
+          if (awayIsAbbr && fullNames.some(full => normalizedGoalTeam.includes(full.replace(/[^a-z0-9]/g, '')))) {
+            matchesAway = true;
+          }
+        }
+        
+        if (matchesHome && !matchesAway) {
+          homeGoalsByTeam.push(goal);
+        } else if (matchesAway && !matchesHome) {
+          awayGoalsByTeam.push(goal);
+        } else {
+          unmatchedGoals.push(goal);
+        }
+      });
+      
+      // Second pass: assign unmatched goals based on score
+      const homeScoreIncrease = homeScore - (oldHomeScore || 0);
+      const awayScoreIncrease = awayScore - (oldAwayScore || 0);
+      const homeGoalsNeeded = homeScoreIncrease - homeGoalsByTeam.length;
+      const awayGoalsNeeded = awayScoreIncrease - awayGoalsByTeam.length;
+      
+      unmatchedGoals.forEach((goal) => {
+        if (homeGoalsNeeded > 0 && homeGoalsByTeam.length < homeScoreIncrease) {
+          homeGoalsByTeam.push(goal);
+        } else if (awayGoalsNeeded > 0 && awayGoalsByTeam.length < awayScoreIncrease) {
+          awayGoalsByTeam.push(goal);
+        } else {
+          // Last resort: assign based on which team needs more goals
+          if (homeGoalsNeeded > awayGoalsNeeded) {
+            homeGoalsByTeam.push(goal);
+          } else {
+            awayGoalsByTeam.push(goal);
+          }
+        }
+      });
+      
+      // Send notification for each goal
+      for (const goal of sortedNewGoals) {
+        const scorer = goal.scorer || 'Unknown';
+        const goalMinute = goal.minute !== null && goal.minute !== undefined ? `${goal.minute}'` : '';
+        
+        // Determine which team this goal belongs to
+        const isHomeGoal = homeGoalsByTeam.includes(goal);
+        const isAwayGoal = awayGoalsByTeam.includes(goal);
+        const isHomeTeam = isHomeGoal || (!isAwayGoal && homeGoalsByTeam.length > awayGoalsByTeam.length);
+        
+        // Format score with new goal highlighted (FotMob style)
+        let scoreDisplay: string;
+        if (isHomeTeam) {
+          scoreDisplay = `${normalizedFixture.home_team} [${homeScore}] - ${awayScore} ${normalizedFixture.away_team}`;
+        } else {
+          scoreDisplay = `${normalizedFixture.home_team} ${homeScore} - [${awayScore}] ${normalizedFixture.away_team}`;
+        }
 
-        if (result.success) {
-          totalSent += result.sentTo;
-          console.log(`[sendScoreNotificationsWebhook] [${requestId}] Sent goal notification to user ${pick.user_id} (${result.sentTo} devices)`);
+        for (const pick of picks) {
+          const playerIds = playerIdsByUser.get(pick.user_id) || [];
+          if (playerIds.length === 0) continue;
+
+          const teamName = isHomeTeam ? normalizedFixture.home_team : normalizedFixture.away_team;
+          const title = `${teamName} scores!`;
+          const message = `${goalMinute} ${scorer}\n${scoreDisplay}`;
+
+          const result = await sendOneSignalNotification(
+            playerIds,
+            title,
+            message,
+            {
+              type: 'goal',
+              api_match_id: apiMatchId,
+              fixture_index: normalizedFixture.fixture_index,
+              gw: fixtureGw,
+            }
+          );
+
+          if (result.success) {
+            totalSent += result.sentTo;
+            console.log(`[sendScoreNotificationsWebhook] [${requestId}] Sent goal notification for ${teamName} (${scorer} ${goalMinute}) to user ${pick.user_id} (${result.sentTo} devices)`);
+          }
         }
       }
 
