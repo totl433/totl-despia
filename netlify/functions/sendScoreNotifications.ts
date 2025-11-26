@@ -782,10 +782,25 @@ async function checkAndSendScoreNotifications() {
           const previousGoals = state?.last_notified_goals || [];
           const currentGoals = notification.goals || [];
           
-          // Find new goals (goals that weren't in the previous notification)
-          const previousGoalKeys = new Set(previousGoals.map((g: any) => `${g.scorer}-${g.minute}`));
-          const newGoals = currentGoals.filter((g: any) => !previousGoalKeys.has(`${g.scorer}-${g.minute}`));
+          // Normalize goal keys for comparison (handle null/undefined, trim whitespace, case-insensitive)
+          const normalizeGoalKey = (g: any): string => {
+            const scorer = (g.scorer || '').toString().trim().toLowerCase();
+            const minute = g.minute !== null && g.minute !== undefined ? String(g.minute) : '';
+            const teamId = g.teamId !== null && g.teamId !== undefined ? String(g.teamId) : '';
+            // Use scorer + minute + teamId for more unique identification
+            return `${scorer}|${minute}|${teamId}`;
+          };
           
+          // Create set of previous goal keys (normalized)
+          const previousGoalKeys = new Set(previousGoals.map(normalizeGoalKey));
+          
+          // Find new goals (goals that weren't in the previous notification)
+          const newGoals = currentGoals.filter((g: any) => {
+            const key = normalizeGoalKey(g);
+            return !previousGoalKeys.has(key);
+          });
+          
+          // Only send notification if there are actually new goals
           if (newGoals.length > 0) {
             // Show scorer name(s) in notification
             const goalTexts = newGoals.map((g: any) => {
@@ -796,10 +811,21 @@ async function checkAndSendScoreNotifications() {
             
             title = `⚽ GOAL! ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
             message = goalTexts.join(', ');
+            
+            console.log(`[sendScoreNotifications] Found ${newGoals.length} new goal(s) for match ${notification.apiMatchId}:`, {
+              previousGoalsCount: previousGoals.length,
+              currentGoalsCount: currentGoals.length,
+              newGoals: newGoals.map((g: any) => `${g.scorer} ${g.minute}'`)
+            });
           } else {
-            // Fallback if we can't determine new goals
-            title = `⚽ GOAL! ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
-            message = `${minuteText}`;
+            // No new goals detected - skip this notification
+            console.log(`[sendScoreNotifications] No new goals detected for match ${notification.apiMatchId} (score changed but no new goals)`, {
+              previousGoalsCount: previousGoals.length,
+              currentGoalsCount: currentGoals.length,
+              previousGoals: previousGoals.map((g: any) => normalizeGoalKey(g)),
+              currentGoals: currentGoals.map((g: any) => normalizeGoalKey(g))
+            });
+            continue; // Skip if no new goals
           }
         } else {
           continue; // Skip if no meaningful change

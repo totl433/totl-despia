@@ -3521,10 +3521,41 @@ export default function HomePage() {
                             {/* Home Team Goals and Red Cards (chronologically sorted) */}
                             {liveScore && (isOngoing || isFinished) && (() => {
                               // Filter goals for home team
-                              const homeGoals = (liveScore.goals || []).filter((goal: any) => {
+                              // Match by team name - use liveScore.home_team as the source of truth (already normalized)
+                              const allGoals = liveScore.goals || [];
+                              const homeGoals = allGoals.filter((goal: any) => {
+                                if (!goal || !goal.team) return false;
                                 const goalTeam = goal.team || '';
+                                
+                                // Primary match: compare normalized team names
+                                // The goal.team is already normalized by pollLiveScores function
                                 const normalizedGoalTeam = getMediumName(goalTeam);
-                                return normalizedGoalTeam === homeName || normalizedGoalTeam === getMediumName(f.home_team || '');
+                                const normalizedHomeTeam = liveScore.home_team ? getMediumName(liveScore.home_team) : homeName;
+                                
+                                // Try multiple matching strategies
+                                const matches = normalizedGoalTeam === normalizedHomeTeam ||
+                                       normalizedGoalTeam === homeName ||
+                                       normalizedGoalTeam === getMediumName(f.home_team || '') ||
+                                       normalizedGoalTeam === getMediumName(f.home_name || '') ||
+                                       goalTeam.toLowerCase() === (liveScore.home_team || '').toLowerCase() ||
+                                       goalTeam.toLowerCase() === homeName.toLowerCase() ||
+                                       goalTeam.toLowerCase() === (f.home_team || '').toLowerCase() ||
+                                       goalTeam.toLowerCase() === (f.home_name || '').toLowerCase();
+                                
+                                // Debug logging for unmatched goals
+                                if (!matches && allGoals.length > 0) {
+                                  console.log('[Home] Goal team mismatch:', {
+                                    goalTeam,
+                                    normalizedGoalTeam,
+                                    homeName,
+                                    normalizedHomeTeam,
+                                    liveScoreHomeTeam: liveScore.home_team,
+                                    fixtureHomeTeam: f.home_team,
+                                    fixtureHomeName: f.home_name
+                                  });
+                                }
+                                
+                                return matches;
                               });
                               
                               // Filter red cards for home team
@@ -3585,13 +3616,13 @@ export default function HomePage() {
                                   {timeline.map((event, idx) => {
                                     if (event.type === 'goal') {
                                       return (
-                                        <span key={idx} className="text-[10px] text-slate-600">
+                                        <span key={idx} className="text-[11px] text-slate-600">
                                           {event.scorer} {event.minutes!.sort((a, b) => a - b).map(m => `${m}'`).join(', ')}
                                         </span>
                                       );
                                     } else {
                                       return (
-                                        <span key={idx} className="text-[10px] text-slate-600">
+                                        <span key={idx} className="text-[11px] text-slate-600">
                                           🟥 {event.player} {event.minute}'
                                         </span>
                                       );
@@ -3634,10 +3665,25 @@ export default function HomePage() {
                             {/* Away Team Goals and Red Cards (chronologically sorted) */}
                             {liveScore && (isOngoing || isFinished) && (() => {
                               // Filter goals for away team
+                              // Match by team name - use liveScore.away_team as the source of truth (already normalized)
                               const awayGoals = (liveScore.goals || []).filter((goal: any) => {
+                                if (!goal || !goal.team) return false;
                                 const goalTeam = goal.team || '';
+                                
+                                // Primary match: compare normalized team names
+                                // The goal.team is already normalized by pollLiveScores function
                                 const normalizedGoalTeam = getMediumName(goalTeam);
-                                return normalizedGoalTeam === awayName || normalizedGoalTeam === getMediumName(f.away_team || '');
+                                const normalizedAwayTeam = liveScore.away_team ? getMediumName(liveScore.away_team) : awayName;
+                                
+                                // Try multiple matching strategies
+                                return normalizedGoalTeam === normalizedAwayTeam ||
+                                       normalizedGoalTeam === awayName ||
+                                       normalizedGoalTeam === getMediumName(f.away_team || '') ||
+                                       normalizedGoalTeam === getMediumName(f.away_name || '') ||
+                                       goalTeam.toLowerCase() === (liveScore.away_team || '').toLowerCase() ||
+                                       goalTeam.toLowerCase() === awayName.toLowerCase() ||
+                                       goalTeam.toLowerCase() === (f.away_team || '').toLowerCase() ||
+                                       goalTeam.toLowerCase() === (f.away_name || '').toLowerCase();
                               });
                               
                               // Filter red cards for away team
@@ -3698,13 +3744,13 @@ export default function HomePage() {
                                   {timeline.map((event, idx) => {
                                     if (event.type === 'goal') {
                                       return (
-                                        <span key={idx} className="text-[10px] text-slate-600">
+                                        <span key={idx} className="text-[11px] text-slate-600">
                                           {event.scorer} {event.minutes!.sort((a, b) => a - b).map(m => `${m}'`).join(', ')}
                                         </span>
                                       );
                                     } else {
                                       return (
-                                        <span key={idx} className="text-[10px] text-slate-600">
+                                        <span key={idx} className="text-[11px] text-slate-600">
                                           🟥 {event.player} {event.minute}'
                                         </span>
                                       );
