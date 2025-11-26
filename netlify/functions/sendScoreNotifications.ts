@@ -444,6 +444,7 @@ async function checkAndSendScoreNotifications() {
         // For score changes, check if there are actually new goals before adding to notifications
         const isScoreChange = (scoreChanged || (isNewMatchWithScore && !isFinished)) && !isFinishedNotification;
         
+        // For score changes, check if there are actually new goals before adding to notifications
         if (isScoreChange && goals && Array.isArray(goals) && goals.length > 0) {
           // Check if there are actually new goals (not already notified)
           const previousGoals = state?.last_notified_goals || [];
@@ -478,6 +479,24 @@ async function checkAndSendScoreNotifications() {
               });
             continue; // Skip adding to notificationsToSend
           }
+          
+          // CRITICAL: Update state IMMEDIATELY after detecting new goals, BEFORE adding to notificationsToSend
+          // This prevents duplicate notifications if the function runs again while notifications are being sent
+          await supabase
+            .from('notification_state')
+            .upsert({
+              api_match_id: score.api_match_id,
+              last_notified_home_score: homeScore,
+              last_notified_away_score: awayScore,
+              last_notified_status: status,
+              last_notified_at: new Date().toISOString(),
+              last_notified_goals: goals,
+              last_notified_red_cards: redCards || null,
+            } as any, {
+              onConflict: 'api_match_id',
+            });
+          
+          console.log(`[sendScoreNotifications] Updated state IMMEDIATELY for match ${score.api_match_id} to prevent duplicates`);
         }
         
         notificationsToSend.push({
@@ -817,58 +836,34 @@ async function checkAndSendScoreNotifications() {
             message = `❌ Wrong pick`;
           }
         } else if (notification.isScoreChange) {
-          // Get the latest goal(s) - compare previous goals with current goals
-          const previousGoals = state?.last_notified_goals || [];
+          // We already checked for new goals when building notificationsToSend and updated state
+          // So we can safely assume there are new goals here. Just show the newest one.
           const currentGoals = notification.goals || [];
           
-          // Normalize goal keys for comparison (handle null/undefined, trim whitespace, case-insensitive)
-          const normalizeGoalKey = (g: any): string => {
-            const scorer = (g.scorer || '').toString().trim().toLowerCase();
-            const minute = g.minute !== null && g.minute !== undefined ? String(g.minute) : '';
-            const teamId = g.teamId !== null && g.teamId !== undefined ? String(g.teamId) : '';
-            // Use scorer + minute + teamId for more unique identification
-            return `${scorer}|${minute}|${teamId}`;
-          };
-          
-          // Create set of previous goal keys (normalized)
-          const previousGoalKeys = new Set(previousGoals.map(normalizeGoalKey));
-          
-          // Find new goals (goals that weren't in the previous notification)
-          const newGoals = currentGoals.filter((g: any) => {
-            const key = normalizeGoalKey(g);
-            return !previousGoalKeys.has(key);
-          });
-          
-          // Only send notification if there are actually new goals
-          if (newGoals.length > 0) {
-            // Sort new goals by minute (most recent first) and only show the newest one
-            const sortedNewGoals = newGoals.sort((a: any, b: any) => {
+          if (currentGoals.length > 0) {
+            // Sort goals by minute (most recent first) and only show the newest one
+            const sortedGoals = currentGoals.sort((a: any, b: any) => {
               const aMin = a.minute ?? 0;
               const bMin = b.minute ?? 0;
               return bMin - aMin; // Descending order (newest first)
             });
             
             // Only show the newest goal scorer
-            const newestGoal = sortedNewGoals[0];
+            const newestGoal = sortedGoals[0];
             const scorer = newestGoal.scorer || 'Unknown';
             const minute = newestGoal.minute !== null && newestGoal.minute !== undefined ? `${newestGoal.minute}'` : '';
             
             title = `⚽ GOAL! ${notification.homeTeam} ${notification.homeScore}-${notification.awayScore} ${notification.awayTeam}`;
             message = `${scorer}${minute ? ` ${minute}` : ''}`;
             
-            console.log(`[sendScoreNotifications] Found ${newGoals.length} new goal(s) for match ${notification.apiMatchId}, showing newest:`, {
+            console.log(`[sendScoreNotifications] Showing newest goal for match ${notification.apiMatchId}:`, {
               newestGoal: `${scorer} ${minute}`,
-              allNewGoals: newGoals.map((g: any) => `${g.scorer} ${g.minute}'`)
+              totalGoals: currentGoals.length
             });
           } else {
-            // No new goals detected - skip this notification
-            console.log(`[sendScoreNotifications] No new goals detected for match ${notification.apiMatchId} (score changed but no new goals)`, {
-              previousGoalsCount: previousGoals.length,
-              currentGoalsCount: currentGoals.length,
-              previousGoals: previousGoals.map((g: any) => normalizeGoalKey(g)),
-              currentGoals: currentGoals.map((g: any) => normalizeGoalKey(g))
-            });
-            continue; // Skip if no new goals
+            // This shouldn't happen since we filtered earlier, but skip just in case
+            console.warn(`[sendScoreNotifications] No goals found for match ${notification.apiMatchId} in score change notification`);
+            continue;
           }
         } else {
           continue; // Skip if no meaningful change
@@ -897,24 +892,9 @@ async function checkAndSendScoreNotifications() {
         }
       }
 
-      // Update notification state IMMEDIATELY after sending notifications (once per match, not per user)
-      // This prevents duplicate notifications if the function runs again before all users are notified
-      // Store goals and red cards for next comparison
-      await supabase
-        .from('notification_state')
-        .upsert({
-          api_match_id: notification.apiMatchId,
-          last_notified_home_score: notification.homeScore,
-          last_notified_away_score: notification.awayScore,
-          last_notified_status: notification.status,
-          last_notified_at: new Date().toISOString(),
-          last_notified_goals: notification.goals || null,
-          last_notified_red_cards: notification.redCards || null,
-        } as any, {
-          onConflict: 'api_match_id',
-        });
-      
-      console.log(`[sendScoreNotifications] Updated notification state for match ${notification.apiMatchId} to prevent duplicates`);
+      // Note: State is already updated IMMEDIATELY after detecting new goals (before adding to notificationsToSend)
+      // So we don't need to update it again here. This prevents duplicate notifications if the function runs again
+      // while notifications are being sent to multiple users.
     }
 
     console.log(`[sendScoreNotifications] Total notifications sent: ${totalSent}`);
