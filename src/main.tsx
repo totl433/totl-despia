@@ -11,6 +11,7 @@ const PredictionsPage = lazy(() => import("./pages/Predictions"));
 const AdminPage = lazy(() => import("./pages/Admin"));
 const HomePage = lazy(() => import("./pages/Home"));
 const GlobalPage = lazy(() => import("./pages/Global"));
+const TempGlobalPage = lazy(() => import("./pages/TempGlobal"));
 const CreateLeaguePage = lazy(() => import("./pages/CreateLeague"));
 const HowToPlayPage = lazy(() => import("./pages/HowToPlay"));
 const NewPredictionsCentre = lazy(() => import("./pages/NewPredictionsCentre"));
@@ -24,7 +25,6 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import PredictionsBanner from "./components/PredictionsBanner";
 import BottomNav from "./components/BottomNav";
 import FloatingProfile from "./components/FloatingProfile";
-import ScrollLogo from "./components/ScrollLogo";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
 // Loading Fallback
@@ -108,8 +108,7 @@ function AppContent() {
   
   return (
     <>
-      {/* Logo at very top - only on Home Page */}
-      {location.pathname === '/' && <ScrollLogo />}
+      {/* Logo is now rendered in Home.tsx component */}
       
       {/* Floating Profile Icon - only on Home Page */}
       {location.pathname === '/' && <FloatingProfile />}
@@ -150,6 +149,7 @@ function AppContent() {
             <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
             <Route path="/predictions" element={<RequireAuth><PredictionsPage /></RequireAuth>} />
             <Route path="/global" element={<RequireAuth><GlobalPage /></RequireAuth>} />
+            <Route path="/temp-global" element={<RequireAuth><TempGlobalPage /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
             <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
             <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
