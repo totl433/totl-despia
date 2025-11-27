@@ -12,6 +12,7 @@ import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import { useLiveScores } from "../hooks/useLiveScores";
 import LiveGamesToggle from "../components/LiveGamesToggle";
+import { getCached, setCached, CACHE_TTL } from "../lib/cache";
 
 // Types
 type League = { id: string; name: string; code: string; avatar?: string | null; created_at?: string | null; start_gw?: number | null };
@@ -128,7 +129,7 @@ export default function HomePage() {
     return result;
   }, [liveScoresMap, fixtures]);
 
-  // Fetch basic data (leagues, current GW, leaderboard data) - optimized parallel queries
+  // Fetch basic data (leagues, current GW, leaderboard data) - stale-while-revalidate pattern
   useEffect(() => {
     if (!user?.id) {
       setLoading(false);
@@ -138,7 +139,34 @@ export default function HomePage() {
     }
     
     let alive = true;
+    const cacheKey = `home:basic:${user.id}`;
     
+    // 1. Load from cache immediately (if available)
+    const cached = getCached<{
+      leagues: League[];
+      currentGw: number;
+      latestGw: number;
+      allGwPoints: Array<{user_id: string, gw: number, points: number}>;
+      overall: Array<{user_id: string, name: string | null, ocp: number | null}>;
+      lastGwRank: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null;
+      isInApiTestLeague: boolean;
+    }>(cacheKey);
+    
+    if (cached) {
+      // INSTANT RENDER from cache!
+      setLeagues(cached.leagues);
+      setGw(cached.currentGw);
+      setLatestGw(cached.latestGw);
+      setAllGwPoints(cached.allGwPoints);
+      setGwPoints(cached.allGwPoints.filter(gp => gp.user_id === user.id));
+      setOverall(cached.overall);
+      if (cached.lastGwRank) setLastGwRank(cached.lastGwRank);
+      setIsInApiTestLeague(cached.isInApiTestLeague);
+      setLoading(false);
+      setLeaderboardDataLoading(false);
+    }
+    
+    // 2. Fetch fresh data in background
     (async () => {
       try {
         // Parallel fetch: leagues, GW data, points, and overall in one batch
@@ -153,10 +181,11 @@ export default function HomePage() {
         if (!alive) return;
         
         // Process leagues
+        let leaguesData: League[] = [];
         if (membersResult.error) {
           setLeagues([]);
         } else {
-          const leaguesData = (membersResult.data ?? [])
+          leaguesData = (membersResult.data ?? [])
             .map((m: any) => m.leagues)
             .filter((l: any) => l !== null) as League[];
           setLeagues(leaguesData);
@@ -170,16 +199,18 @@ export default function HomePage() {
         setLatestGw(currentGw);
         
         // Process GW points
+        let allPoints: Array<{user_id: string, gw: number, points: number}> = [];
         if (allGwPointsResult.error) {
           setAllGwPoints([]);
           setGwPoints([]);
         } else {
-          const allPoints = (allGwPointsResult.data as Array<{user_id: string, gw: number, points: number}>) ?? [];
+          allPoints = (allGwPointsResult.data as Array<{user_id: string, gw: number, points: number}>) ?? [];
           setAllGwPoints(allPoints);
           setGwPoints(allPoints.filter(gp => gp.user_id === user.id));
           
           // Calculate Last GW ranking inline
           const lastGwData = allPoints.filter(gp => gp.gw === lastCompletedGw);
+          let lastGwRankData: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null = null;
           if (lastGwData.length > 0) {
             const sorted = [...lastGwData].sort((a, b) => b.points - a.points);
             let currentRank = 1;
@@ -193,24 +224,38 @@ export default function HomePage() {
             const userEntry = ranked.find(r => r.user_id === user.id);
             if (userEntry) {
               const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
-              setLastGwRank({
+              lastGwRankData = {
                 rank: userEntry.rank,
                 total: ranked.length,
                 score: userEntry.points,
                 gw: lastCompletedGw,
                 totalFixtures: 10,
                 isTied: rankCount > 1
-              });
+              };
+              setLastGwRank(lastGwRankData);
             }
           }
         }
         
         // Process overall rankings
+        let overallData: Array<{user_id: string, name: string | null, ocp: number | null}> = [];
         if (overallResult.error) {
           setOverall([]);
         } else {
-          setOverall((overallResult.data as Array<{user_id: string, name: string | null, ocp: number | null}>) ?? []);
+          overallData = (overallResult.data as Array<{user_id: string, name: string | null, ocp: number | null}>) ?? [];
+          setOverall(overallData);
         }
+        
+        // Cache the processed data for next time
+        setCached(cacheKey, {
+          leagues: leaguesData,
+          currentGw,
+          latestGw: currentGw,
+          allGwPoints: allPoints,
+          overall: overallData,
+          lastGwRank: lastGwRankData,
+          isInApiTestLeague: leaguesData.some(l => l.name === "API Test"),
+        }, CACHE_TTL.HOME);
         
         setLoading(false);
         setLeaderboardDataLoading(false);

@@ -5,6 +5,7 @@ import { MiniLeagueCard } from "../components/MiniLeagueCard";
 import type { LeagueRow, LeagueData } from "../components/MiniLeagueCard";
 import { getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
+import { getCached, setCached, CACHE_TTL, invalidateUserCache } from "../lib/cache";
 
 // Types
 type League = { 
@@ -43,7 +44,7 @@ export default function TablesPage() {
   const [unreadByLeague, setUnreadByLeague] = useState<Record<string, number>>({});
   const [currentGw, setCurrentGw] = useState<number | null>(null);
 
-  // Load everything in parallel - ultra optimized
+  // Load everything in parallel - stale-while-revalidate pattern
   useEffect(() => {
     if (!user?.id) {
       setLoading(false);
@@ -52,7 +53,27 @@ export default function TablesPage() {
     }
     
     let alive = true;
+    const cacheKey = `tables:${user.id}`;
     
+    // 1. Load from cache immediately (if available)
+    const cached = getCached<{
+      rows: LeagueRow[];
+      currentGw: number | null;
+      leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
+      unreadByLeague: Record<string, number>;
+    }>(cacheKey);
+    
+    if (cached) {
+      // INSTANT RENDER from cache!
+      setRows(cached.rows);
+      setCurrentGw(cached.currentGw);
+      setLeagueSubmissions(cached.leagueSubmissions);
+      setUnreadByLeague(cached.unreadByLeague);
+      setLoading(false);
+      // Note: leagueData will still load separately (it's complex)
+    }
+    
+    // 2. Fetch fresh data in background
     (async () => {
       try {
         // Step 1: Get league IDs and current GW in parallel
@@ -444,6 +465,14 @@ export default function TablesPage() {
           setLeagueData(leagueDataMap);
           setLoading(false);
           setLeagueDataLoading(false);
+          
+          // Cache the processed data for next time
+          setCached(cacheKey, {
+            rows: out,
+            currentGw,
+            leagueSubmissions: submissionStatus,
+            unreadByLeague: unreadCounts,
+          }, CACHE_TTL.TABLES);
         }
       } catch (e: any) {
         if (alive) {
@@ -480,6 +509,10 @@ export default function TablesPage() {
       });
 
       setLeagueName("");
+      // Invalidate cache after creating league
+      if (user?.id) {
+        invalidateUserCache(user.id);
+      }
       setRows([]);
       setLoading(true);
     } catch (e: any) {
@@ -521,6 +554,10 @@ export default function TablesPage() {
         { onConflict: "league_id,user_id" }
       );
       setJoinCode("");
+      // Invalidate cache after joining league
+      if (user?.id) {
+        invalidateUserCache(user.id);
+      }
       setRows([]);
       setLoading(true);
     } catch (e: any) {

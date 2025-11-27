@@ -53,6 +53,9 @@ function AppContent() {
   const navigate = useNavigate();
   const { showWelcome, dismissWelcome } = useAuth();
   
+  // Prefetch data when app comes to foreground
+  useAppLifecycle();
+  
   // Hide header/banner for full-screen pages
   const isFullScreenPage = false;
 

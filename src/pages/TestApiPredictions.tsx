@@ -6,6 +6,7 @@ import TeamBadge from "../components/TeamBadge";
 import { useNavigate } from "react-router-dom";
 import { getMediumName } from "../lib/teamNames";
 import { formatMinuteDisplay } from "../lib/fixtureUtils";
+import { invalidateUserCache } from "../lib/cache";
 
 // Generate a color from a string (team name or code)
 function stringToColor(str: string): string {
@@ -1267,6 +1268,10 @@ export default function TestApiPredictions() {
       setSubmitted(true);
       hasEverBeenSubmittedRef.current = true;
       setHasEverBeenSubmitted(true); // Persist in sessionStorage immediately
+      // Invalidate cache so fresh data loads
+      if (user?.id) {
+        invalidateUserCache(user.id);
+      }
       setConfirmCelebration({ success: true, message: "Your test predictions are locked in. Good luck!" });
       setTimeout(() => {
         setConfirmCelebration(null);

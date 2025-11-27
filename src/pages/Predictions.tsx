@@ -384,6 +384,10 @@ export default function PredictionsPage() {
 
     if (!error) {
       setSubmitted(true);
+      // Invalidate cache so fresh data loads
+      if (user?.id) {
+        invalidateUserCache(user.id);
+      }
       // Dispatch custom event to hide banner immediately
       window.dispatchEvent(new CustomEvent('predictionsSubmitted'));
 
