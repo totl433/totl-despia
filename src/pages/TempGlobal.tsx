@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { LeaderboardTable } from "../components/LeaderboardTable";
 import { LeaderboardTabs } from "../components/LeaderboardTabs";
+import { getCached, setCached, CACHE_TTL } from "../lib/cache";
 
 type OverallRow = {
   user_id: string;
@@ -52,9 +53,38 @@ export default function GlobalLeaderboardPage() {
     setSearchParams({ tab });
   }, [setSearchParams]);
 
-  // Fetch data - optimized parallel queries
+  // Fetch data - optimized parallel queries with caching
   useEffect(() => {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+    
     let alive = true;
+    const cacheKey = `global:${user.id}`;
+    
+    // 1. Load from cache immediately (if available)
+    try {
+      const cached = getCached<{
+        latestGw: number;
+        gwPoints: GwPointsRow[];
+        overall: OverallRow[];
+        prevOcp: Record<string, number>;
+      }>(cacheKey);
+      
+      if (cached && cached.gwPoints && Array.isArray(cached.gwPoints) && cached.overall && Array.isArray(cached.overall)) {
+        console.log('[Global] ✅ Loading from cache');
+        setLatestGw(cached.latestGw);
+        setGwPoints(cached.gwPoints);
+        setOverall(cached.overall);
+        setPrevOcp(cached.prevOcp || {});
+        setLoading(false);
+      }
+    } catch (error) {
+      console.warn('[Global] Error loading from cache, fetching fresh data:', error);
+    }
+    
+    // 2. Fetch fresh data in background
     (async () => {
       try {
         setLoading(true);
@@ -74,20 +104,34 @@ export default function GlobalLeaderboardPage() {
         const gw = latestResult.data?.gw ?? 1;
         if (!alive) return;
         
+        const gwPointsData = (gpResult.data as GwPointsRow[]) ?? [];
+        const overallData = (ocpResult.data as OverallRow[]) ?? [];
+        
         setLatestGw(gw);
-        setGwPoints((gpResult.data as GwPointsRow[]) ?? []);
-        setOverall((ocpResult.data as OverallRow[]) ?? []);
+        setGwPoints(gwPointsData);
+        setOverall(overallData);
 
         // Calculate previous OCP totals
+        let prevOcpData: Record<string, number> = {};
         if (gw && gw > 1) {
-          const prevList = (gpResult.data as GwPointsRow[] | null)?.filter(r => r.gw < gw) ?? [];
-          const totals: Record<string, number> = {};
+          const prevList = gwPointsData.filter(r => r.gw < gw);
           for (const r of prevList) {
-            totals[r.user_id] = (totals[r.user_id] ?? 0) + (r.points ?? 0);
+            prevOcpData[r.user_id] = (prevOcpData[r.user_id] ?? 0) + (r.points ?? 0);
           }
-          if (alive) setPrevOcp(totals);
-        } else {
-          if (alive) setPrevOcp({});
+        }
+        if (alive) setPrevOcp(prevOcpData);
+        
+        // Cache the processed data for next time
+        try {
+          setCached(cacheKey, {
+            latestGw: gw,
+            gwPoints: gwPointsData,
+            overall: overallData,
+            prevOcp: prevOcpData,
+          }, CACHE_TTL.HOME); // Use same TTL as Home page
+          console.log('[Global] ✅ Cached data for next time');
+        } catch (cacheError) {
+          console.warn('[Global] Failed to cache data:', cacheError);
         }
       } catch (e: any) {
         if (alive) setErr(e?.message ?? "Failed to load leaderboard.");
@@ -96,7 +140,7 @@ export default function GlobalLeaderboardPage() {
       }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [user?.id]);
 
   // Calculate ranks
   const ranksFromScores = useCallback((scores: Record<string, number>): Record<string, number> => {

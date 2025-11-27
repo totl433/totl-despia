@@ -393,7 +393,7 @@ export default function HomePage() {
     return () => { alive = false; };
   }, [user?.id, latestGw, allGwPoints, overall]);
 
-  // Fetch league data - optimized
+  // Fetch league data - optimized with caching
   useEffect(() => {
     if (!user?.id || !leagues.length || !gw) {
       setLeagueDataLoading(false);
@@ -401,9 +401,37 @@ export default function HomePage() {
     }
     
     let alive = true;
+    const leagueDataCacheKey = `home:leagueData:${user.id}:${gw}`;
     
+    // 1. Load from cache immediately (if available)
+    try {
+      const cached = getCached<{
+        leagueData: Record<string, LeagueDataInternal>;
+        leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
+      }>(leagueDataCacheKey);
+      
+      if (cached && cached.leagueData && Object.keys(cached.leagueData).length > 0) {
+        // Convert arrays back to Sets for submittedMembers and latestGwWinners
+        const restoredLeagueData: Record<string, LeagueDataInternal> = {};
+        for (const [leagueId, data] of Object.entries(cached.leagueData)) {
+          restoredLeagueData[leagueId] = {
+            ...data,
+            submittedMembers: data.submittedMembers ? (Array.isArray(data.submittedMembers) ? new Set(data.submittedMembers) : data.submittedMembers) : undefined,
+            latestGwWinners: data.latestGwWinners ? (Array.isArray(data.latestGwWinners) ? new Set(data.latestGwWinners) : data.latestGwWinners) : undefined,
+          };
+        }
+        setLeagueData(restoredLeagueData);
+        setLeagueSubmissions(cached.leagueSubmissions || {});
+        setLeagueDataLoading(false);
+      }
+    } catch (error) {
+      console.warn('[Home] Error loading leagueData from cache, fetching fresh data:', error);
+    }
+    
+    // 2. Fetch fresh data in background
     (async () => {
       try {
+        if (!alive) return;
         setLeagueData({});
         setLeagueDataLoading(true);
         
@@ -718,6 +746,26 @@ export default function HomePage() {
         setLeagueSubmissions(submissionStatus);
         setLeagueData(leagueDataMap);
         setLeagueDataLoading(false);
+        
+        // Cache the processed data for next time
+        try {
+          // Convert Sets to Arrays for JSON serialization
+          const cacheableLeagueData: Record<string, any> = {};
+          for (const [leagueId, data] of Object.entries(leagueDataMap)) {
+            cacheableLeagueData[leagueId] = {
+              ...data,
+              submittedMembers: data.submittedMembers ? (data.submittedMembers instanceof Set ? Array.from(data.submittedMembers) : data.submittedMembers) : undefined,
+              latestGwWinners: data.latestGwWinners ? (data.latestGwWinners instanceof Set ? Array.from(data.latestGwWinners) : data.latestGwWinners) : undefined,
+            };
+          }
+          
+          setCached(leagueDataCacheKey, {
+            leagueData: cacheableLeagueData,
+            leagueSubmissions: submissionStatus,
+          }, CACHE_TTL.HOME);
+        } catch (cacheError) {
+          console.warn('[Home] Failed to cache leagueData:', cacheError);
+        }
       } catch (error) {
         setLeagueDataLoading(false);
       }
