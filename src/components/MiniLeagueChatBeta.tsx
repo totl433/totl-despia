@@ -72,10 +72,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     if (!scrollRef.current) return;
     const prevCount = prevMessageCountRef.current;
     if (autoScroll && messages.length > prevCount) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: "smooth",
-      });
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
     prevMessageCountRef.current = messages.length;
   }, [messages.length, autoScroll]);
@@ -170,14 +167,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       }
 
       if (autoScroll && scrollRef.current) {
-        requestAnimationFrame(() => {
-          setTimeout(() => {
-            scrollRef.current?.scrollTo({
-              top: scrollRef.current.scrollHeight,
-              behavior: "smooth",
-            });
-          }, 40);
-        });
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       }
     },
     [autoScroll]
