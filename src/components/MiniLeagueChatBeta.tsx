@@ -43,7 +43,9 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!scrollRef.current || !autoScroll) return;
@@ -111,6 +113,69 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     }
   }, [draft, miniLeagueId, notifyRecipients, sendMessage, sending]);
 
+  const adjustForKeyboard = useCallback(
+    (height: number) => {
+      const visible = height > 80;
+      setKeyboardOffset(visible ? height : 0);
+
+      const composerHeight = composerRef.current?.offsetHeight ?? 72;
+      if (scrollRef.current) {
+        const padding = composerHeight + 24 + (visible ? height : 0);
+        scrollRef.current.style.paddingBottom = `${padding}px`;
+      }
+
+      if (autoScroll && scrollRef.current) {
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            scrollRef.current?.scrollTo({
+              top: scrollRef.current.scrollHeight,
+              behavior: "smooth",
+            });
+          }, 40);
+        });
+      }
+    },
+    [autoScroll]
+  );
+
+  useEffect(() => {
+    const viewport = typeof window !== 'undefined' ? (window as any).visualViewport : null;
+    if (!viewport) return;
+
+    const handler = () => {
+      const windowHeight = window.innerHeight;
+      const viewportBottom = viewport.offsetTop + viewport.height;
+      const keyboardHeight = windowHeight - viewportBottom;
+      adjustForKeyboard(keyboardHeight);
+    };
+
+    viewport.addEventListener('resize', handler);
+    viewport.addEventListener('scroll', handler);
+    handler();
+
+    return () => {
+      viewport.removeEventListener('resize', handler);
+      viewport.removeEventListener('scroll', handler);
+    };
+  }, [adjustForKeyboard]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || (window as any).visualViewport) return;
+    const baseHeight = window.innerHeight;
+    const handler = () => {
+      const diff = baseHeight - window.innerHeight;
+      adjustForKeyboard(diff > 0 ? diff : 0);
+    };
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, [adjustForKeyboard]);
+
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const composerHeight = composerRef.current?.offsetHeight ?? 72;
+    scrollRef.current.style.paddingBottom = `${composerHeight + 24}px`;
+  }, []);
+
   return (
     <div className="h-full flex flex-col bg-[#f5f6fb]">
       <div
@@ -173,7 +238,11 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         )}
       </div>
 
-      <div className="border-t border-slate-200 bg-white px-4 py-3">
+      <div
+        ref={composerRef}
+        className="border-t border-slate-200 bg-white px-4 py-3"
+        style={keyboardOffset > 0 ? { position: "fixed", bottom: keyboardOffset, left: 0, right: 0, width: "100%", zIndex: 1000 } : undefined}
+      >
         <div className="flex items-end gap-3 bg-slate-100 rounded-2xl px-3 py-2">
           <textarea
             className="flex-1 bg-transparent resize-none focus:outline-none text-sm text-slate-800 placeholder:text-slate-400 h-10"
