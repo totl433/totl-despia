@@ -377,7 +377,11 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           const prev = chat[index - 1];
           const startsRun = !prev || prev.user_id !== m.user_id;
           return (
-            <div key={m.id} className={`mb-1 flex ${mine ? "justify-end" : "justify-start"}`}>
+            <div
+              key={m.id}
+              className={`flex ${mine ? "justify-end" : "justify-start"}`}
+              style={{ marginTop: startsRun ? 24 : 8 }}
+            >
               {!mine && (
                 <div className="flex-shrink-0 w-8 flex justify-center mr-2">
                   {startsRun ? (

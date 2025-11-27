@@ -227,7 +227,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
             return (
               <div
                 key={msg.id}
-                className={`flex items-start gap-2 ${msg.isSelf ? "justify-end" : "justify-start"} ${msg.startsRun ? "mt-4" : "mt-1"}`}
+                className={`flex items-start gap-2 ${msg.isSelf ? "justify-end" : "justify-start"}`}
+                style={{ marginTop: msg.startsRun ? 24 : 8 }}
               >
                 {!msg.isSelf && (
                   <div className="flex-shrink-0 w-8 flex justify-center">
