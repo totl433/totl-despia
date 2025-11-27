@@ -245,6 +245,13 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
             const displayName = resolveName(msg.user_id, memberNames) || "Unknown";
             const showAvatar = !msg.isSelf && (msg.isSingle || msg.isBottom);
             const rowClasses = msg.isSelf ? "flex justify-end" : "flex items-end gap-2";
+            const bubbleWrapperClasses = [
+              "flex flex-col",
+              msg.isSelf ? "items-end ml-auto" : "items-start",
+            ]
+              .filter(Boolean)
+              .join(" ");
+
             return (
               <div
                 key={msg.id}
@@ -252,7 +259,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
                 style={{ marginTop: msg.startsRun ? 24 : 4 }}
               >
                 {!msg.isSelf && (
-                  <div className="flex-shrink-0 w-8 flex justify-center self-end">
+                  <div className="flex-shrink-0 w-8 h-8 flex justify-center self-end">
                     {showAvatar ? (
                       <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500">
                         {initials(displayName)}
@@ -262,10 +269,10 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
                     )}
                   </div>
                 )}
-                <div className={`flex flex-col ${msg.isSelf ? "items-end" : "items-start"} flex-1`}>
+                <div className={bubbleWrapperClasses} style={{ maxWidth: "72%" }}>
                   <div
-                    className={`px-3 py-2 text-sm leading-snug shadow max-w-[72%] ${
-                      msg.isSelf ? "bg-[#1C8376] text-white ml-auto" : "bg-white text-slate-800"
+                    className={`w-full px-3 py-2 text-sm leading-snug shadow ${
+                      msg.isSelf ? "bg-[#1C8376] text-white" : "bg-white text-slate-800"
                     }`}
                     style={{ borderRadius: getBubbleRadius(msg.isSelf, msg) }}
                   >

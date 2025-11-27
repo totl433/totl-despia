@@ -400,6 +400,12 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
             .join("")
             .toUpperCase();
           const rowClasses = mine ? "flex justify-end" : "flex items-end gap-2";
+          const bubbleWrapperClasses = [
+            "flex flex-col",
+            mine ? "items-end ml-auto" : "items-start",
+          ]
+            .filter(Boolean)
+            .join(" ");
           return (
             <div
               key={m.id}
@@ -407,7 +413,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
               style={{ marginTop: startsRun ? 24 : 4 }}
             >
               {!mine && (
-                <div className="flex-shrink-0 w-8 flex justify-center self-end">
+                <div className="flex-shrink-0 w-8 h-8 flex justify-center self-end">
                   {showAvatar ? (
                     <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500">
                       {initials}
@@ -417,16 +423,18 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                   )}
                 </div>
               )}
-              <div
-                className={`px-3 py-2 text-sm leading-snug shadow max-w-[72%] ${mine ? "bg-[#1C8376] text-white ml-auto" : "bg-slate-100 text-slate-900"}`}
-                style={{ borderRadius: getChatBubbleRadius(mine, { isSingle, isTop, isMiddle, isBottom }) }}
-              >
-                <div className={`flex flex-col gap-1 ${mine ? "items-end text-right" : "items-start text-left"}`}>
-                  {startsRun && (
-                    <div className={`text-[11px] font-semibold ${mine ? "text-white/80" : "text-slate-600"}`}>{name}</div>
-                  )}
-                  <div className="whitespace-pre-wrap break-words">{m.content}</div>
-                  <div className={`text-[11px] ${mine ? "text-emerald-100" : "text-slate-500"}`}>{time}</div>
+              <div className={bubbleWrapperClasses} style={{ maxWidth: "72%" }}>
+                <div
+                  className={`w-full px-3 py-2 text-sm leading-snug shadow ${mine ? "bg-[#1C8376] text-white" : "bg-slate-100 text-slate-900"}`}
+                  style={{ borderRadius: getChatBubbleRadius(mine, { isSingle, isTop, isMiddle, isBottom }) }}
+                >
+                  <div className={`flex flex-col gap-1 ${mine ? "items-end text-right" : "items-start text-left"}`}>
+                    {startsRun && (
+                      <div className={`text-[11px] font-semibold ${mine ? "text-white/80" : "text-slate-600"}`}>{name}</div>
+                    )}
+                    <div className="whitespace-pre-wrap break-words">{m.content}</div>
+                    <div className={`text-[11px] ${mine ? "text-emerald-100" : "text-slate-500"}`}>{time}</div>
+                  </div>
                 </div>
               </div>
             </div>
