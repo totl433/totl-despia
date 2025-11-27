@@ -952,7 +952,9 @@ export default function HomePage() {
       <ScrollLogo />
       
       {!isDataReady ? (
-        <div className="p-4 text-slate-500">Loading...</div>
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
+        </div>
       ) : (
         <>
           {/* LEADERBOARDS - COMPONENT HP */}

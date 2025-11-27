@@ -1328,28 +1328,8 @@ export default function TestApiPredictions() {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
-          <div className="max-w-2xl mx-auto space-y-6">
-            {/* Skeleton loader */}
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="bg-white rounded-xl shadow-sm p-6 animate-pulse">
-                  <div className="flex items-center justify-between gap-2 mb-4">
-                    <div className="h-4 bg-slate-200 rounded w-24"></div>
-                    <div className="flex items-center gap-2">
-                      <div className="h-6 w-6 bg-slate-200 rounded-full"></div>
-                      <div className="h-4 bg-slate-200 rounded w-16"></div>
-                      <div className="h-6 w-6 bg-slate-200 rounded-full"></div>
-                    </div>
-                    <div className="h-4 bg-slate-200 rounded w-24"></div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3 mt-4">
-                    <div className="h-16 bg-slate-100 rounded-xl"></div>
-                    <div className="h-16 bg-slate-100 rounded-xl"></div>
-                    <div className="h-16 bg-slate-100 rounded-xl"></div>
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div className="max-w-2xl mx-auto flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
           </div>
         </div>
       </div>
@@ -2236,7 +2216,7 @@ export default function TestApiPredictions() {
     console.log('[TestApiPredictions] 🚫 BLOCKING swipe view - user has submitted');
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-slate-600">Loading...</div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
       </div>
     );
   }
@@ -2249,7 +2229,7 @@ export default function TestApiPredictions() {
     setCurrentIndex(0);
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-slate-600">Loading...</div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
       </div>
     );
   }

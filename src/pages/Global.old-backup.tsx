@@ -560,9 +560,7 @@ export default function GlobalLeaderboardPage() {
         )}
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
-          </div>
+          <div className="text-slate-500">Loading…</div>
         ) : activeTab === "form5" && latestGw && latestGw < 5 ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center">
             <div className="text-lg font-semibold text-slate-700 mb-2">5 Week Form Leaderboard Coming Soon</div>

@@ -443,28 +443,32 @@ async function checkAndSendScoreNotifications() {
 
       // Track kickoffs for grouping (only if status is IN_PLAY and score is 0-0)
       // BUT only if we haven't already sent a kickoff notification
+      // CRITICAL: Check state FIRST before adding to kickoffsByTimeSlot
       const hasNotifiedKickoff = state?.last_notified_status === 'IN_PLAY' && 
                                  state?.last_notified_home_score === 0 && 
                                  state?.last_notified_away_score === 0;
       
-      if (justKickedOff && status === 'IN_PLAY' && homeScore === 0 && awayScore === 0 && fixture.kickoff_time && !hasNotifiedKickoff) {
-        const kickoffTime = new Date(fixture.kickoff_time);
-        // Round to nearest 15 minutes for grouping (e.g., 3:00pm, 3:15pm, etc.)
-        const minutes = kickoffTime.getMinutes();
-        const roundedMinutes = Math.floor(minutes / 15) * 15;
-        const timeSlot = `${kickoffTime.getHours()}:${String(roundedMinutes).padStart(2, '0')}`;
-        
-        if (!kickoffsByTimeSlot.has(timeSlot)) {
-          kickoffsByTimeSlot.set(timeSlot, []);
+      if (justKickedOff && status === 'IN_PLAY' && homeScore === 0 && awayScore === 0 && fixture.kickoff_time) {
+        if (hasNotifiedKickoff) {
+          console.log(`[sendScoreNotifications] 🚫 SKIPPING kickoff for match ${score.api_match_id} - already notified (status: ${state?.last_notified_status}, score: ${state?.last_notified_home_score}-${state?.last_notified_away_score})`);
+          // Don't add to kickoffsByTimeSlot - skip completely
+        } else {
+          const kickoffTime = new Date(fixture.kickoff_time);
+          // Round to nearest 15 minutes for grouping (e.g., 3:00pm, 3:15pm, etc.)
+          const minutes = kickoffTime.getMinutes();
+          const roundedMinutes = Math.floor(minutes / 15) * 15;
+          const timeSlot = `${kickoffTime.getHours()}:${String(roundedMinutes).padStart(2, '0')}`;
+          
+          if (!kickoffsByTimeSlot.has(timeSlot)) {
+            kickoffsByTimeSlot.set(timeSlot, []);
+          }
+          kickoffsByTimeSlot.get(timeSlot)!.push({
+            apiMatchId: score.api_match_id,
+            homeTeam: fixture.home_team || 'Home',
+            awayTeam: fixture.away_team || 'Away',
+            fixtureIndex: fixture.fixture_index,
+          });
         }
-        kickoffsByTimeSlot.get(timeSlot)!.push({
-          apiMatchId: score.api_match_id,
-          homeTeam: fixture.home_team || 'Home',
-          awayTeam: fixture.away_team || 'Away',
-          fixtureIndex: fixture.fixture_index,
-        });
-      } else if (justKickedOff && hasNotifiedKickoff) {
-        console.log(`[sendScoreNotifications] 🚫 SKIPPING kickoff for match ${score.api_match_id} - already notified`);
       }
 
       // Only notify on actual score changes (goals), new matches with scores, or game finishing
@@ -635,8 +639,26 @@ async function checkAndSendScoreNotifications() {
       
       console.log(`[sendScoreNotifications] 🔵 Kickoff time slot ${timeSlot}: ${kickoffs.length} game(s)`);
       
-      // Update state IMMEDIATELY for all kickoffs in this time slot
+      // Double-check state for each kickoff before processing (race condition protection)
+      const validKickoffs = [];
       for (const kickoff of kickoffs) {
+        // Check state again right before processing
+        const { data: freshState } = await supabase
+          .from('notification_state')
+          .select('last_notified_status, last_notified_home_score, last_notified_away_score')
+          .eq('api_match_id', kickoff.apiMatchId)
+          .maybeSingle();
+        
+        const alreadyNotified = freshState?.last_notified_status === 'IN_PLAY' && 
+                               freshState?.last_notified_home_score === 0 && 
+                               freshState?.last_notified_away_score === 0;
+        
+        if (alreadyNotified) {
+          console.log(`[sendScoreNotifications] 🚫 SKIPPING kickoff for match ${kickoff.apiMatchId} - state shows already notified`);
+          continue; // Skip this kickoff
+        }
+        
+        // Update state IMMEDIATELY for this kickoff
         await supabase
           .from('notification_state')
           .upsert({
@@ -651,12 +673,21 @@ async function checkAndSendScoreNotifications() {
             onConflict: 'api_match_id',
           });
         console.log(`[sendScoreNotifications] ✅ State updated IMMEDIATELY for kickoff match ${kickoff.apiMatchId}`);
+        validKickoffs.push(kickoff);
       }
+      
+      // Only process kickoffs that passed the state check
+      if (validKickoffs.length === 0) {
+        console.log(`[sendScoreNotifications] 🚫 All kickoffs in time slot ${timeSlot} already notified, skipping`);
+        continue;
+      }
+      
+      const kickoffs = validKickoffs; // Use filtered list
       
       // For single game, send specific notification
       // For multiple games (e.g., 3pm kickoffs), send generic notification
-      if (kickoffs.length === 1) {
-        const kickoff = kickoffs[0];
+      if (validKickoffs.length === 1) {
+        const kickoff = validKickoffs[0];
         console.log(`[sendScoreNotifications] 🔵 Adding single kickoff notification for ${kickoff.homeTeam} vs ${kickoff.awayTeam}`);
         notificationsToSend.push({
           apiMatchId: kickoff.apiMatchId,
@@ -674,7 +705,7 @@ async function checkAndSendScoreNotifications() {
         });
       } else {
         // Multiple games kicking off at same time - send one notification per game but with generic message
-        kickoffs.forEach(kickoff => {
+        validKickoffs.forEach(kickoff => {
           notificationsToSend.push({
             apiMatchId: kickoff.apiMatchId,
             homeTeam: kickoff.homeTeam,
