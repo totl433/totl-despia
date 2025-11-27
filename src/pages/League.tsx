@@ -8,6 +8,7 @@ import imageCompression from "browser-image-compression";
 import { getLeagueAvatarUrl } from "../lib/leagueAvatars";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { getTeamBadgePath } from "../lib/teamNames";
+import MiniLeagueChatBeta from "../components/MiniLeagueChatBeta";
 
 const MAX_MEMBERS = 8;
 
@@ -540,7 +541,7 @@ export default function LeaguePage() {
 
   // tabs: Chat / Mini League Table / GW Picks / GW Results
   // Default to "gwr" (GW Results) if gameweek is live or finished within 12 hours
-  const [tab, setTab] = useState<"chat" | "mlt" | "gw" | "gwr">("chat");
+  const [tab, setTab] = useState<"chat" | "chat-beta" | "mlt" | "gw" | "gwr">("chat");
   const [initialTabSet, setInitialTabSet] = useState(false);
   // Use ref to track manual tab selection immediately (synchronously) to prevent race conditions
   const manualTabSelectedRef = useRef(false);
@@ -3898,6 +3899,22 @@ export default function LeaguePage() {
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
               )}
             </button>
+            <button
+              onClick={() => {
+                manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
+                setInitialTabSet(true); // Prevent auto-switch from interfering
+                setTab("chat-beta");
+              }}
+              className={
+                "flex-1 px-3 sm:px-6 py-3 text-sm font-semibold transition-colors relative " +
+                (tab === "chat-beta" ? "text-[#1C8376]" : "text-slate-400")
+              }
+            >
+              Chat (beta)
+              {tab === "chat-beta" && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
+              )}
+            </button>
             {/* Show GW Results tab if there are any results available (or if it's API Test league) */}
             {(availableGws.length > 0 || league?.name === 'API Test') && (
               <button
@@ -4080,7 +4097,14 @@ export default function LeaguePage() {
             maxMembers={MAX_MEMBERS}
             notificationStatus={notificationStatus}
           />
-            </div>
+        </div>
+      ) : tab === "chat-beta" ? (
+        <div className="chat-tab-wrapper">
+          <MiniLeagueChatBeta
+            miniLeagueId={league?.id ?? null}
+            memberNames={memberNameById}
+          />
+        </div>
       ) : (
         <div className="league-content-wrapper">
           <div className="px-1 sm:px-2">

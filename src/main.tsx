@@ -1,5 +1,6 @@
 // src/main.tsx
 import "./index.css";
+import "react-chat-elements/dist/main.css";
 import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
