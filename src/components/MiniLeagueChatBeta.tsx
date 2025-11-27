@@ -121,7 +121,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       const composerHeight = composerRef.current?.offsetHeight ?? 72;
       if (scrollRef.current) {
         const padding = composerHeight + 24 + (visible ? height : 0);
-        scrollRef.current.style.paddingBottom = `${padding}px`;
+        scrollRef.current.style.paddingBottom = `${visible ? padding : composerHeight + 24}px`;
       }
 
       if (autoScroll && scrollRef.current) {
