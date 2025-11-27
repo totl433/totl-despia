@@ -44,8 +44,18 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
   const [sending, setSending] = useState(false);
   const [autoScroll, setAutoScroll] = useState(false);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+    const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
+  const initialScrollDone = useRef(false);
+
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    if (!initialScrollDone.current && messages.length > 0) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      initialScrollDone.current = true;
+      setAutoScroll(true);
+    }
+  }, [messages.length]);
 
   useEffect(() => {
     if (!scrollRef.current || !autoScroll) return;
