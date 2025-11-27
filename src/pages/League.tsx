@@ -390,10 +390,10 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           const startsRun = !samePrev;
           const endsRun = !sameNext;
           const isSingle = !samePrev && !sameNext;
-          const isTop = startsRun && !endsRun;
+          const isTop = startsRun && sameNext;
           const isMiddle = samePrev && sameNext;
-          const isBottom = samePrev && !sameNext;
-          const showAvatar = !mine && (isSingle || endsRun);
+          const isBottom = samePrev && endsRun;
+          const showAvatar = !mine && (isSingle || isBottom);
           const initials = name
             .split(/\s+/)
             .map((part) => part[0])
@@ -402,29 +402,31 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           return (
             <div
               key={m.id}
-              className={`flex ${mine ? "justify-end" : "justify-start"}`}
+              className={`flex items-end gap-2 ${mine ? "justify-end" : "justify-start"}`}
               style={{ marginTop: startsRun ? 24 : 4 }}
             >
               {!mine && (
-                <div className="flex-shrink-0 w-8 flex justify-center mr-2">
+                <div className="flex-shrink-0 w-8 flex justify-center self-end">
                   {showAvatar ? (
                     <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500">
                       {initials}
                     </div>
                   ) : (
-                    <div className="w-8" />
+                    <div className="w-8 h-8" />
                   )}
                 </div>
               )}
               <div
-                className={`max-w-[75%] px-3 py-2 text-sm ${mine ? "bg-[#1C8376] text-white" : "bg-slate-100 text-slate-900"}`}
+                className={`max-w-[75%] px-3 py-2 text-sm leading-snug shadow ${mine ? "bg-[#1C8376] text-white" : "bg-slate-100 text-slate-900"}`}
                 style={{ borderRadius: getChatBubbleRadius(mine, { isSingle, isTop, isMiddle, isBottom }) }}
               >
-                {startsRun && (
-                  <div className={`font-semibold text-xs mb-1 ${mine ? "text-white/80" : "text-slate-600"}`}>{name}</div>
-                )}
-                <div className="whitespace-pre-wrap break-words">{m.content}</div>
-                <div className={`mt-1 text-[10px] ${mine ? "text-emerald-100" : "text-slate-500"}`}>{time}</div>
+                <div className={`flex flex-col gap-1 ${mine ? "items-end text-right" : "items-start text-left"}`}>
+                  {startsRun && (
+                    <div className={`text-[11px] font-semibold ${mine ? "text-white/80" : "text-slate-600"}`}>{name}</div>
+                  )}
+                  <div className="whitespace-pre-wrap break-words">{m.content}</div>
+                  <div className={`text-[11px] ${mine ? "text-emerald-100" : "text-slate-500"}`}>{time}</div>
+                </div>
               </div>
             </div>
           );

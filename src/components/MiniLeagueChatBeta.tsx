@@ -53,7 +53,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
   const [sending, setSending] = useState(false);
   const [autoScroll, setAutoScroll] = useState(false);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
-    const scrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
   const initialScrollDone = useRef(false);
 
@@ -83,15 +83,18 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       const startsRun = !sameAsPrev;
       const endsRun = !sameAsNext;
       const isSingle = !sameAsPrev && !sameAsNext;
+      const isTop = startsRun && sameAsNext;
+      const isMiddle = sameAsPrev && sameAsNext;
+      const isBottom = sameAsPrev && endsRun;
       return {
         ...msg,
         isSelf: msg.user_id === user?.id,
         startsRun,
         endsRun,
         isSingle,
-        isTop: startsRun && !endsRun,
-        isMiddle: !startsRun && !endsRun && !isSingle,
-        isBottom: !startsRun && endsRun,
+        isTop,
+        isMiddle,
+        isBottom,
       };
     });
   }, [messages, user?.id]);
@@ -216,7 +219,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     <div className="h-full flex flex-col bg-[#f5f6fb]">
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-5 space-y-3"
+        className="flex-1 overflow-y-auto px-4 py-5"
         onScroll={(event) => {
           const el = event.currentTarget;
           const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
@@ -239,44 +242,50 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           </div>
         ) : (
           enrichedMessages.map((msg) => {
-            const displayName = resolveName(msg.user_id, memberNames) || 'Unknown';
+            const displayName = resolveName(msg.user_id, memberNames) || "Unknown";
+            const showAvatar = !msg.isSelf && (msg.isSingle || msg.isBottom);
             return (
               <div
                 key={msg.id}
-                className={`flex items-start gap-2 ${msg.isSelf ? "justify-end" : "justify-start"}`}
+                className={`flex items-end gap-2 ${msg.isSelf ? "justify-end" : "justify-start"}`}
                 style={{ marginTop: msg.startsRun ? 24 : 4 }}
               >
                 {!msg.isSelf && (
-                  <div className="flex-shrink-0 w-8 flex justify-center">
-                    {msg.isSingle || msg.endsRun ? (
+                  <div className="flex-shrink-0 w-8 flex justify-center self-end">
+                    {showAvatar ? (
                       <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500">
                         {initials(displayName)}
                       </div>
                     ) : (
-                      <div className="w-8" />
+                      <div className="w-8 h-8" />
                     )}
                   </div>
                 )}
-                <div className={`flex flex-col ${msg.isSelf ? "items-end" : "items-start"} gap-1 flex-1`}>
+                <div className="flex flex-col flex-1">
                   <div
-                    className={`relative max-w-[75vw] px-4 pb-4 pt-2 text-sm leading-snug shadow ${
+                    className={`max-w-[75vw] px-3 py-2 text-sm leading-snug shadow ${
                       msg.isSelf ? "bg-[#1C8376] text-white" : "bg-white text-slate-800"
                     }`}
                     style={{ borderRadius: getBubbleRadius(msg.isSelf, msg) }}
                   >
-                    {msg.startsRun && (
-                      <div className={`text-[11px] font-semibold mb-1 ${msg.isSelf ? "text-white/80" : "text-slate-500"}`}>
-                        {displayName}
+                    <div className={`flex flex-col gap-1 ${msg.isSelf ? "items-end text-right" : "items-start text-left"}`}>
+                      {msg.startsRun && (
+                        <div className={`text-[11px] font-semibold ${msg.isSelf ? "text-white/80" : "text-slate-600"}`}>
+                          {displayName}
+                        </div>
+                      )}
+                      <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                      <div className={`text-[11px] ${msg.isSelf ? "text-white/70" : "text-slate-500"}`}>
+                        {formatTime(msg.created_at)}
                       </div>
-                    )}
-                    <span className="block mb-1">{msg.content}</span>
-                    <span
-                      className={`absolute bottom-1 ${msg.isSelf ? "right-4 text-white/80" : "left-4 text-slate-400"}`}
-                      style={{ fontSize: "0.65rem" }}
-                    >
-                      {formatTime(msg.created_at)}
-                    </span>
+                    </div>
                   </div>
+                  {(msg.status === "sending" || msg.status === "error") && (
+                    <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-1">
+                      {msg.status === "sending" && <span>Sending…</span>}
+                      {msg.status === "error" && <span className="text-red-500">Failed</span>}
+                    </div>
+                  )}
                 </div>
               </div>
             );
