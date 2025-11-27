@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -53,6 +53,33 @@ export default function GlobalLeaderboardPage() {
     setSearchParams({ tab });
   }, [setSearchParams]);
 
+  // Check cache synchronously before first paint (useLayoutEffect runs before browser paints)
+  useLayoutEffect(() => {
+    if (!user?.id) return;
+    
+    const cacheKey = `global:${user.id}`;
+    try {
+      const cached = getCached<{
+        latestGw: number;
+        gwPoints: GwPointsRow[];
+        overall: OverallRow[];
+        prevOcp: Record<string, number>;
+      }>(cacheKey);
+      
+      if (cached && cached.gwPoints && Array.isArray(cached.gwPoints) && cached.overall && Array.isArray(cached.overall) && cached.gwPoints.length > 0) {
+        console.log('[Global] ✅ Loading from cache (sync):', cached.gwPoints.length, 'gwPoints');
+        // Set all state synchronously BEFORE first paint to avoid loading flash
+        setLatestGw(cached.latestGw);
+        setGwPoints(cached.gwPoints);
+        setOverall(cached.overall);
+        setPrevOcp(cached.prevOcp || {});
+        setLoading(false);
+      }
+    } catch (error) {
+      console.warn('[Global] Error loading from cache (sync):', error);
+    }
+  }, [user?.id]);
+
   // Fetch data - optimized parallel queries with caching
   useEffect(() => {
     if (!user?.id) {
@@ -62,8 +89,10 @@ export default function GlobalLeaderboardPage() {
     
     let alive = true;
     const cacheKey = `global:${user.id}`;
+    let loadedFromCache = false;
     
-    // 1. Load from cache immediately (if available)
+    // 1. Load from cache immediately (if available) - do this FIRST before any async operations
+    // Use a synchronous check to avoid any loading flash
     try {
       const cached = getCached<{
         latestGw: number;
@@ -72,22 +101,31 @@ export default function GlobalLeaderboardPage() {
         prevOcp: Record<string, number>;
       }>(cacheKey);
       
-      if (cached && cached.gwPoints && Array.isArray(cached.gwPoints) && cached.overall && Array.isArray(cached.overall)) {
-        console.log('[Global] ✅ Loading from cache');
+      if (cached && cached.gwPoints && Array.isArray(cached.gwPoints) && cached.overall && Array.isArray(cached.overall) && cached.gwPoints.length > 0) {
+        console.log('[Global] ✅ Loading from cache:', cached.gwPoints.length, 'gwPoints');
+        // Use React.startTransition or batch updates to set all state at once
+        // Set all state synchronously to avoid any loading flash
         setLatestGw(cached.latestGw);
         setGwPoints(cached.gwPoints);
         setOverall(cached.overall);
         setPrevOcp(cached.prevOcp || {});
+        // CRITICAL: Set loading to false BEFORE starting async fetch
         setLoading(false);
+        loadedFromCache = true;
+      } else {
+        console.log('[Global] ⚠️ No valid cache found, will fetch fresh data');
       }
     } catch (error) {
       console.warn('[Global] Error loading from cache, fetching fresh data:', error);
     }
     
-    // 2. Fetch fresh data in background
+    // 2. Fetch fresh data in background (only if we didn't load from cache, or always to refresh)
     (async () => {
       try {
-        setLoading(true);
+        // Only set loading state if we didn't load from cache
+        if (!loadedFromCache) {
+          setLoading(true);
+        }
         setErr("");
 
         // Parallel fetch all data
