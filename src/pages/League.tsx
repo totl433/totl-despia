@@ -370,14 +370,33 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           cursor: 'pointer',
         }}
       >
-        {chat.map((m) => {
+        {chat.map((m, index) => {
           const mine = m.user_id === userId;
           const name = nameById.get(m.user_id) ?? "Unknown";
           const time = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          const prev = chat[index - 1];
+          const startsRun = !prev || prev.user_id !== m.user_id;
           return (
-            <div key={m.id} className={`mb-2 flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${mine ? "bg-[#1C8376] text-white" : "bg-slate-100 text-slate-900"}`}>
-                {!mine && <div className="font-semibold text-xs text-slate-600 mb-1">{name}</div>}
+            <div key={m.id} className={`mb-1 flex ${mine ? "justify-end" : "justify-start"}`}>
+              {!mine && (
+                <div className="flex-shrink-0 w-8 flex justify-center mr-2">
+                  {startsRun ? (
+                    <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500">
+                      {name
+                        .split(/\s+/)
+                        .map((part) => part[0])
+                        .join("")
+                        .toUpperCase()}
+                    </div>
+                  ) : (
+                    <div className="w-8" />
+                  )}
+                </div>
+              )}
+              <div className={`max-w-[75%] rounded-3xl px-3 py-2 text-sm ${mine ? "bg-[#1C8376] text-white" : "bg-slate-100 text-slate-900"}`}>
+                {startsRun && (
+                  <div className={`font-semibold text-xs mb-1 ${mine ? "text-white/80" : "text-slate-600"}`}>{name}</div>
+                )}
                 <div className="whitespace-pre-wrap break-words">{m.content}</div>
                 <div className={`mt-1 text-[10px] ${mine ? "text-emerald-100" : "text-slate-500"}`}>{time}</div>
               </div>

@@ -65,14 +65,20 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     });
   }, [messages.length, autoScroll]);
 
-  const enrichedMessages = useMemo(
-    () =>
-      messages.map((msg) => ({
+  const enrichedMessages = useMemo(() => {
+    return messages.map((msg, index) => {
+      const prev = messages[index - 1];
+      const next = messages[index + 1];
+      const startsRun = !prev || prev.user_id !== msg.user_id;
+      const endsRun = !next || next.user_id !== msg.user_id;
+      return {
         ...msg,
         isSelf: msg.user_id === user?.id,
-      })),
-    [messages, user?.id]
-  );
+        startsRun,
+        endsRun,
+      };
+    });
+  }, [messages, user?.id]);
 
   const notifyRecipients = useCallback(
     async (text: string) => {
@@ -216,35 +222,49 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
             Say hi to kick off this chat!
           </div>
         ) : (
-          enrichedMessages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex items-end gap-2 ${msg.isSelf ? "justify-end" : "justify-start"}`}
-            >
-              {!msg.isSelf && (
-                <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500">
-                  {initials(resolveName(msg.user_id, memberNames) || msg.user_id)}
-                </div>
-              )}
-              <div className={`flex flex-col ${msg.isSelf ? "items-end" : "items-start"} gap-1`}>
-                <div
-                  className={`relative max-w-[75vw] rounded-3xl px-4 pb-4 pt-2 text-sm leading-snug shadow ${
-                    msg.isSelf
-                      ? "bg-[#1C8376] text-white rounded-br-md"
-                      : "bg-white text-slate-800 rounded-bl-md"
-                  }`}
-                >
-                  <span className="block mb-1">{msg.content}</span>
-                  <span
-                    className={`absolute bottom-1 ${msg.isSelf ? "right-4 text-white/80" : "left-4 text-slate-400"}`}
-                    style={{ fontSize: "0.65rem" }}
+          enrichedMessages.map((msg) => {
+            const displayName = resolveName(msg.user_id, memberNames) || 'Unknown';
+            return (
+              <div
+                key={msg.id}
+                className={`flex items-start gap-2 ${msg.isSelf ? "justify-end" : "justify-start"} ${msg.startsRun ? "mt-4" : "mt-1"}`}
+              >
+                {!msg.isSelf && (
+                  <div className="flex-shrink-0 w-8 flex justify-center">
+                    {msg.startsRun ? (
+                      <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500">
+                        {initials(displayName)}
+                      </div>
+                    ) : (
+                      <div className="w-8" />
+                    )}
+                  </div>
+                )}
+                <div className={`flex flex-col ${msg.isSelf ? "items-end" : "items-start"} gap-1 flex-1`}>
+                  <div
+                    className={`relative max-w-[75vw] rounded-3xl px-4 pb-4 pt-2 text-sm leading-snug shadow ${
+                      msg.isSelf
+                        ? "bg-[#1C8376] text-white rounded-br-md"
+                        : "bg-white text-slate-800 rounded-bl-md"
+                    }`}
                   >
-                    {formatTime(msg.created_at)}
-                  </span>
+                    {msg.startsRun && (
+                      <div className={`text-[11px] font-semibold mb-1 ${msg.isSelf ? "text-white/80" : "text-slate-500"}`}>
+                        {displayName}
+                      </div>
+                    )}
+                    <span className="block mb-1">{msg.content}</span>
+                    <span
+                      className={`absolute bottom-1 ${msg.isSelf ? "right-4 text-white/80" : "left-4 text-slate-400"}`}
+                      style={{ fontSize: "0.65rem" }}
+                    >
+                      {formatTime(msg.created_at)}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
