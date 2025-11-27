@@ -51,31 +51,12 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [autoScroll, setAutoScroll] = useState(false);
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const composerRef = useRef<HTMLDivElement | null>(null);
-  const initialScrollDone = useRef(false);
 
   useEffect(() => {
     if (!scrollRef.current) return;
-    if (!initialScrollDone.current && messages.length > 0) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      initialScrollDone.current = true;
-      setAutoScroll(true);
-    }
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages.length]);
-
-  const prevMessageCountRef = useRef(messages.length);
-
-  useEffect(() => {
-    if (!scrollRef.current) return;
-    const prevCount = prevMessageCountRef.current;
-    if (autoScroll && messages.length > prevCount) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-    prevMessageCountRef.current = messages.length;
-  }, [messages.length, autoScroll]);
 
   const enrichedMessages = useMemo(() => {
     return messages.map((msg, index) => {
@@ -143,7 +124,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       await sendMessage(text);
       await notifyRecipients(text);
       setDraft("");
-      setAutoScroll(true);
     } catch (err) {
       console.error("[MiniLeagueChatBeta] Failed to send message", err);
     } finally {
@@ -151,76 +131,12 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     }
   }, [draft, miniLeagueId, notifyRecipients, sendMessage, sending]);
 
-  const adjustForKeyboard = useCallback(
-    (height: number) => {
-      const visible = height > 80;
-      setKeyboardOffset(visible ? height : 0);
-
-      const composerHeight = composerRef.current?.offsetHeight ?? 72;
-      if (scrollRef.current) {
-        if (visible) {
-          const padding = composerHeight + 24 + height;
-          scrollRef.current.style.paddingBottom = `${padding}px`;
-        } else {
-          scrollRef.current.style.paddingBottom = "";
-        }
-      }
-
-      if (autoScroll && scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
-    },
-    [autoScroll]
-  );
-
-  useEffect(() => {
-    const viewport = typeof window !== 'undefined' ? (window as any).visualViewport : null;
-    if (!viewport) return;
-
-    const handler = () => {
-      const windowHeight = window.innerHeight;
-      const viewportBottom = viewport.offsetTop + viewport.height;
-      const keyboardHeight = windowHeight - viewportBottom;
-      adjustForKeyboard(keyboardHeight);
-    };
-
-    viewport.addEventListener('resize', handler);
-    viewport.addEventListener('scroll', handler);
-    handler();
-
-    return () => {
-      viewport.removeEventListener('resize', handler);
-      viewport.removeEventListener('scroll', handler);
-    };
-  }, [adjustForKeyboard]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || (window as any).visualViewport) return;
-    const baseHeight = window.innerHeight;
-    const handler = () => {
-      const diff = baseHeight - window.innerHeight;
-      adjustForKeyboard(diff > 0 ? diff : 0);
-    };
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, [adjustForKeyboard]);
-
-  useEffect(() => {
-    if (!scrollRef.current) return;
-    const composerHeight = composerRef.current?.offsetHeight ?? 72;
-    scrollRef.current.style.paddingBottom = `${composerHeight + 24}px`;
-  }, []);
 
   return (
     <div className="h-full flex flex-col bg-[#f5f6fb]">
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto px-4 py-5"
-        onScroll={(event) => {
-          const el = event.currentTarget;
-          const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-          setAutoScroll(nearBottom);
-        }}
       >
         {hasMore && miniLeagueId && (
           <button
@@ -297,11 +213,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         )}
       </div>
 
-      <div
-        ref={composerRef}
-        className="border-t border-slate-200 bg-white px-4 py-3"
-        style={keyboardOffset > 0 ? { position: "fixed", bottom: keyboardOffset, left: 0, right: 0, width: "100%", zIndex: 1000 } : undefined}
-      >
+      <div className="border-t border-slate-200 bg-white px-4 py-3">
         <div className="flex items-end gap-3 bg-slate-100 rounded-2xl px-3 py-2">
           <textarea
             className="flex-1 bg-transparent resize-none focus:outline-none text-sm text-slate-800 placeholder:text-slate-400 h-10"
@@ -312,7 +224,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
               miniLeagueId ? "Start typing a message…" : "Join this league to chat"
             }
             onChange={(event) => setDraft(event.target.value)}
-            onFocus={() => setAutoScroll(true)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
