@@ -142,28 +142,33 @@ export default function HomePage() {
     const cacheKey = `home:basic:${user.id}`;
     
     // 1. Load from cache immediately (if available)
-    const cached = getCached<{
-      leagues: League[];
-      currentGw: number;
-      latestGw: number;
-      allGwPoints: Array<{user_id: string, gw: number, points: number}>;
-      overall: Array<{user_id: string, name: string | null, ocp: number | null}>;
-      lastGwRank: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null;
-      isInApiTestLeague: boolean;
-    }>(cacheKey);
-    
-    if (cached) {
-      // INSTANT RENDER from cache!
-      setLeagues(cached.leagues);
-      setGw(cached.currentGw);
-      setLatestGw(cached.latestGw);
-      setAllGwPoints(cached.allGwPoints);
-      setGwPoints(cached.allGwPoints.filter(gp => gp.user_id === user.id));
-      setOverall(cached.overall);
-      if (cached.lastGwRank) setLastGwRank(cached.lastGwRank);
-      setIsInApiTestLeague(cached.isInApiTestLeague);
-      setLoading(false);
-      setLeaderboardDataLoading(false);
+    try {
+      const cached = getCached<{
+        leagues: League[];
+        currentGw: number;
+        latestGw: number;
+        allGwPoints: Array<{user_id: string, gw: number, points: number}>;
+        overall: Array<{user_id: string, name: string | null, ocp: number | null}>;
+        lastGwRank: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null;
+        isInApiTestLeague: boolean;
+      }>(cacheKey);
+      
+      if (cached && cached.leagues && Array.isArray(cached.leagues)) {
+        // INSTANT RENDER from cache!
+        setLeagues(cached.leagues);
+        setGw(cached.currentGw);
+        setLatestGw(cached.latestGw);
+        setAllGwPoints(cached.allGwPoints || []);
+        setGwPoints((cached.allGwPoints || []).filter(gp => gp.user_id === user.id));
+        setOverall(cached.overall || []);
+        if (cached.lastGwRank) setLastGwRank(cached.lastGwRank);
+        setIsInApiTestLeague(cached.isInApiTestLeague || false);
+        setLoading(false);
+        setLeaderboardDataLoading(false);
+      }
+    } catch (error) {
+      // If cache is corrupted, just continue with fresh fetch
+      console.warn('[Home] Error loading from cache, fetching fresh data:', error);
     }
     
     // 2. Fetch fresh data in background

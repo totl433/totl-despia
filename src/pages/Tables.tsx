@@ -56,21 +56,26 @@ export default function TablesPage() {
     const cacheKey = `tables:${user.id}`;
     
     // 1. Load from cache immediately (if available)
-    const cached = getCached<{
-      rows: LeagueRow[];
-      currentGw: number | null;
-      leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
-      unreadByLeague: Record<string, number>;
-    }>(cacheKey);
-    
-    if (cached) {
-      // INSTANT RENDER from cache!
-      setRows(cached.rows);
-      setCurrentGw(cached.currentGw);
-      setLeagueSubmissions(cached.leagueSubmissions);
-      setUnreadByLeague(cached.unreadByLeague);
-      setLoading(false);
-      // Note: leagueData will still load separately (it's complex)
+    try {
+      const cached = getCached<{
+        rows: LeagueRow[];
+        currentGw: number | null;
+        leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
+        unreadByLeague: Record<string, number>;
+      }>(cacheKey);
+      
+      if (cached && cached.rows && Array.isArray(cached.rows)) {
+        // INSTANT RENDER from cache!
+        setRows(cached.rows);
+        setCurrentGw(cached.currentGw);
+        setLeagueSubmissions(cached.leagueSubmissions || {});
+        setUnreadByLeague(cached.unreadByLeague || {});
+        setLoading(false);
+        // Note: leagueData will still load separately (it's complex)
+      }
+    } catch (error) {
+      // If cache is corrupted, just continue with fresh fetch
+      console.warn('[Tables] Error loading from cache, fetching fresh data:', error);
     }
     
     // 2. Fetch fresh data in background

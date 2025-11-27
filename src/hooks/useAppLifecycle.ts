@@ -10,55 +10,50 @@ import { supabase } from '../lib/supabase';
 
 /**
  * Prefetch home page data
+ * Note: This just triggers a background fetch - the actual caching is done by Home.tsx
+ * We don't cache here to avoid structure mismatches
  */
 async function prefetchHomeData(userId: string): Promise<void> {
-  const cacheKey = `home:${userId}`;
-  const cached = getCached(cacheKey);
+  const cacheKey = `home:basic:${userId}`;
   const timestamp = getCacheTimestamp(cacheKey);
   const age = timestamp ? Date.now() - timestamp : Infinity;
   
   // Only prefetch if cache is stale or missing
   // Refresh at 50% of TTL to keep data fresh
-  if (!cached || age > CACHE_TTL.HOME * 0.5) {
+  if (!timestamp || age > CACHE_TTL.HOME * 0.5) {
     try {
-      // Fetch critical data in parallel
-      const [membersResult, latestGwResult, metaResult, allGwPointsResult, overallResult] = await Promise.all([
+      // Just trigger the fetch - Home.tsx will handle caching
+      // This is a fire-and-forget prefetch to warm up the network
+      Promise.all([
         supabase.from("league_members").select("leagues(id, name, code, avatar, created_at)").eq("user_id", userId),
         supabase.from("gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("meta").select("current_gw").eq("id", 1).maybeSingle(),
         supabase.from("v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
         supabase.from("v_ocp_overall").select("user_id, name, ocp")
-      ]);
-      
-      // Cache the raw results (will be processed by Home component)
-      const data = {
-        members: membersResult.data,
-        latestGw: latestGwResult.data,
-        meta: metaResult.data,
-        gwPoints: allGwPointsResult.data,
-        overall: overallResult.data,
-      };
-      
-      setCached(cacheKey, data, CACHE_TTL.HOME);
+      ]).catch(() => {
+        // Silently fail - this is just a prefetch
+      });
     } catch (error) {
-      console.warn('[Prefetch] Failed to prefetch home data:', error);
+      // Silently fail - this is just a prefetch
     }
   }
 }
 
 /**
  * Prefetch tables page data
+ * Note: This just triggers a background fetch - the actual caching is done by Tables.tsx
+ * We don't cache here to avoid structure mismatches
  */
 async function prefetchTablesData(userId: string): Promise<void> {
   const cacheKey = `tables:${userId}`;
-  const cached = getCached(cacheKey);
   const timestamp = getCacheTimestamp(cacheKey);
   const age = timestamp ? Date.now() - timestamp : Infinity;
   
   // Only prefetch if cache is stale or missing
-  if (!cached || age > CACHE_TTL.TABLES * 0.5) {
+  if (!timestamp || age > CACHE_TTL.TABLES * 0.5) {
     try {
-      // Fetch league memberships first
+      // Just trigger the fetch - Tables.tsx will handle caching
+      // This is a fire-and-forget prefetch to warm up the network
       const membershipsResult = await supabase
         .from("league_members")
         .select("league_id")
@@ -70,34 +65,18 @@ async function prefetchTablesData(userId: string): Promise<void> {
       
       const leagueIds = membershipsResult.data.map((r: any) => r.league_id);
       
-      // Fetch all league data in parallel
-      const [
-        leaguesResult,
-        memDataResult,
-        readsResult,
-        allResultsResult,
-        allFixturesResult,
-      ] = await Promise.all([
+      // Fire-and-forget prefetch
+      Promise.all([
         supabase.from("leagues").select("id,name,code,created_at,avatar").in("id", leagueIds).order("created_at", { ascending: true }),
         supabase.from("league_members").select("league_id,user_id").in("league_id", leagueIds).limit(10000),
         supabase.from("league_message_reads").select("league_id,last_read_at").eq("user_id", userId),
         supabase.from("gw_results").select("gw,fixture_index,result"),
         supabase.from("fixtures").select("gw,kickoff_time").order("gw", { ascending: true }).order("kickoff_time", { ascending: true }),
-      ]);
-      
-      // Cache the raw results
-      const data = {
-        leagues: leaguesResult.data,
-        members: memDataResult.data,
-        reads: readsResult.data,
-        results: allResultsResult.data,
-        fixtures: allFixturesResult.data,
-        leagueIds,
-      };
-      
-      setCached(cacheKey, data, CACHE_TTL.TABLES);
+      ]).catch(() => {
+        // Silently fail - this is just a prefetch
+      });
     } catch (error) {
-      console.warn('[Prefetch] Failed to prefetch tables data:', error);
+      // Silently fail - this is just a prefetch
     }
   }
 }
