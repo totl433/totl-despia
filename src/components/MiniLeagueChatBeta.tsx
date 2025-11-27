@@ -208,7 +208,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         ) : (
           enrichedMessages.map((msg) => (
             <div
-              key={msg.id}
+              key{msg.id}
               className={`flex items-end gap-2 ${msg.isSelf ? "justify-end" : "justify-start"}`}
             >
               {!msg.isSelf && (
@@ -222,7 +222,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
                     msg.isSelf
                       ? "bg-[#1C8376] text-white rounded-br-md"
                       : "bg-white text-slate-800 rounded-bl-md"
-                  } ${msg.status === "error" ? "border border-red-400" : ""}`}
+                  }`}
                 >
                   <span className="block mb-1">{msg.content}</span>
                   <span
@@ -231,10 +231,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
                   >
                     {formatTime(msg.created_at)}
                   </span>
-                </div>
-                <div className="text-[11px] text-slate-400 flex items-center gap-2">
-                  {msg.status === "sending" && <span>Sending…</span>}
-                  {msg.status === "error" && <span className="text-red-500">Failed</span>}
                 </div>
               </div>
             </div>
