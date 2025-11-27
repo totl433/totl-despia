@@ -277,7 +277,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
                     style={{ borderRadius: getBubbleRadius(msg.isSelf, msg) }}
                   >
                     <div className={`flex flex-col gap-1 ${msg.isSelf ? "items-end text-right" : "items-start text-left"}`}>
-                      {msg.startsRun && (
+                      {msg.startsRun && !msg.isSelf && (
                         <div className={`text-[11px] font-semibold ${msg.isSelf ? "text-white/80" : "text-slate-600"}`}>
                           {displayName}
                         </div>

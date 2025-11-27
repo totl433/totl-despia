@@ -429,7 +429,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                   style={{ borderRadius: getChatBubbleRadius(mine, { isSingle, isTop, isMiddle, isBottom }) }}
                 >
                   <div className={`flex flex-col gap-1 ${mine ? "items-end text-right" : "items-start text-left"}`}>
-                    {startsRun && (
+                    {startsRun && !mine && (
                       <div className={`text-[11px] font-semibold ${mine ? "text-white/80" : "text-slate-600"}`}>{name}</div>
                     )}
                     <div className="whitespace-pre-wrap break-words">{m.content}</div>
