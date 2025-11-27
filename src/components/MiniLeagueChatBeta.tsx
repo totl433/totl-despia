@@ -66,12 +66,18 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     }
   }, [messages.length]);
 
+  const prevMessageCountRef = useRef(messages.length);
+
   useEffect(() => {
-    if (!scrollRef.current || !autoScroll) return;
-    scrollRef.current.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    if (!scrollRef.current) return;
+    const prevCount = prevMessageCountRef.current;
+    if (autoScroll && messages.length > prevCount) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+    prevMessageCountRef.current = messages.length;
   }, [messages.length, autoScroll]);
 
   const enrichedMessages = useMemo(() => {
