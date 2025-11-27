@@ -222,9 +222,11 @@ export function isCacheFresh(key: string, maxAge?: number): boolean {
  * Invalidate cache for a specific user after actions that change data
  */
 export function invalidateUserCache(userId: string): void {
-  clearCachePattern(`:${userId}`);
-  clearCachePattern(`home:${userId}`);
-  clearCachePattern(`tables:${userId}`);
+  // Clear all cache entries that contain the user ID
+  clearCachePattern(userId);
+  // Also explicitly clear known cache keys
+  removeCached(`home:basic:${userId}`);
+  removeCached(`tables:${userId}`);
 }
 
 /**

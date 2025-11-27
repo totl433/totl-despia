@@ -155,6 +155,7 @@ export default function HomePage() {
       
       if (cached && cached.leagues && Array.isArray(cached.leagues)) {
         // INSTANT RENDER from cache!
+        console.log('[Home] ✅ Loading from cache:', cached.leagues.length, 'leagues');
         setLeagues(cached.leagues);
         setGw(cached.currentGw);
         setLatestGw(cached.latestGw);
@@ -165,6 +166,8 @@ export default function HomePage() {
         setIsInApiTestLeague(cached.isInApiTestLeague || false);
         setLoading(false);
         setLeaderboardDataLoading(false);
+      } else {
+        console.log('[Home] ⚠️ No valid cache found, will fetch fresh data');
       }
     } catch (error) {
       // If cache is corrupted, just continue with fresh fetch
@@ -252,15 +255,20 @@ export default function HomePage() {
         }
         
         // Cache the processed data for next time
-        setCached(cacheKey, {
-          leagues: leaguesData,
-          currentGw,
-          latestGw: currentGw,
-          allGwPoints: allPoints,
-          overall: overallData,
-          lastGwRank: lastGwRankData,
-          isInApiTestLeague: leaguesData.some(l => l.name === "API Test"),
-        }, CACHE_TTL.HOME);
+        try {
+          setCached(cacheKey, {
+            leagues: leaguesData,
+            currentGw,
+            latestGw: currentGw,
+            allGwPoints: allPoints,
+            overall: overallData,
+            lastGwRank: lastGwRankData,
+            isInApiTestLeague: leaguesData.some(l => l.name === "API Test"),
+          }, CACHE_TTL.HOME);
+          console.log('[Home] ✅ Cached data for next time:', leaguesData.length, 'leagues');
+        } catch (cacheError) {
+          console.warn('[Home] Failed to cache data:', cacheError);
+        }
         
         setLoading(false);
         setLeaderboardDataLoading(false);

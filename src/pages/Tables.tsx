@@ -64,14 +64,17 @@ export default function TablesPage() {
         unreadByLeague: Record<string, number>;
       }>(cacheKey);
       
-      if (cached && cached.rows && Array.isArray(cached.rows)) {
+      if (cached && cached.rows && Array.isArray(cached.rows) && cached.rows.length > 0) {
         // INSTANT RENDER from cache!
+        console.log('[Tables] ✅ Loading from cache:', cached.rows.length, 'leagues');
         setRows(cached.rows);
         setCurrentGw(cached.currentGw);
         setLeagueSubmissions(cached.leagueSubmissions || {});
         setUnreadByLeague(cached.unreadByLeague || {});
         setLoading(false);
         // Note: leagueData will still load separately (it's complex)
+      } else {
+        console.log('[Tables] ⚠️ No valid cache found, will fetch fresh data');
       }
     } catch (error) {
       // If cache is corrupted, just continue with fresh fetch
@@ -472,12 +475,17 @@ export default function TablesPage() {
           setLeagueDataLoading(false);
           
           // Cache the processed data for next time
-          setCached(cacheKey, {
-            rows: out,
-            currentGw,
-            leagueSubmissions: submissionStatus,
-            unreadByLeague: unreadCounts,
-          }, CACHE_TTL.TABLES);
+          try {
+            setCached(cacheKey, {
+              rows: out,
+              currentGw,
+              leagueSubmissions: submissionStatus,
+              unreadByLeague: unreadCounts,
+            }, CACHE_TTL.TABLES);
+            console.log('[Tables] ✅ Cached data for next time:', out.length, 'leagues');
+          } catch (cacheError) {
+            console.warn('[Tables] Failed to cache data:', cacheError);
+          }
         }
       } catch (e: any) {
         if (alive) {
