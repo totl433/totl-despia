@@ -5,7 +5,7 @@
 
 import { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getCached, setCached, getCacheTimestamp, CACHE_TTL } from '../lib/cache';
+import { getCacheTimestamp, CACHE_TTL } from '../lib/cache';
 import { supabase } from '../lib/supabase';
 
 /**
