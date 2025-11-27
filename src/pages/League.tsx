@@ -433,7 +433,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                       <div className={`text-[11px] font-semibold ${mine ? "text-white/80" : "text-slate-600"}`}>{name}</div>
                     )}
                     <div className="whitespace-pre-wrap break-words">{m.content}</div>
-                    <div className="text-[11px]" style={{ color: "#499C91" }}>{time}</div>
+                    <div className="text-[11px] text-[#DCDCDD]">{time}</div>
                   </div>
                 </div>
               </div>
