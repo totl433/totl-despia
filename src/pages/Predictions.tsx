@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { getMediumName } from "../lib/teamNames";
 import PickButton from "../components/PickButton";
+import { invalidateUserCache } from "../lib/cache";
 
 
 function sideName(f: any, side: "home" | "away") {

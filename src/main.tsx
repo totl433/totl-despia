@@ -26,6 +26,7 @@ import PredictionsBanner from "./components/PredictionsBanner";
 import BottomNav from "./components/BottomNav";
 import FloatingProfile from "./components/FloatingProfile";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { useAppLifecycle } from "./hooks/useAppLifecycle";
 
 // Loading Fallback
 const PageLoader = () => (

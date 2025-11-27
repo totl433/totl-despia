@@ -22,7 +22,8 @@ export const CACHE_TTL = {
 } as const;
 
 const CACHE_PREFIX = 'despia:cache:';
-const MAX_CACHE_SIZE = 5 * 1024 * 1024; // 5MB max cache
+// Note: MAX_CACHE_SIZE reserved for future use if we need to implement size-based cache eviction
+// const MAX_CACHE_SIZE = 5 * 1024 * 1024; // 5MB max cache
 
 /**
  * Get cached data if it exists and hasn't expired

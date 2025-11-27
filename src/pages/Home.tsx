@@ -200,6 +200,7 @@ export default function HomePage() {
         
         // Process GW points
         let allPoints: Array<{user_id: string, gw: number, points: number}> = [];
+        let lastGwRankData: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null = null;
         if (allGwPointsResult.error) {
           setAllGwPoints([]);
           setGwPoints([]);
@@ -210,7 +211,6 @@ export default function HomePage() {
           
           // Calculate Last GW ranking inline
           const lastGwData = allPoints.filter(gp => gp.gw === lastCompletedGw);
-          let lastGwRankData: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null = null;
           if (lastGwData.length > 0) {
             const sorted = [...lastGwData].sort((a, b) => b.points - a.points);
             let currentRank = 1;
