@@ -244,10 +244,11 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           enrichedMessages.map((msg) => {
             const displayName = resolveName(msg.user_id, memberNames) || "Unknown";
             const showAvatar = !msg.isSelf && (msg.isSingle || msg.isBottom);
+            const rowClasses = msg.isSelf ? "flex justify-end" : "flex items-end gap-2";
             return (
               <div
                 key={msg.id}
-                className={`flex items-end gap-2 ${msg.isSelf ? "justify-end" : "justify-start"}`}
+                className={rowClasses}
                 style={{ marginTop: msg.startsRun ? 24 : 4 }}
               >
                 {!msg.isSelf && (
@@ -261,10 +262,10 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
                     )}
                   </div>
                 )}
-                <div className="flex flex-col flex-1">
+                <div className={`flex flex-col ${msg.isSelf ? "items-end" : "items-start"} flex-1`}>
                   <div
-                    className={`max-w-[75vw] px-3 py-2 text-sm leading-snug shadow ${
-                      msg.isSelf ? "bg-[#1C8376] text-white" : "bg-white text-slate-800"
+                    className={`px-3 py-2 text-sm leading-snug shadow max-w-[72%] ${
+                      msg.isSelf ? "bg-[#1C8376] text-white ml-auto" : "bg-white text-slate-800"
                     }`}
                     style={{ borderRadius: getBubbleRadius(msg.isSelf, msg) }}
                   >

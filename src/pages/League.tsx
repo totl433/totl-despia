@@ -399,10 +399,11 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
             .map((part) => part[0])
             .join("")
             .toUpperCase();
+          const rowClasses = mine ? "flex justify-end" : "flex items-end gap-2";
           return (
             <div
               key={m.id}
-              className={`flex items-end gap-2 ${mine ? "justify-end" : "justify-start"}`}
+              className={rowClasses}
               style={{ marginTop: startsRun ? 24 : 4 }}
             >
               {!mine && (
@@ -417,7 +418,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                 </div>
               )}
               <div
-                className={`max-w-[75%] px-3 py-2 text-sm leading-snug shadow ${mine ? "bg-[#1C8376] text-white" : "bg-slate-100 text-slate-900"}`}
+                className={`px-3 py-2 text-sm leading-snug shadow max-w-[72%] ${mine ? "bg-[#1C8376] text-white ml-auto" : "bg-slate-100 text-slate-900"}`}
                 style={{ borderRadius: getChatBubbleRadius(mine, { isSingle, isTop, isMiddle, isBottom }) }}
               >
                 <div className={`flex flex-col gap-1 ${mine ? "items-end text-right" : "items-start text-left"}`}>
