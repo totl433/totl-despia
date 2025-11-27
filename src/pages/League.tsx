@@ -258,38 +258,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         }
         lastKeyboardHeight = keyboardHeight;
         
-        if (keyboardHeight > 100) {
-          // Keyboard is visible - position input above it
-          setInputBottom(keyboardHeight);
-          
-          // Calculate input area height dynamically - wait a bit for it to render
-          setTimeout(() => {
-            const inputAreaHeight = inputAreaRef.current?.offsetHeight || 100;
-            // Use keyboard height + input area height to ensure ALL messages are visible
-            // The padding needs to account for the full space from bottom of viewport to top of input
-            const paddingNeeded = keyboardHeight + inputAreaHeight + 20; // Full keyboard space + input + buffer
-            
-            // Add padding to messages so bottom messages are visible above input
-            if (listRef.current) {
-              listRef.current.style.paddingBottom = `${paddingNeeded}px`;
-              // Force reflow to ensure padding is applied
-              void listRef.current.offsetHeight;
-              
-              // Scroll after padding is definitely applied - multiple attempts
-              scrollToBottomWithRetries([0, 100, 300, 500, 700]);
-            }
-          }, 100);
-        } else {
-          // No keyboard - remove padding and ensure we scroll to show bottom message
-          setInputBottom(0);
-          if (listRef.current) {
-            listRef.current.style.paddingBottom = '';
-            // Force reflow after removing padding
-            void listRef.current.offsetHeight;
-            // Scroll to bottom after padding is removed to ensure last message is visible
-            scrollToBottomWithRetries([0, 50, 150, 300]);
-          }
-        }
+        applyKeyboardLayout(keyboardHeight);
       }, 50); // Small debounce delay
     };
 
@@ -320,7 +289,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         inputRef.current.removeEventListener('focus', handleFocus);
       }
     };
-  }, []);
+  }, [applyKeyboardLayout]);
 
   // Scroll on input focus and trigger layout update
   const handleInputFocus = () => {
@@ -333,25 +302,24 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         const viewportBottom = visualViewport.offsetTop + viewportHeight;
         const keyboardHeight = windowHeight - viewportBottom;
         
-        if (keyboardHeight > 100) {
-          setInputBottom(keyboardHeight);
-          setTimeout(() => {
-            const inputAreaHeight = inputAreaRef.current?.offsetHeight || 100;
-            // Use keyboard height + input area for full visibility
-            const paddingNeeded = keyboardHeight + inputAreaHeight + 20;
-            if (listRef.current) {
-              listRef.current.style.paddingBottom = `${paddingNeeded}px`;
-              void listRef.current.offsetHeight;
-              scrollToBottomWithRetries([0, 200, 400, 600, 800]);
-            }
-          }, 100);
-        }
+        applyKeyboardLayout(keyboardHeight, [0, 200, 400, 600, 800]);
       }, 100);
     }
     
     // Multiple scroll attempts for reliability
     scrollToBottomWithRetries([200, 400, 600]);
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const baseHeight = window.innerHeight;
+    const handleResize = () => {
+      const diff = baseHeight - window.innerHeight;
+      applyKeyboardLayout(diff > 0 ? diff : 0);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [applyKeyboardLayout]);
 
   // Dismiss keyboard when tapping messages area (WhatsApp-like behavior)
   const handleMessagesClick = (e: React.MouseEvent) => {
