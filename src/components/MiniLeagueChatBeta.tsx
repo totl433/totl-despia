@@ -42,7 +42,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const [autoScroll, setAutoScroll] = useState(false);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
@@ -208,7 +208,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         ) : (
           enrichedMessages.map((msg) => (
             <div
-              key{msg.id}
+              key={msg.id}
               className={`flex items-end gap-2 ${msg.isSelf ? "justify-end" : "justify-start"}`}
             >
               {!msg.isSelf && (
