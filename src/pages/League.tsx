@@ -425,7 +425,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
               )}
               <div className={bubbleWrapperClasses} style={{ maxWidth: "72%" }}>
                 <div
-                  className={`w-full px-3 py-2 text-sm leading-snug shadow ${mine ? "bg-[#1C8376] text-white" : "bg-slate-100 text-slate-900"}`}
+                  className={`w-full px-3 py-2 text-sm leading-snug ${mine ? "bg-[#1C8376] text-white" : "bg-slate-100 text-slate-900"}`}
                   style={{ borderRadius: getChatBubbleRadius(mine, { isSingle, isTop, isMiddle, isBottom }) }}
                 >
                   <div className={`flex flex-col gap-1 ${mine ? "items-end text-right" : "items-start text-left"}`}>

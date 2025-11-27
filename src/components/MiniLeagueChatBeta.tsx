@@ -271,7 +271,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
                 )}
                 <div className={bubbleWrapperClasses} style={{ maxWidth: "72%" }}>
                   <div
-                    className={`w-full px-3 py-2 text-sm leading-snug shadow ${
+                    className={`w-full px-3 py-2 text-sm leading-snug ${
                       msg.isSelf ? "bg-[#1C8376] text-white" : "bg-white text-slate-800"
                     }`}
                     style={{ borderRadius: getBubbleRadius(msg.isSelf, msg) }}
