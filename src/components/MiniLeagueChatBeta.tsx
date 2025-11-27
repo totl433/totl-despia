@@ -283,7 +283,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
                         </div>
                       )}
                       <div className="whitespace-pre-wrap break-words">{msg.content}</div>
-                      <div className="text-[11px]" style={{ color: "#DCDCDD" }}>
+                      <div className="text-[11px]" style={{ color: "#499C91" }}>
                         {formatTime(msg.created_at)}
                       </div>
                     </div>
