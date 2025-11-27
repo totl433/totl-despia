@@ -317,7 +317,6 @@ export default function TablesPage() {
         }
 
         // Fetch picks in parallel for all leagues
-        const allMemberIdsArray = Array.from(new Set(Array.from(membersByLeagueId.values()).flat().map(m => m.id)));
         const allRelevantGws = new Set<number>();
         out.forEach(row => {
           const leagueStartGw = leagueStartGwMap.get(row.id) ?? metaGw;
