@@ -73,7 +73,16 @@ export default function TablesPage() {
         setLeagueSubmissions(cached.leagueSubmissions || {});
         setUnreadByLeague(cached.unreadByLeague || {});
         if (cached.leagueData) {
-          setLeagueData(cached.leagueData);
+          // Convert arrays back to Sets for submittedMembers and latestGwWinners
+          const restoredLeagueData: Record<string, LeagueData> = {};
+          for (const [leagueId, data] of Object.entries(cached.leagueData)) {
+            restoredLeagueData[leagueId] = {
+              ...data,
+              submittedMembers: data.submittedMembers ? (Array.isArray(data.submittedMembers) ? new Set(data.submittedMembers) : new Set()) : undefined,
+              latestGwWinners: data.latestGwWinners ? (Array.isArray(data.latestGwWinners) ? new Set(data.latestGwWinners) : new Set()) : undefined,
+            };
+          }
+          setLeagueData(restoredLeagueData);
         }
         setLoading(false);
         setLeagueDataLoading(false); // Hide spinner immediately when cache is available
@@ -480,12 +489,22 @@ export default function TablesPage() {
           
           // Cache the processed data for next time
           try {
+            // Convert Sets to Arrays for JSON serialization
+            const cacheableLeagueData: Record<string, any> = {};
+            for (const [leagueId, data] of Object.entries(leagueDataMap)) {
+              cacheableLeagueData[leagueId] = {
+                ...data,
+                submittedMembers: data.submittedMembers ? (data.submittedMembers instanceof Set ? Array.from(data.submittedMembers) : data.submittedMembers) : undefined,
+                latestGwWinners: data.latestGwWinners ? (data.latestGwWinners instanceof Set ? Array.from(data.latestGwWinners) : data.latestGwWinners) : undefined,
+              };
+            }
+            
             setCached(cacheKey, {
               rows: out,
               currentGw,
               leagueSubmissions: submissionStatus,
               unreadByLeague: unreadCounts,
-              leagueData: leagueDataMap, // Also cache leagueData for instant loading
+              leagueData: cacheableLeagueData, // Also cache leagueData for instant loading
             }, CACHE_TTL.TABLES);
             console.log('[Tables] ✅ Cached data for next time:', out.length, 'leagues');
           } catch (cacheError) {
