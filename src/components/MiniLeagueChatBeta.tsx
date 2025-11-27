@@ -62,12 +62,46 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     [messages, user?.id]
   );
 
+  const notifyRecipients = useCallback(
+    async (text: string) => {
+      if (!miniLeagueId || !user?.id) return;
+
+      const isLocal =
+        typeof window !== "undefined" &&
+        (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+      if (isLocal) return;
+
+      const senderName =
+        (user.user_metadata?.display_name as string | undefined) ||
+        (user.user_metadata?.full_name as string | undefined) ||
+        user.email ||
+        "User";
+
+      try {
+        await fetch("/.netlify/functions/notifyLeagueMessage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            leagueId: miniLeagueId,
+            senderId: user.id,
+            senderName,
+            content: text,
+          }),
+        });
+      } catch (err) {
+        console.error("[MiniLeagueChatBeta] notifyLeagueMessage failed:", err);
+      }
+    },
+    [miniLeagueId, user?.id]
+  );
+
   const handleSend = useCallback(async () => {
     const text = draft.trim();
     if (!miniLeagueId || !text || sending) return;
     try {
       setSending(true);
       await sendMessage(text);
+      await notifyRecipients(text);
       setDraft("");
       setAutoScroll(true);
     } catch (err) {
@@ -75,7 +109,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     } finally {
       setSending(false);
     }
-  }, [draft, miniLeagueId, sendMessage, sending]);
+  }, [draft, miniLeagueId, notifyRecipients, sendMessage, sending]);
 
   return (
     <div className="h-full flex flex-col bg-[#f5f6fb]">
