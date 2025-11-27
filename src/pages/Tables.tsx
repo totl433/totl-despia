@@ -62,6 +62,7 @@ export default function TablesPage() {
         currentGw: number | null;
         leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
         unreadByLeague: Record<string, number>;
+        leagueData: Record<string, LeagueData>;
       }>(cacheKey);
       
       if (cached && cached.rows && Array.isArray(cached.rows) && cached.rows.length > 0) {
@@ -71,8 +72,11 @@ export default function TablesPage() {
         setCurrentGw(cached.currentGw);
         setLeagueSubmissions(cached.leagueSubmissions || {});
         setUnreadByLeague(cached.unreadByLeague || {});
+        if (cached.leagueData) {
+          setLeagueData(cached.leagueData);
+        }
         setLoading(false);
-        // Note: leagueData will still load separately (it's complex)
+        setLeagueDataLoading(false); // Hide spinner immediately when cache is available
       } else {
         console.log('[Tables] ⚠️ No valid cache found, will fetch fresh data');
       }
@@ -481,6 +485,7 @@ export default function TablesPage() {
               currentGw,
               leagueSubmissions: submissionStatus,
               unreadByLeague: unreadCounts,
+              leagueData: leagueDataMap, // Also cache leagueData for instant loading
             }, CACHE_TTL.TABLES);
             console.log('[Tables] ✅ Cached data for next time:', out.length, 'leagues');
           } catch (cacheError) {
