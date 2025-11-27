@@ -38,6 +38,8 @@ type Fixture = {
   away_team?: string | null;
   home_name?: string | null;
   away_name?: string | null;
+  home_crest?: string | null;
+  away_crest?: string | null;
   kickoff_time?: string | null;
   api_match_id?: number | null;
   test_gw?: number | null;
@@ -778,16 +780,58 @@ export default function TempHome() {
     
     (async () => {
       try {
+        // Use current_test_gw from meta as primary source
+        let testGw: number | null = null;
+        
+        const { data: testMeta } = await supabase
+          .from("test_api_meta")
+          .select("current_test_gw")
+          .eq("id", 1)
+          .maybeSingle();
+        
+        testGw = testMeta?.current_test_gw ?? 1;
+        
+        // Verify that fixtures exist for this test_gw, otherwise fall back to GW T1
+        if (testGw) {
+          const { data: fixturesCheck } = await supabase
+            .from("test_api_fixtures")
+            .select("test_gw")
+            .eq("test_gw", testGw)
+            .limit(1)
+            .maybeSingle();
+          
+          // If no fixtures for current_test_gw, fall back to GW T1
+          if (!fixturesCheck && testGw !== 1) {
+            const { data: t1Data } = await supabase
+              .from("test_api_fixtures")
+              .select("test_gw")
+              .eq("test_gw", 1)
+              .limit(1)
+              .maybeSingle();
+            
+            if (t1Data) {
+              testGw = 1;
+            }
+          }
+        }
+        
+        if (!testGw) {
+          setFixtures([]);
+          setFixturesLoading(false);
+          setUserPicks({});
+          return;
+        }
+        
         const [fixturesResult, picksResult] = await Promise.all([
           supabase
             .from("test_api_fixtures")
-            .select("id, test_gw, fixture_index, api_match_id, home_code, away_code, home_team, away_team, home_name, away_name, kickoff_time")
-            .eq("test_gw", 2)
+            .select("id, test_gw, fixture_index, api_match_id, home_code, away_code, home_team, away_team, home_name, away_name, home_crest, away_crest, kickoff_time")
+            .eq("test_gw", testGw)
             .order("fixture_index", { ascending: true }),
           supabase
-            .from("picks")
+            .from("test_api_picks")
             .select("fixture_index, pick")
-            .eq("gw", 2)
+            .eq("matchday", testGw)
             .eq("user_id", user.id)
         ]);
         
@@ -1151,7 +1195,7 @@ export default function TempHome() {
           {/* Games section */}
       <Section 
         title="Games"
-        subtitle="Test Game Week 2"
+        subtitle={isInApiTestLeague && fixtures.length > 0 ? `GW T${fixtures[0]?.test_gw ?? 1}` : undefined}
         className="mt-6"
         headerRight={
           <div className="flex items-center gap-3">

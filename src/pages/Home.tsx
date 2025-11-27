@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -925,8 +925,6 @@ export default function HomePage() {
         away_team: f.away_team,
         home_name: f.home_name,
         away_name: f.away_name,
-        home_crest: f.home_crest ?? null,
-        away_crest: f.away_crest ?? null,
         kickoff_time: f.kickoff_time,
         api_match_id: f.api_match_id ?? null,
       };
