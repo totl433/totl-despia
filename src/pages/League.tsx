@@ -179,6 +179,15 @@ function Chip({
 /* =========================
    ChatTab (external to avoid remount on typing)
    ========================= */
+
+const getChatBubbleRadius = (isSelf: boolean, position: { isSingle: boolean; isTop: boolean; isMiddle: boolean; isBottom: boolean }) => {
+  if (position.isSingle) return '12px';
+  if (position.isTop) return isSelf ? '12px 12px 4px 12px' : '12px 12px 12px 4px';
+  if (position.isMiddle) return isSelf ? '12px 4px 4px 12px' : '4px 12px 12px 4px';
+  if (position.isBottom) return isSelf ? '12px 4px 12px 12px' : '4px 12px 12px 12px';
+  return '12px';
+};
+
 type ChatTabProps = {
   chat: ChatMsg[];
   userId?: string;
@@ -375,7 +384,21 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           const name = nameById.get(m.user_id) ?? "Unknown";
           const time = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
           const prev = chat[index - 1];
-          const startsRun = !prev || prev.user_id !== m.user_id;
+          const next = chat[index + 1];
+          const samePrev = prev?.user_id === m.user_id;
+          const sameNext = next?.user_id === m.user_id;
+          const startsRun = !samePrev;
+          const endsRun = !sameNext;
+          const isSingle = !samePrev && !sameNext;
+          const isTop = startsRun && !endsRun;
+          const isMiddle = samePrev && sameNext;
+          const isBottom = samePrev && !sameNext;
+          const showAvatar = !mine && (isSingle || endsRun);
+          const initials = name
+            .split(/\s+/)
+            .map((part) => part[0])
+            .join("")
+            .toUpperCase();
           return (
             <div
               key={m.id}
@@ -384,20 +407,19 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
             >
               {!mine && (
                 <div className="flex-shrink-0 w-8 flex justify-center mr-2">
-                  {startsRun ? (
+                  {showAvatar ? (
                     <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500">
-                      {name
-                        .split(/\s+/)
-                        .map((part) => part[0])
-                        .join("")
-                        .toUpperCase()}
+                      {initials}
                     </div>
                   ) : (
                     <div className="w-8" />
                   )}
                 </div>
               )}
-              <div className={`max-w-[75%] rounded-3xl px-3 py-2 text-sm ${mine ? "bg-[#1C8376] text-white" : "bg-slate-100 text-slate-900"}`}>
+              <div
+                className={`max-w-[75%] px-3 py-2 text-sm ${mine ? "bg-[#1C8376] text-white" : "bg-slate-100 text-slate-900"}`}
+                style={{ borderRadius: getChatBubbleRadius(mine, { isSingle, isTop, isMiddle, isBottom }) }}
+              >
                 {startsRun && (
                   <div className={`font-semibold text-xs mb-1 ${mine ? "text-white/80" : "text-slate-600"}`}>{name}</div>
                 )}

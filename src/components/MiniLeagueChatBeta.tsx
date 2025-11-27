@@ -25,6 +25,15 @@ const resolveName = (id: string, memberNames?: MemberNames) => {
   return memberNames[id] ?? "";
 };
 
+
+const getBubbleRadius = (isSelf: boolean, msg: { isSingle: boolean; isTop: boolean; isMiddle: boolean; isBottom: boolean }) => {
+  if (msg.isSingle) return '12px';
+  if (msg.isTop) return isSelf ? '12px 12px 4px 12px' : '12px 12px 12px 4px';
+  if (msg.isMiddle) return isSelf ? '12px 4px 4px 12px' : '4px 12px 12px 4px';
+  if (msg.isBottom) return isSelf ? '12px 4px 12px 12px' : '4px 12px 12px 12px';
+  return '12px';
+};
+
 function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaProps) {
   const { user } = useAuth();
   const {
@@ -69,13 +78,20 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     return messages.map((msg, index) => {
       const prev = messages[index - 1];
       const next = messages[index + 1];
-      const startsRun = !prev || prev.user_id !== msg.user_id;
-      const endsRun = !next || next.user_id !== msg.user_id;
+      const sameAsPrev = prev?.user_id === msg.user_id;
+      const sameAsNext = next?.user_id === msg.user_id;
+      const startsRun = !sameAsPrev;
+      const endsRun = !sameAsNext;
+      const isSingle = !sameAsPrev && !sameAsNext;
       return {
         ...msg,
         isSelf: msg.user_id === user?.id,
         startsRun,
         endsRun,
+        isSingle,
+        isTop: startsRun && !endsRun,
+        isMiddle: !startsRun && !endsRun && !isSingle,
+        isBottom: !startsRun && endsRun,
       };
     });
   }, [messages, user?.id]);
@@ -232,7 +248,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
               >
                 {!msg.isSelf && (
                   <div className="flex-shrink-0 w-8 flex justify-center">
-                    {msg.startsRun ? (
+                    {msg.isSingle || msg.endsRun ? (
                       <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500">
                         {initials(displayName)}
                       </div>
@@ -243,11 +259,10 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
                 )}
                 <div className={`flex flex-col ${msg.isSelf ? "items-end" : "items-start"} gap-1 flex-1`}>
                   <div
-                    className={`relative max-w-[75vw] rounded-3xl px-4 pb-4 pt-2 text-sm leading-snug shadow ${
-                      msg.isSelf
-                        ? "bg-[#1C8376] text-white rounded-br-md"
-                        : "bg-white text-slate-800 rounded-bl-md"
+                    className={`relative max-w-[75vw] px-4 pb-4 pt-2 text-sm leading-snug shadow ${
+                      msg.isSelf ? "bg-[#1C8376] text-white" : "bg-white text-slate-800"
                     }`}
+                    style={{ borderRadius: getBubbleRadius(msg.isSelf, msg) }}
                   >
                     {msg.startsRun && (
                       <div className={`text-[11px] font-semibold mb-1 ${msg.isSelf ? "text-white/80" : "text-slate-500"}`}>
