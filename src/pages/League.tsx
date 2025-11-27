@@ -215,6 +215,29 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
     });
   }, []);
 
+  const applyKeyboardLayout = useCallback(
+    (keyboardHeight: number, scrollDelays: number[] = [0, 100, 300, 500, 700]) => {
+      if (keyboardHeight > 0) {
+        setInputBottom(keyboardHeight);
+        if (listRef.current) {
+          const padding = Math.max(
+            keyboardHeight + (inputRef.current?.offsetHeight || 0) + 16,
+            80
+          );
+          listRef.current.style.paddingBottom = `${padding}px`;
+        }
+      } else {
+        setInputBottom(0);
+        if (listRef.current) {
+          listRef.current.style.paddingBottom = '';
+        }
+      }
+
+      scrollToBottomWithRetries(scrollDelays);
+    },
+    [scrollToBottomWithRetries]
+  );
+
   // Scroll when messages change
   useEffect(() => {
     if (chat.length > 0) {
