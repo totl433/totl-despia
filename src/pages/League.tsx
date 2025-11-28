@@ -582,6 +582,43 @@ export default function LeaguePage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const visualViewport = window.visualViewport;
+    if (!visualViewport) return;
+
+    let raf: number | null = null;
+
+    const applyTransform = () => {
+      const headerEl = headerRef.current;
+      if (!headerEl) return;
+      const offset = visualViewport.offsetTop ?? 0;
+      headerEl.style.setProperty(
+        "transform",
+        `translate3d(0, ${offset}px, 0)`,
+        "important"
+      );
+    };
+
+    const scheduleUpdate = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = window.requestAnimationFrame(applyTransform);
+    };
+
+    scheduleUpdate();
+    visualViewport.addEventListener("resize", scheduleUpdate);
+    visualViewport.addEventListener("scroll", scheduleUpdate);
+
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      visualViewport.removeEventListener("resize", scheduleUpdate);
+      visualViewport.removeEventListener("scroll", scheduleUpdate);
+      if (headerRef.current) {
+        headerRef.current.style.removeProperty("transform");
+      }
+    };
+  }, []);
+
   const [league, setLeague] = useState<League | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -591,6 +628,7 @@ export default function LeaguePage() {
   const [tab, setTab] = useState<"chat" | "chat-beta" | "mlt" | "gw" | "gwr">("chat-beta");
   // Use ref to track manual tab selection immediately (synchronously) to prevent race conditions
   const manualTabSelectedRef = useRef(false);
+  const headerRef = useRef<HTMLDivElement | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -3692,7 +3730,7 @@ ${shareUrl}`;
         }
       `}</style>
       {/* Sticky iOS-style header */}
-      <div className="league-header-fixed bg-white border-b border-slate-200 shadow-sm">
+      <div ref={headerRef} className="league-header-fixed bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4">
           {/* Compact header bar */}
           <div className="flex items-center justify-between h-14">
