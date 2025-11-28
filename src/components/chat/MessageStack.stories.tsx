@@ -10,8 +10,16 @@ const meta: Meta<typeof MessageStack> = {
     messages: [
       { id: "1", text: "I typing can be weird a slow so I’ll see what can be done", time: "13:44" },
       { id: "2", text: "Can you check username length across the platform bendy", time: "13:45" },
+      { id: "3", text: "Me and cursor are best friends 4eva", time: "16:33" },
     ],
   },
+  decorators: [
+    (Story) => (
+      <div className="bg-[#f5f6fb] min-h-[300px] p-6">
+        <Story />
+      </div>
+    ),
+  ],
 };
 
 export default meta;
@@ -24,8 +32,6 @@ export const Outgoing: Story = {
     author: "",
     avatarInitials: "",
     isOwnMessage: true,
-    messages: [
-      { id: "1", text: "Check check", time: "23:59" },
-    ],
+    messages: [{ id: "4", text: "Check check", time: "23:59" }],
   },
 };

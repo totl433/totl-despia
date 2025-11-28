@@ -7,6 +7,13 @@ const meta: Meta<typeof ChatThread> = {
   parameters: {
     layout: "fullscreen",
   },
+  decorators: [
+    (Story) => (
+      <div className="min-h-screen bg-[#f5f6fb] p-6">
+        <Story />
+      </div>
+    ),
+  ],
 };
 
 export default meta;
