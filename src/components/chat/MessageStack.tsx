@@ -35,11 +35,8 @@ export function MessageStack({
       )}
 
       <div className={`flex flex-col gap-2 ${isOwnMessage ? "items-end" : "items-start"}`}>
-        {!isOwnMessage && (
-          <div className="text-sm font-semibold text-slate-600 -mb-1">{author}</div>
-        )}
         {messages.map((message, index) => {
-          const shape =
+          const shape: "single" | "top" | "middle" | "bottom" =
             messages.length === 1
               ? "single"
               : index === 0
@@ -51,6 +48,7 @@ export function MessageStack({
           return (
             <MessageBubble
               key={message.id}
+              author={!isOwnMessage && index === 0 ? author : undefined}
               text={message.text}
               time={message.time}
               isOwnMessage={isOwnMessage}
