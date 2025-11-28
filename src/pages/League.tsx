@@ -589,7 +589,6 @@ export default function LeaguePage() {
   // tabs: Chat / Mini League Table / GW Picks / GW Results
   // Default to "gwr" (GW Results) if gameweek is live or finished within 12 hours
   const [tab, setTab] = useState<"chat" | "chat-beta" | "mlt" | "gw" | "gwr">("chat-beta");
-  const [initialTabSet, setInitialTabSet] = useState(false);
   // Use ref to track manual tab selection immediately (synchronously) to prevent race conditions
   const manualTabSelectedRef = useRef(false);
 
@@ -644,6 +643,238 @@ export default function LeaguePage() {
     members.forEach((x) => m.set(x.id, x.name));
     return m;
   }, [members]);
+
+  const shareLeague = useCallback(() => {
+    if (!league?.code) return;
+    if (typeof window === "undefined" || typeof navigator === "undefined") return;
+
+    const shareText = `Join my mini league "${league.name}" on TotL!`;
+    const shareUrl = `${window.location.origin}/league/${league.code}`;
+    const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
+    if (typeof nav.share === "function") {
+      nav
+        .share({ title: `Join ${league.name}`, text: shareText, url: shareUrl })
+        .catch((err) => {
+          console.warn("[League] Share cancelled", err);
+        });
+      return;
+    }
+
+    const fallbackText = `${shareText}
+${shareUrl}`;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(fallbackText)
+        .then(() => window.alert?.("League link copied to clipboard!"))
+        .catch(() => {
+          window.prompt?.("Share this league code:", league.code);
+        });
+    } else {
+      window.prompt?.("Share this league code:", league.code);
+    }
+  }, [league]);
+
+  const leaveLeague = useCallback(async () => {
+    if (!league?.id || !user?.id) return;
+    setLeaving(true);
+    try {
+      const { error } = await supabase
+        .from("league_members")
+        .delete()
+        .eq("league_id", league.id)
+        .eq("user_id", user.id);
+      if (error) throw error;
+      if (typeof window !== "undefined") {
+        window.location.href = "/leagues";
+      }
+    } catch (error: any) {
+      console.error("[League] Error leaving league:", error);
+      if (typeof window !== "undefined") {
+        window.alert?.(error?.message ?? "Failed to leave league. Please try again.");
+      }
+    } finally {
+      setLeaving(false);
+      setShowLeaveConfirm(false);
+    }
+  }, [league?.id, user?.id]);
+
+  const joinLeague = useCallback(async () => {
+    if (!league?.id || !user?.id) return;
+    setJoining(true);
+    try {
+      if (members.length >= MAX_MEMBERS) {
+        if (typeof window !== "undefined") {
+          window.alert?.("League is full (max 8 members).");
+        }
+        setShowJoinConfirm(false);
+        return;
+      }
+      const { error } = await supabase
+        .from("league_members")
+        .insert({ league_id: league.id, user_id: user.id });
+      if (error) throw error;
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+    } catch (error: any) {
+      console.error("[League] Error joining league:", error);
+      if (typeof window !== "undefined") {
+        window.alert?.(error?.message ?? "Failed to join league.");
+      }
+    } finally {
+      setJoining(false);
+    }
+  }, [league?.id, user?.id, members.length]);
+
+  const removeMember = useCallback(async () => {
+    if (!memberToRemove || !league?.id || !user?.id) return;
+    setRemoving(true);
+    try {
+      const { error } = await supabase
+        .from("league_members")
+        .delete()
+        .eq("league_id", league.id)
+        .eq("user_id", memberToRemove.id);
+      if (error) throw error;
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+    } catch (error: any) {
+      console.error("[League] Error removing member:", error);
+      if (typeof window !== "undefined") {
+        window.alert?.(error?.message ?? "Failed to remove member.");
+      }
+    } finally {
+      setRemoving(false);
+      setShowRemoveConfirm(false);
+      setMemberToRemove(null);
+    }
+  }, [league?.id, memberToRemove, user?.id]);
+
+  const endLeague = useCallback(async () => {
+    if (!league?.id || !user?.id) return;
+    setEnding(true);
+    try {
+      const { error: membersError } = await supabase
+        .from("league_members")
+        .delete()
+        .eq("league_id", league.id);
+      if (membersError) throw membersError;
+
+      const { error: leagueError } = await supabase
+        .from("leagues")
+        .delete()
+        .eq("id", league.id);
+      if (leagueError) throw leagueError;
+
+      if (typeof window !== "undefined") {
+        window.location.href = "/leagues";
+      }
+    } catch (error: any) {
+      console.error("[League] Error ending league:", error);
+      if (typeof window !== "undefined") {
+        window.alert?.(error?.message ?? "Failed to end league.");
+      }
+    } finally {
+      setEnding(false);
+      setShowEndLeagueConfirm(false);
+    }
+  }, [league?.id, user?.id]);
+
+  const handleAvatarUpload = useCallback(
+    async (file: File) => {
+      if (!league?.id || !isAdmin) {
+        setAvatarUploadError("Only league admins can upload avatars.");
+        return;
+      }
+
+      const allowedTypes = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
+      if (!allowedTypes.has(file.type)) {
+        setAvatarUploadError("Please upload a PNG, JPG, or WebP image.");
+        return;
+      }
+
+      if (file.size > 2 * 1024 * 1024) {
+        setAvatarUploadError("Please choose an image smaller than 2MB.");
+        return;
+      }
+
+      setAvatarUploadError(null);
+      setAvatarUploadSuccess(false);
+      setUploadingAvatar(true);
+      try {
+        const compressed = await imageCompression(file, {
+          maxSizeMB: 0.02,
+          maxWidthOrHeight: 256,
+          useWebWorker: true,
+          initialQuality: 0.8,
+        });
+
+        if (compressed.size > 20 * 1024) {
+          throw new Error("Compressed image is still larger than 20KB. Try a smaller image.");
+        }
+
+        const mimeToExtension: Record<string, string> = {
+          "image/png": "png",
+          "image/jpeg": "jpg",
+          "image/jpg": "jpg",
+          "image/webp": "webp",
+        };
+        const extension = mimeToExtension[compressed.type] ?? "jpg";
+        const fileName = `${league.id}-${Date.now()}.${extension}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("league-avatars")
+          .upload(fileName, compressed, {
+            cacheControl: "3600",
+            upsert: true,
+            contentType: compressed.type,
+          });
+        if (uploadError) throw uploadError;
+
+        const { data: publicUrlData } = supabase.storage
+          .from("league-avatars")
+          .getPublicUrl(fileName);
+        const publicUrl = publicUrlData?.publicUrl;
+        if (!publicUrl) {
+          throw new Error("Unable to get public URL for avatar.");
+        }
+
+        const { error: updateError } = await supabase
+          .from("leagues")
+          .update({ avatar: publicUrl })
+          .eq("id", league.id);
+        if (updateError) throw updateError;
+
+        setLeague((prev) => (prev ? { ...prev, avatar: publicUrl } : prev));
+        setAvatarUploadSuccess(true);
+      } catch (error: any) {
+        console.error("[League] Error uploading avatar:", error);
+        setAvatarUploadError(error?.message ?? "Failed to upload avatar. Please try again.");
+      } finally {
+        setUploadingAvatar(false);
+      }
+    },
+    [isAdmin, league?.id]
+  );
+
+  const handleRemoveAvatar = useCallback(async () => {
+    if (!league?.id || !isAdmin) return;
+    setAvatarUploadError(null);
+    setAvatarUploadSuccess(false);
+    setUploadingAvatar(true);
+    try {
+      const { error } = await supabase.from("leagues").update({ avatar: null }).eq("id", league.id);
+      if (error) throw error;
+      setLeague((prev) => (prev ? { ...prev, avatar: null } : prev));
+      setAvatarUploadSuccess(true);
+    } catch (error: any) {
+      console.error("[League] Error removing avatar:", error);
+      setAvatarUploadError(error?.message ?? "Failed to remove avatar. Please try again.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }, [isAdmin, league?.id]);
 
   // Store GW deadlines for synchronous access
   const [gwDeadlines, setGwDeadlines] = useState<Map<number, Date>>(new Map());
@@ -3499,8 +3730,7 @@ export default function LeaguePage() {
             <button
               onClick={() => {
                 manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                setInitialTabSet(true); // Prevent auto-switch from interfering
-                setTab("chat-beta");
+                        setTab("chat-beta");
               }}
               className={
                 "flex-1 px-3 sm:px-6 py-3 text-sm font-semibold transition-colors relative " +
@@ -3517,8 +3747,7 @@ export default function LeaguePage() {
               <button
                 onClick={() => {
                   manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                  setInitialTabSet(true); // Prevent auto-switch from interfering
-                  setTab("gwr");
+                            setTab("gwr");
                 }}
                 className={
                   "flex-1 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight flex items-center justify-center gap-1.5 " +
@@ -3568,8 +3797,7 @@ export default function LeaguePage() {
               <button
                 onClick={() => {
                   manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                  setInitialTabSet(true); // Prevent auto-switch from interfering
-                  setTab("gw");
+                            setTab("gw");
                 }}
                 className={
                   "flex-1 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight " +
@@ -3586,8 +3814,7 @@ export default function LeaguePage() {
             <button
               onClick={() => {
                 manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                setInitialTabSet(true); // Prevent auto-switch from interfering
-                setTab("mlt");
+                        setTab("mlt");
               }}
               className={
                 "flex-1 px-3 sm:px-6 py-3 text-sm font-semibold transition-colors relative " +
