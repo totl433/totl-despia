@@ -634,6 +634,16 @@ export default function LeaguePage() {
     () => !!user?.id && members.some((m) => m.id === user.id),
     [user?.id, members]
   );
+  const isAdmin = useMemo(
+    () => !!user?.id && !!league?.created_by && league.created_by === user.id,
+    [user?.id, league?.created_by]
+  );
+  const adminName = useMemo(() => {
+    if (!league?.created_by) {
+      return "League admin";
+    }
+    return members.find((m) => m.id === league.created_by)?.name ?? "League admin";
+  }, [league?.created_by, members]);
   const memberNameById = useMemo(() => {
     const m = new Map<string, string>();
     members.forEach((x) => m.set(x.id, x.name));
@@ -858,7 +868,7 @@ export default function LeaguePage() {
 
       const { data: lg } = await supabase
         .from("leagues")
-        .select("id,name,code,created_at")
+        .select("id,name,code,created_at,created_by")
         .eq("code", code)
         .maybeSingle();
 
