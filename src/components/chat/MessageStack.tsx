@@ -19,27 +19,28 @@ export function MessageStack({
   isOwnMessage,
   avatarInitials,
 }: MessageStackProps) {
-  const alignment = isOwnMessage
-    ? "justify-end items-end"
-    : "justify-start items-start";
+  const alignment = isOwnMessage ? "justify-end" : "justify-start";
 
   return (
-    <div className={`flex gap-2 ${alignment}`}>
+    <div className={`flex gap-3 ${alignment}`}>
       {!isOwnMessage ? (
-        <div className="w-9">
-          <div className="w-9 h-9 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[13px] font-semibold text-slate-500">
+        <div className="flex flex-col items-center w-8">
+          <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[13px] font-semibold text-slate-500">
             {(avatarInitials || author.charAt(0)).toUpperCase()}
           </div>
+          <div className="flex-1 w-px bg-slate-200 mt-1" />
         </div>
       ) : (
-        <div className="w-9" />
+        <div className="w-8" />
       )}
 
-      <div className={`flex flex-col gap-2 ${isOwnMessage ? "items-end" : "items-start"}`}>
-        {messages.map((message, index) => (
+      <div className={`flex flex-col gap-3 ${isOwnMessage ? "items-end" : "items-start"}`}>
+        {!isOwnMessage && (
+          <div className="text-sm font-semibold text-slate-600 -mb-1">{author}</div>
+        )}
+        {messages.map((message) => (
           <MessageBubble
             key={message.id}
-            author={index === 0 ? author : ""}
             text={message.text}
             time={message.time}
             isOwnMessage={isOwnMessage}
