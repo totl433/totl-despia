@@ -8,6 +8,7 @@ import imageCompression from "browser-image-compression";
 import { getLeagueAvatarUrl } from "../lib/leagueAvatars";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { getTeamBadgePath } from "../lib/teamNames";
+import MiniLeagueChatBeta from "../components/MiniLeagueChatBeta";
 
 const MAX_MEMBERS = 8;
 
@@ -178,6 +179,15 @@ function Chip({
 /* =========================
    ChatTab (external to avoid remount on typing)
    ========================= */
+
+const getChatBubbleRadius = (isSelf: boolean, position: { isSingle: boolean; isTop: boolean; isMiddle: boolean; isBottom: boolean }) => {
+  if (position.isSingle) return '12px';
+  if (position.isTop) return isSelf ? '12px 12px 4px 12px' : '12px 12px 12px 4px';
+  if (position.isMiddle) return isSelf ? '12px 4px 4px 12px' : '4px 12px 12px 4px';
+  if (position.isBottom) return isSelf ? '12px 4px 12px 12px' : '4px 12px 12px 12px';
+  return '12px';
+};
+
 type ChatTabProps = {
   chat: ChatMsg[];
   userId?: string;
@@ -213,6 +223,29 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
       });
     });
   }, []);
+
+  const applyKeyboardLayout = useCallback(
+    (keyboardHeight: number, scrollDelays: number[] = [0, 100, 300, 500, 700]) => {
+      if (keyboardHeight > 0) {
+        setInputBottom(keyboardHeight);
+        if (listRef.current) {
+          const padding = Math.max(
+            keyboardHeight + (inputRef.current?.offsetHeight || 0) + 16,
+            80
+          );
+          listRef.current.style.paddingBottom = `${padding}px`;
+        }
+      } else {
+        setInputBottom(0);
+        if (listRef.current) {
+          listRef.current.style.paddingBottom = '';
+        }
+      }
+
+      scrollToBottomWithRetries(scrollDelays);
+    },
+    [scrollToBottomWithRetries]
+  );
 
   // Scroll when messages change
   useEffect(() => {
@@ -257,38 +290,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         }
         lastKeyboardHeight = keyboardHeight;
         
-        if (keyboardHeight > 100) {
-          // Keyboard is visible - position input above it
-          setInputBottom(keyboardHeight);
-          
-          // Calculate input area height dynamically - wait a bit for it to render
-          setTimeout(() => {
-            const inputAreaHeight = inputAreaRef.current?.offsetHeight || 100;
-            // Use keyboard height + input area height to ensure ALL messages are visible
-            // The padding needs to account for the full space from bottom of viewport to top of input
-            const paddingNeeded = keyboardHeight + inputAreaHeight + 20; // Full keyboard space + input + buffer
-            
-            // Add padding to messages so bottom messages are visible above input
-            if (listRef.current) {
-              listRef.current.style.paddingBottom = `${paddingNeeded}px`;
-              // Force reflow to ensure padding is applied
-              void listRef.current.offsetHeight;
-              
-              // Scroll after padding is definitely applied - multiple attempts
-              scrollToBottomWithRetries([0, 100, 300, 500, 700]);
-            }
-          }, 100);
-        } else {
-          // No keyboard - remove padding and ensure we scroll to show bottom message
-          setInputBottom(0);
-          if (listRef.current) {
-            listRef.current.style.paddingBottom = '';
-            // Force reflow after removing padding
-            void listRef.current.offsetHeight;
-            // Scroll to bottom after padding is removed to ensure last message is visible
-            scrollToBottomWithRetries([0, 50, 150, 300]);
-          }
-        }
+        applyKeyboardLayout(keyboardHeight);
       }, 50); // Small debounce delay
     };
 
@@ -319,7 +321,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         inputRef.current.removeEventListener('focus', handleFocus);
       }
     };
-  }, []);
+  }, [applyKeyboardLayout]);
 
   // Scroll on input focus and trigger layout update
   const handleInputFocus = () => {
@@ -332,25 +334,24 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         const viewportBottom = visualViewport.offsetTop + viewportHeight;
         const keyboardHeight = windowHeight - viewportBottom;
         
-        if (keyboardHeight > 100) {
-          setInputBottom(keyboardHeight);
-          setTimeout(() => {
-            const inputAreaHeight = inputAreaRef.current?.offsetHeight || 100;
-            // Use keyboard height + input area for full visibility
-            const paddingNeeded = keyboardHeight + inputAreaHeight + 20;
-            if (listRef.current) {
-              listRef.current.style.paddingBottom = `${paddingNeeded}px`;
-              void listRef.current.offsetHeight;
-              scrollToBottomWithRetries([0, 200, 400, 600, 800]);
-            }
-          }, 100);
-        }
+        applyKeyboardLayout(keyboardHeight, [0, 200, 400, 600, 800]);
       }, 100);
     }
     
     // Multiple scroll attempts for reliability
     scrollToBottomWithRetries([200, 400, 600]);
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const baseHeight = window.innerHeight;
+    const handleResize = () => {
+      const diff = baseHeight - window.innerHeight;
+      applyKeyboardLayout(diff > 0 ? diff : 0);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [applyKeyboardLayout]);
 
   // Dismiss keyboard when tapping messages area (WhatsApp-like behavior)
   const handleMessagesClick = (e: React.MouseEvent) => {
@@ -378,16 +379,63 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           cursor: 'pointer',
         }}
       >
-        {chat.map((m) => {
+        {chat.map((m, index) => {
           const mine = m.user_id === userId;
           const name = nameById.get(m.user_id) ?? "Unknown";
           const time = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          const prev = chat[index - 1];
+          const next = chat[index + 1];
+          const samePrev = prev?.user_id === m.user_id;
+          const sameNext = next?.user_id === m.user_id;
+          const startsRun = !samePrev;
+          const endsRun = !sameNext;
+          const isSingle = !samePrev && !sameNext;
+          const isTop = startsRun && sameNext;
+          const isMiddle = samePrev && sameNext;
+          const isBottom = samePrev && endsRun;
+          const showAvatar = !mine && (isSingle || isBottom);
+          const initials = name
+            .split(/\s+/)
+            .map((part) => part[0])
+            .join("")
+            .toUpperCase();
+          const rowClasses = mine ? "flex justify-end" : "flex items-end gap-2";
+          const bubbleWrapperClasses = [
+            "flex flex-col",
+            mine ? "items-end ml-auto" : "items-start",
+          ]
+            .filter(Boolean)
+            .join(" ");
           return (
-            <div key={m.id} className={`mb-2 flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${mine ? "bg-[#1C8376] text-white" : "bg-slate-100 text-slate-900"}`}>
-                {!mine && <div className="font-semibold text-xs text-slate-600 mb-1">{name}</div>}
-                <div className="whitespace-pre-wrap break-words">{m.content}</div>
-                <div className={`mt-1 text-[10px] ${mine ? "text-emerald-100" : "text-slate-500"}`}>{time}</div>
+            <div
+              key={m.id}
+              className={rowClasses}
+              style={{ marginTop: startsRun ? 24 : 4 }}
+            >
+              {!mine && (
+                <div className="flex-shrink-0 w-8 h-8 flex justify-center self-end">
+                  {showAvatar ? (
+                    <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500">
+                      {initials}
+                    </div>
+                  ) : (
+                    <div className="w-8 h-8" />
+                  )}
+                </div>
+              )}
+              <div className={bubbleWrapperClasses} style={{ maxWidth: "72%" }}>
+                <div
+                  className={`w-full px-3 py-2 text-sm leading-snug ${mine ? "bg-[#1C8376] text-white" : "bg-slate-100 text-slate-900"}`}
+                  style={{ borderRadius: getChatBubbleRadius(mine, { isSingle, isTop, isMiddle, isBottom }) }}
+                >
+                  <div className={`flex flex-col gap-1 ${mine ? "items-end text-right" : "items-start text-left"}`}>
+                    {startsRun && !mine && (
+                      <div className={`text-[11px] font-semibold ${mine ? "text-white/80" : "text-slate-600"}`}>{name}</div>
+                    )}
+                    <div className="whitespace-pre-wrap break-words">{m.content}</div>
+                    <div className="text-[11px] text-[#DCDCDD]">{time}</div>
+                  </div>
+                </div>
               </div>
             </div>
           );
@@ -534,16 +582,53 @@ export default function LeaguePage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const visualViewport = window.visualViewport;
+    if (!visualViewport) return;
+
+    let raf: number | null = null;
+
+    const applyTransform = () => {
+      const headerEl = headerRef.current;
+      if (!headerEl) return;
+      const offset = visualViewport.offsetTop ?? 0;
+      headerEl.style.setProperty(
+        "transform",
+        `translate3d(0, ${offset}px, 0)`,
+        "important"
+      );
+    };
+
+    const scheduleUpdate = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = window.requestAnimationFrame(applyTransform);
+    };
+
+    scheduleUpdate();
+    visualViewport.addEventListener("resize", scheduleUpdate);
+    visualViewport.addEventListener("scroll", scheduleUpdate);
+
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      visualViewport.removeEventListener("resize", scheduleUpdate);
+      visualViewport.removeEventListener("scroll", scheduleUpdate);
+      if (headerRef.current) {
+        headerRef.current.style.removeProperty("transform");
+      }
+    };
+  }, []);
+
   const [league, setLeague] = useState<League | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
 
   // tabs: Chat / Mini League Table / GW Picks / GW Results
   // Default to "gwr" (GW Results) if gameweek is live or finished within 12 hours
-  const [tab, setTab] = useState<"chat" | "mlt" | "gw" | "gwr">("chat");
-  const [initialTabSet, setInitialTabSet] = useState(false);
+  const [tab, setTab] = useState<"chat" | "chat-beta" | "mlt" | "gw" | "gwr">("chat-beta");
   // Use ref to track manual tab selection immediately (synchronously) to prevent race conditions
   const manualTabSelectedRef = useRef(false);
+  const headerRef = useRef<HTMLDivElement | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -586,11 +671,248 @@ export default function LeaguePage() {
     () => !!user?.id && members.some((m) => m.id === user.id),
     [user?.id, members]
   );
+  const isAdmin = useMemo(
+    () => !!user?.id && !!firstMember && firstMember.id === user.id,
+    [user?.id, firstMember]
+  );
+  const adminName = useMemo(() => firstMember?.name ?? "League admin", [firstMember]);
   const memberNameById = useMemo(() => {
     const m = new Map<string, string>();
     members.forEach((x) => m.set(x.id, x.name));
     return m;
   }, [members]);
+
+  const shareLeague = useCallback(() => {
+    if (!league?.code) return;
+    if (typeof window === "undefined" || typeof navigator === "undefined") return;
+
+    const shareText = `Join my mini league "${league.name}" on TotL!`;
+    const shareUrl = `${window.location.origin}/league/${league.code}`;
+    const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
+    if (typeof nav.share === "function") {
+      nav
+        .share({ title: `Join ${league.name}`, text: shareText, url: shareUrl })
+        .catch((err) => {
+          console.warn("[League] Share cancelled", err);
+        });
+      return;
+    }
+
+    const fallbackText = `${shareText}
+${shareUrl}`;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(fallbackText)
+        .then(() => window.alert?.("League link copied to clipboard!"))
+        .catch(() => {
+          window.prompt?.("Share this league code:", league.code);
+        });
+    } else {
+      window.prompt?.("Share this league code:", league.code);
+    }
+  }, [league]);
+
+  const leaveLeague = useCallback(async () => {
+    if (!league?.id || !user?.id) return;
+    setLeaving(true);
+    try {
+      const { error } = await supabase
+        .from("league_members")
+        .delete()
+        .eq("league_id", league.id)
+        .eq("user_id", user.id);
+      if (error) throw error;
+      if (typeof window !== "undefined") {
+        window.location.href = "/leagues";
+      }
+    } catch (error: any) {
+      console.error("[League] Error leaving league:", error);
+      if (typeof window !== "undefined") {
+        window.alert?.(error?.message ?? "Failed to leave league. Please try again.");
+      }
+    } finally {
+      setLeaving(false);
+      setShowLeaveConfirm(false);
+    }
+  }, [league?.id, user?.id]);
+
+  const joinLeague = useCallback(async () => {
+    if (!league?.id || !user?.id) return;
+    setJoining(true);
+    try {
+      if (members.length >= MAX_MEMBERS) {
+        if (typeof window !== "undefined") {
+          window.alert?.("League is full (max 8 members).");
+        }
+        setShowJoinConfirm(false);
+        return;
+      }
+      const { error } = await supabase
+        .from("league_members")
+        .insert({ league_id: league.id, user_id: user.id });
+      if (error) throw error;
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+    } catch (error: any) {
+      console.error("[League] Error joining league:", error);
+      if (typeof window !== "undefined") {
+        window.alert?.(error?.message ?? "Failed to join league.");
+      }
+    } finally {
+      setJoining(false);
+    }
+  }, [league?.id, user?.id, members.length]);
+
+  const removeMember = useCallback(async () => {
+    if (!memberToRemove || !league?.id || !user?.id) return;
+    setRemoving(true);
+    try {
+      const { error } = await supabase
+        .from("league_members")
+        .delete()
+        .eq("league_id", league.id)
+        .eq("user_id", memberToRemove.id);
+      if (error) throw error;
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+    } catch (error: any) {
+      console.error("[League] Error removing member:", error);
+      if (typeof window !== "undefined") {
+        window.alert?.(error?.message ?? "Failed to remove member.");
+      }
+    } finally {
+      setRemoving(false);
+      setShowRemoveConfirm(false);
+      setMemberToRemove(null);
+    }
+  }, [league?.id, memberToRemove, user?.id]);
+
+  const endLeague = useCallback(async () => {
+    if (!league?.id || !user?.id) return;
+    setEnding(true);
+    try {
+      const { error: membersError } = await supabase
+        .from("league_members")
+        .delete()
+        .eq("league_id", league.id);
+      if (membersError) throw membersError;
+
+      const { error: leagueError } = await supabase
+        .from("leagues")
+        .delete()
+        .eq("id", league.id);
+      if (leagueError) throw leagueError;
+
+      if (typeof window !== "undefined") {
+        window.location.href = "/leagues";
+      }
+    } catch (error: any) {
+      console.error("[League] Error ending league:", error);
+      if (typeof window !== "undefined") {
+        window.alert?.(error?.message ?? "Failed to end league.");
+      }
+    } finally {
+      setEnding(false);
+      setShowEndLeagueConfirm(false);
+    }
+  }, [league?.id, user?.id]);
+
+  const handleAvatarUpload = useCallback(
+    async (file: File) => {
+      if (!league?.id || !isAdmin) {
+        setAvatarUploadError("Only league admins can upload avatars.");
+        return;
+      }
+
+      const allowedTypes = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
+      if (!allowedTypes.has(file.type)) {
+        setAvatarUploadError("Please upload a PNG, JPG, or WebP image.");
+        return;
+      }
+
+      if (file.size > 2 * 1024 * 1024) {
+        setAvatarUploadError("Please choose an image smaller than 2MB.");
+        return;
+      }
+
+      setAvatarUploadError(null);
+      setAvatarUploadSuccess(false);
+      setUploadingAvatar(true);
+      try {
+        const compressed = await imageCompression(file, {
+          maxSizeMB: 0.02,
+          maxWidthOrHeight: 256,
+          useWebWorker: true,
+          initialQuality: 0.8,
+        });
+
+        if (compressed.size > 20 * 1024) {
+          throw new Error("Compressed image is still larger than 20KB. Try a smaller image.");
+        }
+
+        const mimeToExtension: Record<string, string> = {
+          "image/png": "png",
+          "image/jpeg": "jpg",
+          "image/jpg": "jpg",
+          "image/webp": "webp",
+        };
+        const extension = mimeToExtension[compressed.type] ?? "jpg";
+        const fileName = `${league.id}-${Date.now()}.${extension}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("league-avatars")
+          .upload(fileName, compressed, {
+            cacheControl: "3600",
+            upsert: true,
+            contentType: compressed.type,
+          });
+        if (uploadError) throw uploadError;
+
+        const { data: publicUrlData } = supabase.storage
+          .from("league-avatars")
+          .getPublicUrl(fileName);
+        const publicUrl = publicUrlData?.publicUrl;
+        if (!publicUrl) {
+          throw new Error("Unable to get public URL for avatar.");
+        }
+
+        const { error: updateError } = await supabase
+          .from("leagues")
+          .update({ avatar: publicUrl })
+          .eq("id", league.id);
+        if (updateError) throw updateError;
+
+        setLeague((prev) => (prev ? { ...prev, avatar: publicUrl } : prev));
+        setAvatarUploadSuccess(true);
+      } catch (error: any) {
+        console.error("[League] Error uploading avatar:", error);
+        setAvatarUploadError(error?.message ?? "Failed to upload avatar. Please try again.");
+      } finally {
+        setUploadingAvatar(false);
+      }
+    },
+    [isAdmin, league?.id]
+  );
+
+  const handleRemoveAvatar = useCallback(async () => {
+    if (!league?.id || !isAdmin) return;
+    setAvatarUploadError(null);
+    setAvatarUploadSuccess(false);
+    setUploadingAvatar(true);
+    try {
+      const { error } = await supabase.from("leagues").update({ avatar: null }).eq("id", league.id);
+      if (error) throw error;
+      setLeague((prev) => (prev ? { ...prev, avatar: null } : prev));
+      setAvatarUploadSuccess(true);
+    } catch (error: any) {
+      console.error("[League] Error removing avatar:", error);
+      setAvatarUploadError(error?.message ?? "Failed to remove avatar. Please try again.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }, [isAdmin, league?.id]);
 
   // Store GW deadlines for synchronous access
   const [gwDeadlines, setGwDeadlines] = useState<Map<number, Date>>(new Map());
@@ -968,381 +1290,6 @@ export default function LeaguePage() {
       window.removeEventListener('focus', handleFocus);
     };
   }, [league?.id]);
-
-  /* ---------- mark-as-read when viewing Chat + refetch messages when tab becomes active ---------- */
-  useEffect(() => {
-    if (tab !== "chat" || !league?.id || !user?.id) return;
-    
-    // Refetch messages when chat tab becomes active (in case user was on another tab when notification arrived)
-    loadAndMergeMessages(league.id, false);
-    
-    const mark = async () => {
-      await supabase
-        .from("league_message_reads")
-        .upsert(
-          { league_id: league.id, user_id: user.id, last_read_at: new Date().toISOString() },
-          { onConflict: "league_id,user_id" }
-        );
-    };
-    mark();
-  }, [tab, league?.id, user?.id]);
-
-  /* ---------- Avatar Upload ---------- */
-  const handleAvatarUpload = async (file: File) => {
-    if (!league || !user?.id || !isAdmin) {
-      setAvatarUploadError("Only admins can upload avatars");
-      return;
-    }
-
-    setUploadingAvatar(true);
-    setAvatarUploadError(null);
-    setAvatarUploadSuccess(false);
-
-    try {
-      // Verify user is authenticated with Supabase
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session) {
-        console.error('[Avatar Upload] No Supabase session:', sessionError);
-        throw new Error('You must be logged in to upload avatars. Please refresh the page and try again.');
-      }
-      
-      // Log project info for debugging
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const projectRef = supabaseUrl?.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
-      console.log('[Avatar Upload] Supabase project:', {
-        url: supabaseUrl,
-        projectRef: projectRef,
-        userId: session.user.id,
-      });
-      // Validate file type
-      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
-      if (!validTypes.includes(file.type)) {
-        throw new Error('Invalid file type. Please upload PNG, JPG, or WebP images.');
-      }
-
-      // Validate file size (max 2MB before compression)
-      const maxSizeBeforeCompression = 2 * 1024 * 1024; // 2MB
-      if (file.size > maxSizeBeforeCompression) {
-        throw new Error('File size too large. Please upload an image smaller than 2MB.');
-      }
-
-      // Compress and resize image for optimal web performance
-      // Target: 50-75KB for good quality while maintaining fast load times
-      // Avatars are small (48-56px displayed), so we can be more aggressive with compression
-      let compressedFile: File = file;
-      const targetSizeKB = 60; // 60KB target - good balance between quality and performance
-      const maxAllowedSize = 80 * 1024; // 80KB max (33% buffer for complex images)
-      
-      console.log(`[Avatar Upload] Starting compression. Original size: ${(file.size / 1024).toFixed(1)}KB`);
-      
-      // Check if browser supports WebP (better compression than JPEG)
-      const supportsWebP = document.createElement('canvas').toDataURL('image/webp').indexOf('data:image/webp') === 0;
-      const preferredFormat = supportsWebP ? 'image/webp' : 'image/jpeg';
-      
-      // Compression configs: Start with good quality, get more aggressive if needed
-      const compressionConfigs = [
-        { maxWidthOrHeight: 256, initialQuality: 0.85, format: preferredFormat }, // High quality first
-        { maxWidthOrHeight: 256, initialQuality: 0.75, format: preferredFormat },
-        { maxWidthOrHeight: 256, initialQuality: 0.65, format: 'image/jpeg' }, // Fallback to JPEG
-        { maxWidthOrHeight: 200, initialQuality: 0.6, format: 'image/jpeg' },
-        { maxWidthOrHeight: 200, initialQuality: 0.5, format: 'image/jpeg' },
-      ];
-      
-      let compressionSuccess = false;
-      
-      for (let i = 0; i < compressionConfigs.length; i++) {
-        const config = compressionConfigs[i];
-        try {
-          const options: any = {
-            maxSizeMB: targetSizeKB / 1024, // 60KB target
-            maxWidthOrHeight: config.maxWidthOrHeight,
-            useWebWorker: true,
-            fileType: config.format,
-            initialQuality: config.initialQuality,
-          };
-
-          compressedFile = await imageCompression(file, options);
-          const actualSizeKB = compressedFile.size / 1024;
-          
-          console.log(`[Avatar Upload] Attempt ${i + 1}: ${actualSizeKB.toFixed(1)}KB (target: ${targetSizeKB}KB, format: ${config.format})`);
-          
-          // If we got under the max allowed size, we're done
-          if (compressedFile.size <= maxAllowedSize) {
-            compressionSuccess = true;
-            console.log(`[Avatar Upload] Compression successful: ${actualSizeKB.toFixed(1)}KB`);
-            break;
-          }
-        } catch (compressionError: any) {
-          console.warn(`[Avatar Upload] Compression attempt ${i + 1} failed:`, compressionError.message);
-          // Continue to next attempt
-        }
-      }
-
-      // Final validation - be more lenient for complex images
-      if (!compressionSuccess || compressedFile.size > maxAllowedSize) {
-        const actualSizeKB = (compressedFile.size / 1024).toFixed(1);
-        // If it's close (within 100KB), allow it but warn
-        if (compressedFile.size <= 100 * 1024) {
-          console.warn(`[Avatar Upload] Image slightly over target (${actualSizeKB}KB) but acceptable`);
-          compressionSuccess = true;
-        } else {
-          throw new Error(
-            `Image is too large (${actualSizeKB}KB). Please use a smaller or simpler image. ` +
-            `Recommended: images under 2MB before upload, with less detail or fewer colors.`
-          );
-        }
-      }
-
-      // Generate unique filename with correct extension based on compressed format
-      let fileExt = 'jpg';
-      if (compressedFile.type.includes('webp')) {
-        fileExt = 'webp';
-      } else if (compressedFile.type.includes('png')) {
-        fileExt = 'png';
-      }
-      const fileName = `${league.id}.${fileExt}`;
-
-      // Try to verify bucket exists (may fail due to permissions, but that's OK)
-      const { data: buckets, error: listError } = await supabase.storage.listBuckets();
-      if (listError) {
-        console.warn('[Avatar Upload] Could not list buckets (this is OK if you lack list permissions):', listError);
-      } else {
-        const bucketExists = buckets?.some(b => {
-          const idMatch = b.id === 'league-avatars';
-          const nameMatch = b.name === 'league-avatars';
-          if (idMatch || nameMatch) {
-            console.log('[Avatar Upload] Found bucket:', { id: b.id, name: b.name });
-          }
-          return idMatch || nameMatch;
-        });
-        console.log('[Avatar Upload] Available buckets:', buckets?.map(b => ({ id: b.id, name: b.name })));
-        if (buckets && buckets.length > 0 && !bucketExists) {
-          console.warn(`[Avatar Upload] Bucket 'league-avatars' not in list. Available: ${buckets.map(b => b.id || b.name).join(', ')}`);
-        }
-      }
-      
-      console.log('[Avatar Upload] Attempting upload to bucket: league-avatars');
-
-      // Upload to Supabase Storage (attempt even if listing failed)
-      const { error: uploadError, data: uploadData } = await supabase.storage
-        .from('league-avatars')
-        .upload(fileName, compressedFile, {
-          upsert: true, // Replace existing file if it exists
-          contentType: compressedFile.type,
-        });
-
-      if (uploadError) {
-        console.error('[Avatar Upload] Upload error details:', {
-          message: uploadError.message,
-          error: uploadError,
-        });
-        throw new Error(`Upload failed: ${uploadError.message}`);
-      }
-      
-      console.log('[Avatar Upload] Upload successful:', uploadData);
-
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('league-avatars')
-        .getPublicUrl(fileName);
-
-      if (!urlData?.publicUrl) {
-        throw new Error('Failed to get public URL for uploaded avatar');
-      }
-
-      // Update league avatar in database
-      const { error: updateError } = await supabase
-        .from('leagues')
-        .update({ avatar: urlData.publicUrl })
-        .eq('id', league.id);
-
-      if (updateError) {
-        throw new Error(`Failed to update league: ${updateError.message}`);
-      }
-
-      // Refresh league data
-      const { data: updatedLeague } = await supabase
-        .from('leagues')
-        .select('*')
-        .eq('id', league.id)
-        .single();
-
-      if (updatedLeague) {
-        setLeague(updatedLeague as League);
-      }
-
-      setAvatarUploadSuccess(true);
-      setTimeout(() => {
-        setShowAvatarUpload(false);
-        setAvatarUploadSuccess(false);
-      }, 2000);
-    } catch (error: any) {
-      console.error('Avatar upload error:', error);
-      setAvatarUploadError(error.message || 'Failed to upload avatar. Please try again.');
-    } finally {
-      setUploadingAvatar(false);
-    }
-  };
-
-  const handleRemoveAvatar = async () => {
-    if (!league || !user?.id || !isAdmin) return;
-
-    setUploadingAvatar(true);
-    setAvatarUploadError(null);
-
-    try {
-      // Remove avatar from database (set to null)
-      const { error: updateError } = await supabase
-        .from('leagues')
-        .update({ avatar: null })
-        .eq('id', league.id);
-
-      if (updateError) {
-        throw new Error(`Failed to remove avatar: ${updateError.message}`);
-      }
-
-      // Refresh league data
-      const { data: updatedLeague } = await supabase
-        .from('leagues')
-        .select('*')
-        .eq('id', league.id)
-        .single();
-
-      if (updatedLeague) {
-        setLeague(updatedLeague as League);
-      }
-
-      setShowAvatarUpload(false);
-    } catch (error: any) {
-      console.error('Remove avatar error:', error);
-      setAvatarUploadError(error.message || 'Failed to remove avatar. Please try again.');
-    } finally {
-      setUploadingAvatar(false);
-    }
-  };
-
-  /* ---------- leave/join/admin ---------- */
-  async function leaveLeague() {
-    if (!league || !user?.id) return;
-    setLeaving(true);
-    try {
-      const { error } = await supabase
-        .from("league_members")
-        .delete()
-        .eq("league_id", league.id)
-        .eq("user_id", user.id);
-      if (error) throw error;
-      window.location.href = "/leagues";
-    } catch (error) {
-      console.error("Error leaving league:", error);
-      alert("Failed to leave league. Please try again.");
-    } finally {
-      setLeaving(false);
-      setShowLeaveConfirm(false);
-    }
-  }
-
-  async function joinLeague() {
-    if (!league || !user?.id) return;
-    setJoining(true);
-    try {
-      if (members.length >= MAX_MEMBERS) {
-        alert("League is full (max 8 members).");
-        setShowJoinConfirm(false);
-        return;
-      }
-      const { error } = await supabase
-        .from("league_members")
-        .insert({ league_id: league.id, user_id: user.id });
-      if (error) throw error;
-      window.location.reload();
-    } catch (e: any) {
-      alert(e?.message ?? "Failed to join league.");
-    } finally {
-      setJoining(false);
-    }
-  }
-
-  const isAdmin = useMemo(() => {
-    return league?.created_by === user?.id || (firstMember && firstMember.id === user?.id && !league?.created_by);
-  }, [league?.created_by, user?.id, firstMember]);
-
-  const adminName = useMemo(() => {
-    return league?.created_by
-      ? members.find((m) => m.id === league.created_by)?.name || "Unknown"
-      : firstMember
-      ? firstMember.name
-      : "Unknown";
-  }, [league?.created_by, members, firstMember]);
-
-  async function removeMember() {
-    if (!memberToRemove || !league || !user?.id) return;
-    setRemoving(true);
-    try {
-      const { error } = await supabase
-        .from("league_members")
-        .delete()
-        .eq("league_id", league.id)
-        .eq("user_id", memberToRemove.id);
-      if (error) throw error;
-      window.location.reload();
-    } catch (e: any) {
-      alert(e?.message ?? "Failed to remove member.");
-    } finally {
-      setRemoving(false);
-      setShowRemoveConfirm(false);
-      setMemberToRemove(null);
-    }
-  }
-
-  async function endLeague() {
-    if (!league || !user?.id) return;
-    setEnding(true);
-    try {
-      const { error: membersError } = await supabase
-        .from("league_members")
-        .delete()
-        .eq("league_id", league.id);
-      if (membersError) throw membersError;
-
-      const { error: leagueError } = await supabase
-        .from("leagues")
-        .delete()
-        .eq("id", league.id);
-      if (leagueError) throw leagueError;
-
-      window.location.href = "/leagues";
-    } catch (e: any) {
-      alert(e?.message ?? "Failed to end league.");
-    } finally {
-      setEnding(false);
-      setShowEndLeagueConfirm(false);
-    }
-  }
-
-  function shareLeague() {
-    if (!league) return;
-    const shareText = `Join my mini league "${league.name}" on TotL!`;
-    const shareUrl = `${window.location.origin}/league/${league.code}`;
-    if (navigator.share) {
-      navigator
-        .share({
-          title: `Join ${league.name}`,
-          text: shareText,
-          url: shareUrl,
-        })
-        .catch(console.error);
-    } else {
-      navigator.clipboard
-        .writeText(`${shareText}\n\n${shareUrl}`)
-        .then(() => {
-          alert("League link copied to clipboard!");
-        })
-        .catch(() => {
-          prompt("Share this league code:", league.code);
-        });
-    }
-  }
 
   /* ---------- send chat ---------- */
   const sendChat = useCallback(async () => {
@@ -1844,70 +1791,6 @@ export default function LeaguePage() {
 
   // Real-time live scores are now handled by useLiveScores hook above
   // No polling needed - scores update instantly when Netlify writes to live_scores table
-
-  // Set default tab to "gwr" (GW Results) if gameweek is live or finished within 12 hours
-  // Only runs once on initial load when on chat tab - never auto-switches after user manually selects a tab
-  useEffect(() => {
-    // Only set initial tab once, and only if we're on the chat tab
-    // Once initialTabSet is true OR user has manually selected a tab, this effect will never run again
-    if (initialTabSet || manualTabSelectedRef.current || !fixtures.length || tab !== "chat") return;
-    
-    // Only apply to current GW (or API Test league GW 1)
-    const isApiTestLeague = league?.name === 'API Test';
-    const viewingCurrentGw = isApiTestLeague ? true : (selectedGw === currentGw || selectedGw === null);
-    if (!viewingCurrentGw) {
-      setInitialTabSet(true);
-      return;
-    }
-    
-    const now = new Date();
-    
-    // Check if first game has started
-    const firstFixture = fixtures[0];
-    const firstKickoff = firstFixture?.kickoff_time ? new Date(firstFixture.kickoff_time) : null;
-    const firstGameStarted = firstKickoff && firstKickoff <= now;
-    
-    // Check if last game has finished and it's been less than 12 hours since finish
-    const lastFixture = fixtures[fixtures.length - 1];
-    const lastKickoff = lastFixture?.kickoff_time ? new Date(lastFixture.kickoff_time) : null;
-    const lastFixtureIndex = lastFixture?.fixture_index;
-    
-    // Check liveScores for last fixture status
-    const lastFixtureScore = lastFixtureIndex !== undefined ? liveScores[lastFixtureIndex] : null;
-    const lastGameFinished = lastFixtureScore?.status === 'FINISHED';
-    
-    // If last game finished, check if it's been less than 12 hours since finish
-    let lastGameFinishedWithin12Hours = false;
-    if (lastGameFinished && lastKickoff) {
-      // Estimate finish time as kickoff + 2 hours (typical match duration ~90 min + stoppage + halftime)
-      const estimatedFinishTime = new Date(lastKickoff.getTime() + (2 * 60 * 60 * 1000));
-      const hoursSinceFinish = (now.getTime() - estimatedFinishTime.getTime()) / (1000 * 60 * 60);
-      // Check if finished and it's been less than 12 hours since finish
-      lastGameFinishedWithin12Hours = hoursSinceFinish <= 12 && hoursSinceFinish >= 0;
-    }
-    
-    // Also check if any game is currently live (IN_PLAY or PAUSED)
-    const hasLiveGame = Object.values(liveScores).some(
-      score => score.status === 'IN_PLAY' || score.status === 'PAUSED'
-    );
-    
-    // Set tab to "gwr" if first game started OR last game finished within 12 hours OR has live game
-    if (firstGameStarted || lastGameFinishedWithin12Hours || hasLiveGame) {
-      console.log('[League] Setting default tab to GW Results:', {
-        firstGameStarted,
-        lastGameFinishedWithin12Hours,
-        hasLiveGame,
-        lastFixtureScore: lastFixtureScore?.status,
-        viewingCurrentGw
-      });
-      setTab("gwr");
-      setInitialTabSet(true);
-    } else {
-      setInitialTabSet(true);
-    }
-    // Note: Removed 'tab' from dependencies to prevent re-running when user manually switches tabs
-    // The effect only needs to run once when fixtures/liveScores first load
-  }, [fixtures, liveScores, initialTabSet, currentGw, selectedGw, league?.name]);
 
   const submittedMap = useMemo(() => {
     const m = new Map<string, boolean>();
@@ -3847,7 +3730,7 @@ export default function LeaguePage() {
         }
       `}</style>
       {/* Sticky iOS-style header */}
-      <div className="league-header-fixed bg-white border-b border-slate-200 shadow-sm">
+      <div ref={headerRef} className="league-header-fixed bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4">
           {/* Compact header bar */}
           <div className="flex items-center justify-between h-14">
@@ -3885,16 +3768,15 @@ export default function LeaguePage() {
             <button
               onClick={() => {
                 manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                setInitialTabSet(true); // Prevent auto-switch from interfering
-                setTab("chat");
+                        setTab("chat-beta");
               }}
               className={
                 "flex-1 px-3 sm:px-6 py-3 text-sm font-semibold transition-colors relative " +
-                (tab === "chat" ? "text-[#1C8376]" : "text-slate-400")
+                (tab === "chat-beta" ? "text-[#1C8376]" : "text-slate-400")
               }
             >
-              Chat
-              {tab === "chat" && (
+              Chat (beta)
+              {tab === "chat-beta" && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
               )}
             </button>
@@ -3903,8 +3785,7 @@ export default function LeaguePage() {
               <button
                 onClick={() => {
                   manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                  setInitialTabSet(true); // Prevent auto-switch from interfering
-                  setTab("gwr");
+                            setTab("gwr");
                 }}
                 className={
                   "flex-1 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight flex items-center justify-center gap-1.5 " +
@@ -3954,8 +3835,7 @@ export default function LeaguePage() {
               <button
                 onClick={() => {
                   manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                  setInitialTabSet(true); // Prevent auto-switch from interfering
-                  setTab("gw");
+                            setTab("gw");
                 }}
                 className={
                   "flex-1 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight " +
@@ -3972,8 +3852,7 @@ export default function LeaguePage() {
             <button
               onClick={() => {
                 manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                setInitialTabSet(true); // Prevent auto-switch from interfering
-                setTab("mlt");
+                        setTab("mlt");
               }}
               className={
                 "flex-1 px-3 sm:px-6 py-3 text-sm font-semibold transition-colors relative " +
@@ -4080,7 +3959,15 @@ export default function LeaguePage() {
             maxMembers={MAX_MEMBERS}
             notificationStatus={notificationStatus}
           />
-            </div>
+        </div>
+      ) : tab === "chat-beta" ? (
+
+        <div className="chat-tab-wrapper">
+          <MiniLeagueChatBeta
+            miniLeagueId={league?.id ?? null}
+            memberNames={memberNameById}
+          />
+        </div>
       ) : (
         <div className="league-content-wrapper">
           <div className="px-1 sm:px-2">
