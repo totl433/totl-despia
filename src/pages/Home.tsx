@@ -86,6 +86,8 @@ export default function HomePage() {
     for (const f of fixtures) {
       if (f.api_match_id) ids.push(f.api_match_id);
     }
+    console.log('[Home] apiMatchIds for live scores:', ids);
+    console.log('[Home] Fixtures count:', fixtures.length, 'with api_match_id:', ids.length);
     return ids;
   }, [fixtures]);
 
@@ -97,7 +99,10 @@ export default function HomePage() {
 
   // Convert Map to Record format - optimized
   const liveScores = useMemo(() => {
-    if (!fixtures?.length || !liveScoresMap.size) return {};
+    if (!fixtures?.length || !liveScoresMap.size) {
+      console.log('[Home] No live scores - fixtures:', fixtures?.length, 'liveScoresMap size:', liveScoresMap.size);
+      return {};
+    }
     const result: Record<number, { 
       homeScore: number; 
       awayScore: number; 
@@ -109,10 +114,12 @@ export default function HomePage() {
       away_team?: string | null;
     }> = {};
     
+    console.log('[Home] Processing live scores - fixtures:', fixtures.length, 'liveScoresMap size:', liveScoresMap.size);
     for (const fixture of fixtures) {
       if (fixture.api_match_id) {
         const liveScore = liveScoresMap.get(fixture.api_match_id);
         if (liveScore) {
+          console.log('[Home] Found live score for fixture', fixture.fixture_index, 'api_match_id:', fixture.api_match_id, 'score:', liveScore.home_score, '-', liveScore.away_score, 'status:', liveScore.status);
           result[fixture.fixture_index] = {
             homeScore: liveScore.home_score ?? 0,
             awayScore: liveScore.away_score ?? 0,
@@ -123,9 +130,12 @@ export default function HomePage() {
             home_team: liveScore.home_team ?? null,
             away_team: liveScore.away_team ?? null
           };
+        } else {
+          console.log('[Home] No live score found for fixture', fixture.fixture_index, 'api_match_id:', fixture.api_match_id);
         }
       }
     }
+    console.log('[Home] Live scores result:', Object.keys(result).length, 'matches');
     return result;
   }, [liveScoresMap, fixtures]);
 
@@ -402,6 +412,7 @@ export default function HomePage() {
     
     let alive = true;
     const leagueDataCacheKey = `home:leagueData:${user.id}:${gw}`;
+    let loadedFromCache = false;
     
     // 1. Load from cache immediately (if available)
     try {
@@ -423,6 +434,7 @@ export default function HomePage() {
         setLeagueData(restoredLeagueData);
         setLeagueSubmissions(cached.leagueSubmissions || {});
         setLeagueDataLoading(false);
+        loadedFromCache = true;
       }
     } catch (error) {
       console.warn('[Home] Error loading leagueData from cache, fetching fresh data:', error);
@@ -432,8 +444,11 @@ export default function HomePage() {
     (async () => {
       try {
         if (!alive) return;
-        setLeagueData({});
-        setLeagueDataLoading(true);
+        // Only set loading state if we didn't load from cache
+        if (!loadedFromCache) {
+          setLeagueData({});
+          setLeagueDataLoading(true);
+        }
         
         const leagueIds = leagues.map(l => l.id);
         

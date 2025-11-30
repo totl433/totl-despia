@@ -74,6 +74,12 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
           return;
         }
 
+        console.log('[useLiveScores] Fetched live scores:', (data || []).length, 'records');
+        if (apiMatchIds && apiMatchIds.length > 0) {
+          console.log('[useLiveScores] Looking for api_match_ids:', apiMatchIds);
+          console.log('[useLiveScores] Found api_match_ids in response:', (data || []).map((s: LiveScore) => s.api_match_id));
+        }
+
         // Initialize map with fetched data
         const fetchedMap = new Map<number, LiveScore>();
         (data || []).forEach((score: LiveScore) => {
