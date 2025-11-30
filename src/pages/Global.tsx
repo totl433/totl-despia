@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
+import { getCached, setCached, CACHE_TTL } from "../lib/cache";
 
 type OverallRow = {
   user_id: string;
@@ -53,9 +54,42 @@ export default function GlobalLeaderboardPage() {
 
   useEffect(() => {
     let alive = true;
+    const cacheKey = `global:leaderboard`;
+    let loadedFromCache = false;
+    
+    // 1. Load from cache immediately (if available)
+    try {
+      const cached = getCached<{
+        latestGw: number;
+        gwPoints: GwPointsRow[];
+        overall: OverallRow[];
+        prevOcp: Record<string, number>;
+      }>(cacheKey);
+      
+      if (cached && cached.gwPoints && Array.isArray(cached.gwPoints) && cached.gwPoints.length > 0) {
+        // INSTANT RENDER from cache!
+        // Loaded from cache
+        setLatestGw(cached.latestGw);
+        setGwPoints(cached.gwPoints);
+        setOverall(cached.overall || []);
+        setPrevOcp(cached.prevOcp || {});
+        setLoading(false);
+        loadedFromCache = true;
+      } else {
+        // No valid cache found, will fetch fresh data
+      }
+    } catch (error) {
+      // If cache is corrupted, just continue with fresh fetch
+      // Error loading from cache (non-critical)
+    }
+    
+    // 2. Fetch fresh data in background
     (async () => {
       try {
-        setLoading(true);
+        // Only set loading state if we didn't load from cache
+        if (!loadedFromCache) {
+          setLoading(true);
+        }
         setErr("");
 
         // 1) latest GW from results
@@ -87,6 +121,7 @@ export default function GlobalLeaderboardPage() {
         setOverall((ocp as OverallRow[]) ?? []);
 
         // 4) previous OCP totals (up to gw-1) to compute rank movement
+        let prevOcpData: Record<string, number> = {};
         if (gw && gw > 1) {
           // Use the already fetched gwPoints data instead of making another query
           const prevList = (gp as GwPointsRow[] | null)?.filter(r => r.gw < gw) ?? [];
@@ -95,9 +130,23 @@ export default function GlobalLeaderboardPage() {
           prevList.forEach((r) => {
             totals[r.user_id] = (totals[r.user_id] ?? 0) + (r.points ?? 0);
           });
+          prevOcpData = totals;
           if (alive) setPrevOcp(totals);
         } else {
           if (alive) setPrevOcp({});
+        }
+        
+        // Cache the processed data for next time
+        try {
+          setCached(cacheKey, {
+            latestGw: gw,
+            gwPoints: (gp as GwPointsRow[]) ?? [],
+            overall: (ocp as OverallRow[]) ?? [],
+            prevOcp: prevOcpData,
+          }, CACHE_TTL.GLOBAL);
+          // Cached data for next time
+        } catch (cacheError) {
+          // Failed to cache data (non-critical)
         }
       } catch (e: any) {
         if (alive) setErr(e?.message ?? "Failed to load leaderboard.");
@@ -233,16 +282,22 @@ export default function GlobalLeaderboardPage() {
     const byUserThisGw = new Map<string, number>();
     currentGwPoints.forEach((r) => byUserThisGw.set(r.user_id, r.points));
 
-    const merged = overall.map((o) => ({
-      user_id: o.user_id,
-      name: o.name ?? "User",
-      this_gw: byUserThisGw.get(o.user_id) ?? 0,
-      ocp: o.ocp ?? 0,
-    }));
+    // Optimize: use Set to track which users are already in merged
+    const mergedUserIds = new Set<string>();
+    const merged = overall.map((o) => {
+      mergedUserIds.add(o.user_id);
+      return {
+        user_id: o.user_id,
+        name: o.name ?? "User",
+        this_gw: byUserThisGw.get(o.user_id) ?? 0,
+        ocp: o.ocp ?? 0,
+      };
+    });
 
     // include users that have this GW points but not yet in overall
     currentGwPoints.forEach((g) => {
-      if (!merged.find((m) => m.user_id === g.user_id)) {
+      if (!mergedUserIds.has(g.user_id)) {
+        mergedUserIds.add(g.user_id);
         merged.push({
           user_id: g.user_id,
           name: "User",

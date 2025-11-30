@@ -186,10 +186,9 @@ function Chip({
         "align-middle",
         tone,
       ].join(" ")}
-      title={unicorn ? "Unicorn!" : undefined}
+      title={unicorn ? "Correct!" : undefined}
     >
       {letter}
-      {unicorn ? <span className="ml-1">🦄</span> : null}
     </span>
   );
 }
@@ -1325,13 +1324,13 @@ export default function LeaguePage() {
                                               zIndex: idx
                                             }}
                                           >
-                                            <Chip letter={letter} correct={isCorrect} unicorn={false} />
+                                            <Chip letter={letter} correct={isCorrect} unicorn={isCorrect === true} />
                                           </span>
                                         );
                                       }
                                       
                                       return (
-                                        <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} />
+                                        <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={isCorrect === true} />
                                       );
                                     })}
                                   </div>

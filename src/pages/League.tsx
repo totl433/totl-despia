@@ -168,10 +168,9 @@ function Chip({
         "align-middle",
         tone,
       ].join(" ")}
-      title={unicorn ? "Unicorn!" : undefined}
+      title={unicorn ? "Correct!" : undefined}
     >
       {letter}
-      {unicorn ? <span className="ml-1">🦄</span> : null}
     </span>
   );
 }
@@ -2805,9 +2804,9 @@ ${shareUrl}`;
 
                           const toChips = (want: "H" | "D" | "A") => {
                             const filtered = these.filter((p) => p.pick === want);
-                            // For API Test league, check live scores for outcomes
+                            // For API Test league, check live scores for outcomes (for all test GWs)
                             let actualResult: "H" | "D" | "A" | null = null;
-                            if (league?.name === 'API Test' && picksGw === 1) {
+                            if (league?.name === 'API Test') {
                               if (liveScore) {
                                 if (liveScore.homeScore > liveScore.awayScore) actualResult = 'H';
                                 else if (liveScore.awayScore > liveScore.homeScore) actualResult = 'A';
@@ -2852,13 +2851,13 @@ ${shareUrl}`;
                                             zIndex: idx
                                           }}
                                         >
-                                          <Chip letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
+                                          <Chip letter={letter} correct={isCorrect} unicorn={isCorrect === true} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
                                         </span>
                                       );
                                     }
                                     
                                     return (
-                                      <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
+                                      <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={isCorrect === true} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
                                     );
                                   })}
                                 </div>
@@ -3078,13 +3077,13 @@ ${shareUrl}`;
                                               zIndex: idx
                                             }}
                                           >
-                                            <Chip letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
+                                            <Chip letter={letter} correct={isCorrect} unicorn={isCorrect === true} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
                                           </span>
                                         );
                                       }
                                       
                                       return (
-                                        <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={false} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
+                                        <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={isCorrect === true} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
                                       );
                                     })}
                                   </div>

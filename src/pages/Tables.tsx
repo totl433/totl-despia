@@ -67,7 +67,7 @@ export default function TablesPage() {
       
       if (cached && cached.rows && Array.isArray(cached.rows) && cached.rows.length > 0) {
         // INSTANT RENDER from cache!
-        console.log('[Tables] ✅ Loading from cache:', cached.rows.length, 'leagues');
+        // Loaded from cache
         setRows(cached.rows);
         setCurrentGw(cached.currentGw);
         setLeagueSubmissions(cached.leagueSubmissions || {});
@@ -87,11 +87,11 @@ export default function TablesPage() {
         setLoading(false);
         setLeagueDataLoading(false); // Hide spinner immediately when cache is available
       } else {
-        console.log('[Tables] ⚠️ No valid cache found, will fetch fresh data');
+        // No valid cache found, will fetch fresh data
       }
     } catch (error) {
       // If cache is corrupted, just continue with fresh fetch
-      console.warn('[Tables] Error loading from cache, fetching fresh data:', error);
+      // Error loading from cache (non-critical)
     }
     
     // 2. Fetch fresh data in background
@@ -162,11 +162,14 @@ export default function TablesPage() {
           membersByLeague.set(r.league_id, arr);
         });
 
+        // Optimize: use Set for faster lookups
         const allMemberIds = Array.from(new Set(Array.from(membersByLeague.values()).flat()));
+        const allMemberIdsSet = new Set(allMemberIds);
         const apiTestLeague = leagues.find(l => l.name === "API Test");
         const apiTestMemberIds = apiTestLeague ? (membersByLeague.get(apiTestLeague.id) ?? []) : [];
+        const apiTestMemberIdsSet = new Set(apiTestMemberIds);
         const regularMemberIds = apiTestLeague 
-          ? allMemberIds.filter(id => !apiTestMemberIds.includes(id))
+          ? allMemberIds.filter(id => !apiTestMemberIdsSet.has(id))
           : allMemberIds;
         
         // Step 3: Fetch submissions and test API data in parallel
@@ -214,9 +217,10 @@ export default function TablesPage() {
         for (const league of leagues) {
           const memberIds = membersByLeague.get(league.id) ?? [];
           const totalCount = memberIds.length;
+          // Optimize: count directly instead of filtering
           const submittedCount = league.id === apiTestLeague?.id
-            ? memberIds.filter(id => testApiSubmittedUserIds.has(id)).length
-            : memberIds.filter(id => submittedUserIds.has(id)).length;
+            ? memberIds.reduce((count, id) => count + (testApiSubmittedUserIds.has(id) ? 1 : 0), 0)
+            : memberIds.reduce((count, id) => count + (submittedUserIds.has(id) ? 1 : 0), 0);
           
           submissionStatus[league.id] = {
             allSubmitted: submittedCount === totalCount && totalCount > 0,
@@ -247,11 +251,19 @@ export default function TablesPage() {
               .in("league_id", leagueIds)
               .gte("created_at", earliestSinceStr);
             
+            // Optimize: pre-filter messages by league_id to avoid repeated filtering
+            const messagesByLeague = new Map<string, any[]>();
+            (allMessages ?? []).forEach((m: any) => {
+              const arr = messagesByLeague.get(m.league_id) ?? [];
+              arr.push(m);
+              messagesByLeague.set(m.league_id, arr);
+            });
+            
             leagueIds.forEach(leagueId => {
               const since = sinceMap.get(leagueId)!;
-              const unread = (allMessages ?? []).filter((m: any) => 
-                m.league_id === leagueId && new Date(m.created_at) > new Date(since)
-              ).length;
+              const sinceTime = new Date(since).getTime();
+              const leagueMessages = messagesByLeague.get(leagueId) ?? [];
+              const unread = leagueMessages.filter((m: any) => new Date(m.created_at).getTime() > sinceTime).length;
               unreadCounts[leagueId] = unread;
             });
           }
@@ -506,9 +518,9 @@ export default function TablesPage() {
               unreadByLeague: unreadCounts,
               leagueData: cacheableLeagueData, // Also cache leagueData for instant loading
             }, CACHE_TTL.TABLES);
-            console.log('[Tables] ✅ Cached data for next time:', out.length, 'leagues');
-          } catch (cacheError) {
-            console.warn('[Tables] Failed to cache data:', cacheError);
+            // Cached data for next time
+        } catch (cacheError) {
+            // Failed to cache data (non-critical)
           }
         }
       } catch (e: any) {

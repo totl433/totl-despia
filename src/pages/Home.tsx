@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -52,32 +52,154 @@ function rowToOutcome(r: { result?: "H" | "D" | "A" | null }): "H" | "D" | "A" |
 
 export default function HomePage() {
   const { user } = useAuth();
-  const [leagues, setLeagues] = useState<League[]>([]);
+  
+  // Initialize ALL state from cache synchronously to avoid any render gaps
+  // We check localStorage directly to avoid waiting for user to be available
+  const loadInitialStateFromCache = () => {
+    // Try to get user ID from localStorage if user not available yet
+    let userId: string | undefined = user?.id;
+    if (!userId && typeof window !== 'undefined') {
+      try {
+        const userStr = localStorage.getItem('totl:user');
+        if (userStr) {
+          const userObj = JSON.parse(userStr);
+          userId = userObj.id;
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+    
+    if (typeof window === 'undefined' || !userId) {
+      return {
+        leagues: [],
+        gw: 1,
+        latestGw: null,
+        gwPoints: [],
+        allGwPoints: [],
+        overall: [],
+        lastGwRank: null,
+        isInApiTestLeague: false,
+        fixtures: [],
+        userPicks: {},
+        fixturesLoading: true,
+        loading: true,
+        leagueDataLoading: true,
+        leaderboardDataLoading: true,
+      };
+    }
+    
+    try {
+      const cacheKey = `home:basic:${user.id}`;
+      const cached = getCached<{
+        leagues: League[];
+        currentGw: number;
+        latestGw: number;
+        allGwPoints: Array<{user_id: string, gw: number, points: number}>;
+        overall: Array<{user_id: string, name: string | null, ocp: number | null}>;
+        lastGwRank: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null;
+        isInApiTestLeague: boolean;
+        testGw?: number;
+      }>(cacheKey);
+      
+      if (cached && cached.leagues && Array.isArray(cached.leagues) && cached.leagues.length > 0) {
+        // Load fixtures from cache if available
+        let fixtures: Fixture[] = [];
+        let userPicks: Record<number, "H" | "D" | "A"> = {};
+        let fixturesLoading = true;
+        
+        if (cached.isInApiTestLeague && cached.testGw) {
+          const fixturesCacheKey = `home:fixtures:${userId}:${cached.testGw}`;
+          try {
+            const fixturesCached = getCached<{
+              fixtures: Fixture[];
+              userPicks: Record<number, "H" | "D" | "A">;
+              liveScores?: Array<{ api_match_id: number; [key: string]: any }>;
+            }>(fixturesCacheKey);
+            
+            if (fixturesCached && fixturesCached.fixtures && Array.isArray(fixturesCached.fixtures) && fixturesCached.fixtures.length > 0) {
+              fixtures = fixturesCached.fixtures;
+              userPicks = fixturesCached.userPicks || {};
+              fixturesLoading = false;
+              fixturesLoadedFromCacheRef.current = true;
+              hasCheckedCacheRef.current = true;
+            } else {
+              hasCheckedCacheRef.current = true;
+            }
+          } catch (error) {
+            // Error loading fixtures from cache (non-critical)
+          }
+        }
+        
+        return {
+          leagues: cached.leagues,
+          gw: cached.currentGw,
+          latestGw: cached.latestGw,
+          gwPoints: (cached.allGwPoints || []).filter(gp => gp.user_id === user.id),
+          allGwPoints: cached.allGwPoints || [],
+          overall: cached.overall || [],
+          lastGwRank: cached.lastGwRank || null,
+          isInApiTestLeague: cached.isInApiTestLeague || false,
+          fixtures,
+          userPicks,
+          fixturesLoading,
+          loading: false,
+          leagueDataLoading: false,
+          leaderboardDataLoading: false,
+        };
+      }
+    } catch (error) {
+      // Error loading initial state from cache (non-critical)
+    }
+    
+    return {
+      leagues: [],
+      gw: 1,
+      latestGw: null,
+      gwPoints: [],
+      allGwPoints: [],
+      overall: [],
+      lastGwRank: null,
+      isInApiTestLeague: false,
+      fixtures: [],
+      userPicks: {},
+      fixturesLoading: true,
+      loading: true,
+      leagueDataLoading: true,
+      leaderboardDataLoading: true,
+    };
+  };
+  
+  const initialState = loadInitialStateFromCache();
+  
+  const [leagues, setLeagues] = useState<League[]>(initialState.leagues);
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>({});
-  const [gw, setGw] = useState<number>(1);
-  const [latestGw, setLatestGw] = useState<number | null>(null);
-  const [gwPoints, setGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>([]);
-  const [loading, setLoading] = useState(true);
-  const [leagueDataLoading, setLeagueDataLoading] = useState(true);
-  const [leaderboardDataLoading, setLeaderboardDataLoading] = useState(true);
+  const [gw, setGw] = useState<number>(initialState.gw);
+  const [latestGw, setLatestGw] = useState<number | null>(initialState.latestGw);
+  const [gwPoints, setGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>(initialState.gwPoints);
+  const [loading, setLoading] = useState(initialState.loading);
+  const [leagueDataLoading, setLeagueDataLoading] = useState(initialState.leagueDataLoading);
+  const [leaderboardDataLoading, setLeaderboardDataLoading] = useState(initialState.leaderboardDataLoading);
   
   // Leaderboard rankings
-  const [lastGwRank, setLastGwRank] = useState<{ rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null>(null);
+  const [lastGwRank, setLastGwRank] = useState<{ rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null>(initialState.lastGwRank);
   const [fiveGwRank, setFiveGwRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(null);
   const [tenGwRank, setTenGwRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(null);
   const [seasonRank, setSeasonRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(null);
   
   // Additional data for form calculations
-  const [allGwPoints, setAllGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>([]);
-  const [overall, setOverall] = useState<Array<{user_id: string, name: string | null, ocp: number | null}>>([]);
+  const [allGwPoints, setAllGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>(initialState.allGwPoints);
+  const [overall, setOverall] = useState<Array<{user_id: string, name: string | null, ocp: number | null}>>(initialState.overall);
   
   const [unreadByLeague, setUnreadByLeague] = useState<Record<string, number>>({});
   const [leagueData, setLeagueData] = useState<Record<string, LeagueDataInternal>>({});
-  const [fixtures, setFixtures] = useState<Fixture[]>([]);
-  const [fixturesLoading, setFixturesLoading] = useState(true);
-  const [isInApiTestLeague, setIsInApiTestLeague] = useState(false);
-  const [userPicks, setUserPicks] = useState<Record<number, "H" | "D" | "A">>({});
+  const [fixtures, setFixtures] = useState<Fixture[]>(initialState.fixtures);
+  const [fixturesLoading, setFixturesLoading] = useState(initialState.fixturesLoading);
+  const [isInApiTestLeague, setIsInApiTestLeague] = useState(initialState.isInApiTestLeague);
+  const [userPicks, setUserPicks] = useState<Record<number, "H" | "D" | "A">>(initialState.userPicks);
   const [showLiveOnly, setShowLiveOnly] = useState(false);
+  const fixturesLoadedFromCacheRef = useRef(initialState.fixtures.length > 0);
+  const hasCheckedCacheRef = useRef(initialState.fixtures.length > 0 || initialState.isInApiTestLeague);
   
   // Get api_match_ids from fixtures for real-time subscription
   const apiMatchIds = useMemo(() => {
@@ -86,21 +208,95 @@ export default function HomePage() {
     for (const f of fixtures) {
       if (f.api_match_id) ids.push(f.api_match_id);
     }
-    console.log('[Home] apiMatchIds for live scores:', ids);
-    console.log('[Home] Fixtures count:', fixtures.length, 'with api_match_id:', ids.length);
+    // Removed console.logs for production performance
     return ids;
   }, [fixtures]);
 
+  // Load live scores from cache synchronously to avoid render gap
+  const cachedLiveScoresMap = useMemo(() => {
+    if (!fixtures?.length || !user?.id) return new Map();
+    
+    try {
+      // Try to get testGw from fixtures or cache
+      const testGw = fixtures[0]?.test_gw;
+      if (!testGw) return new Map();
+      
+      const fixturesCacheKey = `home:fixtures:${user.id}:${testGw}`;
+      const cached = getCached<{
+        fixtures: Fixture[];
+        userPicks: Record<number, "H" | "D" | "A">;
+        liveScores?: Array<{ api_match_id: number; [key: string]: any }>;
+      }>(fixturesCacheKey);
+      
+      if (cached?.liveScores && Array.isArray(cached.liveScores)) {
+        const map = new Map();
+        cached.liveScores.forEach((score: any) => {
+          if (score.api_match_id) {
+            map.set(score.api_match_id, score);
+          }
+        });
+        // Loaded live scores from cache
+        return map;
+      }
+    } catch (error) {
+      // Error loading live scores from cache (non-critical)
+    }
+    return new Map();
+  }, [fixtures, user?.id]);
+
   // Subscribe to real-time live scores updates
-  const { liveScores: liveScoresMap } = useLiveScores(
+  const { liveScores: liveScoresMapFromHook } = useLiveScores(
     undefined,
     apiMatchIds.length > 0 ? apiMatchIds : undefined
   );
 
+  // Merge cached live scores with hook's live scores (hook takes precedence for real-time updates)
+  const liveScoresMap = useMemo(() => {
+    const merged = new Map(cachedLiveScoresMap);
+    // Hook's data overrides cached data (more recent)
+    liveScoresMapFromHook.forEach((score, apiMatchId) => {
+      merged.set(apiMatchId, score);
+    });
+    return merged;
+  }, [cachedLiveScoresMap, liveScoresMapFromHook]);
+
+  // Cache live scores when they're available (for next visit)
+  useEffect(() => {
+    if (!user?.id || !fixtures.length || !liveScoresMap.size) return;
+    
+    const testGw = fixtures[0]?.test_gw;
+    if (!testGw) return;
+    
+    const fixturesCacheKey = `home:fixtures:${user.id}:${testGw}`;
+    try {
+      // Get existing cache
+      const existing = getCached<{
+        fixtures: Fixture[];
+        userPicks: Record<number, "H" | "D" | "A">;
+        liveScores?: Array<any>;
+      }>(fixturesCacheKey);
+      
+      if (existing) {
+        // Convert Map to array for caching
+        const liveScoresArray: Array<any> = [];
+        liveScoresMap.forEach((score) => {
+          liveScoresArray.push(score);
+        });
+        
+        // Update cache with live scores
+        setCached(fixturesCacheKey, {
+          ...existing,
+          liveScores: liveScoresArray.length > 0 ? liveScoresArray : undefined,
+        }, CACHE_TTL.HOME);
+      }
+    } catch (error) {
+      // Error caching live scores (non-critical)
+    }
+  }, [user?.id, fixtures, liveScoresMap]);
+
   // Convert Map to Record format - optimized
   const liveScores = useMemo(() => {
     if (!fixtures?.length || !liveScoresMap.size) {
-      console.log('[Home] No live scores - fixtures:', fixtures?.length, 'liveScoresMap size:', liveScoresMap.size);
       return {};
     }
     const result: Record<number, { 
@@ -114,12 +310,10 @@ export default function HomePage() {
       away_team?: string | null;
     }> = {};
     
-    console.log('[Home] Processing live scores - fixtures:', fixtures.length, 'liveScoresMap size:', liveScoresMap.size);
     for (const fixture of fixtures) {
       if (fixture.api_match_id) {
         const liveScore = liveScoresMap.get(fixture.api_match_id);
         if (liveScore) {
-          console.log('[Home] Found live score for fixture', fixture.fixture_index, 'api_match_id:', fixture.api_match_id, 'score:', liveScore.home_score, '-', liveScore.away_score, 'status:', liveScore.status);
           result[fixture.fixture_index] = {
             homeScore: liveScore.home_score ?? 0,
             awayScore: liveScore.away_score ?? 0,
@@ -130,16 +324,14 @@ export default function HomePage() {
             home_team: liveScore.home_team ?? null,
             away_team: liveScore.away_team ?? null
           };
-        } else {
-          console.log('[Home] No live score found for fixture', fixture.fixture_index, 'api_match_id:', fixture.api_match_id);
         }
       }
     }
-    console.log('[Home] Live scores result:', Object.keys(result).length, 'matches');
     return result;
   }, [liveScoresMap, fixtures]);
 
   // Fetch basic data (leagues, current GW, leaderboard data) - stale-while-revalidate pattern
+  // State is already initialized from cache synchronously, so this only refreshes in background
   useEffect(() => {
     if (!user?.id) {
       setLoading(false);
@@ -151,49 +343,30 @@ export default function HomePage() {
     let alive = true;
     const cacheKey = `home:basic:${user.id}`;
     
-    // 1. Load from cache immediately (if available)
-    try {
-      const cached = getCached<{
-        leagues: League[];
-        currentGw: number;
-        latestGw: number;
-        allGwPoints: Array<{user_id: string, gw: number, points: number}>;
-        overall: Array<{user_id: string, name: string | null, ocp: number | null}>;
-        lastGwRank: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null;
-        isInApiTestLeague: boolean;
-      }>(cacheKey);
-      
-      if (cached && cached.leagues && Array.isArray(cached.leagues)) {
-        // INSTANT RENDER from cache!
-        console.log('[Home] ✅ Loading from cache:', cached.leagues.length, 'leagues');
-        setLeagues(cached.leagues);
-        setGw(cached.currentGw);
-        setLatestGw(cached.latestGw);
-        setAllGwPoints(cached.allGwPoints || []);
-        setGwPoints((cached.allGwPoints || []).filter(gp => gp.user_id === user.id));
-        setOverall(cached.overall || []);
-        if (cached.lastGwRank) setLastGwRank(cached.lastGwRank);
-        setIsInApiTestLeague(cached.isInApiTestLeague || false);
-        setLoading(false);
-        setLeaderboardDataLoading(false);
-      } else {
-        console.log('[Home] ⚠️ No valid cache found, will fetch fresh data');
-      }
-    } catch (error) {
-      // If cache is corrupted, just continue with fresh fetch
-      console.warn('[Home] Error loading from cache, fetching fresh data:', error);
+    // Check if we already loaded from cache (state was initialized from cache)
+    const alreadyLoadedFromCache = leagues.length > 0 && !loading;
+    
+    if (alreadyLoadedFromCache) {
+      // Already loaded from cache, refreshing in background
+    } else {
+      // No cache found on init, fetching fresh data
+      // Only set loading if we didn't load from cache
+      setLoading(true);
+      setLeaderboardDataLoading(true);
+      setLeagueDataLoading(true);
     }
     
     // 2. Fetch fresh data in background
     (async () => {
       try {
-        // Parallel fetch: leagues, GW data, points, and overall in one batch
-        const [membersResult, latestGwResult, metaResult, allGwPointsResult, overallResult] = await Promise.all([
+        // Parallel fetch: leagues, GW data, points, overall, and test_gw in one batch
+        const [membersResult, latestGwResult, metaResult, allGwPointsResult, overallResult, testMetaResult] = await Promise.all([
           supabase.from("league_members").select("leagues(id, name, code, avatar, created_at)").eq("user_id", user.id),
           supabase.from("gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
           supabase.from("meta").select("current_gw").eq("id", 1).maybeSingle(),
           supabase.from("v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
-          supabase.from("v_ocp_overall").select("user_id, name, ocp")
+          supabase.from("v_ocp_overall").select("user_id, name, ocp"),
+          supabase.from("test_api_meta").select("current_test_gw").eq("id", 1).maybeSingle()
         ]);
         
         if (!alive) return;
@@ -208,6 +381,32 @@ export default function HomePage() {
             .filter((l: any) => l !== null) as League[];
           setLeagues(leaguesData);
           setIsInApiTestLeague(leaguesData.some(l => l.name === "API Test"));
+        }
+        
+        // Process test_gw
+        let testGw: number | undefined = undefined;
+        if (!testMetaResult.error && testMetaResult.data) {
+          testGw = testMetaResult.data.current_test_gw ?? 1;
+          // Verify fixtures exist for this test_gw
+          if (testGw && testGw !== 1) {
+            const { data: fixturesCheck } = await supabase
+              .from("test_api_fixtures")
+              .select("test_gw")
+              .eq("test_gw", testGw)
+              .limit(1)
+              .maybeSingle();
+            
+            if (!fixturesCheck) {
+              const { data: t1Data } = await supabase
+                .from("test_api_fixtures")
+                .select("test_gw")
+                .eq("test_gw", 1)
+                .limit(1)
+                .maybeSingle();
+              
+              if (t1Data) testGw = 1;
+            }
+          }
         }
         
         // Process GW data
@@ -274,10 +473,11 @@ export default function HomePage() {
             overall: overallData,
             lastGwRank: lastGwRankData,
             isInApiTestLeague: leaguesData.some(l => l.name === "API Test"),
+            testGw: testGw, // Cache testGw so fixtures can load immediately on next visit
           }, CACHE_TTL.HOME);
-          console.log('[Home] ✅ Cached data for next time:', leaguesData.length, 'leagues');
+          // Cached data for next time
         } catch (cacheError) {
-          console.warn('[Home] Failed to cache data:', cacheError);
+          // Failed to cache data (non-critical)
         }
         
         setLoading(false);
@@ -294,8 +494,29 @@ export default function HomePage() {
   }, [user?.id]);
   
   // Calculate form rankings and season rank - optimized
+  // Use refs to track previous values and avoid unnecessary recalculations
+  const prevAllGwPointsRef = useRef<string>('');
+  const prevOverallRef = useRef<string>('');
+  const prevLatestGwRef = useRef<number | null>(null);
+  
   useEffect(() => {
     if (!user?.id || !latestGw || !allGwPoints.length || !overall.length) return;
+    
+    // Check if data actually changed to avoid unnecessary recalculations
+    const allGwPointsKey = JSON.stringify(allGwPoints.slice(0, 10)); // Sample for comparison
+    const overallKey = JSON.stringify(overall.slice(0, 10)); // Sample for comparison
+    
+    if (
+      prevAllGwPointsRef.current === allGwPointsKey &&
+      prevOverallRef.current === overallKey &&
+      prevLatestGwRef.current === latestGw
+    ) {
+      return; // Data hasn't changed, skip recalculation
+    }
+    
+    prevAllGwPointsRef.current = allGwPointsKey;
+    prevOverallRef.current = overallKey;
+    prevLatestGwRef.current = latestGw;
     
     let alive = true;
     
@@ -437,7 +658,7 @@ export default function HomePage() {
         loadedFromCache = true;
       }
     } catch (error) {
-      console.warn('[Home] Error loading leagueData from cache, fetching fresh data:', error);
+      // Error loading leagueData from cache (non-critical)
     }
     
     // 2. Fetch fresh data in background
@@ -458,7 +679,7 @@ export default function HomePage() {
           supabase.from("league_message_reads").select("league_id, last_read_at").eq("user_id", user.id).in("league_id", leagueIds),
           supabase.from("gw_submissions").select("user_id").eq("gw", gw),
           supabase.from("gw_results").select("gw, fixture_index, result"),
-          supabase.from("fixtures").select("gw, kickoff_time").in("gw", Array.from({ length: 20 }, (_, i) => i + 1))
+          supabase.from("fixtures").select("gw, kickoff_time").in("gw", Array.from({ length: Math.min(20, latestGw || 20) }, (_, i) => i + 1))
         ]);
         
         if (!alive) return;
@@ -475,8 +696,10 @@ export default function HomePage() {
           });
         });
         
-        const allMemberIds = Array.from(new Set(Object.values(membersByLeague).flat().map(m => m.id)));
-        const submittedUserIds = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id).filter((id: string) => allMemberIds.includes(id)));
+        // Optimize: use Set for faster lookups
+        const allMemberIdsSet = new Set(Object.values(membersByLeague).flat().map(m => m.id));
+        const allMemberIds = Array.from(allMemberIdsSet);
+        const submittedUserIds = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id).filter((id: string) => allMemberIdsSet.has(id)));
         
         // Process unread counts
         const lastReadMap = new Map<string, string>();
@@ -779,7 +1002,7 @@ export default function HomePage() {
             leagueSubmissions: submissionStatus,
           }, CACHE_TTL.HOME);
         } catch (cacheError) {
-          console.warn('[Home] Failed to cache leagueData:', cacheError);
+          // Failed to cache leagueData (non-critical)
         }
       } catch (error) {
         setLeagueDataLoading(false);
@@ -789,17 +1012,135 @@ export default function HomePage() {
     return () => { alive = false; };
   }, [user?.id, leagues, gw]);
 
-  // Fetch fixtures and picks for API Test league - optimized
+  // Fetch fixtures and picks for API Test league - optimized with caching
   useEffect(() => {
     if (!user?.id || !isInApiTestLeague) {
       setFixtures([]);
       setFixturesLoading(false);
       setUserPicks({});
+      fixturesLoadedFromCacheRef.current = false;
+      return;
+    }
+    
+    // If fixtures were already loaded from basic cache, just refresh in background silently
+    if (fixturesLoadedFromCacheRef.current) {
+      // Fixtures already loaded from basic cache, skip this useEffect
+      // Fixtures already loaded from basic cache, skipping useEffect
+      return;
+    }
+    
+    // If fixtures are already loaded (but not from basic cache), just refresh in background silently
+    if (fixtures.length > 0) {
+      // Fixtures already loaded, refreshing in background
+      // Still refresh in background, but don't show loading state
+      // Use cached testGw from basic cache if available
+      (async () => {
+        try {
+          // Try to get testGw from basic cache first
+          const basicCacheKey = `home:basic:${user.id}`;
+          let testGw: number | undefined = undefined;
+          
+          try {
+            const basicCached = getCached<{ testGw?: number }>(basicCacheKey);
+            if (basicCached?.testGw) {
+              testGw = basicCached.testGw;
+              // Using cached testGw
+            }
+          } catch {}
+          
+          // If not in cache, fetch it
+          if (!testGw) {
+            const { data: testMeta } = await supabase
+              .from("test_api_meta")
+              .select("current_test_gw")
+              .eq("id", 1)
+              .maybeSingle();
+            
+            testGw = testMeta?.current_test_gw ?? 1;
+          }
+          
+          // Verify fixtures exist
+          if (testGw && testGw !== 1) {
+            const { data: fixturesCheck } = await supabase
+              .from("test_api_fixtures")
+              .select("test_gw")
+              .eq("test_gw", testGw)
+              .limit(1)
+              .maybeSingle();
+            
+            if (!fixturesCheck) {
+              const { data: t1Data } = await supabase
+                .from("test_api_fixtures")
+                .select("test_gw")
+                .eq("test_gw", 1)
+                .limit(1)
+                .maybeSingle();
+              
+              if (t1Data) testGw = 1;
+            }
+          }
+          
+          if (!testGw) {
+            // No testGw available, skipping fixture refresh
+            return;
+          }
+          
+          const [fixturesResult, picksResult] = await Promise.all([
+            supabase
+              .from("test_api_fixtures")
+              .select("id, test_gw, fixture_index, api_match_id, home_code, away_code, home_team, away_team, home_name, away_name, home_crest, away_crest, kickoff_time")
+              .eq("test_gw", testGw)
+              .order("fixture_index", { ascending: true }),
+            supabase
+              .from("test_api_picks")
+              .select("fixture_index, pick")
+              .eq("matchday", testGw)
+              .eq("user_id", user.id)
+          ]);
+          
+          const fixturesData = fixturesResult.error ? [] : (fixturesResult.data ?? []).map((f: any) => ({ ...f, gw: f.test_gw })) as Fixture[];
+          const picksMap: Record<number, "H" | "D" | "A"> = {};
+          
+          if (!picksResult.error) {
+            (picksResult.data ?? []).forEach((p: { fixture_index: number; pick: "H" | "D" | "A" }) => {
+              picksMap[p.fixture_index] = p.pick;
+            });
+          }
+          
+          setFixtures(fixturesData);
+          setUserPicks(picksMap);
+          
+          // Cache the data
+          if (testGw) {
+            const fixturesCacheKey = `home:fixtures:${user.id}:${testGw}`;
+            try {
+              // Get current live scores to cache them
+              const liveScoresArray: Array<any> = [];
+              liveScoresMap.forEach((score) => {
+                liveScoresArray.push(score);
+              });
+              
+              setCached(fixturesCacheKey, {
+                fixtures: fixturesData,
+                userPicks: picksMap,
+                liveScores: liveScoresArray.length > 0 ? liveScoresArray : undefined,
+              }, CACHE_TTL.HOME);
+            } catch (cacheError) {
+              // Failed to cache fixtures (non-critical)
+            }
+          }
+        } catch (error) {
+          console.error('[Home] Error refreshing fixtures:', error);
+        }
+      })();
       return;
     }
     
     let alive = true;
+    let loadedFromCache = false;
     
+    // 1. Load from cache immediately (if available)
+    // First, we need to get the test_gw to build the cache key
     (async () => {
       try {
         const { data: testMeta } = await supabase
@@ -835,7 +1176,39 @@ export default function HomePage() {
           setFixtures([]);
           setFixturesLoading(false);
           setUserPicks({});
+          hasCheckedCacheRef.current = true;
           return;
+        }
+        
+        const fixturesCacheKey = `home:fixtures:${user.id}:${testGw}`;
+        
+        // Try to load from cache
+        try {
+          const cached = getCached<{
+            fixtures: Fixture[];
+            userPicks: Record<number, "H" | "D" | "A">;
+          }>(fixturesCacheKey);
+          
+            if (cached && cached.fixtures && Array.isArray(cached.fixtures) && cached.fixtures.length > 0) {
+              // INSTANT RENDER from cache!
+              console.log('[Home] ✅ Loading fixtures from cache:', cached.fixtures.length, 'fixtures');
+              setFixtures(cached.fixtures);
+              setUserPicks(cached.userPicks || {});
+              setFixturesLoading(false);
+              loadedFromCache = true;
+              fixturesLoadedFromCacheRef.current = true;
+              hasCheckedCacheRef.current = true;
+            } else {
+              console.log('[Home] ⚠️ No valid fixtures cache found, will fetch fresh data');
+              hasCheckedCacheRef.current = true;
+            }
+        } catch (error) {
+          console.warn('[Home] Error loading fixtures from cache, fetching fresh data:', error);
+        }
+        
+        // 2. Fetch fresh data in background
+        if (!loadedFromCache) {
+          setFixturesLoading(true);
         }
         
         const [fixturesResult, picksResult] = await Promise.all([
@@ -853,28 +1226,38 @@ export default function HomePage() {
         
         if (!alive) return;
         
-        if (fixturesResult.error) {
-          setFixtures([]);
-        } else {
-          setFixtures((fixturesResult.data ?? []).map((f: any) => ({ ...f, gw: f.test_gw })) as Fixture[]);
-        }
+        const fixturesData = fixturesResult.error ? [] : (fixturesResult.data ?? []).map((f: any) => ({ ...f, gw: f.test_gw })) as Fixture[];
+        const picksMap: Record<number, "H" | "D" | "A"> = {};
         
-        if (picksResult.error) {
-          setUserPicks({});
-        } else {
-          const picksMap: Record<number, "H" | "D" | "A"> = {};
+        if (!picksResult.error) {
           (picksResult.data ?? []).forEach((p: { fixture_index: number; pick: "H" | "D" | "A" }) => {
             picksMap[p.fixture_index] = p.pick;
           });
-          setUserPicks(picksMap);
         }
-
+        
+        setFixtures(fixturesData);
+        setUserPicks(picksMap);
         setFixturesLoading(false);
+        fixturesLoadedFromCacheRef.current = false; // Reset after fresh fetch
+        hasCheckedCacheRef.current = true;
+        
+        // Cache the data for next time (live scores will be cached separately when available)
+        try {
+          setCached(fixturesCacheKey, {
+            fixtures: fixturesData,
+            userPicks: picksMap,
+            // Note: liveScores will be cached when they're available from the hook
+          }, CACHE_TTL.HOME);
+          console.log('[Home] ✅ Cached fixtures for next time:', fixturesData.length, 'fixtures');
+        } catch (cacheError) {
+          console.warn('[Home] Failed to cache fixtures:', cacheError);
+        }
       } catch (error) {
         if (alive) {
           setFixtures([]);
           setFixturesLoading(false);
           setUserPicks({});
+          hasCheckedCacheRef.current = true;
         }
       }
     })();
@@ -1248,11 +1631,11 @@ export default function HomePage() {
               </div>
             }
           >
-            {fixturesLoading ? (
+            {(!hasCheckedCacheRef.current || fixturesLoading) ? (
               <div className="p-4 text-slate-500">Loading fixtures...</div>
             ) : fixtures.length === 0 ? (
               <div className="p-4 text-slate-500">No fixtures yet.</div>
-            ) : (
+            ) : fixtures.length > 0 ? (
               <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">
                 {fixtureCards.map(({ fixture, liveScore, pick }, index) => (
                   <div key={fixture.id} className={index < fixtureCards.length - 1 ? 'relative' : ''}>
@@ -1269,7 +1652,7 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
           </Section>
 
           {/* Bottom padding */}
