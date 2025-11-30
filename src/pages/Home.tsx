@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -90,7 +90,26 @@ export default function HomePage() {
     }
     
     try {
-      const cacheKey = `home:basic:${user.id}`;
+      if (!userId) {
+        return {
+          leagues: [],
+          gw: 1,
+          latestGw: null,
+          gwPoints: [],
+          allGwPoints: [],
+          overall: [],
+          lastGwRank: null,
+          isInApiTestLeague: false,
+          fixtures: [],
+          userPicks: {},
+          fixturesLoading: true,
+          loading: true,
+          leagueDataLoading: true,
+          leaderboardDataLoading: true,
+        };
+      }
+      
+      const cacheKey = `home:basic:${userId}`;
       const cached = getCached<{
         leagues: League[];
         currentGw: number;
@@ -135,7 +154,7 @@ export default function HomePage() {
           leagues: cached.leagues,
           gw: cached.currentGw,
           latestGw: cached.latestGw,
-          gwPoints: (cached.allGwPoints || []).filter(gp => gp.user_id === user.id),
+          gwPoints: (cached.allGwPoints || []).filter(gp => gp.user_id === userId),
           allGwPoints: cached.allGwPoints || [],
           overall: cached.overall || [],
           lastGwRank: cached.lastGwRank || null,
@@ -698,7 +717,6 @@ export default function HomePage() {
         
         // Optimize: use Set for faster lookups
         const allMemberIdsSet = new Set(Object.values(membersByLeague).flat().map(m => m.id));
-        const allMemberIds = Array.from(allMemberIdsSet);
         const submittedUserIds = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id).filter((id: string) => allMemberIdsSet.has(id)));
         
         // Process unread counts

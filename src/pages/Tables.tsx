@@ -164,7 +164,6 @@ export default function TablesPage() {
 
         // Optimize: use Set for faster lookups
         const allMemberIds = Array.from(new Set(Array.from(membersByLeague.values()).flat()));
-        const allMemberIdsSet = new Set(allMemberIds);
         const apiTestLeague = leagues.find(l => l.name === "API Test");
         const apiTestMemberIds = apiTestLeague ? (membersByLeague.get(apiTestLeague.id) ?? []) : [];
         const apiTestMemberIdsSet = new Set(apiTestMemberIds);
