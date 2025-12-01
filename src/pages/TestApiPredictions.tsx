@@ -10,7 +10,6 @@ import { invalidateUserCache, getCached, setCached, CACHE_TTL, removeCached } fr
 import SwipeCard from "../components/predictions/SwipeCard";
 import ScoreIndicator from "../components/predictions/ScoreIndicator";
 import ConfirmationModal from "../components/predictions/ConfirmationModal";
-import { FixtureCard } from "../components/FixtureCard";
 import DateHeader from "../components/DateHeader";
 
 // Generate a color from a string (team name or code)
@@ -1585,7 +1584,6 @@ export default function TestApiPredictions() {
               // Show score indicator if games have started/finished or user has submitted
               if (hasAnyLiveOrFinished || (submitted && fixtures.length > 0)) {
                 const displayScore = hasAnyLiveOrFinished ? currentScore : (submitted ? myScore : 0);
-                const scorePercentage = fixtures.length > 0 ? (displayScore / fixtures.length) * 100 : 0;
                 
                 return (
                   <ScoreIndicator

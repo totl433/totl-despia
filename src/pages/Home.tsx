@@ -22,6 +22,7 @@ type LeagueDataInternal = {
   sortedMemberIds?: string[];
   latestGwWinners?: string[] | Set<string>;
   latestRelevantGw?: number | null;
+  webUserIds?: string[] | Set<string>; // User IDs who have picks in Web table (mirrored)
 };
 
 type PickRow = { user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" };
