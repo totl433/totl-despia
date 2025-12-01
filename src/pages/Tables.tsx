@@ -167,10 +167,6 @@ export default function TablesPage() {
         const allMemberIds = Array.from(new Set(Array.from(membersByLeague.values()).flat()));
         const apiTestLeague = leagues.find(l => l.name === "API Test");
         const apiTestMemberIds = apiTestLeague ? (membersByLeague.get(apiTestLeague.id) ?? []) : [];
-        const apiTestMemberIdsSet = new Set(apiTestMemberIds);
-        const regularMemberIds = apiTestLeague 
-          ? allMemberIds.filter(id => !apiTestMemberIdsSet.has(id))
-          : allMemberIds;
         
         // Step 3: Fetch submissions - App reads from app_gw_submissions for all users
         // API Test league users are now in app_* tables too

@@ -1,4 +1,5 @@
-import { ReactNode, useMemo } from 'react';
+import { useMemo } from 'react';
+import type { ReactNode } from 'react';
 import Section from './Section';
 import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from './FixtureCard';
 import LiveGamesToggle from './LiveGamesToggle';

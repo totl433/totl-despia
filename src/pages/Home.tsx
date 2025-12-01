@@ -5,9 +5,8 @@ import ScrollLogo from "../components/ScrollLogo";
 import { LeaderboardsSection } from "../components/LeaderboardsSection";
 import { MiniLeaguesSection } from "../components/MiniLeaguesSection";
 import { GamesSection } from "../components/GamesSection";
-import type { LeagueRow, LeagueData } from "../components/MiniLeagueCard";
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
-import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
+import type { Fixture as FixtureCardFixture, LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { getCached, setCached, CACHE_TTL } from "../lib/cache";
 
@@ -591,7 +590,7 @@ export default function HomePage() {
         const lastCompletedGw = lastCompletedGwData?.gw ?? latestGw;
         
         // Helper to calculate form rankings
-        const calculateFormRank = (startGw: number, endGw: number, setRank: (r: { rank: number; total: number; isTied: boolean }) => void) => {
+        const calculateFormRank = (startGw: number, endGw: number, setRank: (r: { rank: number; total: number; isTied: boolean } | null) => void) => {
           if (endGw < startGw) return;
           
           const formPoints = allGwPoints.filter(gp => gp.gw >= startGw && gp.gw <= endGw);

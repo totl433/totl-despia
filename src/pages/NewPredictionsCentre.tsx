@@ -62,7 +62,6 @@ export default function NewPredictionsCentre() {
   const [score, setScore] = useState<number | null>(null);
   const [topPercent, setTopPercent] = useState<number | null>(null);
   const [isInApiTestLeague, setIsInApiTestLeague] = useState(false);
-  const [displayGw, setDisplayGw] = useState<number | null>(null);
 
   // Get api_match_ids from fixtures for real-time subscription
   const apiMatchIds = useMemo(() => {
@@ -305,7 +304,6 @@ export default function NewPredictionsCentre() {
         if (alive) {
           setFixtures(realFixtures);
           setCurrentGw(gwToDisplay); // Set to 1 if showing test fixtures, otherwise currentGw
-          if (alive) setDisplayGw(gwToDisplay);
           console.log('Loaded', realFixtures.length, 'fixtures for GW', gwToDisplay, apiTestLeague && gwToDisplay === 1 ? '(Test GW 1)' : '');
           
           // Check if we're past the deadline
