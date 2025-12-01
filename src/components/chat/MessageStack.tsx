@@ -22,19 +22,16 @@ export function MessageStack({
   const alignment = isOwnMessage ? "justify-end" : "justify-start";
 
   return (
-    <div className={`flex gap-3 ${alignment}`}>
+    <div className={`flex items-end gap-3 w-full ${alignment}`}>
       {!isOwnMessage ? (
-        <div className="flex flex-col items-center w-8">
-          <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[13px] font-semibold text-slate-500">
-            {(avatarInitials || author.charAt(0)).toUpperCase()}
-          </div>
-          <div className="flex-1 w-px bg-slate-200 mt-1" />
+        <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[13px] font-semibold text-slate-500 flex-shrink-0">
+          {(avatarInitials || author.charAt(0)).toUpperCase()}
         </div>
       ) : (
         <div className="w-8" />
       )}
 
-      <div className={`flex flex-col gap-2 ${isOwnMessage ? "items-end" : "items-start"}`}>
+      <div className="flex flex-col gap-1 flex-1">
         {messages.map((message, index) => {
           const shape: "single" | "top" | "middle" | "bottom" =
             messages.length === 1
@@ -46,14 +43,15 @@ export function MessageStack({
               : "middle";
 
           return (
-            <MessageBubble
-              key={message.id}
-              author={!isOwnMessage && index === 0 ? author : undefined}
-              text={message.text}
-              time={message.time}
-              isOwnMessage={isOwnMessage}
-              shape={shape}
-            />
+            <div key={message.id} className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}>
+              <MessageBubble
+                author={!isOwnMessage && index === 0 ? author : undefined}
+                text={message.text}
+                time={message.time}
+                isOwnMessage={isOwnMessage}
+                shape={shape}
+              />
+            </div>
           );
         })}
       </div>

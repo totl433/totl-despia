@@ -1244,6 +1244,11 @@ video {
   width: 1px;
 }
 
+.w-fit{
+  width: -moz-fit-content;
+  width: fit-content;
+}
+
 .min-w-0{
   min-width: 0px;
 }
@@ -1298,6 +1303,18 @@ video {
 
 .max-w-xs{
   max-width: 20rem;
+}
+
+.max-w-\[72\%\]{
+  max-width: 72%;
+}
+
+.max-w-\[85\%\]{
+  max-width: 85%;
+}
+
+.max-w-\[90\%\]{
+  max-width: 90%;
 }
 
 .flex-1{

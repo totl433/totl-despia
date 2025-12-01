@@ -33,19 +33,19 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const alignment = isOwnMessage ? "items-end text-right" : "items-start text-left";
   const bubbleClasses = isOwnMessage ? "bg-[#1C8376] text-white" : "bg-white text-slate-900";
-  const timeColor = isOwnMessage ? "text-white/70" : "text-slate-400";
   const shapeClasses = isOwnMessage ? outgoingShape : incomingShape;
+  const maxWidth = isOwnMessage ? "max-w-[90%]" : "max-w-[72%]";
 
   return (
-    <div className={`flex flex-col gap-1 ${alignment} max-w-full`}>
-      {author && !isOwnMessage && (
-        <div className="text-sm font-semibold text-slate-600">{author}</div>
-      )}
-      <div
-        className={`px-4 pb-5 pt-3 text-[15px] leading-snug shadow-sm ${bubbleClasses} ${shapeClasses[shape]}`}
-      >
-        <div>{text}</div>
-        <div className={`mt-2 text-xs ${timeColor}`}>{time}</div>
+    <div
+      className={`px-3 py-2 text-sm leading-snug shadow-sm ${maxWidth} w-fit ${bubbleClasses} ${shapeClasses[shape]}`}
+    >
+      <div className={`flex flex-col gap-1 ${alignment}`}>
+        {author && !isOwnMessage && (
+          <div className="text-[11px] font-semibold text-slate-600">{author}</div>
+        )}
+        <div className="whitespace-pre-wrap break-words">{text}</div>
+        <div className="text-[11px] text-[#DCDCDD]">{time}</div>
       </div>
     </div>
   );

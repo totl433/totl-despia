@@ -32,6 +32,10 @@ export const Outgoing: Story = {
     author: "",
     avatarInitials: "",
     isOwnMessage: true,
-    messages: [{ id: "4", text: "Check check", time: "23:59" }],
+    messages: [
+      { id: "4", text: "Check check", time: "23:57" },
+      { id: "5", text: "Is anyone there?", time: "23:58" },
+      { id: "6", text: "Hello hello hello", time: "23:59" },
+    ],
   },
 };
