@@ -111,14 +111,20 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
   const homeIsWinning = hasLiveScore && (isOngoing || isFinished) && liveScore.homeScore > liveScore.awayScore;
   const awayIsWinning = hasLiveScore && (isOngoing || isFinished) && liveScore.awayScore > liveScore.homeScore;
 
-  // Determine button states (use live score if available)
+  // Determine button states (use live score if available, or result for finished non-API games)
   const getButtonState = (side: "H" | "D" | "A") => {
     const isPicked = pick === side;
     let isCorrectResult = false;
     if (liveScore) {
-      if (side === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrectResult = true;
-      else if (side === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrectResult = true;
-      else if (side === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrectResult = true;
+      // Check if we have a direct result (for non-API fixtures from app_gw_results)
+      if ((liveScore as any).result) {
+        isCorrectResult = (liveScore as any).result === side;
+      } else {
+        // Use score comparison for API fixtures
+        if (side === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrectResult = true;
+        else if (side === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrectResult = true;
+        else if (side === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrectResult = true;
+      }
     }
     const isCorrect = isPicked && isCorrectResult;
     const isWrong = isPicked && (isOngoing || isFinished) && !isCorrectResult;

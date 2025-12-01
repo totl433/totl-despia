@@ -923,14 +923,15 @@ ${shareUrl}`;
       
       // Get all GWs that have fixtures (not just those with results)
       const { data: allGwData } = await supabase
-        .from("fixtures")
+        .from("app_fixtures")
         .select("gw, kickoff_time")
         .order("gw", { ascending: true });
       
-      // Also get test fixtures for GW 1
+      // Also get test fixtures for GW 1 (now in app_fixtures)
       const { data: testGwData } = await supabase
-        .from("test_api_fixtures")
-        .select("test_gw, kickoff_time")
+        .from("app_fixtures")
+        .select("gw, kickoff_time")
+        .eq("gw", 1)
         .order("fixture_index", { ascending: true });
       
       // Group by GW to find first kickoff for each GW
@@ -987,7 +988,7 @@ ${shareUrl}`;
     let alive = true;
     (async () => {
       const { data: meta } = await supabase
-        .from("meta")
+        .from("app_meta")
         .select("current_gw")
         .eq("id", 1)
         .maybeSingle();
@@ -995,7 +996,7 @@ ${shareUrl}`;
       setCurrentGw((meta as any)?.current_gw ?? null);
 
       const { data: rs } = await supabase
-        .from("gw_results")
+        .from("app_gw_results")
         .select("gw")
         .order("gw", { ascending: false })
         .limit(1);
@@ -1003,7 +1004,7 @@ ${shareUrl}`;
       setLatestResultsGw((rs && rs.length ? (rs[0] as any).gw : null));
 
       const { data: allGws } = await supabase
-        .from("gw_results")
+        .from("app_gw_results")
         .select("gw")
         .order("gw", { ascending: false });
       if (!alive) return;
@@ -1057,18 +1058,18 @@ ${shareUrl}`;
       // Verify that fixtures exist for this test_gw, otherwise fall back to GW T1
       if (testGw && testGw !== 1) {
         const { data: fixturesCheck } = await supabase
-          .from("test_api_fixtures")
-          .select("test_gw")
-          .eq("test_gw", testGw)
+          .from("app_fixtures")
+          .select("gw")
+          .eq("gw", testGw)
           .limit(1)
           .maybeSingle();
         
         // If no fixtures for current_test_gw, fall back to GW T1
         if (!fixturesCheck) {
           const { data: t1Data } = await supabase
-            .from("test_api_fixtures")
-            .select("test_gw")
-            .eq("test_gw", 1)
+            .from("app_fixtures")
+            .select("gw")
+            .eq("gw", 1)
             .limit(1)
             .maybeSingle();
           
@@ -1407,18 +1408,18 @@ ${shareUrl}`;
         // Verify that fixtures exist for this test_gw, otherwise fall back to GW T1
         if (testGwForData && testGwForData !== 1) {
           const { data: fixturesCheck } = await supabase
-            .from("test_api_fixtures")
-            .select("test_gw")
-            .eq("test_gw", testGwForData)
+            .from("app_fixtures")
+            .select("gw")
+            .eq("gw", testGwForData)
             .limit(1)
             .maybeSingle();
           
           // If no fixtures for current_test_gw, fall back to GW T1
           if (!fixturesCheck) {
             const { data: t1Data } = await supabase
-              .from("test_api_fixtures")
-              .select("test_gw")
-              .eq("test_gw", 1)
+              .from("app_fixtures")
+              .select("gw")
+              .eq("gw", 1)
               .limit(1)
               .maybeSingle();
             
@@ -1458,7 +1459,7 @@ ${shareUrl}`;
       if (tab === "gw" && !isApiTestLeague && memberIds.length > 0) {
         // Get the most recent GW that members have submitted for
         const { data: submissionsCheck } = await supabase
-          .from("gw_submissions")
+          .from("app_gw_submissions")
           .select("gw")
           .in("user_id", memberIds)
           .not("submitted_at", "is", null)
@@ -1473,7 +1474,7 @@ ${shareUrl}`;
             if (submittedGw) {
               // Check if fixtures exist for this GW
               const { data: fixtureCheck } = await supabase
-                .from("fixtures")
+                .from("app_fixtures")
                 .select("gw")
                 .eq("gw", submittedGw)
                 .limit(1);
@@ -1508,7 +1509,7 @@ ${shareUrl}`;
       if (useTestFixtures) {
         // Fetch from test_api_fixtures for API Test league current test GW
         const { data: testFx } = await supabase
-          .from("test_api_fixtures")
+          .from("app_fixtures")
           .select(
             "id,test_gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,home_crest,away_crest,kickoff_time,api_match_id"
           )
@@ -1524,7 +1525,7 @@ ${shareUrl}`;
         // NOTE: fixtures table does NOT have api_match_id column (only test_api_fixtures has it)
         console.log('[League] Fetching from MAIN database table (fixtures) for regular league, GW:', gwForData);
         const { data: regularFx } = await supabase
-          .from("fixtures")
+          .from("app_fixtures")
           .select(
             "id,gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time"
           )
@@ -1556,7 +1557,7 @@ ${shareUrl}`;
       if (useTestFixtures) {
         // Fetch from test_api_picks for API Test league current test GW
         const { data: testPicks } = await supabase
-          .from("test_api_picks")
+          .from("app_picks")
           .select("user_id,matchday,fixture_index,pick")
           .eq("matchday", testGwForData)
           .in("user_id", memberIds);
@@ -1566,7 +1567,7 @@ ${shareUrl}`;
         // Fetch from test_api_submissions for API Test league current test GW
         // IMPORTANT: Only get submissions that have a non-null submitted_at (actually submitted)
         const { data: testSubs, error: testSubsError } = await supabase
-          .from("test_api_submissions")
+          .from("app_gw_submissions")
           .select("user_id,matchday,submitted_at")
           .eq("matchday", testGwForData)
           .not("submitted_at", "is", null)  // CRITICAL: Only count submissions with non-null submitted_at
@@ -1579,7 +1580,7 @@ ${shareUrl}`;
         // This filters out old submissions from previous test runs (like Brazil picks)
         // Get the current fixtures with their teams to verify picks match actual teams, not just indices
         const { data: currentTestFixtures } = await supabase
-          .from("test_api_fixtures")
+          .from("app_fixtures")
           .select("fixture_index,home_team,away_team,home_code,away_code,kickoff_time")
           .eq("test_gw", testGwForData)
           .order("fixture_index", { ascending: true });
@@ -1679,7 +1680,7 @@ ${shareUrl}`;
         // CRITICAL: Never use test_api_picks or test_api_submissions for regular leagues
         console.log('[League] Fetching from MAIN database tables (picks, gw_submissions) for regular league');
         const { data: regularPicks } = await supabase
-          .from("picks")
+          .from("app_picks")
           .select("user_id,gw,fixture_index,pick")
           .eq("gw", gwForData)
           .in("user_id", memberIds);
@@ -1687,7 +1688,7 @@ ${shareUrl}`;
         console.log('[League] Fetched picks from main database:', regularPicks?.length || 0, 'picks');
         
         const { data: regularSubs } = await supabase
-          .from("gw_submissions")
+          .from("app_gw_submissions")
           .select("user_id,gw,submitted_at")
           .eq("gw", gwForData)
           .in("user_id", memberIds);
@@ -1702,7 +1703,7 @@ ${shareUrl}`;
       // For API Test league GW 1, results are stored with gw=1 (same as regular results)
       // We'll need to check if results exist for test fixtures specifically
       const { data: rs } = await supabase
-        .from("gw_results")
+        .from("app_gw_results")
         .select("gw,fixture_index,result")
         .eq("gw", useTestFixtures ? 1 : (gwForData || 0));
       if (!alive) return;

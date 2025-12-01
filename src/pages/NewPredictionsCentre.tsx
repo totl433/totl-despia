@@ -96,8 +96,11 @@ export default function NewPredictionsCentre() {
       (async () => {
         if (currentGw) {
           // Get all users' picks for this GW
+          // App users read from app_picks, Web users read from picks
+          // For now, read from app_picks if in API Test league (will have both App and Web users after mirroring)
+          const picksTable = isInApiTestLeague ? "app_picks" : "picks";
           const { data: allPicks } = await supabase
-            .from("picks")
+            .from(picksTable)
             .select("user_id, fixture_index, pick")
             .eq("gw", currentGw);
           
@@ -332,11 +335,12 @@ export default function NewPredictionsCentre() {
         }
 
         // Fetch user's picks for the gameweek being displayed
-        // For API Test league showing test fixtures, fetch picks for GW 1
+        // App users read from app_picks, Web users read from picks
         const picksGw = apiTestLeague && gwToDisplay === 1 ? 1 : currentGw;
         if (user?.id) {
+          const picksTable = apiTestLeague ? "app_picks" : "picks";
           const { data: pk, error: pkErr } = await supabase
-            .from("picks")
+            .from(picksTable)
             .select("gw,fixture_index,pick")
             .eq("gw", picksGw)
             .eq("user_id", user.id);
@@ -362,9 +366,11 @@ export default function NewPredictionsCentre() {
         }
         
         // Check if user has submitted (confirmed) their predictions
+        // App users read from app_gw_submissions, Web users read from gw_submissions
         if (user?.id) {
+          const submissionsTable = apiTestLeague ? "app_gw_submissions" : "gw_submissions";
           const { data: submission } = await supabase
-            .from("gw_submissions")
+            .from(submissionsTable)
             .select("submitted_at")
             .eq("gw", picksGw)
             .eq("user_id", user.id)
@@ -377,10 +383,11 @@ export default function NewPredictionsCentre() {
         }
 
         // Fetch results for the gameweek being displayed
-        // For API Test league showing test fixtures, fetch results for GW 1
+        // App users read from app_gw_results, Web users read from gw_results
         const resultsGw = apiTestLeague && gwToDisplay === 1 ? 1 : currentGw;
+        const resultsTable = apiTestLeague ? "app_gw_results" : "gw_results";
         const { data: rs, error: rsErr } = await supabase
-          .from("gw_results")
+          .from(resultsTable)
           .select("gw,fixture_index,result")
           .eq("gw", resultsGw);
 
@@ -873,31 +880,18 @@ export default function NewPredictionsCentre() {
                   onClick={async () => {
                     try {
                       // Convert picks map to array for database insertion
-                      const picksArray = Array.from(picks.values()).map(pick => {
-                        if (isInApiTestLeague && displayGw === 1) {
-                          // For test API users, save to test_api_picks with matchday
-                          return {
-                            user_id: user?.id,
-                            matchday: 1,
-                            fixture_index: pick.fixture_index,
-                            pick: pick.pick
-                          };
-                        } else {
-                          // Regular users save to picks table
-                          return {
-                            user_id: user?.id,
-                            gw: pick.gw,
-                            fixture_index: pick.fixture_index,
-                            pick: pick.pick
-                          };
-                        }
-                      });
+                      // App users write directly to app_picks, Web users write to picks (will be mirrored)
+                      const picksArray = Array.from(picks.values()).map(pick => ({
+                        user_id: user?.id,
+                        gw: pick.gw,
+                        fixture_index: pick.fixture_index,
+                        pick: pick.pick
+                      }));
 
                       // Insert/update picks in database
-                      const tableName = isInApiTestLeague && displayGw === 1 ? 'test_api_picks' : 'picks';
-                      const conflictColumns = isInApiTestLeague && displayGw === 1 
-                        ? 'user_id,matchday,fixture_index' 
-                        : 'user_id,gw,fixture_index';
+                      // App users (API Test league) write to app_picks, Web users write to picks
+                      const tableName = isInApiTestLeague ? 'app_picks' : 'picks';
+                      const conflictColumns = 'user_id,gw,fixture_index';
                       
                       const { error } = await supabase
                         .from(tableName)
@@ -951,31 +945,18 @@ export default function NewPredictionsCentre() {
                   onClick={async () => {
                     try {
                       // Convert picks map to array for database insertion
-                      const picksArray = Array.from(picks.values()).map(pick => {
-                        if (isInApiTestLeague && displayGw === 1) {
-                          // For test API users, save to test_api_picks with matchday
-                          return {
-                            user_id: user?.id,
-                            matchday: 1,
-                            fixture_index: pick.fixture_index,
-                            pick: pick.pick
-                          };
-                        } else {
-                          // Regular users save to picks table
-                          return {
-                            user_id: user?.id,
-                            gw: pick.gw,
-                            fixture_index: pick.fixture_index,
-                            pick: pick.pick
-                          };
-                        }
-                      });
+                      // App users write directly to app_picks, Web users write to picks (will be mirrored)
+                      const picksArray = Array.from(picks.values()).map(pick => ({
+                        user_id: user?.id,
+                        gw: pick.gw,
+                        fixture_index: pick.fixture_index,
+                        pick: pick.pick
+                      }));
 
                       // Insert/update picks in database
-                      const tableName = isInApiTestLeague && displayGw === 1 ? 'test_api_picks' : 'picks';
-                      const conflictColumns = isInApiTestLeague && displayGw === 1 
-                        ? 'user_id,matchday,fixture_index' 
-                        : 'user_id,gw,fixture_index';
+                      // App users (API Test league) write to app_picks, Web users write to picks
+                      const tableName = isInApiTestLeague ? 'app_picks' : 'picks';
+                      const conflictColumns = 'user_id,gw,fixture_index';
                       
                       const { error: picksError } = await supabase
                         .from(tableName)
@@ -991,21 +972,14 @@ export default function NewPredictionsCentre() {
                       }
 
                       // Record submission in appropriate table
-                      const submissionTable = isInApiTestLeague && displayGw === 1 ? 'test_api_submissions' : 'gw_submissions';
-                      const submissionData = isInApiTestLeague && displayGw === 1
-                        ? {
-                            user_id: user?.id,
-                            matchday: 1,
-                            submitted_at: new Date().toISOString()
-                          }
-                        : {
-                            user_id: user?.id,
-                            gw: currentGw ?? 1,
-                            submitted_at: new Date().toISOString()
-                          };
-                      const submissionConflict = isInApiTestLeague && displayGw === 1 
-                        ? 'user_id,matchday' 
-                        : 'user_id,gw';
+                      // App users write to app_gw_submissions, Web users write to gw_submissions
+                      const submissionTable = isInApiTestLeague ? 'app_gw_submissions' : 'gw_submissions';
+                      const submissionData = {
+                        user_id: user?.id,
+                        gw: currentGw ?? 1,
+                        submitted_at: new Date().toISOString()
+                      };
+                      const submissionConflict = 'user_id,gw';
                       
                       const { error: submissionError } = await supabase
                         .from(submissionTable)
@@ -1027,7 +1001,7 @@ export default function NewPredictionsCentre() {
                         .eq('user_id', user?.id);
 
                       if (userLeagues && userLeagues.length > 0) {
-                        const matchday = isInApiTestLeague && displayGw === 1 ? 1 : (currentGw ?? 1);
+                        const gw = currentGw ?? 1;
                         // Call notifyFinalSubmission for each league (fire-and-forget)
                         userLeagues.forEach(({ league_id }) => {
                           fetch('/.netlify/functions/notifyFinalSubmission', {
@@ -1035,8 +1009,8 @@ export default function NewPredictionsCentre() {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                               leagueId: league_id,
-                              matchday: matchday,
-                              isTestApi: isInApiTestLeague && displayGw === 1,
+                              gw: gw,
+                              isAppUser: isInApiTestLeague,
                             }),
                           }).catch(err => {
                             console.error('[NewPredictionsCentre] Failed to check final submission:', err);

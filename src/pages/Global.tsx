@@ -92,9 +92,9 @@ export default function GlobalLeaderboardPage() {
         }
         setErr("");
 
-        // 1) latest GW from results
+        // 1) latest GW from results - App reads from app_gw_results
         const { data: latest, error: lErr } = await supabase
-          .from("gw_results")
+          .from("app_gw_results")
           .select("gw")
           .order("gw", { ascending: false })
           .limit(1)
@@ -103,16 +103,16 @@ export default function GlobalLeaderboardPage() {
         const gw = latest?.gw ?? 1;
         if (alive) setLatestGw(gw);
 
-        // 2) all GW points (needed for form leaderboards)
+        // 2) all GW points (needed for form leaderboards) - App reads from app_v_gw_points
         const { data: gp, error: gErr } = await supabase
-          .from("v_gw_points")
+          .from("app_v_gw_points")
           .select("user_id, gw, points")
           .order("gw", { ascending: true });
         if (gErr) throw gErr;
 
-        // 3) overall
+        // 3) overall - App reads from app_v_ocp_overall
         const { data: ocp, error: oErr } = await supabase
-          .from("v_ocp_overall")
+          .from("app_v_ocp_overall")
           .select("user_id, name, ocp");
         if (oErr) throw oErr;
 

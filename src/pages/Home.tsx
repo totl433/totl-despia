@@ -1,17 +1,14 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import ScrollLogo from "../components/ScrollLogo";
-import Section from "../components/Section";
-import { LeaderboardCard } from "../components/LeaderboardCard";
-import { StreakCard } from "../components/StreakCard";
-import { MiniLeagueCard } from "../components/MiniLeagueCard";
+import { LeaderboardsSection } from "../components/LeaderboardsSection";
+import { MiniLeaguesSection } from "../components/MiniLeaguesSection";
+import { GamesSection } from "../components/GamesSection";
 import type { LeagueRow, LeagueData } from "../components/MiniLeagueCard";
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import { useLiveScores } from "../hooks/useLiveScores";
-import LiveGamesToggle from "../components/LiveGamesToggle";
 import { getCached, setCached, CACHE_TTL } from "../lib/cache";
 
 // Types
@@ -127,8 +124,8 @@ export default function HomePage() {
         let userPicks: Record<number, "H" | "D" | "A"> = {};
         let fixturesLoading = true;
         
-        if (cached.isInApiTestLeague && cached.testGw) {
-          const fixturesCacheKey = `home:fixtures:${userId}:${cached.testGw}`;
+        if (cached.currentGw) {
+          const fixturesCacheKey = `home:fixtures:${userId}:${cached.currentGw}`;
           try {
             const fixturesCached = getCached<{
               fixtures: Fixture[];
@@ -236,11 +233,10 @@ export default function HomePage() {
     if (!fixtures?.length || !user?.id) return new Map();
     
     try {
-      // Try to get testGw from fixtures or cache
-      const testGw = fixtures[0]?.test_gw;
-      if (!testGw) return new Map();
+      // Use current GW for cache key (no test GWs)
+      if (!gw) return new Map();
       
-      const fixturesCacheKey = `home:fixtures:${user.id}:${testGw}`;
+      const fixturesCacheKey = `home:fixtures:${user.id}:${gw}`;
       const cached = getCached<{
         fixtures: Fixture[];
         userPicks: Record<number, "H" | "D" | "A">;
@@ -283,10 +279,10 @@ export default function HomePage() {
   useEffect(() => {
     if (!user?.id || !fixtures.length || !liveScoresMap.size) return;
     
-    const testGw = fixtures[0]?.test_gw;
-    if (!testGw) return;
+    // Use current GW for cache key (no test GWs)
+    if (!gw) return;
     
-    const fixturesCacheKey = `home:fixtures:${user.id}:${testGw}`;
+    const fixturesCacheKey = `home:fixtures:${user.id}:${gw}`;
     try {
       // Get existing cache
       const existing = getCached<{
@@ -313,11 +309,52 @@ export default function HomePage() {
     }
   }, [user?.id, fixtures, liveScoresMap]);
 
-  // Convert Map to Record format - optimized
-  const liveScores = useMemo(() => {
-    if (!fixtures?.length || !liveScoresMap.size) {
-      return {};
+  // Fetch results from app_gw_results for fixtures without api_match_id
+  const [gwResults, setGwResults] = useState<Record<number, "H" | "D" | "A">>({});
+  
+  useEffect(() => {
+    if (!gw || !fixtures.length) {
+      setGwResults({});
+      return;
     }
+    
+    // Check if any fixtures don't have api_match_id (need to fetch from app_gw_results)
+    const hasNonApiFixtures = fixtures.some(f => !f.api_match_id);
+    if (!hasNonApiFixtures) {
+      setGwResults({});
+      return;
+    }
+    
+    let alive = true;
+    (async () => {
+      try {
+        const { data: results, error } = await supabase
+          .from("app_gw_results")
+          .select("fixture_index, result")
+          .eq("gw", gw);
+        
+        if (!alive) return;
+        
+        if (!error && results) {
+          const resultsMap: Record<number, "H" | "D" | "A"> = {};
+          results.forEach((r: { fixture_index: number; result: "H" | "D" | "A" | null }) => {
+            if (r.result === "H" || r.result === "D" || r.result === "A") {
+              resultsMap[r.fixture_index] = r.result;
+            }
+          });
+          setGwResults(resultsMap);
+        }
+      } catch (error) {
+        // Error fetching results (non-critical)
+      }
+    })();
+    
+    return () => { alive = false; };
+  }, [gw, fixtures]);
+
+  // Convert Map to Record format - optimized
+  // Merge live_scores (for API fixtures) with app_gw_results (for non-API fixtures)
+  const liveScores = useMemo(() => {
     const result: Record<number, { 
       homeScore: number; 
       awayScore: number; 
@@ -327,10 +364,14 @@ export default function HomePage() {
       red_cards?: any[] | null;
       home_team?: string | null;
       away_team?: string | null;
+      result?: "H" | "D" | "A" | null; // Add result for non-API fixtures
     }> = {};
+    
+    if (!fixtures?.length) return result;
     
     for (const fixture of fixtures) {
       if (fixture.api_match_id) {
+        // API fixture: use live_scores
         const liveScore = liveScoresMap.get(fixture.api_match_id);
         if (liveScore) {
           result[fixture.fixture_index] = {
@@ -344,10 +385,28 @@ export default function HomePage() {
             away_team: liveScore.away_team ?? null
           };
         }
+      } else {
+        // Non-API fixture: use app_gw_results
+        const resultValue = gwResults[fixture.fixture_index];
+        if (resultValue) {
+          // For non-API fixtures, we don't have actual scores, but we have the result
+          // Set status to FINISHED and store the result
+          result[fixture.fixture_index] = {
+            homeScore: resultValue === "H" ? 1 : resultValue === "A" ? 0 : 0,
+            awayScore: resultValue === "A" ? 1 : resultValue === "H" ? 0 : 0,
+            status: 'FINISHED',
+            minute: null,
+            goals: null,
+            red_cards: null,
+            home_team: null,
+            away_team: null,
+            result: resultValue
+          };
+        }
       }
     }
     return result;
-  }, [liveScoresMap, fixtures]);
+  }, [liveScoresMap, fixtures, gwResults]);
 
   // Fetch basic data (leagues, current GW, leaderboard data) - stale-while-revalidate pattern
   // State is already initialized from cache synchronously, so this only refreshes in background
@@ -378,14 +437,14 @@ export default function HomePage() {
     // 2. Fetch fresh data in background
     (async () => {
       try {
-        // Parallel fetch: leagues, GW data, points, overall, and test_gw in one batch
-        const [membersResult, latestGwResult, metaResult, allGwPointsResult, overallResult, testMetaResult] = await Promise.all([
+        // Parallel fetch: leagues, GW data, points, and overall in one batch
+        // App reads from app_* tables (includes both App and mirrored Web users)
+        const [membersResult, latestGwResult, metaResult, allGwPointsResult, overallResult] = await Promise.all([
           supabase.from("league_members").select("leagues(id, name, code, avatar, created_at)").eq("user_id", user.id),
-          supabase.from("gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
-          supabase.from("meta").select("current_gw").eq("id", 1).maybeSingle(),
-          supabase.from("v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
-          supabase.from("v_ocp_overall").select("user_id, name, ocp"),
-          supabase.from("test_api_meta").select("current_test_gw").eq("id", 1).maybeSingle()
+          supabase.from("app_gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
+          supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle(),
+          supabase.from("app_v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
+          supabase.from("app_v_ocp_overall").select("user_id, name, ocp")
         ]);
         
         if (!alive) return;
@@ -402,33 +461,7 @@ export default function HomePage() {
           setIsInApiTestLeague(leaguesData.some(l => l.name === "API Test"));
         }
         
-        // Process test_gw
-        let testGw: number | undefined = undefined;
-        if (!testMetaResult.error && testMetaResult.data) {
-          testGw = testMetaResult.data.current_test_gw ?? 1;
-          // Verify fixtures exist for this test_gw
-          if (testGw && testGw !== 1) {
-            const { data: fixturesCheck } = await supabase
-              .from("test_api_fixtures")
-              .select("test_gw")
-              .eq("test_gw", testGw)
-              .limit(1)
-              .maybeSingle();
-            
-            if (!fixturesCheck) {
-              const { data: t1Data } = await supabase
-                .from("test_api_fixtures")
-                .select("test_gw")
-                .eq("test_gw", 1)
-                .limit(1)
-                .maybeSingle();
-              
-              if (t1Data) testGw = 1;
-            }
-          }
-        }
-        
-        // Process GW data
+        // Process GW data (always use current GW, ignore test GWs)
         const lastCompletedGw = latestGwResult.data?.gw ?? metaResult.data?.current_gw ?? 1;
         const currentGw = metaResult.data?.current_gw ?? 1;
         setGw(currentGw);
@@ -491,8 +524,7 @@ export default function HomePage() {
             allGwPoints: allPoints,
             overall: overallData,
             lastGwRank: lastGwRankData,
-            isInApiTestLeague: leaguesData.some(l => l.name === "API Test"),
-            testGw: testGw, // Cache testGw so fixtures can load immediately on next visit
+            isInApiTestLeague: leaguesData.some(l => l.name === "API Test")
           }, CACHE_TTL.HOME);
           // Cached data for next time
         } catch (cacheError) {
@@ -519,7 +551,15 @@ export default function HomePage() {
   const prevLatestGwRef = useRef<number | null>(null);
   
   useEffect(() => {
-    if (!user?.id || !latestGw || !allGwPoints.length || !overall.length) return;
+    if (!user?.id || !latestGw) return;
+    
+    // If no data yet, set ranks to null and return early
+    if (!allGwPoints.length || !overall.length) {
+      setFiveGwRank(null);
+      setTenGwRank(null);
+      setSeasonRank(null);
+      return;
+    }
     
     // Check if data actually changed to avoid unnecessary recalculations
     const allGwPointsKey = JSON.stringify(allGwPoints.slice(0, 10)); // Sample for comparison
@@ -542,7 +582,7 @@ export default function HomePage() {
     (async () => {
       try {
         const { data: lastCompletedGwData } = await supabase
-          .from("gw_results")
+          .from("app_gw_results")
           .select("gw")
           .order("gw", { ascending: false })
           .limit(1)
@@ -600,7 +640,13 @@ export default function HomePage() {
                 total: ranked.length,
                 isTied: rankCount > 1
               });
+            } else {
+              // User doesn't have all required weeks, set to null to show "—"
+              setRank(null);
             }
+          } else {
+            // No users with all required weeks, set to null
+            setRank(null);
           }
         };
         
@@ -633,7 +679,13 @@ export default function HomePage() {
               total: overall.length,
               isTied: rankCount > 1
             });
+          } else {
+            // User not found in overall rankings, set to null
+            setSeasonRank(null);
           }
+        } else {
+          // No overall data, set to null
+          setSeasonRank(null);
         }
       } catch (e) {
         // Silent fail
@@ -693,12 +745,13 @@ export default function HomePage() {
         const leagueIds = leagues.map(l => l.id);
         
         // Parallel fetch all league data
+        // App reads from app_* tables (includes both App and mirrored Web users)
         const [membersResult, readsResult, submissionsResult, resultsResult, fixturesResult] = await Promise.all([
           supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds),
           supabase.from("league_message_reads").select("league_id, last_read_at").eq("user_id", user.id).in("league_id", leagueIds),
-          supabase.from("gw_submissions").select("user_id").eq("gw", gw),
-          supabase.from("gw_results").select("gw, fixture_index, result"),
-          supabase.from("fixtures").select("gw, kickoff_time").in("gw", Array.from({ length: Math.min(20, latestGw || 20) }, (_, i) => i + 1))
+          supabase.from("app_gw_submissions").select("user_id").eq("gw", gw),
+          supabase.from("app_gw_results").select("gw, fixture_index, result"),
+          supabase.from("app_fixtures").select("gw, kickoff_time").in("gw", Array.from({ length: Math.min(20, latestGw || 20) }, (_, i) => i + 1))
         ]);
         
         if (!alive) return;
@@ -726,11 +779,12 @@ export default function HomePage() {
         });
         
         // Fetch picks per league in parallel
+        // App reads from app_picks (includes both App and mirrored Web users)
         const picksPromises = leagues.map(async (league) => {
           const memberIds = (membersByLeague[league.id] ?? []).map(m => m.id);
           if (memberIds.length === 0) return { leagueId: league.id, picks: [] };
           const { data } = await supabase
-            .from("picks")
+            .from("app_picks")
             .select("user_id, gw, fixture_index, pick")
             .in("user_id", memberIds);
           return { leagueId: league.id, picks: (data ?? []) as PickRow[] };
@@ -1030,9 +1084,9 @@ export default function HomePage() {
     return () => { alive = false; };
   }, [user?.id, leagues, gw]);
 
-  // Fetch fixtures and picks for API Test league - optimized with caching
+  // Fetch fixtures and picks - always uses current GW from app_meta (ignores test GWs)
   useEffect(() => {
-    if (!user?.id || !isInApiTestLeague) {
+    if (!user?.id || !gw) {
       setFixtures([]);
       setFixturesLoading(false);
       setUserPicks({});
@@ -1041,82 +1095,24 @@ export default function HomePage() {
     }
     
     // If fixtures were already loaded from basic cache, just refresh in background silently
-    if (fixturesLoadedFromCacheRef.current) {
-      // Fixtures already loaded from basic cache, skip this useEffect
-      // Fixtures already loaded from basic cache, skipping useEffect
-      return;
-    }
-    
-    // If fixtures are already loaded (but not from basic cache), just refresh in background silently
-    if (fixtures.length > 0) {
-      // Fixtures already loaded, refreshing in background
-      // Still refresh in background, but don't show loading state
-      // Use cached testGw from basic cache if available
+    if (fixturesLoadedFromCacheRef.current && fixtures.length > 0) {
+      // Fixtures already loaded from basic cache, refresh in background
       (async () => {
         try {
-          // Try to get testGw from basic cache first
-          const basicCacheKey = `home:basic:${user.id}`;
-          let testGw: number | undefined = undefined;
-          
-          try {
-            const basicCached = getCached<{ testGw?: number }>(basicCacheKey);
-            if (basicCached?.testGw) {
-              testGw = basicCached.testGw;
-              // Using cached testGw
-            }
-          } catch {}
-          
-          // If not in cache, fetch it
-          if (!testGw) {
-            const { data: testMeta } = await supabase
-              .from("test_api_meta")
-              .select("current_test_gw")
-              .eq("id", 1)
-              .maybeSingle();
-            
-            testGw = testMeta?.current_test_gw ?? 1;
-          }
-          
-          // Verify fixtures exist
-          if (testGw && testGw !== 1) {
-            const { data: fixturesCheck } = await supabase
-              .from("test_api_fixtures")
-              .select("test_gw")
-              .eq("test_gw", testGw)
-              .limit(1)
-              .maybeSingle();
-            
-            if (!fixturesCheck) {
-              const { data: t1Data } = await supabase
-                .from("test_api_fixtures")
-                .select("test_gw")
-                .eq("test_gw", 1)
-                .limit(1)
-                .maybeSingle();
-              
-              if (t1Data) testGw = 1;
-            }
-          }
-          
-          if (!testGw) {
-            // No testGw available, skipping fixture refresh
-            return;
-          }
-          
           const [fixturesResult, picksResult] = await Promise.all([
             supabase
-              .from("test_api_fixtures")
-              .select("id, test_gw, fixture_index, api_match_id, home_code, away_code, home_team, away_team, home_name, away_name, home_crest, away_crest, kickoff_time")
-              .eq("test_gw", testGw)
+              .from("app_fixtures")
+              .select("id, gw, fixture_index, api_match_id, home_code, away_code, home_team, away_team, home_name, away_name, kickoff_time")
+              .eq("gw", gw)
               .order("fixture_index", { ascending: true }),
             supabase
-              .from("test_api_picks")
+              .from("app_picks")
               .select("fixture_index, pick")
-              .eq("matchday", testGw)
+              .eq("gw", gw)
               .eq("user_id", user.id)
           ]);
           
-          const fixturesData = fixturesResult.error ? [] : (fixturesResult.data ?? []).map((f: any) => ({ ...f, gw: f.test_gw })) as Fixture[];
+          const fixturesData = fixturesResult.error ? [] : (fixturesResult.data ?? []) as Fixture[];
           const picksMap: Record<number, "H" | "D" | "A"> = {};
           
           if (!picksResult.error) {
@@ -1129,26 +1125,23 @@ export default function HomePage() {
           setUserPicks(picksMap);
           
           // Cache the data
-          if (testGw) {
-            const fixturesCacheKey = `home:fixtures:${user.id}:${testGw}`;
-            try {
-              // Get current live scores to cache them
-              const liveScoresArray: Array<any> = [];
-              liveScoresMap.forEach((score) => {
-                liveScoresArray.push(score);
-              });
-              
-              setCached(fixturesCacheKey, {
-                fixtures: fixturesData,
-                userPicks: picksMap,
-                liveScores: liveScoresArray.length > 0 ? liveScoresArray : undefined,
-              }, CACHE_TTL.HOME);
-            } catch (cacheError) {
-              // Failed to cache fixtures (non-critical)
-            }
+          const fixturesCacheKey = `home:fixtures:${user.id}:${gw}`;
+          try {
+            const liveScoresArray: Array<any> = [];
+            liveScoresMap.forEach((score) => {
+              liveScoresArray.push(score);
+            });
+            
+            setCached(fixturesCacheKey, {
+              fixtures: fixturesData,
+              userPicks: picksMap,
+              liveScores: liveScoresArray.length > 0 ? liveScoresArray : undefined,
+            }, CACHE_TTL.HOME);
+          } catch (cacheError) {
+            // Failed to cache (non-critical)
           }
         } catch (error) {
-          console.error('[Home] Error refreshing fixtures:', error);
+          // Error refreshing fixtures (non-critical)
         }
       })();
       return;
@@ -1158,47 +1151,9 @@ export default function HomePage() {
     let loadedFromCache = false;
     
     // 1. Load from cache immediately (if available)
-    // First, we need to get the test_gw to build the cache key
     (async () => {
       try {
-        const { data: testMeta } = await supabase
-          .from("test_api_meta")
-          .select("current_test_gw")
-          .eq("id", 1)
-          .maybeSingle();
-        
-        let testGw = testMeta?.current_test_gw ?? 1;
-        
-        // Verify fixtures exist
-        if (testGw && testGw !== 1) {
-          const { data: fixturesCheck } = await supabase
-            .from("test_api_fixtures")
-            .select("test_gw")
-            .eq("test_gw", testGw)
-            .limit(1)
-            .maybeSingle();
-          
-          if (!fixturesCheck) {
-            const { data: t1Data } = await supabase
-              .from("test_api_fixtures")
-              .select("test_gw")
-              .eq("test_gw", 1)
-              .limit(1)
-              .maybeSingle();
-            
-            if (t1Data) testGw = 1;
-          }
-        }
-        
-        if (!testGw) {
-          setFixtures([]);
-          setFixturesLoading(false);
-          setUserPicks({});
-          hasCheckedCacheRef.current = true;
-          return;
-        }
-        
-        const fixturesCacheKey = `home:fixtures:${user.id}:${testGw}`;
+        const fixturesCacheKey = `home:fixtures:${user.id}:${gw}`;
         
         // Try to load from cache
         try {
@@ -1207,21 +1162,18 @@ export default function HomePage() {
             userPicks: Record<number, "H" | "D" | "A">;
           }>(fixturesCacheKey);
           
-            if (cached && cached.fixtures && Array.isArray(cached.fixtures) && cached.fixtures.length > 0) {
-              // INSTANT RENDER from cache!
-              console.log('[Home] ✅ Loading fixtures from cache:', cached.fixtures.length, 'fixtures');
-              setFixtures(cached.fixtures);
-              setUserPicks(cached.userPicks || {});
-              setFixturesLoading(false);
-              loadedFromCache = true;
-              fixturesLoadedFromCacheRef.current = true;
-              hasCheckedCacheRef.current = true;
-            } else {
-              console.log('[Home] ⚠️ No valid fixtures cache found, will fetch fresh data');
-              hasCheckedCacheRef.current = true;
-            }
+          if (cached && cached.fixtures && Array.isArray(cached.fixtures) && cached.fixtures.length > 0) {
+            setFixtures(cached.fixtures);
+            setUserPicks(cached.userPicks || {});
+            setFixturesLoading(false);
+            loadedFromCache = true;
+            fixturesLoadedFromCacheRef.current = true;
+            hasCheckedCacheRef.current = true;
+          } else {
+            hasCheckedCacheRef.current = true;
+          }
         } catch (error) {
-          console.warn('[Home] Error loading fixtures from cache, fetching fresh data:', error);
+          // Cache miss, continue to fetch
         }
         
         // 2. Fetch fresh data in background
@@ -1229,22 +1181,23 @@ export default function HomePage() {
           setFixturesLoading(true);
         }
         
+        // Always load from app_fixtures using current GW
         const [fixturesResult, picksResult] = await Promise.all([
           supabase
-            .from("test_api_fixtures")
-            .select("id, test_gw, fixture_index, api_match_id, home_code, away_code, home_team, away_team, home_name, away_name, home_crest, away_crest, kickoff_time")
-            .eq("test_gw", testGw)
+            .from("app_fixtures")
+            .select("id, gw, fixture_index, api_match_id, home_code, away_code, home_team, away_team, home_name, away_name, kickoff_time")
+            .eq("gw", gw)
             .order("fixture_index", { ascending: true }),
           supabase
-            .from("test_api_picks")
+            .from("app_picks")
             .select("fixture_index, pick")
-            .eq("matchday", testGw)
+            .eq("gw", gw)
             .eq("user_id", user.id)
         ]);
         
         if (!alive) return;
         
-        const fixturesData = fixturesResult.error ? [] : (fixturesResult.data ?? []).map((f: any) => ({ ...f, gw: f.test_gw })) as Fixture[];
+        const fixturesData = fixturesResult.error ? [] : (fixturesResult.data ?? []) as Fixture[];
         const picksMap: Record<number, "H" | "D" | "A"> = {};
         
         if (!picksResult.error) {
@@ -1256,19 +1209,23 @@ export default function HomePage() {
         setFixtures(fixturesData);
         setUserPicks(picksMap);
         setFixturesLoading(false);
-        fixturesLoadedFromCacheRef.current = false; // Reset after fresh fetch
+        fixturesLoadedFromCacheRef.current = false;
         hasCheckedCacheRef.current = true;
         
-        // Cache the data for next time (live scores will be cached separately when available)
+        // Cache the data
         try {
+          const liveScoresArray: Array<any> = [];
+          liveScoresMap.forEach((score) => {
+            liveScoresArray.push(score);
+          });
+          
           setCached(fixturesCacheKey, {
             fixtures: fixturesData,
             userPicks: picksMap,
-            // Note: liveScores will be cached when they're available from the hook
+            liveScores: liveScoresArray.length > 0 ? liveScoresArray : undefined,
           }, CACHE_TTL.HOME);
-          console.log('[Home] ✅ Cached fixtures for next time:', fixturesData.length, 'fixtures');
         } catch (cacheError) {
-          console.warn('[Home] Failed to cache fixtures:', cacheError);
+          // Failed to cache (non-critical)
         }
       } catch (error) {
         if (alive) {
@@ -1281,11 +1238,11 @@ export default function HomePage() {
     })();
     
     return () => { alive = false; };
-  }, [user?.id, isInApiTestLeague]);
+  }, [user?.id, gw]);
 
   // Calculate score component - memoized
   const scoreComponent = useMemo(() => {
-    if (!isInApiTestLeague || !fixtures.length) return null;
+    if (!fixtures.length) return null;
     
     const hasSubmittedPicks = Object.keys(userPicks).length > 0;
     let score = 0;
@@ -1307,10 +1264,17 @@ export default function HomePage() {
         if (status !== 'FINISHED') allFinished = false;
         
         if (pick && liveScore) {
-          const isCorrect = 
-            (pick === 'H' && liveScore.homeScore > liveScore.awayScore) ||
-            (pick === 'A' && liveScore.awayScore > liveScore.homeScore) ||
-            (pick === 'D' && liveScore.homeScore === liveScore.awayScore);
+          let isCorrect = false;
+          // Check if we have a direct result (for non-API fixtures from app_gw_results)
+          if ((liveScore as any).result) {
+            isCorrect = (liveScore as any).result === pick;
+          } else {
+            // Use score comparison for API fixtures
+            isCorrect = 
+              (pick === 'H' && liveScore.homeScore > liveScore.awayScore) ||
+              (pick === 'A' && liveScore.awayScore > liveScore.homeScore) ||
+              (pick === 'D' && liveScore.homeScore === liveScore.awayScore);
+          }
           if (isCorrect) score++;
         }
       } else {
@@ -1413,16 +1377,18 @@ export default function HomePage() {
     };
   }, [user?.id, gwPoints, latestGw]);
 
-  // Sort leagues by unread - optimized
+  // Sort leagues by unread - optimized, and filter out "API Test" league
   const sortedLeagues = useMemo(() => {
     if (!leagues.length) return [];
-    return [...leagues].sort((a, b) => {
-      const unreadA = unreadByLeague?.[a.id] ?? 0;
-      const unreadB = unreadByLeague?.[b.id] ?? 0;
-      if (unreadA > 0 && unreadB === 0) return -1;
-      if (unreadA === 0 && unreadB > 0) return 1;
-      return a.name.localeCompare(b.name);
-    });
+    return [...leagues]
+      .filter(league => league.name !== 'API Test') // Hide API Test league
+      .sort((a, b) => {
+        const unreadA = unreadByLeague?.[a.id] ?? 0;
+        const unreadB = unreadByLeague?.[b.id] ?? 0;
+        if (unreadA > 0 && unreadB === 0) return -1;
+        if (unreadA === 0 && unreadB > 0) return 1;
+        return a.name.localeCompare(b.name);
+      });
   }, [leagues, unreadByLeague]);
 
   // Memoize filtered fixtures
@@ -1479,199 +1445,39 @@ export default function HomePage() {
         </div>
       ) : (
         <>
-          {/* LEADERBOARDS - COMPONENT HP */}
-          <Section title="LEADERBOARDS - COMPONENT HP">
-            <div 
-              className="overflow-x-auto scrollbar-hide" 
-              style={{ 
-                scrollbarWidth: 'none', 
-                msOverflowStyle: 'none', 
-                WebkitOverflowScrolling: 'touch', 
-                overscrollBehaviorX: 'contain',
-                touchAction: 'pan-x pan-y pinch-zoom',
-                marginLeft: '-1rem',
-                marginRight: '-1rem',
-                paddingLeft: '1rem',
-                paddingRight: '1rem',
-                width: 'calc(100% + 3rem)'
-              }}
-            >
-              <style>{`.scrollbar-hide::-webkit-scrollbar { display: none; }`}</style>
-              <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
-                <LeaderboardCard
-                  title="Last GW"
-                  linkTo="/global?tab=lastgw"
-                  rank={lastGwRank?.rank ?? null}
-                  total={lastGwRank?.total ?? null}
-                  score={lastGwRank?.score}
-                  gw={lastGwRank?.gw}
-                  totalFixtures={lastGwRank?.totalFixtures}
-                  variant="lastGw"
-                />
-                <LeaderboardCard
-                  title="5-WEEK FORM"
-                  badgeSrc="/assets/5-week-form-badge.png"
-                  badgeAlt="5-Week Form Badge"
-                  linkTo="/global?tab=form5"
-                  rank={fiveGwRank?.rank ?? null}
-                  total={fiveGwRank?.total ?? null}
-                />
-                <LeaderboardCard
-                  title="10-WEEK FORM"
-                  badgeSrc="/assets/10-week-form-badge.png"
-                  badgeAlt="10-Week Form Badge"
-                  linkTo="/global?tab=form10"
-                  rank={tenGwRank?.rank ?? null}
-                  total={tenGwRank?.total ?? null}
-                />
-                <LeaderboardCard
-                  title="SEASON RANK"
-                  badgeSrc="/assets/season-rank-badge.png"
-                  badgeAlt="Season Rank Badge"
-                  linkTo="/global?tab=overall"
-                  rank={seasonRank?.rank ?? null}
-                  total={seasonRank?.total ?? null}
-                />
-                {userStreakData && (
-                  <StreakCard
-                    streak={userStreakData.streak}
-                    last10GwScores={userStreakData.last10GwScores}
-                    latestGw={latestGw ?? 1}
-                  />
-                )}
-              </div>
-            </div>
-          </Section>
+          {/* LEADERBOARDS */}
+          <LeaderboardsSection
+            lastGwRank={lastGwRank}
+            fiveGwRank={fiveGwRank}
+            tenGwRank={tenGwRank}
+            seasonRank={seasonRank}
+            userStreakData={userStreakData}
+            latestGw={latestGw}
+          />
 
-          {/* Mini Leagues section */}
-          <section className="mt-6">
-            <div className="flex items-center justify-between mb-2 pt-5">
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-medium text-slate-500 uppercase tracking-wide">Mini Leagues</h2>
-                <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center">
-                  <span className="text-[10px] text-slate-500 font-bold">i</span>
-                </div>
-              </div>
-            </div>
-            <div>
-              {!leagueDataLoading && leagues.length === 0 ? (
-                <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
-                  <div className="text-slate-600 mb-3">You don't have any mini leagues yet.</div>
-                  <Link 
-                    to="/create-league" 
-                    className="inline-block px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg hover:bg-[#1C8376]/80 transition-colors no-underline"
-                  >
-                    Create one now!
-                  </Link>
-                </div>
-              ) : sortedLeagues.length > 0 ? (
-                <div 
-                  className="overflow-x-auto scrollbar-hide" 
-                  style={{ 
-                    scrollbarWidth: 'none', 
-                    msOverflowStyle: 'none', 
-                    WebkitOverflowScrolling: 'touch', 
-                    overscrollBehaviorX: 'contain',
-                    overscrollBehaviorY: 'auto',
-                    touchAction: 'pan-x pan-y pinch-zoom',
-                    marginLeft: '-1rem',
-                    marginRight: '-1rem',
-                    paddingLeft: '1rem',
-                    paddingRight: '1rem',
-                    width: 'calc(100% + 2rem)'
-                  }}
-                >
-                  <style>{`.scrollbar-hide::-webkit-scrollbar { display: none; }`}</style>
-                  <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
-                    {Array.from({ length: Math.ceil(sortedLeagues.length / 3) }).map((_, batchIdx) => {
-                      const startIdx = batchIdx * 3;
-                      const batchLeagues = sortedLeagues.slice(startIdx, startIdx + 3);
-                      
-                      return (
-                        <div key={batchIdx} className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm w-[320px]">
-                          {batchLeagues.map((l, index) => {
-                            const unread = unreadByLeague?.[l.id] ?? 0;
-                            const data = leagueData[l.id];
-                            const cardData: LeagueData | undefined = data ? {
-                              id: data.id,
-                              members: data.members,
-                              userPosition: data.userPosition,
-                              positionChange: data.positionChange,
-                              submittedMembers: data.submittedMembers,
-                              sortedMemberIds: data.sortedMemberIds,
-                              latestGwWinners: data.latestGwWinners,
-                              latestRelevantGw: data.latestRelevantGw
-                            } : undefined;
-                            
-                            return (
-                              <div key={l.id} className={index < batchLeagues.length - 1 ? 'relative' : ''}>
-                                {index < batchLeagues.length - 1 && (
-                                  <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-30 pointer-events-none" />
-                                )}
-                                <div className="[&>div]:border-0 [&>div]:shadow-none [&>div]:rounded-none [&>div]:bg-transparent relative z-20 [&>div>a]:!p-4">
-                                  <MiniLeagueCard
-                                    row={l as LeagueRow}
-                                    data={cardData}
-                                    unread={unread}
-                                    submissions={leagueSubmissions[l.id]}
-                                    leagueDataLoading={leagueDataLoading}
-                                    currentGw={gw}
-                                    showRanking={false}
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : (
-                <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
-                  <div className="text-slate-600">Loading leagues...</div>
-                </div>
-              )}
-            </div>
-          </section>
+          {/* Mini Leagues */}
+          <MiniLeaguesSection
+            leagues={sortedLeagues}
+            leagueData={leagueData}
+            leagueSubmissions={leagueSubmissions}
+            unreadByLeague={unreadByLeague}
+            leagueDataLoading={leagueDataLoading}
+            currentGw={gw}
+          />
 
-          {/* Games section */}
-          <Section 
-            title="Games"
-            subtitle={isInApiTestLeague && fixtures.length > 0 ? `GW T${fixtures[0]?.test_gw ?? 1}` : undefined}
-            className="mt-6"
-            headerRight={
-              <div className="flex items-center gap-3">
-                {hasLiveGames && (
-                  <LiveGamesToggle value={showLiveOnly} onChange={setShowLiveOnly} />
-                )}
-                {scoreComponent}
-              </div>
-            }
-          >
-            {(!hasCheckedCacheRef.current || fixturesLoading) ? (
-              <div className="p-4 text-slate-500">Loading fixtures...</div>
-            ) : fixtures.length === 0 ? (
-              <div className="p-4 text-slate-500">No fixtures yet.</div>
-            ) : fixtures.length > 0 ? (
-              <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">
-                {fixtureCards.map(({ fixture, liveScore, pick }, index) => (
-                  <div key={fixture.id} className={index < fixtureCards.length - 1 ? 'relative' : ''}>
-                    {index < fixtureCards.length - 1 && (
-                      <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-10" />
-                    )}
-                    <FixtureCard
-                      fixture={fixture}
-                      pick={pick}
-                      liveScore={liveScore}
-                      isTestApi={isInApiTestLeague}
-                      showPickButtons={true}
-                    />
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </Section>
+          {/* Games */}
+          <GamesSection
+            isInApiTestLeague={isInApiTestLeague}
+            fixtures={fixtures}
+            fixtureCards={fixtureCards}
+            hasLiveGames={hasLiveGames}
+            showLiveOnly={showLiveOnly}
+            onToggleLiveOnly={setShowLiveOnly}
+            scoreComponent={scoreComponent}
+            fixturesLoading={fixturesLoading}
+            hasCheckedCache={hasCheckedCacheRef.current}
+            currentGw={gw}
+          />
 
           {/* Bottom padding */}
           <div className="h-20"></div>

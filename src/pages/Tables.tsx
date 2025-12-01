@@ -98,10 +98,11 @@ export default function TablesPage() {
     (async () => {
       try {
         // Step 1: Get league IDs and current GW in parallel
+        // App reads from app_* tables
         const [membershipsResult, fixturesResult, metaResult] = await Promise.all([
           supabase.from("league_members").select("league_id").eq("user_id", user.id),
-          supabase.from("fixtures").select("gw").order("gw", { ascending: false }).limit(1),
-          supabase.from("meta").select("current_gw").eq("id", 1).maybeSingle()
+          supabase.from("app_fixtures").select("gw").order("gw", { ascending: false }).limit(1),
+          supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle()
         ]);
         
         if (membershipsResult.error) throw membershipsResult.error;
@@ -134,8 +135,8 @@ export default function TablesPage() {
           supabase.from("leagues").select("id,name,code,created_at,avatar").in("id", leagueIds).order("created_at", { ascending: true }),
           supabase.from("league_members").select("league_id,user_id").in("league_id", leagueIds).limit(10000),
           supabase.from("league_message_reads").select("league_id,last_read_at").eq("user_id", user.id),
-          supabase.from("gw_results").select("gw,fixture_index,result"),
-          supabase.from("fixtures").select("gw,kickoff_time").order("gw", { ascending: true }).order("kickoff_time", { ascending: true }),
+          supabase.from("app_gw_results").select("gw,fixture_index,result"),
+          supabase.from("app_fixtures").select("gw,kickoff_time").order("gw", { ascending: true }).order("kickoff_time", { ascending: true }),
           supabase.from("league_members").select("league_id,user_id, users(id, name)").in("league_id", leagueIds).limit(10000),
           supabase.from("leagues").select("id,name,created_at").in("id", leagueIds)
         ]);
@@ -171,10 +172,11 @@ export default function TablesPage() {
           ? allMemberIds.filter(id => !apiTestMemberIdsSet.has(id))
           : allMemberIds;
         
-        // Step 3: Fetch submissions and test API data in parallel
+        // Step 3: Fetch submissions - App reads from app_gw_submissions for all users
+        // API Test league users are now in app_* tables too
         const [submissionsResult, testMetaResult] = await Promise.all([
-          regularMemberIds.length > 0
-            ? supabase.from("gw_submissions").select("user_id").eq("gw", currentGw).in("user_id", regularMemberIds).limit(10000)
+          allMemberIds.length > 0
+            ? supabase.from("app_gw_submissions").select("user_id").eq("gw", currentGw).in("user_id", allMemberIds).limit(10000)
             : Promise.resolve({ data: [], error: null }),
           apiTestLeague && apiTestMemberIds.length > 0
             ? supabase.from("test_api_meta").select("current_test_gw").eq("id", 1).maybeSingle()
@@ -187,10 +189,11 @@ export default function TablesPage() {
         if (apiTestLeague && apiTestMemberIds.length > 0 && testMetaResult.data) {
           const currentTestGw = (testMetaResult.data as any)?.current_test_gw ?? 1;
           
+          // App reads from app_* tables (not test_api_*)
           const [testSubsResult, testPicksResult, testFixturesResult] = await Promise.all([
-            supabase.from("test_api_submissions").select("user_id,submitted_at").eq("matchday", currentTestGw).in("user_id", apiTestMemberIds).not("submitted_at", "is", null),
-            supabase.from("test_api_picks").select("user_id,fixture_index").eq("matchday", currentTestGw).in("user_id", apiTestMemberIds),
-            supabase.from("test_api_fixtures").select("fixture_index").eq("test_gw", currentTestGw).order("fixture_index", { ascending: true })
+            supabase.from("app_gw_submissions").select("user_id,submitted_at").eq("gw", currentTestGw).in("user_id", apiTestMemberIds).not("submitted_at", "is", null),
+            supabase.from("app_picks").select("user_id,fixture_index").eq("gw", currentTestGw).in("user_id", apiTestMemberIds),
+            supabase.from("app_fixtures").select("fixture_index").eq("gw", currentTestGw).order("fixture_index", { ascending: true })
           ]);
           
           if (testFixturesResult.data && testPicksResult.data && testSubsResult.data) {
@@ -386,7 +389,7 @@ export default function TablesPage() {
           if (relevantGws.length === 0) return Promise.resolve({ data: [], error: null });
           
           return supabase
-            .from("picks")
+            .from("app_picks")
             .select("user_id,gw,fixture_index,pick")
             .in("user_id", memberIds.map(m => m.id))
             .in("gw", relevantGws)
