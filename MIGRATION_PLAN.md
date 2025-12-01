@@ -35,7 +35,8 @@ Migrate all Web users to App/Despia while maintaining Web game functionality. Ap
 1. Admin creates fixtures manually → `fixtures` (Web)
 2. Users make picks via Web → `picks` (Web)
 3. **Mirror to App tables**: `fixtures` → `app_fixtures` (with team code mapping), `picks` → `app_picks`
-4. API scores games → `app_gw_results`
+4. **Once mirrored, treated as App users**: API scores ALL picks in `app_picks` (both App users and mirrored Web users)
+5. API writes results → `app_gw_results` (NOT mirrored from Web `gw_results`)
 
 **App Reads:**
 - Always reads from App tables: `app_fixtures`, `app_picks`, `app_gw_results`, `app_gw_submissions`
@@ -97,8 +98,8 @@ Migrate all Web users to App/Despia while maintaining Web game functionality. Ap
 
 ---
 
-### Stage 3: Mirroring System ✅ INITIAL MIRRORING COMPLETE
-**Status**: Initial Historical Data Complete, Ongoing Mirroring Manual  
+### Stage 3: Mirroring System ✅ COMPLETE
+**Status**: Initial Historical Data Complete, Real-Time Mirroring Implemented  
 **Goal**: Copy Web picks → App picks each GW
 
 **Tasks**:
@@ -111,21 +112,26 @@ Migrate all Web users to App/Despia while maintaining Web game functionality. Ap
   - ✅ Mirrored test_api_fixtures to app_fixtures (with api_match_id)
 - [x] **Update NewPredictionsCentre to write directly to `app_picks`** ✅
 - [x] **App users write directly to `app_picks`** (not `test_api_picks`) ✅
-- [ ] **Ongoing mirroring**: Manual process for now
-  - ✅ Manually added nazrene's GW13 picks to Web tables (2024-11-30)
-  - [ ] Create automated mirroring script/function (for future GWs)
-- [ ] Map Web `fixtures` → `app_fixtures` for new GWs (with team code normalization)
-- [ ] Copy Web `picks` → `app_picks` (with fixture mapping) - currently manual
-- [ ] Copy Web `gw_submissions` → `app_gw_submissions` - currently manual
-- [ ] Handle timing (when to run mirroring)
-- [ ] Add error handling and logging
+- [x] **Real-time mirroring: Database triggers implemented** ✅
+  - ✅ Created PostgreSQL triggers for automatic mirroring
+  - ✅ `picks` → `app_picks` (real-time on insert/update)
+  - ✅ `gw_submissions` → `app_gw_submissions` (real-time on insert/update)
+  - ✅ `fixtures` → `app_fixtures` (real-time on insert/update)
+  - ✅ `gw_results` → `app_gw_results` (real-time on insert/update)
+  - ✅ Triggers run automatically, no manual intervention needed
+  - ✅ Handles conflicts gracefully with ON CONFLICT
+- [x] **Manually added nazrene's GW13 picks to Web tables** (2024-11-30) ✅
 
-**Script Created**:
+**Scripts Created**:
 - `scripts/mirror-all-web-data-to-app.mjs` - Initial historical data mirroring ✅
+- `supabase/sql/create_mirror_triggers.sql` - Real-time mirroring triggers ✅
 
-**Questions to Resolve**:
-- [ ] Automatic (cron/webhook) or manual trigger for future GWs?
-- [ ] Run once per GW or continuous sync?
+**How It Works**:
+- When a Web user submits picks → automatically copied to `app_picks` via trigger
+- When a Web user confirms submission → automatically copied to `app_gw_submissions` via trigger
+- When fixtures are created/updated in Web → automatically copied to `app_fixtures` via trigger
+- When results are published in Web → automatically copied to `app_gw_results` via trigger
+- **No manual scripts needed** - everything happens automatically in real-time
 
 ---
 
@@ -248,9 +254,11 @@ Migrate all Web users to App/Despia while maintaining Web game functionality. Ap
   - Added support for reading app_gw_results for non-API fixtures ✅
   - Score calculation works with both API and non-API fixtures ✅
   - App now fully uses App database tables
-- Stage 3: Ongoing Mirroring - Manual Process
-  - Manually added nazrene's GW13 picks to Web tables (2024-11-30)
-  - Need to create automated mirroring for future GWs
+- ✅ Stage 3: Real-Time Mirroring - COMPLETE
+  - Implemented database triggers for automatic real-time mirroring ✅
+  - Web submissions now automatically mirror to App tables instantly ✅
+  - No manual scripts needed - triggers handle everything ✅
+  - Created `supabase/sql/create_mirror_triggers.sql` ✅
 - Stage 5: API Scoring Integration - Partially Complete
   - Home Page reads from app_gw_results for non-API fixtures ✅
   - Need to update pollLiveScores to write to app_gw_results

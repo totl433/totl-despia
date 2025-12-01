@@ -8,7 +8,7 @@ import { GamesSection } from "../components/GamesSection";
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import type { Fixture as FixtureCardFixture, LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import { useLiveScores } from "../hooks/useLiveScores";
-import { getCached, setCached, CACHE_TTL } from "../lib/cache";
+import { getCached, setCached, removeCached, CACHE_TTL } from "../lib/cache";
 
 // Types
 type League = { id: string; name: string; code: string; avatar?: string | null; created_at?: string | null; start_gw?: number | null };
@@ -713,19 +713,32 @@ export default function HomePage() {
       }>(leagueDataCacheKey);
       
       if (cached && cached.leagueData && Object.keys(cached.leagueData).length > 0) {
-        // Convert arrays back to Sets for submittedMembers and latestGwWinners
-        const restoredLeagueData: Record<string, LeagueDataInternal> = {};
-        for (const [leagueId, data] of Object.entries(cached.leagueData)) {
-          restoredLeagueData[leagueId] = {
-            ...data,
-            submittedMembers: data.submittedMembers ? (Array.isArray(data.submittedMembers) ? new Set(data.submittedMembers) : data.submittedMembers) : undefined,
-            latestGwWinners: data.latestGwWinners ? (Array.isArray(data.latestGwWinners) ? new Set(data.latestGwWinners) : data.latestGwWinners) : undefined,
-          };
+        // Check if cached data has webUserIds - if not, it's stale and we should skip cache
+        // We need to check if ALL leagues have webUserIds defined (even if empty arrays)
+        const allLeaguesHaveWebUserIds = Object.values(cached.leagueData).every((data: any) => 
+          data.webUserIds !== undefined
+        );
+        
+        if (allLeaguesHaveWebUserIds) {
+          // Convert arrays back to Sets for submittedMembers and latestGwWinners
+          const restoredLeagueData: Record<string, LeagueDataInternal> = {};
+          for (const [leagueId, data] of Object.entries(cached.leagueData)) {
+            restoredLeagueData[leagueId] = {
+              ...data,
+              submittedMembers: data.submittedMembers ? (Array.isArray(data.submittedMembers) ? new Set(data.submittedMembers) : data.submittedMembers) : undefined,
+              latestGwWinners: data.latestGwWinners ? (Array.isArray(data.latestGwWinners) ? new Set(data.latestGwWinners) : data.latestGwWinners) : undefined,
+              webUserIds: data.webUserIds ? (Array.isArray(data.webUserIds) ? new Set(data.webUserIds) : data.webUserIds) : undefined,
+            };
+          }
+          setLeagueData(restoredLeagueData);
+          setLeagueSubmissions(cached.leagueSubmissions || {});
+          setLeagueDataLoading(false);
+          loadedFromCache = true;
+        } else {
+          // Cache is stale (missing webUserIds) - invalidate it and fetch fresh data
+          console.log('[Home] Cache is stale (missing webUserIds), invalidating and fetching fresh data');
+          removeCached(leagueDataCacheKey);
         }
-        setLeagueData(restoredLeagueData);
-        setLeagueSubmissions(cached.leagueSubmissions || {});
-        setLeagueDataLoading(false);
-        loadedFromCache = true;
       }
     } catch (error) {
       // Error loading leagueData from cache (non-critical)
@@ -745,12 +758,14 @@ export default function HomePage() {
         
         // Parallel fetch all league data
         // App reads from app_* tables (includes both App and mirrored Web users)
-        const [membersResult, readsResult, submissionsResult, resultsResult, fixturesResult] = await Promise.all([
+        const [membersResult, readsResult, submissionsResult, resultsResult, fixturesResult, webPicksResult] = await Promise.all([
           supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds),
           supabase.from("league_message_reads").select("league_id, last_read_at").eq("user_id", user.id).in("league_id", leagueIds),
           supabase.from("app_gw_submissions").select("user_id").eq("gw", gw),
           supabase.from("app_gw_results").select("gw, fixture_index, result"),
-          supabase.from("app_fixtures").select("gw, kickoff_time").in("gw", Array.from({ length: Math.min(20, latestGw || 20) }, (_, i) => i + 1))
+          supabase.from("app_fixtures").select("gw, kickoff_time").in("gw", Array.from({ length: Math.min(20, latestGw || 20) }, (_, i) => i + 1)),
+          // Check which users have picks in Web table (these are Web users with mirrored picks)
+          supabase.from("picks").select("user_id").eq("gw", gw).limit(10000)
         ]);
         
         if (!alive) return;
@@ -770,6 +785,12 @@ export default function HomePage() {
         // Optimize: use Set for faster lookups
         const allMemberIdsSet = new Set(Object.values(membersByLeague).flat().map(m => m.id));
         const submittedUserIds = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id).filter((id: string) => allMemberIdsSet.has(id)));
+        // Identify Web users: users who have picks in the Web `picks` table for current GW
+        const webUserIds = new Set((webPicksResult.data ?? []).map((p: any) => p.user_id).filter((id: string) => allMemberIdsSet.has(id)));
+        
+        if (webPicksResult.error) {
+          console.error('[Home] Error fetching web picks:', webPicksResult.error);
+        }
         
         // Process unread counts
         const lastReadMap = new Map<string, string>();
@@ -900,7 +921,8 @@ export default function HomePage() {
               submittedMembers: Array.from(memberIds.filter(id => submittedUserIds.has(id))),
               sortedMemberIds: sortedMembers.map(m => m.id),
               latestGwWinners: [],
-              latestRelevantGw: null
+              latestRelevantGw: null,
+              webUserIds: Array.from(memberIds.filter(id => webUserIds.has(id)))
             };
             return;
           }
@@ -920,7 +942,8 @@ export default function HomePage() {
               submittedMembers: Array.from(memberIds.filter(id => submittedUserIds.has(id))),
               sortedMemberIds: sortedMembers.map(m => m.id),
               latestGwWinners: [],
-              latestRelevantGw: null
+              latestRelevantGw: null,
+              webUserIds: Array.from(memberIds.filter(id => webUserIds.has(id)))
             };
             return;
           }
@@ -1040,6 +1063,8 @@ export default function HomePage() {
           const latestGwWinners = latestRelevantGw !== null ? (gwWinners.get(latestRelevantGw) ?? new Set<string>()) : new Set<string>();
           const sortedMembers = members.sort((a, b) => a.name.localeCompare(b.name));
           
+          const leagueWebUserIds = Array.from(memberIds.filter(id => webUserIds.has(id)));
+          
           leagueDataMap[league.id] = {
             id: league.id,
             members: sortedMembers,
@@ -1048,7 +1073,8 @@ export default function HomePage() {
             submittedMembers: Array.from(memberIds.filter(id => submittedUserIds.has(id))),
             sortedMemberIds,
             latestGwWinners: Array.from(latestGwWinners),
-            latestRelevantGw
+            latestRelevantGw,
+            webUserIds: leagueWebUserIds
           };
         });
         
@@ -1065,6 +1091,7 @@ export default function HomePage() {
               ...data,
               submittedMembers: data.submittedMembers ? (data.submittedMembers instanceof Set ? Array.from(data.submittedMembers) : data.submittedMembers) : undefined,
               latestGwWinners: data.latestGwWinners ? (data.latestGwWinners instanceof Set ? Array.from(data.latestGwWinners) : data.latestGwWinners) : undefined,
+              webUserIds: data.webUserIds ? (data.webUserIds instanceof Set ? Array.from(data.webUserIds) : data.webUserIds) : undefined,
             };
           }
           

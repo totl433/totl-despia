@@ -7,6 +7,8 @@ import HomePage from "./pages/Home";
 import LeaguePage from "./pages/League";
 import PredictionsPage from "./pages/Predictions";
 import AdminPage from "./pages/Admin";
+import ApiAdmin from "./pages/ApiAdmin";
+import TestFixtures from "./pages/TestFixtures";
 import NewPredictionsCentre from "./pages/NewPredictionsCentre";
 import ProfilePage from "./pages/Profile";
 import TestDespia from "./pages/TestDespia";
@@ -30,7 +32,9 @@ export default function App() {
   return (
     <Router>
       <Routes>
-        {/* Full-screen route without header/banner */}
+        {/* Full-screen routes without header/banner - must come before catch-all */}
+        <Route path="/api-admin" element={<ApiAdmin />} />
+        <Route path="/test-fixtures" element={<TestFixtures />} />
         <Route path="/new-predictions" element={<NewPredictionsCentre />} />
         <Route path="/test-despia" element={<TestDespia />} />
         

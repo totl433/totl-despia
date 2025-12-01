@@ -6,7 +6,12 @@ import TeamBadge from "../components/TeamBadge";
 import { useNavigate } from "react-router-dom";
 import { getMediumName } from "../lib/teamNames";
 import { formatMinuteDisplay } from "../lib/fixtureUtils";
-import { invalidateUserCache } from "../lib/cache";
+import { invalidateUserCache, getCached, setCached, CACHE_TTL, removeCached } from "../lib/cache";
+import SwipeCard from "../components/predictions/SwipeCard";
+import ScoreIndicator from "../components/predictions/ScoreIndicator";
+import ConfirmationModal from "../components/predictions/ConfirmationModal";
+import { FixtureCard } from "../components/FixtureCard";
+import DateHeader from "../components/DateHeader";
 
 // Generate a color from a string (team name or code)
 function stringToColor(str: string): string {
@@ -293,47 +298,18 @@ export default function TestApiPredictions() {
     let alive = true;
     (async () => {
       try {
-        setLoading(true);
-        setPicksChecked(false); // Reset picks checked state
-        setSubmissionChecked(false); // Reset submission checked state
-
-        // Get test GW from meta
-        // Use current_test_gw from meta as primary source (supports GW T2, T3, etc.)
-        let testGw: number | null = null;
+        // Get current GW from app_meta first (needed for cache key)
+        let currentGw: number | null = null;
         
         const { data: meta } = await supabase
-          .from("test_api_meta")
-          .select("current_test_gw")
+          .from("app_meta")
+          .select("current_gw")
           .eq("id", 1)
           .maybeSingle();
         
-        testGw = meta?.current_test_gw ?? 1;
+        currentGw = meta?.current_gw ?? 14;
         
-        // Verify that fixtures exist for this test_gw, otherwise fall back to GW T1
-        if (testGw && testGw !== 1) {
-          const { data: fixturesCheck } = await supabase
-            .from("test_api_fixtures")
-            .select("test_gw")
-            .eq("test_gw", testGw)
-            .limit(1)
-            .maybeSingle();
-          
-          // If no fixtures for current_test_gw, fall back to GW T1
-          if (!fixturesCheck) {
-            const { data: t1Data } = await supabase
-              .from("test_api_fixtures")
-              .select("test_gw")
-              .eq("test_gw", 1)
-              .limit(1)
-              .maybeSingle();
-            
-            if (t1Data) {
-              testGw = 1; // Fallback to GW T1
-            }
-          }
-        }
-        
-        if (!testGw) {
+        if (!currentGw) {
           if (alive) {
             setFixtures([]);
             setLoading(false);
@@ -341,13 +317,73 @@ export default function TestApiPredictions() {
           return;
         }
         
-        setCurrentTestGw(testGw);
+        setCurrentTestGw(currentGw);
+        
+        // 1. Load from cache immediately (if available)
+        const cacheKey = `predictions:${user?.id}:${currentGw}`;
+        let loadedFromCache = false;
+        
+        try {
+          const cached = getCached<{
+            fixtures: Fixture[];
+            picks: Array<{ fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>;
+            submitted: boolean;
+            results: Array<{ fixture_index: number; result: "H" | "D" | "A" }>;
+          }>(cacheKey);
+          
+          if (cached && cached.fixtures && Array.isArray(cached.fixtures) && cached.fixtures.length > 0) {
+            // INSTANT RENDER from cache!
+            setFixtures(cached.fixtures);
+            setLoading(false);
+            
+            // Restore picks from cache
+            if (cached.picks && Array.isArray(cached.picks)) {
+              const picksMap = new Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>();
+              cached.picks.forEach(p => {
+                picksMap.set(p.fixture_index, p);
+              });
+              setPicks(picksMap);
+            }
+            
+            // Restore submission status
+            if (cached.submitted !== undefined) {
+              setSubmitted(cached.submitted);
+              hasEverBeenSubmittedRef.current = cached.submitted;
+              setHasEverBeenSubmitted(cached.submitted);
+              setSubmissionChecked(true);
+            }
+            
+            // Restore results
+            if (cached.results && Array.isArray(cached.results)) {
+              const resultsMap = new Map<number, "H" | "D" | "A">();
+              cached.results.forEach(r => {
+                resultsMap.set(r.fixture_index, r.result);
+              });
+              setResults(resultsMap);
+            }
+            
+            setPicksChecked(true);
+            loadedFromCache = true;
+          }
+        } catch (error) {
+          // If cache is corrupted, just continue with fresh fetch
+          // Error loading from cache (non-critical)
+        }
+        
+        // Only set loading if we didn't load from cache
+        if (!loadedFromCache) {
+          if (fixtures.length === 0) {
+            setLoading(true);
+          }
+          setPicksChecked(false); // Reset picks checked state
+          setSubmissionChecked(false); // Reset submission checked state
+        }
 
-        // Fetch fixtures from test_api_fixtures table
+        // Fetch fixtures from app_fixtures table
         const { data: savedFixtures, error: fixturesError } = await supabase
-          .from("test_api_fixtures")
+          .from("app_fixtures")
           .select("*")
-          .eq("test_gw", testGw)
+          .eq("gw", currentGw)
           .order("fixture_index", { ascending: true });
 
         if (fixturesError) {
@@ -364,8 +400,8 @@ export default function TestApiPredictions() {
 
         // Convert saved fixtures to our format
         const fixturesData: Fixture[] = savedFixtures.map((f: any) => ({
-          id: String(f.api_match_id),
-          gw: testGw,
+          id: f.id || String(f.api_match_id || f.fixture_index),
+          gw: currentGw!,
           fixture_index: f.fixture_index,
           home_team: f.home_team,
           away_team: f.away_team,
@@ -373,16 +409,17 @@ export default function TestApiPredictions() {
           away_code: f.away_code,
           home_name: f.home_name,
           away_name: f.away_name,
-          home_crest: f.home_crest || null,
-          away_crest: f.away_crest || null,
+          home_crest: null, // app_fixtures doesn't have crest columns
+          away_crest: null,
           kickoff_time: f.kickoff_time,
           api_match_id: f.api_match_id || null,
         }));
         
         if (alive) {
           setFixtures(fixturesData);
+          // Set loading to false as soon as fixtures are loaded - show page immediately
+          setLoading(false);
           
-
           // Initialize empty results map
           setResults(new Map());
         }
@@ -392,9 +429,9 @@ export default function TestApiPredictions() {
         let isSubmitted = false;
         if (user?.id && fixturesData.length > 0) {
           const { data: submission } = await supabase
-            .from("test_api_submissions")
+            .from("app_gw_submissions")
             .select("submitted_at")
-            .eq("matchday", testGw)
+            .eq("gw", currentGw!)
             .eq("user_id", user.id)
             .maybeSingle();
           
@@ -439,9 +476,9 @@ export default function TestApiPredictions() {
         if (user?.id && fixturesData.length > 0 && !isSubmitted) {
           // Only fetch picks if not submitted (optimization)
           const { data: pk, error: pkErr } = await supabase
-            .from("test_api_picks")
-            .select("matchday,fixture_index,pick")
-            .eq("matchday", testGw)
+            .from("app_picks")
+            .select("gw,fixture_index,pick")
+            .eq("gw", currentGw!)
             .eq("user_id", user.id);
 
           if (!pkErr && pk && pk.length > 0) {
@@ -467,7 +504,7 @@ export default function TestApiPredictions() {
                 picksMap.set(p.fixture_index, {
                   fixture_index: p.fixture_index,
                   pick: p.pick,
-                  matchday: p.matchday
+                  matchday: p.gw || currentGw! // Use gw instead of matchday
                 });
               });
               
@@ -481,9 +518,9 @@ export default function TestApiPredictions() {
                 console.log('[TestApiPredictions] Picks found but don\'t match current fixtures - clearing old picks');
                 // Clear invalid picks from database
                 await supabase
-                  .from("test_api_picks")
+                  .from("app_picks")
                   .delete()
-                  .eq("matchday", testGw)
+                  .eq("gw", currentGw!)
                   .eq("user_id", user.id);
                 setPicks(new Map());
                 hasPicks = false;
@@ -493,9 +530,9 @@ export default function TestApiPredictions() {
         } else if (isSubmitted && user?.id && fixturesData.length > 0) {
           // User has submitted - fetch picks for display purposes
           const { data: pk, error: pkErr } = await supabase
-            .from("test_api_picks")
-            .select("matchday,fixture_index,pick")
-            .eq("matchday", testGw)
+            .from("app_picks")
+            .select("gw,fixture_index,pick")
+            .eq("gw", currentGw!)
             .eq("user_id", user.id);
 
           if (!pkErr && pk && pk.length > 0) {
@@ -508,7 +545,7 @@ export default function TestApiPredictions() {
                 picksMap.set(p.fixture_index, {
                   fixture_index: p.fixture_index,
                   pick: p.pick,
-                  matchday: p.matchday
+                  matchday: p.gw || currentGw! // Use gw instead of matchday
                 });
               });
               
@@ -524,9 +561,9 @@ export default function TestApiPredictions() {
               // Submission exists but picks don't match - clear the submission
               setSubmitted(false);
               await supabase
-                .from("test_api_submissions")
+                .from("app_gw_submissions")
                 .delete()
-                .eq("matchday", testGw)
+                .eq("gw", currentGw!)
                 .eq("user_id", user.id);
             }
         }
@@ -564,17 +601,17 @@ export default function TestApiPredictions() {
               
               // Fetch all submissions for API Test league members
               const { data: allSubmissions } = await supabase
-                .from("test_api_submissions")
+                .from("app_gw_submissions")
                 .select("user_id, submitted_at")
-                .eq("matchday", testGw)
+                .eq("gw", currentGw!)
                 .in("user_id", memberIds)
                 .not("submitted_at", "is", null);
               
               // Fetch all picks for validation
               const { data: allPicks } = await supabase
-                .from("test_api_picks")
+                .from("app_picks")
                 .select("user_id, fixture_index")
-                .eq("matchday", testGw)
+                .eq("gw", currentGw!)
                 .in("user_id", memberIds);
               
               const currentFixtureIndicesSet = new Set(fixturesData.map(f => f.fixture_index));
@@ -635,6 +672,33 @@ export default function TestApiPredictions() {
             // No picks or incomplete picks or invalid submission - start at swipe mode (index 0)
             setCurrentIndex(0);
             setViewMode("cards"); // Ensure we're in swipe/cards mode
+          }
+        }
+        
+        // 2. Cache the fresh data for instant load on next visit
+        if (alive && fixturesData.length > 0 && user?.id && currentGw) {
+          try {
+            // Convert picks Map to array for caching
+            const picksArray: Array<{ fixture_index: number; pick: "H" | "D" | "A"; matchday: number }> = [];
+            picks.forEach((pick, fixture_index) => {
+              picksArray.push({ fixture_index, pick: pick.pick, matchday: pick.matchday });
+            });
+            
+            // Convert results Map to array for caching
+            const resultsArray: Array<{ fixture_index: number; result: "H" | "D" | "A" }> = [];
+            results.forEach((result, fixture_index) => {
+              resultsArray.push({ fixture_index, result });
+            });
+            
+            setCached(cacheKey, {
+              fixtures: fixturesData,
+              picks: picksArray,
+              submitted: isSubmitted,
+              results: resultsArray,
+            }, CACHE_TTL.PREDICTIONS);
+          } catch (cacheError) {
+            // Failed to cache (non-critical)
+            console.warn('[TestApiPredictions] Failed to cache data:', cacheError);
           }
         }
       } catch (error) {
@@ -981,11 +1045,11 @@ export default function TestApiPredictions() {
     // Calculate top percentage
     (async () => {
       try {
-        // Get all users' picks for this test GW
+        // Get all users' picks for this GW
         const { data: allPicks } = await supabase
-          .from("test_api_picks")
+          .from("app_picks")
           .select("user_id, fixture_index, pick")
-          .eq("matchday", currentTestGw);
+          .eq("gw", currentTestGw);
         
         if (allPicks) {
           // Group picks by user and calculate each user's score
@@ -1109,38 +1173,17 @@ export default function TestApiPredictions() {
     if (!isAnimating && !submitted) animateCardOut(pick); 
   };
   
-  const savePick = async (pick: "H" | "D" | "A") => {
-    if (!currentFixture || !user?.id || !currentTestGw) return;
+  const savePick = (pick: "H" | "D" | "A") => {
+    if (!currentFixture || !currentTestGw) return;
     
-    // Update local state
+    // Only update local state - don't save to database until confirmed
     const newPicks = new Map(picks);
     newPicks.set(currentFixture.fixture_index, { 
       fixture_index: currentFixture.fixture_index, 
       pick, 
-      matchday: currentTestGw 
+      matchday: currentTestGw // Keep matchday for Pick type compatibility
     });
     setPicks(newPicks);
-
-    // Save to database
-    try {
-      const { error } = await supabase
-        .from('test_api_picks')
-        .upsert({
-          user_id: user.id,
-          matchday: currentTestGw,
-          fixture_index: currentFixture.fixture_index,
-          pick: pick
-        }, { 
-          onConflict: 'user_id,matchday,fixture_index',
-          ignoreDuplicates: false 
-        });
-
-      if (error) {
-        console.error('Error saving test pick:', error);
-      }
-    } catch (error) {
-      console.error('Error saving test pick:', error);
-    }
   };
   
   const handleStartOver = async () => {
@@ -1149,10 +1192,10 @@ export default function TestApiPredictions() {
     try {
       // Delete submission FIRST to ensure nothing is marked as confirmed
       const { error: submissionError } = await supabase
-        .from('test_api_submissions')
+        .from('app_gw_submissions')
         .delete()
         .eq('user_id', user.id)
-        .eq('matchday', currentTestGw);
+        .eq('gw', currentTestGw);
       
       if (submissionError) {
         console.error('[TestApiPredictions] Error deleting test_api_submission:', submissionError);
@@ -1160,12 +1203,12 @@ export default function TestApiPredictions() {
         console.log('[TestApiPredictions] ✅ Successfully deleted submission on Start Over');
       }
       
-      // Delete ALL picks from database for this matchday
+      // Delete ALL picks from database for this GW
       const { error: picksError } = await supabase
-        .from('test_api_picks')
+        .from('app_picks')
         .delete()
         .eq('user_id', user.id)
-        .eq('matchday', currentTestGw);
+        .eq('gw', currentTestGw);
       
       if (picksError) {
         console.error('[TestApiPredictions] ❌ Error deleting test_api_picks:', picksError);
@@ -1180,8 +1223,14 @@ export default function TestApiPredictions() {
       setViewMode("cards"); // Ensure we're in swipe mode
       hasEverBeenSubmittedRef.current = false;
       setHasEverBeenSubmitted(false); // Clear sessionStorage
-      setSubmissionChecked(false); // Reset submission check so it re-checks
-      setPicksChecked(false); // Reset picks check so it re-checks
+      // Don't reset picksChecked/submissionChecked - keep them true so page doesn't show loading
+      // The data is already loaded, we just cleared the picks/submission
+      setLoading(false); // Ensure loading is false so page can render
+      
+      // Clear predictions cache so fresh data loads on next visit
+      if (user?.id && currentTestGw) {
+        removeCached(`predictions:${user.id}:${currentTestGw}`);
+      }
       
       console.log('[TestApiPredictions] ✅ All picks and submissions cleared - reset to swipe mode');
     } catch (error) {
@@ -1208,10 +1257,10 @@ export default function TestApiPredictions() {
     try {
       // CRITICAL: Ensure we're not already submitted (safety check)
       const { data: existingSubmission } = await supabase
-        .from('test_api_submissions')
+        .from('app_gw_submissions')
         .select('submitted_at')
         .eq('user_id', user.id)
-        .eq('matchday', currentTestGw)
+        .eq('gw', currentTestGw)
         .maybeSingle();
       
       if (existingSubmission?.submitted_at) {
@@ -1222,10 +1271,10 @@ export default function TestApiPredictions() {
       
       // Save all picks - CRITICAL: Only save picks that match current fixtures
       const picksArray = Array.from(picks.values())
-        .filter(pick => pick.matchday === currentTestGw) // Safety: only current matchday
+        .filter(pick => pick.matchday === currentTestGw) // Safety: only current GW
         .map(pick => ({
         user_id: user.id,
-        matchday: pick.matchday,
+        gw: currentTestGw,
         fixture_index: pick.fixture_index,
         pick: pick.pick
       }));
@@ -1235,9 +1284,9 @@ export default function TestApiPredictions() {
       }
 
       const { error: picksError } = await supabase
-        .from('test_api_picks')
+        .from('app_picks')
         .upsert(picksArray, { 
-          onConflict: 'user_id,matchday,fixture_index',
+          onConflict: 'user_id,gw,fixture_index',
           ignoreDuplicates: false 
         });
 
@@ -1249,13 +1298,13 @@ export default function TestApiPredictions() {
       // Save submission - CRITICAL: Only create submission after picks are saved successfully
       // This ensures picks and submission are in sync
       const { error: submissionError } = await supabase
-        .from('test_api_submissions')
+        .from('app_gw_submissions')
         .upsert({
           user_id: user.id,
-          matchday: currentTestGw,
+          gw: currentTestGw,
           submitted_at: new Date().toISOString()
         }, {
-          onConflict: 'user_id,matchday'
+          onConflict: 'user_id,gw'
         });
 
       if (submissionError) {
@@ -1310,35 +1359,35 @@ export default function TestApiPredictions() {
   };
   console.log('[TestApiPredictions] Render check - loading state:', loadingState);
   
-  if (loading || !currentTestGw || !picksChecked || !submissionChecked) {
-    console.log('[TestApiPredictions] Showing skeleton loader');
+  // Show simple loading spinner until fixtures are loaded and ready
+  if (loading && fixtures.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
-        <div className="p-4">
-          <div className="max-w-2xl mx-auto">
-            <div className="relative flex items-center justify-between">
+      <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col overflow-hidden">
+        <div className="sticky top-0 z-40 px-4 pt-4 pb-2 bg-gradient-to-br from-slate-50 to-slate-100">
+          <div className="max-w-md mx-auto">
+            <div className="relative flex items-center justify-between mb-4">
               <button
                 onClick={() => navigate("/")}
-                className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-800"
+                className="text-slate-600 hover:text-slate-800 text-3xl font-bold w-10 h-10 flex items-center justify-center"
               >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
-                Back
+                ✕
               </button>
               <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">
-                Test API Predictions
+                {currentTestGw ? `Game Week ${currentTestGw}` : 'Loading...'}
               </span>
             </div>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="max-w-2xl mx-auto flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
-          </div>
+        <div className="flex items-center justify-center flex-1">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1C8376]"></div>
         </div>
       </div>
     );
+  }
+  // This prevents the spinner flash
+  if ((!picksChecked || !submissionChecked) && fixtures.length > 0) {
+    // Show the page immediately with the first fixture
+    // The picks/submission check will complete in background
   }
 
   if (fixtures.length === 0) {
@@ -1539,24 +1588,11 @@ export default function TestApiPredictions() {
                 const scorePercentage = fixtures.length > 0 ? (displayScore / fixtures.length) * 100 : 0;
                 
                 return (
-                  <div className="mb-4 rounded-xl border bg-gradient-to-br from-[#1C8376]/5 to-blue-50/50 shadow-sm px-6 py-5">
-                    <div className="text-center">
-                      <div className="flex items-center justify-center gap-3 mb-3">
-                        <div className="text-4xl font-extrabold text-[#1C8376]">{displayScore}/{fixtures.length}</div>
-                        {topPercent !== null && (
-                          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-yellow-100 to-orange-100 border border-yellow-300">
-                            <span className="text-sm font-bold text-orange-700">Top {topPercent}%</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="mb-3 bg-slate-200 rounded-full h-2 overflow-hidden">
-                        <div 
-                          className="h-full bg-gradient-to-r from-[#1C8376] to-blue-500 transition-all duration-500" 
-                          style={{ width: `${scorePercentage}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
+                  <ScoreIndicator
+                    score={displayScore}
+                    total={fixtures.length}
+                    topPercent={topPercent}
+                  />
                 );
               }
               
@@ -1575,9 +1611,7 @@ export default function TestApiPredictions() {
                 return grouped.map((group,groupIdx)=>{
                   return (
                   <div key={groupIdx} className={groupIdx > 0 ? "mt-6" : ""}>
-                    <div className="text-sm font-semibold text-slate-700 mb-3 px-1">
-                      <span>{group.label}</span>
-                    </div>
+                    <DateHeader date={group.label} />
                   <div className="rounded-2xl border bg-slate-50 overflow-hidden">
                     <ul>
                     {group.items.map((fixture, index)=>{
@@ -1981,27 +2015,11 @@ export default function TestApiPredictions() {
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
         {confirmCelebration && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="relative overflow-hidden rounded-3xl bg-white px-10 py-8 text-center shadow-2xl max-w-sm mx-4">
-              <div className="absolute -top-16 -left-10 h-32 w-32 rounded-full bg-emerald-200/40 blur-2xl" />
-              <div className="absolute -bottom-14 -right-12 h-32 w-32 rounded-full bg-cyan-200/40 blur-2xl" />
-              <div className="relative z-10 space-y-4">
-                {confirmCelebration.success ? (
-                  <svg className="w-16 h-16 mx-auto text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                ) : (
-                  <svg className="w-16 h-16 mx-auto text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                )}
-                <div className={`text-2xl font-extrabold ${confirmCelebration.success ? "text-emerald-700" : "text-amber-600"}`}>
-                  {confirmCelebration.success ? "Good Luck!" : "Not Quite Yet!"}
-                </div>
-                <p className="text-sm text-slate-600">{confirmCelebration.message}</p>
-              </div>
-            </div>
-          </div>
+          <ConfirmationModal
+            success={confirmCelebration.success}
+            message={confirmCelebration.message}
+            onClose={() => setConfirmCelebration(null)}
+          />
         )}
         <div className="p-4">
           <div className="max-w-2xl mx-auto">
@@ -2258,7 +2276,7 @@ export default function TestApiPredictions() {
           <div className="max-w-md mx-auto">
             <div className="relative flex items-center justify-between mb-4">
               <button onClick={()=>navigate("/")} className="text-slate-600 hover:text-slate-800 text-3xl font-bold w-10 h-10 flex items-center justify-center">✕</button>
-              <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">Test GW {currentTestGw}</span>
+              <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">Gameweek {currentTestGw}</span>
               {viewMode === "cards" && (
                 <button
                   onClick={() => setCurrentIndex(fixtures.length)}
@@ -2272,7 +2290,7 @@ export default function TestApiPredictions() {
               )}
             </div>
             {viewMode === "cards" && (
-              <div className="mt-4 flex justify-center mb-2">
+              <div className="mt-4 flex justify-center mb-0">
                 <div className="inline-flex items-center gap-2 rounded-full bg-[#e6f3f0] px-3 py-2">
                   {fixtures.map((_, idx) => {
                     const isComplete = idx < currentIndex;
@@ -2315,8 +2333,8 @@ export default function TestApiPredictions() {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col min-h-0 overflow-hidden flex-1 pb-[90px]" style={{ height: '100%' }}>
-          <div className="flex items-center justify-center px-4 relative overflow-hidden pt-2" style={{ minHeight: 0 }}>
+        <div className="flex flex-col min-h-0 overflow-hidden flex-1" style={{ height: '100%', paddingBottom: '120px' }}>
+          <div className="flex items-center justify-center px-4 relative overflow-hidden flex-1" style={{ minHeight: 0, width: '100%', paddingTop: '0.125rem' }}>
             <div className={`absolute left-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "home" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">←</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg whitespace-nowrap">Home Win</div></div>
             <div className={`absolute right-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "away" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">→</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg whitespace-nowrap">Away Win</div></div>
             <div className={`absolute bottom-32 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "draw" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">↓</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg">Draw</div></div>
@@ -2325,74 +2343,64 @@ export default function TestApiPredictions() {
                 const nextFixture = fixtures[currentIndex + 1];
                 return (
                   <div key={currentIndex + 1} className="absolute inset-0 pointer-events-none" style={{ transform: `scale(1)`, opacity: (isDragging || isAnimating) ? 0.5 : 0, zIndex: 1, transition: 'opacity 0.15s ease-out' }}>
-                    <div className="bg-white rounded-3xl shadow-2xl overflow-hidden select-none">
-                      <div className="pt-2 px-8 pb-8">
-                        {nextFixture.kickoff_time && (<div className="text-center mb-1"><div className="text-sm text-slate-500 font-medium">{new Date(nextFixture.kickoff_time).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}</div></div>)}
-                        <div className="flex items-center justify-center gap-4 mb-4">
-                          <div className="flex flex-col items-center"><TeamBadge code={nextFixture.home_code} crest={nextFixture.home_crest} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{nextFixture.home_team || nextFixture.home_name}</div></div>
-                          <div className="flex flex-col items-center mb-8">{nextFixture.kickoff_time && (<div className="text-sm text-slate-700">{new Date(nextFixture.kickoff_time).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>)}</div>
-                          <div className="flex flex-col items-center"><TeamBadge code={nextFixture.away_code} crest={nextFixture.away_crest} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{nextFixture.away_team || nextFixture.away_name}</div></div>
-                        </div>
-                      </div>
-                      <div className="h-48 relative overflow-hidden">
-                        <div style={{ position: 'absolute', inset: 0, background: getTeamColor(nextFixture.home_code, nextFixture.home_name), clipPath: 'polygon(0 0, 0 100%, 100% 100%)' }} />
-                        <div style={{ position: 'absolute', inset: 0, background: getTeamColor(nextFixture.away_code, nextFixture.away_name), clipPath: 'polygon(0 0, 100% 0, 100% 100%)' }} />
-                      </div>
-                    </div>
+                    <SwipeCard
+                      fixture={nextFixture}
+                      homeColor={getTeamColor(nextFixture.home_code, nextFixture.home_name)}
+                      awayColor={getTeamColor(nextFixture.away_code, nextFixture.away_name)}
+                      showSwipeHint={false}
+                    />
                   </div>
                 );
               })()}
+              {/* Card content - NO touch handlers here */}
+              <div
+                className="absolute inset-0 z-10"
+                style={{ 
+                  transform: `translate(${cardState.x}px, ${cardState.y}px) rotate(${cardState.rotation}deg) scale(${cardState.scale})`, 
+                  opacity: cardState.opacity, 
+                  transition: (isDragging || isResettingRef.current) ? "none" : "all 0.3s ease-out",
+                  pointerEvents: 'none'
+                }}
+              >
+                <SwipeCard
+                  fixture={currentFixture}
+                  homeColor={getTeamColor(currentFixture.home_code, currentFixture.home_name)}
+                  awayColor={getTeamColor(currentFixture.away_code, currentFixture.away_name)}
+                  showSwipeHint={true}
+                />
+              </div>
+              {/* SEPARATE touch handler layer - sits on top of everything, covers 100% */}
               <div
                 ref={cardRef}
-                className="absolute inset-0 z-10 cursor-grab active:cursor-grabbing"
-                style={{ transform: `translate(${cardState.x}px, ${cardState.y}px) rotate(${cardState.rotation}deg) scale(${cardState.scale})`, opacity: cardState.opacity, transition: (isDragging || isResettingRef.current) ? "none" : "all 0.3s ease-out", touchAction: "none" }}
-                onMouseDown={(e)=>!submitted && handleStart(e.clientX,e.clientY)} 
-                onMouseMove={(e)=>!submitted && handleMove(e.clientX,e.clientY)} 
-                onMouseUp={handleEnd} 
-                onMouseLeave={handleEnd}
+                className="absolute inset-0 z-50 cursor-grab active:cursor-grabbing"
+                style={{ 
+                  touchAction: "none",
+                  WebkitTouchCallout: "none",
+                  userSelect: "none",
+                  WebkitUserSelect: "none",
+                  pointerEvents: "auto",
+                  backgroundColor: "transparent",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  width: "100%",
+                  height: "100%",
+                  margin: 0,
+                  padding: 0
+                }}
+                onMouseDown={(e)=>{ e.preventDefault(); !submitted && handleStart(e.clientX,e.clientY); }} 
+                onMouseMove={(e)=>{ e.preventDefault(); !submitted && handleMove(e.clientX,e.clientY); }} 
+                onMouseUp={(e)=>{ e.preventDefault(); handleEnd(); }} 
+                onMouseLeave={(e)=>{ e.preventDefault(); handleEnd(); }}
                 onTouchStart={handleTouchStart} 
                 onTouchMove={handleTouchMove} 
                 onTouchEnd={handleTouchEnd}
-              >
-                <div className="bg-white rounded-3xl shadow-2xl overflow-hidden select-none">
-                  <div className="pt-2 px-8 pb-8 relative pointer-events-none">
-                    <div className="absolute top-2 right-4 flex items-center gap-2 text-slate-400 text-xs font-semibold">
-                      <img
-                        src="https://cdn-icons-png.flaticon.com/512/4603/4603384.png"
-                        alt="Swipe gesture icon"
-                        className="w-6 h-6 opacity-80"
-                      />
-                    </div>
-                    {currentFixture.kickoff_time && (<div className="text-center mb-1"><div className="text-sm text-slate-500 font-medium">{new Date(currentFixture.kickoff_time).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}</div></div>)}
-                    <div className="flex items-center justify-center gap-4 mb-4">
-                      <div className="flex flex-col items-center"><TeamBadge code={currentFixture.home_code} crest={currentFixture.home_crest} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{currentFixture.home_team || currentFixture.home_name}</div></div>
-                      <div className="flex flex-col items-center mb-8">{currentFixture.kickoff_time && (<div className="text-sm text-slate-700">{new Date(currentFixture.kickoff_time).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>)}</div>
-                      <div className="flex flex-col items-center"><TeamBadge code={currentFixture.away_code} crest={currentFixture.away_crest} size={120} /><div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px]">{currentFixture.away_team || currentFixture.away_name}</div></div>
-                    </div>
-                    {(() => {
-                      const fixtureResult = results.get(currentFixture.fixture_index);
-                      const userPick = picks.get(currentFixture.fixture_index);
-                      if (fixtureResult && userPick) {
-                        const isCorrect = userPick.pick === fixtureResult;
-                        return (
-                          <div className="text-center mb-4 space-y-2">
-                            <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-full text-sm font-semibold"><span>🎯</span><span>Result: {fixtureResult === "H" ? "Home Win" : fixtureResult === "A" ? "Away Win" : "Draw"}</span></div>
-                            <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold ${isCorrect?"bg-green-50 text-green-700":"bg-red-50 text-red-700"}`}><span>{isCorrect?"✓":"✗"}</span><span>{isCorrect?"Correct!":"Incorrect"}</span></div>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </div>
-                  <div className="h-48 relative overflow-hidden">
-                    <div className="absolute inset-0" style={{ background: getTeamColor(currentFixture.home_code, currentFixture.home_name), clipPath: 'polygon(0 0, 0 100%, 100% 100%)' }} />
-                    <div className="absolute inset-0" style={{ background: getTeamColor(currentFixture.away_code, currentFixture.away_name), clipPath: 'polygon(0 0, 100% 0, 100% 100%)' }} />
-                  </div>
-                </div>
-              </div>
+                onTouchCancel={handleTouchEnd}
+              />
             </div>
           </div>
-          <div className="fixed bottom-0 left-0 right-0 pt-2 px-4 bg-[#eef4f3] z-[10000]" style={{ paddingBottom: `calc(5rem + env(safe-area-inset-bottom, 0px))` }}>
+          <div className="fixed bottom-0 left-0 right-0 pt-3 px-4 bg-[#eef4f3] z-[10000] safe-area-inset-bottom" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom, 0px))` }}>
             <div className="max-w-md mx-auto">
               <div className="flex items-stretch justify-center gap-3">
                 <button

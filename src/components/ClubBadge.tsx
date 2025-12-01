@@ -20,7 +20,7 @@ export default function ClubBadge({ code, size = 22, className = "", rounded = f
       alt={alt}
       width={size}
       height={size}
-      className={`${rounded ? "rounded-full" : "rounded"} object-contain inline-block align-middle select-none ${className}`}
+      className={`${rounded ? "rounded-full" : "rounded"} object-contain inline-block align-middle select-none pointer-events-none ${className}`}
       loading="lazy"
       onError={(e) => {
         // fall back to a neutral dot if a badge is missing

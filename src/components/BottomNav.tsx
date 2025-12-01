@@ -14,8 +14,8 @@ import { useRef, useEffect, useState } from 'react';
       )
     },
     {
-      name: 'Test API',
-      path: '/test-api-predictions',
+      name: 'Predictions',
+      path: '/predictions',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="w-7 h-7">
           <g>

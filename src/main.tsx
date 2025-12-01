@@ -16,8 +16,10 @@ const TempGlobalPage = lazy(() => import("./pages/TempGlobal"));
 const CreateLeaguePage = lazy(() => import("./pages/CreateLeague"));
 const HowToPlayPage = lazy(() => import("./pages/HowToPlay"));
 const NewPredictionsCentre = lazy(() => import("./pages/NewPredictionsCentre"));
-const TestApiPredictions = lazy(() => import("./pages/TestApiPredictions"));
+const Predictions = lazy(() => import("./pages/TestApiPredictions"));
 const TestAdminApi = lazy(() => import("./pages/TestAdminApi"));
+const ApiAdmin = lazy(() => import("./pages/ApiAdmin"));
+const TestFixtures = lazy(() => import("./pages/TestFixtures"));
 const TestDespia = lazy(() => import("./pages/TestDespia"));
 const ProfilePage = lazy(() => import("./pages/Profile"));
 const SignIn = lazy(() => import("./pages/SignIn"));
@@ -119,7 +121,7 @@ function AppContent() {
       {location.pathname === '/' && <FloatingProfile />}
 
       {/* Global Predictions Banner - hide on auth page and full-screen pages */}
-      {!isFullScreenPage && location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/test-api-predictions' && <PredictionsBanner />}
+            {!isFullScreenPage && location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions' && <PredictionsBanner />}
 
       {/* Welcome Message */}
       {showWelcome && (
@@ -146,8 +148,10 @@ function AppContent() {
           <Routes>
             <Route path="/auth" element={<SignIn />} />
             <Route path="/new-predictions" element={<RequireAuth><NewPredictionsCentre /></RequireAuth>} />
-            <Route path="/test-api-predictions" element={<RequireAuth><TestApiPredictions /></RequireAuth>} />
+                  <Route path="/predictions" element={<RequireAuth><Predictions /></RequireAuth>} />
             <Route path="/test-admin-api" element={<RequireAuth><TestAdminApi /></RequireAuth>} />
+            <Route path="/api-admin" element={<RequireAuth><ApiAdmin /></RequireAuth>} />
+            <Route path="/test-fixtures" element={<RequireAuth><TestFixtures /></RequireAuth>} />
             <Route path="/test-despia" element={<RequireAuth><TestDespia /></RequireAuth>} />
             <Route path="/" element={<RequireAuth><ErrorBoundary><HomePage /></ErrorBoundary></RequireAuth>} />
             <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
@@ -164,8 +168,8 @@ function AppContent() {
         </Suspense>
       </ErrorBoundary>
 
-      {/* Bottom Navigation - hide on auth page, league pages, and swipe prediction page */}
-      {location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions/swipe' && <BottomNav />}
+      {/* Bottom Navigation - hide on auth page, league pages, and predictions page (has its own buttons) */}
+      {location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions' && location.pathname !== '/predictions/swipe' && <BottomNav />}
     </>
   );
 }

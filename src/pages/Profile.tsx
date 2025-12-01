@@ -579,22 +579,22 @@ export default function Profile() {
               <h3 className="text-lg font-semibold text-slate-800 mb-3">Admin</h3>
               <div className="space-y-2">
                 <Link
+                  to="/api-admin"
+                  className="block w-full py-3 bg-[#1C8376] hover:bg-[#1C8376]/90 text-white font-semibold rounded-xl transition-colors text-center"
+                >
+                  API Admin - Premier League
+                </Link>
+                <Link
+                  to="/test-fixtures"
+                  className="block w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-xl transition-colors text-center"
+                >
+                  Test Fixtures (Non-PL)
+                </Link>
+                <Link
                   to="/admin"
                   className="block w-full py-3 bg-slate-600 hover:bg-slate-700 text-white font-semibold rounded-xl transition-colors text-center"
                 >
-                  Admin Panel
-                </Link>
-                <Link
-                  to="/test-admin-api"
-                  className="block w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-xl transition-colors text-center"
-                >
-                  Test API Admin (Staging)
-                </Link>
-                <Link
-                  to="/test-despia"
-                  className="block w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors text-center"
-                >
-                  Test Despia Integration
+                  Admin Panel (Web)
                 </Link>
               </div>
             </div>

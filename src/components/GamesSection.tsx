@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import Section from './Section';
-import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from './FixtureCard';
+import { type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from './FixtureCard';
 import LiveGamesToggle from './LiveGamesToggle';
+import DateGroupedFixtures from './DateGroupedFixtures';
 
 interface GamesSectionProps {
   isInApiTestLeague: boolean;
@@ -57,22 +58,11 @@ export function GamesSection({
       ) : fixtures.length === 0 ? (
         <div className="p-4 text-slate-500">No fixtures yet.</div>
       ) : fixtures.length > 0 ? (
-        <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">
-          {fixtureCards.map(({ fixture, liveScore, pick }, index) => (
-            <div key={fixture.id} className={index < fixtureCards.length - 1 ? 'relative' : ''}>
-              {index < fixtureCards.length - 1 && (
-                <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-10" />
-              )}
-              <FixtureCard
-                fixture={fixture}
-                pick={pick}
-                liveScore={liveScore}
-                isTestApi={isInApiTestLeague}
-                showPickButtons={true}
-              />
-            </div>
-          ))}
-        </div>
+        <DateGroupedFixtures
+          fixtureCards={fixtureCards}
+          isTestApi={isInApiTestLeague}
+          showPickButtons={true}
+        />
       ) : null}
     </Section>
   );

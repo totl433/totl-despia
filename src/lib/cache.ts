@@ -19,6 +19,7 @@ export const CACHE_TTL = {
   TABLES: 5 * 60 * 1000,         // 5 minutes
   HOME: 5 * 60 * 1000,           // 5 minutes
   GLOBAL: 1 * 60 * 1000,         // 1 minute
+  PREDICTIONS: 5 * 60 * 1000,    // 5 minutes
 } as const;
 
 const CACHE_PREFIX = 'despia:cache:';

@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
+import GameweekBanner from "./ComingSoonBanner";
 
 /**
  * Shows different banners based on game state:
@@ -13,12 +14,11 @@ export default function PredictionsBanner() {
   
   // Hide banner on staging - it links to wrong predictions page
   // Check hostname early and return null immediately
+  // NOTE: Removed localhost check so banner shows in development
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname.toLowerCase();
     if (hostname.includes('staging') || 
-        hostname.includes('netlify.app') ||
-        hostname.includes('totl-staging') ||
-        hostname.includes('localhost')) {
+        hostname.includes('totl-staging')) {
       return null;
     }
   }
@@ -34,7 +34,7 @@ export default function PredictionsBanner() {
       try {
         // current GW
         const { data: meta } = await supabase
-          .from("meta")
+          .from("app_meta")
           .select("current_gw")
           .eq("id", 1)
           .maybeSingle();
@@ -46,14 +46,14 @@ export default function PredictionsBanner() {
 
         // fixtures exist for current GW?
         const { count: fxCount } = await supabase
-          .from("fixtures")
+          .from("app_fixtures")
           .select("id", { count: "exact", head: true })
           .eq("gw", gw);
         if (!alive) return;
 
         // results already published for current GW?
         const { count: rsCount } = await supabase
-          .from("gw_results")
+          .from("app_gw_results")
           .select("gw", { count: "exact", head: true })
           .eq("gw", gw);
         if (!alive) return;
@@ -69,7 +69,7 @@ export default function PredictionsBanner() {
 
         // Calculate deadline (1h 15mins before first kickoff)
         const { data: fixtures } = await supabase
-          .from("fixtures")
+          .from("app_fixtures")
           .select("kickoff_time")
           .eq("gw", gw)
           .order("kickoff_time", { ascending: true })
@@ -107,7 +107,7 @@ export default function PredictionsBanner() {
 
         // Get all fixtures for current GW
         const { data: allFixtures } = await supabase
-          .from("fixtures")
+          .from("app_fixtures")
           .select("fixture_index")
           .eq("gw", gw);
         
@@ -116,19 +116,20 @@ export default function PredictionsBanner() {
           return;
         }
 
-        // Check if user has picks for all fixtures
-        const { data: picks } = await supabase
-          .from("picks")
-          .select("fixture_index")
+        // Check if user has submitted (not just picks - need to check submission)
+        const { data: submission } = await supabase
+          .from("app_gw_submissions")
+          .select("submitted_at")
           .eq("user_id", user.id)
-          .eq("gw", gw);
+          .eq("gw", gw)
+          .maybeSingle();
         
         if (!alive) return;
 
-        const hasAllPicks = picks && picks.length === allFixtures.length;
+        const hasSubmitted = submission?.submitted_at !== null && submission?.submitted_at !== undefined;
         
-        if (!hasAllPicks) {
-          // User hasn't submitted all predictions - show predictions banner
+        if (!hasSubmitted) {
+          // User hasn't submitted predictions - show predictions banner
           setBannerType("predictions");
           setVisible(true);
         } else {
@@ -180,47 +181,25 @@ export default function PredictionsBanner() {
   if (!visible) return null;
 
   // UI - Different banners based on state
-  return (
-    <>
-      {bannerType === "predictions" ? (
-        <div className="mx-auto max-w-6xl px-4">
-        <Link
-          to="/new-predictions"
-          className="block mt-4 rounded-lg bg-blue-600 px-4 py-3 hover:bg-blue-700 transition-colors"
-        >
-          <div className="text-center">
-            <div className="font-semibold text-white">GW{currentGw} is Live - Make your predictions</div>
-            <div className="text-white/90">
-              {deadlineText ? (
-                <>
-                  <span>Deadline: </span>
-                  <span className="font-extrabold">{deadlineText}</span>
-                </>
-              ) : (
-                "Don't miss the deadline!"
-              )}
-            </div>
-          </div>
-        </Link>
-        </div>
-      ) : (
-        <div className="w-full px-4 py-3 relative" style={{ backgroundColor: '#e1eae9' }}>
-          <div className="mx-auto max-w-6xl relative">
-            {/* Circular icon with exclamation mark - top left */}
-            <div className="absolute top-3 left-0 w-6 h-6 rounded-full bg-[#1C8376] flex items-center justify-center text-white text-[10px] font-normal">!</div>
-            
-            {/* Text content */}
-            <div className="pl-10">
-              <div className="font-bold text-slate-900 text-base">
-                GW{(currentGw || 1) + 1} Coming Soon!
-              </div>
-              <div className="text-sm text-slate-600 mt-0.5">
-                Fixtures will be published soon.
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
+  if (bannerType === "predictions" && currentGw) {
+    return (
+      <GameweekBanner
+        gameweek={currentGw}
+        variant="live"
+        deadlineText={deadlineText}
+        linkTo="/predictions"
+      />
+    );
+  }
+  
+  if (bannerType === "watch-space" && currentGw) {
+    return (
+      <GameweekBanner
+        gameweek={(currentGw || 1) + 1}
+        variant="coming-soon"
+      />
+    );
+  }
+  
+  return null;
 }

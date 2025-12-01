@@ -115,6 +115,9 @@ ALTER TABLE app_gw_results ENABLE ROW LEVEL SECURITY;
 -- ============================================
 DROP POLICY IF EXISTS "Anyone can read app_meta" ON app_meta;
 DROP POLICY IF EXISTS "Anyone can read app_fixtures" ON app_fixtures;
+DROP POLICY IF EXISTS "Admins can insert app_fixtures" ON app_fixtures;
+DROP POLICY IF EXISTS "Admins can update app_fixtures" ON app_fixtures;
+DROP POLICY IF EXISTS "Admins can delete app_fixtures" ON app_fixtures;
 DROP POLICY IF EXISTS "Users can read all app_picks" ON app_picks;
 DROP POLICY IF EXISTS "Users can insert their own app_picks" ON app_picks;
 DROP POLICY IF EXISTS "Users can update their own app_picks" ON app_picks;
@@ -131,9 +134,35 @@ DROP POLICY IF EXISTS "Anyone can read app_gw_results" ON app_gw_results;
 CREATE POLICY "Anyone can read app_meta" ON app_meta
   FOR SELECT USING (true);
 
--- app_fixtures: Read-only for authenticated users
+-- app_fixtures: Read-only for authenticated users, admins can insert/update/delete
 CREATE POLICY "Anyone can read app_fixtures" ON app_fixtures
   FOR SELECT USING (true);
+
+-- Allow admins to insert/update/delete fixtures
+CREATE POLICY "Admins can insert app_fixtures" ON app_fixtures
+  FOR INSERT 
+  WITH CHECK (
+    auth.uid() = '4542c037-5b38-40d0-b189-847b8f17c222'::uuid OR
+    auth.uid() = '36f31625-6d6c-4aa4-815a-1493a812841b'::uuid
+  );
+
+CREATE POLICY "Admins can update app_fixtures" ON app_fixtures
+  FOR UPDATE 
+  USING (
+    auth.uid() = '4542c037-5b38-40d0-b189-847b8f17c222'::uuid OR
+    auth.uid() = '36f31625-6d6c-4aa4-815a-1493a812841b'::uuid
+  )
+  WITH CHECK (
+    auth.uid() = '4542c037-5b38-40d0-b189-847b8f17c222'::uuid OR
+    auth.uid() = '36f31625-6d6c-4aa4-815a-1493a812841b'::uuid
+  );
+
+CREATE POLICY "Admins can delete app_fixtures" ON app_fixtures
+  FOR DELETE 
+  USING (
+    auth.uid() = '4542c037-5b38-40d0-b189-847b8f17c222'::uuid OR
+    auth.uid() = '36f31625-6d6c-4aa4-815a-1493a812841b'::uuid
+  );
 
 -- app_picks: Users can read all, insert/update their own
 CREATE POLICY "Users can read all app_picks" ON app_picks

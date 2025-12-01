@@ -95,9 +95,8 @@ export default function NewPredictionsCentre() {
       (async () => {
         if (currentGw) {
           // Get all users' picks for this GW
-          // App users read from app_picks, Web users read from picks
-          // For now, read from app_picks if in API Test league (will have both App and Web users after mirroring)
-          const picksTable = isInApiTestLeague ? "app_picks" : "picks";
+          // All users now read from app_picks (App tables)
+          const picksTable = "app_picks";
           const { data: allPicks } = await supabase
             .from(picksTable)
             .select("user_id, fixture_index, pick")
@@ -163,15 +162,15 @@ export default function NewPredictionsCentre() {
         }
         if (alive) setIsInApiTestLeague(apiTestLeague);
         
-        // Fetch current gameweek from meta table
+        // Fetch current gameweek from app_meta table (App uses app_meta)
         const { data: meta, error: metaError } = await supabase
-          .from("meta")
+          .from("app_meta")
           .select("current_gw")
           .eq("id", 1)
           .maybeSingle();
         
         if (metaError) {
-          console.error('[NewPredictionsCentre] Error fetching current GW:', metaError);
+          console.error('[NewPredictionsCentre] Error fetching current GW from app_meta:', metaError);
           // Default to GW 1 if we can't fetch
           if (alive) {
             setError(`Failed to load gameweek: ${metaError.message || 'Unknown error'}`);
@@ -182,112 +181,18 @@ export default function NewPredictionsCentre() {
         
         const currentGw = (meta as any)?.current_gw ?? 1;
         
-        // For API Test league members, always show Test GW 1 fixtures if they exist
-        // (regardless of main game's current GW)
+        // All users now read fixtures from app_fixtures (App tables)
+        // This includes both App users and Web users (after mirroring)
         let fx;
         let gwToDisplay = currentGw;
-        if (apiTestLeague) {
-          try {
-            // Check if test fixtures exist for GW 1
-            // Get current_test_gw from meta first
-            const { data: testMeta } = await supabase
-              .from("test_api_meta")
-              .select("current_test_gw")
-              .eq("id", 1)
-              .maybeSingle();
-            
-            let testGw = testMeta?.current_test_gw ?? 1;
-            
-            // Verify that fixtures exist for this test_gw, otherwise fall back to GW T1
-            if (testGw && testGw !== 1) {
-              const { data: fixturesCheck } = await supabase
-                .from("test_api_fixtures")
-                .select("test_gw")
-                .eq("test_gw", testGw)
-                .limit(1)
-                .maybeSingle();
-              
-              // If no fixtures for current_test_gw, fall back to GW T1
-              if (!fixturesCheck) {
-                const { data: t1Data } = await supabase
-                  .from("test_api_fixtures")
-                  .select("test_gw")
-                  .eq("test_gw", 1)
-                  .limit(1)
-                  .maybeSingle();
-                
-                if (t1Data) {
-                  testGw = 1; // Fallback to GW T1
-                }
-              }
-            }
-            
-            const testFxResult = await supabase
-              .from("test_api_fixtures")
-              .select(
-                "id,test_gw as gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
-              )
-              .eq("test_gw", testGw)
-              .order("fixture_index", { ascending: true });
-            
-            // Check if result is valid (not HTML error page)
-            // Handle common Supabase errors gracefully
-            if (testFxResult.error) {
-              const errorCode = (testFxResult.error as any)?.code;
-              const errorMessage = testFxResult.error.message || '';
-              
-              // If table doesn't exist (PGRST116) or 404 error, fall back silently
-              if (errorCode === 'PGRST116' || errorMessage.includes('404') || errorMessage.includes('does not exist')) {
-                console.log('[NewPredictionsCentre] Test fixtures table not found, using regular fixtures');
-                fx = await supabase
-                  .from("fixtures")
-                  .select(
-                    "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
-                  )
-                  .eq("gw", currentGw)
-                  .order("fixture_index", { ascending: true });
-              } else {
-                // Other errors - log and fall back
-                console.error('[NewPredictionsCentre] Error fetching test fixtures:', testFxResult.error);
-                throw testFxResult.error;
-              }
-            } else if (testFxResult.data && testFxResult.data.length > 0) {
-              // If test fixtures exist and no error, use them and set display GW to 1
-              fx = { data: testFxResult.data, error: null };
-              gwToDisplay = 1; // Show as GW 1 for API Test league
-              console.log('[NewPredictionsCentre] Using test fixtures for GW 1:', testFxResult.data.length, 'fixtures');
-            } else {
-              // No test fixtures found, fall back to regular fixtures
-              console.log('[NewPredictionsCentre] No test fixtures found, using regular fixtures');
-              fx = await supabase
-                .from("fixtures")
-                .select(
-                  "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
-                )
-                .eq("gw", currentGw)
-                .order("fixture_index", { ascending: true });
-            }
-          } catch (testError: any) {
-            console.error('[NewPredictionsCentre] Error fetching test fixtures, falling back to regular:', testError);
-            // Fall back to regular fixtures on any error
-            fx = await supabase
-              .from("fixtures")
-              .select(
-                "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
-              )
-              .eq("gw", currentGw)
-              .order("fixture_index", { ascending: true });
-          }
-        } else {
-          // Regular fixtures
-          fx = await supabase
-            .from("fixtures")
-            .select(
-              "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time"
-            )
-            .eq("gw", currentGw)
-            .order("fixture_index", { ascending: true });
-        }
+        
+        fx = await supabase
+          .from("app_fixtures")
+          .select(
+            "id,gw,fixture_index,home_name,away_name,home_team,away_team,home_code,away_code,kickoff_time,api_match_id"
+          )
+          .eq("gw", currentGw)
+          .order("fixture_index", { ascending: true });
         
         const { data: fxData, error: fxErr } = fx;
 
@@ -333,10 +238,10 @@ export default function NewPredictionsCentre() {
         }
 
         // Fetch user's picks for the gameweek being displayed
-        // App users read from app_picks, Web users read from picks
-        const picksGw = apiTestLeague && gwToDisplay === 1 ? 1 : currentGw;
+        // All users now read from app_picks (App tables)
+        const picksGw = currentGw;
         if (user?.id) {
-          const picksTable = apiTestLeague ? "app_picks" : "picks";
+          const picksTable = "app_picks";
           const { data: pk, error: pkErr } = await supabase
             .from(picksTable)
             .select("gw,fixture_index,pick")
@@ -364,9 +269,9 @@ export default function NewPredictionsCentre() {
         }
         
         // Check if user has submitted (confirmed) their predictions
-        // App users read from app_gw_submissions, Web users read from gw_submissions
+        // All users now read from app_gw_submissions (App tables)
         if (user?.id) {
-          const submissionsTable = apiTestLeague ? "app_gw_submissions" : "gw_submissions";
+          const submissionsTable = "app_gw_submissions";
           const { data: submission } = await supabase
             .from(submissionsTable)
             .select("submitted_at")
@@ -381,9 +286,9 @@ export default function NewPredictionsCentre() {
         }
 
         // Fetch results for the gameweek being displayed
-        // App users read from app_gw_results, Web users read from gw_results
-        const resultsGw = apiTestLeague && gwToDisplay === 1 ? 1 : currentGw;
-        const resultsTable = apiTestLeague ? "app_gw_results" : "gw_results";
+        // All users now read from app_gw_results (App tables)
+        const resultsGw = currentGw;
+        const resultsTable = "app_gw_results";
         const { data: rs, error: rsErr } = await supabase
           .from(resultsTable)
           .select("gw,fixture_index,result")
@@ -887,8 +792,8 @@ export default function NewPredictionsCentre() {
                       }));
 
                       // Insert/update picks in database
-                      // App users (API Test league) write to app_picks, Web users write to picks
-                      const tableName = isInApiTestLeague ? 'app_picks' : 'picks';
+                      // All users now write to app_picks (App tables)
+                      const tableName = 'app_picks';
                       const conflictColumns = 'user_id,gw,fixture_index';
                       
                       const { error } = await supabase
@@ -952,8 +857,8 @@ export default function NewPredictionsCentre() {
                       }));
 
                       // Insert/update picks in database
-                      // App users (API Test league) write to app_picks, Web users write to picks
-                      const tableName = isInApiTestLeague ? 'app_picks' : 'picks';
+                      // All users now write to app_picks (App tables)
+                      const tableName = 'app_picks';
                       const conflictColumns = 'user_id,gw,fixture_index';
                       
                       const { error: picksError } = await supabase
@@ -970,8 +875,8 @@ export default function NewPredictionsCentre() {
                       }
 
                       // Record submission in appropriate table
-                      // App users write to app_gw_submissions, Web users write to gw_submissions
-                      const submissionTable = isInApiTestLeague ? 'app_gw_submissions' : 'gw_submissions';
+                      // All users now write to app_gw_submissions (App tables)
+                      const submissionTable = 'app_gw_submissions';
                       const submissionData = {
                         user_id: user?.id,
                         gw: currentGw ?? 1,

@@ -117,6 +117,7 @@ a {
 .chip-green {
   background-color: #10b981; /* emerald-500 */
   color: #ffffff;
+  border: 1px solid transparent; /* Default transparent border to allow border-2 to show */
 }
 
 .chip-grey {

@@ -67,8 +67,9 @@ export default function TablesPage() {
       
       if (cached && cached.rows && Array.isArray(cached.rows) && cached.rows.length > 0) {
         // INSTANT RENDER from cache!
-        // Loaded from cache
-        setRows(cached.rows);
+        // Filter out "API Test" league from cached data
+        const filteredRows = cached.rows.filter((r: LeagueRow) => r.name !== 'API Test');
+        setRows(filteredRows);
         setCurrentGw(cached.currentGw);
         setLeagueSubmissions(cached.leagueSubmissions || {});
         setUnreadByLeague(cached.unreadByLeague || {});
@@ -270,19 +271,21 @@ export default function TablesPage() {
         }
         setUnreadByLeague(unreadCounts);
 
-        // Build rows
-        const out: LeagueRow[] = leagues.map((l) => {
-          const memberIds = membersByLeague.get(l.id) ?? [];
-          return {
-            id: l.id,
-            name: l.name,
-            code: l.code,
-            memberCount: memberIds.length,
-            avatar: l.avatar,
-            created_at: l.created_at,
-            start_gw: l.start_gw,
-          };
-        });
+        // Build rows - filter out "API Test" league
+        const out: LeagueRow[] = leagues
+          .filter((l) => l.name !== 'API Test')
+          .map((l) => {
+            const memberIds = membersByLeague.get(l.id) ?? [];
+            return {
+              id: l.id,
+              name: l.name,
+              code: l.code,
+              memberCount: memberIds.length,
+              avatar: l.avatar,
+              created_at: l.created_at,
+              start_gw: l.start_gw,
+            };
+          });
 
         // Sort rows: unread messages first
         out.sort((a, b) => {

@@ -28,6 +28,7 @@ export type LeagueData = {
   sortedMemberIds?: string[]; // Member IDs in ML table order (1st to last)
   latestGwWinners?: Set<string> | string[]; // Set or Array of members who topped the most recent completed GW
   latestRelevantGw?: number | null; // The GW number that latestGwWinners is from (needed to know when to hide shiny chips)
+  webUserIds?: Set<string> | string[]; // Set or Array of user IDs who have picks in Web table (mirrored picks)
 };
 
 export type MiniLeagueCardProps = {
@@ -80,6 +81,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
 
     const submittedSet = toStringSet(data.submittedMembers);
     const winnersSet = toStringSet(data.latestGwWinners);
+    const webUserSet = toStringSet(data.webUserIds);
 
     // Check if this is API Test league
     const isApiTestLeague = row.name === "API Test";
@@ -87,6 +89,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
     return orderedMembers.slice(0, 8).map((member, index) => {
       const hasSubmitted = submittedSet.has(member.id);
       const isLatestWinner = winnersSet.has(member.id);
+      const isWebUser = webUserSet.has(member.id); // User has picks in Web table (mirrored)
 
       // GPU-optimized: Use CSS classes instead of inline styles
       let chipClassName = 'chip-container rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
@@ -101,8 +104,12 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
       } else if (hasSubmitted) {
         // Green = picked (GPU-optimized class)
         chipClassName += ' chip-green';
-        // Add bold blue border for Test API submissions
-        if (isApiTestLeague) {
+        // Add blue border for Web-mirrored picks (users who have picks in Web table)
+        if (isWebUser) {
+          // Use box-shadow for more visible blue outline on green background
+          chipClassName += ' border-2 border-blue-600';
+        } else if (isApiTestLeague) {
+          // Keep blue border for API Test league (for backward compatibility)
           chipClassName += ' border-2 border-blue-600';
         }
       } else {
@@ -115,8 +122,18 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
         chipClassName += ' chip-overlap';
       }
 
+      // For Web users with submitted picks, add blue outline with box-shadow for visibility
+      const chipStyle = hasSubmitted && isWebUser 
+        ? { boxShadow: '0 0 0 2px #2563eb, 0 0 0 4px rgba(37, 99, 235, 0.3)' }
+        : undefined;
+
       return (
-        <div key={member.id} className={chipClassName} title={member.name}>
+        <div 
+          key={member.id} 
+          className={chipClassName} 
+          title={member.name}
+          style={chipStyle}
+        >
           {initials(member.name)}
         </div>
       );

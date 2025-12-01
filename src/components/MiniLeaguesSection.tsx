@@ -90,7 +90,8 @@ export function MiniLeaguesSection({
                     submittedMembers: data.submittedMembers,
                     sortedMemberIds: data.sortedMemberIds,
                     latestGwWinners: data.latestGwWinners,
-                    latestRelevantGw: data.latestRelevantGw
+                    latestRelevantGw: data.latestRelevantGw,
+                    webUserIds: data.webUserIds
                   } : undefined;
                   
                   return (

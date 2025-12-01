@@ -30,7 +30,7 @@ export default function TeamBadge({
         alt={`${code || 'Team'} badge`}
         width={size}
         height={size}
-        className={`rounded object-contain inline-block align-middle select-none ${className}`}
+        className={`rounded object-contain inline-block align-middle select-none pointer-events-none ${className}`}
         loading="lazy"
         onError={() => {
           // Fall back to ClubBadge if crest URL fails
