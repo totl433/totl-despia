@@ -292,13 +292,13 @@ async function pollAllLiveScores() {
       let awayScore: number;
       
       if (isLive) {
-        // Live games: prefer current, fall back to fullTime
-        homeScore = matchData.score?.current?.home ?? matchData.score?.fullTime?.home ?? 0;
-        awayScore = matchData.score?.current?.away ?? matchData.score?.fullTime?.away ?? 0;
+        // Live games: use current score
+        homeScore = matchData.score?.current?.home ?? 0;
+        awayScore = matchData.score?.current?.away ?? 0;
       } else {
         // Finished games: use fullTime
-        homeScore = matchData.score?.fullTime?.home ?? matchData.score?.halfTime?.home ?? 0;
-        awayScore = matchData.score?.fullTime?.away ?? matchData.score?.halfTime?.away ?? 0;
+        homeScore = matchData.score?.fullTime?.home ?? 0;
+        awayScore = matchData.score?.fullTime?.away ?? 0;
       }
       
       // Try multiple possible locations for minute in API response
