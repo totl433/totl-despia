@@ -288,13 +288,14 @@ async function pollAllLiveScores() {
 
       // Use API score directly - it's the source of truth
       // The API knows which team is home and which is away
+      // For live games, use current if available, otherwise use fullTime (API updates fullTime even for live games)
       let homeScore: number;
       let awayScore: number;
       
       if (isLive) {
-        // Live games: use current score
-        homeScore = matchData.score?.current?.home ?? 0;
-        awayScore = matchData.score?.current?.away ?? 0;
+        // Live games: prefer current, but use fullTime if current is null
+        homeScore = matchData.score?.current?.home ?? matchData.score?.fullTime?.home ?? 0;
+        awayScore = matchData.score?.current?.away ?? matchData.score?.fullTime?.away ?? 0;
       } else {
         // Finished games: use fullTime
         homeScore = matchData.score?.fullTime?.home ?? 0;
@@ -342,8 +343,6 @@ async function pollAllLiveScores() {
         minute: minute,
         home_team: normalizeTeamName(matchData.homeTeam?.name) || fixture.home_team || matchData.homeTeam?.name,
         away_team: normalizeTeamName(matchData.awayTeam?.name) || fixture.away_team || matchData.awayTeam?.name,
-        home_team_id: matchData.homeTeam?.id || null,
-        away_team_id: matchData.awayTeam?.id || null,
         kickoff_time: fixture.kickoff_time || matchData.utcDate,
         goals: goals.length > 0 ? goals : null,
         red_cards: redCards.length > 0 ? redCards : null,
