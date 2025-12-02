@@ -57,9 +57,11 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
 
         if (gw !== undefined) {
           query = query.eq('gw', gw);
-        }
-
-        if (apiMatchIds && apiMatchIds.length > 0) {
+          // When GW is provided, fetch ALL live scores for that GW
+          // Don't filter by apiMatchIds because some fixtures might not have api_match_id set yet
+          // but still have live scores in the database
+        } else if (apiMatchIds && apiMatchIds.length > 0) {
+          // Only filter by apiMatchIds if no GW is provided
           query = query.in('api_match_id', apiMatchIds);
         }
 
@@ -151,16 +153,17 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
               const shouldInclude = (score: LiveScore | null) => {
                 if (!score) return false;
                 
-                if (gw !== undefined && score.gw !== gw) {
-                  return false;
+                // If GW is provided, include all scores for that GW (don't filter by apiMatchIds)
+                if (gw !== undefined) {
+                  return score.gw === gw;
                 }
                 
+                // If no GW but apiMatchIds provided, filter by apiMatchIds
                 if (apiMatchIds && apiMatchIds.length > 0) {
-                  if (!apiMatchIds.includes(score.api_match_id)) {
-                    return false;
-                  }
+                  return apiMatchIds.includes(score.api_match_id);
                 }
                 
+                // If neither GW nor apiMatchIds provided, include all
                 return true;
               };
 

@@ -260,8 +260,9 @@ export default function HomePage() {
   }, [fixtures, user?.id]);
 
   // Subscribe to real-time live scores updates
+  // CRITICAL: Pass current GW to ensure we fetch live scores for the current gameweek
   const { liveScores: liveScoresMapFromHook } = useLiveScores(
-    undefined,
+    gw, // Pass current GW instead of undefined
     apiMatchIds.length > 0 ? apiMatchIds : undefined
   );
 
