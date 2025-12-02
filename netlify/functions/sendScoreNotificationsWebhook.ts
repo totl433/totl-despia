@@ -1016,6 +1016,11 @@ export const handler: Handler = async (event, context) => {
         playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
       });
 
+      // Calculate percentage of users who got it correct
+      const totalPicks = picks.length;
+      const correctPicks = picks.filter((p: any) => p.pick === result).length;
+      const correctPercentage = totalPicks > 0 ? Math.round((correctPicks / totalPicks) * 100) : 0;
+
       let totalSent = 0;
       for (const pick of picks) {
         const playerIds = playerIdsByUser.get(pick.user_id) || [];
@@ -1023,7 +1028,9 @@ export const handler: Handler = async (event, context) => {
 
         const isCorrect = pick.pick === result;
         const title = `FT: ${fixture.home_team} ${homeScore}-${awayScore} ${fixture.away_team}`;
-        const message = isCorrect ? `✅ Got it right!` : `❌ Wrong pick`;
+        const message = isCorrect 
+          ? `✅ Got it right! (${correctPercentage}% of users got this fixture correct)` 
+          : `❌ Wrong pick (${correctPercentage}% of users got this fixture correct)`;
 
         const result2 = await sendOneSignalNotification(
           playerIds,
