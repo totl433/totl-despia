@@ -271,8 +271,15 @@ async function pollAllLiveScores() {
         continue; // Skip if rate limited or error
       }
 
-      const homeScore = matchData.score?.fullTime?.home ?? matchData.score?.halfTime?.home ?? matchData.score?.current?.home ?? 0;
-      const awayScore = matchData.score?.fullTime?.away ?? matchData.score?.halfTime?.away ?? matchData.score?.current?.away ?? 0;
+      // For live games, use current score. For finished games, use fullTime.
+      // Priority: current (for live games) > fullTime (for finished) > halfTime (fallback)
+      const isLive = matchData.status === 'IN_PLAY' || matchData.status === 'PAUSED';
+      const homeScore = isLive 
+        ? (matchData.score?.current?.home ?? matchData.score?.halfTime?.home ?? matchData.score?.fullTime?.home ?? 0)
+        : (matchData.score?.fullTime?.home ?? matchData.score?.halfTime?.home ?? matchData.score?.current?.home ?? 0);
+      const awayScore = isLive
+        ? (matchData.score?.current?.away ?? matchData.score?.halfTime?.away ?? matchData.score?.fullTime?.away ?? 0)
+        : (matchData.score?.fullTime?.away ?? matchData.score?.halfTime?.away ?? matchData.score?.current?.away ?? 0);
       const status = matchData.status || 'SCHEDULED';
       
       // Try multiple possible locations for minute in API response
