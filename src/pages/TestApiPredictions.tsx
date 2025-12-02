@@ -1935,16 +1935,11 @@ export default function TestApiPredictions() {
                                   {/* Home Team Goals and Red Cards (chronologically sorted) */}
                                   {liveScore && (isOngoing || isFinished) && (() => {
                                     // Use API's goal.team directly - it already tells us which team the goal counts for (handles own goals correctly)
-                                    // goal.team is already normalized by pollLiveScores, so compare directly
+                                    // goal.team is normalized by pollLiveScores using normalizeTeamName, same as liveScore.home_team
                                     const homeGoals = (liveScore.goals || []).filter((goal: any) => {
                                       if (!goal || !goal.team) return false;
-                                      // goal.team is already normalized (e.g., "Man City", "Fulham")
-                                      // Compare directly to liveScore.home_team (also normalized) or homeName (medium name)
-                                      const goalTeam = goal.team;
-                                      return goalTeam === liveScore.home_team ||
-                                             goalTeam === homeName ||
-                                             goalTeam === getMediumName(fixture.home_team || '') ||
-                                             goalTeam === getMediumName(fixture.home_name || '');
+                                      // Direct comparison - both are normalized to medium names (e.g., "Man City", "Fulham")
+                                      return goal.team === liveScore.home_team;
                                     });
                                     
                                     // Filter red cards for home team
@@ -2054,16 +2049,11 @@ export default function TestApiPredictions() {
                                   {/* Away Team Goals and Red Cards (chronologically sorted) */}
                                   {liveScore && (isOngoing || isFinished) && (() => {
                                     // Use API's goal.team directly - it already tells us which team the goal counts for (handles own goals correctly)
-                                    // goal.team is already normalized by pollLiveScores, so compare directly
+                                    // goal.team is normalized by pollLiveScores using normalizeTeamName, same as liveScore.away_team
                                     const awayGoals = (liveScore.goals || []).filter((goal: any) => {
                                       if (!goal || !goal.team) return false;
-                                      // goal.team is already normalized (e.g., "Man City", "Fulham")
-                                      // Compare directly to liveScore.away_team (also normalized) or awayName (medium name)
-                                      const goalTeam = goal.team;
-                                      return goalTeam === liveScore.away_team ||
-                                             goalTeam === awayName ||
-                                             goalTeam === getMediumName(fixture.away_team || '') ||
-                                             goalTeam === getMediumName(fixture.away_name || '');
+                                      // Direct comparison - both are normalized to medium names (e.g., "Man City", "Fulham")
+                                      return goal.team === liveScore.away_team;
                                     });
                                     
                                     // Filter red cards for away team
