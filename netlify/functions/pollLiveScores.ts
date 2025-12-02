@@ -285,9 +285,11 @@ async function pollAllLiveScores() {
         let goalTeam = goal.team;
         let goalTeamId = goal.team?.id;
         
-        // Check if this is an own goal - if goal.teamId matches homeTeam but goal.type is OWN_GOAL,
-        // then the goal counts for awayTeam (and vice versa)
-        const isOwnGoal = goal.type === 'OWN_GOAL' || goal.type === 'OWN GOAL' || 
+        // Check if this is an own goal - API uses "OWN" for own goals
+        // If goal.type is "OWN", then the goal counts for the OPPOSITE team
+        const isOwnGoal = goal.type === 'OWN' || 
+                         goal.type === 'OWN_GOAL' || 
+                         goal.type === 'OWN GOAL' || 
                          (goal.scorer?.name && goal.scorer.name.toLowerCase().includes('own goal'));
         
         if (isOwnGoal) {
