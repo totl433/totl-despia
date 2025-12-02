@@ -1092,8 +1092,9 @@ ${shareUrl}`;
   
   const gwForSubscription = useMemo(() => {
     if (isApiTestLeague && currentTestGw !== null) return currentTestGw;
-    return selectedGw || currentGw || undefined;
-  }, [isApiTestLeague, currentTestGw, selectedGw, currentGw]);
+    // Prioritize currentGw for live scores subscription (it's the active/live GW)
+    return currentGw || selectedGw || undefined;
+  }, [isApiTestLeague, currentTestGw, currentGw, selectedGw]);
   
   const { liveScores: liveScoresMap } = useLiveScores(
     gwForSubscription,
@@ -3204,6 +3205,16 @@ ${shareUrl}`;
       return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
     });
     
+    console.log('[League] Live Table calculation:', {
+      resGw,
+      currentGw,
+      selectedGw,
+      hasLiveScores,
+      liveScoresCount: Object.keys(liveScores).length,
+      isApiTestLeague,
+      fixturesCount: fixtures.length
+    });
+    
     // For API Test league, ONLY use live scores (ignore database results)
     // For regular leagues, use live scores if GW is live, otherwise use results
     if (isApiTestLeague && resGw === (currentTestGw ?? 1)) {
@@ -3225,6 +3236,7 @@ ${shareUrl}`;
       // DO NOT fill in from results - only count live/finished fixtures
     } else if (hasLiveScores && resGw === currentGw) {
       // Regular league with live GW - use live scores
+      console.log('[League] Using live scores for regular league GW', resGw);
       fixtures.forEach((f: any) => {
         const liveScore = liveScores[f.fixture_index];
         if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
@@ -3238,8 +3250,10 @@ ${shareUrl}`;
           }
         }
       });
+      console.log('[League] Outcomes from live scores:', Array.from(outcomes.entries()));
     } else {
       // Regular league - use results (for past GWs)
+      console.log('[League] Using results table for GW', resGw, '(hasLiveScores:', hasLiveScores, ', resGw === currentGw:', resGw === currentGw, ')');
       results.forEach((r) => {
         if (r.gw !== resGw) return;
         const out = rowToOutcome(r);
