@@ -96,6 +96,9 @@ export default function HomePage() {
           allGwPoints: [],
           overall: [],
           lastGwRank: null,
+          fiveGwRank: null,
+          tenGwRank: null,
+          seasonRank: null,
           isInApiTestLeague: false,
           fixtures: [],
           userPicks: {},
@@ -114,6 +117,9 @@ export default function HomePage() {
         allGwPoints: Array<{user_id: string, gw: number, points: number}>;
         overall: Array<{user_id: string, name: string | null, ocp: number | null}>;
         lastGwRank: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null;
+        fiveGwRank?: { rank: number; total: number; isTied: boolean } | null;
+        tenGwRank?: { rank: number; total: number; isTied: boolean } | null;
+        seasonRank?: { rank: number; total: number; isTied: boolean } | null;
         isInApiTestLeague: boolean;
         testGw?: number;
       }>(cacheKey);
@@ -155,6 +161,9 @@ export default function HomePage() {
           allGwPoints: cached.allGwPoints || [],
           overall: cached.overall || [],
           lastGwRank: cached.lastGwRank || null,
+          fiveGwRank: cached.fiveGwRank ?? null,
+          tenGwRank: cached.tenGwRank ?? null,
+          seasonRank: cached.seasonRank ?? null,
           isInApiTestLeague: cached.isInApiTestLeague || false,
           fixtures,
           userPicks,
@@ -197,11 +206,11 @@ export default function HomePage() {
   const [leagueDataLoading, setLeagueDataLoading] = useState(initialState.leagueDataLoading);
   const [leaderboardDataLoading, setLeaderboardDataLoading] = useState(initialState.leaderboardDataLoading);
   
-  // Leaderboard rankings
+  // Leaderboard rankings (initialized from cache if available)
   const [lastGwRank, setLastGwRank] = useState<{ rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null>(initialState.lastGwRank);
-  const [fiveGwRank, setFiveGwRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(null);
-  const [tenGwRank, setTenGwRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(null);
-  const [seasonRank, setSeasonRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(null);
+  const [fiveGwRank, setFiveGwRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(initialState.fiveGwRank ?? null);
+  const [tenGwRank, setTenGwRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(initialState.tenGwRank ?? null);
+  const [seasonRank, setSeasonRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(initialState.seasonRank ?? null);
   
   // Additional data for form calculations
   const [allGwPoints, setAllGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>(initialState.allGwPoints);
@@ -548,7 +557,98 @@ export default function HomePage() {
           setOverall(overallData);
         }
         
-        // Cache the processed data for next time
+        // Calculate form ranks from fresh data (same logic as preloader)
+        const calculateFormRank = (startGw: number, endGw: number, allPoints: any[], allUsers: any[]): { rank: number; total: number; isTied: boolean } | null => {
+          if (endGw < startGw || !currentGw || currentGw < endGw) return null;
+          
+          const formPoints = allPoints.filter((gp: any) => gp.gw >= startGw && gp.gw <= endGw);
+          const userData = new Map<string, { user_id: string; name: string; formPoints: number; weeksPlayed: Set<number> }>();
+          
+          allUsers.forEach((o: any) => {
+            userData.set(o.user_id, {
+              user_id: o.user_id,
+              name: o.name ?? "User",
+              formPoints: 0,
+              weeksPlayed: new Set()
+            });
+          });
+          
+          formPoints.forEach((gp: any) => {
+            const user = userData.get(gp.user_id);
+            if (user) {
+              user.formPoints += gp.points ?? 0;
+              user.weeksPlayed.add(gp.gw);
+            }
+          });
+          
+          const sorted = Array.from(userData.values())
+            .filter(u => {
+              for (let g = startGw; g <= endGw; g++) {
+                if (!u.weeksPlayed.has(g)) return false;
+              }
+              return true;
+            })
+            .sort((a, b) => b.formPoints - a.formPoints || a.name.localeCompare(b.name));
+          
+          if (sorted.length === 0) return null;
+          
+          let currentRank = 1;
+          const ranked = sorted.map((player, index) => {
+            if (index > 0 && sorted[index - 1].formPoints !== player.formPoints) {
+              currentRank = index + 1;
+            }
+            return { ...player, rank: currentRank };
+          });
+          
+          const userEntry = ranked.find((u: any) => u.user_id === user.id);
+          if (!userEntry) return null;
+          
+          const rankCount = ranked.filter((r: any) => r.rank === userEntry.rank).length;
+          return {
+            rank: userEntry.rank,
+            total: ranked.length,
+            isTied: rankCount > 1
+          };
+        };
+
+        const fiveGwRankData = lastCompletedGw >= 5 
+          ? calculateFormRank(lastCompletedGw - 4, lastCompletedGw, allPoints, overallData)
+          : null;
+        const tenGwRankData = lastCompletedGw >= 10
+          ? calculateFormRank(lastCompletedGw - 9, lastCompletedGw, allPoints, overallData)
+          : null;
+
+        // Calculate season rank
+        let seasonRankData: { rank: number; total: number; isTied: boolean } | null = null;
+        if (overallData.length > 0) {
+          const sorted = [...overallData].sort((a: any, b: any) => (b.ocp ?? 0) - (a.ocp ?? 0) || (a.name ?? "User").localeCompare(b.name ?? "User"));
+          let currentRank = 1;
+          const ranked = sorted.map((player: any, index: number) => {
+            if (index > 0 && (sorted[index - 1].ocp ?? 0) !== (player.ocp ?? 0)) {
+              currentRank = index + 1;
+            }
+            return { ...player, rank: currentRank };
+          });
+          
+          const userEntry = ranked.find((o: any) => o.user_id === user.id);
+          if (userEntry) {
+            const rankCount = ranked.filter((r: any) => r.rank === userEntry.rank).length;
+            seasonRankData = {
+              rank: userEntry.rank,
+              total: overallData.length,
+              isTied: rankCount > 1
+            };
+          }
+        }
+
+        // Update state with calculated ranks
+        if (alive) {
+          setFiveGwRank(fiveGwRankData);
+          setTenGwRank(tenGwRankData);
+          setSeasonRank(seasonRankData);
+        }
+
+        // Cache the processed data for next time (including form ranks)
         try {
           setCached(cacheKey, {
             leagues: leaguesData,
@@ -557,6 +657,9 @@ export default function HomePage() {
             allGwPoints: allPoints,
             overall: overallData,
             lastGwRank: lastGwRankData,
+            fiveGwRank: fiveGwRankData,
+            tenGwRank: tenGwRankData,
+            seasonRank: seasonRankData,
             isInApiTestLeague: leaguesData.some(l => l.name === "API Test")
           }, CACHE_TTL.HOME);
           // Cached data for next time
@@ -586,10 +689,22 @@ export default function HomePage() {
   const prevLatestGwRef = useRef<number | null>(null);
   
   useEffect(() => {
-    if (!user?.id || !latestGw) return;
+    if (!user?.id || !latestGw) {
+      // Reset ranks if no user or GW
+      setFiveGwRank(null);
+      setTenGwRank(null);
+      setSeasonRank(null);
+      return;
+    }
     
-    // If no data yet, set ranks to null and return early
+    // If no data yet, set ranks to null and return early (but don't block - will recalculate when data loads)
     if (!allGwPoints.length || !overall.length) {
+      // Only set to null if we've actually tried to load data (not just initial state)
+      // This prevents clearing ranks unnecessarily during initial load
+      if (allGwPoints.length === 0 && overall.length === 0) {
+        // Data might still be loading, don't clear ranks yet
+        return;
+      }
       setFiveGwRank(null);
       setTenGwRank(null);
       setSeasonRank(null);
@@ -616,22 +731,30 @@ export default function HomePage() {
     
     (async () => {
       try {
-        const { data: lastCompletedGwData } = await supabase
+        const { data: lastCompletedGwData, error: lastGwError } = await supabase
           .from("app_gw_results")
           .select("gw")
           .order("gw", { ascending: false })
           .limit(1)
           .maybeSingle();
         
+        if (lastGwError) {
+          console.error('[Home] Error fetching last completed GW:', lastGwError);
+        }
+        
         const lastCompletedGw = lastCompletedGwData?.gw ?? latestGw;
         
         // Helper to calculate form rankings
         const calculateFormRank = (startGw: number, endGw: number, setRank: (r: { rank: number; total: number; isTied: boolean } | null) => void) => {
-          if (endGw < startGw) return;
+          if (endGw < startGw) {
+            setRank(null);
+            return;
+          }
           
           const formPoints = allGwPoints.filter(gp => gp.gw >= startGw && gp.gw <= endGw);
           const userData = new Map<string, { user_id: string; name: string; formPoints: number; weeksPlayed: Set<number> }>();
           
+          // Initialize userData from overall (all users who have played)
           overall.forEach(o => {
             userData.set(o.user_id, {
               user_id: o.user_id,
@@ -641,6 +764,7 @@ export default function HomePage() {
             });
           });
           
+          // Add points for each GW in the form period
           formPoints.forEach(gp => {
             const user = userData.get(gp.user_id);
             if (user) {
@@ -649,6 +773,7 @@ export default function HomePage() {
             }
           });
           
+          // Filter to only users who played ALL weeks in the form period
           const sorted = Array.from(userData.values())
             .filter(u => {
               for (let g = startGw; g <= endGw; g++) {
@@ -668,7 +793,7 @@ export default function HomePage() {
             });
             
             const userEntry = ranked.find(u => u.user_id === user.id);
-            if (userEntry) {
+            if (userEntry && alive) {
               const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
               setRank({
                 rank: userEntry.rank,
@@ -677,22 +802,26 @@ export default function HomePage() {
               });
             } else {
               // User doesn't have all required weeks, set to null to show "—"
-              setRank(null);
+              if (alive) setRank(null);
             }
           } else {
             // No users with all required weeks, set to null
-            setRank(null);
+            if (alive) setRank(null);
           }
         };
         
         // 5-WEEK FORM
         if (lastCompletedGw >= 5) {
           calculateFormRank(lastCompletedGw - 4, lastCompletedGw, setFiveGwRank);
+        } else {
+          if (alive) setFiveGwRank(null);
         }
         
         // 10-WEEK FORM
         if (lastCompletedGw >= 10) {
           calculateFormRank(lastCompletedGw - 9, lastCompletedGw, setTenGwRank);
+        } else {
+          if (alive) setTenGwRank(null);
         }
         
         // SEASON RANK
@@ -707,7 +836,7 @@ export default function HomePage() {
           });
           
           const userEntry = ranked.find(o => o.user_id === user.id);
-          if (userEntry) {
+          if (userEntry && alive) {
             const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
             setSeasonRank({
               rank: userEntry.rank,
@@ -716,14 +845,20 @@ export default function HomePage() {
             });
           } else {
             // User not found in overall rankings, set to null
-            setSeasonRank(null);
+            if (alive) setSeasonRank(null);
           }
         } else {
           // No overall data, set to null
-          setSeasonRank(null);
+          if (alive) setSeasonRank(null);
         }
       } catch (e) {
-        // Silent fail
+        console.error('[Home] Error calculating form ranks:', e);
+        // Set ranks to null on error to show "—" instead of blank
+        if (alive) {
+          setFiveGwRank(null);
+          setTenGwRank(null);
+          setSeasonRank(null);
+        }
       }
     })();
     

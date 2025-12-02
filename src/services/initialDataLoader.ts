@@ -383,6 +383,96 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     isTied: lastGwRankIndex > 0 && sortedLastGw[lastGwRankIndex - 1]?.points === lastGwScore,
   } : null;
 
+  // Calculate form ranks (5-week and 10-week) during preload
+  const calculateFormRank = (startGw: number, endGw: number, allPoints: any[], allUsers: any[], userId: string): { rank: number; total: number; isTied: boolean } | null => {
+    if (endGw < startGw || !latestGw || latestGw < endGw) return null;
+    
+    const formPoints = allPoints.filter((gp: any) => gp.gw >= startGw && gp.gw <= endGw);
+    const userData = new Map<string, { user_id: string; name: string; formPoints: number; weeksPlayed: Set<number> }>();
+    
+    // Initialize userData from overall (all users who have played)
+    allUsers.forEach((o: any) => {
+      userData.set(o.user_id, {
+        user_id: o.user_id,
+        name: o.name ?? "User",
+        formPoints: 0,
+        weeksPlayed: new Set()
+      });
+    });
+    
+    // Add points for each GW in the form period
+    formPoints.forEach((gp: any) => {
+      const user = userData.get(gp.user_id);
+      if (user) {
+        user.formPoints += gp.points ?? 0;
+        user.weeksPlayed.add(gp.gw);
+      }
+    });
+    
+    // Filter to only users who played ALL weeks in the form period
+    const sorted = Array.from(userData.values())
+      .filter(u => {
+        for (let g = startGw; g <= endGw; g++) {
+          if (!u.weeksPlayed.has(g)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => b.formPoints - a.formPoints || a.name.localeCompare(b.name));
+    
+    if (sorted.length === 0) return null;
+    
+    let currentRank = 1;
+    const ranked = sorted.map((player, index) => {
+      if (index > 0 && sorted[index - 1].formPoints !== player.formPoints) {
+        currentRank = index + 1;
+      }
+      return { ...player, rank: currentRank };
+    });
+    
+          const userEntry = ranked.find((u: any) => u.user_id === userId);
+          if (!userEntry) return null;
+          
+          const rankCount = ranked.filter((r: any) => r.rank === userEntry.rank).length;
+          return {
+            rank: userEntry.rank,
+            total: ranked.length,
+            isTied: rankCount > 1
+          };
+        };
+
+  // Calculate 5-week form rank
+  const fiveGwRank = latestGw && latestGw >= 5 
+    ? calculateFormRank(latestGw - 4, latestGw, gwPointsResult.data || [], overallResult.data || [], userId)
+    : null;
+
+  // Calculate 10-week form rank
+  const tenGwRank = latestGw && latestGw >= 10
+    ? calculateFormRank(latestGw - 9, latestGw, gwPointsResult.data || [], overallResult.data || [], userId)
+    : null;
+
+  // Calculate season rank
+  let seasonRank: { rank: number; total: number; isTied: boolean } | null = null;
+  if (overallResult.data && overallResult.data.length > 0) {
+    const sorted = [...overallResult.data].sort((a: any, b: any) => (b.ocp ?? 0) - (a.ocp ?? 0) || (a.name ?? "User").localeCompare(b.name ?? "User"));
+    let currentRank = 1;
+    const ranked = sorted.map((player: any, index: number) => {
+      if (index > 0 && (sorted[index - 1].ocp ?? 0) !== (player.ocp ?? 0)) {
+        currentRank = index + 1;
+      }
+      return { ...player, rank: currentRank };
+    });
+    
+    const userEntry = ranked.find((o: any) => o.user_id === userId);
+    if (userEntry) {
+      const rankCount = ranked.filter((r: any) => r.rank === userEntry.rank).length;
+      seasonRank = {
+        rank: userEntry.rank,
+        total: overallResult.data.length,
+        isTied: rankCount > 1
+      };
+    }
+  }
+
   // Process league data (simplified - full processing happens in Home.tsx)
   const leagueData: Record<string, any> = {};
   const userLeagueIdsSet = new Set(leagues.map((l: any) => l.id));
@@ -403,7 +493,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   // Check if user is in API Test league
   const isInApiTestLeague = leagues.some((l: any) => l.name === 'API Test');
 
-  // Cache the data for future use
+  // Cache the data for future use (including pre-calculated form ranks)
   const cacheKey = `home:basic:${userId}`;
   setCached(cacheKey, {
     leagues,
@@ -412,6 +502,9 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     allGwPoints: gwPointsResult.data || [],
     overall: overallResult.data || [],
     lastGwRank,
+    fiveGwRank,
+    tenGwRank,
+    seasonRank,
     isInApiTestLeague,
   }, CACHE_TTL.HOME);
 
