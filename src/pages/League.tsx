@@ -137,7 +137,7 @@ function Chip({
 }) {
   // Logic matches Home Page:
   // - Pulsing green when correct during live/ongoing games
-  // - Shiny gradient when correct in finished games
+  // - Pulsing shiny gradient when correct in finished games
   // - Green when submitted (even if no result or incorrect)
   // - Grey when member hasn't submitted
   let tone: string;
@@ -147,8 +147,8 @@ function Chip({
       // Live and correct - pulse in emerald green
       tone = "bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-lg shadow-emerald-500/50";
     } else if (isFinished) {
-      // Shiny gradient for correct picks in finished games (no border/ring)
-      tone = "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]";
+      // Shiny gradient with pulse for correct picks in finished games
+      tone = "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 relative overflow-hidden animate-pulse before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]";
     } else {
       // Correct but game hasn't started - show emerald green (no pulse, no shiny)
       tone = "bg-emerald-600 text-white border-emerald-600";
@@ -2268,11 +2268,30 @@ ${shareUrl}`;
     }
 
     const outcomes = new Map<number, "H" | "D" | "A">();
+    
+    // First, populate from database results
     results.forEach((r) => {
       if (r.gw !== picksGw) return;
       const out = rowToOutcome(r);
       if (!out) return;
       outcomes.set(r.fixture_index, out);
+    });
+    
+    // Then, update with live scores for fixtures that are live or finished
+    // This ensures correct picks are shown even when results aren't in the database yet
+    fixtures.forEach((f) => {
+      if (f.gw !== picksGw) return;
+      const liveScore = liveScores[f.fixture_index];
+      if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
+        // Determine outcome from live score
+        if (liveScore.homeScore > liveScore.awayScore) {
+          outcomes.set(f.fixture_index, 'H');
+        } else if (liveScore.awayScore > liveScore.homeScore) {
+          outcomes.set(f.fixture_index, 'A');
+        } else {
+          outcomes.set(f.fixture_index, 'D');
+        }
+      }
     });
 
     const sections = useMemo(() => {
