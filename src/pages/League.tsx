@@ -1450,7 +1450,9 @@ ${shareUrl}`;
       });
       
       // For API Test league in predictions/results tabs, use current test GW
-      let gwForData = tab === "gwr" ? selectedGw : tab === "gw" ? currentGw : currentGw;
+      // For "gwr" (Live Table/Results) tab, prioritize currentGw if it's live, otherwise use selectedGw
+      // For "gw" (Predictions) tab, always use currentGw
+      let gwForData = tab === "gwr" ? (currentGw || selectedGw) : tab === "gw" ? currentGw : currentGw;
       if (isApiTestLeague && (tab === "gw" || tab === "gwr")) {
         gwForData = testGwForData; // Use current test GW for API Test league
       }
@@ -3774,7 +3776,11 @@ ${shareUrl}`;
                 }
               >
                 {(() => {
-                  const resGw = league?.name === 'API Test' ? (currentTestGw ?? 1) : (selectedGw || currentGw);
+                  // For Live Table, always use currentGw if available (it's the active/live GW)
+                  // Only use selectedGw if currentGw is not available
+                  const resGw = league?.name === 'API Test' 
+                    ? (currentTestGw ?? 1) 
+                    : (currentGw || selectedGw);
                   // For API Test league, show "GW T1", "GW T2", etc. based on test_gw
                   const displayGw = league?.name === 'API Test' ? `T${resGw}` : resGw;
                   // Check if GW is live: first game started AND last game not finished
