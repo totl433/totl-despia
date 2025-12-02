@@ -1939,7 +1939,11 @@ export default function TestApiPredictions() {
                                     const homeGoals = (liveScore.goals || []).filter((goal: any) => {
                                       if (!goal || !goal.team) return false;
                                       // Direct comparison - both are normalized to medium names (e.g., "Man City", "Fulham")
-                                      return goal.team === liveScore.home_team;
+                                      const matches = goal.team === liveScore.home_team;
+                                      if (!matches && goal.team && liveScore.home_team) {
+                                        console.log(`[TestApiPredictions] Goal team mismatch: goal.team="${goal.team}" vs liveScore.home_team="${liveScore.home_team}" for scorer ${goal.scorer} ${goal.minute}'`);
+                                      }
+                                      return matches;
                                     });
                                     
                                     // Filter red cards for home team
@@ -2053,7 +2057,11 @@ export default function TestApiPredictions() {
                                     const awayGoals = (liveScore.goals || []).filter((goal: any) => {
                                       if (!goal || !goal.team) return false;
                                       // Direct comparison - both are normalized to medium names (e.g., "Man City", "Fulham")
-                                      return goal.team === liveScore.away_team;
+                                      const matches = goal.team === liveScore.away_team;
+                                      if (!matches && goal.team && liveScore.away_team) {
+                                        console.log(`[TestApiPredictions] Goal team mismatch: goal.team="${goal.team}" vs liveScore.away_team="${liveScore.away_team}" for scorer ${goal.scorer} ${goal.minute}'`);
+                                      }
+                                      return matches;
                                     });
                                     
                                     // Filter red cards for away team

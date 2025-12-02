@@ -278,13 +278,18 @@ async function pollAllLiveScores() {
       // Goals array contains: { minute, scorer: { name, id }, team: { id, name } }
       // Bookings array contains: { minute, player: { name, id }, team: { id, name }, card: "YELLOW_CARD" | "RED_CARD" }
       // Normalize team names to our canonical medium names for consistency
-      const goals = (matchData.goals || []).map((goal: any) => ({
-        minute: goal.minute ?? null,
-        scorer: goal.scorer?.name ?? null,
-        scorerId: goal.scorer?.id ?? null,
-        team: normalizeTeamName(goal.team?.name) ?? null, // Normalize to canonical name
-        teamId: goal.team?.id ?? null,
-      }));
+      // IMPORTANT: goal.team.name from API indicates which team the goal counts for (handles own goals correctly)
+      const goals = (matchData.goals || []).map((goal: any) => {
+        const normalizedTeam = normalizeTeamName(goal.team?.name);
+        console.log(`[pollLiveScores] Goal: ${goal.scorer?.name} ${goal.minute}' - API team: "${goal.team?.name}" -> normalized: "${normalizedTeam}"`);
+        return {
+          minute: goal.minute ?? null,
+          scorer: goal.scorer?.name ?? null,
+          scorerId: goal.scorer?.id ?? null,
+          team: normalizedTeam ?? null, // Normalize to canonical name
+          teamId: goal.team?.id ?? null,
+        };
+      });
 
       // Use API score directly - it's the source of truth
       // The API knows which team is home and which is away
@@ -341,8 +346,16 @@ async function pollAllLiveScores() {
         away_score: awayScore,
         status: status,
         minute: minute,
-        home_team: normalizeTeamName(matchData.homeTeam?.name) || fixture.home_team || matchData.homeTeam?.name,
-        away_team: normalizeTeamName(matchData.awayTeam?.name) || fixture.away_team || matchData.awayTeam?.name,
+        home_team: (() => {
+          const normalized = normalizeTeamName(matchData.homeTeam?.name);
+          console.log(`[pollLiveScores] Home team: API="${matchData.homeTeam?.name}" -> normalized="${normalized}"`);
+          return normalized || fixture.home_team || matchData.homeTeam?.name;
+        })(),
+        away_team: (() => {
+          const normalized = normalizeTeamName(matchData.awayTeam?.name);
+          console.log(`[pollLiveScores] Away team: API="${matchData.awayTeam?.name}" -> normalized="${normalized}"`);
+          return normalized || fixture.away_team || matchData.awayTeam?.name;
+        })(),
         kickoff_time: fixture.kickoff_time || matchData.utcDate,
         goals: goals.length > 0 ? goals : null,
         red_cards: redCards.length > 0 ? redCards : null,
