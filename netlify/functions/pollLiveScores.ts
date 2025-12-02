@@ -340,15 +340,27 @@ async function pollAllLiveScores() {
         
         if (goals.length > 0) {
           // We have goals in the array
-          if (apiHome !== null && apiAway !== null && totalGoalsFromApi > totalGoalsFromArray) {
-            // API score has more total goals - goals array is incomplete
-            // Use API score (it's more up-to-date)
-            const source = apiCurrentHome !== null ? 'current' : 'fullTime';
-            console.warn(`[pollLiveScores] Match ${apiMatchId} - Goals array incomplete: ${homeScoreFromGoals}-${awayScoreFromGoals} (${totalGoalsFromArray} total) vs API ${source}: ${apiHome}-${apiAway} (${totalGoalsFromApi} total), using API ${source} score`);
-            homeScore = apiHome;
-            awayScore = apiAway;
+          if (apiHome !== null && apiAway !== null) {
+            // Check if API score differs from goals array (either more total goals OR different distribution)
+            const scoresDiffer = 
+              apiHome !== homeScoreFromGoals || 
+              apiAway !== awayScoreFromGoals ||
+              totalGoalsFromApi > totalGoalsFromArray;
+            
+            if (scoresDiffer) {
+              // API score differs from goals array - API is more authoritative
+              // Use API score (it's more up-to-date or more accurate)
+              const source = apiCurrentHome !== null ? 'current' : 'fullTime';
+              console.warn(`[pollLiveScores] Match ${apiMatchId} - Goals array differs: ${homeScoreFromGoals}-${awayScoreFromGoals} (${totalGoalsFromArray} total) vs API ${source}: ${apiHome}-${apiAway} (${totalGoalsFromApi} total), using API ${source} score`);
+              homeScore = apiHome;
+              awayScore = apiAway;
+            } else {
+              // Scores match - use goals count (more detailed info)
+              homeScore = homeScoreFromGoals;
+              awayScore = awayScoreFromGoals;
+            }
           } else {
-            // Goals array is complete or API score is not available - use goals count
+            // API score not available - use goals count
             homeScore = homeScoreFromGoals;
             awayScore = awayScoreFromGoals;
           }
