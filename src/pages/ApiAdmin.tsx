@@ -246,6 +246,13 @@ export default function ApiAdmin() {
       return;
     }
 
+    // Validate that all selected fixtures have api_match_id
+    const fixturesWithoutApiId = Array.from(selectedFixtures.values()).filter(f => !f.api_match_id || f.api_match_id === 0);
+    if (fixturesWithoutApiId.length > 0) {
+      setError(`Cannot save: ${fixturesWithoutApiId.length} fixture${fixturesWithoutApiId.length === 1 ? '' : 's'} missing api_match_id. Please select fixtures from the API matches list.`);
+      return;
+    }
+
     // Confirm before saving
     if (!confirm(`Are you sure you want to save GW ${nextGw} with ${selectedFixtures.size} fixture${selectedFixtures.size === 1 ? '' : 's'}? This will replace any existing fixtures for this game week.`)) {
       return;
@@ -273,6 +280,8 @@ export default function ApiAdmin() {
         away_code: f.away_code,
         home_name: f.home_name,
         away_name: f.away_name,
+        home_crest: f.home_crest || null,
+        away_crest: f.away_crest || null,
         kickoff_time: f.kickoff_time,
       }));
 

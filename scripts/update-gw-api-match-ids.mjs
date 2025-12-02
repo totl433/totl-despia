@@ -39,15 +39,18 @@ const teamCodeMap = {
   'WOL': 'WOL',
 };
 
-async function updateGw14ApiMatchIds() {
-  console.log('🔄 Updating api_match_id for GW 14 fixtures...\n');
+// Get GW from command line argument or default to 14
+const targetGw = process.argv[2] ? parseInt(process.argv[2]) : 14;
+
+async function updateGwApiMatchIds(gw: number) {
+  console.log(`🔄 Updating api_match_id for GW ${gw} fixtures...\n`);
 
   try {
-    // 1. Get all fixtures for GW 14
+    // 1. Get all fixtures for the target GW
     const { data: fixtures, error: fixturesError } = await supabase
       .from('app_fixtures')
       .select('*')
-      .eq('gw', 14)
+      .eq('gw', gw)
       .order('fixture_index', { ascending: true });
 
     if (fixturesError) {
@@ -55,11 +58,11 @@ async function updateGw14ApiMatchIds() {
     }
 
     if (!fixtures || fixtures.length === 0) {
-      console.log('❌ No fixtures found for GW 14');
+      console.log(`❌ No fixtures found for GW ${gw}`);
       return;
     }
 
-    console.log(`📋 Found ${fixtures.length} fixtures for GW 14\n`);
+    console.log(`📋 Found ${fixtures.length} fixtures for GW ${gw}\n`);
 
     // 2. Get the date range for GW 14 fixtures
     const kickoffTimes = fixtures
@@ -184,7 +187,7 @@ async function updateGw14ApiMatchIds() {
           home_crest: update.home_crest,
           away_crest: update.away_crest,
         })
-        .eq('gw', 14)
+        .eq('gw', gw)
         .eq('fixture_index', update.fixture_index);
 
       if (error) {
@@ -202,13 +205,13 @@ async function updateGw14ApiMatchIds() {
   }
 }
 
-updateGw14ApiMatchIds()
+updateGwApiMatchIds(targetGw)
   .then(() => {
-    console.log('\n✅ Script completed successfully');
+    console.log(`\n✅ Script completed successfully for GW ${targetGw}`);
     process.exit(0);
   })
   .catch((error) => {
-    console.error('\n❌ Script failed:', error);
+    console.error(`\n❌ Script failed for GW ${targetGw}:`, error);
     process.exit(1);
   });
 
