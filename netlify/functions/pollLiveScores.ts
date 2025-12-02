@@ -271,36 +271,10 @@ async function pollAllLiveScores() {
         continue; // Skip if rate limited or error
       }
 
-      // For live games, use current score. For finished games, use fullTime.
-      // Priority: current (for live games) > fullTime (for finished) > halfTime (fallback)
-      const isLive = matchData.status === 'IN_PLAY' || matchData.status === 'PAUSED';
-      const homeScore = isLive 
-        ? (matchData.score?.current?.home ?? matchData.score?.halfTime?.home ?? matchData.score?.fullTime?.home ?? 0)
-        : (matchData.score?.fullTime?.home ?? matchData.score?.halfTime?.home ?? matchData.score?.current?.home ?? 0);
-      const awayScore = isLive
-        ? (matchData.score?.current?.away ?? matchData.score?.halfTime?.away ?? matchData.score?.fullTime?.away ?? 0)
-        : (matchData.score?.fullTime?.away ?? matchData.score?.halfTime?.away ?? matchData.score?.current?.away ?? 0);
       const status = matchData.status || 'SCHEDULED';
+      const isLive = status === 'IN_PLAY' || status === 'PAUSED';
       
-      // Try multiple possible locations for minute in API response
-      // The API might provide it as: matchData.minute, matchData.currentMinute, or in score object
-      let apiMinute: number | null | undefined = matchData.minute ?? 
-                                                 matchData.currentMinute ?? 
-                                                 matchData.score?.minute ?? 
-                                                 null;
-
-      console.log(`[pollLiveScores] Match ${apiMatchId} - API minute: ${apiMinute ?? 'null'}, status: ${status}, score: ${homeScore}-${awayScore}`);
-
-      // For finished games, always set minute to null (FT doesn't need minute)
-      // For all other games, use the API minute directly
-      const minute = status === 'FINISHED' ? null : (apiMinute ?? null);
-      
-      // Log minute value being stored
-      if (status === 'IN_PLAY' || status === 'PAUSED') {
-        console.log(`[pollLiveScores] Match ${apiMatchId} - Storing minute: ${minute} (from API)`);
-      }
-
-      // Extract goals and bookings from API response
+      // Extract goals and bookings from API response FIRST
       // Goals array contains: { minute, scorer: { name, id }, team: { id, name } }
       // Bookings array contains: { minute, player: { name, id }, team: { id, name }, card: "YELLOW_CARD" | "RED_CARD" }
       // Normalize team names to our canonical medium names for consistency
@@ -311,6 +285,69 @@ async function pollAllLiveScores() {
         team: normalizeTeamName(goal.team?.name) ?? null, // Normalize to canonical name
         teamId: goal.team?.id ?? null,
       }));
+
+      // Count goals from the goals array (most accurate for live games)
+      // Match team IDs from goals to home/away teams
+      const homeTeamId = matchData.homeTeam?.id;
+      const awayTeamId = matchData.awayTeam?.id;
+      
+      let homeScoreFromGoals = 0;
+      let awayScoreFromGoals = 0;
+      
+      goals.forEach((goal: any) => {
+        if (goal.teamId === homeTeamId) {
+          homeScoreFromGoals++;
+        } else if (goal.teamId === awayTeamId) {
+          awayScoreFromGoals++;
+        }
+      });
+
+      // For live games, prefer counting from goals array (most accurate)
+      // For finished games, prefer fullTime score, but fall back to goals count if fullTime is missing
+      // Priority for live: goals count > current score > halfTime > fullTime
+      // Priority for finished: fullTime > goals count > halfTime > current
+      let homeScore: number;
+      let awayScore: number;
+      
+      if (isLive) {
+        // For live games, use goals count if available, otherwise use current score
+        if (goals.length > 0) {
+          homeScore = homeScoreFromGoals;
+          awayScore = awayScoreFromGoals;
+        } else {
+          homeScore = matchData.score?.current?.home ?? matchData.score?.halfTime?.home ?? matchData.score?.fullTime?.home ?? 0;
+          awayScore = matchData.score?.current?.away ?? matchData.score?.halfTime?.away ?? matchData.score?.fullTime?.away ?? 0;
+        }
+      } else {
+        // For finished games, prefer fullTime, but use goals count if fullTime is missing or incorrect
+        const fullTimeHome = matchData.score?.fullTime?.home ?? null;
+        const fullTimeAway = matchData.score?.fullTime?.away ?? null;
+        
+        if (fullTimeHome !== null && fullTimeAway !== null) {
+          // Use fullTime if available
+          homeScore = fullTimeHome;
+          awayScore = fullTimeAway;
+        } else if (goals.length > 0) {
+          // Fall back to goals count if fullTime is missing
+          homeScore = homeScoreFromGoals;
+          awayScore = awayScoreFromGoals;
+        } else {
+          // Last resort: use halfTime or current
+          homeScore = matchData.score?.halfTime?.home ?? matchData.score?.current?.home ?? 0;
+          awayScore = matchData.score?.halfTime?.away ?? matchData.score?.current?.away ?? 0;
+        }
+      }
+      
+      // Try multiple possible locations for minute in API response
+      // The API might provide it as: matchData.minute, matchData.currentMinute, or in score object
+      let apiMinute: number | null | undefined = matchData.minute ?? 
+                                                 matchData.currentMinute ?? 
+                                                 matchData.score?.minute ?? 
+                                                 null;
+
+      console.log(`[pollLiveScores] Match ${apiMatchId} - API minute: ${apiMinute ?? 'null'}, status: ${status}`);
+      console.log(`[pollLiveScores] Match ${apiMatchId} - Score from API: ${matchData.score?.current?.home ?? 'null'}-${matchData.score?.current?.away ?? 'null'} (current), ${matchData.score?.fullTime?.home ?? 'null'}-${matchData.score?.fullTime?.away ?? 'null'} (fullTime)`);
+      console.log(`[pollLiveScores] Match ${apiMatchId} - Goals count: ${homeScoreFromGoals}-${awayScoreFromGoals} (from ${goals.length} goals), using: ${homeScore}-${awayScore}`);
 
       // Filter bookings to only include red cards
       // API returns "RED" not "RED_CARD" for red cards
