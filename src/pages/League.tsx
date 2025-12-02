@@ -1527,20 +1527,16 @@ ${shareUrl}`;
         // Regular fixtures - ALWAYS use main database table for non-API Test leagues
         // CRITICAL: Never use test_api_fixtures for regular leagues
         // NOTE: fixtures table does NOT have api_match_id column (only test_api_fixtures has it)
-        console.log('[League] Fetching from MAIN database table (fixtures) for regular league, GW:', gwForData);
+        console.log('[League] Fetching from MAIN database table (app_fixtures) for regular league, GW:', gwForData);
         const { data: regularFx } = await supabase
           .from("app_fixtures")
           .select(
-            "id,gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time"
+            "id,gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time,api_match_id"
           )
           .eq("gw", gwForData)
           .order("fixture_index", { ascending: true });
         
-        // Map to include api_match_id as null (for consistency with API Test fixtures)
-        fx = regularFx?.map((f: any) => ({
-          ...f,
-          api_match_id: null
-        })) || null;
+        fx = regularFx || null;
         console.log('[League] Fetched fixtures from main database:', regularFx?.length || 0, 'fixtures');
       }
 
