@@ -1938,10 +1938,12 @@ export default function TestApiPredictions() {
                                     // goal.team is normalized by pollLiveScores using normalizeTeamName, same as liveScore.home_team
                                     const homeGoals = (liveScore.goals || []).filter((goal: any) => {
                                       if (!goal || !goal.team) return false;
-                                      // Direct comparison - both are normalized to medium names (e.g., "Man City", "Fulham")
-                                      const matches = goal.team === liveScore.home_team;
+                                      // Normalize both sides for comparison (handle any edge cases)
+                                      const goalTeam = getMediumName(goal.team);
+                                      const homeTeam = getMediumName(liveScore.home_team || homeName);
+                                      const matches = goalTeam === homeTeam || goal.team === liveScore.home_team;
                                       if (!matches && goal.team && liveScore.home_team) {
-                                        console.log(`[TestApiPredictions] Goal team mismatch: goal.team="${goal.team}" vs liveScore.home_team="${liveScore.home_team}" for scorer ${goal.scorer} ${goal.minute}'`);
+                                        console.log(`[TestApiPredictions] Goal team mismatch: goal.team="${goal.team}" (normalized: "${goalTeam}") vs liveScore.home_team="${liveScore.home_team}" (normalized: "${homeTeam}") for scorer ${goal.scorer} ${goal.minute}'`);
                                       }
                                       return matches;
                                     });
@@ -2056,10 +2058,12 @@ export default function TestApiPredictions() {
                                     // goal.team is normalized by pollLiveScores using normalizeTeamName, same as liveScore.away_team
                                     const awayGoals = (liveScore.goals || []).filter((goal: any) => {
                                       if (!goal || !goal.team) return false;
-                                      // Direct comparison - both are normalized to medium names (e.g., "Man City", "Fulham")
-                                      const matches = goal.team === liveScore.away_team;
+                                      // Normalize both sides for comparison (handle any edge cases)
+                                      const goalTeam = getMediumName(goal.team);
+                                      const awayTeam = getMediumName(liveScore.away_team || awayName);
+                                      const matches = goalTeam === awayTeam || goal.team === liveScore.away_team;
                                       if (!matches && goal.team && liveScore.away_team) {
-                                        console.log(`[TestApiPredictions] Goal team mismatch: goal.team="${goal.team}" vs liveScore.away_team="${liveScore.away_team}" for scorer ${goal.scorer} ${goal.minute}'`);
+                                        console.log(`[TestApiPredictions] Goal team mismatch: goal.team="${goal.team}" (normalized: "${goalTeam}") vs liveScore.away_team="${liveScore.away_team}" (normalized: "${awayTeam}") for scorer ${goal.scorer} ${goal.minute}'`);
                                       }
                                       return matches;
                                     });
