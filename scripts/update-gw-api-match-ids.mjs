@@ -42,7 +42,7 @@ const teamCodeMap = {
 // Get GW from command line argument or default to 14
 const targetGw = process.argv[2] ? parseInt(process.argv[2]) : 14;
 
-async function updateGwApiMatchIds(gw: number) {
+async function updateGwApiMatchIds(gw) {
   console.log(`🔄 Updating api_match_id for GW ${gw} fixtures...\n`);
 
   try {
@@ -129,7 +129,7 @@ async function updateGwApiMatchIds(gw: number) {
       }
 
       // Find matching API match
-      const match = matches.find((m: any) => {
+      const match = matches.find((m) => {
         const apiHomeTla = m.homeTeam?.tla?.toUpperCase();
         const apiAwayTla = m.awayTeam?.tla?.toUpperCase();
         const apiKickoff = m.utcDate ? new Date(m.utcDate) : null;
@@ -155,8 +155,6 @@ async function updateGwApiMatchIds(gw: number) {
           away_team: match.awayTeam?.shortName || fixture.away_team,
           home_name: match.homeTeam?.name || fixture.home_name,
           away_name: match.awayTeam?.name || fixture.away_name,
-          home_crest: match.homeTeam?.crest || fixture.home_crest,
-          away_crest: match.awayTeam?.crest || fixture.away_crest,
         });
         matchedCount++;
         console.log(`✅ Matched fixture ${fixture.fixture_index}: ${homeCode} v ${awayCode} → API match ${match.id}`);
@@ -184,8 +182,6 @@ async function updateGwApiMatchIds(gw: number) {
           away_team: update.away_team,
           home_name: update.home_name,
           away_name: update.away_name,
-          home_crest: update.home_crest,
-          away_crest: update.away_crest,
         })
         .eq('gw', gw)
         .eq('fixture_index', update.fixture_index);
