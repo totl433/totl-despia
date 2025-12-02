@@ -287,50 +287,18 @@ async function pollAllLiveScores() {
       }));
 
       // Use API score directly - it's the source of truth
-      // BUT: We need to match API's home/away to our fixture's home/away
-      // The API returns scores relative to matchData.homeTeam and matchData.awayTeam
-      // We need to check if those match our fixture's home_team and away_team
-      
-      // Get API's home/away team names (normalized for comparison)
-      const apiHomeTeamName = normalizeTeamName(matchData.homeTeam?.name);
-      const apiAwayTeamName = normalizeTeamName(matchData.awayTeam?.name);
-      
-      // Get our fixture's home/away team names (normalized for comparison)
-      const fixtureHomeTeamName = normalizeTeamName(fixture.home_team);
-      const fixtureAwayTeamName = normalizeTeamName(fixture.away_team);
-      
-      // Get scores from API
-      let apiHomeScore: number;
-      let apiAwayScore: number;
-      
-      if (isLive) {
-        // Live games: prefer current, fall back to fullTime
-        apiHomeScore = matchData.score?.current?.home ?? matchData.score?.fullTime?.home ?? 0;
-        apiAwayScore = matchData.score?.current?.away ?? matchData.score?.fullTime?.away ?? 0;
-      } else {
-        // Finished games: use fullTime
-        apiHomeScore = matchData.score?.fullTime?.home ?? matchData.score?.halfTime?.home ?? 0;
-        apiAwayScore = matchData.score?.fullTime?.away ?? matchData.score?.halfTime?.away ?? 0;
-      }
-      
-      // Check if API's home/away matches our fixture's home/away
-      // If they match, use scores as-is. If swapped, swap the scores.
-      const teamsMatch = 
-        apiHomeTeamName === fixtureHomeTeamName && 
-        apiAwayTeamName === fixtureAwayTeamName;
-      
+      // The API knows which team is home and which is away
       let homeScore: number;
       let awayScore: number;
       
-      if (teamsMatch) {
-        // Teams match - use scores as-is
-        homeScore = apiHomeScore;
-        awayScore = apiAwayScore;
+      if (isLive) {
+        // Live games: prefer current, fall back to fullTime
+        homeScore = matchData.score?.current?.home ?? matchData.score?.fullTime?.home ?? 0;
+        awayScore = matchData.score?.current?.away ?? matchData.score?.fullTime?.away ?? 0;
       } else {
-        // Teams are swapped - swap the scores
-        homeScore = apiAwayScore;
-        awayScore = apiHomeScore;
-        console.log(`[pollLiveScores] Match ${apiMatchId} - Teams swapped: API has ${apiHomeTeamName} (${apiHomeScore}) vs ${apiAwayTeamName} (${apiAwayScore}), fixture has ${fixtureHomeTeamName} vs ${fixtureAwayTeamName}, using swapped scores: ${homeScore}-${awayScore}`);
+        // Finished games: use fullTime
+        homeScore = matchData.score?.fullTime?.home ?? matchData.score?.halfTime?.home ?? 0;
+        awayScore = matchData.score?.fullTime?.away ?? matchData.score?.halfTime?.away ?? 0;
       }
       
       // Try multiple possible locations for minute in API response
