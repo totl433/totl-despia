@@ -286,113 +286,20 @@ async function pollAllLiveScores() {
         teamId: goal.team?.id ?? null,
       }));
 
-      // Count goals from the goals array (most accurate for live games)
-      // Match team IDs from goals to home/away teams
-      const homeTeamId = matchData.homeTeam?.id;
-      const awayTeamId = matchData.awayTeam?.id;
-      
-      let homeScoreFromGoals = 0;
-      let awayScoreFromGoals = 0;
-      let unmatchedGoals = 0;
-      
-      goals.forEach((goal: any) => {
-        if (goal.teamId === homeTeamId) {
-          homeScoreFromGoals++;
-        } else if (goal.teamId === awayTeamId) {
-          awayScoreFromGoals++;
-        } else {
-          // Log unmatched goals for debugging
-          unmatchedGoals++;
-          console.warn(`[pollLiveScores] Match ${apiMatchId} - Unmatched goal: teamId=${goal.teamId}, homeTeamId=${homeTeamId}, awayTeamId=${awayTeamId}, scorer=${goal.scorer}`);
-        }
-      });
-      
-      // Log detailed goal breakdown for debugging
-      if (goals.length > 0) {
-        console.log(`[pollLiveScores] Match ${apiMatchId} - Goal breakdown: ${goals.length} total goals, ${homeScoreFromGoals} home, ${awayScoreFromGoals} away, ${unmatchedGoals} unmatched`);
-        goals.forEach((goal: any, idx: number) => {
-          console.log(`[pollLiveScores]   Goal ${idx + 1}: teamId=${goal.teamId}, scorer=${goal.scorer}, minute=${goal.minute}, matchesHome=${goal.teamId === homeTeamId}, matchesAway=${goal.teamId === awayTeamId}`);
-        });
-      }
-
-      // For live games, prefer counting from goals array (most accurate)
-      // For finished games, prefer fullTime score, but fall back to goals count if fullTime is missing
-      // Priority for live: goals count > current score > halfTime > fullTime
-      // Priority for finished: fullTime > goals count > halfTime > current
+      // Use API score directly - it's the source of truth
+      // For live games: use current score, fall back to fullTime if current is null
+      // For finished games: use fullTime score
       let homeScore: number;
       let awayScore: number;
       
       if (isLive) {
-        // For live games, prefer goals count, but check if API score is more accurate
-        // Sometimes the goals array is incomplete (missing recent goals), so we need to compare
-        const apiCurrentHome = matchData.score?.current?.home ?? null;
-        const apiCurrentAway = matchData.score?.current?.away ?? null;
-        // Also check fullTime as fallback (sometimes current is null but fullTime is updated)
-        const apiFullTimeHome = matchData.score?.fullTime?.home ?? null;
-        const apiFullTimeAway = matchData.score?.fullTime?.away ?? null;
-        
-        // Use current if available, otherwise fall back to fullTime
-        const apiHome = apiCurrentHome ?? apiFullTimeHome;
-        const apiAway = apiCurrentAway ?? apiFullTimeAway;
-        
-        const totalGoalsFromArray = homeScoreFromGoals + awayScoreFromGoals;
-        const totalGoalsFromApi = (apiHome ?? 0) + (apiAway ?? 0);
-        
-        if (goals.length > 0) {
-          // We have goals in the array
-          if (apiHome !== null && apiAway !== null) {
-            // Check if API score differs from goals array (either more total goals OR different distribution)
-            const scoresDiffer = 
-              apiHome !== homeScoreFromGoals || 
-              apiAway !== awayScoreFromGoals ||
-              totalGoalsFromApi > totalGoalsFromArray;
-            
-            if (scoresDiffer) {
-              // API score differs from goals array - API is more authoritative
-              // Use API score (it's more up-to-date or more accurate)
-              const source = apiCurrentHome !== null ? 'current' : 'fullTime';
-              console.warn(`[pollLiveScores] Match ${apiMatchId} - Goals array differs: ${homeScoreFromGoals}-${awayScoreFromGoals} (${totalGoalsFromArray} total) vs API ${source}: ${apiHome}-${apiAway} (${totalGoalsFromApi} total), using API ${source} score`);
-              homeScore = apiHome;
-              awayScore = apiAway;
-            } else {
-              // Scores match - use goals count (more detailed info)
-              homeScore = homeScoreFromGoals;
-              awayScore = awayScoreFromGoals;
-            }
-          } else {
-            // API score not available - use goals count
-            homeScore = homeScoreFromGoals;
-            awayScore = awayScoreFromGoals;
-          }
-        } else {
-          // No goals in array yet - use API score if available
-          if (apiHome !== null && apiAway !== null) {
-            homeScore = apiHome;
-            awayScore = apiAway;
-          } else {
-            // No goals and no API score - use 0-0
-            homeScore = 0;
-            awayScore = 0;
-          }
-        }
+        // Live games: prefer current, fall back to fullTime
+        homeScore = matchData.score?.current?.home ?? matchData.score?.fullTime?.home ?? 0;
+        awayScore = matchData.score?.current?.away ?? matchData.score?.fullTime?.away ?? 0;
       } else {
-        // For finished games, prefer fullTime, but use goals count if fullTime is missing or incorrect
-        const fullTimeHome = matchData.score?.fullTime?.home ?? null;
-        const fullTimeAway = matchData.score?.fullTime?.away ?? null;
-        
-        if (fullTimeHome !== null && fullTimeAway !== null) {
-          // Use fullTime if available
-          homeScore = fullTimeHome;
-          awayScore = fullTimeAway;
-        } else if (goals.length > 0) {
-          // Fall back to goals count if fullTime is missing
-          homeScore = homeScoreFromGoals;
-          awayScore = awayScoreFromGoals;
-        } else {
-          // Last resort: use halfTime or current
-          homeScore = matchData.score?.halfTime?.home ?? matchData.score?.current?.home ?? 0;
-          awayScore = matchData.score?.halfTime?.away ?? matchData.score?.current?.away ?? 0;
-        }
+        // Finished games: use fullTime
+        homeScore = matchData.score?.fullTime?.home ?? matchData.score?.halfTime?.home ?? 0;
+        awayScore = matchData.score?.fullTime?.away ?? matchData.score?.halfTime?.away ?? 0;
       }
       
       // Try multiple possible locations for minute in API response
@@ -412,8 +319,7 @@ async function pollAllLiveScores() {
       }
 
       console.log(`[pollLiveScores] Match ${apiMatchId} - API minute: ${apiMinute ?? 'null'}, status: ${status}`);
-      console.log(`[pollLiveScores] Match ${apiMatchId} - Score from API: ${matchData.score?.current?.home ?? 'null'}-${matchData.score?.current?.away ?? 'null'} (current), ${matchData.score?.fullTime?.home ?? 'null'}-${matchData.score?.fullTime?.away ?? 'null'} (fullTime)`);
-      console.log(`[pollLiveScores] Match ${apiMatchId} - Goals count: ${homeScoreFromGoals}-${awayScoreFromGoals} (from ${goals.length} goals), using: ${homeScore}-${awayScore}`);
+      console.log(`[pollLiveScores] Match ${apiMatchId} - Score from API: ${matchData.score?.current?.home ?? 'null'}-${matchData.score?.current?.away ?? 'null'} (current), ${matchData.score?.fullTime?.home ?? 'null'}-${matchData.score?.fullTime?.away ?? 'null'} (fullTime), using: ${homeScore}-${awayScore}`);
 
       // Filter bookings to only include red cards
       // API returns "RED" not "RED_CARD" for red cards
