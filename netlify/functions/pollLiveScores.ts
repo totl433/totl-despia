@@ -323,26 +323,33 @@ async function pollAllLiveScores() {
       let awayScore: number;
       
       if (isLive) {
-        // For live games, ALWAYS prefer goals count (most accurate)
-        // Even if goals.length is 0, use 0-0 rather than potentially stale API score
-        // Only fall back to API score if we have no goals AND the API score seems reasonable
+        // For live games, prefer goals count, but check if API current score is more accurate
+        // Sometimes the goals array is incomplete (missing recent goals), so we need to compare
+        const apiCurrentHome = matchData.score?.current?.home ?? null;
+        const apiCurrentAway = matchData.score?.current?.away ?? null;
+        const totalGoalsFromArray = homeScoreFromGoals + awayScoreFromGoals;
+        const totalGoalsFromApi = (apiCurrentHome ?? 0) + (apiCurrentAway ?? 0);
+        
         if (goals.length > 0) {
-          // Use goals count - this is the source of truth
-          homeScore = homeScoreFromGoals;
-          awayScore = awayScoreFromGoals;
-        } else {
-          // No goals in array yet - could be 0-0 or API hasn't populated goals yet
-          // Check if API score suggests goals exist
-          const apiHome = matchData.score?.current?.home ?? 0;
-          const apiAway = matchData.score?.current?.away ?? 0;
-          if (apiHome > 0 || apiAway > 0) {
-            // API says there are goals but goals array is empty - API might be ahead
-            // Use API score but log a warning
-            console.warn(`[pollLiveScores] Match ${apiMatchId} - Goals array empty but API score shows ${apiHome}-${apiAway}, using API score`);
-            homeScore = apiHome;
-            awayScore = apiAway;
+          // We have goals in the array
+          if (apiCurrentHome !== null && apiCurrentAway !== null && totalGoalsFromApi > totalGoalsFromArray) {
+            // API current score has more total goals - goals array is incomplete
+            // Use API current score (it's more up-to-date)
+            console.warn(`[pollLiveScores] Match ${apiMatchId} - Goals array incomplete: ${homeScoreFromGoals}-${awayScoreFromGoals} (${totalGoalsFromArray} total) vs API current: ${apiCurrentHome}-${apiCurrentAway} (${totalGoalsFromApi} total), using API current score`);
+            homeScore = apiCurrentHome;
+            awayScore = apiCurrentAway;
           } else {
-            // Both are 0-0, use 0-0
+            // Goals array is complete or API score is not available - use goals count
+            homeScore = homeScoreFromGoals;
+            awayScore = awayScoreFromGoals;
+          }
+        } else {
+          // No goals in array yet - use API current score if available
+          if (apiCurrentHome !== null && apiCurrentAway !== null) {
+            homeScore = apiCurrentHome;
+            awayScore = apiCurrentAway;
+          } else {
+            // No goals and no API score - use 0-0
             homeScore = 0;
             awayScore = 0;
           }
