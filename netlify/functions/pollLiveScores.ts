@@ -82,72 +82,44 @@ async function fetchMatchScore(apiMatchId: number): Promise<any> {
 
 async function pollAllLiveScores() {
   try {
-    // Get current GW from meta table
+    // Get current GW from app_meta table (used by the app)
     const { data: metaData, error: metaError } = await supabase
-      .from('meta')
+      .from('app_meta')
       .select('current_gw')
       .eq('id', 1)
       .maybeSingle();
 
     if (metaError || !metaData) {
-      console.error('[pollLiveScores] Failed to get current GW:', metaError);
+      console.error('[pollLiveScores] Failed to get current GW from app_meta:', metaError);
       return;
     }
 
     const currentGw = (metaData as any)?.current_gw ?? 1;
+    console.log(`[pollLiveScores] Current GW from app_meta: ${currentGw}`);
 
-    // Get all fixtures for current GW that have api_match_id
-    // Check regular fixtures, test_api_fixtures, and app_fixtures
-    // For test_api_fixtures, get ALL test_gw values (T1, T2, etc.) that have api_match_id
-    // For app_fixtures, get fixtures for current GW (used by TestApiPredictions)
-    const [regularFixtures, testFixtures, appFixtures, allTestFixturesCheck] = await Promise.all([
+    // Get all fixtures for current GW and future GWs from app_fixtures table
+    // Focus on app_fixtures (used by TestApiPredictions and the main app)
+    // Also check regular fixtures table for backward compatibility
+    // Skip test_api_fixtures - those are old test data
+    const [regularFixtures, appFixtures] = await Promise.all([
       supabase
         .from('fixtures')
         .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, gw')
         .eq('gw', currentGw)
         .not('api_match_id', 'is', null),
-      supabase
-        .from('test_api_fixtures')
-        .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, test_gw')
-        .not('api_match_id', 'is', null),
+      // Get fixtures for current GW and future GWs (up to current + 5 for upcoming games)
       supabase
         .from('app_fixtures')
         .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, gw')
-        .eq('gw', currentGw)
-        .not('api_match_id', 'is', null),
-      // Also check all test fixtures (including those without api_match_id) for debugging
-      supabase
-        .from('test_api_fixtures')
-        .select('test_gw, api_match_id')
-        .order('test_gw', { ascending: true }),
+        .gte('gw', currentGw)
+        .lte('gw', currentGw + 5) // Include up to 5 GWs ahead
+        .not('api_match_id', 'is', null)
+        .order('gw', { ascending: true })
+        .order('fixture_index', { ascending: true }),
     ]);
-    
-    // Log what test fixtures exist in the database
-    const testGwBreakdown = new Map<number, { withApiId: number; withoutApiId: number }>();
-    ((allTestFixturesCheck.data || []) as any[]).forEach((f: any) => {
-      const gw = f.test_gw;
-      if (!testGwBreakdown.has(gw)) {
-        testGwBreakdown.set(gw, { withApiId: 0, withoutApiId: 0 });
-      }
-      const counts = testGwBreakdown.get(gw)!;
-      if (f.api_match_id) {
-        counts.withApiId++;
-      } else {
-        counts.withoutApiId++;
-      }
-    });
-    console.log('[pollLiveScores] Test fixtures in database by test_gw:');
-    Array.from(testGwBreakdown.entries()).forEach(([gw, counts]) => {
-      console.log(`[pollLiveScores]   Test GW ${gw}: ${counts.withApiId} with api_match_id, ${counts.withoutApiId} without api_match_id`);
-    });
 
     const allFixtures = [
       ...((regularFixtures.data || []) as any[]).map(f => ({ ...f, gw: f.gw || currentGw })),
-      ...((testFixtures.data || []) as any[]).map(f => ({ 
-        ...f, 
-        gw: f.test_gw || currentGw, 
-        fixture_index: f.fixture_index 
-      })),
       ...((appFixtures.data || []) as any[]).map(f => ({ 
         ...f, 
         gw: f.gw || currentGw, 
@@ -157,31 +129,31 @@ async function pollAllLiveScores() {
 
     if (allFixtures.length === 0) {
       console.log('[pollLiveScores] No fixtures with api_match_id found');
-      console.log(`[pollLiveScores] Checked regular GW ${currentGw}, all test fixtures, and app_fixtures GW ${currentGw}`);
+      console.log(`[pollLiveScores] Checked regular fixtures GW ${currentGw} and app_fixtures GW ${currentGw} to ${currentGw + 5}`);
       return;
     }
 
     const regularCount = (regularFixtures.data || []).length;
-    const testCount = (testFixtures.data || []).length;
     const appCount = (appFixtures.data || []).length;
-    // Group test fixtures by test_gw for logging
-    const testGwGroups = new Map<number, number>();
-    const testGwDetails: Record<number, number[]> = {};
-    ((testFixtures.data || []) as any[]).forEach((f: any) => {
-      const gw = f.test_gw;
-      testGwGroups.set(gw, (testGwGroups.get(gw) || 0) + 1);
-      if (!testGwDetails[gw]) {
-        testGwDetails[gw] = [];
+    
+    // Group app fixtures by GW for logging
+    const appGwGroups = new Map<number, number>();
+    const appGwDetails: Record<number, number[]> = {};
+    ((appFixtures.data || []) as any[]).forEach((f: any) => {
+      const gw = f.gw;
+      appGwGroups.set(gw, (appGwGroups.get(gw) || 0) + 1);
+      if (!appGwDetails[gw]) {
+        appGwDetails[gw] = [];
       }
-      testGwDetails[gw].push(f.api_match_id);
+      appGwDetails[gw].push(f.api_match_id);
     });
-    const testGwSummary = Array.from(testGwGroups.entries())
-      .map(([gw, count]) => `${count} test GW ${gw}`)
+    const appGwSummary = Array.from(appGwGroups.entries())
+      .map(([gw, count]) => `${count} app_fixtures GW ${gw}`)
       .join(', ');
-    console.log(`[pollLiveScores] Found ${allFixtures.length} fixtures (${regularCount} regular GW ${currentGw}, ${testCount} test fixtures: ${testGwSummary}, ${appCount} app_fixtures GW ${currentGw})`);
-    // Log detailed breakdown of test fixtures
-    Object.entries(testGwDetails).forEach(([gw, matchIds]) => {
-      console.log(`[pollLiveScores] Test GW ${gw} has ${matchIds.length} fixtures with api_match_ids: ${matchIds.join(', ')}`);
+    console.log(`[pollLiveScores] Found ${allFixtures.length} fixtures (${regularCount} regular fixtures GW ${currentGw}, ${appCount} app_fixtures: ${appGwSummary})`);
+    // Log detailed breakdown of app fixtures by GW
+    Object.entries(appGwDetails).forEach(([gw, matchIds]) => {
+      console.log(`[pollLiveScores] App GW ${gw} has ${matchIds.length} fixtures with api_match_ids: ${matchIds.join(', ')}`);
     });
 
     // Check current status of fixtures in database to skip FINISHED games
@@ -431,7 +403,7 @@ export const handler: Handler = async (event) => {
     let lastPollTime: string | null = null;
     try {
       const { data: metaData, error: metaError } = await supabase
-        .from('meta')
+        .from('app_meta')
         .select('last_poll_time')
         .eq('id', 1)
         .maybeSingle();
@@ -468,12 +440,12 @@ export const handler: Handler = async (event) => {
     }
     
     // Update lock timestamp IMMEDIATELY to claim the lock
-    // Use upsert to create/update the meta row with last_poll_time
+    // Use upsert to create/update the app_meta row with last_poll_time
     const lockTimestamp = new Date().toISOString();
     try {
       // First try to update existing row
       const { error: updateError } = await supabase
-        .from('meta')
+        .from('app_meta')
         .update({ last_poll_time: lockTimestamp } as any)
         .eq('id', 1);
       
@@ -484,7 +456,7 @@ export const handler: Handler = async (event) => {
         }
         // Try upsert as fallback
         const { error: upsertError } = await supabase
-          .from('meta')
+          .from('app_meta')
           .upsert({ id: 1, last_poll_time: lockTimestamp, current_gw: 12 } as any, { onConflict: 'id' });
         
         if (upsertError && upsertError.code !== 'PGRST204' && upsertError.code !== '42703') {
@@ -508,7 +480,7 @@ export const handler: Handler = async (event) => {
       
       try {
         const { data: doubleCheckData } = await supabase
-          .from('meta')
+          .from('app_meta')
           .select('last_poll_time')
           .eq('id', 1)
           .maybeSingle();
