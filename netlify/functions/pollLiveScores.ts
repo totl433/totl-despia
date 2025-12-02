@@ -275,19 +275,42 @@ async function pollAllLiveScores() {
       const isLive = status === 'IN_PLAY' || status === 'PAUSED';
       
       // Extract goals and bookings from API response FIRST
-      // Goals array contains: { minute, scorer: { name, id }, team: { id, name } }
-      // Bookings array contains: { minute, player: { name, id }, team: { id, name }, card: "YELLOW_CARD" | "RED_CARD" }
-      // Normalize team names to our canonical medium names for consistency
-      // IMPORTANT: goal.team.name from API indicates which team the goal counts for (handles own goals correctly)
+      // Goals array contains: { minute, scorer: { name, id }, team: { id, name }, type: "REGULAR" | "OWN_GOAL" | "PENALTY" }
+      // IMPORTANT: For own goals, goal.team is the player's team, but we need to use the OPPOSITE team
+      // Check if there's a type field or if we need to infer from teamId vs homeTeamId/awayTeamId
+      const homeTeamId = matchData.homeTeam?.id;
+      const awayTeamId = matchData.awayTeam?.id;
+      
       const goals = (matchData.goals || []).map((goal: any) => {
-        const normalizedTeam = normalizeTeamName(goal.team?.name);
-        console.log(`[pollLiveScores] Goal: ${goal.scorer?.name} ${goal.minute}' - API team: "${goal.team?.name}" -> normalized: "${normalizedTeam}"`);
+        let goalTeam = goal.team;
+        let goalTeamId = goal.team?.id;
+        
+        // Check if this is an own goal - if goal.teamId matches homeTeam but goal.type is OWN_GOAL,
+        // then the goal counts for awayTeam (and vice versa)
+        const isOwnGoal = goal.type === 'OWN_GOAL' || goal.type === 'OWN GOAL' || 
+                         (goal.scorer?.name && goal.scorer.name.toLowerCase().includes('own goal'));
+        
+        if (isOwnGoal) {
+          // Own goal: if player's team is home, goal counts for away (and vice versa)
+          if (goalTeamId === homeTeamId) {
+            goalTeam = matchData.awayTeam;
+            goalTeamId = awayTeamId;
+          } else if (goalTeamId === awayTeamId) {
+            goalTeam = matchData.homeTeam;
+            goalTeamId = homeTeamId;
+          }
+          console.log(`[pollLiveScores] OWN GOAL detected: ${goal.scorer?.name} ${goal.minute}' - player's team: "${goal.team?.name}", goal counts for: "${goalTeam?.name}"`);
+        }
+        
+        const normalizedTeam = normalizeTeamName(goalTeam?.name);
+        console.log(`[pollLiveScores] Goal: ${goal.scorer?.name} ${goal.minute}' - API team: "${goalTeam?.name}" -> normalized: "${normalizedTeam}"${isOwnGoal ? ' (OWN GOAL)' : ''}`);
         return {
           minute: goal.minute ?? null,
           scorer: goal.scorer?.name ?? null,
           scorerId: goal.scorer?.id ?? null,
           team: normalizedTeam ?? null, // Normalize to canonical name
-          teamId: goal.team?.id ?? null,
+          teamId: goalTeamId ?? null,
+          isOwnGoal: isOwnGoal,
         };
       });
 
