@@ -794,7 +794,7 @@ export default function HomePage() {
         
         // Parallel fetch all league data
         // App reads from app_* tables (includes both App and mirrored Web users)
-        const [membersResult, readsResult, submissionsResult, resultsResult, fixturesResult, webPicksResult, appPicksResult] = await Promise.all([
+        const [membersResult, readsResult, submissionsResult, resultsResult, fixturesResult, webPicksResult] = await Promise.all([
           supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds),
           supabase.from("league_message_reads").select("league_id, last_read_at").eq("user_id", user.id).in("league_id", leagueIds),
           supabase.from("app_gw_submissions").select("user_id").eq("gw", gw),
@@ -804,8 +804,7 @@ export default function HomePage() {
           // Check for ANY GW (not just current GW) because the blue outline indicates a user who
           // has made picks via Web interface at some point, not just for the current GW
           supabase.from("picks").select("user_id").limit(10000),
-          // Check which users have picks in App table (these are App users who predicted on App)
-          supabase.from("app_picks").select("user_id").eq("gw", gw).limit(10000)
+          // Note: app_picks query removed - not used in this function
         ]);
         
         if (!alive) return;

@@ -83,18 +83,18 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     leaguesResult,
     gwPointsResult,
     overallResult,
-    fixturesResult,
-    picksResult,
+    _fixturesResult, // Placeholder - replaced later
+    _picksResult, // Placeholder - replaced later
     leagueMembersResult,
     latestGwResult,
     webPicksResult,
-    // Additional data for Tables page
-    allLeaguesResult,
-    leagueMembersWithUsersResult,
+    // Additional data for Tables page (placeholders - populated later)
+    _allLeaguesResult, // Placeholder - populated later
+    _leagueMembersWithUsersResult, // Placeholder - populated later
     leagueReadsResult,
-    allResultsResult,
-    allFixturesResult,
-    leagueSubmissionsResult,
+    _allResultsResult, // Used in background async function
+    _allFixturesResult, // Used in background async function
+    _leagueSubmissionsResult, // Placeholder - populated later
   ] = await Promise.all([
     // 1. Get current GW from app_meta
     supabase
@@ -183,7 +183,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   if (leagueMembersResult.error) throw new Error(`Failed to load league members: ${leagueMembersResult.error.message}`);
   if (latestGwResult.error) throw new Error(`Failed to load latest GW: ${latestGwResult.error.message}`);
   if (webPicksResult.error) throw new Error(`Failed to load Web picks: ${webPicksResult.error.message}`);
-  // Note: leagueReadsResult, allResultsResult, allFixturesResult errors are non-critical
+  // Note: leagueReadsResult, _allResultsResult, _allFixturesResult errors are non-critical
 
   const currentGw = metaResult.data?.current_gw ?? 1;
   const latestGw = latestGwResult.data?.gw ?? null;

@@ -33,7 +33,7 @@ import FloatingProfile from "./components/FloatingProfile";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useAppLifecycle } from "./hooks/useAppLifecycle";
 import LoadingScreen from "./components/LoadingScreen";
-import { isLoadEverythingFirstEnabled } from "./lib/featureFlags";
+// import { isLoadEverythingFirstEnabled } from "./lib/featureFlags"; // Unused - feature flag checked inline
 import { loadInitialData } from "./services/initialDataLoader";
 
 // Loading Fallback

@@ -2781,8 +2781,8 @@ ${shareUrl}`;
                           const homeName = f.home_team || f.home_name || "Home";
                           const awayName = f.away_team || f.away_name || "Away";
                           // Use fallback pattern like Home.tsx - ensure we always have a key
-                          const homeKey = (f.home_code || f.home_team || f.home_name || homeName || "").toUpperCase();
-                          const awayKey = (f.away_code || f.away_team || f.away_name || awayName || "").toUpperCase();
+                          // const homeKey = (f.home_code || f.home_team || f.home_name || homeName || "").toUpperCase();
+                          // const awayKey = (f.away_code || f.away_team || f.away_name || awayName || "").toUpperCase();
                           
                           // Memoize badge paths to prevent flickering on re-renders
                           // Use team code directly if available (badges are named like ARS.png, BOU.png)

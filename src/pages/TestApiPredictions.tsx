@@ -344,7 +344,7 @@ export default function TestApiPredictions() {
     return scores;
   }, [liveScoresMap, fixtures]);
   // Track when halftime ends for each fixture (when status changes from PAUSED to IN_PLAY)
-  const halftimeEndTimeRef = useRef<Record<number, Date>>({});
+  // const halftimeEndTimeRef = useRef<Record<number, Date>>({}); // Unused - kept for future use
   // getHasEverBeenSubmitted, setHasEverBeenSubmitted, and hasEverBeenSubmittedRef are now defined earlier
   
   // CRITICAL: Use a ref to track if we should show cards - updated synchronously
@@ -965,81 +965,7 @@ export default function TestApiPredictions() {
   }, [user?.id]);
 
   // NOTE: Manual polling is now replaced by useLiveScores hook which provides real-time updates
-  // Keeping fetchLiveScore as a fallback utility function (not used in polling anymore)
-  const fetchLiveScore = async (apiMatchId: number, kickoffTime?: string | null) => {
-    try {
-      console.log('[TestApiPredictions] fetchLiveScore called for matchId:', apiMatchId, 'kickoffTime:', kickoffTime);
-      
-      // Read from Supabase live_scores table (updated by scheduled Netlify function)
-      const { data: liveScore, error } = await supabase
-        .from('live_scores')
-        .select('*')
-        .eq('api_match_id', apiMatchId)
-        .single();
-      
-      if (error) {
-        if (error.code === 'PGRST116') {
-          // No row found - scheduled function hasn't run yet or game hasn't started
-          console.log('[TestApiPredictions] No live score found in Supabase for match', apiMatchId, '- scheduled function may not have run yet');
-          return null;
-        }
-        console.error('[TestApiPredictions] Error fetching live score from Supabase:', error);
-        return null;
-      }
-      
-      if (!liveScore) {
-        console.warn('[TestApiPredictions] No live score data in Supabase');
-        return null;
-      }
-      
-      console.log('[TestApiPredictions] Live score from Supabase:', liveScore);
-      
-      const homeScore = liveScore.home_score ?? 0;
-      const awayScore = liveScore.away_score ?? 0;
-      const status = liveScore.status || 'SCHEDULED';
-      let minute = liveScore.minute;
-      
-      // If minute is not provided, calculate from kickoff time (fallback)
-      if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED') && kickoffTime) {
-        try {
-          const matchStart = new Date(kickoffTime);
-          const now = new Date();
-          const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
-          
-          if (diffMinutes > 0 && diffMinutes < 120) {
-            if (status === 'PAUSED') {
-              minute = null;
-            } else if (status === 'IN_PLAY') {
-              if (diffMinutes <= 50) {
-                minute = diffMinutes;
-              } else {
-                minute = 46 + Math.max(0, diffMinutes - 50);
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[TestApiPredictions] Error calculating minute from kickoff time:', e);
-        }
-      }
-      
-      const result = { 
-        homeScore, 
-        awayScore, 
-        status, 
-        minute, 
-        retryAfter: null as number | null,
-        goals: liveScore.goals || null,
-        red_cards: liveScore.red_cards || null,
-        home_team: liveScore.home_team || null,
-        away_team: liveScore.away_team || null
-      };
-      console.log('[TestApiPredictions] Returning score data from Supabase:', result);
-      return result;
-    } catch (error: any) {
-      console.error('[TestApiPredictions] Error fetching live score from Supabase:', error?.message || error, error?.stack);
-      return null;
-    }
-  };
+  // fetchLiveScore function removed - no longer needed as useLiveScores hook handles all live score updates
 
   // NOTE: Manual polling removed - now using useLiveScores hook for real-time updates
   // The hook automatically subscribes to live_scores table changes via Supabase real-time
@@ -1612,7 +1538,7 @@ export default function TestApiPredictions() {
   // Show simple loading spinner until fixtures are loaded and ready
   // CRITICAL: Don't render ANYTHING until we know submission status and have fixtures
   // This prevents blank screens and swipe card flashes
-  const isFullyReady = !loading && fixtures.length > 0 && submissionChecked && picksChecked;
+  // const isFullyReady = !loading && fixtures.length > 0 && submissionChecked && picksChecked; // Unused - kept for debugging
   const needsMoreData = loading || fixtures.length === 0 || !submissionChecked || !picksChecked;
   
   if (needsMoreData) {
