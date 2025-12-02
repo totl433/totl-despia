@@ -3173,7 +3173,11 @@ ${shareUrl}`;
   }
 
   function GwResultsTab() {
-    const resGw = league?.name === 'API Test' ? (currentTestGw ?? 1) : selectedGw;
+    // For Live Table tab, prioritize currentGw (the active/live GW) over selectedGw
+    // For other tabs, use selectedGw
+    const resGw = league?.name === 'API Test' 
+      ? (currentTestGw ?? 1) 
+      : (tab === "gwr" ? (currentGw || selectedGw) : selectedGw);
     
     if (!resGw || (availableGws.length === 0 && league?.name !== 'API Test')) {
       return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No game week selected.</div>;
