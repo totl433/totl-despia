@@ -345,6 +345,15 @@ async function pollAllLiveScores() {
                                                  matchData.score?.minute ?? 
                                                  null;
 
+      // For finished games, always set minute to null (FT doesn't need minute)
+      // For all other games, use the API minute directly
+      const minute = status === 'FINISHED' ? null : (apiMinute ?? null);
+      
+      // Log minute value being stored
+      if (status === 'IN_PLAY' || status === 'PAUSED') {
+        console.log(`[pollLiveScores] Match ${apiMatchId} - Storing minute: ${minute} (from API)`);
+      }
+
       console.log(`[pollLiveScores] Match ${apiMatchId} - API minute: ${apiMinute ?? 'null'}, status: ${status}`);
       console.log(`[pollLiveScores] Match ${apiMatchId} - Score from API: ${matchData.score?.current?.home ?? 'null'}-${matchData.score?.current?.away ?? 'null'} (current), ${matchData.score?.fullTime?.home ?? 'null'}-${matchData.score?.fullTime?.away ?? 'null'} (fullTime)`);
       console.log(`[pollLiveScores] Match ${apiMatchId} - Goals count: ${homeScoreFromGoals}-${awayScoreFromGoals} (from ${goals.length} goals), using: ${homeScore}-${awayScore}`);
