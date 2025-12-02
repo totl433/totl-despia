@@ -1936,24 +1936,25 @@ export default function TestApiPredictions() {
                                   {liveScore && (isOngoing || isFinished) && (() => {
                                     // Filter goals for home team
                                     // Match by team name - use liveScore.home_team as the source of truth (already normalized)
+                                    // Use teamId to match goals - API's goal.teamId tells us which team the goal counts for (handles own goals correctly)
+                                    const homeTeamId = (liveScore as any).home_team_id;
+                                    const awayTeamId = (liveScore as any).away_team_id;
+                                    
                                     const homeGoals = (liveScore.goals || []).filter((goal: any) => {
-                                      if (!goal || !goal.team) return false;
+                                      if (!goal) return false;
+                                      // Use teamId if available (most reliable), otherwise fall back to team name matching
+                                      if (homeTeamId && goal.teamId) {
+                                        return goal.teamId === homeTeamId;
+                                      }
+                                      // Fallback to name matching if teamId not available
+                                      if (!goal.team) return false;
                                       const goalTeam = goal.team || '';
-                                      
-                                      // Primary match: compare normalized team names
-                                      // The goal.team is already normalized by pollLiveScores function
                                       const normalizedGoalTeam = getMediumName(goalTeam);
                                       const normalizedHomeTeam = liveScore.home_team ? getMediumName(liveScore.home_team) : homeName;
-                                      
-                                      // Try multiple matching strategies
                                       return normalizedGoalTeam === normalizedHomeTeam ||
                                              normalizedGoalTeam === homeName ||
                                              normalizedGoalTeam === getMediumName(fixture.home_team || '') ||
-                                             normalizedGoalTeam === getMediumName(fixture.home_name || '') ||
-                                             goalTeam.toLowerCase() === (liveScore.home_team || '').toLowerCase() ||
-                                             goalTeam.toLowerCase() === homeName.toLowerCase() ||
-                                             goalTeam.toLowerCase() === (fixture.home_team || '').toLowerCase() ||
-                                             goalTeam.toLowerCase() === (fixture.home_name || '').toLowerCase();
+                                             normalizedGoalTeam === getMediumName(fixture.home_name || '');
                                     });
                                     
                                     // Filter red cards for home team
@@ -2064,24 +2065,22 @@ export default function TestApiPredictions() {
                                   {liveScore && (isOngoing || isFinished) && (() => {
                                     // Filter goals for away team
                                     // Match by team name - use liveScore.away_team as the source of truth (already normalized)
+                                    // Use teamId to match goals - API's goal.teamId tells us which team the goal counts for (handles own goals correctly)
                                     const awayGoals = (liveScore.goals || []).filter((goal: any) => {
-                                      if (!goal || !goal.team) return false;
+                                      if (!goal) return false;
+                                      // Use teamId if available (most reliable), otherwise fall back to team name matching
+                                      if (awayTeamId && goal.teamId) {
+                                        return goal.teamId === awayTeamId;
+                                      }
+                                      // Fallback to name matching if teamId not available
+                                      if (!goal.team) return false;
                                       const goalTeam = goal.team || '';
-                                      
-                                      // Primary match: compare normalized team names
-                                      // The goal.team is already normalized by pollLiveScores function
                                       const normalizedGoalTeam = getMediumName(goalTeam);
                                       const normalizedAwayTeam = liveScore.away_team ? getMediumName(liveScore.away_team) : awayName;
-                                      
-                                      // Try multiple matching strategies
                                       return normalizedGoalTeam === normalizedAwayTeam ||
                                              normalizedGoalTeam === awayName ||
                                              normalizedGoalTeam === getMediumName(fixture.away_team || '') ||
-                                             normalizedGoalTeam === getMediumName(fixture.away_name || '') ||
-                                             goalTeam.toLowerCase() === (liveScore.away_team || '').toLowerCase() ||
-                                             goalTeam.toLowerCase() === awayName.toLowerCase() ||
-                                             goalTeam.toLowerCase() === (fixture.away_team || '').toLowerCase() ||
-                                             goalTeam.toLowerCase() === (fixture.away_name || '').toLowerCase();
+                                             normalizedGoalTeam === getMediumName(fixture.away_name || '');
                                     });
                                     
                                     // Filter red cards for away team
