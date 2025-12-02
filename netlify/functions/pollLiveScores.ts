@@ -293,14 +293,27 @@ async function pollAllLiveScores() {
       
       let homeScoreFromGoals = 0;
       let awayScoreFromGoals = 0;
+      let unmatchedGoals = 0;
       
       goals.forEach((goal: any) => {
         if (goal.teamId === homeTeamId) {
           homeScoreFromGoals++;
         } else if (goal.teamId === awayTeamId) {
           awayScoreFromGoals++;
+        } else {
+          // Log unmatched goals for debugging
+          unmatchedGoals++;
+          console.warn(`[pollLiveScores] Match ${apiMatchId} - Unmatched goal: teamId=${goal.teamId}, homeTeamId=${homeTeamId}, awayTeamId=${awayTeamId}, scorer=${goal.scorer}`);
         }
       });
+      
+      // Log detailed goal breakdown for debugging
+      if (goals.length > 0) {
+        console.log(`[pollLiveScores] Match ${apiMatchId} - Goal breakdown: ${goals.length} total goals, ${homeScoreFromGoals} home, ${awayScoreFromGoals} away, ${unmatchedGoals} unmatched`);
+        goals.forEach((goal: any, idx: number) => {
+          console.log(`[pollLiveScores]   Goal ${idx + 1}: teamId=${goal.teamId}, scorer=${goal.scorer}, minute=${goal.minute}, matchesHome=${goal.teamId === homeTeamId}, matchesAway=${goal.teamId === awayTeamId}`);
+        });
+      }
 
       // For live games, prefer counting from goals array (most accurate)
       // For finished games, prefer fullTime score, but fall back to goals count if fullTime is missing
@@ -310,13 +323,29 @@ async function pollAllLiveScores() {
       let awayScore: number;
       
       if (isLive) {
-        // For live games, use goals count if available, otherwise use current score
+        // For live games, ALWAYS prefer goals count (most accurate)
+        // Even if goals.length is 0, use 0-0 rather than potentially stale API score
+        // Only fall back to API score if we have no goals AND the API score seems reasonable
         if (goals.length > 0) {
+          // Use goals count - this is the source of truth
           homeScore = homeScoreFromGoals;
           awayScore = awayScoreFromGoals;
         } else {
-          homeScore = matchData.score?.current?.home ?? matchData.score?.halfTime?.home ?? matchData.score?.fullTime?.home ?? 0;
-          awayScore = matchData.score?.current?.away ?? matchData.score?.halfTime?.away ?? matchData.score?.fullTime?.away ?? 0;
+          // No goals in array yet - could be 0-0 or API hasn't populated goals yet
+          // Check if API score suggests goals exist
+          const apiHome = matchData.score?.current?.home ?? 0;
+          const apiAway = matchData.score?.current?.away ?? 0;
+          if (apiHome > 0 || apiAway > 0) {
+            // API says there are goals but goals array is empty - API might be ahead
+            // Use API score but log a warning
+            console.warn(`[pollLiveScores] Match ${apiMatchId} - Goals array empty but API score shows ${apiHome}-${apiAway}, using API score`);
+            homeScore = apiHome;
+            awayScore = apiAway;
+          } else {
+            // Both are 0-0, use 0-0
+            homeScore = 0;
+            awayScore = 0;
+          }
         }
       } else {
         // For finished games, prefer fullTime, but use goals count if fullTime is missing or incorrect
