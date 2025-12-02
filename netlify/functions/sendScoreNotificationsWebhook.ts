@@ -228,8 +228,8 @@ export const handler: Handler = async (event, context) => {
       oldGoalsCount: Array.isArray(oldGoals) ? oldGoals.length : 0,
     });
 
-    // Get fixture info - check both regular fixtures and test_api_fixtures
-    const [regularFixture, testFixture] = await Promise.all([
+    // Get fixture info - check regular fixtures, test_api_fixtures, and app_fixtures
+    const [regularFixture, testFixture, appFixture] = await Promise.all([
       supabase
         .from('fixtures')
         .select('fixture_index, gw, home_team, away_team')
@@ -240,9 +240,14 @@ export const handler: Handler = async (event, context) => {
         .select('fixture_index, test_gw, home_team, away_team')
         .eq('api_match_id', apiMatchId)
         .maybeSingle(),
+      supabase
+        .from('app_fixtures')
+        .select('fixture_index, gw, home_team, away_team')
+        .eq('api_match_id', apiMatchId)
+        .maybeSingle(),
     ]);
 
-    const fixture = regularFixture.data || testFixture.data;
+    const fixture = regularFixture.data || testFixture.data || appFixture.data;
     
     if (!fixture) {
       console.log(`[sendScoreNotificationsWebhook] No fixture found for api_match_id ${apiMatchId}`);
@@ -273,8 +278,9 @@ export const handler: Handler = async (event, context) => {
       away_team: fixture.away_team || record.away_team,
     };
 
-    // Determine if this is a test fixture
+    // Determine if this is a test fixture or app fixture
     const isTestFixture = !!testFixture.data;
+    const isAppFixture = !!appFixture.data;
     
     // Use fixture's actual test_gw (prioritize test_gw = 1) for querying picks
     const testGwForPicks = fixtureTestGw || (isTestFixture ? 1 : null);
@@ -484,21 +490,28 @@ export const handler: Handler = async (event, context) => {
           console.log(`[sendScoreNotificationsWebhook] [${requestId}] ✅ Successfully claimed notification for match ${apiMatchId}`);
         }
 
-      // Get users who have picks for this fixture
+      // Get users who have picks for this fixture - check app_picks for app_fixtures
       let picks: any[] = [];
-        if (isTestFixture && testGwForPicks) {
-          const { data: testPicks } = await supabase
-            .from('test_api_picks')
-            .select('user_id, pick')
-            .eq('matchday', testGwForPicks)
-            .eq('fixture_index', normalizedFixture.fixture_index);
+      if (isAppFixture) {
+        const { data: appPicks } = await supabase
+          .from('app_picks')
+          .select('user_id, pick')
+          .eq('gw', fixtureGw)
+          .eq('fixture_index', normalizedFixture.fixture_index);
+        picks = appPicks || [];
+      } else if (isTestFixture && testGwForPicks) {
+        const { data: testPicks } = await supabase
+          .from('test_api_picks')
+          .select('user_id, pick')
+          .eq('matchday', testGwForPicks)
+          .eq('fixture_index', normalizedFixture.fixture_index);
         picks = testPicks || [];
       } else {
         const { data: regularPicks } = await supabase
           .from('picks')
           .select('user_id, pick')
           .eq('gw', fixtureGw)
-            .eq('fixture_index', normalizedFixture.fixture_index);
+          .eq('fixture_index', normalizedFixture.fixture_index);
         picks = regularPicks || [];
       }
 
@@ -618,19 +631,26 @@ export const handler: Handler = async (event, context) => {
     if (isScoreChange && (!Array.isArray(goals) || goals.length === 0)) {
       // Score changed but no goals data - send simple score update notification
       let picks: any[] = [];
-        if (isTestFixture && testGwForPicks) {
-          const { data: testPicks } = await supabase
-            .from('test_api_picks')
-            .select('user_id, pick')
-            .eq('matchday', testGwForPicks)
-            .eq('fixture_index', normalizedFixture.fixture_index);
+      if (isAppFixture) {
+        const { data: appPicks } = await supabase
+          .from('app_picks')
+          .select('user_id, pick')
+          .eq('gw', fixtureGw)
+          .eq('fixture_index', normalizedFixture.fixture_index);
+        picks = appPicks || [];
+      } else if (isTestFixture && testGwForPicks) {
+        const { data: testPicks } = await supabase
+          .from('test_api_picks')
+          .select('user_id, pick')
+          .eq('matchday', testGwForPicks)
+          .eq('fixture_index', normalizedFixture.fixture_index);
         picks = testPicks || [];
       } else {
         const { data: regularPicks } = await supabase
           .from('picks')
           .select('user_id, pick')
           .eq('gw', fixtureGw)
-            .eq('fixture_index', normalizedFixture.fixture_index);
+          .eq('fixture_index', normalizedFixture.fixture_index);
         picks = regularPicks || [];
       }
 
@@ -765,19 +785,26 @@ export const handler: Handler = async (event, context) => {
 
       // Get users who have picks
       let picks: any[] = [];
-      if (isTestFixture && testGwForPicks) {
+      if (isAppFixture) {
+        const { data: appPicks } = await supabase
+          .from('app_picks')
+          .select('user_id')
+          .eq('gw', fixtureGw)
+          .eq('fixture_index', normalizedFixture.fixture_index);
+        picks = appPicks || [];
+      } else if (isTestFixture && testGwForPicks) {
         const { data: testPicks } = await supabase
           .from('test_api_picks')
           .select('user_id')
           .eq('matchday', testGwForPicks)
-            .eq('fixture_index', normalizedFixture.fixture_index);
+          .eq('fixture_index', normalizedFixture.fixture_index);
         picks = testPicks || [];
       } else {
         const { data: regularPicks } = await supabase
           .from('picks')
           .select('user_id')
           .eq('gw', fixtureGw)
-            .eq('fixture_index', normalizedFixture.fixture_index);
+          .eq('fixture_index', normalizedFixture.fixture_index);
         picks = regularPicks || [];
       }
 
@@ -864,7 +891,14 @@ export const handler: Handler = async (event, context) => {
 
       // Get users who have picks
       let picks: any[] = [];
-      if (isTestFixture && testGwForPicks) {
+      if (isAppFixture) {
+        const { data: appPicks } = await supabase
+          .from('app_picks')
+          .select('user_id')
+          .eq('gw', fixtureGw)
+          .eq('fixture_index', normalizedFixture.fixture_index);
+        picks = appPicks || [];
+      } else if (isTestFixture && testGwForPicks) {
         const { data: testPicks } = await supabase
           .from('test_api_picks')
           .select('user_id')
@@ -938,19 +972,26 @@ export const handler: Handler = async (event, context) => {
       console.log(`[sendScoreNotificationsWebhook] 🏁 Game finished detected for match ${apiMatchId}`);
       // Get users who have picks
       let picks: any[] = [];
-        if (isTestFixture && testGwForPicks) {
-          const { data: testPicks } = await supabase
-            .from('test_api_picks')
-            .select('user_id, pick')
-            .eq('matchday', testGwForPicks)
-            .eq('fixture_index', normalizedFixture.fixture_index);
+      if (isAppFixture) {
+        const { data: appPicks } = await supabase
+          .from('app_picks')
+          .select('user_id, pick')
+          .eq('gw', fixtureGw)
+          .eq('fixture_index', normalizedFixture.fixture_index);
+        picks = appPicks || [];
+      } else if (isTestFixture && testGwForPicks) {
+        const { data: testPicks } = await supabase
+          .from('test_api_picks')
+          .select('user_id, pick')
+          .eq('matchday', testGwForPicks)
+          .eq('fixture_index', normalizedFixture.fixture_index);
         picks = testPicks || [];
       } else {
         const { data: regularPicks } = await supabase
           .from('picks')
           .select('user_id, pick')
           .eq('gw', fixtureGw)
-            .eq('fixture_index', normalizedFixture.fixture_index);
+          .eq('fixture_index', normalizedFixture.fixture_index);
         picks = regularPicks || [];
       }
 
@@ -1017,7 +1058,13 @@ export const handler: Handler = async (event, context) => {
         
         // Get all users who have picks for this GW
         let allPicks: any[] = [];
-        if (isTestFixture && testGwForPicks) {
+        if (isAppFixture) {
+          const { data: appPicks } = await supabase
+            .from('app_picks')
+            .select('user_id')
+            .eq('gw', fixtureGw);
+          allPicks = appPicks || [];
+        } else if (isTestFixture && testGwForPicks) {
           const { data: testPicks } = await supabase
             .from('test_api_picks')
             .select('user_id')

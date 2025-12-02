@@ -57,15 +57,6 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
   const members = data?.members ?? [];
   const userPosition = data?.userPosition;
   const badge = unread > 0 ? Math.min(unread, 99) : 0;
-  
-  // Debug logging
-  console.log('[MiniLeagueCard] Rendering:', {
-    leagueName: row.name,
-    showRanking,
-    hasData: !!data,
-    membersCount: members.length,
-    userPosition,
-  });
 
   const memberChips = useMemo(() => {
     if (leagueDataLoading || !data) return [];
@@ -301,6 +292,21 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
         </div>
       </Link>
     </div>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison function to prevent unnecessary re-renders
+  return (
+    prevProps.row.id === nextProps.row.id &&
+    prevProps.row.name === nextProps.row.name &&
+    prevProps.unread === nextProps.unread &&
+    prevProps.leagueDataLoading === nextProps.leagueDataLoading &&
+    prevProps.currentGw === nextProps.currentGw &&
+    prevProps.showRanking === nextProps.showRanking &&
+    prevProps.data?.id === nextProps.data?.id &&
+    prevProps.data?.userPosition === nextProps.data?.userPosition &&
+    prevProps.data?.members?.length === nextProps.data?.members?.length &&
+    prevProps.submissions?.allSubmitted === nextProps.submissions?.allSubmitted &&
+    prevProps.submissions?.submittedCount === nextProps.submissions?.submittedCount
   );
 });
 

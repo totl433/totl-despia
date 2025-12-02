@@ -251,41 +251,7 @@ export default function AdminPage() {
       // Dispatch event to notify PredictionsBanner that fixtures have been published
       window.dispatchEvent(new CustomEvent('fixturesPublished'));
 
-      // Broadcast push to all users (with error handling)
-      try {
-        const pushRes = await fetch('/.netlify/functions/sendPushAll', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: `GW${gw} Published`,
-            message: `Game Week ${gw} fixtures are live. Make your predictions!`,
-            data: { type: 'fixtures_published', gw }
-          })
-        });
-
-        const pushData = await pushRes.json().catch(() => ({}));
-        
-        if (pushRes.ok && pushData.ok) {
-          const sentTo = pushData.sentTo || 0;
-          const checked = pushData.checked || 0;
-          if (sentTo > 0) {
-            console.log(`[Admin] Push notification sent to ${sentTo} subscribed devices (checked ${checked} total)`);
-            setOk(`Gameweek ${gw} activated! Push notification sent to ${sentTo} devices.`);
-          } else if (pushData.warning) {
-            console.warn(`[Admin] Push notification warning: ${pushData.warning}`);
-            setOk(`Gameweek ${gw} activated! (No subscribed devices found for push notifications)`);
-          }
-        } else {
-          console.error('[Admin] Push notification failed:', pushData);
-          const errorMsg = pushData.oneSignalErrors 
-            ? `OneSignal Error: ${JSON.stringify(pushData.oneSignalErrors)}`
-            : pushData.error || 'Failed to send push notification';
-          setError(`Gameweek activated, but push notification failed: ${errorMsg}`);
-        }
-      } catch (pushErr: any) {
-        console.error('[Admin] Push notification error:', pushErr);
-        setError(`Gameweek activated, but push notification failed: ${pushErr.message || 'Network error'}`);
-      }
+      // Note: Push notifications for gameweek publication are only sent from API Admin page
     } catch (e: any) {
       setError(e.message ?? "Failed to activate gameweek.");
     } finally {

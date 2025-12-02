@@ -32,17 +32,99 @@ function rowToOutcome(r: ResultRowRaw): "H" | "D" | "A" | null {
 
 export default function TablesPage() {
   const { user } = useAuth();
-  const [rows, setRows] = useState<LeagueRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [leagueDataLoading, setLeagueDataLoading] = useState(true);
+  
+  // Load initial state from cache synchronously to avoid loading spinner
+  const loadInitialStateFromCache = () => {
+    // Try to get user ID from localStorage if user not available yet
+    let userId: string | undefined = user?.id;
+    if (!userId && typeof window !== 'undefined') {
+      try {
+        const userStr = localStorage.getItem('totl:user');
+        if (userStr) {
+          const userObj = JSON.parse(userStr);
+          userId = userObj.id;
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+    
+    if (typeof window === 'undefined' || !userId) {
+      return {
+        rows: [],
+        loading: true,
+        leagueDataLoading: true,
+        currentGw: null,
+        leagueSubmissions: {} as Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>,
+        leagueData: {} as Record<string, LeagueData>,
+        unreadByLeague: {} as Record<string, number>,
+      };
+    }
+    
+    try {
+      const cacheKey = `tables:${userId}`;
+      const cached = getCached<{
+        rows: LeagueRow[];
+        currentGw: number | null;
+        leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
+        unreadByLeague: Record<string, number>;
+        leagueData: Record<string, LeagueData>;
+      }>(cacheKey);
+      
+      if (cached && cached.rows && Array.isArray(cached.rows) && cached.rows.length > 0) {
+        // Filter out "API Test" league from cached data
+        const filteredRows = cached.rows.filter((r: LeagueRow) => r.name !== 'API Test');
+        
+        // Convert arrays back to Sets for submittedMembers and latestGwWinners
+        const restoredLeagueData: Record<string, LeagueData> = {};
+        if (cached.leagueData) {
+          for (const [leagueId, data] of Object.entries(cached.leagueData)) {
+            restoredLeagueData[leagueId] = {
+              ...data,
+              submittedMembers: data.submittedMembers ? (Array.isArray(data.submittedMembers) ? new Set(data.submittedMembers) : new Set()) : undefined,
+              latestGwWinners: data.latestGwWinners ? (Array.isArray(data.latestGwWinners) ? new Set(data.latestGwWinners) : new Set()) : undefined,
+            };
+          }
+        }
+        
+        return {
+          rows: filteredRows,
+          loading: false,
+          leagueDataLoading: false,
+          currentGw: cached.currentGw,
+          leagueSubmissions: cached.leagueSubmissions || {},
+          leagueData: restoredLeagueData,
+          unreadByLeague: cached.unreadByLeague || {},
+        };
+      }
+    } catch (error) {
+      // Error loading from cache (non-critical)
+    }
+    
+    return {
+      rows: [],
+      loading: true,
+      leagueDataLoading: true,
+      currentGw: null,
+      leagueSubmissions: {} as Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>,
+      leagueData: {} as Record<string, LeagueData>,
+      unreadByLeague: {} as Record<string, number>,
+    };
+  };
+  
+  const initialState = loadInitialStateFromCache();
+  
+  const [rows, setRows] = useState<LeagueRow[]>(initialState.rows);
+  const [loading, setLoading] = useState(initialState.loading);
+  const [leagueDataLoading, setLeagueDataLoading] = useState(initialState.leagueDataLoading);
   const [creating, setCreating] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [leagueName, setLeagueName] = useState("");
   const [error, setError] = useState("");
-  const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>({});
-  const [leagueData, setLeagueData] = useState<Record<string, LeagueData>>({});
-  const [unreadByLeague, setUnreadByLeague] = useState<Record<string, number>>({});
-  const [currentGw, setCurrentGw] = useState<number | null>(null);
+  const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>(initialState.leagueSubmissions);
+  const [leagueData, setLeagueData] = useState<Record<string, LeagueData>>(initialState.leagueData);
+  const [unreadByLeague, setUnreadByLeague] = useState<Record<string, number>>(initialState.unreadByLeague);
+  const [currentGw, setCurrentGw] = useState<number | null>(initialState.currentGw);
 
   // Load everything in parallel - stale-while-revalidate pattern
   useEffect(() => {
@@ -55,44 +137,45 @@ export default function TablesPage() {
     let alive = true;
     const cacheKey = `tables:${user.id}`;
     
-    // 1. Load from cache immediately (if available)
-    try {
-      const cached = getCached<{
-        rows: LeagueRow[];
-        currentGw: number | null;
-        leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
-        unreadByLeague: Record<string, number>;
-        leagueData: Record<string, LeagueData>;
-      }>(cacheKey);
-      
-      if (cached && cached.rows && Array.isArray(cached.rows) && cached.rows.length > 0) {
-        // INSTANT RENDER from cache!
-        // Filter out "API Test" league from cached data
-        const filteredRows = cached.rows.filter((r: LeagueRow) => r.name !== 'API Test');
-        setRows(filteredRows);
-        setCurrentGw(cached.currentGw);
-        setLeagueSubmissions(cached.leagueSubmissions || {});
-        setUnreadByLeague(cached.unreadByLeague || {});
-        if (cached.leagueData) {
-          // Convert arrays back to Sets for submittedMembers and latestGwWinners
-          const restoredLeagueData: Record<string, LeagueData> = {};
-          for (const [leagueId, data] of Object.entries(cached.leagueData)) {
-            restoredLeagueData[leagueId] = {
-              ...data,
-              submittedMembers: data.submittedMembers ? (Array.isArray(data.submittedMembers) ? new Set(data.submittedMembers) : new Set()) : undefined,
-              latestGwWinners: data.latestGwWinners ? (Array.isArray(data.latestGwWinners) ? new Set(data.latestGwWinners) : new Set()) : undefined,
-            };
+    // If we already loaded from cache in initial state, skip cache check here
+    // Otherwise check cache again (in case user just logged in)
+    if (initialState.loading) {
+      try {
+        const cached = getCached<{
+          rows: LeagueRow[];
+          currentGw: number | null;
+          leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
+          unreadByLeague: Record<string, number>;
+          leagueData: Record<string, LeagueData>;
+        }>(cacheKey);
+        
+        if (cached && cached.rows && Array.isArray(cached.rows) && cached.rows.length > 0) {
+          // INSTANT RENDER from cache!
+          // Filter out "API Test" league from cached data
+          const filteredRows = cached.rows.filter((r: LeagueRow) => r.name !== 'API Test');
+          setRows(filteredRows);
+          setCurrentGw(cached.currentGw);
+          setLeagueSubmissions(cached.leagueSubmissions || {});
+          setUnreadByLeague(cached.unreadByLeague || {});
+          if (cached.leagueData) {
+            // Convert arrays back to Sets for submittedMembers and latestGwWinners
+            const restoredLeagueData: Record<string, LeagueData> = {};
+            for (const [leagueId, data] of Object.entries(cached.leagueData)) {
+              restoredLeagueData[leagueId] = {
+                ...data,
+                submittedMembers: data.submittedMembers ? (Array.isArray(data.submittedMembers) ? new Set(data.submittedMembers) : new Set()) : undefined,
+                latestGwWinners: data.latestGwWinners ? (Array.isArray(data.latestGwWinners) ? new Set(data.latestGwWinners) : new Set()) : undefined,
+              };
+            }
+            setLeagueData(restoredLeagueData);
           }
-          setLeagueData(restoredLeagueData);
+          setLoading(false);
+          setLeagueDataLoading(false); // Hide spinner immediately when cache is available
         }
-        setLoading(false);
-        setLeagueDataLoading(false); // Hide spinner immediately when cache is available
-      } else {
-        // No valid cache found, will fetch fresh data
+      } catch (error) {
+        // If cache is corrupted, just continue with fresh fetch
+        // Error loading from cache (non-critical)
       }
-    } catch (error) {
-      // If cache is corrupted, just continue with fresh fetch
-      // Error loading from cache (non-critical)
     }
     
     // 2. Fetch fresh data in background

@@ -11,6 +11,7 @@ import SwipeCard from "../components/predictions/SwipeCard";
 import ScoreIndicator from "../components/predictions/ScoreIndicator";
 import ConfirmationModal from "../components/predictions/ConfirmationModal";
 import DateHeader from "../components/DateHeader";
+import { useLiveScores } from "../hooks/useLiveScores";
 
 // Generate a color from a string (team name or code)
 function stringToColor(str: string): string {
@@ -88,51 +89,142 @@ export default function TestApiPredictions() {
   const navigate = useNavigate();
 
   const [currentTestGw, setCurrentTestGw] = useState<number | null>(null);
-  const [fixtures, setFixtures] = useState<Fixture[]>([]);
-  const [picks, setPicks] = useState<Map<number, Pick>>(new Map());
-  const [results, setResults] = useState<Map<number, "H" | "D" | "A">>(new Map());
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [viewMode, setViewMode] = useState<"cards" | "list">("cards" as const);
+  
+  // CRITICAL: Initialize state from cache synchronously to prevent loading flash
+  const loadInitialStateFromCache = () => {
+    if (typeof window === 'undefined' || !user?.id) {
+      return {
+        fixtures: [],
+        picks: new Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>(),
+        submitted: false,
+        results: new Map<number, "H" | "D" | "A">(),
+        loading: true,
+        picksChecked: false,
+        submissionChecked: false,
+      };
+    }
+    
+    try {
+      // Try to get current GW from app_meta cache or use a default
+      // We'll update this when we fetch the real GW, but for now use a reasonable default
+      const metaCache = getCached<{ current_gw: number }>('app_meta');
+      const currentGw = metaCache?.current_gw || 14;
+      
+      const cacheKey = `predictions:${user.id}:${currentGw}`;
+      const cached = getCached<{
+        fixtures: Fixture[];
+        picks: Array<{ fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>;
+        submitted: boolean;
+        results: Array<{ fixture_index: number; result: "H" | "D" | "A" }>;
+      }>(cacheKey);
+      
+      if (cached && cached.fixtures && Array.isArray(cached.fixtures) && cached.fixtures.length > 0) {
+        // Restore picks from cache
+        const picksMap = new Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>();
+        if (cached.picks && Array.isArray(cached.picks)) {
+          cached.picks.forEach(p => {
+            picksMap.set(p.fixture_index, p);
+          });
+        }
+        
+        // Restore results from cache
+        const resultsMap = new Map<number, "H" | "D" | "A">();
+        if (cached.results && Array.isArray(cached.results)) {
+          cached.results.forEach(r => {
+            resultsMap.set(r.fixture_index, r.result);
+          });
+        }
+        
+        return {
+          fixtures: cached.fixtures,
+          picks: picksMap,
+          submitted: cached.submitted || false,
+          results: resultsMap,
+          loading: false, // Data available, no loading needed
+          picksChecked: true,
+          submissionChecked: true,
+        };
+      }
+    } catch (error) {
+      // Error loading from cache (non-critical)
+    }
+    
+    return {
+      fixtures: [],
+      picks: new Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>(),
+      submitted: false,
+      results: new Map<number, "H" | "D" | "A">(),
+      loading: true,
+      picksChecked: false,
+      submissionChecked: false,
+    };
+  };
+  
+  const initialState = loadInitialStateFromCache();
+  
+  // Initialize fixtures, picks, and results from cache
+  const [fixtures, setFixtures] = useState<Fixture[]>(initialState.fixtures);
+  const [picks, setPicks] = useState<Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>>(initialState.picks);
+  const [results, setResults] = useState<Map<number, "H" | "D" | "A">>(initialState.results);
+  
+  // CRITICAL: Initialize viewMode - check sessionStorage synchronously to prevent flash
+  // Check for ANY submission in sessionStorage, even if we don't know the user ID yet
+  const getInitialViewMode = (): "cards" | "list" => {
+    if (typeof window === 'undefined') return "cards";
+    try {
+      // Check all sessionStorage keys for test_api_submitted pattern
+      // This prevents the flash even if we don't know the exact GW or user ID yet
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith(`test_api_submitted_`)) {
+          const value = sessionStorage.getItem(key);
+          if (value === 'true') {
+            // If user ID is available, check if it matches
+            if (user?.id && key.endsWith(`_${user.id}`)) {
+              console.log('[TestApiPredictions] 🚫 Initial viewMode set to "list" - found submission in sessionStorage for user');
+              return "list";
+            }
+            // If no user ID yet but we found any submission, default to "list" to be safe
+            // This prevents flash when user ID loads later
+            if (!user?.id) {
+              console.log('[TestApiPredictions] 🚫 Initial viewMode set to "list" - found submission in sessionStorage (user ID not available yet)');
+              return "list";
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+    // Also check if we have cached submission status (will be available after initialState is computed)
+    // Note: initialState is computed before this, so we can't reference it here directly
+    // But we'll check it in the useEffect below
+    return "cards";
+  };
+  
+  const [viewMode, setViewMode] = useState<"cards" | "list">(() => {
+    const mode = getInitialViewMode();
+    // Also check cached submission status
+    if (initialState.submitted) {
+      return "list";
+    }
+    return mode;
+  });
   const [cardState, setCardState] = useState<CardState>({ x: 0, y: 0, rotation: 0, opacity: 1, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [showFeedback, setShowFeedback] = useState<"home" | "draw" | "away" | null>(null);
   const [returnToReview, setReturnToReview] = useState(false);
   const [confirmCelebration, setConfirmCelebration] = useState<{ success: boolean; message: string } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [picksChecked, setPicksChecked] = useState(false); // Track if we've checked for picks
-  const [submissionChecked, setSubmissionChecked] = useState(false); // Track if we've checked submission status
-  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(initialState.loading);
+  const [picksChecked, setPicksChecked] = useState(initialState.picksChecked);
+  const [submissionChecked, setSubmissionChecked] = useState(initialState.submissionChecked);
   
-  // Ensure viewMode is always "cards" (swipe mode) when starting fresh
-  useEffect(() => {
-    if (!loading && !submitted && fixtures.length > 0 && currentIndex === 0) {
-      setViewMode("cards");
-    }
-  }, [loading, submitted, fixtures.length, currentIndex]);
-  const [topPercent, setTopPercent] = useState<number | null>(null);
-  const [allMembersSubmitted, setAllMembersSubmitted] = useState(false);
-  const [leagueMembers, setLeagueMembers] = useState<Array<{ id: string; name: string }>>([]);
-  const [submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new Set());
-  const [apiTestLeagueId, setApiTestLeagueId] = useState<string | null>(null);
-  // Live scores for test API fixtures
-  const [liveScores, setLiveScores] = useState<Record<number, { 
-    homeScore: number; 
-    awayScore: number; 
-    status: string; 
-    minute?: number | null;
-    goals?: any[] | null;
-    red_cards?: any[] | null;
-    home_team?: string | null;
-    away_team?: string | null;
-  }>>({});
-  // Track when halftime ends for each fixture (when status changes from PAUSED to IN_PLAY)
-  const halftimeEndTimeRef = useRef<Record<number, Date>>({});
-  // CRITICAL: Track if we've ever seen submitted=true to prevent swipe view from showing
-  // Use sessionStorage to persist across navigations
+  // Helper function to check sessionStorage for submission (defined early to avoid hoisting issues)
   const getHasEverBeenSubmitted = () => {
-    if (typeof window === 'undefined') return false;
-    const key = `test_api_submitted_${currentTestGw}_${user?.id}`;
+    if (typeof window === 'undefined' || !currentTestGw || !user?.id) return false;
+    const key = `test_api_submitted_${currentTestGw}_${user.id}`;
     return sessionStorage.getItem(key) === 'true';
   };
   const setHasEverBeenSubmitted = (value: boolean) => {
@@ -144,7 +236,150 @@ export default function TestApiPredictions() {
       sessionStorage.removeItem(key);
     }
   };
+  // CRITICAL: Define ref BEFORE it's used in state initializers
   const hasEverBeenSubmittedRef = useRef<boolean>(getHasEverBeenSubmitted());
+  
+  const [submitted, setSubmitted] = useState(() => {
+    // CRITICAL: Initialize from cache first (fastest), then fall back to sessionStorage
+    if (initialState.submitted) {
+      hasEverBeenSubmittedRef.current = true;
+      return true;
+    }
+    
+    // Fall back to sessionStorage check
+    if (typeof window === 'undefined' || !user?.id) return false;
+    try {
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith(`test_api_submitted_`) && key.endsWith(`_${user.id}`)) {
+          const value = sessionStorage.getItem(key);
+          if (value === 'true') {
+            hasEverBeenSubmittedRef.current = true;
+            return true;
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+    return false;
+  });
+  
+  // CRITICAL: Check sessionStorage immediately when currentTestGw and user are available
+  // This prevents swipe cards from showing even for 1 second
+  useEffect(() => {
+    if (currentTestGw && user?.id && typeof window !== 'undefined') {
+      try {
+        const key = `test_api_submitted_${currentTestGw}_${user.id}`;
+        const hasSubmitted = sessionStorage.getItem(key) === 'true';
+        if (hasSubmitted) {
+          console.log('[TestApiPredictions] 🚫 Setting viewMode to "list" immediately - user has submitted (from sessionStorage)');
+          // CRITICAL: Set both state values synchronously to prevent any flash
+          setViewMode("list");
+          setSubmitted(true);
+          hasEverBeenSubmittedRef.current = true;
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+  }, [currentTestGw, user?.id]);
+  
+  // CRITICAL: Set viewMode to "list" immediately when submitted is detected
+  // This must run on every render to catch any state changes
+  useEffect(() => {
+    if (submitted && viewMode === "cards") {
+      console.log('[TestApiPredictions] ✅ FORCING viewMode to "list" - user has submitted');
+      setViewMode("list");
+    }
+  }, [submitted, viewMode]);
+  
+  // Ensure viewMode is "cards" only when not submitted and starting fresh
+  useEffect(() => {
+    if (!loading && !submitted && fixtures.length > 0 && currentIndex === 0) {
+      setViewMode("cards");
+    }
+  }, [loading, submitted, fixtures.length, currentIndex]);
+  
+  const [topPercent, setTopPercent] = useState<number | null>(null);
+  const [allMembersSubmitted, setAllMembersSubmitted] = useState(false);
+  const [leagueMembers, setLeagueMembers] = useState<Array<{ id: string; name: string }>>([]);
+  const [submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new Set());
+  const [apiTestLeagueId, setApiTestLeagueId] = useState<string | null>(null);
+  const [apiMatchIds, setApiMatchIds] = useState<number[]>([]);
+  
+  // Subscribe to real-time live scores using the hook
+  const { liveScores: liveScoresMap } = useLiveScores(currentTestGw || undefined, apiMatchIds.length > 0 ? apiMatchIds : undefined);
+  
+  // Convert liveScoresMap to the format expected by the component
+  const liveScores = useMemo(() => {
+    const scores: Record<number, {
+      homeScore: number; 
+      awayScore: number; 
+      status: string; 
+      minute?: number | null;
+      goals?: any[] | null;
+      red_cards?: any[] | null;
+      home_team?: string | null;
+      away_team?: string | null;
+    }> = {};
+    
+    // Convert Map to Record keyed by fixture_index
+    fixtures.forEach(f => {
+      if (f.api_match_id && liveScoresMap.has(f.api_match_id)) {
+        const score = liveScoresMap.get(f.api_match_id)!;
+        scores[f.fixture_index] = {
+          homeScore: score.home_score ?? 0,
+          awayScore: score.away_score ?? 0,
+          status: score.status || 'SCHEDULED',
+          minute: score.minute,
+          goals: score.goals || null,
+          red_cards: score.red_cards || null,
+          home_team: score.home_team || null,
+          away_team: score.away_team || null,
+        };
+      }
+    });
+    
+    return scores;
+  }, [liveScoresMap, fixtures]);
+  // Track when halftime ends for each fixture (when status changes from PAUSED to IN_PLAY)
+  const halftimeEndTimeRef = useRef<Record<number, Date>>({});
+  // getHasEverBeenSubmitted, setHasEverBeenSubmitted, and hasEverBeenSubmittedRef are now defined earlier
+  
+  // CRITICAL: Use a ref to track if we should show cards - updated synchronously
+  // This prevents any flash because refs don't cause re-renders
+  const getInitialShouldShowCards = (): boolean => {
+    // Check synchronously if we should show cards
+    if (typeof window === 'undefined') return true;
+    try {
+      // Check all sessionStorage for any submission
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith(`test_api_submitted_`)) {
+          const value = sessionStorage.getItem(key);
+          if (value === 'true') {
+            // Found a submission - don't show cards
+            return false;
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore
+    }
+    return true;
+  };
+  
+  const shouldShowCardsRef = useRef<boolean>(getInitialShouldShowCards());
+  
+  // Update ref when submission is detected
+  useEffect(() => {
+    const sessionStorageSubmitted = getHasEverBeenSubmitted();
+    const checkSubmitted = submitted || (sessionStorageSubmitted && hasEverBeenSubmittedRef.current);
+    if (checkSubmitted) {
+      shouldShowCardsRef.current = false;
+    }
+  }, [submitted]);
 
   // Cleanup scroll lock on mount - ensure scrolling is restored when component loads
   // This fixes the issue where scroll lock from SwipePredictions persists when navigating to this page
@@ -422,6 +657,16 @@ export default function TestApiPredictions() {
           // Initialize empty results map
           setResults(new Map());
         }
+        
+        // Get api_match_ids for live score subscription
+        const matchIds = fixturesData
+          .map(f => f.api_match_id)
+          .filter((id): id is number => id !== null && id !== undefined);
+        
+        if (alive && matchIds.length > 0) {
+          // Store api_match_ids for useLiveScores hook
+          setApiMatchIds(matchIds);
+        }
 
         // CRITICAL: Check submission status FIRST before anything else
         // This prevents the swipe view from showing even briefly
@@ -439,6 +684,7 @@ export default function TestApiPredictions() {
             // We'll validate picks match later, but for now, assume submitted
             isSubmitted = true;
             setSubmitted(true);
+            setViewMode("list"); // CRITICAL: Set to list view immediately to prevent swipe cards from showing
             hasEverBeenSubmittedRef.current = true; // Mark that we've seen submitted
             setHasEverBeenSubmitted(true); // Persist in sessionStorage
             setSubmissionChecked(true);
@@ -450,6 +696,7 @@ export default function TestApiPredictions() {
             if (sessionStorageCheck && submission?.submitted_at) {
               // Both sessionStorage and database agree - user has submitted
               setSubmitted(true);
+              setViewMode("list"); // CRITICAL: Set to list view immediately to prevent swipe cards from showing
               isSubmitted = true;
               hasEverBeenSubmittedRef.current = true; // Sync ref with sessionStorage
             } else {
@@ -717,9 +964,8 @@ export default function TestApiPredictions() {
     };
   }, [user?.id]);
 
-  // Fetch live scores from Football Data API
-  // Fetch live score from Supabase ONLY (updated by scheduled Netlify function)
-  // NO API calls from client - all API calls go through the scheduled function
+  // NOTE: Manual polling is now replaced by useLiveScores hook which provides real-time updates
+  // Keeping fetchLiveScore as a fallback utility function (not used in polling anymore)
   const fetchLiveScore = async (apiMatchId: number, kickoffTime?: string | null) => {
     try {
       console.log('[TestApiPredictions] fetchLiveScore called for matchId:', apiMatchId, 'kickoffTime:', kickoffTime);
@@ -795,6 +1041,10 @@ export default function TestApiPredictions() {
     }
   };
 
+  // NOTE: Manual polling removed - now using useLiveScores hook for real-time updates
+  // The hook automatically subscribes to live_scores table changes via Supabase real-time
+  // Commented out manual polling code below (kept for reference):
+  /*
   // Poll for live scores
   useEffect(() => {
     if (!fixtures.length) return;
@@ -994,6 +1244,7 @@ export default function TestApiPredictions() {
       timeouts.forEach(clearTimeout);
     };
   }, [fixtures.map(f => f.api_match_id).join(',')]);
+  */
 
   // Update results map based on live scores
   useEffect(() => {
@@ -1359,6 +1610,21 @@ export default function TestApiPredictions() {
   console.log('[TestApiPredictions] Render check - loading state:', loadingState);
   
   // Show simple loading spinner until fixtures are loaded and ready
+  // CRITICAL: Don't render ANYTHING until we know submission status and have fixtures
+  // This prevents blank screens and swipe card flashes
+  const isFullyReady = !loading && fixtures.length > 0 && submissionChecked && picksChecked;
+  const needsMoreData = loading || fixtures.length === 0 || !submissionChecked || !picksChecked;
+  
+  if (needsMoreData) {
+    // Show loading spinner - don't render any content until ready
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
+      </div>
+    );
+  }
+  
+  // Legacy check - should not be needed now but keeping as safety
   if (loading && fixtures.length === 0) {
     return (
       <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col overflow-hidden">
@@ -1383,10 +1649,15 @@ export default function TestApiPredictions() {
       </div>
     );
   }
-  // This prevents the spinner flash
+  // CRITICAL: Don't render anything until submission status is confirmed
+  // This prevents blank screens and swipe card flashes
   if ((!picksChecked || !submissionChecked) && fixtures.length > 0) {
-    // Show the page immediately with the first fixture
-    // The picks/submission check will complete in background
+    // Still checking submission status - show loading spinner
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
+      </div>
+    );
   }
 
   if (fixtures.length === 0) {
@@ -2229,20 +2500,55 @@ export default function TestApiPredictions() {
   }
 
   // CRITICAL: Never show swipe view if submitted (triple-check with state, ref, and sessionStorage)
-  // Only trust the ref/sessionStorage if they match the actual submission check
+  // Check sessionStorage synchronously on EVERY render to catch submission immediately
   const sessionStorageSubmitted = getHasEverBeenSubmitted();
-  const checkSubmittedBeforeSwipe = submitted || (sessionStorageSubmitted && hasEverBeenSubmittedRef.current);
-  console.log('[TestApiPredictions] 🔴 SWIPE VIEW CHECK - submitted:', submitted, 'ref:', hasEverBeenSubmittedRef.current, 'sessionStorage:', sessionStorageSubmitted, 'checkSubmittedBeforeSwipe:', checkSubmittedBeforeSwipe);
+  // Also check ALL sessionStorage keys for this user (in case currentTestGw isn't set yet)
+  const checkAllSessionStorage = (): boolean => {
+    if (typeof window === 'undefined' || !user?.id) return false;
+    try {
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith(`test_api_submitted_`) && key.endsWith(`_${user.id}`)) {
+          const value = sessionStorage.getItem(key);
+          if (value === 'true') return true;
+        }
+      }
+    } catch (e) {
+      // Ignore
+    }
+    return false;
+  };
+  const anySessionStorageSubmitted = checkAllSessionStorage();
+  
+  // CRITICAL: Check submission status synchronously on every render
+  // This ensures we catch submission even if state hasn't updated yet
+  const checkSubmittedBeforeSwipe = submitted || 
+    (sessionStorageSubmitted && hasEverBeenSubmittedRef.current) ||
+    anySessionStorageSubmitted;
+  
+  // CRITICAL: If submitted, force viewMode to "list" and never show cards
+  // Use a computed value instead of state to avoid render-time state updates
+  // This MUST be computed synchronously before any conditional rendering
+  const effectiveViewMode = checkSubmittedBeforeSwipe ? "list" : viewMode;
+  
+  // CRITICAL: Early return to prevent ANY cards rendering if submitted
+  // This must happen BEFORE any cards-related rendering
+  // If submitted is detected (via any method), NEVER show cards
   if (checkSubmittedBeforeSwipe) {
-    console.log('[TestApiPredictions] 🚫 BLOCKING swipe view - user has submitted');
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
-      </div>
-    );
+    // If viewMode is still "cards", show loading until it updates
+    if (viewMode === "cards") {
+      console.log('[TestApiPredictions] 🚫 BLOCKING cards - submission detected, viewMode still cards, showing loading');
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
+        </div>
+      );
+    }
+    // If viewMode is already "list", continue to render list view below
   }
-
-  console.log('[TestApiPredictions] ✅ Showing swipe view - user has NOT submitted');
+  
+  console.log('[TestApiPredictions] 🔴 SWIPE VIEW CHECK - submitted:', submitted, 'ref:', hasEverBeenSubmittedRef.current, 'sessionStorage:', sessionStorageSubmitted, 'anySessionStorage:', anySessionStorageSubmitted, 'checkSubmittedBeforeSwipe:', checkSubmittedBeforeSwipe, 'viewMode:', viewMode, 'effectiveViewMode:', effectiveViewMode);
+  console.log('[TestApiPredictions] ✅ Showing view - mode:', effectiveViewMode);
   
   // Safety check: ensure currentIndex is valid
   if (!currentFixture && fixtures.length > 0) {
@@ -2269,13 +2575,18 @@ export default function TestApiPredictions() {
   
   return (
     <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col overflow-hidden">
-      {viewMode === "cards" && (
-        <div className="sticky top-0 z-40 px-4 pt-4 pb-2 bg-gradient-to-br from-slate-50 to-slate-100">
+      {/* CRITICAL: Only render cards if NOT submitted - use ref for immediate check */}
+      {/* Also add inline style to hide immediately if submitted (CSS failsafe) */}
+      {shouldShowCardsRef.current && !checkSubmittedBeforeSwipe && !submitted && effectiveViewMode === "cards" && viewMode === "cards" && (
+        <div 
+          className="sticky top-0 z-40 px-4 pt-4 pb-2 bg-gradient-to-br from-slate-50 to-slate-100"
+          style={{ display: checkSubmittedBeforeSwipe ? 'none' : 'block' }}
+        >
           <div className="max-w-md mx-auto">
             <div className="relative flex items-center justify-between mb-4">
               <button onClick={()=>navigate("/")} className="text-slate-600 hover:text-slate-800 text-3xl font-bold w-10 h-10 flex items-center justify-center">✕</button>
               <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">Gameweek {currentTestGw}</span>
-              {viewMode === "cards" && (
+              {!checkSubmittedBeforeSwipe && effectiveViewMode === "cards" && (
                 <button
                   onClick={() => setCurrentIndex(fixtures.length)}
                   className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 px-3 py-1.5 text-xs font-semibold text-white shadow-md transition hover:shadow-lg hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800"
@@ -2287,7 +2598,7 @@ export default function TestApiPredictions() {
                 </button>
               )}
             </div>
-            {viewMode === "cards" && (
+            {!checkSubmittedBeforeSwipe && effectiveViewMode === "cards" && (
               <div className="mt-4 flex justify-center mb-0">
                 <div className="inline-flex items-center gap-2 rounded-full bg-[#e6f3f0] px-3 py-2">
                   {fixtures.map((_, idx) => {
@@ -2306,7 +2617,8 @@ export default function TestApiPredictions() {
           </div>
         </div>
       )}
-      {viewMode === "list" ? (
+      {/* CRITICAL: If submitted, ONLY render list view - cards section is completely separate and never evaluated */}
+      {(checkSubmittedBeforeSwipe || effectiveViewMode === "list") && (
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-2xl mx-auto px-4 py-4">
             <div className="relative flex items-center justify-center">
@@ -2314,29 +2626,40 @@ export default function TestApiPredictions() {
               <div className="text-center"><h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Test API Predictions</h1><div className="mt-0 mb-4 text-base text-slate-500">Call every game, lock in your results.<br />This is a TEST game.</div></div>
             </div>
             <div className="mt-2 mb-4"><div className="rounded-xl border bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 px-6 py-4"><div className="flex items-center justify-between"><div><div className="text-purple-900 font-semibold text-lg">Test GW {currentTestGw} Complete</div><div className="text-purple-900 text-sm font-bold mt-1">Your Score</div></div><div className="text-purple-900 text-5xl font-extrabold">{myScore}</div></div></div></div>
-            <div className="flex justify-center mt-4">
-              <button 
-                onClick={() => {
-                  setViewMode("cards");
-                  setCurrentIndex(0);
-                }}
-                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-                Back to Swipe View
-              </button>
-            </div>
+            {!checkSubmittedBeforeSwipe && (
+              <div className="flex justify-center mt-4">
+                <button 
+                  onClick={() => {
+                    setViewMode("cards");
+                    setCurrentIndex(0);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                  Back to Swipe View
+                </button>
+              </div>
+            )}
           </div>
         </div>
-      ) : (
+      )}
+      {/* CRITICAL: Cards section - ONLY render if NOT submitted and viewMode is cards */}
+      {/* Use ref check first for immediate synchronous evaluation */}
+      {shouldShowCardsRef.current && !checkSubmittedBeforeSwipe && !submitted && effectiveViewMode === "cards" && viewMode === "cards" && (
         <div className="flex flex-col min-h-0 overflow-hidden flex-1" style={{ height: '100%', paddingBottom: '120px' }}>
           <div className="flex items-center justify-center px-4 relative overflow-hidden flex-1" style={{ minHeight: 0, width: '100%', paddingTop: '0.125rem' }}>
             <div className={`absolute left-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "home" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">←</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg whitespace-nowrap">Home Win</div></div>
             <div className={`absolute right-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "away" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">→</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg whitespace-nowrap">Away Win</div></div>
             <div className={`absolute bottom-32 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "draw" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">↓</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg">Draw</div></div>
-            <div className="max-w-md w-full relative" style={{ aspectRatio: '0.75' }}>
+            <div 
+              className="max-w-md w-full relative" 
+              style={{ 
+                aspectRatio: '0.75',
+                display: checkSubmittedBeforeSwipe ? 'none' : 'block' // CRITICAL: CSS failsafe to hide immediately
+              }}
+            >
               {currentIndex < fixtures.length - 1 && (() => {
                 const nextFixture = fixtures[currentIndex + 1];
                 return (
@@ -2357,7 +2680,8 @@ export default function TestApiPredictions() {
                   transform: `translate(${cardState.x}px, ${cardState.y}px) rotate(${cardState.rotation}deg) scale(${cardState.scale})`, 
                   opacity: cardState.opacity, 
                   transition: (isDragging || isResettingRef.current) ? "none" : "all 0.3s ease-out",
-                  pointerEvents: 'none'
+                  pointerEvents: 'none',
+                  display: checkSubmittedBeforeSwipe ? 'none' : 'block' // CRITICAL: CSS failsafe
                 }}
               >
                 <SwipeCard

@@ -8,6 +8,7 @@ import imageCompression from "browser-image-compression";
 import { getLeagueAvatarUrl } from "../lib/leagueAvatars";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { getTeamBadgePath } from "../lib/teamNames";
+import TeamBadge from "../components/TeamBadge";
 import MiniLeagueChatBeta from "../components/MiniLeagueChatBeta";
 
 const MAX_MEMBERS = 8;
@@ -2779,9 +2780,30 @@ ${shareUrl}`;
                           // For API Test league, use short names first
                           const homeName = f.home_team || f.home_name || "Home";
                           const awayName = f.away_team || f.away_name || "Away";
-                          // Use fallback pattern like Home.tsx
-                          const homeKey = (f.home_code || f.home_team || f.home_name || "").toUpperCase();
-                          const awayKey = (f.away_code || f.away_team || f.away_name || "").toUpperCase();
+                          // Use fallback pattern like Home.tsx - ensure we always have a key
+                          const homeKey = (f.home_code || f.home_team || f.home_name || homeName || "").toUpperCase();
+                          const awayKey = (f.away_code || f.away_team || f.away_name || awayName || "").toUpperCase();
+                          
+                          // Memoize badge paths to prevent flickering on re-renders
+                          // Use team code directly if available (badges are named like ARS.png, BOU.png)
+                          // Otherwise fall back to getTeamBadgePath which uses slugs
+                          const homeCode = f.home_code || '';
+                          const awayCode = f.away_code || '';
+                          const homeBadgeSrc = f.home_crest || 
+                            (homeCode ? `/assets/badges/${homeCode.toUpperCase()}.png` : getTeamBadgePath(f.home_team || f.home_name || homeName || ''));
+                          const awayBadgeSrc = f.away_crest || 
+                            (awayCode ? `/assets/badges/${awayCode.toUpperCase()}.png` : getTeamBadgePath(f.away_team || f.away_name || awayName || ''));
+                          
+                          // Debug: log badge paths to help diagnose
+                          if (idx === 0) {
+                            console.log('[League] Badge paths for first fixture:', {
+                              homeCode,
+                              awayCode,
+                              homeBadgeSrc,
+                              awayBadgeSrc,
+                              fixture: f
+                            });
+                          }
 
                           const timeOf = (iso?: string | null) => {
                             if (!iso) return "";
@@ -2889,22 +2911,12 @@ ${shareUrl}`;
                                   <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{homeName}</span>
                                 </div>
                                 <div className="flex items-center justify-center gap-2">
-                                  {homeKey && (
-                                    <img 
-                                      src={f.home_crest || getTeamBadgePath(f.home_code || f.home_team || f.home_name || homeKey || '')} 
-                                      alt={`${homeName} badge`} 
-                                      className="h-6 w-6 object-contain"
-                                      onError={(e) => {
-                                        const target = e.currentTarget as HTMLImageElement;
-                                        const fallbackSrc = getTeamBadgePath(f.home_code || f.home_team || f.home_name || homeKey || '');
-                                        if (target.src !== fallbackSrc) {
-                                          target.src = fallbackSrc;
-                                        } else {
-                                          target.style.opacity = "0.35";
-                                        }
-                                      }}
-                                    />
-                                  )}
+                                  <TeamBadge 
+                                    code={f.home_code || undefined}
+                                    crest={f.home_crest || undefined}
+                                    size={24}
+                                    className="h-6 w-6"
+                                  />
                                   <div className="text-[15px] sm:text-base font-semibold text-slate-600">
                                     {liveScore && (isLive || isHalfTime || isFinished) ? (
                                       <span className="font-bold text-base text-slate-900">
@@ -2914,22 +2926,12 @@ ${shareUrl}`;
                                       <span>{timeStr}</span>
                                     )}
                                   </div>
-                                  {awayKey && (
-                                    <img 
-                                      src={f.away_crest || getTeamBadgePath(f.away_code || f.away_team || f.away_name || awayKey || '')} 
-                                      alt={`${awayName} badge`} 
-                                      className="h-6 w-6 object-contain"
-                                      onError={(e) => {
-                                        const target = e.currentTarget as HTMLImageElement;
-                                        const fallbackSrc = getTeamBadgePath(f.away_code || f.away_team || f.away_name || awayKey || '');
-                                        if (target.src !== fallbackSrc) {
-                                          target.src = fallbackSrc;
-                                        } else {
-                                          target.style.opacity = "0.35";
-                                        }
-                                      }}
-                                    />
-                                  )}
+                                  <TeamBadge 
+                                    code={f.away_code || undefined}
+                                    crest={f.away_crest || undefined}
+                                    size={24}
+                                    className="h-6 w-6"
+                                  />
                                 </div>
                                 <div className="flex items-center justify-center">
                                   <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{awayName}</span>
@@ -3093,9 +3095,6 @@ ${shareUrl}`;
                             );
                           };
 
-                          const homeBadge = f.home_crest || getTeamBadgePath(f.home_code || f.home_team || f.home_name || homeCode || '');
-                          const awayBadge = f.away_crest || getTeamBadgePath(f.away_code || f.away_team || f.away_name || awayCode || '');
-
                           return (
                             <li key={`${f.gw}-${f.fixture_index}`} className={idx > 0 ? "border-t" : ""}>
                               <div className="p-4 bg-white">
@@ -3105,36 +3104,18 @@ ${shareUrl}`;
                                     <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{homeName}</span>
                                   </div>
                                   <div className="flex items-center justify-center gap-2">
-                                    <img 
-                                      src={homeBadge} 
-                                      alt={`${homeName} badge`} 
-                                      className="h-6 w-6"
-                                      onError={(e) => {
-                                        const target = e.currentTarget as HTMLImageElement;
-                                        const fallbackSrc = getTeamBadgePath(f.home_code || f.home_team || f.home_name || homeCode || '');
-                                        if (target.src !== fallbackSrc) {
-                                          target.src = fallbackSrc;
-                                        } else {
-                                          target.style.opacity = "0.35";
-                                        }
-                                      }}
+                                    <TeamBadge 
+                                      code={f.home_code || homeCode || null}
+                                      crest={f.home_crest || null}
+                                      size={24}
                                     />
                                     <div className="text-[15px] sm:text-base font-semibold text-slate-600">
                                       {timeStr}
                                     </div>
-                                    <img 
-                                      src={awayBadge} 
-                                      alt={`${awayName} badge`} 
-                                      className="h-6 w-6"
-                                      onError={(e) => {
-                                        const target = e.currentTarget as HTMLImageElement;
-                                        const fallbackSrc = getTeamBadgePath(f.away_code || f.away_team || f.away_name || awayCode || '');
-                                        if (target.src !== fallbackSrc) {
-                                          target.src = fallbackSrc;
-                                        } else {
-                                          target.style.opacity = "0.35";
-                                        }
-                                      }}
+                                    <TeamBadge 
+                                      code={f.away_code || awayCode || null}
+                                      crest={f.away_crest || null}
+                                      size={24}
                                     />
                                   </div>
                                   <div className="flex items-center justify-center">

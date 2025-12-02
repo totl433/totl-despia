@@ -295,6 +295,30 @@ export default function ApiAdmin() {
         // Don't throw - fixtures are saved, meta update is less critical
       }
 
+      // Send push notification to all users
+      try {
+        const pushRes = await fetch('/.netlify/functions/sendPushAll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: `GAME WEEK ${nextGw} - FIXTURES ARE OUT!`,
+            message: `Make your predictions now!`,
+            data: { type: 'fixtures_published', gw: nextGw }
+          })
+        });
+
+        const pushData = await pushRes.json().catch(() => ({}));
+        
+        if (pushRes.ok && pushData.ok) {
+          console.log(`[ApiAdmin] Push notification sent to ${pushData.sentTo || 0} users`);
+        } else {
+          console.warn('[ApiAdmin] Push notification failed:', pushData);
+        }
+      } catch (pushError) {
+        console.error('[ApiAdmin] Error sending push notification:', pushError);
+        // Don't throw - gameweek is saved, notification failure is non-critical
+      }
+
       setOk(`Game Week ${nextGw} saved with ${selectedFixtures.size} Premier League fixtures!`);
     } catch (e: any) {
       setError(e.message ?? "Failed to save gameweek.");

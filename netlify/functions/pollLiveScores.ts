@@ -97,9 +97,10 @@ async function pollAllLiveScores() {
     const currentGw = (metaData as any)?.current_gw ?? 1;
 
     // Get all fixtures for current GW that have api_match_id
-    // Check both regular fixtures and test_api_fixtures
+    // Check regular fixtures, test_api_fixtures, and app_fixtures
     // For test_api_fixtures, get ALL test_gw values (T1, T2, etc.) that have api_match_id
-    const [regularFixtures, testFixtures, allTestFixturesCheck] = await Promise.all([
+    // For app_fixtures, get fixtures for current GW (used by TestApiPredictions)
+    const [regularFixtures, testFixtures, appFixtures, allTestFixturesCheck] = await Promise.all([
       supabase
         .from('fixtures')
         .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, gw')
@@ -108,6 +109,11 @@ async function pollAllLiveScores() {
       supabase
         .from('test_api_fixtures')
         .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, test_gw')
+        .not('api_match_id', 'is', null),
+      supabase
+        .from('app_fixtures')
+        .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, gw')
+        .eq('gw', currentGw)
         .not('api_match_id', 'is', null),
       // Also check all test fixtures (including those without api_match_id) for debugging
       supabase
@@ -142,16 +148,22 @@ async function pollAllLiveScores() {
         gw: f.test_gw || currentGw, 
         fixture_index: f.fixture_index 
       })),
+      ...((appFixtures.data || []) as any[]).map(f => ({ 
+        ...f, 
+        gw: f.gw || currentGw, 
+        fixture_index: f.fixture_index 
+      })),
     ];
 
     if (allFixtures.length === 0) {
       console.log('[pollLiveScores] No fixtures with api_match_id found');
-      console.log(`[pollLiveScores] Checked regular GW ${currentGw} and all test fixtures`);
+      console.log(`[pollLiveScores] Checked regular GW ${currentGw}, all test fixtures, and app_fixtures GW ${currentGw}`);
       return;
     }
 
     const regularCount = (regularFixtures.data || []).length;
     const testCount = (testFixtures.data || []).length;
+    const appCount = (appFixtures.data || []).length;
     // Group test fixtures by test_gw for logging
     const testGwGroups = new Map<number, number>();
     const testGwDetails: Record<number, number[]> = {};
@@ -166,7 +178,7 @@ async function pollAllLiveScores() {
     const testGwSummary = Array.from(testGwGroups.entries())
       .map(([gw, count]) => `${count} test GW ${gw}`)
       .join(', ');
-    console.log(`[pollLiveScores] Found ${allFixtures.length} fixtures (${regularCount} regular GW ${currentGw}, ${testCount} test fixtures: ${testGwSummary})`);
+    console.log(`[pollLiveScores] Found ${allFixtures.length} fixtures (${regularCount} regular GW ${currentGw}, ${testCount} test fixtures: ${testGwSummary}, ${appCount} app_fixtures GW ${currentGw})`);
     // Log detailed breakdown of test fixtures
     Object.entries(testGwDetails).forEach(([gw, matchIds]) => {
       console.log(`[pollLiveScores] Test GW ${gw} has ${matchIds.length} fixtures with api_match_ids: ${matchIds.join(', ')}`);

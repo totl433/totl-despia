@@ -104,11 +104,12 @@ export default function BottomNav() {
           right: 0px !important;
           width: 100vw !important;
           max-width: 100vw !important;
-          z-index: 9999 !important;
+          z-index: 99999 !important;
           transform: translate3d(0, 0, 0) !important;
           -webkit-transform: translate3d(0, 0, 0) !important;
           will-change: transform !important;
           contain: layout style paint !important;
+          pointer-events: auto !important;
         }
         @supports (padding-bottom: env(safe-area-inset-bottom)) {
           .bottom-nav-absolute {

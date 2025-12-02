@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useMemo } from 'react';
 import { MiniLeagueCard, type LeagueRow, type LeagueData } from './MiniLeagueCard';
 import { HorizontalScrollContainer } from './HorizontalScrollContainer';
 
@@ -19,6 +20,26 @@ export function MiniLeaguesSection({
   leagueDataLoading,
   currentGw
 }: MiniLeaguesSectionProps) {
+  // Memoize card data transformations to prevent unnecessary re-renders
+  const memoizedCardData = useMemo(() => {
+    const result: Record<string, LeagueData | undefined> = {};
+    for (const leagueId in leagueData) {
+      const data = leagueData[leagueId];
+      result[leagueId] = data ? {
+        id: data.id,
+        members: data.members,
+        userPosition: data.userPosition,
+        positionChange: data.positionChange,
+        submittedMembers: data.submittedMembers,
+        sortedMemberIds: data.sortedMemberIds,
+        latestGwWinners: data.latestGwWinners,
+        latestRelevantGw: data.latestRelevantGw,
+        webUserIds: data.webUserIds
+      } : undefined;
+    }
+    return result;
+  }, [leagueData]);
+
   if (!leagueDataLoading && leagues.length === 0) {
     return (
       <section className="mt-6">
@@ -81,18 +102,7 @@ export function MiniLeaguesSection({
               <div key={batchIdx} className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm w-[320px]">
                 {batchLeagues.map((l, index) => {
                   const unread = unreadByLeague?.[l.id] ?? 0;
-                  const data = leagueData[l.id];
-                  const cardData: LeagueData | undefined = data ? {
-                    id: data.id,
-                    members: data.members,
-                    userPosition: data.userPosition,
-                    positionChange: data.positionChange,
-                    submittedMembers: data.submittedMembers,
-                    sortedMemberIds: data.sortedMemberIds,
-                    latestGwWinners: data.latestGwWinners,
-                    latestRelevantGw: data.latestRelevantGw,
-                    webUserIds: data.webUserIds
-                  } : undefined;
+                  const cardData = memoizedCardData[l.id];
                   
                   return (
                     <div key={l.id} className={index < batchLeagues.length - 1 ? 'relative' : ''}>

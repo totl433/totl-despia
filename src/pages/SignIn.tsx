@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 
 export default function SignIn() {
   const [mode, setMode] = useState<'signup'|'signin'|'reset'|'password-reset'>('signup');
@@ -15,6 +16,15 @@ export default function SignIn() {
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [passwordResetSuccess, setPasswordResetSuccess] = useState(false);
   const nav = useNavigate();
+  const { user, loading: authLoading } = useAuth();
+  
+  // Redirect if already signed in (unless it's a password reset)
+  useEffect(() => {
+    if (!authLoading && user && mode !== 'password-reset') {
+      console.log('[SignIn] User already signed in, redirecting to home');
+      nav('/', { replace: true });
+    }
+  }, [user, authLoading, mode, nav]);
 
   // Check for password reset on page load
   useEffect(() => {
@@ -166,17 +176,46 @@ export default function SignIn() {
         // Show email confirmation message instead of navigating away
         setShowEmailMessage(true);
       } else {
+        console.log('[SignIn] Attempting sign in with email:', email.trim());
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
         });
-        if (error) throw error;
-        const user = data.user ?? (await supabase.auth.getUser()).data.user;
-        if (user) {
-          const metaName = (user.user_metadata as any)?.display_name as string | undefined;
-          await upsertProfile(user.id, metaName);
+        if (error) {
+          console.error('[SignIn] Sign in error:', error);
+          throw error;
         }
+        console.log('[SignIn] Sign in successful, data:', data);
+        const user = data.user ?? data.session?.user;
+        console.log('[SignIn] User:', user?.id);
+        console.log('[SignIn] Session:', data.session ? 'has session' : 'no session');
+        
+        // Force refresh the auth state by getting the session
+        if (data.session) {
+          console.log('[SignIn] Session available, storing and refreshing auth state');
+          // The session should be automatically stored by Supabase, but let's verify
+          try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            console.log('[SignIn] Verified session after sign-in:', sessionData.session ? 'OK' : 'missing');
+          } catch (e) {
+            console.error('[SignIn] Error verifying session:', e);
+          }
+        }
+        
+        if (user) {
+          try {
+            const metaName = (user.user_metadata as any)?.display_name as string | undefined;
+            console.log('[SignIn] Upserting profile for user:', user.id, 'name:', metaName);
+            await upsertProfile(user.id, metaName);
+            console.log('[SignIn] Profile upserted successfully');
+          } catch (profileError) {
+            console.error('[SignIn] Error upserting profile (non-fatal):', profileError);
+            // Don't throw - profile upsert failure shouldn't block sign-in
+          }
+        }
+        console.log('[SignIn] Navigating to home page...');
         nav('/', { replace: true });
+        console.log('[SignIn] Navigation called');
       }
     } catch (e:any) {
       setErr(e?.message || 'Something went wrong');

@@ -411,7 +411,9 @@ export default function HomePage() {
   // Fetch basic data (leagues, current GW, leaderboard data) - stale-while-revalidate pattern
   // State is already initialized from cache synchronously, so this only refreshes in background
   useEffect(() => {
+    console.log('[Home] Data loading effect triggered, user:', user?.id);
     if (!user?.id) {
+      console.log('[Home] No user ID, skipping data load');
       setLoading(false);
       setLeaderboardDataLoading(false);
       setLeagueDataLoading(false);
@@ -425,8 +427,9 @@ export default function HomePage() {
     const alreadyLoadedFromCache = leagues.length > 0 && !loading;
     
     if (alreadyLoadedFromCache) {
-      // Already loaded from cache, refreshing in background
+      console.log('[Home] Already loaded from cache, refreshing in background');
     } else {
+      console.log('[Home] No cache found, fetching fresh data');
       // No cache found on init, fetching fresh data
       // Only set loading if we didn't load from cache
       setLoading(true);
@@ -437,9 +440,26 @@ export default function HomePage() {
     // 2. Fetch fresh data in background
     (async () => {
       try {
+        console.log('[Home] Starting data fetch for user:', user.id);
+        console.log('[Home] Supabase client:', supabase ? 'exists' : 'missing');
+        
+        // Test Supabase connection first
+        try {
+          const testResult = await supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle();
+          console.log('[Home] Test query result:', testResult.error ? 'ERROR: ' + testResult.error.message : 'OK', testResult.data);
+        } catch (testError: any) {
+          console.error('[Home] Test query failed:', testError);
+        }
+        
+        // Add timeout to prevent infinite hanging (15 seconds max)
+        const fetchTimeout = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Data fetch timed out after 15 seconds')), 15000);
+        });
+        
         // Parallel fetch: leagues, GW data, points, and overall in one batch
         // App reads from app_* tables (includes both App and mirrored Web users)
-        const [membersResult, latestGwResult, metaResult, allGwPointsResult, overallResult] = await Promise.all([
+        console.log('[Home] Making Supabase requests...');
+        const fetchPromise = Promise.all([
           supabase.from("league_members").select("leagues(id, name, code, avatar, created_at)").eq("user_id", user.id),
           supabase.from("app_gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
           supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle(),
@@ -447,11 +467,23 @@ export default function HomePage() {
           supabase.from("app_v_ocp_overall").select("user_id, name, ocp")
         ]);
         
+        console.log('[Home] Waiting for requests to complete...');
+        const [membersResult, latestGwResult, metaResult, allGwPointsResult, overallResult] = await Promise.race([
+          fetchPromise,
+          fetchTimeout
+        ]) as any;
+        console.log('[Home] Requests completed!');
+        
         if (!alive) return;
+        
+        console.log('[Home] Data fetch completed, processing results');
+        console.log('[Home] Members result:', membersResult.error ? 'ERROR: ' + membersResult.error.message : 'OK');
+        console.log('[Home] Meta result:', metaResult.error ? 'ERROR: ' + metaResult.error.message : 'OK');
         
         // Process leagues
         let leaguesData: League[] = [];
         if (membersResult.error) {
+          console.error('[Home] Error fetching leagues:', membersResult.error);
           setLeagues([]);
         } else {
           leaguesData = (membersResult.data ?? [])
@@ -533,10 +565,12 @@ export default function HomePage() {
         
         setLoading(false);
         setLeaderboardDataLoading(false);
-      } catch (error) {
+      } catch (error: any) {
+        console.error('[Home] Error fetching data:', error);
         if (alive) {
           setLoading(false);
           setLeaderboardDataLoading(false);
+          setLeagueDataLoading(false);
         }
       }
     })();
@@ -759,14 +793,18 @@ export default function HomePage() {
         
         // Parallel fetch all league data
         // App reads from app_* tables (includes both App and mirrored Web users)
-        const [membersResult, readsResult, submissionsResult, resultsResult, fixturesResult, webPicksResult] = await Promise.all([
+        const [membersResult, readsResult, submissionsResult, resultsResult, fixturesResult, webPicksResult, appPicksResult] = await Promise.all([
           supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds),
           supabase.from("league_message_reads").select("league_id, last_read_at").eq("user_id", user.id).in("league_id", leagueIds),
           supabase.from("app_gw_submissions").select("user_id").eq("gw", gw),
           supabase.from("app_gw_results").select("gw, fixture_index, result"),
           supabase.from("app_fixtures").select("gw, kickoff_time").in("gw", Array.from({ length: Math.min(20, latestGw || 20) }, (_, i) => i + 1)),
           // Check which users have picks in Web table (these are Web users with mirrored picks)
-          supabase.from("picks").select("user_id").eq("gw", gw).limit(10000)
+          // Check for ANY GW (not just current GW) because the blue outline indicates a user who
+          // has made picks via Web interface at some point, not just for the current GW
+          supabase.from("picks").select("user_id").limit(10000),
+          // Check which users have picks in App table (these are App users who predicted on App)
+          supabase.from("app_picks").select("user_id").eq("gw", gw).limit(10000)
         ]);
         
         if (!alive) return;
@@ -786,8 +824,41 @@ export default function HomePage() {
         // Optimize: use Set for faster lookups
         const allMemberIdsSet = new Set(Object.values(membersByLeague).flat().map(m => m.id));
         const submittedUserIds = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id).filter((id: string) => allMemberIdsSet.has(id)));
-        // Identify Web users: users who have picks in the Web `picks` table for current GW
-        const webUserIds = new Set((webPicksResult.data ?? []).map((p: any) => p.user_id).filter((id: string) => allMemberIdsSet.has(id)));
+        
+        // Identify Web users: users who have picks in the Web `picks` table (for ANY GW)
+        // Note: Web users' picks are automatically mirrored to app_picks via database triggers,
+        // so Web users will have picks in BOTH tables. App users only have picks in app_picks.
+        // The 4 App test users (Jof, Carl, SP, ThomasJamesBird) have their picks mirrored from
+        // app_picks to picks (reverse mirroring), so we need to exclude them from Web users.
+        // We check for ANY GW (not just current GW) because the blue outline indicates a user
+        // who has made picks via Web interface at some point.
+        const webPicksUserIds = new Set((webPicksResult.data ?? []).map((p: any) => p.user_id));
+        
+        // The 4 App test user IDs (hardcoded from mirror triggers)
+        // These users have picks mirrored FROM app_picks TO picks, so they shouldn't get blue outlines
+        const appTestUserIds = new Set([
+          '4542c037-5b38-40d0-b189-847b8f17c222', // Jof
+          'f8a1669e-2512-4edf-9c21-b9f87b3efbe2', // Carl
+          '9c0bcf50-370d-412d-8826-95371a72b4fe', // SP
+          '36f31625-6d6c-4aa4-815a-1493a812841b'  // ThomasJamesBird
+        ]);
+        
+        // Web users = have picks in Web table (for ANY GW) AND are NOT one of the 4 App test users
+        // App test users have picks in both tables (mirrored from app_picks), so we exclude them
+        const webUserIds = new Set(
+          Array.from(webPicksUserIds).filter(
+            (id: string) => allMemberIdsSet.has(id) && !appTestUserIds.has(id)
+          )
+        );
+        
+        console.log('[Home] Web users identification for GW', gw, ':', {
+          totalWebPicksUsers: webPicksUserIds.size,
+          appTestUsersExcluded: Array.from(webPicksUserIds).filter(id => appTestUserIds.has(id)).length,
+          finalWebUserIds: webUserIds.size,
+          sampleWebUserIds: Array.from(webUserIds).slice(0, 5),
+          webPicksDataCount: webPicksResult.data?.length || 0,
+          allMemberIdsCount: allMemberIdsSet.size
+        });
         
         if (webPicksResult.error) {
           console.error('[Home] Error fetching web picks:', webPicksResult.error);

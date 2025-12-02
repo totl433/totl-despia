@@ -2,6 +2,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { isLoadEverythingFirstEnabled, setLoadEverythingFirst } from '../lib/featureFlags';
 
 // Profile page with push notification diagnostics
 
@@ -23,6 +24,7 @@ export default function Profile() {
   const [subscriptionDetails, setSubscriptionDetails] = useState<any>(null);
   const [despiaDetected, setDespiaDetected] = useState<boolean | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
+  const [loadEverythingFirst, setLoadEverythingFirstLocal] = useState(isLoadEverythingFirstEnabled());
   
   // Admin check
   const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
@@ -282,6 +284,40 @@ export default function Profile() {
                 <div className="font-medium text-slate-800">User ID</div>
                 <div className="text-xs text-slate-500 font-mono">{user.id}</div>
               </div>
+            </div>
+          </div>
+
+          {/* Data Loading Mode Toggle */}
+          <div className="mt-6 pt-6 border-t border-slate-200">
+            <h3 className="text-lg font-semibold text-slate-800 mb-3">Data Loading</h3>
+            <div className="flex items-center justify-between py-3 border-b border-slate-200">
+              <div className="flex-1">
+                <div className="font-medium text-slate-800">Load Everything First</div>
+                <div className="text-sm text-slate-600 mt-1">
+                  {loadEverythingFirst 
+                    ? 'All data loads before app opens (slower start, no stale data)'
+                    : 'Data loads as you navigate (faster start, may show cached data)'}
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer ml-4">
+                <input
+                  type="checkbox"
+                  checked={loadEverythingFirst}
+                  onChange={(e) => {
+                    const newValue = e.target.checked;
+                    setLoadEverythingFirstLocal(newValue);
+                    setLoadEverythingFirst(newValue);
+                    // Show a message that the app will reload
+                    if (newValue) {
+                      alert('"Load Everything First" mode enabled. The app will reload on next visit to apply the change.');
+                    } else {
+                      alert('"Load Everything First" mode disabled. The app will reload on next visit to apply the change.');
+                    }
+                  }}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#1C8376]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1C8376]"></div>
+              </label>
             </div>
           </div>
 

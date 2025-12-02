@@ -28,12 +28,47 @@ export default function GlobalLeaderboardPage() {
     ? tabParam 
     : "lastgw";
 
-  const [loading, setLoading] = useState(true);
+  // Load initial state from cache synchronously to avoid loading spinner
+  const loadInitialStateFromCache = () => {
+    try {
+      const cacheKey = `global:leaderboard`;
+      const cached = getCached<{
+        latestGw: number;
+        gwPoints: GwPointsRow[];
+        overall: OverallRow[];
+        prevOcp: Record<string, number>;
+      }>(cacheKey);
+      
+      if (cached && cached.gwPoints && Array.isArray(cached.gwPoints) && cached.gwPoints.length > 0) {
+        return {
+          loading: false,
+          latestGw: cached.latestGw,
+          gwPoints: cached.gwPoints,
+          overall: cached.overall || [],
+          prevOcp: cached.prevOcp || {},
+        };
+      }
+    } catch (error) {
+      // Error loading from cache (non-critical)
+    }
+    
+    return {
+      loading: true,
+      latestGw: null as number | null,
+      gwPoints: [] as GwPointsRow[],
+      overall: [] as OverallRow[],
+      prevOcp: {} as Record<string, number>,
+    };
+  };
+  
+  const initialState = loadInitialStateFromCache();
+  
+  const [loading, setLoading] = useState(initialState.loading);
   const [err, setErr] = useState<string>("");
-  const [latestGw, setLatestGw] = useState<number | null>(null);
-  const [overall, setOverall] = useState<OverallRow[]>([]);
-  const [gwPoints, setGwPoints] = useState<GwPointsRow[]>([]);
-  const [prevOcp, setPrevOcp] = useState<Record<string, number>>({});
+  const [latestGw, setLatestGw] = useState<number | null>(initialState.latestGw);
+  const [overall, setOverall] = useState<OverallRow[]>(initialState.overall);
+  const [gwPoints, setGwPoints] = useState<GwPointsRow[]>(initialState.gwPoints);
+  const [prevOcp, setPrevOcp] = useState<Record<string, number>>(initialState.prevOcp);
   const [activeTab, setActiveTab] = useState<"overall" | "form5" | "form10" | "lastgw">(validTab);
 
   // Sync activeTab with URL param and set default to lastgw if no tab specified
@@ -57,30 +92,33 @@ export default function GlobalLeaderboardPage() {
     const cacheKey = `global:leaderboard`;
     let loadedFromCache = false;
     
-    // 1. Load from cache immediately (if available)
-    try {
-      const cached = getCached<{
-        latestGw: number;
-        gwPoints: GwPointsRow[];
-        overall: OverallRow[];
-        prevOcp: Record<string, number>;
-      }>(cacheKey);
-      
-      if (cached && cached.gwPoints && Array.isArray(cached.gwPoints) && cached.gwPoints.length > 0) {
-        // INSTANT RENDER from cache!
-        // Loaded from cache
-        setLatestGw(cached.latestGw);
-        setGwPoints(cached.gwPoints);
-        setOverall(cached.overall || []);
-        setPrevOcp(cached.prevOcp || {});
-        setLoading(false);
-        loadedFromCache = true;
-      } else {
-        // No valid cache found, will fetch fresh data
+    // If we already loaded from cache in initial state, skip cache check here
+    // Otherwise check cache again (in case cache was updated)
+    if (initialState.loading) {
+      try {
+        const cached = getCached<{
+          latestGw: number;
+          gwPoints: GwPointsRow[];
+          overall: OverallRow[];
+          prevOcp: Record<string, number>;
+        }>(cacheKey);
+        
+        if (cached && cached.gwPoints && Array.isArray(cached.gwPoints) && cached.gwPoints.length > 0) {
+          // INSTANT RENDER from cache!
+          // Loaded from cache
+          setLatestGw(cached.latestGw);
+          setGwPoints(cached.gwPoints);
+          setOverall(cached.overall || []);
+          setPrevOcp(cached.prevOcp || {});
+          setLoading(false);
+          loadedFromCache = true;
+        }
+      } catch (error) {
+        // If cache is corrupted, just continue with fresh fetch
+        // Error loading from cache (non-critical)
       }
-    } catch (error) {
-      // If cache is corrupted, just continue with fresh fetch
-      // Error loading from cache (non-critical)
+    } else {
+      loadedFromCache = true; // Already loaded from cache in initial state
     }
     
     // 2. Fetch fresh data in background

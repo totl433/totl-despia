@@ -1,17 +1,19 @@
 // src/main.tsx
 import "./index.css";
 import "react-chat-elements/dist/main.css";
-import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy, useState, useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
 
-// Lazy load pages
-const TablesPage = lazy(() => import("./pages/Tables"));
+// Eagerly load BottomNav pages for instant navigation (no Suspense delay)
+import HomePage from "./pages/Home";
+import TablesPage from "./pages/Tables";
+import GlobalPage from "./pages/Global";
+import PredictionsPage from "./pages/Predictions";
+
+// Lazy load other pages
 const LeaguePage = lazy(() => import("./pages/League"));
-const PredictionsPage = lazy(() => import("./pages/Predictions"));
 const AdminPage = lazy(() => import("./pages/Admin"));
-const HomePage = lazy(() => import("./pages/Home"));
-const GlobalPage = lazy(() => import("./pages/Global"));
 const TempGlobalPage = lazy(() => import("./pages/TempGlobal"));
 const CreateLeaguePage = lazy(() => import("./pages/CreateLeague"));
 const HowToPlayPage = lazy(() => import("./pages/HowToPlay"));
@@ -30,6 +32,9 @@ import BottomNav from "./components/BottomNav";
 import FloatingProfile from "./components/FloatingProfile";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useAppLifecycle } from "./hooks/useAppLifecycle";
+import LoadingScreen from "./components/LoadingScreen";
+import { isLoadEverythingFirstEnabled } from "./lib/featureFlags";
+import { loadInitialData } from "./services/initialDataLoader";
 
 // Loading Fallback
 const PageLoader = () => (
@@ -55,16 +60,140 @@ function AppShell() {
 function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { showWelcome, dismissWelcome } = useAuth();
+  const { showWelcome, dismissWelcome, user, loading: authLoading } = useAuth();
+  const [initialDataLoading, setInitialDataLoading] = useState(false);
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false);
+  const [maxLoadingTimeout, setMaxLoadingTimeout] = useState(false);
+  const [isSwipeMode, setIsSwipeMode] = useState(false);
+  
+  // Pre-loading is enabled by default (can be disabled via localStorage)
+  const [loadEverythingFirst, setLoadEverythingFirst] = useState(() => {
+    // Default to true, but check localStorage to see if user disabled it
+    const stored = localStorage.getItem("feature:loadEverythingFirst");
+    return stored === null ? true : stored === 'true'; // null = default to true
+  });
+  
+  // Listen for localStorage changes to update the flag
+  useEffect(() => {
+    const checkFlag = () => {
+      // Default to true if not set in localStorage
+      const stored = localStorage.getItem("feature:loadEverythingFirst");
+      const newValue = stored === null ? true : stored === 'true';
+      if (newValue !== loadEverythingFirst) {
+        console.log(`[Pre-loading] Flag changed: ${loadEverythingFirst} -> ${newValue}`);
+        setLoadEverythingFirst(newValue);
+      }
+    };
+    
+    // Check on mount and when storage changes
+    checkFlag();
+    window.addEventListener('storage', checkFlag);
+    
+    // Also check periodically (in case localStorage is changed in same tab)
+    const interval = setInterval(checkFlag, 1000);
+    
+    return () => {
+      window.removeEventListener('storage', checkFlag);
+      clearInterval(interval);
+    };
+  }, [loadEverythingFirst]);
+  
+  // Log if pre-loading is enabled (for debugging)
+  useEffect(() => {
+    if (loadEverythingFirst) {
+      console.log('[Pre-loading] Load everything first mode is ENABLED');
+      console.log('[Pre-loading] To disable, run: localStorage.setItem("feature:loadEverythingFirst", "false")');
+    }
+  }, [loadEverythingFirst]);
+  
+  // Load initial data if feature flag is enabled
+  useEffect(() => {
+    console.log(`[Pre-loading] Effect triggered - flag: ${loadEverythingFirst}, authLoading: ${authLoading}, userId: ${user?.id || 'null'}, loaded: ${initialDataLoaded}`);
+    
+    if (!loadEverythingFirst || authLoading || !user?.id) {
+      // If feature flag is off, or auth is still loading, or no user, skip
+      if (!authLoading && user) {
+        console.log('[Pre-loading] Skipping pre-load (flag off or no user), setting loaded=true');
+        setInitialDataLoaded(true);
+      }
+      return;
+    }
+    
+    // If we've already loaded, don't load again
+    if (initialDataLoaded) {
+      console.log('[Pre-loading] Already loaded, skipping');
+      return;
+    }
+    
+    // Start loading
+    console.log('[Pre-loading] Starting initial data load for user:', user.id);
+    setInitialDataLoading(true);
+    
+    // Set a timeout to prevent infinite loading (10 seconds max)
+    const timeoutId = setTimeout(() => {
+      console.warn('[Pre-loading] Initial data loading timed out after 10 seconds, showing app anyway');
+      setInitialDataLoaded(true);
+      setInitialDataLoading(false);
+    }, 10000);
+    
+    // Load all data
+    console.log('[Pre-loading] Calling loadInitialData...');
+    loadInitialData(user.id)
+      .then(() => {
+        clearTimeout(timeoutId);
+        console.log('[Pre-loading] Initial data loaded successfully');
+        setInitialDataLoaded(true);
+        setInitialDataLoading(false);
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        console.error('[Pre-loading] Failed to load initial data:', error);
+        // Even if loading fails, show the app (graceful degradation)
+        setInitialDataLoaded(true);
+        setInitialDataLoading(false);
+      });
+    
+    // Cleanup timeout on unmount
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [loadEverythingFirst, authLoading, user?.id, initialDataLoaded]);
   
   // Prefetch data when app comes to foreground
+  // (hook will check feature flag internally)
   useAppLifecycle();
+  
+  // Track swipe mode from body data attribute (for BottomNav visibility)
+  useEffect(() => {
+    const checkSwipeMode = () => {
+      const isSwipe = document.body.getAttribute('data-swipe-mode') === 'true';
+      setIsSwipeMode(isSwipe);
+    };
+    
+    // Check initially and on location change
+    checkSwipeMode();
+    
+    // Watch for changes using MutationObserver
+    const observer = new MutationObserver(checkSwipeMode);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-swipe-mode']
+    });
+    
+    // Also check periodically to catch any timing issues
+    const interval = setInterval(checkSwipeMode, 200);
+    
+    return () => {
+      observer.disconnect();
+      clearInterval(interval);
+    };
+  }, [location.pathname]);
   
   // Hide header/banner for full-screen pages
   const isFullScreenPage = false;
 
   // Handle notification opens - navigate to league when notification is clicked
-  React.useEffect(() => {
+  useEffect(() => {
     // Check if OneSignal is available (for web)
     const OneSignal = (globalThis as any)?.OneSignal || (typeof window !== 'undefined' ? (window as any)?.OneSignal : null);
     
@@ -112,6 +241,22 @@ function AppContent() {
 
     handleNotificationUrl();
   }, [navigate]);
+  
+  // Add a maximum timeout to prevent infinite loading (15 seconds total including auth)
+  useEffect(() => {
+    if (loadEverythingFirst) {
+      const timeout = setTimeout(() => {
+        console.warn('[Pre-loading] Maximum loading timeout reached (15s), forcing app to show');
+        setMaxLoadingTimeout(true);
+      }, 15000);
+      return () => clearTimeout(timeout);
+    }
+  }, [loadEverythingFirst]);
+  
+  // Show loading screen if "load everything first" is enabled and data is still loading
+  if (loadEverythingFirst && !maxLoadingTimeout && (authLoading || initialDataLoading || !initialDataLoaded)) {
+    return <LoadingScreen />;
+  }
   
   return (
     <>
@@ -168,8 +313,12 @@ function AppContent() {
         </Suspense>
       </ErrorBoundary>
 
-      {/* Bottom Navigation - hide on auth page, league pages, and predictions page (has its own buttons) */}
-      {location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions' && location.pathname !== '/predictions/swipe' && <BottomNav />}
+      {/* Bottom Navigation - hide on auth page, league pages, and swipe predictions only */}
+      {location.pathname !== '/auth' && 
+       !location.pathname.startsWith('/league/') && 
+       location.pathname !== '/predictions/swipe' && 
+       !(location.pathname === '/predictions' && isSwipeMode) && 
+       <BottomNav />}
     </>
   );
 }

@@ -31,14 +31,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setSession(data.session ?? null);
-      setUser(data.session?.user ?? null);
-      setLoading(false);
-    });
+    // Try to get session from localStorage immediately as a fallback
+    let fallbackSession: any = null;
+    try {
+      // Supabase stores session in localStorage with key pattern: sb-<project-ref>-auth-token
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+      if (supabaseUrl) {
+        const projectRef = supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
+        if (projectRef) {
+          const storageKey = `sb-${projectRef}-auth-token`;
+          const stored = localStorage.getItem(storageKey);
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              if (parsed && parsed.currentSession) {
+                fallbackSession = parsed.currentSession;
+                console.log('[Auth] Found session in localStorage, using as fallback');
+                if (mounted) {
+                  setSession(fallbackSession);
+                  setUser(fallbackSession.user);
+                  setLoading(false);
+                }
+              }
+            } catch (e) {
+              console.log('[Auth] Could not parse stored session:', e);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log('[Auth] Error checking localStorage:', e);
+    }
 
+    // Add timeout to prevent infinite loading (5 seconds max for auth)
+    const authTimeout = setTimeout(() => {
+      if (mounted && !fallbackSession) {
+        console.warn('[Auth] Auth loading timed out after 5 seconds, proceeding without session');
+        setLoading(false);
+      }
+    }, 5000);
+
+    console.log('[Auth] Setting up auth state listener...');
+    
+    // Set up auth state change listener - this fires on initialization and state changes
+    let authStateReceived = false;
+    console.log('[Auth] Setting up onAuthStateChange listener...');
     const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
+      console.log('[Auth] Auth state changed:', event, sess ? 'has session' : 'no session', sess?.user?.id);
+      authStateReceived = true;
+      clearTimeout(authTimeout);
+      if (!mounted) return;
       setSession(sess);
       setUser(sess?.user ?? null);
       setLoading(false);
@@ -65,9 +107,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
     });
+    
+    // Try to get session with a shorter timeout (3 seconds)
+    // If it hangs, we'll rely on onAuthStateChange which should fire
+    console.log('[Auth] Attempting to get session (with 3s timeout)...');
+    Promise.race([
+      supabase.auth.getSession(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('getSession timeout')), 3000))
+    ])
+      .then((result: any) => {
+        if (authStateReceived) return; // Already got it from onAuthStateChange
+        clearTimeout(authTimeout);
+        if (!mounted) return;
+        const { data, error } = result;
+        console.log('[Auth] Session result:', error ? 'ERROR: ' + error.message : 'OK', data?.session ? 'has session' : 'no session');
+        if (data?.session) {
+          setSession(data.session);
+          setUser(data.session.user);
+        }
+        setLoading(false);
+      })
+      .catch((error: any) => {
+        if (authStateReceived) return; // Already got it from onAuthStateChange
+        console.log('[Auth] getSession timed out or failed, relying on onAuthStateChange:', error.message);
+        // Don't set loading to false here - let onAuthStateChange handle it
+        // If onAuthStateChange doesn't fire within 5 seconds, the timeout will handle it
+      });
 
     return () => {
       mounted = false;
+      clearTimeout(authTimeout);
       sub.subscription.unsubscribe();
     };
   }, []);

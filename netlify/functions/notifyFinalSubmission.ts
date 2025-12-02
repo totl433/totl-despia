@@ -137,16 +137,38 @@ async function checkAndNotifyFinalSubmission(
 
     const memberIds = members.map((m: any) => m.user_id);
 
-    // Check submissions - use test_api_submissions for test API, gw_submissions for regular
-    const submissionsTable = isTestApi ? 'test_api_submissions' : 'gw_submissions';
-    const matchdayField = isTestApi ? 'matchday' : 'gw';
-
-    const { data: submissions, error: subsError } = await supabase
-      .from(submissionsTable)
+    // Check submissions - try app_gw_submissions first (for GW14+ created via API Admin), 
+    // then fall back to test_api_submissions or gw_submissions
+    let submissions: any[] = [];
+    let subsError: any = null;
+    
+    // First, try app_gw_submissions (for app tables)
+    const { data: appSubmissions, error: appSubsError } = await supabase
+      .from('app_gw_submissions')
       .select('user_id')
-      .eq(matchdayField, matchday)
+      .eq('gw', matchday)
       .in('user_id', memberIds)
       .not('submitted_at', 'is', null);
+    
+    if (!appSubsError && appSubmissions && appSubmissions.length > 0) {
+      // Use app_gw_submissions
+      submissions = appSubmissions;
+      console.log(`[notifyFinalSubmission] Using app_gw_submissions for matchday ${matchday}`);
+    } else {
+      // Fall back to test_api_submissions or gw_submissions
+      const submissionsTable = isTestApi ? 'test_api_submissions' : 'gw_submissions';
+      const matchdayField = isTestApi ? 'matchday' : 'gw';
+      
+      const { data: regularSubmissions, error: regularSubsError } = await supabase
+        .from(submissionsTable)
+        .select('user_id')
+        .eq(matchdayField, matchday)
+        .in('user_id', memberIds)
+        .not('submitted_at', 'is', null);
+      
+      submissions = regularSubmissions || [];
+      subsError = regularSubsError;
+    }
 
     if (subsError) {
       console.error('[notifyFinalSubmission] Error fetching submissions:', subsError);

@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getCacheTimestamp, CACHE_TTL } from '../lib/cache';
 import { supabase } from '../lib/supabase';
+import { isLoadEverythingFirstEnabled } from '../lib/featureFlags';
 
 /**
  * Prefetch home page data
@@ -88,6 +89,10 @@ export function useAppLifecycle(): void {
   const { user } = useAuth();
   
   useEffect(() => {
+    // Skip prefetching if "load everything first" mode is enabled
+    // (data is already loaded upfront in that mode)
+    if (isLoadEverythingFirstEnabled()) return;
+    
     if (!user?.id) return;
     
     // Prefetch on mount (app startup)
