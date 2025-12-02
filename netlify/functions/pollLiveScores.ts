@@ -101,6 +101,39 @@ async function pollAllLiveScores() {
     // Focus on app_fixtures (used by TestApiPredictions and the main app)
     // Also check regular fixtures table for backward compatibility
     // Skip test_api_fixtures - those are old test data
+    
+    // First, check what fixtures exist (even without api_match_id) for debugging
+    const { data: allAppFixtures, error: allAppFixturesError } = await supabase
+      .from('app_fixtures')
+      .select('gw, fixture_index, api_match_id, home_team, away_team')
+      .gte('gw', currentGw)
+      .lte('gw', currentGw + 5)
+      .order('gw', { ascending: true })
+      .order('fixture_index', { ascending: true });
+    
+    if (allAppFixturesError) {
+      console.error('[pollLiveScores] Error checking all app_fixtures:', allAppFixturesError);
+    } else {
+      const fixturesByGw = new Map<number, { total: number; withApiId: number; withoutApiId: number }>();
+      (allAppFixtures || []).forEach((f: any) => {
+        const gw = f.gw;
+        if (!fixturesByGw.has(gw)) {
+          fixturesByGw.set(gw, { total: 0, withApiId: 0, withoutApiId: 0 });
+        }
+        const counts = fixturesByGw.get(gw)!;
+        counts.total++;
+        if (f.api_match_id) {
+          counts.withApiId++;
+        } else {
+          counts.withoutApiId++;
+        }
+      });
+      console.log('[pollLiveScores] All app_fixtures by GW:');
+      Array.from(fixturesByGw.entries()).forEach(([gw, counts]) => {
+        console.log(`[pollLiveScores]   GW ${gw}: ${counts.total} total (${counts.withApiId} with api_match_id, ${counts.withoutApiId} without api_match_id)`);
+      });
+    }
+    
     const [regularFixtures, appFixtures] = await Promise.all([
       supabase
         .from('fixtures')
