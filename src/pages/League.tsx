@@ -7,7 +7,7 @@ import { resolveLeagueStartGw as getLeagueStartGw, shouldIncludeGwForLeague } fr
 import imageCompression from "browser-image-compression";
 import { getLeagueAvatarUrl } from "../lib/leagueAvatars";
 import { useLiveScores } from "../hooks/useLiveScores";
-import { getTeamBadgePath } from "../lib/teamNames";
+import { getTeamBadgePath, getMediumName } from "../lib/teamNames";
 import TeamBadge from "../components/TeamBadge";
 import MiniLeagueChatBeta from "../components/MiniLeagueChatBeta";
 
@@ -2803,8 +2803,11 @@ ${shareUrl}`;
                       {sec.items.map((f, idx) => {
                         try {
                           // For API Test league, use short names first
-                          const homeName = f.home_team || f.home_name || "Home";
-                          const awayName = f.away_team || f.away_name || "Away";
+                          // Use medium display names for consistency
+                          const homeKey = f.home_code || f.home_team || f.home_name || "";
+                          const awayKey = f.away_code || f.away_team || f.away_name || "";
+                          const homeName = getMediumName(homeKey) || "Home";
+                          const awayName = getMediumName(awayKey) || "Away";
                           // Use fallback pattern like Home.tsx - ensure we always have a key
                           // const homeKey = (f.home_code || f.home_team || f.home_name || homeName || "").toUpperCase();
                           // const awayKey = (f.away_code || f.away_team || f.away_name || awayName || "").toUpperCase();
