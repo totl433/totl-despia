@@ -1010,6 +1010,13 @@ ${shareUrl}`;
         .order("gw", { ascending: false });
       if (!alive) return;
       const gwList = allGws ? [...new Set(allGws.map((r: any) => r.gw))].sort((a, b) => b - a) : [];
+      
+      // Include currentGw in availableGws if it's not already there (for live GWs without results yet)
+      const currentGwValue = (meta as any)?.current_gw;
+      if (currentGwValue && !gwList.includes(currentGwValue)) {
+        gwList.unshift(currentGwValue); // Add to beginning (highest GW)
+      }
+      
       setAvailableGws(gwList);
       if (gwList.length > 0) setSelectedGw(gwList[0]);
     })();
@@ -3540,8 +3547,13 @@ ${shareUrl}`;
             <div className="flex items-center justify-center gap-3 w-full max-w-sm">
               <div className="flex-1">
                 <select
-                  value={resGw}
-                  onChange={(e) => setSelectedGw(parseInt(e.target.value, 10))}
+                  value={resGw || undefined}
+                  onChange={(e) => {
+                    const newGw = parseInt(e.target.value, 10);
+                    setSelectedGw(newGw);
+                    // If changing away from currentGw on Live Table, update selectedGw
+                    // This allows users to view past GWs even when current GW is live
+                  }}
                   className="gw-selector w-full bg-white rounded-full border-2 border-slate-300 px-3 py-2 text-xs font-normal text-slate-600 text-center focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-[#1C8376] active:bg-slate-50 transition-colors"
                   style={{
                     fontSize: '12px',
