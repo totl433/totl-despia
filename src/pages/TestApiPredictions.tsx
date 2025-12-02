@@ -1934,12 +1934,11 @@ export default function TestApiPredictions() {
                                   </div>
                                   {/* Home Team Goals and Red Cards (chronologically sorted) */}
                                   {liveScore && (isOngoing || isFinished) && (() => {
-                                    // Filter goals for home team
-                                    // Match by team name - use liveScore.home_team as the source of truth (already normalized)
                                     // Use teamId to match goals - API's goal.teamId tells us which team the goal counts for (handles own goals correctly)
                                     const homeTeamId = (liveScore as any).home_team_id;
                                     const awayTeamId = (liveScore as any).away_team_id;
                                     
+                                    // Filter goals for home team
                                     const homeGoals = (liveScore.goals || []).filter((goal: any) => {
                                       if (!goal) return false;
                                       // Use teamId if available (most reliable), otherwise fall back to team name matching
