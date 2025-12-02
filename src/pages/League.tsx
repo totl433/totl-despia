@@ -3198,7 +3198,14 @@ ${shareUrl}`;
     const outcomes = new Map<number, "H" | "D" | "A">();
     const isApiTestLeague = league?.name === 'API Test';
     
+    // Check if this GW is live (has live or finished games)
+    const hasLiveScores = fixtures.some((f: any) => {
+      const liveScore = liveScores[f.fixture_index];
+      return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
+    });
+    
     // For API Test league, ONLY use live scores (ignore database results)
+    // For regular leagues, use live scores if GW is live, otherwise use results
     if (isApiTestLeague && resGw === (currentTestGw ?? 1)) {
       // Check live scores for first 3 fixtures - count both live and finished fixtures
       const fixturesToCheck = fixtures;
@@ -3216,8 +3223,23 @@ ${shareUrl}`;
         }
       });
       // DO NOT fill in from results - only count live/finished fixtures
+    } else if (hasLiveScores && resGw === currentGw) {
+      // Regular league with live GW - use live scores
+      fixtures.forEach((f: any) => {
+        const liveScore = liveScores[f.fixture_index];
+        if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
+          // Determine outcome from live score
+          if (liveScore.homeScore > liveScore.awayScore) {
+            outcomes.set(f.fixture_index, 'H');
+          } else if (liveScore.awayScore > liveScore.homeScore) {
+            outcomes.set(f.fixture_index, 'A');
+          } else {
+            outcomes.set(f.fixture_index, 'D');
+          }
+        }
+      });
     } else {
-      // Regular league - use results
+      // Regular league - use results (for past GWs)
       results.forEach((r) => {
         if (r.gw !== resGw) return;
         const out = rowToOutcome(r);
