@@ -848,24 +848,34 @@ export default function Profile() {
                         : '';
                       // Get Carl's Player ID first
                       const diagnoseUrl = `${baseUrl}/.netlify/functions/diagnoseCarlNotifications?user=carl`;
-                      const diagnoseResponse = await fetch(diagnoseUrl, { method: 'GET', mode: 'cors' });
+                      console.log('[Profile] Fetching Carl\'s Player ID from:', diagnoseUrl);
+                      const diagnoseResponse = await fetch(diagnoseUrl, { method: 'GET', mode: 'cors' }).catch((fetchError: any) => {
+                        throw new Error(`Network error fetching Carl's Player ID: ${fetchError.message || 'Failed to connect'}`);
+                      });
                       
                       if (!diagnoseResponse.ok) {
-                        setOneSignalApiResult(`❌ Failed to get Carl's Player ID: ${diagnoseResponse.status}`);
+                        const errorText = await diagnoseResponse.text().catch(() => 'Unknown error');
+                        setOneSignalApiResult(`❌ Failed to get Carl's Player ID (${diagnoseResponse.status}): ${errorText}`);
                         return;
                       }
                       
-                      const diagnoseResult = await diagnoseResponse.json();
+                      const diagnoseResult = await diagnoseResponse.json().catch((parseError: any) => {
+                        throw new Error(`Failed to parse response: ${parseError.message}`);
+                      });
+                      
                       const carlDevice = diagnoseResult.devices?.find((d: any) => d.is_active);
                       
                       if (!carlDevice?.player_id) {
-                        setOneSignalApiResult(`❌ Carl's active Player ID not found`);
+                        setOneSignalApiResult(`❌ Carl's active Player ID not found. Devices: ${JSON.stringify(diagnoseResult.devices?.map((d: any) => ({ is_active: d.is_active, player_id: d.player_id?.slice(0, 20) })), null, 2)}`);
                         return;
                       }
                       
                       const playerId = carlDevice.player_id;
                       const checkUrl = `${baseUrl}/.netlify/functions/checkCarlPlayerId?playerId=${encodeURIComponent(playerId)}`;
-                      const checkResponse = await fetch(checkUrl, { method: 'GET', mode: 'cors' });
+                      console.log('[Profile] Checking OneSignal API for Player ID:', playerId.slice(0, 20) + '...', 'URL:', checkUrl);
+                      const checkResponse = await fetch(checkUrl, { method: 'GET', mode: 'cors' }).catch((fetchError: any) => {
+                        throw new Error(`Network error checking OneSignal API: ${fetchError.message || 'Failed to connect'}`);
+                      });
                       
                       if (!checkResponse.ok) {
                         const errorText = await checkResponse.text().catch(() => 'Unknown error');
@@ -873,7 +883,9 @@ export default function Profile() {
                         return;
                       }
                       
-                      const result = await checkResponse.json();
+                      const result = await checkResponse.json().catch((parseError: any) => {
+                        throw new Error(`Failed to parse OneSignal API response: ${parseError.message}`);
+                      });
                       if (result.ok) {
                         const player = result.player;
                         const interp = result.interpretation;
@@ -896,7 +908,13 @@ export default function Profile() {
                         setOneSignalApiResult(`❌ ${result.error || 'Failed to check OneSignal API'}`);
                       }
                     } catch (error: any) {
-                      setOneSignalApiResult(`❌ Error: ${error.message || 'Failed to check OneSignal API'}`);
+                      console.error('[Profile] Error checking OneSignal API:', error);
+                      const errorMessage = error.message || 'Failed to check OneSignal API';
+                      const isNetworkError = errorMessage.includes('Network error') || errorMessage.includes('Failed to fetch') || errorMessage.includes('Failed to connect');
+                      const suggestion = isNetworkError 
+                        ? '\n\n💡 Tip: Make sure you\'re connected to the internet and the function is deployed. Check browser console (F12) for more details.'
+                        : '';
+                      setOneSignalApiResult(`❌ Error: ${errorMessage}${suggestion}`);
                     } finally {
                       setCheckingOneSignalApi(false);
                     }
