@@ -35,6 +35,8 @@ export default function Profile() {
   const [carlForceResult, setCarlForceResult] = useState<string | null>(null);
   const [checkingOneSignalApi, setCheckingOneSignalApi] = useState(false);
   const [oneSignalApiResult, setOneSignalApiResult] = useState<string | null>(null);
+  const [checkingOneSignalApiJof, setCheckingOneSignalApiJof] = useState(false);
+  const [oneSignalApiResultJof, setOneSignalApiResultJof] = useState<string | null>(null);
   
   // Admin check
   const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
@@ -931,6 +933,104 @@ export default function Profile() {
                       : 'border-rose-200 bg-rose-50 text-rose-700'
                   }`}>
                     {oneSignalApiResult}
+                  </div>
+                )}
+                
+                {/* Check OneSignal API Directly - Jof */}
+                <button
+                  onClick={async () => {
+                    setCheckingOneSignalApiJof(true);
+                    setOneSignalApiResultJof(null);
+                    try {
+                      const isDev = import.meta.env.DEV || window.location.hostname === 'localhost';
+                      const baseUrl = isDev 
+                        ? 'https://totl-staging.netlify.app'
+                        : '';
+                      // Get Jof's Player ID first
+                      const diagnoseUrl = `${baseUrl}/.netlify/functions/diagnoseCarlNotifications?user=jof`;
+                      console.log('[Profile] Fetching Jof\'s Player ID from:', diagnoseUrl);
+                      const diagnoseResponse = await fetch(diagnoseUrl, { method: 'GET', mode: 'cors' }).catch((fetchError: any) => {
+                        throw new Error(`Network error fetching Jof's Player ID: ${fetchError.message || 'Failed to connect'}`);
+                      });
+                      
+                      if (!diagnoseResponse.ok) {
+                        const errorText = await diagnoseResponse.text().catch(() => 'Unknown error');
+                        setOneSignalApiResultJof(`❌ Failed to get Jof's Player ID (${diagnoseResponse.status}): ${errorText}`);
+                        return;
+                      }
+                      
+                      const diagnoseResult = await diagnoseResponse.json().catch((parseError: any) => {
+                        throw new Error(`Failed to parse response: ${parseError.message}`);
+                      });
+                      
+                      const jofDevice = diagnoseResult.devices?.find((d: any) => d.is_active);
+                      
+                      if (!jofDevice?.player_id) {
+                        setOneSignalApiResultJof(`❌ Jof's active Player ID not found. Devices: ${JSON.stringify(diagnoseResult.devices?.map((d: any) => ({ is_active: d.is_active, player_id: d.player_id?.slice(0, 20) })), null, 2)}`);
+                        return;
+                      }
+                      
+                      const playerId = jofDevice.player_id;
+                      const checkUrl = `${baseUrl}/.netlify/functions/checkCarlPlayerId?playerId=${encodeURIComponent(playerId)}`;
+                      console.log('[Profile] Checking OneSignal API for Player ID:', playerId.slice(0, 20) + '...', 'URL:', checkUrl);
+                      const checkResponse = await fetch(checkUrl, { method: 'GET', mode: 'cors' }).catch((fetchError: any) => {
+                        throw new Error(`Network error checking OneSignal API: ${fetchError.message || 'Failed to connect'}`);
+                      });
+                      
+                      if (!checkResponse.ok) {
+                        const errorText = await checkResponse.text().catch(() => 'Unknown error');
+                        setOneSignalApiResultJof(`❌ OneSignal API Error (${checkResponse.status}): ${errorText}`);
+                        return;
+                      }
+                      
+                      const result = await checkResponse.json().catch((parseError: any) => {
+                        throw new Error(`Failed to parse OneSignal API response: ${parseError.message}`);
+                      });
+                      if (result.ok) {
+                        const player = result.player;
+                        const interp = result.interpretation;
+                        let message = `✅ OneSignal API Response:\n\n`;
+                        message += `Player ID: ${result.playerId}\n`;
+                        message += `Notification Types: ${player.notification_types ?? 'null'}\n`;
+                        message += `Last Active: ${player.last_active_date || 'Never'}\n`;
+                        message += `Has Token: ${player.identifier === 'present' ? 'Yes' : 'No'}\n`;
+                        message += `Invalid Token: ${player.invalid_identifier ? 'Yes' : 'No'}\n\n`;
+                        message += `Interpretation:\n`;
+                        message += `- Subscribed: ${interp.subscribed ? '✅' : '❌'}\n`;
+                        message += `- Unsubscribed: ${interp.unsubscribed ? 'Yes' : 'No'}\n`;
+                        message += `- Disabled: ${interp.disabled ? 'Yes' : 'No'}\n`;
+                        message += `- Not Initialized: ${interp.not_initialized ? 'Yes' : 'No'}\n`;
+                        message += `- Has Valid Token: ${interp.has_valid_token ? '✅' : '❌'}\n`;
+                        message += `- Can Receive Notifications: ${interp.can_receive_notifications ? '✅' : '❌'}\n\n`;
+                        message += `Full API Response:\n${JSON.stringify(result.player, null, 2)}`;
+                        setOneSignalApiResultJof(message);
+                      } else {
+                        setOneSignalApiResultJof(`❌ ${result.error || 'Failed to check OneSignal API'}`);
+                      }
+                    } catch (error: any) {
+                      console.error('[Profile] Error checking OneSignal API for Jof:', error);
+                      const errorMessage = error.message || 'Failed to check OneSignal API';
+                      const isNetworkError = errorMessage.includes('Network error') || errorMessage.includes('Failed to fetch') || errorMessage.includes('Failed to connect');
+                      const suggestion = isNetworkError 
+                        ? '\n\n💡 Tip: Make sure you\'re connected to the internet and the function is deployed. Check browser console (F12) for more details.'
+                        : '';
+                      setOneSignalApiResultJof(`❌ Error: ${errorMessage}${suggestion}`);
+                    } finally {
+                      setCheckingOneSignalApiJof(false);
+                    }
+                  }}
+                  disabled={checkingOneSignalApiJof}
+                  className="w-full mt-2 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {checkingOneSignalApiJof ? 'Checking...' : 'Check OneSignal API (Jof)'}
+                </button>
+                {oneSignalApiResultJof && (
+                  <div className={`mt-3 rounded border px-3 py-2 text-sm whitespace-pre-wrap break-words max-h-96 overflow-y-auto font-mono ${
+                    oneSignalApiResultJof.startsWith('✅') 
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800' 
+                      : 'border-rose-200 bg-rose-50 text-rose-700'
+                  }`}>
+                    {oneSignalApiResultJof}
                   </div>
                 )}
               </div>
