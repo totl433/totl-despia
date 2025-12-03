@@ -933,6 +933,7 @@ export default function Profile() {
                             const userNames = result.userNames || [];
                             const errors = result.oneSignalErrors;
                             const hasNotificationId = result.hasNotificationId;
+                            const notificationId = result.notificationId;
                             
                             let message = '';
                             
@@ -940,6 +941,10 @@ export default function Profile() {
                             // (OneSignal's recipients field is often 0 for iOS even when sent successfully)
                             if (hasNotificationId && !errors) {
                               message = `✅ Notification sent to ${expected} device(s) (${userCount} users)`;
+                              if (notificationId) {
+                                message += `\n\nNotification ID: ${notificationId}`;
+                                message += `\n\n💡 Tip: Check Netlify function logs to see OneSignal's full response, including invalid_player_ids.`;
+                              }
                             } else if (errors && errors.length > 0) {
                               message = `⚠️ Sent to ${sentTo} device(s) (${userCount} users, expected ${expected}). OneSignal errors: ${errors.join(', ')}`;
                             } else if (sentTo < expected && oneSignalRecipients === 0) {
