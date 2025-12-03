@@ -294,7 +294,22 @@ export const handler: Handler = async (event) => {
       const carlInvalid = carlPlayerId && body.invalid_player_ids.includes(carlPlayerId);
       if (carlInvalid) {
         console.error(`[sendPushAll] ⚠️ Carl's Player ID was marked as INVALID by OneSignal!`);
+      } else if (carlPlayerId && body.invalid_player_ids.length > 0) {
+        console.log(`[sendPushAll] Carl's Player ID NOT in invalid list (${body.invalid_player_ids.length} invalid IDs total)`);
       }
+    } else if (carlPlayerId) {
+      console.log(`[sendPushAll] No invalid_player_ids in response - Carl's device should be included`);
+    }
+    
+    // Log Carl's device status for debugging
+    if (carlPlayerId) {
+      const carlSub = subs.find((s: any) => s.player_id === carlPlayerId);
+      console.log(`[sendPushAll] Carl's device status:`, {
+        player_id: carlPlayerId.slice(0, 20) + '...',
+        is_active: carlSub?.is_active,
+        subscribed: carlSub?.subscribed,
+        included_in_send: carlIncluded,
+      });
     }
     
     // OneSignal's recipients field is often 0 for iOS even when notifications are sent successfully
