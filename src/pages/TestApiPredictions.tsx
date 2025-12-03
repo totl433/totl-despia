@@ -4,8 +4,6 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import TeamBadge from "../components/TeamBadge";
 import { useNavigate } from "react-router-dom";
-import { getMediumName } from "../lib/teamNames";
-import { formatMinuteDisplay } from "../lib/fixtureUtils";
 import { invalidateUserCache, getCached, setCached, CACHE_TTL, removeCached } from "../lib/cache";
 import SwipeCard from "../components/predictions/SwipeCard";
 import ScoreIndicator from "../components/predictions/ScoreIndicator";
@@ -1832,7 +1830,7 @@ export default function TestApiPredictions() {
                       // Convert liveScore to FixtureCard format
                       const fixtureCardLiveScore: FixtureCardLiveScore | null = liveScore ? {
                         status: liveScore.status,
-                        minute: liveScore.minute,
+                        minute: liveScore.minute ?? null,
                         homeScore: liveScore.homeScore,
                         awayScore: liveScore.awayScore,
                         home_team: liveScore.home_team,
