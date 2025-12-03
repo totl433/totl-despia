@@ -35,7 +35,7 @@ export async function ensurePushSubscribed(
   // Check if we're in a browser (not native app)
   const isBrowser = typeof window !== 'undefined' && 
     (window.navigator?.userAgent?.includes('Mozilla') || 
-     !window.navigator?.standalone); // iOS standalone mode indicates native app
+     !(window.navigator as any)?.standalone); // iOS standalone mode indicates native app
   
   // If we have direct player ID, we're in native app even without despia object
   const isNativeApp = !!despia || !!directPlayerId;
