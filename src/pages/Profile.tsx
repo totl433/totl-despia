@@ -835,6 +835,86 @@ export default function Profile() {
                     {carlForceResult}
                   </div>
                 )}
+                
+                {/* Check OneSignal API Directly */}
+                <button
+                  onClick={async () => {
+                    setCheckingOneSignalApi(true);
+                    setOneSignalApiResult(null);
+                    try {
+                      const isDev = import.meta.env.DEV || window.location.hostname === 'localhost';
+                      const baseUrl = isDev 
+                        ? 'https://totl-staging.netlify.app'
+                        : '';
+                      // Get Carl's Player ID first
+                      const diagnoseUrl = `${baseUrl}/.netlify/functions/diagnoseCarlNotifications?user=carl`;
+                      const diagnoseResponse = await fetch(diagnoseUrl, { method: 'GET', mode: 'cors' });
+                      
+                      if (!diagnoseResponse.ok) {
+                        setOneSignalApiResult(`❌ Failed to get Carl's Player ID: ${diagnoseResponse.status}`);
+                        return;
+                      }
+                      
+                      const diagnoseResult = await diagnoseResponse.json();
+                      const carlDevice = diagnoseResult.devices?.find((d: any) => d.is_active);
+                      
+                      if (!carlDevice?.player_id) {
+                        setOneSignalApiResult(`❌ Carl's active Player ID not found`);
+                        return;
+                      }
+                      
+                      const playerId = carlDevice.player_id;
+                      const checkUrl = `${baseUrl}/.netlify/functions/checkCarlPlayerId?playerId=${encodeURIComponent(playerId)}`;
+                      const checkResponse = await fetch(checkUrl, { method: 'GET', mode: 'cors' });
+                      
+                      if (!checkResponse.ok) {
+                        const errorText = await checkResponse.text().catch(() => 'Unknown error');
+                        setOneSignalApiResult(`❌ OneSignal API Error (${checkResponse.status}): ${errorText}`);
+                        return;
+                      }
+                      
+                      const result = await checkResponse.json();
+                      if (result.ok) {
+                        const player = result.player;
+                        const interp = result.interpretation;
+                        let message = `✅ OneSignal API Response:\n\n`;
+                        message += `Player ID: ${result.playerId}\n`;
+                        message += `Notification Types: ${player.notification_types ?? 'null'}\n`;
+                        message += `Last Active: ${player.last_active_date || 'Never'}\n`;
+                        message += `Has Token: ${player.identifier === 'present' ? 'Yes' : 'No'}\n`;
+                        message += `Invalid Token: ${player.invalid_identifier ? 'Yes' : 'No'}\n\n`;
+                        message += `Interpretation:\n`;
+                        message += `- Subscribed: ${interp.subscribed ? '✅' : '❌'}\n`;
+                        message += `- Unsubscribed: ${interp.unsubscribed ? 'Yes' : 'No'}\n`;
+                        message += `- Disabled: ${interp.disabled ? 'Yes' : 'No'}\n`;
+                        message += `- Not Initialized: ${interp.not_initialized ? 'Yes' : 'No'}\n`;
+                        message += `- Has Valid Token: ${interp.has_valid_token ? '✅' : '❌'}\n`;
+                        message += `- Can Receive Notifications: ${interp.can_receive_notifications ? '✅' : '❌'}\n\n`;
+                        message += `Full API Response:\n${JSON.stringify(result.player, null, 2)}`;
+                        setOneSignalApiResult(message);
+                      } else {
+                        setOneSignalApiResult(`❌ ${result.error || 'Failed to check OneSignal API'}`);
+                      }
+                    } catch (error: any) {
+                      setOneSignalApiResult(`❌ Error: ${error.message || 'Failed to check OneSignal API'}`);
+                    } finally {
+                      setCheckingOneSignalApi(false);
+                    }
+                  }}
+                  disabled={checkingOneSignalApi}
+                  className="w-full mt-2 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {checkingOneSignalApi ? 'Checking...' : 'Check OneSignal API (Carl)'}
+                </button>
+                {oneSignalApiResult && (
+                  <div className={`mt-3 rounded border px-3 py-2 text-sm whitespace-pre-wrap break-words max-h-96 overflow-y-auto font-mono ${
+                    oneSignalApiResult.startsWith('✅') 
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800' 
+                      : 'border-rose-200 bg-rose-50 text-rose-700'
+                  }`}>
+                    {oneSignalApiResult}
+                  </div>
+                )}
               </div>
               
               {/* Send Notification to All Users */}
