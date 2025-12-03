@@ -56,13 +56,20 @@ export const handler: Handler = async (event) => {
     };
   }
 
-  // Check for admin secret if provided
+  // Check for admin secret if provided (optional - allows diagnostic without secret)
   const ADMIN_SECRET = process.env.ADMIN_DEVICE_REGISTRATION_SECRET;
   const providedSecret = event.headers['x-admin-secret'] || event.queryStringParameters?.secret;
-  if (ADMIN_SECRET && providedSecret !== ADMIN_SECRET) {
+  
+  // Only require secret if ADMIN_SECRET is set AND update=true is requested
+  // This allows read-only diagnostics without auth, but requires auth for updates
+  const requiresAuth = ADMIN_SECRET && event.queryStringParameters?.update === 'true';
+  if (requiresAuth && providedSecret !== ADMIN_SECRET) {
     return {
       statusCode: 401,
-      body: JSON.stringify({ error: 'Unauthorized: invalid admin secret' }),
+      body: JSON.stringify({ 
+        error: 'Unauthorized: admin secret required for updates',
+        hint: 'Add ?secret=YOUR_SECRET or set x-admin-secret header'
+      }),
     };
   }
 
