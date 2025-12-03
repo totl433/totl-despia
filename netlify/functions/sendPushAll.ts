@@ -304,12 +304,25 @@ export const handler: Handler = async (event) => {
     // Log Carl's device status for debugging
     if (carlPlayerId) {
       const carlSub = subs.find((s: any) => s.player_id === carlPlayerId);
+      const carlCheck = checks.find((c: any) => c.status === 'fulfilled' && (c as PromiseFulfilledResult<{ playerId: string; subscribed: boolean }>).value.playerId === carlPlayerId);
+      const carlCheckResult = carlCheck?.status === 'fulfilled' ? (carlCheck as PromiseFulfilledResult<{ playerId: string; subscribed: boolean }>).value : null;
       console.log(`[sendPushAll] Carl's device status:`, {
         player_id: carlPlayerId.slice(0, 20) + '...',
         is_active: carlSub?.is_active,
         subscribed: carlSub?.subscribed,
         included_in_send: carlIncluded,
+        subscription_check_passed: carlCheckResult?.subscribed ?? false,
+        last_active: carlSub?.last_active_at || 'unknown',
       });
+      
+      if (carlIncluded && carlCheckResult?.subscribed) {
+        console.log(`[sendPushAll] ✅ Carl's device IS included in notification send`);
+      } else {
+        console.warn(`[sendPushAll] ⚠️ Carl's device NOT included. Reason:`, {
+          in_valid_list: carlIncluded,
+          subscription_check: carlCheckResult?.subscribed ?? 'check_failed',
+        });
+      }
     }
     
     // OneSignal's recipients field is often 0 for iOS even when notifications are sent successfully
