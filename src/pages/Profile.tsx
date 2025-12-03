@@ -881,8 +881,12 @@ export default function Profile() {
                         const baseUrl = isDev 
                           ? 'https://totl-staging.netlify.app'
                           : '';
-                        const response = await fetch(`${baseUrl}/.netlify/functions/sendPushAll`, {
+                        const url = `${baseUrl}/.netlify/functions/sendPushAll`;
+                        console.log('[Profile] Sending notification to:', url);
+                        
+                        const response = await fetch(url, {
                           method: 'POST',
+                          mode: 'cors',
                           headers: {
                             'Content-Type': 'application/json',
                           },
@@ -890,6 +894,10 @@ export default function Profile() {
                             title: notificationTitle.trim(),
                             message: notificationMessage.trim(),
                           }),
+                        }).catch((fetchError: any) => {
+                          // Network error (CORS, connection refused, etc.)
+                          console.error('[Profile] Fetch error:', fetchError);
+                          throw new Error(`Network error: ${fetchError.message || 'Failed to connect to server. Make sure you're connected to the internet and the function is deployed.'}`);
                         });
 
                         // Check if response is ok before trying to parse JSON
