@@ -238,19 +238,30 @@ export const handler: Handler = async (event) => {
       });
     }
     
+    // Build notification payload
+    const notificationPayload = {
+      app_id: ONESIGNAL_APP_ID,
+      include_player_ids: validPlayerIds,
+      headings: { en: title },
+      contents: { en: message },
+      data: data ?? undefined,
+      // Add iOS-specific settings to ensure delivery
+      ios_badgeType: 'SetTo',
+      ios_badgeCount: 1,
+      // Don't filter by subscription status - we already filtered
+      // This ensures we send to all player IDs we include
+    };
+    
+    console.log(`[sendPushAll] Sending to Player IDs:`, validPlayerIds.map(id => id.slice(0, 20) + '...'));
+    console.log(`[sendPushAll] Carl's Player ID in list: ${carlPlayerId && validPlayerIds.includes(carlPlayerId) ? 'YES' : 'NO'}`);
+    
     const resp = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
       },
-      body: JSON.stringify({
-        app_id: ONESIGNAL_APP_ID,
-        include_player_ids: validPlayerIds,
-        headings: { en: title },
-        contents: { en: message },
-        data: data ?? undefined,
-      }),
+      body: JSON.stringify(notificationPayload),
     });
 
     const body = await resp.json().catch(() => ({}));
@@ -269,6 +280,22 @@ export const handler: Handler = async (event) => {
     const oneSignalErrors = body.errors || [];
     const oneSignalRecipients = body.recipients || 0;
     const oneSignalId = body.id; // OneSignal notification ID - if present, notification was created
+    
+    // Log full response for debugging Carl's issue
+    console.log(`[sendPushAll] OneSignal full response:`, JSON.stringify({
+      id: body.id,
+      recipients: body.recipients,
+      errors: body.errors,
+      invalid_player_ids: body.invalid_player_ids,
+    }, null, 2));
+    
+    // Check if Carl's Player ID is in invalid_player_ids
+    if (body.invalid_player_ids && Array.isArray(body.invalid_player_ids)) {
+      const carlInvalid = carlPlayerId && body.invalid_player_ids.includes(carlPlayerId);
+      if (carlInvalid) {
+        console.error(`[sendPushAll] ⚠️ Carl's Player ID was marked as INVALID by OneSignal!`);
+      }
+    }
     
     // OneSignal's recipients field is often 0 for iOS even when notifications are sent successfully
     // If we have a notification ID and no errors, assume it was sent successfully
@@ -313,6 +340,8 @@ export const handler: Handler = async (event) => {
       hasNotificationId: hasNotificationId,
       carlIncluded: carlIncluded,
       carlPlayerId: carlPlayerId ? carlPlayerId.slice(0, 20) + '...' : null,
+      carlInvalid: carlPlayerId && body.invalid_player_ids && body.invalid_player_ids.includes(carlPlayerId),
+      invalidPlayerIds: body.invalid_player_ids || [],
       oneSignalErrors: oneSignalErrors.length > 0 ? oneSignalErrors : undefined,
       result: body 
     });

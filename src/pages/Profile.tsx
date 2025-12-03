@@ -956,6 +956,12 @@ export default function Profile() {
                               if (result.carlPlayerId) {
                                 message += ` (Player ID: ${result.carlPlayerId})`;
                               }
+                              if (result.carlInvalid) {
+                                message += `\n⚠️ Carl's Player ID was marked as INVALID by OneSignal!`;
+                              }
+                              if (result.invalidPlayerIds && result.invalidPlayerIds.length > 0) {
+                                message += `\n\nInvalid Player IDs: ${result.invalidPlayerIds.length}`;
+                              }
                             }
                             
                             setNotificationResult(message);
