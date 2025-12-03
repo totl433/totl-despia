@@ -130,7 +130,10 @@ export const handler: Handler = async (event) => {
       .map((s: any) => s.player_id)
       .filter(Boolean);
 
-    console.log(`[sendPushAll] Found ${candidatePlayerIds.length} candidate Player IDs`);
+    // Remove duplicates (in case query returns same device multiple times)
+    const uniquePlayerIds = Array.from(new Set(candidatePlayerIds));
+
+    console.log(`[sendPushAll] Found ${uniquePlayerIds.length} candidate Player IDs (${candidatePlayerIds.length} total before deduplication)`);
 
     if (uniquePlayerIds.length === 0) {
       console.warn('[sendPushAll] No Player IDs found in database');
