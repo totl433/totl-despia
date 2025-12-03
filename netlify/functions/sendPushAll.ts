@@ -113,12 +113,13 @@ export const handler: Handler = async (event) => {
       auth: { persistSession: false },
     });
 
-    // Get all active Player IDs from database
-    console.log('[sendPushAll] Fetching all active Player IDs from database...');
+    // Get all Player IDs from database (we'll verify subscription status and update is_active)
+    // Include both active and potentially active devices to ensure we catch any that should be active
+    console.log('[sendPushAll] Fetching Player IDs from database...');
     const { data: subs, error: subErr } = await admin
       .from('push_subscriptions')
-      .select('user_id, player_id, is_active, subscribed')
-      .eq('is_active', true);
+      .select('user_id, player_id, is_active, subscribed, last_checked_at')
+      .or('is_active.eq.true,subscribed.eq.true'); // Include active OR subscribed devices
 
     if (subErr) {
       console.error('[sendPushAll] Failed to fetch subscriptions:', subErr);
@@ -131,7 +132,7 @@ export const handler: Handler = async (event) => {
 
     console.log(`[sendPushAll] Found ${candidatePlayerIds.length} candidate Player IDs`);
 
-    if (candidatePlayerIds.length === 0) {
+    if (uniquePlayerIds.length === 0) {
       console.warn('[sendPushAll] No Player IDs found in database');
       return json(200, { 
         ok: true, 
@@ -147,7 +148,7 @@ export const handler: Handler = async (event) => {
     const oneHourAgo = new Date(now - 60 * 60 * 1000).toISOString();
 
     const checks = await Promise.allSettled(
-      candidatePlayerIds.map(async (playerId: string) => {
+      uniquePlayerIds.map(async (playerId: string) => {
         const sub = subs.find((s: any) => s.player_id === playerId);
         
         // Use cached status if recently checked
@@ -159,12 +160,14 @@ export const handler: Handler = async (event) => {
         // Otherwise verify with OneSignal
         const result = await isSubscribed(playerId, ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY);
 
-        // Update DB with subscription health
+        // Update DB with subscription health and is_active status
         if (result.player) {
+          const shouldBeActive = result.subscribed && !result.player.invalid_identifier;
           await admin
             .from('push_subscriptions')
             .update({
               subscribed: result.subscribed,
+              is_active: shouldBeActive, // Ensure is_active matches subscription status
               last_checked_at: new Date().toISOString(),
               last_active_at: result.player.last_active ? new Date(result.player.last_active * 1000).toISOString() : null,
               invalid: !!result.player.invalid_identifier,
@@ -178,7 +181,7 @@ export const handler: Handler = async (event) => {
       })
     );
 
-    const validPlayerIds = candidatePlayerIds.filter((playerId, i) => {
+    const validPlayerIds = uniquePlayerIds.filter((playerId, i) => {
       const check = checks[i];
       if (check.status === 'fulfilled') {
         return (check as PromiseFulfilledResult<{ playerId: string; subscribed: boolean }>).value.subscribed;
@@ -186,7 +189,7 @@ export const handler: Handler = async (event) => {
       return false;
     });
 
-    console.log(`[sendPushAll] Filtered to ${validPlayerIds.length} subscribed Player IDs (out of ${candidatePlayerIds.length} total)`);
+    console.log(`[sendPushAll] Filtered to ${validPlayerIds.length} subscribed Player IDs (out of ${uniquePlayerIds.length} total)`);
 
     if (validPlayerIds.length === 0) {
       console.warn('[sendPushAll] No subscribed Player IDs found after filtering');
@@ -194,7 +197,7 @@ export const handler: Handler = async (event) => {
         ok: true, 
         warning: 'No subscribed devices found',
         sentTo: 0,
-        checked: candidatePlayerIds.length,
+        checked: uniquePlayerIds.length,
         result: null 
       });
     }
@@ -232,7 +235,7 @@ export const handler: Handler = async (event) => {
     return json(200, { 
       ok: true, 
       sentTo: validPlayerIds.length,
-      checked: candidatePlayerIds.length,
+      checked: uniquePlayerIds.length,
       result: body 
     });
   } catch (e: any) {

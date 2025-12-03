@@ -29,6 +29,8 @@ export default function Profile() {
   const [notificationMessage, setNotificationMessage] = useState("");
   const [sendingNotification, setSendingNotification] = useState(false);
   const [notificationResult, setNotificationResult] = useState<string | null>(null);
+  const [activatingCarl, setActivatingCarl] = useState(false);
+  const [carlActivationResult, setCarlActivationResult] = useState<string | null>(null);
   
   // Admin check
   const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
@@ -524,7 +526,12 @@ export default function Profile() {
                   setRegisterResult(null);
                   setSubscriptionDetails(null);
                   try {
-                    const res = await fetch('/.netlify/functions/checkMySubscription', {
+                    // Use staging URL in development, local path in production
+                    const isDev = import.meta.env.DEV || window.location.hostname === 'localhost';
+                    const baseUrl = isDev 
+                      ? 'https://totl-staging.netlify.app'
+                      : '';
+                    const res = await fetch(`${baseUrl}/.netlify/functions/checkMySubscription`, {
                       headers: {
                         Authorization: `Bearer ${session.access_token}`,
                       },
@@ -618,6 +625,82 @@ export default function Profile() {
             <div className="mt-6 pt-6 border-t border-slate-200">
               <h3 className="text-lg font-semibold text-slate-800 mb-3">Admin</h3>
               
+              {/* Activate Carl's Devices */}
+              <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
+                <h4 className="text-md font-semibold text-slate-800 mb-3">Activate Carl's Devices</h4>
+                <p className="text-sm text-slate-600 mb-3">
+                  Syncs Carl's devices with OneSignal and marks them as active if subscribed. Run this before sending test notifications.
+                </p>
+                {carlActivationResult && (
+                  <div className={`mb-3 rounded border px-3 py-2 text-sm ${
+                    carlActivationResult.includes('✅') 
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800' 
+                      : carlActivationResult.includes('⚠️')
+                      ? 'border-amber-200 bg-amber-50 text-amber-800'
+                      : 'border-rose-200 bg-rose-50 text-rose-700'
+                  }`}>
+                    {carlActivationResult}
+                  </div>
+                )}
+                <button
+                  onClick={async () => {
+                    setActivatingCarl(true);
+                    setCarlActivationResult(null);
+                    try {
+                      // Use staging URL in development, local path in production
+                      const isDev = import.meta.env.DEV || window.location.hostname === 'localhost';
+                      const baseUrl = isDev 
+                        ? 'https://totl-staging.netlify.app'
+                        : '';
+                      const url = `${baseUrl}/.netlify/functions/diagnoseCarlNotifications?update=true`;
+                      console.log('[Profile] Activating Carl devices, calling:', url);
+                      const response = await fetch(url, {
+                        method: 'GET',
+                        mode: 'cors',
+                      });
+                      
+                      if (!response.ok) {
+                        const errorText = await response.text().catch(() => 'Unknown error');
+                        setCarlActivationResult(`❌ Server error (${response.status}): ${errorText || 'Failed to activate devices'}`);
+                        return;
+                      }
+                      
+                      const result = await response.json();
+                      
+                      if (result.error) {
+                        setCarlActivationResult(`❌ ${result.error}`);
+                      } else {
+                        const activeCount = result.active_devices || 0;
+                        const subscribedCount = result.subscribed_devices || 0;
+                        
+                        if (activeCount > 0 && subscribedCount > 0) {
+                          setCarlActivationResult(`✅ Activated ${activeCount} device(s) (${subscribedCount} subscribed). Carl should receive notifications.`);
+                        } else if (subscribedCount > 0) {
+                          setCarlActivationResult(`⚠️ Found ${subscribedCount} subscribed device(s) but none are active. Check device status.`);
+                        } else {
+                          setCarlActivationResult(`⚠️ No subscribed devices found. Carl may need to enable notifications in iOS Settings.`);
+                        }
+                      }
+                    } catch (error: any) {
+                      console.error('[Profile] Error activating Carl devices:', error);
+                      let errorMsg = 'Failed to activate devices';
+                      if (error.message) {
+                        errorMsg = error.message;
+                      } else if (error.name === 'TypeError' && error.message?.includes('fetch')) {
+                        errorMsg = 'Network error: Could not reach server. Check your connection or try again later.';
+                      }
+                      setCarlActivationResult(`❌ Error: ${errorMsg}`);
+                    } finally {
+                      setActivatingCarl(false);
+                    }
+                  }}
+                  disabled={activatingCarl}
+                  className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {activatingCarl ? 'Activating...' : 'Activate Carl\'s Devices'}
+                </button>
+              </div>
+              
               {/* Send Notification to All Users */}
               <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200">
                 <h4 className="text-md font-semibold text-slate-800 mb-3">Send Notification to All Users</h4>
@@ -672,7 +755,12 @@ export default function Profile() {
                       setNotificationResult(null);
 
                       try {
-                        const response = await fetch('/.netlify/functions/sendPushAll', {
+                        // Use staging URL in development, local path in production
+                        const isDev = import.meta.env.DEV || window.location.hostname === 'localhost';
+                        const baseUrl = isDev 
+                          ? 'https://totl-staging.netlify.app'
+                          : '';
+                        const response = await fetch(`${baseUrl}/.netlify/functions/sendPushAll`, {
                           method: 'POST',
                           headers: {
                             'Content-Type': 'application/json',
@@ -717,7 +805,14 @@ export default function Profile() {
                           setNotificationResult(`❌ Failed to send: ${result.error || 'Unknown error'}`);
                         }
                       } catch (error: any) {
-                        setNotificationResult(`❌ Error: ${error.message || 'Failed to send notification'}`);
+                        console.error('[Profile] Error sending notification:', error);
+                        let errorMsg = 'Failed to send notification';
+                        if (error.message) {
+                          errorMsg = error.message;
+                        } else if (error.name === 'TypeError' && error.message?.includes('fetch')) {
+                          errorMsg = 'Network error: Could not reach server. Check your connection or try again later.';
+                        }
+                        setNotificationResult(`❌ Error: ${errorMsg}`);
                       } finally {
                         setSendingNotification(false);
                       }
