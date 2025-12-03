@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useMiniLeagueChat } from "../hooks/useMiniLeagueChat";
+import ChatThread, { type ChatThreadProps } from "./chat/ChatThread";
 
 type MemberNames = Map<string, string> | Record<string, string> | undefined;
 
@@ -12,6 +13,9 @@ type MiniLeagueChatBetaProps = {
 
 const formatTime = (value: string) =>
   new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+const formatDayLabel = (value: string) =>
+  new Date(value).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 
 const initials = (text?: string) => {
   if (!text) return "?";
@@ -26,14 +30,6 @@ const resolveName = (id: string, memberNames?: MemberNames) => {
   return memberNames[id] ?? "";
 };
 
-
-const getBubbleRadius = (isSelf: boolean, msg: { isSingle: boolean; isTop: boolean; isMiddle: boolean; isBottom: boolean }) => {
-  if (msg.isSingle) return '12px';
-  if (msg.isTop) return isSelf ? '12px 12px 4px 12px' : '12px 12px 12px 4px';
-  if (msg.isMiddle) return isSelf ? '12px 4px 4px 12px' : '4px 12px 12px 4px';
-  if (msg.isBottom) return isSelf ? '12px 4px 12px 12px' : '4px 12px 12px 12px';
-  return '12px';
-};
 
 function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaProps) {
   const { user } = useAuth();
@@ -53,7 +49,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputAreaRef = useRef<HTMLDivElement | null>(null);
   const [inputBottom, setInputBottom] = useState(0);
@@ -209,30 +204,66 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     }
   };
 
-  const enrichedMessages = useMemo(() => {
-    return messages.map((msg, index) => {
-      const prev = messages[index - 1];
-      const next = messages[index + 1];
-      const sameAsPrev = prev?.user_id === msg.user_id;
-      const sameAsNext = next?.user_id === msg.user_id;
-      const startsRun = !sameAsPrev;
-      const endsRun = !sameAsNext;
-      const isSingle = !sameAsPrev && !sameAsNext;
-      const isTop = startsRun && sameAsNext;
-      const isMiddle = sameAsPrev && sameAsNext;
-      const isBottom = sameAsPrev && endsRun;
-      return {
-        ...msg,
-        isSelf: msg.user_id === user?.id,
-        startsRun,
-        endsRun,
-        isSingle,
-        isTop,
-        isMiddle,
-        isBottom,
+  const currentUserDisplayName = useMemo(() => {
+    if (!user) return "";
+    const metadata = user.user_metadata ?? {};
+    return (
+      (metadata.display_name as string | undefined) ||
+      (metadata.full_name as string | undefined) ||
+      user.email ||
+      ""
+    );
+  }, [user]);
+
+  const chatGroups = useMemo<ChatThreadProps["groups"]>(() => {
+    if (!messages.length) return [];
+    const groups: ChatThreadProps["groups"] = [];
+    let lastDayKey: string | null = null;
+
+    messages.forEach((msg) => {
+      const isOwnMessage = msg.user_id === user?.id;
+      const resolvedName = resolveName(msg.user_id, memberNames);
+      const authorName = resolvedName || (isOwnMessage ? currentUserDisplayName : "");
+      const fallbackName = authorName || (isOwnMessage ? "You" : "Unknown");
+      const avatarInitials = !isOwnMessage ? initials(fallbackName) : undefined;
+
+      const createdDate = new Date(msg.created_at);
+      const dayKey = createdDate.toDateString();
+      const shouldLabelDay = dayKey !== lastDayKey;
+      if (shouldLabelDay) {
+        lastDayKey = dayKey;
+      }
+
+      const messagePayload = {
+        id: msg.id,
+        text: msg.content,
+        time: formatTime(msg.created_at),
+        status: msg.status && msg.status !== "sent" ? msg.status : undefined,
       };
+
+      const lastGroup = groups[groups.length - 1];
+      const canAppendToLast =
+        lastGroup &&
+        !shouldLabelDay &&
+        lastGroup.isOwnMessage === isOwnMessage &&
+        lastGroup.author === fallbackName;
+
+      if (canAppendToLast) {
+        lastGroup.messages.push(messagePayload);
+      } else {
+        groups.push({
+          id: msg.id,
+          author: fallbackName,
+          avatarInitials,
+          isOwnMessage,
+          dayLabel: shouldLabelDay ? formatDayLabel(msg.created_at) : undefined,
+          messages: [messagePayload],
+        });
+      }
     });
-  }, [messages, user?.id]);
+
+    return groups;
+  }, [currentUserDisplayName, memberNames, messages, user?.id]);
 
   const notifyRecipients = useCallback(
     async (text: string) => {
@@ -307,70 +338,13 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           </button>
         )}
 
-        {enrichedMessages.length === 0 && !loading ? (
+        {chatGroups.length === 0 && !loading ? (
           <div className="text-center text-sm text-slate-500 mt-8">
             Say hi to kick off this chat!
           </div>
         ) : (
-          enrichedMessages.map((msg) => {
-            const displayName = resolveName(msg.user_id, memberNames) || "Unknown";
-            const showAvatar = !msg.isSelf && (msg.isSingle || msg.isBottom);
-            const rowClasses = msg.isSelf ? "flex justify-end" : "flex items-end gap-2";
-            const bubbleWrapperClasses = [
-              "flex flex-col",
-              msg.isSelf ? "items-end ml-auto" : "items-start",
-            ]
-              .filter(Boolean)
-              .join(" ");
-
-            return (
-              <div
-                key={msg.id}
-                className={rowClasses}
-                style={{ marginTop: msg.startsRun ? 24 : 4 }}
-              >
-                {!msg.isSelf && (
-                  <div className="flex-shrink-0 w-8 h-8 flex justify-center self-end">
-                    {showAvatar ? (
-                      <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500">
-                        {initials(displayName)}
-                      </div>
-                    ) : (
-                      <div className="w-8 h-8" />
-                    )}
-                  </div>
-                )}
-                <div className={bubbleWrapperClasses} style={{ maxWidth: "72%" }}>
-                  <div
-                    className={`w-full px-3 py-2 text-sm leading-snug ${
-                      msg.isSelf ? "bg-[#1C8376] text-white" : "bg-white text-slate-800"
-                    }`}
-                    style={{ borderRadius: getBubbleRadius(msg.isSelf, msg) }}
-                  >
-                    <div className={`flex flex-col gap-1 ${msg.isSelf ? "items-end text-right" : "items-start text-left"}`}>
-                      {msg.startsRun && !msg.isSelf && (
-                        <div className={`text-[11px] font-semibold ${msg.isSelf ? "text-white/80" : "text-slate-600"}`}>
-                          {displayName}
-                        </div>
-                      )}
-                      <div className="whitespace-pre-wrap break-words">{msg.content}</div>
-                      <div className="text-[11px] text-[#DCDCDD]">
-                        {formatTime(msg.created_at)}
-                      </div>
-                    </div>
-                  </div>
-                  {(msg.status === "sending" || msg.status === "error") && (
-                    <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-1">
-                      {msg.status === "sending" && <span>Sending…</span>}
-                      {msg.status === "error" && <span className="text-red-500">Failed</span>}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })
+          <ChatThread groups={chatGroups} />
         )}
-        <div ref={bottomRef} style={{ height: "1px", width: "100%" }} />
       </div>
 
       <div

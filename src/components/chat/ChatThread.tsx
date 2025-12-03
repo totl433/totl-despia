@@ -1,9 +1,11 @@
+import type { ReactNode } from "react";
 import MessageStack from "./MessageStack";
 
 type ChatThreadMessage = {
   id: string;
-  text: string;
+  text: ReactNode;
   time: string;
+  status?: "sending" | "error";
 };
 
 type ChatThreadGroup = {

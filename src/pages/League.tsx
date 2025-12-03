@@ -3824,7 +3824,7 @@ ${shareUrl}`;
                         setTab("chat-beta");
               }}
               className={
-                "flex-1 px-3 sm:px-6 py-3 text-sm font-semibold transition-colors relative " +
+                "flex-1 px-3 sm:px-6 py-3 text-xs font-semibold transition-colors relative " +
                 (tab === "chat-beta" ? "text-[#1C8376]" : "text-slate-400")
               }
             >

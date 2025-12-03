@@ -25,7 +25,7 @@ export function MessageStack({
     <div className={`flex items-end gap-3 w-full ${alignment}`}>
       {!isOwnMessage ? (
         <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[13px] font-semibold text-slate-500 flex-shrink-0">
-          {(avatarInitials || author.charAt(0)).toUpperCase()}
+            {(avatarInitials || author.charAt(0)).toUpperCase()}
         </div>
       ) : (
         <div className="w-8" />
@@ -44,13 +44,13 @@ export function MessageStack({
 
           return (
             <div key={message.id} className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}>
-              <MessageBubble
-                author={!isOwnMessage && index === 0 ? author : undefined}
-                text={message.text}
-                time={message.time}
-                isOwnMessage={isOwnMessage}
-                shape={shape}
-              />
+            <MessageBubble
+              author={!isOwnMessage && index === 0 ? author : undefined}
+              text={message.text}
+              time={message.time}
+              isOwnMessage={isOwnMessage}
+              shape={shape}
+            />
             </div>
           );
         })}
