@@ -107,7 +107,8 @@ export const handler: Handler = async (event) => {
     // Check each device's OneSignal status
     for (const sub of subscriptions) {
       const deviceInfo: any = {
-        player_id: sub.player_id?.slice(0, 20) + '...',
+        player_id: sub.player_id, // Return full Player ID for API calls
+        player_id_short: sub.player_id?.slice(0, 20) + '...', // Short version for display
         platform: sub.platform,
         is_active: sub.is_active,
         subscribed_in_db: sub.subscribed,
