@@ -8,6 +8,7 @@ export interface PushSubscriptionResult {
   ok: boolean;
   reason?: 'permission-denied' | 'no-player-id' | 'api-not-available' | 'no-session' | 'unknown';
   playerId?: string;
+  error?: string; // Additional error details
 }
 
 /**
@@ -108,7 +109,13 @@ export async function ensurePushSubscribed(
       return { ok: false, reason: 'no-session' };
     }
 
-    const res = await fetch('/.netlify/functions/registerPlayer', {
+    // Use staging URL in development, local path in production
+    const isDev = import.meta.env.DEV || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
+    const baseUrl = isDev 
+      ? 'https://totl-staging.netlify.app'
+      : '';
+    
+    const res = await fetch(`${baseUrl}/.netlify/functions/registerPlayer`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -121,9 +128,28 @@ export async function ensurePushSubscribed(
     });
 
     if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      console.error('[Push] Failed to register device:', errorData);
-      return { ok: false, reason: 'unknown' };
+      let errorData: any = {};
+      try {
+        const text = await res.text();
+        errorData = text ? JSON.parse(text) : {};
+      } catch (e) {
+        errorData = { error: `HTTP ${res.status}: ${res.statusText}` };
+      }
+      console.error('[Push] Failed to register device:', {
+        status: res.status,
+        statusText: res.statusText,
+        error: errorData,
+      });
+      
+      // Provide more specific error reasons
+      if (res.status === 401) {
+        return { ok: false, reason: 'no-session' };
+      }
+      if (res.status === 400 && errorData.error?.includes('playerId')) {
+        return { ok: false, reason: 'no-player-id' };
+      }
+      
+      return { ok: false, reason: 'unknown', error: errorData.error || `Server error (${res.status})` };
     }
 
     console.log('[Push] Successfully registered device');

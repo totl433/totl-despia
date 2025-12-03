@@ -472,7 +472,7 @@ export default function Profile() {
                         'no-player-id': 'OneSignal not initialized. Please wait a few seconds and try again.',
                         'api-not-available': 'Not available in browser. Please use the native app.',
                         'no-session': 'Not signed in. Please sign in and try again.',
-                        'unknown': 'Unknown error. Please try again or contact support.',
+                        'unknown': result.error || 'Unknown error. Please try again or contact support.',
                       };
                       setRegisterResult(`⚠️ ${reasonMap[result.reason || 'unknown'] || 'Failed to enable notifications'}`);
                     }
