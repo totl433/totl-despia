@@ -862,7 +862,17 @@ export default function Profile() {
                           if (result.warning) {
                             setNotificationResult(`⚠️ ${result.warning} (checked ${result.checked || 0} device(s))`);
                           } else {
-                            setNotificationResult(`✅ Notification sent to ${result.sentTo || 0} device(s)`);
+                            const sentTo = result.sentTo || 0;
+                            const expected = result.expected || sentTo;
+                            const errors = result.oneSignalErrors;
+                            
+                            if (errors && errors.length > 0) {
+                              setNotificationResult(`⚠️ Sent to ${sentTo} device(s) (expected ${expected}). OneSignal errors: ${errors.join(', ')}`);
+                            } else if (sentTo < expected) {
+                              setNotificationResult(`⚠️ Sent to ${sentTo} device(s) (expected ${expected}). Some devices may not be subscribed.`);
+                            } else {
+                              setNotificationResult(`✅ Notification sent to ${sentTo} device(s)`);
+                            }
                             // Clear the message after successful send
                             setNotificationMessage('');
                           }

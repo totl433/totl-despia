@@ -204,6 +204,15 @@ export const handler: Handler = async (event) => {
 
     // Send notification to subscribed devices
     console.log(`[sendPushAll] Sending notification to ${validPlayerIds.length} subscribed devices...`);
+    
+    // Log which user IDs are included (for debugging Carl's issue)
+    const userIdsIncluded = new Set<string>();
+    validPlayerIds.forEach(playerId => {
+      const sub = subs.find((s: any) => s.player_id === playerId);
+      if (sub?.user_id) userIdsIncluded.add(sub.user_id);
+    });
+    console.log(`[sendPushAll] Sending to ${userIdsIncluded.size} unique users:`, Array.from(userIdsIncluded));
+    
     const resp = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: {
@@ -231,11 +240,23 @@ export const handler: Handler = async (event) => {
       });
     }
 
-    console.log(`[sendPushAll] Successfully sent notification to ${validPlayerIds.length} devices`);
+    // Check for errors in the response even if HTTP status is OK
+    const oneSignalErrors = body.errors || [];
+    const actualRecipients = body.recipients || 0;
+    
+    if (oneSignalErrors.length > 0) {
+      console.warn('[sendPushAll] OneSignal returned errors:', oneSignalErrors);
+      console.warn('[sendPushAll] Actual recipients:', actualRecipients, 'Expected:', validPlayerIds.length);
+    }
+    
+    console.log(`[sendPushAll] OneSignal response: ${actualRecipients} recipients, ${oneSignalErrors.length} errors`);
+    
     return json(200, { 
       ok: true, 
-      sentTo: validPlayerIds.length,
+      sentTo: actualRecipients, // Use actual recipients from OneSignal, not our count
+      expected: validPlayerIds.length,
       checked: uniquePlayerIds.length,
+      oneSignalErrors: oneSignalErrors.length > 0 ? oneSignalErrors : undefined,
       result: body 
     });
   } catch (e: any) {
