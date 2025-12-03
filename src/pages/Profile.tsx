@@ -950,6 +950,14 @@ export default function Profile() {
                               message += `\n\nUsers: ${userNames.slice(0, 5).join(', ')} and ${userNames.length - 5} more`;
                             }
                             
+                            // Add Carl-specific info if available
+                            if (result.carlIncluded !== undefined) {
+                              message += `\n\nCarl included: ${result.carlIncluded ? '✅ Yes' : '❌ No'}`;
+                              if (result.carlPlayerId) {
+                                message += ` (Player ID: ${result.carlPlayerId})`;
+                              }
+                            }
+                            
                             setNotificationResult(message);
                             // Clear the message after successful send
                             setNotificationMessage('');

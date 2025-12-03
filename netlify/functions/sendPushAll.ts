@@ -211,6 +211,8 @@ export const handler: Handler = async (event) => {
     // Map player IDs to user IDs (for debugging Carl's issue)
     const playerIdToUserId = new Map<string, string>();
     const userIdsIncluded = new Set<string>();
+    const CARL_USER_ID = 'f8a1669e-2512-4edf-9c21-b9f87b3efbe2';
+    
     validPlayerIds.forEach(playerId => {
       const sub = subs.find((s: any) => s.player_id === playerId);
       if (sub?.user_id) {
@@ -218,7 +220,23 @@ export const handler: Handler = async (event) => {
         playerIdToUserId.set(playerId, sub.user_id);
       }
     });
+    
+    // Check if Carl's Player ID is included
+    const carlPlayerId = subs.find((s: any) => s.user_id === CARL_USER_ID)?.player_id;
+    const carlIncluded = carlPlayerId && validPlayerIds.includes(carlPlayerId);
+    
     console.log(`[sendPushAll] Sending to ${userIdsIncluded.size} unique users:`, Array.from(userIdsIncluded));
+    console.log(`[sendPushAll] Carl's Player ID: ${carlPlayerId ? carlPlayerId.slice(0, 20) + '...' : 'NOT FOUND'}`);
+    console.log(`[sendPushAll] Carl included in send: ${carlIncluded ? 'YES' : 'NO'}`);
+    if (carlPlayerId && !carlIncluded) {
+      console.warn(`[sendPushAll] ⚠️ Carl's Player ID exists but was filtered out! Checking why...`);
+      const carlSub = subs.find((s: any) => s.player_id === carlPlayerId);
+      console.warn(`[sendPushAll] Carl's device status:`, {
+        is_active: carlSub?.is_active,
+        subscribed: carlSub?.subscribed,
+        player_id: carlPlayerId.slice(0, 20) + '...',
+      });
+    }
     
     const resp = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
@@ -293,6 +311,8 @@ export const handler: Handler = async (event) => {
       userIds: userIdsArray,
       userNames: userNames,
       hasNotificationId: hasNotificationId,
+      carlIncluded: carlIncluded,
+      carlPlayerId: carlPlayerId ? carlPlayerId.slice(0, 20) + '...' : null,
       oneSignalErrors: oneSignalErrors.length > 0 ? oneSignalErrors : undefined,
       result: body 
     });
