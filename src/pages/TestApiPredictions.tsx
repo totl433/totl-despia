@@ -1835,8 +1835,8 @@ export default function TestApiPredictions() {
                         awayScore: liveScore.awayScore,
                         home_team: liveScore.home_team,
                         away_team: liveScore.away_team,
-                        goals: liveScore.goals,
-                        red_cards: liveScore.red_cards,
+                        goals: liveScore.goals ?? undefined,
+                        red_cards: liveScore.red_cards ?? undefined,
                       } : null;
 
                       return (
