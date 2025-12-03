@@ -33,7 +33,7 @@ export function MessageStack({
         <div className="w-8" />
       )}
 
-      <div className="flex flex-col gap-1 flex-1">
+      <div className="flex flex-col gap-1">
         {messages.map((message, index) => {
           const shape: "single" | "top" | "middle" | "bottom" =
             messages.length === 1

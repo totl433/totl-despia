@@ -34,11 +34,11 @@ export function MessageBubble({
   const alignment = isOwnMessage ? "items-end text-right" : "items-start text-left";
   const bubbleClasses = isOwnMessage ? "bg-[#1C8376] text-white" : "bg-white text-slate-900";
   const shapeClasses = isOwnMessage ? outgoingShape : incomingShape;
-  const maxWidth = "max-w-[70%]";
+  const maxWidth = "max-w-[72%]";
 
   return (
     <div
-      className={`inline-block px-3 py-2 text-sm leading-snug shadow-sm ${maxWidth} whitespace-normal break-words ${bubbleClasses} ${shapeClasses[shape]}`}
+      className={`inline-flex w-fit px-3 py-2 text-sm leading-snug shadow-sm ${maxWidth} whitespace-normal break-words ${bubbleClasses} ${shapeClasses[shape]}`}
     >
       <div className={`flex flex-col gap-1 ${alignment}`}>
         {author && !isOwnMessage && (
