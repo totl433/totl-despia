@@ -128,6 +128,14 @@ export const handler: Handler = async (event) => {
         deviceInfo.notification_types = player?.notification_types;
         deviceInfo.last_active = player?.last_active ? new Date(player.last_active * 1000).toISOString() : null;
         deviceInfo.last_active_timestamp = player?.last_active || null;
+        deviceInfo.identifier = player?.identifier ? player.identifier.substring(0, 30) + '...' : null; // Show if token exists
+        deviceInfo.full_player_data = player ? {
+          identifier: player.identifier ? 'present' : 'missing',
+          invalid_identifier: player.invalid_identifier,
+          notification_types: player.notification_types,
+          last_active: player.last_active,
+          device_type: player.device_type,
+        } : null;
 
         // Update database if status changed (or if forceUpdate is true)
         const shouldBeActive = subscribed && !deviceInfo.invalid;
