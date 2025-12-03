@@ -15,6 +15,9 @@ export default function ScoreIndicator({
     <div className="mb-4 rounded-xl border bg-gradient-to-br from-[#1C8376]/5 to-blue-50/50 shadow-sm px-6 py-5">
       <div className="text-center">
         <div className="flex items-center justify-center gap-3 mb-3">
+          <svg className="w-5 h-5 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
           <div className="text-4xl font-extrabold text-[#1C8376]">
             {score}/{total}
           </div>

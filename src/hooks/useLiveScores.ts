@@ -8,6 +8,7 @@ export interface Goal {
   scorerId: number | null;
   team: string | null;
   teamId: number | null;
+  isOwnGoal?: boolean;
 }
 
 export interface RedCard {

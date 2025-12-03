@@ -1028,9 +1028,15 @@ export const handler: Handler = async (event, context) => {
 
         const isCorrect = pick.pick === result;
         const title = `FT: ${fixture.home_team} ${homeScore}-${awayScore} ${fixture.away_team}`;
+        
+        // Format percentage message: remove brackets, add "Only" if 20% or below
+        const percentageText = correctPercentage <= 20
+          ? `Only ${correctPercentage}% of players got this fixture correct`
+          : `${correctPercentage}% of players got this fixture correct`;
+        
         const message = isCorrect 
-          ? `✅ Got it right! (${correctPercentage}% of users got this fixture correct)` 
-          : `❌ Wrong pick (${correctPercentage}% of users got this fixture correct)`;
+          ? `✅ Got it right! ${percentageText}` 
+          : `❌ Wrong pick ${percentageText}`;
 
         const result2 = await sendOneSignalNotification(
           playerIds,
@@ -1050,15 +1056,48 @@ export const handler: Handler = async (event, context) => {
       }
 
       // Check if all games in this GW are finished (end of gameweek)
-      // Only check if this is the last game to finish
-      const { data: allLiveScores } = await supabase
-        .from('live_scores')
-        .select('api_match_id, status, gw')
+      // We need to check ALL fixtures for the GW, not just ones in live_scores
+      let allFinished = false;
+      
+      // Get ALL fixtures for this GW
+      const { data: allFixtures } = await supabase
+        .from('app_fixtures')
+        .select('api_match_id, fixture_index')
         .eq('gw', fixtureGw);
       
-      const allFinished = (allLiveScores || []).every((score: any) => 
-        score.status === 'FINISHED' || score.status === 'FT'
-      );
+      if (allFixtures && allFixtures.length > 0) {
+        // Filter to only fixtures with api_match_id (these are the ones we track)
+        const fixturesWithApiId = allFixtures.filter((f: any) => f.api_match_id);
+        
+        if (fixturesWithApiId.length > 0) {
+          // Get live_scores for all fixtures with api_match_id
+          const apiMatchIds = fixturesWithApiId.map((f: any) => f.api_match_id);
+          const { data: allLiveScores } = await supabase
+            .from('live_scores')
+            .select('api_match_id, status')
+            .in('api_match_id', apiMatchIds);
+          
+          // Check that ALL fixtures with api_match_id have finished live_scores
+          const finishedScores = (allLiveScores || []).filter((score: any) => 
+            score.status === 'FINISHED' || score.status === 'FT'
+          );
+          
+          // All fixtures with api_match_id must have finished live_scores
+          allFinished = finishedScores.length === fixturesWithApiId.length;
+          
+          if (allFinished) {
+            console.log(`[sendScoreNotificationsWebhook] ✅ All ${fixturesWithApiId.length} fixtures with API IDs are finished for GW ${fixtureGw}`);
+          } else {
+            console.log(`[sendScoreNotificationsWebhook] ⏳ Not all fixtures finished: ${finishedScores.length}/${fixturesWithApiId.length} finished for GW ${fixtureGw}`);
+          }
+        } else {
+          // No fixtures with api_match_id, can't determine if GW is finished
+          console.log(`[sendScoreNotificationsWebhook] ⚠️ No fixtures with api_match_id for GW ${fixtureGw}, skipping end-of-GW check`);
+        }
+      } else {
+        // No fixtures found for this GW
+        console.log(`[sendScoreNotificationsWebhook] ⚠️ No fixtures found for GW ${fixtureGw}, skipping end-of-GW check`);
+      }
       
       if (allFinished) {
         console.log(`[sendScoreNotificationsWebhook] 🎉 All games finished for GW ${fixtureGw} - sending end of GW notification`);

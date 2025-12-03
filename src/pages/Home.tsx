@@ -1579,19 +1579,59 @@ export default function HomePage() {
   }, [fixtures, liveScores]);
 
   // Calculate streak data - optimized
+  // Load user submissions to check streak (needed for current GW that hasn't finished yet)
+  const [userSubmissions, setUserSubmissions] = useState<Set<number>>(new Set());
+  
+  useEffect(() => {
+    if (!user?.id || !latestGw) {
+      setUserSubmissions(new Set());
+      return;
+    }
+    
+    let alive = true;
+    (async () => {
+      // Get all submissions for the user
+      const { data: submissions } = await supabase
+        .from('app_gw_submissions')
+        .select('gw')
+        .eq('user_id', user.id)
+        .order('gw', { ascending: false });
+      
+      if (alive && submissions) {
+        setUserSubmissions(new Set(submissions.map((s: any) => s.gw)));
+      }
+    })();
+    
+    return () => {
+      alive = false;
+    };
+  }, [user?.id, latestGw]);
+  
   const userStreakData = useMemo(() => {
     if (!user?.id || !latestGw) return null;
     
     const userGwPoints = gwPoints.filter(gp => gp.user_id === user.id).sort((a, b) => b.gw - a.gw);
-    if (userGwPoints.length === 0) return null;
     
+    // Calculate streak: check both points (for finished GWs) and submissions (for current/unfinished GWs)
     let streak = 0;
     let expectedGw = latestGw;
-    const userGwSet = new Set(userGwPoints.map(gp => gp.gw));
     
-    while (expectedGw >= 1 && userGwSet.has(expectedGw)) {
-      streak++;
-      expectedGw--;
+    // Create sets for faster lookup
+    const userGwPointsSet = new Set(userGwPoints.map(gp => gp.gw));
+    
+    // Count consecutive gameweeks backwards from latestGw
+    // A GW counts if user has either points (finished) OR submissions (played but not finished)
+    while (expectedGw >= 1) {
+      const hasPoints = userGwPointsSet.has(expectedGw);
+      const hasSubmission = userSubmissions.has(expectedGw);
+      
+      if (hasPoints || hasSubmission) {
+        streak++;
+        expectedGw--;
+      } else {
+        // Break streak if we hit a GW with no points and no submission
+        break;
+      }
     }
     
     const last10GwScores: Array<{ gw: number; score: number | null }> = [];
@@ -1608,7 +1648,7 @@ export default function HomePage() {
       streak,
       last10GwScores: last10GwScores.reverse()
     };
-  }, [user?.id, gwPoints, latestGw]);
+  }, [user?.id, gwPoints, latestGw, userSubmissions]);
 
   // Sort leagues by unread - optimized, and filter out "API Test" league
   const sortedLeagues = useMemo(() => {

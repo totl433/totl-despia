@@ -12,6 +12,7 @@ import ScoreIndicator from "../components/predictions/ScoreIndicator";
 import ConfirmationModal from "../components/predictions/ConfirmationModal";
 import DateHeader from "../components/DateHeader";
 import { useLiveScores } from "../hooks/useLiveScores";
+import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 
 // Generate a color from a string (team name or code)
 function stringToColor(str: string): string {
@@ -1812,352 +1813,43 @@ export default function TestApiPredictions() {
                     {group.items.map((fixture, index)=>{
                       const pick = picks.get(fixture.fixture_index);
                       const liveScore = liveScores[fixture.fixture_index];
-                      // PAUSED is halftime - include it for score counting but separate for animations
-                      const isLive = liveScore && liveScore.status === 'IN_PLAY';
-                      const isHalfTime = liveScore && (liveScore.status === 'PAUSED' || liveScore.status === 'HALF_TIME' || liveScore.status === 'HT');
-                      const isFinished = liveScore && liveScore.status === 'FINISHED';
-                      // For score counting purposes, include halftime as "ongoing"
-                      const isOngoing = isLive || isHalfTime;
-                      
-                      // Always use medium names from teamNames.ts for consistency
-                      const homeKey = fixture.home_team || fixture.home_name || fixture.home_code || "";
-                      const awayKey = fixture.away_team || fixture.away_name || fixture.away_code || "";
-                      const homeName = getMediumName(homeKey);
-                      const awayName = getMediumName(awayKey);
-                      
-                      const kickoff = fixture.kickoff_time
-                        ? (() => {
-                            const d = new Date(fixture.kickoff_time);
-                            const hh = String(d.getUTCHours()).padStart(2, '0');
-                            const mm = String(d.getUTCMinutes()).padStart(2, '0');
-                            return `${hh}:${mm}`;
-                          })()
-                        : "—";
 
-                      const getButtonState = (side: "H" | "D" | "A") => {
-                        const isPicked = pick?.pick === side;
-                        let isCorrectResult = false;
-                        if (liveScore) {
-                          // For live/finished matches, show which outcome is correct
-                          if (side === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrectResult = true;
-                          else if (side === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrectResult = true;
-                          else if (side === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrectResult = true;
-                        }
-                        // Don't show results for non-live games - they should just show picked state
-                        const isCorrect = isPicked && isCorrectResult;
-                        // Wrong if picked but not correct result (for both live/halftime and finished games)
-                        const isWrong = isPicked && (isOngoing || isFinished) && !isCorrectResult;
-                        return { isPicked, isCorrectResult, isCorrect, isWrong };
+                      // Convert fixture to FixtureCard format
+                      const fixtureCardFixture: FixtureCardFixture = {
+                        id: fixture.id,
+                        gw: fixture.gw,
+                        fixture_index: fixture.fixture_index,
+                        home_code: fixture.home_code,
+                        away_code: fixture.away_code,
+                        home_team: fixture.home_team,
+                        away_team: fixture.away_team,
+                        home_name: fixture.home_name,
+                        away_name: fixture.away_name,
+                        kickoff_time: fixture.kickoff_time,
+                        api_match_id: fixture.api_match_id,
                       };
 
-                      const homeState = getButtonState("H");
-                      const drawState = getButtonState("D");
-                      const awayState = getButtonState("A");
+                      // Convert liveScore to FixtureCard format
+                      const fixtureCardLiveScore: FixtureCardLiveScore | null = liveScore ? {
+                        status: liveScore.status,
+                        minute: liveScore.minute,
+                        homeScore: liveScore.homeScore,
+                        awayScore: liveScore.awayScore,
+                        home_team: liveScore.home_team,
+                        away_team: liveScore.away_team,
+                        goals: liveScore.goals,
+                        red_cards: liveScore.red_cards,
+                      } : null;
 
-                      // Button styling helper (matching Home Page)
-                      const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }, _side?: "H" | "D" | "A") => {
-                        const base = "h-16 rounded-xl border text-sm font-medium transition-all flex items-center justify-center select-none";
-                        // PRIORITY: Check live/ongoing FIRST - never show shiny during live games
-                        if (isLive || isOngoing) {
-                          // Game is live or ongoing
-                          if (state.isCorrect) {
-                            // Live and correct - pulse in emerald green
-                            return `${base} bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-lg shadow-emerald-500/50`;
-                          } else if (state.isWrong) {
-                            // Wrong pick in live game - keep green tab but show strikethrough
-                            return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
-                          } else if (state.isPicked) {
-                            // While game is live and picked but not correct yet - show green tab
-                            return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
-                          } else if (state.isCorrectResult && !state.isPicked) {
-                            // Correct outcome (but user didn't pick it) - gently pulse to show it's currently correct
-                            return `${base} bg-slate-50 text-slate-600 border-2 border-slate-300 animate-pulse`;
-                          } else {
-                            return `${base} bg-slate-50 text-slate-600 border-slate-200`;
-                          }
-                        } else if (isFinished) {
-                          // Game is finished (not live)
-                          if (state.isCorrect) {
-                            // Shiny gradient for correct finished picks (no green border)
-                            return `${base} bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]`;
-                          } else if (state.isWrong) {
-                            // Wrong pick in finished game - keep green tab with strikethrough
-                            return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
-                          } else if (state.isCorrectResult && !state.isPicked) {
-                            // Correct outcome (but user didn't pick it) - grey with thick green border
-                            return `${base} bg-slate-50 text-slate-600 border-4 border-emerald-600`;
-                          } else if (state.isPicked) {
-                            // Picked but result doesn't match (shouldn't happen if logic is correct)
-                            return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
-                          } else {
-                            return `${base} bg-slate-50 text-slate-600 border-slate-200`;
-                          }
-                        } else {
-                          // Game hasn't started yet
-                          if (state.isPicked) {
-                            // Picked but game hasn't started yet - show green tab
-                            return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
-                          } else {
-                            return `${base} bg-slate-50 text-slate-600 border-slate-200`;
-                          }
-                        }
-                      };
-                      
                       return (
                         <li key={fixture.id} className={index > 0 ? "border-t" : ""}>
-                          <div className="p-4 bg-white relative">
-                            {/* LIVE indicator - red dot top left for live games, always says LIVE */}
-                            {(isLive || isHalfTime) && (
-                              <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
-                                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                                <span className="text-xs font-bold text-red-600">
-                                  LIVE
-                                </span>
-                              </div>
-                            )}
-                            
-                            {/* Fixture display - same as Home Page and League Page */}
-                            <div className={`flex flex-col px-2 pb-3 ${isOngoing ? 'pt-4' : 'pt-1'}`}>
-                              <div className="flex items-start justify-between">
-                                {/* Home Team */}
-                                <div className="flex-1 flex flex-col items-end">
-                                  <div className="flex items-center gap-1">
-                                    <div className={`break-words ${liveScore && (isOngoing || isFinished) && liveScore.homeScore > liveScore.awayScore ? 'font-bold' : 'font-medium'}`}>{homeName}</div>
-                                    <img 
-                                      src={`/assets/badges/${(fixture.home_code || homeKey).toUpperCase()}.png`} 
-                                      alt={homeName}
-                                      className="w-5 h-5"
-                                      onError={(e) => {
-                                        (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
-                                      }}
-                                    />
-                                  </div>
-                                  {/* Home Team Goals and Red Cards (chronologically sorted) */}
-                                  {liveScore && (isOngoing || isFinished) && (() => {
-                                    // Use API's goal.team directly - it already tells us which team the goal counts for (handles own goals correctly)
-                                    // goal.team is normalized by pollLiveScores using normalizeTeamName, same as liveScore.home_team
-                                    const homeGoals = (liveScore.goals || []).filter((goal: any) => {
-                                      if (!goal || !goal.team) return false;
-                                      // Normalize both sides for comparison (handle any edge cases)
-                                      const goalTeam = getMediumName(goal.team);
-                                      const homeTeam = getMediumName(liveScore.home_team || homeName);
-                                      const matches = goalTeam === homeTeam || goal.team === liveScore.home_team;
-                                      if (!matches && goal.team && liveScore.home_team) {
-                                        console.log(`[TestApiPredictions] Goal team mismatch: goal.team="${goal.team}" (normalized: "${goalTeam}") vs liveScore.home_team="${liveScore.home_team}" (normalized: "${homeTeam}") for scorer ${goal.scorer} ${goal.minute}'`);
-                                      }
-                                      return matches;
-                                    });
-                                    
-                                    // Filter red cards for home team
-                                    const homeRedCards = (liveScore.red_cards || []).filter((card: any) => {
-                                      const cardTeam = card.team || '';
-                                      const normalizedCardTeam = getMediumName(cardTeam);
-                                      return normalizedCardTeam === homeName || normalizedCardTeam === getMediumName(fixture.home_team || '');
-                                    });
-                                    
-                                    // Create combined timeline of goals and red cards
-                                    type TimelineEvent = { type: 'goal' | 'red_card'; minute: number | null; scorer?: string; player?: string; minutes?: number[] };
-                                    const timeline: TimelineEvent[] = [];
-                                    
-                                    // Add goals (grouped by scorer)
-                                    const goalsByScorer = new Map<string, number[]>();
-                                    homeGoals.forEach((goal: any) => {
-                                      const scorer = goal.scorer || 'Unknown';
-                                      const minute = goal.minute;
-                                      if (!goalsByScorer.has(scorer)) {
-                                        goalsByScorer.set(scorer, []);
-                                      }
-                                      if (minute !== null && minute !== undefined) {
-                                        goalsByScorer.get(scorer)!.push(minute);
-                                      }
-                                    });
-                                    
-                                    // Add each goal group as a timeline event (use first minute for sorting)
-                                    goalsByScorer.forEach((minutes, scorer) => {
-                                      const sortedMinutes = minutes.sort((a, b) => a - b);
-                                      timeline.push({
-                                        type: 'goal',
-                                        minute: sortedMinutes[0],
-                                        scorer,
-                                        minutes: sortedMinutes,
-                                      });
-                                    });
-                                    
-                                    // Add red cards
-                                    homeRedCards.forEach((card: any) => {
-                                      timeline.push({
-                                        type: 'red_card',
-                                        minute: card.minute,
-                                        player: card.player || 'Unknown',
-                                      });
-                                    });
-                                    
-                                    // Sort by minute (null minutes go to end)
-                                    timeline.sort((a, b) => {
-                                      if (a.minute === null) return 1;
-                                      if (b.minute === null) return -1;
-                                      return a.minute - b.minute;
-                                    });
-                                    
-                                    if (timeline.length === 0) return null;
-                                    
-                                    return (
-                                      <div className="mt-3 mb-2 flex flex-col items-end gap-0.5">
-                                        {timeline.map((event, idx) => {
-                                          if (event.type === 'goal') {
-                                            return (
-                                              <span key={idx} className="text-[11px] text-slate-600">
-                                                {event.scorer} {event.minutes!.sort((a, b) => a - b).map(m => `${m}'`).join(', ')}
-                                              </span>
-                                            );
-                                          } else {
-                                            return (
-                                              <span key={idx} className="text-[11px] text-slate-600">
-                                                🟥 {event.player} {event.minute}'
-                                              </span>
-                                            );
-                                          }
-                                        })}
-                                      </div>
-                                    );
-                                  })()}
-                                </div>
-                                
-                                {/* Score / Kickoff Time */}
-                                <div className="px-4 flex flex-col items-center">
-                                  {liveScore && (isOngoing || isFinished) ? (
-                                    <>
-                                      <span className="font-bold text-base text-slate-900">
-                                        {liveScore.homeScore} - {liveScore.awayScore}
-                                      </span>
-                                      <span className={`text-[10px] font-semibold mt-0.5 ${isOngoing ? 'text-red-600' : 'text-slate-500'}`}>
-                                        {formatMinuteDisplay(liveScore.status, liveScore.minute, true)}
-                                      </span>
-                                    </>
-                                  ) : (
-                                    <span className="text-slate-500 text-sm">{kickoff}</span>
-                                  )}
-                                </div>
-                                
-                                {/* Away Team */}
-                                <div className="flex-1 flex flex-col items-start">
-                                  <div className="flex items-center gap-1">
-                                    <img 
-                                      src={`/assets/badges/${(fixture.away_code || awayKey).toUpperCase()}.png`} 
-                                      alt={awayName}
-                                      className="w-5 h-5"
-                                      onError={(e) => {
-                                        (e.currentTarget as HTMLImageElement).style.opacity = "0.35";
-                                      }}
-                                    />
-                                    <div className={`break-words ${liveScore && (isOngoing || isFinished) && liveScore.awayScore > liveScore.homeScore ? 'font-bold' : 'font-medium'}`}>{awayName}</div>
-                                  </div>
-                                  {/* Away Team Goals and Red Cards (chronologically sorted) */}
-                                  {liveScore && (isOngoing || isFinished) && (() => {
-                                    // Use API's goal.team directly - it already tells us which team the goal counts for (handles own goals correctly)
-                                    // goal.team is normalized by pollLiveScores using normalizeTeamName, same as liveScore.away_team
-                                    const awayGoals = (liveScore.goals || []).filter((goal: any) => {
-                                      if (!goal || !goal.team) return false;
-                                      // Normalize both sides for comparison (handle any edge cases)
-                                      const goalTeam = getMediumName(goal.team);
-                                      const awayTeam = getMediumName(liveScore.away_team || awayName);
-                                      const matches = goalTeam === awayTeam || goal.team === liveScore.away_team;
-                                      if (!matches && goal.team && liveScore.away_team) {
-                                        console.log(`[TestApiPredictions] Goal team mismatch: goal.team="${goal.team}" (normalized: "${goalTeam}") vs liveScore.away_team="${liveScore.away_team}" (normalized: "${awayTeam}") for scorer ${goal.scorer} ${goal.minute}'`);
-                                      }
-                                      return matches;
-                                    });
-                                    
-                                    // Filter red cards for away team
-                                    const awayRedCards = (liveScore.red_cards || []).filter((card: any) => {
-                                      const cardTeam = card.team || '';
-                                      const normalizedCardTeam = getMediumName(cardTeam);
-                                      return normalizedCardTeam === awayName || normalizedCardTeam === getMediumName(fixture.away_team || '');
-                                    });
-                                    
-                                    // Create combined timeline of goals and red cards
-                                    type TimelineEvent = { type: 'goal' | 'red_card'; minute: number | null; scorer?: string; player?: string; minutes?: number[] };
-                                    const timeline: TimelineEvent[] = [];
-                                    
-                                    // Add goals (grouped by scorer)
-                                    const goalsByScorer = new Map<string, number[]>();
-                                    awayGoals.forEach((goal: any) => {
-                                      const scorer = goal.scorer || 'Unknown';
-                                      const minute = goal.minute;
-                                      if (!goalsByScorer.has(scorer)) {
-                                        goalsByScorer.set(scorer, []);
-                                      }
-                                      if (minute !== null && minute !== undefined) {
-                                        goalsByScorer.get(scorer)!.push(minute);
-                                      }
-                                    });
-                                    
-                                    // Add each goal group as a timeline event (use first minute for sorting)
-                                    goalsByScorer.forEach((minutes, scorer) => {
-                                      const sortedMinutes = minutes.sort((a, b) => a - b);
-                                      timeline.push({
-                                        type: 'goal',
-                                        minute: sortedMinutes[0],
-                                        scorer,
-                                        minutes: sortedMinutes,
-                                      });
-                                    });
-                                    
-                                    // Add red cards
-                                    awayRedCards.forEach((card: any) => {
-                                      timeline.push({
-                                        type: 'red_card',
-                                        minute: card.minute,
-                                        player: card.player || 'Unknown',
-                                      });
-                                    });
-                                    
-                                    // Sort by minute (null minutes go to end)
-                                    timeline.sort((a, b) => {
-                                      if (a.minute === null) return 1;
-                                      if (b.minute === null) return -1;
-                                      return a.minute - b.minute;
-                                    });
-                                    
-                                    if (timeline.length === 0) return null;
-                                    
-                                    return (
-                                      <div className="mt-3 mb-2 flex flex-col items-start gap-0.5">
-                                        {timeline.map((event, idx) => {
-                                          if (event.type === 'goal') {
-                                            return (
-                                              <span key={idx} className="text-[11px] text-slate-600">
-                                                {event.scorer} {event.minutes!.sort((a, b) => a - b).map(m => `${m}'`).join(', ')}
-                                              </span>
-                                            );
-                                          } else {
-                                            return (
-                                              <span key={idx} className="text-[11px] text-slate-600">
-                                                🟥 {event.player} {event.minute}'
-                                              </span>
-                                            );
-                                          }
-                                        })}
-                                      </div>
-                                    );
-                                  })()}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* buttons: Home Win, Draw, Away Win */}
-                            <div className="grid grid-cols-3 gap-3 relative mt-4">
-                              <div className={`${getButtonClass(homeState, "H")} flex items-center justify-center`}>
-                                <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>Home Win</span>
-                              </div>
-                              <div className={`${getButtonClass(drawState, "D")} flex items-center justify-center`}>
-                                <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>Draw</span>
-                              </div>
-                              <div className={`${getButtonClass(awayState, "A")} flex items-center justify-center`}>
-                                <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>Away Win</span>
-                              </div>
-                            </div>
-                          </div>
+                          <FixtureCard
+                            fixture={fixtureCardFixture}
+                            pick={pick?.pick}
+                            liveScore={fixtureCardLiveScore}
+                            isTestApi={true}
+                            showPickButtons={true}
+                          />
                         </li>
                       );
                     })}

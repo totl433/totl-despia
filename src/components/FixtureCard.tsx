@@ -1,6 +1,21 @@
 import React from "react";
 import { getMediumName, areTeamNamesSimilar } from "../lib/teamNames";
 
+// Helper function to extract surname from full name
+function getSurname(fullName: string | null | undefined): string {
+  if (!fullName) return 'Unknown';
+  const trimmed = fullName.trim();
+  // Handle special cases like "Own Goal"
+  if (trimmed.toLowerCase().includes('own goal') || trimmed.toLowerCase().includes('(og)')) {
+    return trimmed;
+  }
+  // Split by spaces and get the last word (surname)
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 0) return trimmed;
+  if (parts.length === 1) return trimmed; // Single name, return as is
+  return parts[parts.length - 1]; // Return last word (surname)
+}
+
 // Helper function to format minute display
 function formatMinuteDisplay(status: string, minute: number | null | undefined, isTestApi: boolean = false): string {
   if (status === 'FINISHED') {
@@ -453,16 +468,17 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
     const teamGoals = isHome ? homeGoalsByName : awayGoalsByName;
     
 
-    // Group goals by scorer
-    const goalsByScorer = new Map<string, number[]>();
+    // Group goals by scorer, tracking which minutes are own goals
+    const goalsByScorer = new Map<string, Array<{ minute: number; isOwnGoal: boolean }>>();
     teamGoals.forEach((goal: any) => {
       const scorer = goal.scorer || 'Unknown';
       const minute = goal.minute;
+      const isOwnGoal = goal.isOwnGoal === true;
       if (!goalsByScorer.has(scorer)) {
         goalsByScorer.set(scorer, []);
       }
       if (minute !== null && minute !== undefined) {
-        goalsByScorer.get(scorer)!.push(minute);
+        goalsByScorer.get(scorer)!.push({ minute, isOwnGoal });
       }
     });
 
@@ -479,11 +495,17 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
 
     return (
       <div className={`mt-3 mb-2 flex flex-col ${isHome ? 'items-end' : 'items-start'} gap-0.5`}>
-        {Array.from(goalsByScorer.entries()).map(([scorer, minutes], idx) => {
-          const sortedMinutes = minutes.sort((a, b) => a - b);
+        {Array.from(goalsByScorer.entries()).map(([scorer, goalData], idx) => {
+          // Sort by minute
+          const sortedGoalData = goalData.sort((a, b) => a.minute - b.minute);
+          const surname = getSurname(scorer);
+          // Format minutes with (OG) for own goals
+          const minutesDisplay = sortedGoalData.map(g => 
+            g.isOwnGoal ? `${g.minute}' (OG)` : `${g.minute}'`
+          ).join(', ');
           return (
             <span key={idx} className="text-[11px] text-slate-600">
-              {scorer} {sortedMinutes.map(m => `${m}'`).join(', ')}
+              {surname} {minutesDisplay}
             </span>
           );
         })}
