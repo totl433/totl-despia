@@ -93,10 +93,15 @@ export const handler: Handler = async (event) => {
 
     // Also try to update external_user_id to ensure it's set
     updatePayload.external_user_id = CARL_USER_ID;
+    
+    // Try to update last_active by setting it to current timestamp
+    // This might help OneSignal recognize the device as active
+    updatePayload.last_active = Math.floor(Date.now() / 1000);
 
     console.log('[forceCarlSubscription] Attempting to update player with:', {
       notification_types: updatePayload.notification_types,
       external_user_id: updatePayload.external_user_id,
+      last_active: updatePayload.last_active,
     });
 
     const putUrl = `${OS_BASE}/players/${playerId}`;
