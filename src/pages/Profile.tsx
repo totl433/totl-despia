@@ -694,9 +694,22 @@ export default function Profile() {
               
               {/* Activate Carl's Devices */}
               <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
-                <h4 className="text-md font-semibold text-slate-800 mb-3">Activate Carl's Devices</h4>
+                <h4 className="text-md font-semibold text-slate-800 mb-3">Carl's Device Diagnostics</h4>
                 <p className="text-sm text-slate-600 mb-3">
-                  Syncs Carl's devices with OneSignal and marks them as active if subscribed. Run this before sending test notifications.
+                  Carl's device has <code className="bg-white px-1 rounded">notification_types: null</code> in OneSignal, which means OneSignal SDK hasn't properly initialized. This prevents notifications from being delivered even though OneSignal accepts the request.
+                </p>
+                <p className="text-sm text-slate-600 mb-3">
+                  <strong>Issue:</strong> Carl's <code className="bg-white px-1 rounded">last_active</code> date is stuck on Nov 29, suggesting OneSignal SDK isn't communicating with OneSignal servers. This could be due to VPN, network restrictions, or SDK initialization failure.
+                </p>
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-3">
+                  <strong>Solution:</strong> Carl needs to re-register his device properly:
+                  <ol className="list-decimal list-inside mt-2 space-y-1">
+                    <li>Delete the app completely</li>
+                    <li>Reinstall from App Store</li>
+                    <li>Open the app and wait 10-15 seconds</li>
+                    <li>Go to Profile → Enable Notifications</li>
+                    <li>Check that <code>notification_types</code> becomes <code>1</code> (not <code>null</code>)</li>
+                  </ol>
                 </p>
                 {carlActivationResult && (
                   <div className={`mb-3 rounded border px-3 py-2 text-sm ${
