@@ -854,7 +854,7 @@ export default function Profile() {
                   </div>
 
                   {notificationResult && (
-                    <div className={`rounded border px-3 py-2 text-sm ${
+                    <div className={`rounded border px-3 py-2 text-sm whitespace-pre-wrap break-words max-h-60 overflow-y-auto ${
                       notificationResult.startsWith('✅') 
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-800' 
                         : notificationResult.startsWith('⚠️')
