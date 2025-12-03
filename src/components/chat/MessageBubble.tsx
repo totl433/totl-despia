@@ -34,7 +34,7 @@ export function MessageBubble({
   const alignment = isOwnMessage ? "items-end text-right" : "items-start text-left";
   const bubbleClasses = isOwnMessage ? "bg-[#1C8376] text-white" : "bg-white text-slate-900";
   const shapeClasses = isOwnMessage ? outgoingShape : incomingShape;
-  const maxWidth = "max-w-[75%]";
+  const maxWidth = "max-w-[70%]";
 
   return (
     <div

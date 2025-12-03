@@ -10,6 +10,7 @@ import { useLiveScores } from "../hooks/useLiveScores";
 import { getTeamBadgePath, getMediumName } from "../lib/teamNames";
 import TeamBadge from "../components/TeamBadge";
 import MiniLeagueChatBeta from "../components/MiniLeagueChatBeta";
+import MessageBubble from "../components/chat/MessageBubble";
 
 const MAX_MEMBERS = 8;
 
@@ -179,14 +180,6 @@ function Chip({
 /* =========================
    ChatTab (external to avoid remount on typing)
    ========================= */
-
-const getChatBubbleRadius = (isSelf: boolean, position: { isSingle: boolean; isTop: boolean; isMiddle: boolean; isBottom: boolean }) => {
-  if (position.isSingle) return '12px';
-  if (position.isTop) return isSelf ? '12px 12px 4px 12px' : '12px 12px 12px 4px';
-  if (position.isMiddle) return isSelf ? '12px 4px 4px 12px' : '4px 12px 12px 4px';
-  if (position.isBottom) return isSelf ? '12px 4px 12px 12px' : '4px 12px 12px 12px';
-  return '12px';
-};
 
 type ChatTabProps = {
   chat: ChatMsg[];
@@ -400,12 +393,8 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
             .join("")
             .toUpperCase();
           const rowClasses = mine ? "flex justify-end" : "flex items-end gap-2";
-          const bubbleWrapperClasses = [
-            "flex flex-col",
-            mine ? "items-end ml-auto" : "items-start",
-          ]
-            .filter(Boolean)
-            .join(" ");
+          const shape: "single" | "top" | "middle" | "bottom" =
+            isSingle ? "single" : isTop ? "top" : isBottom ? "bottom" : "middle";
           return (
             <div
               key={m.id}
@@ -423,19 +412,14 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                   )}
                 </div>
               )}
-              <div className={bubbleWrapperClasses} style={{ maxWidth: "72%" }}>
-                <div
-                  className={`w-full px-3 py-2 text-sm leading-snug ${mine ? "bg-[#1C8376] text-white" : "bg-slate-100 text-slate-900"}`}
-                  style={{ borderRadius: getChatBubbleRadius(mine, { isSingle, isTop, isMiddle, isBottom }) }}
-                >
-                  <div className={`flex flex-col gap-1 ${mine ? "items-end text-right" : "items-start text-left"}`}>
-                    {startsRun && !mine && (
-                      <div className={`text-[11px] font-semibold ${mine ? "text-white/80" : "text-slate-600"}`}>{name}</div>
-                    )}
-                    <div className="whitespace-pre-wrap break-words">{m.content}</div>
-                    <div className="text-[11px] text-[#DCDCDD]">{time}</div>
-                  </div>
-                </div>
+              <div className={`flex flex-col gap-1 ${mine ? "items-end" : "items-start"}`}>
+                <MessageBubble
+                  author={!mine && startsRun ? name : undefined}
+                  text={m.content}
+                  time={time}
+                  isOwnMessage={mine}
+                  shape={shape}
+                />
               </div>
             </div>
           );
@@ -3824,7 +3808,7 @@ ${shareUrl}`;
                         setTab("chat-beta");
               }}
               className={
-                "flex-1 px-3 sm:px-6 py-3 text-xs font-semibold transition-colors relative " +
+                "flex-1 px-3 sm:px-6 py-3 text-[12px] font-semibold transition-colors relative " +
                 (tab === "chat-beta" ? "text-[#1C8376]" : "text-slate-400")
               }
             >
