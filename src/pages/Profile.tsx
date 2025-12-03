@@ -864,15 +864,27 @@ export default function Profile() {
                           } else {
                             const sentTo = result.sentTo || 0;
                             const expected = result.expected || sentTo;
+                            const userCount = result.userCount || 0;
+                            const userNames = result.userNames || [];
                             const errors = result.oneSignalErrors;
                             
+                            let message = '';
                             if (errors && errors.length > 0) {
-                              setNotificationResult(`⚠️ Sent to ${sentTo} device(s) (expected ${expected}). OneSignal errors: ${errors.join(', ')}`);
+                              message = `⚠️ Sent to ${sentTo} device(s) (${userCount} users, expected ${expected}). OneSignal errors: ${errors.join(', ')}`;
                             } else if (sentTo < expected) {
-                              setNotificationResult(`⚠️ Sent to ${sentTo} device(s) (expected ${expected}). Some devices may not be subscribed.`);
+                              message = `⚠️ Sent to ${sentTo} device(s) (${userCount} users, expected ${expected}). Some devices may not be subscribed.`;
                             } else {
-                              setNotificationResult(`✅ Notification sent to ${sentTo} device(s)`);
+                              message = `✅ Notification sent to ${sentTo} device(s) (${userCount} users)`;
                             }
+                            
+                            // Add user names if available
+                            if (userNames.length > 0 && userNames.length <= 5) {
+                              message += `\n\nUsers: ${userNames.join(', ')}`;
+                            } else if (userNames.length > 5) {
+                              message += `\n\nUsers: ${userNames.slice(0, 5).join(', ')} and ${userNames.length - 5} more`;
+                            }
+                            
+                            setNotificationResult(message);
                             // Clear the message after successful send
                             setNotificationMessage('');
                           }

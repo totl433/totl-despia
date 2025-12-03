@@ -208,11 +208,15 @@ export const handler: Handler = async (event) => {
     // Send notification to subscribed devices
     console.log(`[sendPushAll] Sending notification to ${validPlayerIds.length} subscribed devices...`);
     
-    // Log which user IDs are included (for debugging Carl's issue)
+    // Map player IDs to user IDs (for debugging Carl's issue)
+    const playerIdToUserId = new Map<string, string>();
     const userIdsIncluded = new Set<string>();
     validPlayerIds.forEach(playerId => {
       const sub = subs.find((s: any) => s.player_id === playerId);
-      if (sub?.user_id) userIdsIncluded.add(sub.user_id);
+      if (sub?.user_id) {
+        userIdsIncluded.add(sub.user_id);
+        playerIdToUserId.set(playerId, sub.user_id);
+      }
     });
     console.log(`[sendPushAll] Sending to ${userIdsIncluded.size} unique users:`, Array.from(userIdsIncluded));
     
@@ -254,11 +258,27 @@ export const handler: Handler = async (event) => {
     
     console.log(`[sendPushAll] OneSignal response: ${actualRecipients} recipients, ${oneSignalErrors.length} errors`);
     
+    // Get user names for included users (for better feedback)
+    const userIdsArray = Array.from(userIdsIncluded);
+    const { data: users } = await admin
+      .from('users')
+      .select('id, name')
+      .in('id', userIdsArray)
+      .then((result) => result, () => ({ data: null }));
+    
+    const userNames = users ? userIdsArray.map(uid => {
+      const user = users.find((u: any) => u.id === uid);
+      return user?.name || uid.slice(0, 8) + '...';
+    }) : [];
+    
     return json(200, { 
       ok: true, 
       sentTo: actualRecipients, // Use actual recipients from OneSignal, not our count
       expected: validPlayerIds.length,
       checked: uniquePlayerIds.length,
+      userCount: userIdsIncluded.size,
+      userIds: userIdsArray,
+      userNames: userNames,
       oneSignalErrors: oneSignalErrors.length > 0 ? oneSignalErrors : undefined,
       result: body 
     });
