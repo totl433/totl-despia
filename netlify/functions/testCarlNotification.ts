@@ -153,6 +153,7 @@ export const handler: Handler = async (event) => {
     const message = payload.message || 'Can Carl see this? 👀';
 
     // Send notification to Carl's devices
+    // Use same format as OneSignal dashboard for better compatibility
     const resp = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: {
@@ -164,6 +165,11 @@ export const handler: Handler = async (event) => {
         include_player_ids: validPlayerIds,
         headings: { en: title },
         contents: { en: message },
+        // Add iOS-specific settings
+        ios_badgeType: 'SetTo',
+        ios_badgeCount: 1,
+        // Ensure delivery
+        send_after: null, // Send immediately
       }),
     });
 
