@@ -8,21 +8,7 @@ const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-const CARL_USER_ID = 'f8a1669e-2512-4edf-9c21-b9f87b3efbe2';
 const JOF_USER_ID = '4542c037-5b38-40d0-b189-847b8f17c222';
-
-// Allow checking different users via query parameter
-const getUserIds = (queryParams: any) => {
-  const userParam = queryParams?.user;
-  if (userParam === 'jof') {
-    return [JOF_USER_ID];
-  }
-  if (userParam === 'carl') {
-    return [CARL_USER_ID];
-  }
-  // Default to Carl for backward compatibility
-  return [CARL_USER_ID];
-};
 
 // Check if a Player ID is subscribed in OneSignal
 async function isSubscribed(
@@ -63,25 +49,19 @@ async function isSubscribed(
 }
 
 export const handler: Handler = async (event) => {
-  if (event.httpMethod !== 'GET' && event.httpMethod !== 'POST') {
+  if (event.httpMethod !== 'GET') {
     return {
       statusCode: 405,
       body: JSON.stringify({ error: 'Method Not Allowed' }),
     };
   }
 
-  // Note: Updates to device subscription status are safe - they only sync OneSignal data to DB
-  // No auth required for this operation as it doesn't modify sensitive data or send notifications
-
-  const forceUpdate = event.queryStringParameters?.update === 'true';
-
   try {
-    // Get subscriptions for the requested user(s)
-    const userIds = getUserIds(event.queryStringParameters);
+    // Get all Jof's subscriptions
     const { data: subscriptions, error: subsError } = await supabase
       .from('push_subscriptions')
       .select('*')
-      .in('user_id', userIds)
+      .eq('user_id', JOF_USER_ID)
       .order('created_at', { ascending: false });
 
     if (subsError) {
@@ -92,12 +72,11 @@ export const handler: Handler = async (event) => {
     }
 
     if (!subscriptions || subscriptions.length === 0) {
-      const userName = event.queryStringParameters?.user === 'jof' ? 'Jof' : 'Carl';
       return {
         statusCode: 200,
         body: JSON.stringify({
-          message: `No devices found for ${userName}`,
-          recommendation: `${userName} needs to register his device via the app`,
+          message: 'No devices found for Jof',
+          recommendation: 'Jof needs to register his device via the app',
         }),
       };
     }
@@ -115,7 +94,7 @@ export const handler: Handler = async (event) => {
         last_checked_at: sub.last_checked_at,
       };
 
-      if (ONESIGNAL_APP_ID && ONESIGNAL_REST_API_KEY) {
+      if (ONESIGNAL_APP_ID && ONESIGNAL_REST_API_KEY && sub.player_id) {
         const { subscribed, player } = await isSubscribed(
           sub.player_id,
           ONESIGNAL_APP_ID,
@@ -127,59 +106,31 @@ export const handler: Handler = async (event) => {
         deviceInfo.invalid = player?.invalid_identifier || false;
         deviceInfo.notification_types = player?.notification_types;
         deviceInfo.last_active = player?.last_active ? new Date(player.last_active * 1000).toISOString() : null;
-
-        // Update database if status changed (or if forceUpdate is true)
-        const shouldBeActive = subscribed && !deviceInfo.invalid;
-        const needsUpdate = forceUpdate || sub.subscribed !== subscribed || sub.is_active !== shouldBeActive;
-        
-        if (needsUpdate) {
-          const updateResult = await supabase
-            .from('push_subscriptions')
-            .update({
-              is_active: shouldBeActive,
-              subscribed: subscribed,
-              last_checked_at: new Date().toISOString(),
-              invalid: deviceInfo.invalid,
-              os_payload: player || null,
-            })
-            .eq('id', sub.id);
-
-          if (updateResult.error) {
-            console.error(`[diagnoseCarlNotifications] Failed to update device ${sub.id}:`, updateResult.error);
-          } else {
-            deviceInfo.updated = true;
-            deviceInfo.new_is_active = shouldBeActive;
-          }
-        }
       }
 
       diagnostics.push(deviceInfo);
     }
 
-    const activeDevices = diagnostics.filter(d => d.is_active || d.new_is_active);
+    const activeDevices = diagnostics.filter(d => d.is_active);
     const subscribedDevices = diagnostics.filter(d => d.subscribed_in_onesignal === true);
 
-    const userName = event.queryStringParameters?.user === 'jof' ? 'Jof' : 'Carl';
-    const userId = event.queryStringParameters?.user === 'jof' ? JOF_USER_ID : CARL_USER_ID;
-    
     return {
       statusCode: 200,
       body: JSON.stringify({
-        user_id: userId,
-        user_name: userName,
+        user_id: JOF_USER_ID,
         total_devices: subscriptions.length,
         active_devices: activeDevices.length,
         subscribed_devices: subscribedDevices.length,
         devices: diagnostics,
         recommendation: activeDevices.length === 0
-          ? `No active devices. ${userName} needs to re-register his device via the app or enable notifications in iOS Settings.`
+          ? 'No active devices. Jof needs to re-register his device via the app or enable notifications in iOS Settings.'
           : subscribedDevices.length === 0
-          ? `Devices are registered but not subscribed in OneSignal. ${userName} may need to enable notifications in iOS Settings.`
-          : `${userName} should receive notifications on active subscribed devices.`,
+          ? 'Devices are registered but not subscribed in OneSignal. Jof may need to enable notifications in iOS Settings.'
+          : 'Jof should receive notifications on active subscribed devices.',
       }),
     };
   } catch (error: any) {
-    console.error('[diagnoseCarlNotifications] Error:', error);
+    console.error('[checkJofDevices] Error:', error);
     return {
       statusCode: 500,
       body: JSON.stringify({ error: error.message || 'Internal server error' }),
