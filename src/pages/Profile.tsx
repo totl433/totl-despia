@@ -897,7 +897,7 @@ export default function Profile() {
                         }).catch((fetchError: any) => {
                           // Network error (CORS, connection refused, etc.)
                           console.error('[Profile] Fetch error:', fetchError);
-                          throw new Error(`Network error: ${fetchError.message || 'Failed to connect to server. Make sure you're connected to the internet and the function is deployed.'}`);
+                          throw new Error(`Network error: ${fetchError.message || "Failed to connect to server. Make sure you're connected to the internet and the function is deployed."}`);
                         });
 
                         // Check if response is ok before trying to parse JSON
