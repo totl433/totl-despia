@@ -25,6 +25,10 @@ export default function Profile() {
   const [despiaDetected, setDespiaDetected] = useState<boolean | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [loadEverythingFirst, setLoadEverythingFirstLocal] = useState(isLoadEverythingFirstEnabled());
+  const [notificationTitle, setNotificationTitle] = useState("");
+  const [notificationMessage, setNotificationMessage] = useState("");
+  const [sendingNotification, setSendingNotification] = useState(false);
+  const [notificationResult, setNotificationResult] = useState<string | null>(null);
   
   // Admin check
   const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
@@ -613,6 +617,123 @@ export default function Profile() {
           {isAdmin && (
             <div className="mt-6 pt-6 border-t border-slate-200">
               <h3 className="text-lg font-semibold text-slate-800 mb-3">Admin</h3>
+              
+              {/* Send Notification to All Users */}
+              <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <h4 className="text-md font-semibold text-slate-800 mb-3">Send Notification to All Users</h4>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Title
+                    </label>
+                    <input
+                      type="text"
+                      value={notificationTitle}
+                      onChange={(e) => setNotificationTitle(e.target.value)}
+                      placeholder="Notification title"
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-[#1C8376] focus:outline-none focus:ring-1 focus:ring-[#1C8376]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Message
+                    </label>
+                    <textarea
+                      value={notificationMessage}
+                      onChange={(e) => setNotificationMessage(e.target.value)}
+                      placeholder="Notification message"
+                      rows={3}
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-[#1C8376] focus:outline-none focus:ring-1 focus:ring-[#1C8376]"
+                    />
+                  </div>
+
+                  {notificationResult && (
+                    <div className={`rounded border px-3 py-2 text-sm ${
+                      notificationResult.startsWith('✅') 
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800' 
+                        : notificationResult.startsWith('⚠️')
+                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                        : 'border-rose-200 bg-rose-50 text-rose-700'
+                    }`}>
+                      {notificationResult}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={async () => {
+                      if (!notificationTitle.trim() || !notificationMessage.trim()) {
+                        setNotificationResult('❌ Please enter both title and message');
+                        return;
+                      }
+
+                      setSendingNotification(true);
+                      setNotificationResult(null);
+
+                      try {
+                        const response = await fetch('/.netlify/functions/sendPushAll', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            title: notificationTitle.trim(),
+                            message: notificationMessage.trim(),
+                          }),
+                        });
+
+                        // Check if response is ok before trying to parse JSON
+                        if (!response.ok) {
+                          const errorText = await response.text().catch(() => 'Unknown error');
+                          setNotificationResult(`❌ Server error (${response.status}): ${errorText || 'Failed to send notification'}`);
+                          return;
+                        }
+
+                        // Try to parse JSON, but handle empty responses
+                        let result;
+                        const responseText = await response.text();
+                        if (!responseText || responseText.trim() === '') {
+                          setNotificationResult(`❌ Empty response from server`);
+                          return;
+                        }
+
+                        try {
+                          result = JSON.parse(responseText);
+                        } catch (parseError: any) {
+                          setNotificationResult(`❌ Invalid response from server: ${parseError.message || 'Failed to parse response'}`);
+                          return;
+                        }
+
+                        if (result.ok) {
+                          if (result.warning) {
+                            setNotificationResult(`⚠️ ${result.warning} (checked ${result.checked || 0} device(s))`);
+                          } else {
+                            setNotificationResult(`✅ Notification sent to ${result.sentTo || 0} device(s)`);
+                            // Clear the message after successful send
+                            setNotificationMessage('');
+                          }
+                        } else {
+                          setNotificationResult(`❌ Failed to send: ${result.error || 'Unknown error'}`);
+                        }
+                      } catch (error: any) {
+                        setNotificationResult(`❌ Error: ${error.message || 'Failed to send notification'}`);
+                      } finally {
+                        setSendingNotification(false);
+                      }
+                    }}
+                    disabled={sendingNotification || !notificationTitle.trim() || !notificationMessage.trim()}
+                    className="w-full py-2 bg-[#1C8376] hover:bg-[#1a7569] text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {sendingNotification ? 'Sending...' : 'Send to All Users'}
+                  </button>
+
+                  <div className="text-xs text-slate-500">
+                    Sends a push notification to all users with active, subscribed devices.
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Link
                   to="/api-admin"
