@@ -32,9 +32,21 @@ export async function ensurePushSubscribed(
   // Also check for direct global property (Despia exposes onesignalplayerid directly)
   const directPlayerId = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
   
+  // Check if we're in a browser (not native app)
+  const isBrowser = typeof window !== 'undefined' && 
+    (window.navigator?.userAgent?.includes('Mozilla') || 
+     !window.navigator?.standalone); // iOS standalone mode indicates native app
+  
   // If we have direct player ID, we're in native app even without despia object
   const isNativeApp = !!despia || !!directPlayerId;
 
+  // If we're clearly in a browser and don't have native APIs, return early
+  if (isBrowser && !isNativeApp) {
+    console.warn('[Push] Despia not available - running in browser, not native app');
+    return { ok: false, reason: 'api-not-available' };
+  }
+
+  // If we don't have native app indicators, but also not clearly a browser, still check
   if (!isNativeApp) {
     console.warn('[Push] Despia not available - not in native app?');
     return { ok: false, reason: 'api-not-available' };
@@ -106,12 +118,21 @@ export async function ensurePushSubscribed(
 
     if (!playerId || playerId.length === 0) {
       console.warn('[Push] Player ID not available after polling', maxAttempts, 'times');
-      console.warn('[Push] Debug info:', {
+      const debugInfo = {
         hasDespia: !!despia,
         despiaKeys: despia ? Object.keys(despia).slice(0, 10) : [],
         hasDirectPid: !!(globalThis as any)?.onesignalplayerid || !!(typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null),
-      });
-      return { ok: false, reason: 'no-player-id', error: 'OneSignal Player ID not available after 15 seconds. Try closing and reopening the app.' };
+        isBrowser: typeof window !== 'undefined',
+        userAgent: typeof window !== 'undefined' ? window.navigator?.userAgent?.substring(0, 50) : 'N/A',
+      };
+      console.warn('[Push] Debug info:', debugInfo);
+      
+      // If we're in a browser, provide a different error message
+      if (debugInfo.isBrowser && !debugInfo.hasDespia && !debugInfo.hasDirectPid) {
+        return { ok: false, reason: 'api-not-available', error: 'OneSignal is only available in the native app, not in a browser.' };
+      }
+      
+      return { ok: false, reason: 'no-player-id', error: 'OneSignal Player ID not available after 15 seconds. Try: 1) Close the app completely, 2) Reopen it, 3) Wait 10 seconds, 4) Try again.' };
     }
     
     console.log(`[Push] ✅ Got Player ID: ${playerId.slice(0, 8)}…`);
