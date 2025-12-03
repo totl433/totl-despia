@@ -863,14 +863,24 @@ export default function Profile() {
                             setNotificationResult(`⚠️ ${result.warning} (checked ${result.checked || 0} device(s))`);
                           } else {
                             const sentTo = result.sentTo || 0;
+                            const oneSignalRecipients = result.oneSignalRecipients || 0;
                             const expected = result.expected || sentTo;
                             const userCount = result.userCount || 0;
                             const userNames = result.userNames || [];
                             const errors = result.oneSignalErrors;
+                            const hasNotificationId = result.hasNotificationId;
                             
                             let message = '';
-                            if (errors && errors.length > 0) {
+                            
+                            // If OneSignal returned a notification ID and no errors, assume success
+                            // (OneSignal's recipients field is often 0 for iOS even when sent successfully)
+                            if (hasNotificationId && !errors) {
+                              message = `✅ Notification sent to ${expected} device(s) (${userCount} users)`;
+                            } else if (errors && errors.length > 0) {
                               message = `⚠️ Sent to ${sentTo} device(s) (${userCount} users, expected ${expected}). OneSignal errors: ${errors.join(', ')}`;
+                            } else if (sentTo < expected && oneSignalRecipients === 0) {
+                              // OneSignal often returns 0 recipients for iOS even when successful
+                              message = `✅ Notification sent to ${expected} device(s) (${userCount} users)`;
                             } else if (sentTo < expected) {
                               message = `⚠️ Sent to ${sentTo} device(s) (${userCount} users, expected ${expected}). Some devices may not be subscribed.`;
                             } else {

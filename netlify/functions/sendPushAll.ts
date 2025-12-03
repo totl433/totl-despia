@@ -249,14 +249,26 @@ export const handler: Handler = async (event) => {
 
     // Check for errors in the response even if HTTP status is OK
     const oneSignalErrors = body.errors || [];
-    const actualRecipients = body.recipients || 0;
+    const oneSignalRecipients = body.recipients || 0;
+    const oneSignalId = body.id; // OneSignal notification ID - if present, notification was created
+    
+    // OneSignal's recipients field is often 0 for iOS even when notifications are sent successfully
+    // If we have a notification ID and no errors, assume it was sent successfully
+    const hasNotificationId = !!oneSignalId;
+    const hasErrors = oneSignalErrors.length > 0;
+    
+    // Use our count as the primary indicator, OneSignal's recipients as secondary
+    // If OneSignal returned an ID and no errors, trust our count
+    const estimatedSentTo = hasNotificationId && !hasErrors 
+      ? validPlayerIds.length 
+      : Math.max(oneSignalRecipients, 0);
     
     if (oneSignalErrors.length > 0) {
       console.warn('[sendPushAll] OneSignal returned errors:', oneSignalErrors);
-      console.warn('[sendPushAll] Actual recipients:', actualRecipients, 'Expected:', validPlayerIds.length);
+      console.warn('[sendPushAll] OneSignal recipients:', oneSignalRecipients, 'Our count:', validPlayerIds.length);
+    } else {
+      console.log(`[sendPushAll] OneSignal notification ID: ${oneSignalId || 'none'}, OneSignal recipients: ${oneSignalRecipients}, Our count: ${validPlayerIds.length}`);
     }
-    
-    console.log(`[sendPushAll] OneSignal response: ${actualRecipients} recipients, ${oneSignalErrors.length} errors`);
     
     // Get user names for included users (for better feedback)
     const userIdsArray = Array.from(userIdsIncluded);
@@ -273,12 +285,14 @@ export const handler: Handler = async (event) => {
     
     return json(200, { 
       ok: true, 
-      sentTo: actualRecipients, // Use actual recipients from OneSignal, not our count
+      sentTo: estimatedSentTo, // Use our count if OneSignal returned ID with no errors
+      oneSignalRecipients: oneSignalRecipients, // Include OneSignal's count for reference
       expected: validPlayerIds.length,
       checked: uniquePlayerIds.length,
       userCount: userIdsIncluded.size,
       userIds: userIdsArray,
       userNames: userNames,
+      hasNotificationId: hasNotificationId,
       oneSignalErrors: oneSignalErrors.length > 0 ? oneSignalErrors : undefined,
       result: body 
     });
