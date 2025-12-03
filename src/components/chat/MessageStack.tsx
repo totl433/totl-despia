@@ -1,9 +1,11 @@
+import type { ReactNode } from "react";
 import MessageBubble from "./MessageBubble";
 
 type Message = {
   id: string;
-  text: string;
+  text: ReactNode;
   time: string;
+  status?: "sending" | "error";
 };
 
 export type MessageStackProps = {
@@ -44,13 +46,24 @@ export function MessageStack({
 
           return (
             <div key={message.id} className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}>
-            <MessageBubble
-              author={!isOwnMessage && index === 0 ? author : undefined}
-              text={message.text}
-              time={message.time}
-              isOwnMessage={isOwnMessage}
-              shape={shape}
-            />
+              <div className={`flex flex-col gap-1 ${isOwnMessage ? "items-end" : "items-start"}`}>
+                <MessageBubble
+                  author={!isOwnMessage && index === 0 ? author : undefined}
+                  text={message.text}
+                  time={message.time}
+                  isOwnMessage={isOwnMessage}
+                  shape={shape}
+                />
+                {message.status && (
+                  <div
+                    className={`text-[11px] ${
+                      message.status === "error" ? "text-red-500" : "text-slate-400"
+                    }`}
+                  >
+                    {message.status === "error" ? "Failed" : "Sending…"}
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}

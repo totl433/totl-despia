@@ -384,7 +384,6 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           const endsRun = !sameNext;
           const isSingle = !samePrev && !sameNext;
           const isTop = startsRun && sameNext;
-          const isMiddle = samePrev && sameNext;
           const isBottom = samePrev && endsRun;
           const showAvatar = !mine && (isSingle || isBottom);
           const initials = name
