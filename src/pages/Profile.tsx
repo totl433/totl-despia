@@ -460,6 +460,9 @@ export default function Profile() {
                   setRegistering(true);
                   setRegisterResult(null);
                   try {
+                    // Show progress message
+                    setRegisterResult('⏳ Waiting for OneSignal to initialize... (this may take up to 15 seconds)');
+                    
                     const { ensurePushSubscribed } = await import('../lib/pushNotifications');
                     const result = await ensurePushSubscribed(session);
                     
@@ -469,7 +472,7 @@ export default function Profile() {
                     } else {
                       const reasonMap: Record<string, string> = {
                         'permission-denied': 'Permission denied. Please enable notifications in iOS Settings.',
-                        'no-player-id': 'OneSignal not initialized. Please wait a few seconds and try again.',
+                        'no-player-id': result.error || 'OneSignal not initialized. Try: 1) Close the app completely, 2) Reopen it, 3) Wait 10 seconds, 4) Try again.',
                         'api-not-available': 'Not available in browser. Please use the native app.',
                         'no-session': 'Not signed in. Please sign in and try again.',
                         'unknown': result.error || 'Unknown error. Please try again or contact support.',
@@ -485,7 +488,7 @@ export default function Profile() {
                 disabled={registering || !session?.access_token}
                 className="w-full py-3 bg-white border border-slate-300 hover:bg-slate-50 disabled:bg-gray-100 disabled:opacity-50 text-slate-600 hover:text-slate-800 font-medium rounded-xl transition-colors"
               >
-                {registering ? 'Enabling...' : 'Enable Notifications'}
+                {registering ? 'Enabling... (waiting for OneSignal)' : 'Enable Notifications'}
               </button>
 
               <button

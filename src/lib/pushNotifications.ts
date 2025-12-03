@@ -63,7 +63,7 @@ export async function ensurePushSubscribed(
     console.log('[Push] Waiting for OneSignal Player ID...');
     
     let playerId: string | null = null;
-    const maxAttempts = 10;
+    const maxAttempts = 30; // Increased from 10 to 30 (15 seconds total)
     const pollInterval = 500; // Check every 500ms
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -75,6 +75,7 @@ export async function ensurePushSubscribed(
       const directPid = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
       if (directPid && typeof directPid === 'string' && directPid.trim().length > 0) {
         playerId = directPid.trim();
+        console.log(`[Push] Found Player ID via direct global property on attempt ${attempt + 1}`);
         break;
       }
       
@@ -83,11 +84,18 @@ export async function ensurePushSubscribed(
         // From documentation: despia.onesignalplayerid
         if (despia.onesignalplayerid && typeof despia.onesignalplayerid === 'string' && despia.onesignalplayerid.trim().length > 0) {
           playerId = despia.onesignalplayerid.trim();
+          console.log(`[Push] Found Player ID via despia.onesignalplayerid on attempt ${attempt + 1}`);
           break;
         } else if (despia.oneSignalPlayerId && typeof despia.oneSignalPlayerId === 'string' && despia.oneSignalPlayerId.trim().length > 0) {
           playerId = despia.oneSignalPlayerId.trim();
+          console.log(`[Push] Found Player ID via despia.oneSignalPlayerId on attempt ${attempt + 1}`);
           break;
         }
+      }
+      
+      // Log progress every 5 attempts
+      if ((attempt + 1) % 5 === 0) {
+        console.log(`[Push] Still waiting for Player ID... (attempt ${attempt + 1}/${maxAttempts})`);
       }
       
       // Wait before next attempt
@@ -98,7 +106,12 @@ export async function ensurePushSubscribed(
 
     if (!playerId || playerId.length === 0) {
       console.warn('[Push] Player ID not available after polling', maxAttempts, 'times');
-      return { ok: false, reason: 'no-player-id' };
+      console.warn('[Push] Debug info:', {
+        hasDespia: !!despia,
+        despiaKeys: despia ? Object.keys(despia).slice(0, 10) : [],
+        hasDirectPid: !!(globalThis as any)?.onesignalplayerid || !!(typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null),
+      });
+      return { ok: false, reason: 'no-player-id', error: 'OneSignal Player ID not available after 15 seconds. Try closing and reopening the app.' };
     }
     
     console.log(`[Push] ✅ Got Player ID: ${playerId.slice(0, 8)}…`);
