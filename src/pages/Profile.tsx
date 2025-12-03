@@ -31,6 +31,8 @@ export default function Profile() {
   const [notificationResult, setNotificationResult] = useState<string | null>(null);
   const [activatingCarl, setActivatingCarl] = useState(false);
   const [carlActivationResult, setCarlActivationResult] = useState<string | null>(null);
+  const [forcingCarlSubscription, setForcingCarlSubscription] = useState(false);
+  const [carlForceResult, setCarlForceResult] = useState<string | null>(null);
   
   // Admin check
   const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
@@ -764,6 +766,60 @@ export default function Profile() {
                 >
                   {activatingCarl ? 'Activating...' : 'Activate Carl\'s Devices'}
                 </button>
+                
+                <button
+                  onClick={async () => {
+                    setForcingCarlSubscription(true);
+                    setCarlForceResult(null);
+                    try {
+                      const isDev = import.meta.env.DEV || window.location.hostname === 'localhost';
+                      const baseUrl = isDev ? 'https://totl-staging.netlify.app' : '';
+                      const response = await fetch(`${baseUrl}/.netlify/functions/forceCarlSubscription`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                      });
+                      
+                      if (!response.ok) {
+                        const errorText = await response.text().catch(() => 'Unknown error');
+                        setCarlForceResult(`❌ Server error (${response.status}): ${errorText}`);
+                        return;
+                      }
+                      
+                      const result = await response.json();
+                      
+                      if (result.ok) {
+                        const before = result.before?.notification_types ?? 'null';
+                        const after = result.after?.notification_types ?? 'null';
+                        if (after === 1) {
+                          setCarlForceResult(`✅ Successfully forced subscription! notification_types changed from ${before} to ${after}`);
+                        } else {
+                          setCarlForceResult(`⚠️ ${result.note || 'Update attempted but notification_types is still ' + after}. ${result.message || ''}`);
+                        }
+                      } else {
+                        setCarlForceResult(`❌ ${result.error || 'Failed to force subscription'}`);
+                      }
+                    } catch (error: any) {
+                      setCarlForceResult(`❌ Error: ${error.message || 'Failed to force subscription'}`);
+                    } finally {
+                      setForcingCarlSubscription(false);
+                    }
+                  }}
+                  disabled={forcingCarlSubscription}
+                  className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                >
+                  {forcingCarlSubscription ? 'Forcing...' : 'Force Carl\'s Subscription Status'}
+                </button>
+                {carlForceResult && (
+                  <div className={`mt-2 rounded border px-3 py-2 text-sm ${
+                    carlForceResult.includes('✅') 
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800' 
+                      : carlForceResult.includes('⚠️')
+                      ? 'border-amber-200 bg-amber-50 text-amber-800'
+                      : 'border-rose-200 bg-rose-50 text-rose-700'
+                  }`}>
+                    {carlForceResult}
+                  </div>
+                )}
               </div>
               
               {/* Send Notification to All Users */}
