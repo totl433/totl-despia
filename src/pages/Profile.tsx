@@ -460,26 +460,88 @@ export default function Profile() {
                   setRegistering(true);
                   setRegisterResult(null);
                   try {
-                    // Show progress message
-                    setRegisterResult('⏳ Waiting for OneSignal to initialize... (this may take up to 15 seconds)');
+                    // First, try to use Player ID from Profile page if available (it polls separately)
+                    let playerIdToUse: string | null = playerId;
                     
-                    const { ensurePushSubscribed } = await import('../lib/pushNotifications');
-                    const result = await ensurePushSubscribed(session);
+                    // If we don't have it from Profile page, try the registration function
+                    if (!playerIdToUse) {
+                      setRegisterResult('⏳ Waiting for OneSignal to initialize... (this may take up to 15 seconds)');
+                      const { ensurePushSubscribed } = await import('../lib/pushNotifications');
+                      const result = await ensurePushSubscribed(session);
+                      
+                      if (result.ok) {
+                        setRegisterResult(`✅ Successfully enabled notifications! Player ID: ${result.playerId?.slice(0, 8)}…`);
+                        setTimeout(() => setRegisterResult(null), 5000);
+                        return;
+                      } else if (result.reason === 'no-player-id') {
+                        // If automatic detection failed, but we have playerId from Profile page, use that
+                        if (playerId) {
+                          console.log('[Profile] Using Player ID from Profile page polling:', playerId.slice(0, 8));
+                          playerIdToUse = playerId;
+                        } else {
+                          const reasonMap: Record<string, string> = {
+                            'permission-denied': 'Permission denied. Please enable notifications in iOS Settings.',
+                            'no-player-id': result.error || 'OneSignal not initialized. Try: 1) Close the app completely, 2) Reopen it, 3) Wait 10 seconds, 4) Try again.',
+                            'api-not-available': 'Not available in browser. Please use the native app.',
+                            'no-session': 'Not signed in. Please sign in and try again.',
+                            'unknown': result.error || 'Unknown error. Please try again or contact support.',
+                          };
+                          setRegisterResult(`⚠️ ${reasonMap[result.reason || 'unknown'] || 'Failed to enable notifications'}`);
+                          return;
+                        }
+                      } else {
+                        const reasonMap: Record<string, string> = {
+                          'permission-denied': 'Permission denied. Please enable notifications in iOS Settings.',
+                          'no-player-id': result.error || 'OneSignal not initialized. Try: 1) Close the app completely, 2) Reopen it, 3) Wait 10 seconds, 4) Try again.',
+                          'api-not-available': 'Not available in browser. Please use the native app.',
+                          'no-session': 'Not signed in. Please sign in and try again.',
+                          'unknown': result.error || 'Unknown error. Please try again or contact support.',
+                        };
+                        setRegisterResult(`⚠️ ${reasonMap[result.reason || 'unknown'] || 'Failed to enable notifications'}`);
+                        return;
+                      }
+                    }
                     
-                    if (result.ok) {
-                      setRegisterResult(`✅ Successfully enabled notifications! Player ID: ${result.playerId?.slice(0, 8)}…`);
-                      setTimeout(() => setRegisterResult(null), 5000);
-                    } else {
-                      const reasonMap: Record<string, string> = {
-                        'permission-denied': 'Permission denied. Please enable notifications in iOS Settings.',
-                        'no-player-id': result.error || 'OneSignal not initialized. Try: 1) Close the app completely, 2) Reopen it, 3) Wait 10 seconds, 4) Try again.',
-                        'api-not-available': 'Not available in browser. Please use the native app.',
-                        'no-session': 'Not signed in. Please sign in and try again.',
-                        'unknown': result.error || 'Unknown error. Please try again or contact support.',
-                      };
-                      setRegisterResult(`⚠️ ${reasonMap[result.reason || 'unknown'] || 'Failed to enable notifications'}`);
+                    // If we have a Player ID (from Profile page or registration), register it directly
+                    if (playerIdToUse) {
+                      setRegisterResult('⏳ Registering device...');
+                      const isDev = import.meta.env.DEV || window.location.hostname === 'localhost';
+                      const baseUrl = isDev ? 'https://totl-staging.netlify.app' : '';
+                      
+                      const res = await fetch(`${baseUrl}/.netlify/functions/registerPlayer`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${session.access_token}`,
+                        },
+                        body: JSON.stringify({
+                          playerId: playerIdToUse,
+                          platform: 'ios',
+                        }),
+                      });
+                      
+                      if (!res.ok) {
+                        let errorData: any = {};
+                        try {
+                          const text = await res.text();
+                          errorData = text ? JSON.parse(text) : {};
+                        } catch (e) {
+                          errorData = { error: `HTTP ${res.status}: ${res.statusText}` };
+                        }
+                        setRegisterResult(`❌ Registration failed: ${errorData.error || 'Unknown error'}`);
+                        return;
+                      }
+                      
+                      const data = await res.json();
+                      if (data.ok) {
+                        setRegisterResult(`✅ Successfully enabled notifications! Player ID: ${playerIdToUse.slice(0, 8)}…`);
+                        setTimeout(() => setRegisterResult(null), 5000);
+                      } else {
+                        setRegisterResult(`⚠️ ${data.warning || data.error || 'Registration completed with warnings'}`);
+                      }
                     }
                   } catch (err: any) {
+                    console.error('[Profile] Registration error:', err);
                     setRegisterResult(`❌ Error: ${err.message || 'Failed to enable notifications'}`);
                   } finally {
                     setRegistering(false);
@@ -488,7 +550,7 @@ export default function Profile() {
                 disabled={registering || !session?.access_token}
                 className="w-full py-3 bg-white border border-slate-300 hover:bg-slate-50 disabled:bg-gray-100 disabled:opacity-50 text-slate-600 hover:text-slate-800 font-medium rounded-xl transition-colors"
               >
-                {registering ? 'Enabling... (waiting for OneSignal)' : 'Enable Notifications'}
+                {registering ? 'Enabling...' : 'Enable Notifications'}
               </button>
 
               <button
