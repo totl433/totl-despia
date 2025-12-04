@@ -1327,6 +1327,88 @@ export const handler: Handler = async (event, context) => {
       }
       
       if (allFinished) {
+        console.log(`[sendScoreNotificationsWebhook] 🎉 All games finished for GW ${fixtureGw} - writing results to app_gw_results`);
+        
+        // Check if results already exist for this GW
+        const { data: existingResults } = await supabase
+          .from('app_gw_results')
+          .select('gw')
+          .eq('gw', fixtureGw)
+          .limit(1);
+        
+        if (!existingResults || existingResults.length === 0) {
+          // Write results to app_gw_results based on live_scores
+          console.log(`[sendScoreNotificationsWebhook] Writing results for GW ${fixtureGw} to app_gw_results...`);
+          
+          // Get all fixtures for this GW with their fixture_index
+          const { data: gwFixtures } = await supabase
+            .from('app_fixtures')
+            .select('fixture_index, api_match_id')
+            .eq('gw', fixtureGw)
+            .order('fixture_index', { ascending: true });
+          
+          if (gwFixtures && gwFixtures.length > 0) {
+            // Get all live_scores for fixtures with api_match_id
+            const apiMatchIds = gwFixtures
+              .map((f: any) => f.api_match_id)
+              .filter((id: any) => id != null);
+            
+            const { data: allLiveScores } = await supabase
+              .from('live_scores')
+              .select('api_match_id, home_score, away_score, status')
+              .in('api_match_id', apiMatchIds);
+            
+            // Create a map of api_match_id -> result (H/D/A)
+            const liveScoresMap = new Map<number, 'H' | 'D' | 'A'>();
+            (allLiveScores || []).forEach((score: any) => {
+              if (score.status === 'FINISHED' || score.status === 'FT') {
+                const homeScore = score.home_score ?? 0;
+                const awayScore = score.away_score ?? 0;
+                let result: 'H' | 'D' | 'A';
+                if (homeScore > awayScore) {
+                  result = 'H';
+                } else if (awayScore > homeScore) {
+                  result = 'A';
+                } else {
+                  result = 'D';
+                }
+                liveScoresMap.set(score.api_match_id, result);
+              }
+            });
+            
+            // Build results array for app_gw_results
+            const resultsToInsert: Array<{ gw: number; fixture_index: number; result: 'H' | 'D' | 'A' }> = [];
+            
+            gwFixtures.forEach((fixture: any) => {
+              if (fixture.api_match_id && liveScoresMap.has(fixture.api_match_id)) {
+                resultsToInsert.push({
+                  gw: fixtureGw,
+                  fixture_index: fixture.fixture_index,
+                  result: liveScoresMap.get(fixture.api_match_id)!,
+                });
+              }
+            });
+            
+            if (resultsToInsert.length > 0) {
+              const { error: insertError } = await supabase
+                .from('app_gw_results')
+                .upsert(resultsToInsert, { onConflict: 'gw,fixture_index' });
+              
+              if (insertError) {
+                console.error(`[sendScoreNotificationsWebhook] Error writing results to app_gw_results:`, insertError);
+              } else {
+                console.log(`[sendScoreNotificationsWebhook] ✅ Successfully wrote ${resultsToInsert.length} results to app_gw_results for GW ${fixtureGw}`);
+              }
+            } else {
+              console.warn(`[sendScoreNotificationsWebhook] ⚠️ No results to write for GW ${fixtureGw} (no finished games found)`);
+            }
+          } else {
+            console.warn(`[sendScoreNotificationsWebhook] ⚠️ No fixtures found for GW ${fixtureGw}`);
+          }
+        } else {
+          console.log(`[sendScoreNotificationsWebhook] Results already exist for GW ${fixtureGw}, skipping write`);
+        }
+        
         console.log(`[sendScoreNotificationsWebhook] 🎉 All games finished for GW ${fixtureGw} - sending end of GW notification`);
         
         // Get all users who have picks for this GW

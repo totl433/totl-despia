@@ -510,7 +510,16 @@ export default function HomePage() {
         const currentGw = metaResult.data?.current_gw ?? 1;
         setGw(currentGw);
         // Set latestGw to the latest GW with results (not just current GW)
-        setLatestGw(latestGwResult.data?.gw ?? currentGw);
+        const newLatestGw = latestGwResult.data?.gw ?? currentGw;
+        console.log('[Home] 📊 Fetched latestGw:', newLatestGw, 'previous latestGw:', latestGw);
+        
+        // If the new latestGw is different from what we have, trigger a refetch
+        if (newLatestGw !== latestGw && latestGw !== null) {
+          console.log('[Home] 🔄 Detected GW change:', latestGw, '->', newLatestGw, '- triggering refetch');
+          setGwResultsVersion(prev => prev + 1);
+        }
+        
+        setLatestGw(newLatestGw);
         
         // Process GW points
         let allPoints: Array<{user_id: string, gw: number, points: number}> = [];
@@ -734,24 +743,13 @@ export default function HomePage() {
     
     (async () => {
       try {
-        const { data: lastCompletedGwData, error: lastGwError } = await supabase
-          .from("app_gw_results")
-          .select("gw")
-          .order("gw", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        // Use latestGw directly (it's already the latest GW with results)
+        const lastCompletedGw = latestGw;
         
-        if (lastGwError) {
-          console.error('[Home] Error fetching last completed GW:', lastGwError);
-        }
-        
-        const lastCompletedGw = lastCompletedGwData?.gw ?? latestGw;
-        
-        // Helper to calculate form rankings
-        const calculateFormRank = (startGw: number, endGw: number, setRank: (r: { rank: number; total: number; isTied: boolean } | null) => void) => {
+        // Helper to calculate form rankings - returns the rank value
+        const calculateFormRank = (startGw: number, endGw: number): { rank: number; total: number; isTied: boolean } | null => {
           if (endGw < startGw) {
-            setRank(null);
-            return;
+            return null;
           }
           
           const formPoints = allGwPoints.filter(gp => gp.gw >= startGw && gp.gw <= endGw);
@@ -786,7 +784,7 @@ export default function HomePage() {
             })
             .sort((a, b) => b.formPoints - a.formPoints || a.name.localeCompare(b.name));
           
-          if (sorted.length > 0 && alive) {
+          if (sorted.length > 0) {
             let currentRank = 1;
             const ranked = sorted.map((player, index) => {
               if (index > 0 && sorted[index - 1].formPoints !== player.formPoints) {
@@ -796,38 +794,58 @@ export default function HomePage() {
             });
             
             const userEntry = ranked.find(u => u.user_id === user.id);
-            if (userEntry && alive) {
+            if (userEntry) {
               const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
-              setRank({
+              return {
                 rank: userEntry.rank,
                 total: ranked.length,
                 isTied: rankCount > 1
-              });
-            } else {
-              // User doesn't have all required weeks, set to null to show "—"
-              if (alive) setRank(null);
+              };
             }
-          } else {
-            // No users with all required weeks, set to null
-            if (alive) setRank(null);
           }
+          return null;
         };
         
-        // 5-WEEK FORM
-        if (lastCompletedGw >= 5) {
-          calculateFormRank(lastCompletedGw - 4, lastCompletedGw, setFiveGwRank);
-        } else {
-          if (alive) setFiveGwRank(null);
+        // Calculate lastGwRank for the latest GW
+        let newLastGwRank: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null = null;
+        if (lastCompletedGw !== null && allGwPoints.length > 0) {
+          const lastGwData = allGwPoints.filter(gp => gp.gw === lastCompletedGw);
+          if (lastGwData.length > 0) {
+            const sorted = [...lastGwData].sort((a, b) => b.points - a.points);
+            let currentRank = 1;
+            const ranked = sorted.map((player, index) => {
+              if (index > 0 && sorted[index - 1].points !== player.points) {
+                currentRank = index + 1;
+              }
+              return { ...player, rank: currentRank };
+            });
+            
+            const userEntry = ranked.find(r => r.user_id === user.id);
+            if (userEntry) {
+              const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
+              newLastGwRank = {
+                rank: userEntry.rank,
+                total: ranked.length,
+                score: userEntry.points,
+                gw: lastCompletedGw,
+                totalFixtures: 10, // TODO: get actual fixture count
+                isTied: rankCount > 1
+              };
+              if (alive) setLastGwRank(newLastGwRank);
+            }
+          }
         }
+        
+        // 5-WEEK FORM
+        const newFiveGwRank = lastCompletedGw !== null && lastCompletedGw >= 5 ? calculateFormRank(lastCompletedGw - 4, lastCompletedGw) : null;
+        if (alive) setFiveGwRank(newFiveGwRank);
         
         // 10-WEEK FORM
-        if (lastCompletedGw >= 10) {
-          calculateFormRank(lastCompletedGw - 9, lastCompletedGw, setTenGwRank);
-        } else {
-          if (alive) setTenGwRank(null);
-        }
+        const newTenGwRank = lastCompletedGw !== null && lastCompletedGw >= 10 ? calculateFormRank(lastCompletedGw - 9, lastCompletedGw) : null;
+        if (alive) setTenGwRank(newTenGwRank);
         
         // SEASON RANK
+        let newSeasonRank: { rank: number; total: number; isTied: boolean } | null = null;
         if (overall.length > 0 && alive) {
           const sorted = [...overall].sort((a, b) => (b.ocp ?? 0) - (a.ocp ?? 0) || (a.name ?? "User").localeCompare(b.name ?? "User"));
           let currentRank = 1;
@@ -839,20 +857,36 @@ export default function HomePage() {
           });
           
           const userEntry = ranked.find(o => o.user_id === user.id);
-          if (userEntry && alive) {
+          if (userEntry) {
             const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
-            setSeasonRank({
+            newSeasonRank = {
               rank: userEntry.rank,
               total: overall.length,
               isTied: rankCount > 1
-            });
-          } else {
-            // User not found in overall rankings, set to null
-            if (alive) setSeasonRank(null);
+            };
           }
-        } else {
-          // No overall data, set to null
-          if (alive) setSeasonRank(null);
+        }
+        if (alive) setSeasonRank(newSeasonRank);
+        
+        // Update cache with recalculated ranks (if user exists)
+        if (user?.id && alive) {
+          try {
+            const cacheKey = `home:basic:${user.id}`;
+            setCached(cacheKey, {
+              leagues,
+              currentGw: gw,
+              latestGw: lastCompletedGw,
+              allGwPoints,
+              overall,
+              lastGwRank: newLastGwRank,
+              fiveGwRank: newFiveGwRank,
+              tenGwRank: newTenGwRank,
+              seasonRank: newSeasonRank,
+              isInApiTestLeague,
+            }, CACHE_TTL.HOME);
+          } catch (e) {
+            // Cache update failed, non-critical
+          }
         }
       } catch (e) {
         console.error('[Home] Error calculating form ranks:', e);
@@ -1325,10 +1359,11 @@ export default function HomePage() {
     if (!user?.id || gwResultsVersion === 0) return; // Skip initial render
     
     let alive = true;
-    const cacheKey = `home:basic:${user.id}`;
     
     (async () => {
       try {
+        console.log('[Home] 🔄 Refetching data due to app_gw_results change (gwResultsVersion:', gwResultsVersion, ')');
+        
         // Refetch latest GW and leaderboard data when results change
         const [latestGwResult, allGwPointsResult, overallResult] = await Promise.all([
           supabase.from("app_gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
@@ -1342,42 +1377,32 @@ export default function HomePage() {
         const allPoints = (allGwPointsResult.data as Array<{user_id: string, gw: number, points: number}>) ?? [];
         const overallData = (overallResult.data as Array<{user_id: string, name: string | null, ocp: number | null}>) ?? [];
         
-        // Update state
-        if (newLatestGw !== null) {
+        console.log('[Home] ✅ Refetched data - newLatestGw:', newLatestGw, 'previous latestGw:', latestGw, 'changed:', newLatestGw !== latestGw);
+        
+        // Update state - this will trigger rank recalculation in the existing effect (line 694)
+        // The rank calculation effect will recalculate lastGwRank, fiveGwRank, tenGwRank, and seasonRank
+        if (newLatestGw !== null && newLatestGw !== latestGw) {
+          console.log('[Home] 📊 Updating latestGw:', latestGw, '->', newLatestGw);
           setLatestGw(newLatestGw);
         }
         setAllGwPoints(allPoints);
         setOverall(overallData);
         setGwPoints(allPoints.filter(gp => gp.user_id === user.id));
         
-        // Update cache
-        try {
-          setCached(cacheKey, {
-            leagues,
-            currentGw: gw,
-            latestGw: newLatestGw,
-            allGwPoints: allPoints,
-            overall: overallData,
-            lastGwRank,
-            fiveGwRank,
-            tenGwRank,
-            seasonRank,
-            isInApiTestLeague,
-          }, CACHE_TTL.HOME);
-        } catch (e) {
-          // Cache update failed, non-critical
-        }
+        // Note: Don't update cache here - let the rank calculation effect update cache after ranks are recalculated
       } catch (e) {
-        console.error('[Home] Error refetching data after results change:', e);
+        console.error('[Home] ❌ Error refetching data after results change:', e);
       }
     })();
     
     return () => { alive = false; };
-  }, [gwResultsVersion, user?.id, gw, leagues, lastGwRank, fiveGwRank, tenGwRank, seasonRank, isInApiTestLeague]);
+  }, [gwResultsVersion, user?.id]);
 
   /* ---------- Subscribe to app_gw_results changes for real-time leaderboard updates ---------- */
   useEffect(() => {
     if (!user?.id) return;
+    
+    console.log('[Home] Setting up subscription to app_gw_results changes');
     
     // Subscribe to changes in app_gw_results table to trigger leaderboard recalculation
     const channel = supabase
@@ -1389,25 +1414,79 @@ export default function HomePage() {
           schema: 'public',
           table: 'app_gw_results',
         },
-        () => {
+        (payload) => {
+          console.log('[Home] 🔔 app_gw_results change detected!', {
+            event: payload.eventType,
+            gw: payload.new?.gw || payload.old?.gw,
+            fixture_index: payload.new?.fixture_index || payload.old?.fixture_index
+          });
+          
           // Clear cache to force fresh fetch
           const cacheKey = `home:basic:${user.id}`;
           try {
             removeCached(cacheKey);
             removeCached(`home:fixtures:${user.id}:${gw}`);
+            console.log('[Home] ✅ Cache cleared, incrementing gwResultsVersion');
           } catch (e) {
-            // Cache clear failed, non-critical
+            console.error('[Home] ❌ Cache clear failed:', e);
           }
           // Increment version to trigger recalculation
-          setGwResultsVersion(prev => prev + 1);
+          setGwResultsVersion(prev => {
+            const newVersion = prev + 1;
+            console.log('[Home] 📊 gwResultsVersion:', prev, '->', newVersion);
+            return newVersion;
+          });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('[Home] Subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('[Home] ✅ Successfully subscribed to app_gw_results changes');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[Home] ❌ Subscription error - realtime may not be enabled for app_gw_results');
+        }
+      });
+
+    // Fallback: Check for updates when page becomes visible (in case subscription doesn't fire)
+    const handleVisibilityChange = async () => {
+      if (!document.hidden && user?.id) {
+        console.log('[Home] 👁️ Page became visible, checking for GW updates...');
+        try {
+          const { data: latestGwResult } = await supabase
+            .from("app_gw_results")
+            .select("gw")
+            .order("gw", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          
+          const newLatestGw = latestGwResult?.gw ?? null;
+          if (newLatestGw !== null && newLatestGw !== latestGw) {
+            console.log('[Home] 🔍 Visibility change detected GW update:', latestGw, '->', newLatestGw);
+            // Clear cache and trigger refetch
+            try {
+              removeCached(`home:basic:${user.id}`);
+              removeCached(`home:fixtures:${user.id}:${gw}`);
+            } catch (e) {
+              console.error('[Home] Cache clear failed on visibility change:', e);
+            }
+            setGwResultsVersion(prev => prev + 1);
+          }
+        } catch (e) {
+          console.error('[Home] Error checking GW on visibility change:', e);
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
 
     return () => {
+      console.log('[Home] 🧹 Cleaning up subscription and visibility listeners');
       supabase.removeChannel(channel);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
     };
-  }, [user?.id, gw]);
+  }, [user?.id, gw, latestGw]);
 
   // Fetch fixtures and picks - always uses current GW from app_meta (ignores test GWs)
   useEffect(() => {
