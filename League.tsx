@@ -528,7 +528,7 @@ export default function LeaguePage() {
         );
     };
     mark();
-  }, [tab, league?.id, user?.id, chat.length]);
+  }, [tab, league?.id, user?.id]); // Removed chat.length - not needed for chat-beta
 
   /* ---------- leave/join/admin ---------- */
   async function leaveLeague() {
