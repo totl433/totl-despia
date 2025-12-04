@@ -1175,6 +1175,20 @@ ${shareUrl}`;
     // The individual tab components will show appropriate messages if the GW shouldn't be visible
   }, [league, tab]);
 
+  /* ---------- mark-as-read when viewing Chat or Chat Beta ---------- */
+  useEffect(() => {
+    if ((tab !== "chat" && tab !== "chat-beta") || !league?.id || !user?.id) return;
+    const mark = async () => {
+      await supabase
+        .from("league_message_reads")
+        .upsert(
+          { league_id: league.id, user_id: user.id, last_read_at: new Date().toISOString() },
+          { onConflict: "league_id,user_id" }
+        );
+    };
+    mark();
+  }, [tab, league?.id, user?.id]);
+
   // Helper function to load and merge messages (reusable)
   const loadAndMergeMessages = useCallback(async (leagueId: string, isInitialLoad = false) => {
     const { data, error } = await supabase
