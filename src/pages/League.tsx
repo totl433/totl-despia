@@ -628,6 +628,8 @@ export default function LeaguePage() {
   const [positionChangeKeys, setPositionChangeKeys] = useState<Set<string>>(new Set());
   const [showGwDropdown, setShowGwDropdown] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
+  // Track gw_results changes to trigger mini league table recalculation
+  const [gwResultsVersion, setGwResultsVersion] = useState(0);
   const [showTableModal, setShowTableModal] = useState(false);
   const [showScoringModal, setShowScoringModal] = useState(false);
   const [showAvatarUpload, setShowAvatarUpload] = useState(false);
@@ -1827,6 +1829,30 @@ ${shareUrl}`;
     }));
   }, []);
 
+  /* ---------- Subscribe to gw_results changes for real-time table updates ---------- */
+  useEffect(() => {
+    // Subscribe to changes in gw_results table to trigger table recalculation
+    const channel = supabase
+      .channel('gw-results-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'gw_results',
+        },
+        () => {
+          // Increment version to trigger recalculation
+          setGwResultsVersion(prev => prev + 1);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   /* ---------- Compute Mini League Table (season) ---------- */
   useEffect(() => {
     let alive = true;
@@ -1993,7 +2019,7 @@ ${shareUrl}`;
     return () => {
       alive = false;
     };
-  }, [members, league, currentGw, createEmptyMltRows]);
+  }, [members, league, currentGw, createEmptyMltRows, gwResultsVersion]);
 
   /* =========================
      Renderers

@@ -70,6 +70,8 @@ export default function GlobalLeaderboardPage() {
   const [gwPoints, setGwPoints] = useState<GwPointsRow[]>(initialState.gwPoints);
   const [prevOcp, setPrevOcp] = useState<Record<string, number>>(initialState.prevOcp);
   const [activeTab, setActiveTab] = useState<"overall" | "form5" | "form10" | "lastgw">(validTab);
+  // Track gw_results changes to trigger leaderboard recalculation
+  const [gwResultsVersion, setGwResultsVersion] = useState(0);
 
   // Sync activeTab with URL param and set default to lastgw if no tab specified
   useEffect(() => {
@@ -194,6 +196,37 @@ export default function GlobalLeaderboardPage() {
     })();
     return () => {
       alive = false;
+    };
+  }, [gwResultsVersion]);
+
+  /* ---------- Subscribe to gw_results changes for real-time leaderboard updates ---------- */
+  useEffect(() => {
+    // Subscribe to changes in gw_results table to trigger leaderboard recalculation
+    const channel = supabase
+      .channel('global-gw-results-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'gw_results',
+        },
+        () => {
+          // Clear cache to force fresh fetch
+          const cacheKey = `global:leaderboard`;
+          try {
+            localStorage.removeItem(`cache:${cacheKey}`);
+          } catch (e) {
+            // Cache clear failed, non-critical
+          }
+          // Increment version to trigger recalculation
+          setGwResultsVersion(prev => prev + 1);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
     };
   }, []);
 

@@ -333,10 +333,175 @@ export const handler: Handler = async (event, context) => {
       hasGoals: Array.isArray(goals) && goals.length > 0,
     });
 
+    // FIRST: Check if score went DOWN (VAR disallowed goal) - handle this BEFORE processing new goals
+    // This prevents sending "goal scored" when VAR disallows
+    const scoreWentDown = homeScore < (oldHomeScore || 0) || awayScore < (oldAwayScore || 0);
+    if (scoreWentDown) {
+      // Score went DOWN - this is a goal disallowed by VAR
+      // Determine which team had goal disallowed
+      const homeScoreDecreased = homeScore < (oldHomeScore || 0);
+      const awayScoreDecreased = awayScore < (oldAwayScore || 0);
+      const isHomeTeamDisallowed = homeScoreDecreased && !awayScoreDecreased;
+      const isAwayTeamDisallowed = awayScoreDecreased && !homeScoreDecreased;
+      
+      // Try to find the disallowed goal - check if it's still in goals array or was removed
+      let disallowedScorer = 'Unknown';
+      let disallowedMinute = '';
+      
+      // First, check if goal is still in current goals array (API might not remove it immediately)
+      if (Array.isArray(goals) && goals.length > 0) {
+        // Find goal that matches the team whose score decreased
+        const disallowedGoal = goals.find((g: any) => {
+          if (!g || typeof g !== 'object') return false;
+          // Try to match by teamId or team name
+          const goalTeamId = g.teamId;
+          const scoringTeam = (g.team || '').toLowerCase().trim();
+          const homeTeam = (normalizedFixture.home_team || '').toLowerCase().trim();
+          const awayTeam = (normalizedFixture.away_team || '').toLowerCase().trim();
+          
+          if (isHomeTeamDisallowed) {
+            return scoringTeam === homeTeam || scoringTeam.includes(homeTeam) || homeTeam.includes(scoringTeam);
+          } else if (isAwayTeamDisallowed) {
+            return scoringTeam === awayTeam || scoringTeam.includes(awayTeam) || awayTeam.includes(scoringTeam);
+          }
+          return false;
+        });
+        
+        if (disallowedGoal) {
+          disallowedScorer = disallowedGoal.scorer || 'Unknown';
+          disallowedMinute = disallowedGoal.minute !== null && disallowedGoal.minute !== undefined ? `${disallowedGoal.minute}'` : '';
+        }
+      }
+      
+      // If not found in current goals, check old goals array
+      if (disallowedScorer === 'Unknown' && Array.isArray(oldGoals) && oldGoals.length > 0) {
+        // Find the goal that was removed - compare old goals to current goals
+        const currentGoalKeys = new Set((goals || []).map((g: any) => {
+          if (!g || typeof g !== 'object') return '';
+          return `${(g.scorer || '').toString().trim().toLowerCase()}|${g.minute !== null && g.minute !== undefined ? String(g.minute) : ''}|${g.teamId !== null && g.teamId !== undefined ? String(g.teamId) : ''}`;
+        }));
+        
+        const removedGoal = oldGoals.find((g: any) => {
+          if (!g || typeof g !== 'object') return false;
+          const key = `${(g.scorer || '').toString().trim().toLowerCase()}|${g.minute !== null && g.minute !== undefined ? String(g.minute) : ''}|${g.teamId !== null && g.teamId !== undefined ? String(g.teamId) : ''}`;
+          return !currentGoalKeys.has(key);
+        });
+        
+        if (removedGoal) {
+          disallowedScorer = removedGoal.scorer || 'Unknown';
+          disallowedMinute = removedGoal.minute !== null && removedGoal.minute !== undefined ? `${removedGoal.minute}'` : '';
+        } else if (oldGoals.length > 0) {
+          // Fallback: use the most recent goal from old goals
+          const sortedOldGoals = [...oldGoals].sort((a: any, b: any) => (b.minute ?? 0) - (a.minute ?? 0));
+          const latestOldGoal = sortedOldGoals[0];
+          disallowedScorer = latestOldGoal.scorer || 'Unknown';
+          disallowedMinute = latestOldGoal.minute !== null && latestOldGoal.minute !== undefined ? `${latestOldGoal.minute}'` : '';
+        }
+      }
+      
+      // Get users who have picks for this fixture
+      let picks: any[] = [];
+      if (isAppFixture) {
+        const { data: appPicks } = await supabase
+          .from('app_picks')
+          .select('user_id, pick')
+          .eq('gw', fixtureGw)
+          .eq('fixture_index', normalizedFixture.fixture_index);
+        picks = appPicks || [];
+      } else if (isTestFixture && testGwForPicks) {
+        const { data: testPicks } = await supabase
+          .from('test_api_picks')
+          .select('user_id, pick')
+          .eq('matchday', testGwForPicks)
+          .eq('fixture_index', normalizedFixture.fixture_index);
+        picks = testPicks || [];
+      } else {
+        const { data: regularPicks } = await supabase
+          .from('picks')
+          .select('user_id, pick')
+          .eq('gw', fixtureGw)
+          .eq('fixture_index', normalizedFixture.fixture_index);
+        picks = regularPicks || [];
+      }
+
+      if (picks.length > 0) {
+        // Get push subscriptions
+        const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
+        const { data: subscriptions } = await supabase
+          .from('push_subscriptions')
+          .select('user_id, player_id')
+          .in('user_id', userIds)
+          .eq('is_active', true);
+
+        const playerIdsByUser = new Map<string, string[]>();
+        (subscriptions || []).forEach((sub: any) => {
+          if (!sub.player_id) return;
+          if (!playerIdsByUser.has(sub.user_id)) {
+            playerIdsByUser.set(sub.user_id, []);
+          }
+          playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
+        });
+
+        // Send goal disallowed notification
+        let totalSent = 0;
+        const teamName = isHomeTeamDisallowed ? normalizedFixture.home_team : normalizedFixture.away_team;
+        const scoreDisplay = `${normalizedFixture.home_team} ${homeScore}-${awayScore} ${normalizedFixture.away_team}`;
+        const title = `🚫 Goal Disallowed`;
+        const message = `${disallowedMinute} ${disallowedScorer}'s goal for ${teamName} was disallowed by VAR\n${scoreDisplay}`;
+
+        for (const pick of picks) {
+          const playerIds = playerIdsByUser.get(pick.user_id) || [];
+          if (playerIds.length === 0) continue;
+
+          const result = await sendOneSignalNotification(
+            playerIds,
+            title,
+            message,
+            {
+              type: 'goal_disallowed',
+              api_match_id: apiMatchId,
+              fixture_index: normalizedFixture.fixture_index,
+              gw: fixtureGw,
+            }
+          );
+
+          if (result.success) {
+            totalSent += result.sentTo;
+            console.log(`[sendScoreNotificationsWebhook] [${requestId}] Sent goal disallowed notification to user ${pick.user_id} (${result.sentTo} devices)`);
+          }
+        }
+
+        // Update state
+        await supabase
+          .from('notification_state')
+          .upsert({
+            api_match_id: apiMatchId,
+            last_notified_home_score: homeScore,
+            last_notified_away_score: awayScore,
+            last_notified_status: status,
+            last_notified_at: new Date().toISOString(),
+            last_notified_goals: goals || [],
+            last_notified_red_cards: redCards || null,
+          } as any, {
+            onConflict: 'api_match_id',
+          });
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            message: 'Goal disallowed notification sent',
+            sentTo: totalSent,
+          }),
+        };
+      }
+    }
+
     // Process goals - ALWAYS check for new goals if goals exist, regardless of score change
     // This handles cases where webhook fires after goal is already in database
     // We compare against state.last_notified_goals (what we've already notified), not old_record.goals
-    if (Array.isArray(goals) && goals.length > 0) {
+    // NOTE: Skip if score went down (handled above)
+    if (Array.isArray(goals) && goals.length > 0 && !scoreWentDown) {
       // Always check for new goals compared to what we've notified about
       const normalizeGoalKey = (g: any): string => {
         if (!g || typeof g !== 'object') return '';
@@ -551,12 +716,23 @@ export const handler: Handler = async (event, context) => {
       // Compare current score to old score to see which team scored
       const homeScoreIncreased = homeScore > (oldHomeScore || 0);
       const awayScoreIncreased = awayScore > (oldAwayScore || 0);
+      const homeScoreDecreased = homeScore < (oldHomeScore || 0);
+      const awayScoreDecreased = awayScore < (oldAwayScore || 0);
+      
+      // Check if this is a goal disallowed (score went DOWN)
+      const isGoalDisallowed = homeScoreDecreased || awayScoreDecreased;
       
       // If both increased (shouldn't happen, but handle it), use teamId from goal if available
       let isHomeTeam: boolean;
       if (homeScoreIncreased && !awayScoreIncreased) {
         isHomeTeam = true;
       } else if (awayScoreIncreased && !homeScoreIncreased) {
+        isHomeTeam = false;
+      } else if (homeScoreDecreased && !awayScoreDecreased) {
+        // Goal disallowed for home team
+        isHomeTeam = true;
+      } else if (awayScoreDecreased && !homeScoreIncreased) {
+        // Goal disallowed for away team
         isHomeTeam = false;
       } else {
         // Fallback: try to match by teamId or team name
@@ -594,15 +770,24 @@ export const handler: Handler = async (event, context) => {
         if (playerIds.length === 0) continue;
 
         const teamName = isHomeTeam ? normalizedFixture.home_team : normalizedFixture.away_team;
-        const title = `${teamName} scores!`;
-        const message = `${goalMinute} ${scorer}\n${scoreDisplay}`;
+        
+        // Handle goal disallowed differently
+        let title: string;
+        let message: string;
+        if (isGoalDisallowed) {
+          title = `🚫 Goal Disallowed`;
+          message = `${goalMinute} ${scorer}'s goal for ${teamName} was disallowed by VAR\n${scoreDisplay}`;
+        } else {
+          title = `${teamName} scores!`;
+          message = `${goalMinute} ${scorer}\n${scoreDisplay}`;
+        }
 
         const result = await sendOneSignalNotification(
           playerIds,
           title,
           message,
           {
-            type: 'goal',
+            type: isGoalDisallowed ? 'goal_disallowed' : 'goal',
             api_match_id: apiMatchId,
             fixture_index: normalizedFixture.fixture_index,
             gw: fixtureGw,
@@ -611,7 +796,7 @@ export const handler: Handler = async (event, context) => {
 
         if (result.success) {
           totalSent += result.sentTo;
-          console.log(`[sendScoreNotificationsWebhook] [${requestId}] Sent goal notification to user ${pick.user_id} (${result.sentTo} devices)`);
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] Sent ${isGoalDisallowed ? 'goal disallowed' : 'goal'} notification to user ${pick.user_id} (${result.sentTo} devices)`);
         }
       }
 
@@ -627,9 +812,147 @@ export const handler: Handler = async (event, context) => {
       }
     }
 
+    // Handle score DECREASES (VAR disallowed goals) - check BEFORE score increases without goals
+    const scoreWentDown = homeScore < (oldHomeScore || 0) || awayScore < (oldAwayScore || 0);
+    if (isScoreChange && scoreWentDown) {
+      // Score went DOWN - this is a goal disallowed by VAR
+      // Determine which team had goal disallowed
+      const homeScoreDecreased = homeScore < (oldHomeScore || 0);
+      const awayScoreDecreased = awayScore < (oldAwayScore || 0);
+      const isHomeTeamDisallowed = homeScoreDecreased && !awayScoreDecreased;
+      const isAwayTeamDisallowed = awayScoreDecreased && !homeScoreDecreased;
+      
+      // Try to find the disallowed goal in old goals array (before it was removed)
+      let disallowedScorer = 'Unknown';
+      let disallowedMinute = '';
+      if (Array.isArray(oldGoals) && oldGoals.length > 0) {
+        // Find the goal that was removed - compare old goals to current goals
+        const currentGoalKeys = new Set((goals || []).map((g: any) => {
+          if (!g || typeof g !== 'object') return '';
+          return `${(g.scorer || '').toString().trim().toLowerCase()}|${g.minute !== null && g.minute !== undefined ? String(g.minute) : ''}|${g.teamId !== null && g.teamId !== undefined ? String(g.teamId) : ''}`;
+        }));
+        
+        const removedGoal = oldGoals.find((g: any) => {
+          if (!g || typeof g !== 'object') return false;
+          const key = `${(g.scorer || '').toString().trim().toLowerCase()}|${g.minute !== null && g.minute !== undefined ? String(g.minute) : ''}|${g.teamId !== null && g.teamId !== undefined ? String(g.teamId) : ''}`;
+          return !currentGoalKeys.has(key);
+        });
+        
+        if (removedGoal) {
+          disallowedScorer = removedGoal.scorer || 'Unknown';
+          disallowedMinute = removedGoal.minute !== null && removedGoal.minute !== undefined ? `${removedGoal.minute}'` : '';
+        } else if (oldGoals.length > 0) {
+          // Fallback: use the most recent goal from old goals
+          const sortedOldGoals = [...oldGoals].sort((a: any, b: any) => (b.minute ?? 0) - (a.minute ?? 0));
+          const latestOldGoal = sortedOldGoals[0];
+          disallowedScorer = latestOldGoal.scorer || 'Unknown';
+          disallowedMinute = latestOldGoal.minute !== null && latestOldGoal.minute !== undefined ? `${latestOldGoal.minute}'` : '';
+        }
+      }
+      
+      // Get users who have picks for this fixture
+      let picks: any[] = [];
+      if (isAppFixture) {
+        const { data: appPicks } = await supabase
+          .from('app_picks')
+          .select('user_id, pick')
+          .eq('gw', fixtureGw)
+          .eq('fixture_index', normalizedFixture.fixture_index);
+        picks = appPicks || [];
+      } else if (isTestFixture && testGwForPicks) {
+        const { data: testPicks } = await supabase
+          .from('test_api_picks')
+          .select('user_id, pick')
+          .eq('matchday', testGwForPicks)
+          .eq('fixture_index', normalizedFixture.fixture_index);
+        picks = testPicks || [];
+      } else {
+        const { data: regularPicks } = await supabase
+          .from('picks')
+          .select('user_id, pick')
+          .eq('gw', fixtureGw)
+          .eq('fixture_index', normalizedFixture.fixture_index);
+        picks = regularPicks || [];
+      }
+
+      if (picks.length > 0) {
+        // Get push subscriptions
+        const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
+        const { data: subscriptions } = await supabase
+          .from('push_subscriptions')
+          .select('user_id, player_id')
+          .in('user_id', userIds)
+          .eq('is_active', true);
+
+        const playerIdsByUser = new Map<string, string[]>();
+        (subscriptions || []).forEach((sub: any) => {
+          if (!sub.player_id) return;
+          if (!playerIdsByUser.has(sub.user_id)) {
+            playerIdsByUser.set(sub.user_id, []);
+          }
+          playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
+        });
+
+        // Send goal disallowed notification
+        let totalSent = 0;
+        const teamName = isHomeTeamDisallowed ? normalizedFixture.home_team : normalizedFixture.away_team;
+        const scoreDisplay = `${normalizedFixture.home_team} ${homeScore}-${awayScore} ${normalizedFixture.away_team}`;
+        const title = `🚫 Goal Disallowed`;
+        const message = `${disallowedMinute} ${disallowedScorer}'s goal for ${teamName} was disallowed by VAR\n${scoreDisplay}`;
+
+        for (const pick of picks) {
+          const playerIds = playerIdsByUser.get(pick.user_id) || [];
+          if (playerIds.length === 0) continue;
+
+          const result = await sendOneSignalNotification(
+            playerIds,
+            title,
+            message,
+            {
+              type: 'goal_disallowed',
+              api_match_id: apiMatchId,
+              fixture_index: normalizedFixture.fixture_index,
+              gw: fixtureGw,
+            }
+          );
+
+          if (result.success) {
+            totalSent += result.sentTo;
+            console.log(`[sendScoreNotificationsWebhook] [${requestId}] Sent goal disallowed notification to user ${pick.user_id} (${result.sentTo} devices)`);
+          }
+        }
+
+        // Update state
+        await supabase
+          .from('notification_state')
+          .upsert({
+            api_match_id: apiMatchId,
+            last_notified_home_score: homeScore,
+            last_notified_away_score: awayScore,
+            last_notified_status: status,
+            last_notified_at: new Date().toISOString(),
+            last_notified_goals: goals || [],
+            last_notified_red_cards: redCards || null,
+          } as any, {
+            onConflict: 'api_match_id',
+          });
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            message: 'Goal disallowed notification sent',
+            sentTo: totalSent,
+          }),
+        };
+      }
+    }
+
     // Handle score changes without goals (for manual updates)
-    if (isScoreChange && (!Array.isArray(goals) || goals.length === 0)) {
+    // BUT: Skip if score went DOWN (this is handled above as goal disallowed)
+    if (isScoreChange && (!Array.isArray(goals) || goals.length === 0) && !scoreWentDown) {
       // Score changed but no goals data - send simple score update notification
+      // Note: We skip if score went down to avoid sending "NOT SCORED" when VAR disallows
       let picks: any[] = [];
       if (isAppFixture) {
         const { data: appPicks } = await supabase

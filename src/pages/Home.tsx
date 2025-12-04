@@ -201,6 +201,8 @@ export default function HomePage() {
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>({});
   const [gw, setGw] = useState<number>(initialState.gw);
   const [latestGw, setLatestGw] = useState<number | null>(initialState.latestGw);
+  // Track gw_results changes to trigger leaderboard recalculation
+  const [gwResultsVersion, setGwResultsVersion] = useState(0);
   const [gwPoints, setGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>(initialState.gwPoints);
   const [loading, setLoading] = useState(initialState.loading);
   const [leagueDataLoading, setLeagueDataLoading] = useState(initialState.leagueDataLoading);
@@ -1315,7 +1317,40 @@ export default function HomePage() {
     })();
     
     return () => { alive = false; };
-  }, [user?.id, leagues, gw]);
+  }, [user?.id, leagues, gw, gwResultsVersion]);
+
+  /* ---------- Subscribe to gw_results changes for real-time leaderboard updates ---------- */
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    // Subscribe to changes in gw_results table to trigger leaderboard recalculation
+    const channel = supabase
+      .channel('home-gw-results-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'gw_results',
+        },
+        () => {
+          // Clear cache to force fresh fetch
+          const cacheKey = `home:basic:${user.id}`;
+          try {
+            localStorage.removeItem(`cache:${cacheKey}`);
+          } catch (e) {
+            // Cache clear failed, non-critical
+          }
+          // Increment version to trigger recalculation
+          setGwResultsVersion(prev => prev + 1);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   // Fetch fixtures and picks - always uses current GW from app_meta (ignores test GWs)
   useEffect(() => {
