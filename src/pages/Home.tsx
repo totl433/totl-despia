@@ -509,7 +509,8 @@ export default function HomePage() {
         const lastCompletedGw = latestGwResult.data?.gw ?? metaResult.data?.current_gw ?? 1;
         const currentGw = metaResult.data?.current_gw ?? 1;
         setGw(currentGw);
-        setLatestGw(currentGw);
+        // Set latestGw to the latest GW with results (not just current GW)
+        setLatestGw(latestGwResult.data?.gw ?? currentGw);
         
         // Process GW points
         let allPoints: Array<{user_id: string, gw: number, points: number}> = [];
@@ -1318,6 +1319,61 @@ export default function HomePage() {
     
     return () => { alive = false; };
   }, [user?.id, leagues, gw, gwResultsVersion]);
+
+  /* ---------- Refetch data when gwResultsVersion changes (triggered by subscription) ---------- */
+  useEffect(() => {
+    if (!user?.id || gwResultsVersion === 0) return; // Skip initial render
+    
+    let alive = true;
+    const cacheKey = `home:basic:${user.id}`;
+    
+    (async () => {
+      try {
+        // Refetch latest GW and leaderboard data when results change
+        const [latestGwResult, allGwPointsResult, overallResult] = await Promise.all([
+          supabase.from("app_gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
+          supabase.from("app_v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
+          supabase.from("app_v_ocp_overall").select("user_id, name, ocp")
+        ]);
+        
+        if (!alive) return;
+        
+        const newLatestGw = latestGwResult.data?.gw ?? null;
+        const allPoints = (allGwPointsResult.data as Array<{user_id: string, gw: number, points: number}>) ?? [];
+        const overallData = (overallResult.data as Array<{user_id: string, name: string | null, ocp: number | null}>) ?? [];
+        
+        // Update state
+        if (newLatestGw !== null) {
+          setLatestGw(newLatestGw);
+        }
+        setAllGwPoints(allPoints);
+        setOverall(overallData);
+        setGwPoints(allPoints.filter(gp => gp.user_id === user.id));
+        
+        // Update cache
+        try {
+          setCached(cacheKey, {
+            leagues,
+            currentGw: gw,
+            latestGw: newLatestGw,
+            allGwPoints: allPoints,
+            overall: overallData,
+            lastGwRank,
+            fiveGwRank,
+            tenGwRank,
+            seasonRank,
+            isInApiTestLeague,
+          }, CACHE_TTL.HOME);
+        } catch (e) {
+          // Cache update failed, non-critical
+        }
+      } catch (e) {
+        console.error('[Home] Error refetching data after results change:', e);
+      }
+    })();
+    
+    return () => { alive = false; };
+  }, [gwResultsVersion, user?.id, gw, leagues, lastGwRank, fiveGwRank, tenGwRank, seasonRank, isInApiTestLeague]);
 
   /* ---------- Subscribe to app_gw_results changes for real-time leaderboard updates ---------- */
   useEffect(() => {
