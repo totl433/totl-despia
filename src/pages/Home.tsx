@@ -1707,6 +1707,48 @@ export default function HomePage() {
   }, [fixturesToShow, liveScores, userPicks]);
 
   const isDataReady = !loading && !leaderboardDataLoading && !leagueDataLoading;
+  // Refresh unread counts when window gains focus (user returns from chat)
+  useEffect(() => {
+    if (!user?.id || leagues.length === 0) return;
+
+    const handleFocus = async () => {
+      try {
+        const leagueIds = leagues.map(l => l.id);
+        
+        const { data: reads } = await supabase
+          .from("league_message_reads")
+          .select("league_id,last_read_at")
+          .eq("user_id", user.id);
+
+        const lastReadMap = new Map<string, string>();
+        (reads ?? []).forEach((r: any) => lastReadMap.set(r.league_id, r.last_read_at));
+
+        const unreadCountPromises = leagueIds.map(async (leagueId) => {
+          const since = lastReadMap.get(leagueId) ?? "1970-01-01T00:00:00Z";
+          const { count } = await supabase
+            .from("league_messages")
+            .select("id", { count: "exact", head: true })
+            .eq("league_id", leagueId)
+            .gte("created_at", since)
+            .neq("user_id", user.id);
+          return { leagueId, count: typeof count === "number" ? count : 0 };
+        });
+
+        const unreadCountResults = await Promise.all(unreadCountPromises);
+        const unreadCounts: Record<string, number> = {};
+        unreadCountResults.forEach(({ leagueId, count }) => {
+          unreadCounts[leagueId] = count;
+        });
+        
+        setUnreadByLeague(unreadCounts);
+      } catch (error) {
+        console.error('[Home] Failed to refresh unread counts on focus:', error);
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [user?.id, leagues]);
 
   return (
     <div className="max-w-6xl mx-auto px-4 pt-2 pb-4 min-h-screen relative">

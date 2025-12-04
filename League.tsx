@@ -518,7 +518,7 @@ export default function LeaguePage() {
 
   /* ---------- mark-as-read when viewing Chat ---------- */
   useEffect(() => {
-    if (tab !== "chat" || !league?.id || !user?.id) return;
+    if ((tab !== "chat" && tab !== "chat-beta") || !league?.id || !user?.id) return;
     const mark = async () => {
       await supabase
         .from("league_message_reads")
