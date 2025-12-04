@@ -756,13 +756,53 @@ export const handler: Handler = async (event, context) => {
         });
       }
       
+      // Calculate actual score from goals array if score fields are stale
+      // This handles cases where webhook fires before home_score/away_score are updated
+      let actualHomeScore = homeScore;
+      let actualAwayScore = awayScore;
+      
+      if (Array.isArray(goals) && goals.length > 0) {
+        // Count goals by team from goals array
+        const homeTeamName = (normalizedFixture.home_team || '').toLowerCase().trim();
+        const awayTeamName = (normalizedFixture.away_team || '').toLowerCase().trim();
+        
+        let goalsFromArrayHome = 0;
+        let goalsFromArrayAway = 0;
+        
+        for (const goal of goals) {
+          if (!goal || typeof goal !== 'object') continue;
+          const goalTeam = (goal.team || '').toLowerCase().trim();
+          
+          // Try to match by team name (most reliable)
+          const isHomeGoal = goalTeam === homeTeamName ||
+                            goalTeam.includes(homeTeamName) ||
+                            homeTeamName.includes(goalTeam);
+          
+          if (isHomeGoal) {
+            goalsFromArrayHome++;
+          } else {
+            goalsFromArrayAway++;
+          }
+        }
+        
+        // Use goals array count if it's higher than recorded score (score fields are stale)
+        if (goalsFromArrayHome > homeScore) {
+          actualHomeScore = goalsFromArrayHome;
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] Score field stale - using goals array: home ${homeScore} -> ${actualHomeScore}`);
+        }
+        if (goalsFromArrayAway > awayScore) {
+          actualAwayScore = goalsFromArrayAway;
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] Score field stale - using goals array: away ${awayScore} -> ${actualAwayScore}`);
+        }
+      }
+      
       // Format score with new goal highlighted (FotMob style)
       // Example: "Team A 1 - [2] Team B" or "Team A [1] - 0 Team B"
       let scoreDisplay: string;
       if (isHomeTeam) {
-        scoreDisplay = `${normalizedFixture.home_team} [${homeScore}] - ${awayScore} ${normalizedFixture.away_team}`;
+        scoreDisplay = `${normalizedFixture.home_team} [${actualHomeScore}] - ${actualAwayScore} ${normalizedFixture.away_team}`;
       } else {
-        scoreDisplay = `${normalizedFixture.home_team} ${homeScore} - [${awayScore}] ${normalizedFixture.away_team}`;
+        scoreDisplay = `${normalizedFixture.home_team} ${actualHomeScore} - [${actualAwayScore}] ${normalizedFixture.away_team}`;
       }
 
       for (const pick of picks) {
