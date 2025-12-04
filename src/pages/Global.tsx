@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
-import { getCached, setCached, CACHE_TTL } from "../lib/cache";
+import { getCached, setCached, removeCached, CACHE_TTL } from "../lib/cache";
 
 type OverallRow = {
   user_id: string;
@@ -199,9 +199,9 @@ export default function GlobalLeaderboardPage() {
     };
   }, [gwResultsVersion]);
 
-  /* ---------- Subscribe to gw_results changes for real-time leaderboard updates ---------- */
+  /* ---------- Subscribe to app_gw_results changes for real-time leaderboard updates ---------- */
   useEffect(() => {
-    // Subscribe to changes in gw_results table to trigger leaderboard recalculation
+    // Subscribe to changes in app_gw_results table to trigger leaderboard recalculation
     const channel = supabase
       .channel('global-gw-results-changes')
       .on(
@@ -209,13 +209,13 @@ export default function GlobalLeaderboardPage() {
         {
           event: '*', // Listen to INSERT, UPDATE, DELETE
           schema: 'public',
-          table: 'gw_results',
+          table: 'app_gw_results',
         },
         () => {
           // Clear cache to force fresh fetch
           const cacheKey = `global:leaderboard`;
           try {
-            localStorage.removeItem(`cache:${cacheKey}`);
+            removeCached(cacheKey);
           } catch (e) {
             // Cache clear failed, non-critical
           }

@@ -1319,11 +1319,11 @@ export default function HomePage() {
     return () => { alive = false; };
   }, [user?.id, leagues, gw, gwResultsVersion]);
 
-  /* ---------- Subscribe to gw_results changes for real-time leaderboard updates ---------- */
+  /* ---------- Subscribe to app_gw_results changes for real-time leaderboard updates ---------- */
   useEffect(() => {
     if (!user?.id) return;
     
-    // Subscribe to changes in gw_results table to trigger leaderboard recalculation
+    // Subscribe to changes in app_gw_results table to trigger leaderboard recalculation
     const channel = supabase
       .channel('home-gw-results-changes')
       .on(
@@ -1331,13 +1331,14 @@ export default function HomePage() {
         {
           event: '*', // Listen to INSERT, UPDATE, DELETE
           schema: 'public',
-          table: 'gw_results',
+          table: 'app_gw_results',
         },
         () => {
           // Clear cache to force fresh fetch
           const cacheKey = `home:basic:${user.id}`;
           try {
-            localStorage.removeItem(`cache:${cacheKey}`);
+            removeCached(cacheKey);
+            removeCached(`home:fixtures:${user.id}:${gw}`);
           } catch (e) {
             // Cache clear failed, non-critical
           }
@@ -1350,7 +1351,7 @@ export default function HomePage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id]);
+  }, [user?.id, gw]);
 
   // Fetch fixtures and picks - always uses current GW from app_meta (ignores test GWs)
   useEffect(() => {
