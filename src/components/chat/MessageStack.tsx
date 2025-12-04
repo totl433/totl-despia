@@ -30,10 +30,10 @@ export function MessageStack({
             {(avatarInitials || author.charAt(0)).toUpperCase()}
         </div>
       ) : (
-        <div className="w-8" />
+        <div className="w-8 flex-shrink-0" />
       )}
 
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1 flex-1">
         {messages.map((message, index) => {
           const shape: "single" | "top" | "middle" | "bottom" =
             messages.length === 1
@@ -45,25 +45,23 @@ export function MessageStack({
               : "middle";
 
           return (
-            <div key={message.id} className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}>
-              <div className={`flex flex-col gap-1 ${isOwnMessage ? "items-end" : "items-start"}`}>
-                <MessageBubble
-                  author={!isOwnMessage && index === 0 ? author : undefined}
-                  text={message.text}
-                  time={message.time}
-                  isOwnMessage={isOwnMessage}
-                  shape={shape}
-                />
-                {message.status && (
-                  <div
-                    className={`text-[11px] ${
-                      message.status === "error" ? "text-red-500" : "text-slate-400"
-                    }`}
-                  >
-                    {message.status === "error" ? "Failed" : "Sending…"}
-                  </div>
-                )}
-              </div>
+            <div key={message.id} className={`flex w-full ${isOwnMessage ? "justify-end" : "justify-start"}`}>
+              <MessageBubble
+                author={!isOwnMessage && index === 0 ? author : undefined}
+                text={message.text}
+                time={message.time}
+                isOwnMessage={isOwnMessage}
+                shape={shape}
+              />
+              {message.status && (
+                <div
+                  className={`text-[11px] ml-2 ${
+                    message.status === "error" ? "text-red-500" : "text-slate-400"
+                  }`}
+                >
+                  {message.status === "error" ? "Failed" : "Sending…"}
+                </div>
+              )}
             </div>
           );
         })}

@@ -15,8 +15,10 @@ const meta: Meta<typeof MessageStack> = {
   },
   decorators: [
     (Story) => (
-      <div className="bg-[#f5f6fb] min-h-[300px] p-6">
-        <Story />
+      <div className="bg-[#f5f6fb] min-h-[300px] p-6 flex justify-center">
+        <div className="w-full max-w-[420px]">
+          <Story />
+        </div>
       </div>
     ),
   ],

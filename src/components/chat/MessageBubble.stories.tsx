@@ -9,6 +9,13 @@ const meta: Meta<typeof MessageBubble> = {
     text: "I typing can be weird a slow so I’ll see what can be done",
     time: "13:44",
   },
+  decorators: [
+    (Story) => (
+      <div className="bg-[#f5f6fb] min-h-[200px] p-6 flex justify-start">
+        <Story />
+      </div>
+    ),
+  ],
 };
 
 export default meta;

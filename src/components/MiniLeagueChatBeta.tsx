@@ -316,7 +316,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
 
 
   return (
-    <div className="flex flex-col h-full bg-[#f5f6fb]">
+    <div className="flex flex-col h-full bg-[#f5f6fb] w-full max-w-[440px] mx-auto">
       <div
         ref={listRef}
         className="flex-1 overflow-y-auto px-4 py-5"
@@ -357,6 +357,9 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           left: inputBottom > 0 ? 0 : "auto",
           right: inputBottom > 0 ? 0 : "auto",
           width: inputBottom > 0 ? "100%" : "auto",
+          maxWidth: inputBottom > 0 ? "440px" : "none",
+          marginLeft: inputBottom > 0 ? "auto" : undefined,
+          marginRight: inputBottom > 0 ? "auto" : undefined,
           zIndex: inputBottom > 0 ? 1000 : "auto",
         }}
       >

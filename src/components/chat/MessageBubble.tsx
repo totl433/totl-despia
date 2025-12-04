@@ -31,22 +31,20 @@ export function MessageBubble({
   isOwnMessage,
   shape = "single",
 }: MessageBubbleProps) {
-  const alignment = isOwnMessage ? "items-end text-right" : "items-start text-left";
+  const textAlignment = isOwnMessage ? "text-right" : "text-left";
   const bubbleClasses = isOwnMessage ? "bg-[#1C8376] text-white" : "bg-white text-slate-900";
   const shapeClasses = isOwnMessage ? outgoingShape : incomingShape;
-  const maxWidth = "max-w-[72%]";
+  const maxWidth = "max-w-[70%]";
 
   return (
     <div
-      className={`inline-flex w-fit px-3 py-2 text-sm leading-snug shadow-sm ${maxWidth} whitespace-normal break-words ${bubbleClasses} ${shapeClasses[shape]}`}
+      className={`inline-block w-fit px-3 py-2 text-sm leading-snug shadow-sm ${maxWidth} whitespace-normal break-words ${textAlignment} ${bubbleClasses} ${shapeClasses[shape]}`}
     >
-      <div className={`flex flex-col gap-1 ${alignment}`}>
-        {author && !isOwnMessage && (
-          <div className="text-[11px] font-semibold text-slate-600">{author}</div>
-        )}
-        <div className="whitespace-normal break-words">{text}</div>
-        <div className="text-[11px] text-[#DCDCDD]">{time}</div>
-      </div>
+      {author && !isOwnMessage && (
+        <div className="text-[11px] font-semibold text-slate-600 mb-1">{author}</div>
+      )}
+      <div>{text}</div>
+      <div className="text-[11px] text-[#DCDCDD] mt-1">{time}</div>
     </div>
   );
 }
