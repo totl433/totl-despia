@@ -1415,10 +1415,12 @@ export default function HomePage() {
           table: 'app_gw_results',
         },
         (payload) => {
+          const newRecord = payload.new as { gw?: number; fixture_index?: number } | null;
+          const oldRecord = payload.old as { gw?: number; fixture_index?: number } | null;
           console.log('[Home] 🔔 app_gw_results change detected!', {
             event: payload.eventType,
-            gw: payload.new?.gw || payload.old?.gw,
-            fixture_index: payload.new?.fixture_index || payload.old?.fixture_index
+            gw: newRecord?.gw || oldRecord?.gw,
+            fixture_index: newRecord?.fixture_index || oldRecord?.fixture_index
           });
           
           // Clear cache to force fresh fetch
