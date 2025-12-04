@@ -329,9 +329,10 @@ export default function TablesPage() {
             
             const { data: allMessages } = await supabase
               .from("league_messages")
-              .select("id,league_id,created_at")
+              .select("id,league_id,created_at,user_id")
               .in("league_id", leagueIds)
-              .gte("created_at", earliestSinceStr);
+              .gte("created_at", earliestSinceStr)
+              .neq("user_id", user.id); // Exclude current user's messages
             
             // Optimize: pre-filter messages by league_id to avoid repeated filtering
             const messagesByLeague = new Map<string, any[]>();

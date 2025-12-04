@@ -260,9 +260,10 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
             
             const { data: allMessages } = await supabase
               .from('league_messages')
-              .select('id, league_id, created_at')
+              .select('id, league_id, created_at, user_id')
               .in('league_id', leagueIds)
-              .gte('created_at', earliestSinceStr);
+              .gte('created_at', earliestSinceStr)
+              .neq('user_id', userId); // Exclude current user's messages
             
             const messagesByLeague = new Map<string, any[]>();
             (allMessages ?? []).forEach((m: any) => {

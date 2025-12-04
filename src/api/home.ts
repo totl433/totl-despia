@@ -378,7 +378,8 @@ export async function fetchUnreadCounts(
           .from("league_messages")
           .select("id", { count: "exact" })
           .eq("league_id", leagueId)
-          .gte("created_at", since);
+          .gte("created_at", since)
+          .neq("user_id", userId); // Exclude messages from current user
         
         if (error) {
           console.warn(`unread count query error for ${leagueId}:`, error);
