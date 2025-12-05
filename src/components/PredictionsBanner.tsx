@@ -91,9 +91,23 @@ export default function PredictionsBanner() {
         }
 
         if (resultsPublished) {
-          // Results published - show "watch this space" for next GW
-          setBannerType("watch-space");
-          setVisible(true);
+          // Results published for current GW - check if next GW fixtures exist
+          // Only show "watch this space" banner if next GW fixtures don't exist yet
+          const nextGw = gw + 1;
+          const { count: nextGwFxCount } = await supabase
+            .from("app_fixtures")
+            .select("id", { count: "exact", head: true })
+            .eq("gw", nextGw);
+          if (!alive) return;
+          
+          // Only show GW16 banner if GW16 fixtures don't exist yet
+          if (!nextGwFxCount || nextGwFxCount === 0) {
+            setBannerType("watch-space");
+            setVisible(true);
+          } else {
+            // Next GW fixtures exist, don't show banner
+            setVisible(false);
+          }
           return;
         }
 

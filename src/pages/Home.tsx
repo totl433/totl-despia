@@ -508,6 +508,7 @@ export default function HomePage() {
         // Process GW data (always use current GW, ignore test GWs)
         const lastCompletedGw = latestGwResult.data?.gw ?? metaResult.data?.current_gw ?? 1;
         const currentGw = metaResult.data?.current_gw ?? 1;
+        console.log('[Home] 📊 Fetched current_gw from app_meta:', currentGw, 'metaResult.data:', metaResult.data);
         setGw(currentGw);
         // Set latestGw to the latest GW with results (not just current GW)
         const newLatestGw = latestGwResult.data?.gw ?? currentGw;

@@ -263,13 +263,7 @@ export default function ApiAdmin() {
     setOk("");
 
     try {
-      // Delete existing fixtures for next GW
-      await supabase
-        .from("app_fixtures")
-        .delete()
-        .eq("gw", nextGw);
-
-      // Insert selected fixtures into app_fixtures
+      // Prepare fixtures to save to app_fixtures
       const fixturesToInsert = Array.from(selectedFixtures.entries()).map(([fixture_index, f]) => ({
         gw: nextGw,
         fixture_index,
@@ -285,13 +279,42 @@ export default function ApiAdmin() {
         kickoff_time: f.kickoff_time,
       }));
 
-      const { error: insertError } = await supabase
+      // API Admin ONLY saves to app_fixtures (App table)
+      // Web users get fixtures from Web Admin page (saves to fixtures table)
+      // Mirroring triggers handle copying user data (picks/submissions), not fixtures
+      
+      console.log(`[ApiAdmin] Saving ${fixturesToInsert.length} fixtures to app_fixtures for GW ${nextGw}...`);
+      
+      const { data: insertedData, error: insertError } = await supabase
         .from("app_fixtures")
-        .insert(fixturesToInsert);
+        .upsert(fixturesToInsert, { 
+          onConflict: 'gw,fixture_index',
+          ignoreDuplicates: false 
+        })
+        .select();
 
       if (insertError) {
-        console.error('[ApiAdmin] Error inserting fixtures:', insertError);
+        console.error('[ApiAdmin] ❌ Error upserting fixtures to app_fixtures:', insertError);
+        console.error('[ApiAdmin] Error details:', JSON.stringify(insertError, null, 2));
         throw insertError;
+      }
+
+      const savedCount = insertedData?.length || fixturesToInsert.length;
+      console.log(`[ApiAdmin] ✅ Successfully saved ${savedCount} fixtures to app_fixtures for GW ${nextGw}`);
+      
+      // Verify the save worked by checking the database
+      const { data: verifyData, error: verifyError } = await supabase
+        .from("app_fixtures")
+        .select("fixture_index")
+        .eq("gw", nextGw);
+      
+      if (verifyError) {
+        console.warn('[ApiAdmin] ⚠️ Could not verify fixtures were saved:', verifyError);
+      } else {
+        console.log(`[ApiAdmin] ✅ Verified: ${verifyData?.length || 0} fixtures exist in app_fixtures for GW ${nextGw}`);
+        if ((verifyData?.length || 0) !== savedCount) {
+          console.warn(`[ApiAdmin] ⚠️ Mismatch: Expected ${savedCount} fixtures but found ${verifyData?.length || 0} in database`);
+        }
       }
 
       // Update app_meta.current_gw to the saved GW
