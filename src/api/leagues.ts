@@ -32,9 +32,10 @@ type DataSource = 'cache' | 'network' | 'prewarm';
  * This is the single query definition - no other file should query league_members for league data.
  */
 export async function fetchUserLeaguesFromDb(userId: string): Promise<League[]> {
+  // NOTE: start_gw column doesn't exist in production - don't include it
   const { data, error } = await supabase
     .from('league_members')
-    .select('leagues(id, name, code, avatar, created_at, start_gw)')
+    .select('leagues(id, name, code, avatar, created_at)')
     .eq('user_id', userId);
 
   if (error) {
