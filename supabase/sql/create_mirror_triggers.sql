@@ -104,7 +104,7 @@ BEGIN
     NEW.home_name,
     NEW.away_name,
     NEW.kickoff_time,
-    NEW.api_match_id
+    NULL  -- fixtures table doesn't have api_match_id column, set to NULL
   )
   ON CONFLICT (gw, fixture_index)
   DO UPDATE SET
@@ -114,8 +114,8 @@ BEGIN
     away_code = EXCLUDED.away_code,
     home_name = EXCLUDED.home_name,
     away_name = EXCLUDED.away_name,
-    kickoff_time = EXCLUDED.kickoff_time,
-    api_match_id = EXCLUDED.api_match_id;
+    kickoff_time = EXCLUDED.kickoff_time;
+    -- Don't update api_match_id when mirroring from fixtures (it doesn't exist in source table)
   
   RETURN NEW;
 END;
