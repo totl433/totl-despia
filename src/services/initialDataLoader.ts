@@ -1,17 +1,40 @@
 /**
- * Service to load all critical data upfront before showing the app
- * Used when "load everything first" mode is enabled
+ * Service to PRE-WARM caches before showing the app.
+ * Used when "load everything first" mode is enabled.
+ * 
+ * ┌─────────────────────────────────────────────────────────────────────┐
+ * │  IMPORTANT: LEAGUES ARE PRE-WARMED ONLY                             │
+ * │                                                                      │
+ * │  This service populates caches so pages load instantly.              │
+ * │  UI components MUST use hooks (e.g., useLeagues) to read data.       │
+ * │  DO NOT consume league data from this function's return value.       │
+ * │                                                                      │
+ * │  Single source of truth for leagues: src/hooks/useLeagues.ts         │
+ * │  Single source of truth for sorting: src/lib/sortLeagues.ts          │
+ * └─────────────────────────────────────────────────────────────────────┘
  */
 
 import { supabase } from '../lib/supabase';
-import { setCached, CACHE_TTL } from '../lib/cache';
+import { setCached, CACHE_TTL, getCached } from '../lib/cache';
+import { sortLeaguesWithUnreadMap } from '../lib/sortLeagues';
+import { log } from '../lib/logEvent';
+import { prewarmLeaguesCache } from '../api/leagues';
 
+/**
+ * Return type for initial data loading.
+ * 
+ * NOTE: The `leagues` field is included for backwards compatibility only.
+ * Pages should NOT use it - use the useLeagues hook instead.
+ */
 export interface InitialData {
   // Current game week
   currentGw: number;
   latestGw: number | null;
   
-  // User's leagues
+  /**
+   * @deprecated Use useLeagues hook instead. This is for backwards compatibility only.
+   * Leagues are pre-warmed by prewarmLeaguesCache() and should be consumed via useLeagues hook.
+   */
   leagues: Array<{
     id: string;
     name: string;
@@ -53,7 +76,9 @@ export interface InitialData {
   // User's picks for current GW
   userPicks: Record<number, "H" | "D" | "A">;
   
-  // League data (members, submissions, etc.)
+  /**
+   * @deprecated League data should be fetched via useLeagues and Tables-specific hooks.
+   */
   leagueData: Record<string, {
     id: string;
     members: Array<{ id: string; name: string }>;
@@ -74,13 +99,45 @@ export interface InitialData {
 }
 
 /**
- * Load all critical data for the app
+ * Pre-warm all critical caches for the app.
+ * 
+ * This function populates caches so that pages load instantly.
+ * Pages should use hooks (useLeagues, etc.) to consume data - NOT this return value.
+ * 
+ * LEAGUE DATA FLOW:
+ * 1. prewarmLeaguesCache() populates leagues:${userId} and leagues:unread:${userId} caches
+ * 2. useLeagues hook reads from these caches on mount
+ * 3. Pages render immediately from cache, then refresh in background
+ * 
+ * @param userId - The user's ID
+ * @returns InitialData for backwards compatibility (pages should use hooks instead)
  */
 export async function loadInitialData(userId: string): Promise<InitialData> {
-  // Fetch all data in parallel for maximum speed
+  // ═══════════════════════════════════════════════════════════════════════
+  // STEP 1: PRE-WARM LEAGUES CACHE
+  // ═══════════════════════════════════════════════════════════════════════
+  // This is the ONLY place we fetch leagues during initial load.
+  // prewarmLeaguesCache() populates:
+  //   - leagues:${userId} cache (for useLeagues hook)
+  //   - leagues:unread:${userId} cache (for unread counts)
+  // 
+  // UI pages (Home, Tables) should use useLeagues hook to read this data.
+  // DO NOT add any additional league fetching or sorting here.
+  // ═══════════════════════════════════════════════════════════════════════
+  log.debug('preload/leagues_prewarm_start', { userId: userId.slice(0, 8) });
+  const { leagueIds } = await prewarmLeaguesCache(userId);
+  log.debug('preload/leagues_prewarm_complete', { count: leagueIds.length });
+  
+  // Read leagues from cache for backwards compatibility return value only
+  // IMPORTANT: Pages should NOT use this - they should use useLeagues hook
+  const cachedLeagues = getCached<Array<{ id: string; name: string; code: string; avatar?: string | null; created_at?: string | null }>>(`leagues:${userId}`) || [];
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // STEP 2: PRE-WARM OTHER CACHES (GW data, fixtures, picks, leaderboards)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Fetch all other data in parallel for maximum speed
   const [
     metaResult,
-    leaguesResult,
     gwPointsResult,
     overallResult,
     _fixturesResult, // Placeholder - replaced later
@@ -91,7 +148,6 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     // Additional data for Tables page (placeholders - populated later)
     _allLeaguesResult, // Placeholder - populated later
     _leagueMembersWithUsersResult, // Placeholder - populated later
-    leagueReadsResult,
     _allResultsResult, // Used in background async function
     _allFixturesResult, // Used in background async function
     _leagueSubmissionsResult, // Placeholder - populated later
@@ -103,37 +159,31 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
       .eq('id', 1)
       .maybeSingle(),
     
-    // 2. Get user's leagues
-    supabase
-      .from('league_members')
-      .select('leagues(id, name, code, avatar, created_at)')
-      .eq('user_id', userId),
-    
-    // 3. Get all GW points (for form leaderboards)
+    // 2. Get all GW points (for form leaderboards)
     supabase
       .from('app_v_gw_points')
       .select('user_id, gw, points')
       .order('gw', { ascending: true }),
     
-    // 4. Get overall standings
+    // 3. Get overall standings
     supabase
       .from('app_v_ocp_overall')
       .select('user_id, name, ocp')
       .order('ocp', { ascending: false }),
     
-    // 5. Get fixtures for current GW (will be updated after we get currentGw)
+    // 4. Get fixtures for current GW (will be updated after we get currentGw)
     Promise.resolve({ data: null, error: null }), // Placeholder
     
-    // 6. Get user's picks for current GW (will be updated after we get currentGw)
+    // 5. Get user's picks for current GW (will be updated after we get currentGw)
     Promise.resolve({ data: null, error: null }), // Placeholder
     
-    // 7. Get league memberships (for league data)
+    // 6. Get league memberships (for league data - member counts, etc.)
     supabase
       .from('league_members')
       .select('league_id, user_id')
       .limit(10000),
     
-    // 8. Get latest GW from results
+    // 7. Get latest GW from results
     supabase
       .from('app_gw_results')
       .select('gw')
@@ -141,49 +191,42 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
       .limit(1)
       .maybeSingle(),
     
-    // 9. Get Web user IDs (users with picks in Web table)
+    // 8. Get Web user IDs (users with picks in Web table)
     supabase
       .from('picks')
       .select('user_id')
       .limit(10000),
     
-    // 10. Get all leagues (for Tables page)
+    // 9. Get all leagues (for Tables page)
     Promise.resolve({ data: null, error: null }), // Will be populated after we get league IDs
     
-    // 11. Get league members with user names (for Tables page)
+    // 10. Get league members with user names (for Tables page)
     Promise.resolve({ data: null, error: null }), // Will be populated after we get league IDs
     
-    // 12. Get league message reads (for unread counts)
-    supabase
-      .from('league_message_reads')
-      .select('league_id, last_read_at')
-      .eq('user_id', userId),
-    
-    // 13. Get all GW results (for Tables page calculations)
+    // 11. Get all GW results (for Tables page calculations)
     supabase
       .from('app_gw_results')
       .select('gw, fixture_index, result'),
     
-    // 14. Get all fixtures (for Tables page calculations)
+    // 12. Get all fixtures (for Tables page calculations)
     supabase
       .from('app_fixtures')
       .select('gw, kickoff_time')
       .order('gw', { ascending: true })
       .order('kickoff_time', { ascending: true }),
     
-    // 15. Get league submissions (will be populated after we get league IDs and currentGw)
+    // 13. Get league submissions (will be populated after we get league IDs and currentGw)
     Promise.resolve({ data: null, error: null }), // Placeholder
   ]);
 
   // Handle errors (non-critical errors for Tables/Global data are handled separately)
   if (metaResult.error) throw new Error(`Failed to load current GW: ${metaResult.error.message}`);
-  if (leaguesResult.error) throw new Error(`Failed to load leagues: ${leaguesResult.error.message}`);
   if (gwPointsResult.error) throw new Error(`Failed to load GW points: ${gwPointsResult.error.message}`);
   if (overallResult.error) throw new Error(`Failed to load overall standings: ${overallResult.error.message}`);
   if (leagueMembersResult.error) throw new Error(`Failed to load league members: ${leagueMembersResult.error.message}`);
   if (latestGwResult.error) throw new Error(`Failed to load latest GW: ${latestGwResult.error.message}`);
   if (webPicksResult.error) throw new Error(`Failed to load Web picks: ${webPicksResult.error.message}`);
-  // Note: leagueReadsResult, _allResultsResult, _allFixturesResult errors are non-critical
+  // Note: _allResultsResult, _allFixturesResult errors are non-critical
 
   const currentGw = metaResult.data?.current_gw ?? 1;
   const latestGw = latestGwResult.data?.gw ?? null;
@@ -206,15 +249,18 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   if (fixturesForGw.error) throw new Error(`Failed to load fixtures: ${fixturesForGw.error.message}`);
   if (picksForGw.error) throw new Error(`Failed to load picks: ${picksForGw.error.message}`);
 
-  // Process leagues
-  const leagues = (leaguesResult.data || [])
-    .map((lm: any) => lm.leagues)
-    .filter((l: any) => l !== null)
-    .filter((l: any) => l.name !== 'API Test'); // Filter out API Test league
+  // Use leagues from cache for backwards compatibility return value
+  // IMPORTANT: Pages should use useLeagues hook, not this variable
+  const leagues = cachedLeagues;
   
-  const leagueIds = leagues.map((l: any) => l.id);
-  
-  // Fetch additional Tables page data if we have leagues (non-blocking - don't wait)
+  // ═══════════════════════════════════════════════════════════════════════
+  // STEP 2: PRE-WARM TABLES PAGE CACHE (non-blocking)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Tables page needs member counts and submission data.
+  // This pre-warms that cache so Tables loads instantly.
+  // Note: Tables page will use useLeagues for league list/sorting.
+  // This only pre-warms the member-specific data.
+  // ═══════════════════════════════════════════════════════════════════════
   if (leagueIds.length > 0) {
     // Start Tables data loading but don't await it - let it complete in background
     (async () => {
@@ -242,47 +288,8 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
       ]);
       
       if (!allLeaguesForTables.error && !membersWithUsersForTables.error && !submissionsForTables.error) {
-        // Process unread counts
-        const unreadCounts: Record<string, number> = {};
-        try {
-          const readsData = leagueReadsResult.data || [];
-          const lastRead = new Map<string, string>();
-          readsData.forEach((r: any) => lastRead.set(r.league_id, r.last_read_at));
-          
-          if (leagueIds.length > 0) {
-            const sinceMap = new Map<string, string>();
-            leagueIds.forEach(id => {
-              sinceMap.set(id, lastRead.get(id) ?? "1970-01-01T00:00:00Z");
-            });
-            
-            const earliestSince = Math.min(...Array.from(sinceMap.values()).map(s => new Date(s).getTime()));
-            const earliestSinceStr = new Date(earliestSince).toISOString();
-            
-            const { data: allMessages } = await supabase
-              .from('league_messages')
-              .select('id, league_id, created_at, user_id')
-              .in('league_id', leagueIds)
-              .gte('created_at', earliestSinceStr)
-              .neq('user_id', userId); // Exclude current user's messages
-            
-            const messagesByLeague = new Map<string, any[]>();
-            (allMessages ?? []).forEach((m: any) => {
-              const arr = messagesByLeague.get(m.league_id) ?? [];
-              arr.push(m);
-              messagesByLeague.set(m.league_id, arr);
-            });
-            
-            leagueIds.forEach(leagueId => {
-              const since = sinceMap.get(leagueId)!;
-              const sinceTime = new Date(since).getTime();
-              const leagueMessages = messagesByLeague.get(leagueId) ?? [];
-              const unread = leagueMessages.filter((m: any) => new Date(m.created_at).getTime() > sinceTime).length;
-              unreadCounts[leagueId] = unread;
-            });
-          }
-        } catch (e) {
-          // Silent fail for unread counts
-        }
+        // Get unread counts from cache (already populated by prewarmLeaguesCache)
+        const unreadCounts: Record<string, number> = getCached<Record<string, number>>(`leagues:unread:${userId}`) || {};
         
         // Process league rows for Tables
         const allLeagues = (allLeaguesForTables.data || []) as Array<{ id: string; name: string; code: string; created_at?: string; avatar?: string }>;
@@ -296,7 +303,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
         const submittedUserIds = new Set(((submissionsForTables.data || []) as any[]).map((s: any) => s.user_id));
         
         // Build league rows
-        const leagueRows = allLeagues
+        const unsortedLeagueRows = allLeagues
           .filter((l) => l.name !== 'API Test')
           .map((l) => {
             const memberIds = membersByLeague.get(l.id) ?? [];
@@ -310,14 +317,10 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
             };
           });
         
-        // Sort by unread messages first
-        leagueRows.sort((a, b) => {
-          const unreadA = unreadCounts[a.id] ?? 0;
-          const unreadB = unreadCounts[b.id] ?? 0;
-          if (unreadA > 0 && unreadB === 0) return -1;
-          if (unreadA === 0 && unreadB > 0) return 1;
-          return 0;
-        });
+        // Sort using canonical sort helper (by unread desc, then name asc)
+        const leagueRows = sortLeaguesWithUnreadMap(unsortedLeagueRows, unreadCounts);
+        
+        log.debug('preload/tables_leagues_sorted', { count: leagueRows.length });
         
         // Calculate submission status
         const submissionStatus: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }> = {};

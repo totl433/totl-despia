@@ -9,9 +9,9 @@ import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import type { Fixture as FixtureCardFixture, LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { getCached, setCached, removeCached, CACHE_TTL } from "../lib/cache";
+import { useLeagues } from "../hooks/useLeagues";
 
-// Types
-type League = { id: string; name: string; code: string; avatar?: string | null; created_at?: string | null; start_gw?: number | null };
+// Types (League type is now from useLeagues hook)
 type LeagueMember = { id: string; name: string };
 type LeagueDataInternal = {
   id: string;
@@ -67,16 +67,15 @@ export default function HomePage() {
       }
     }
     
+    // NOTE: Leagues are handled by useLeagues hook, not this cache function
     if (typeof window === 'undefined' || !userId) {
       return {
-        leagues: [],
         gw: 1,
         latestGw: null,
         gwPoints: [],
         allGwPoints: [],
         overall: [],
         lastGwRank: null,
-        isInApiTestLeague: false,
         fixtures: [],
         userPicks: {},
         fixturesLoading: true,
@@ -89,7 +88,6 @@ export default function HomePage() {
     try {
       if (!userId) {
         return {
-          leagues: [],
           gw: 1,
           latestGw: null,
           gwPoints: [],
@@ -99,7 +97,6 @@ export default function HomePage() {
           fiveGwRank: null,
           tenGwRank: null,
           seasonRank: null,
-          isInApiTestLeague: false,
           fixtures: [],
           userPicks: {},
           fixturesLoading: true,
@@ -109,9 +106,9 @@ export default function HomePage() {
         };
       }
       
+      // NOTE: Leagues are now handled by useLeagues hook - not cached here
       const cacheKey = `home:basic:${userId}`;
       const cached = getCached<{
-        leagues: League[];
         currentGw: number;
         latestGw: number;
         allGwPoints: Array<{user_id: string, gw: number, points: number}>;
@@ -120,41 +117,37 @@ export default function HomePage() {
         fiveGwRank?: { rank: number; total: number; isTied: boolean } | null;
         tenGwRank?: { rank: number; total: number; isTied: boolean } | null;
         seasonRank?: { rank: number; total: number; isTied: boolean } | null;
-        isInApiTestLeague: boolean;
         testGw?: number;
       }>(cacheKey);
       
-      if (cached && cached.leagues && Array.isArray(cached.leagues) && cached.leagues.length > 0) {
+      if (cached && cached.currentGw) {
         // Load fixtures from cache if available
         let fixtures: Fixture[] = [];
         let userPicks: Record<number, "H" | "D" | "A"> = {};
         let fixturesLoading = true;
         
-        if (cached.currentGw) {
-          const fixturesCacheKey = `home:fixtures:${userId}:${cached.currentGw}`;
-          try {
-            const fixturesCached = getCached<{
-              fixtures: Fixture[];
-              userPicks: Record<number, "H" | "D" | "A">;
-              liveScores?: Array<{ api_match_id: number; [key: string]: any }>;
-            }>(fixturesCacheKey);
-            
-            if (fixturesCached && fixturesCached.fixtures && Array.isArray(fixturesCached.fixtures) && fixturesCached.fixtures.length > 0) {
-              fixtures = fixturesCached.fixtures;
-              userPicks = fixturesCached.userPicks || {};
-              fixturesLoading = false;
-              fixturesLoadedFromCacheRef.current = true;
-              hasCheckedCacheRef.current = true;
-            } else {
-              hasCheckedCacheRef.current = true;
-            }
-          } catch (error) {
-            // Error loading fixtures from cache (non-critical)
+        const fixturesCacheKey = `home:fixtures:${userId}:${cached.currentGw}`;
+        try {
+          const fixturesCached = getCached<{
+            fixtures: Fixture[];
+            userPicks: Record<number, "H" | "D" | "A">;
+            liveScores?: Array<{ api_match_id: number; [key: string]: any }>;
+          }>(fixturesCacheKey);
+          
+          if (fixturesCached && fixturesCached.fixtures && Array.isArray(fixturesCached.fixtures) && fixturesCached.fixtures.length > 0) {
+            fixtures = fixturesCached.fixtures;
+            userPicks = fixturesCached.userPicks || {};
+            fixturesLoading = false;
+            fixturesLoadedFromCacheRef.current = true;
+            hasCheckedCacheRef.current = true;
+          } else {
+            hasCheckedCacheRef.current = true;
           }
+        } catch (error) {
+          // Error loading fixtures from cache (non-critical)
         }
         
         return {
-          leagues: cached.leagues,
           gw: cached.currentGw,
           latestGw: cached.latestGw,
           gwPoints: (cached.allGwPoints || []).filter(gp => gp.user_id === userId),
@@ -164,7 +157,6 @@ export default function HomePage() {
           fiveGwRank: cached.fiveGwRank ?? null,
           tenGwRank: cached.tenGwRank ?? null,
           seasonRank: cached.seasonRank ?? null,
-          isInApiTestLeague: cached.isInApiTestLeague || false,
           fixtures,
           userPicks,
           fixturesLoading,
@@ -178,14 +170,12 @@ export default function HomePage() {
     }
     
     return {
-      leagues: [],
       gw: 1,
       latestGw: null,
       gwPoints: [],
       allGwPoints: [],
       overall: [],
       lastGwRank: null,
-      isInApiTestLeague: false,
       fixtures: [],
       userPicks: {},
       fixturesLoading: true,
@@ -197,7 +187,18 @@ export default function HomePage() {
   
   const initialState = loadInitialStateFromCache();
   
-  const [leagues, setLeagues] = useState<League[]>(initialState.leagues);
+  // LEAGUES: Use centralized useLeagues hook (single source of truth)
+  // This hook reads from cache pre-warmed by initialDataLoader and handles refresh
+  const { 
+    leagues, 
+    unreadByLeague,
+  } = useLeagues({ pageName: 'home' });
+  
+  // Check if user is in API Test league
+  const isInApiTestLeague = useMemo(() => {
+    return leagues.some(l => l.name === 'API Test');
+  }, [leagues]);
+  
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>({});
   const [gw, setGw] = useState<number>(initialState.gw);
   const [latestGw, setLatestGw] = useState<number | null>(initialState.latestGw);
@@ -216,15 +217,13 @@ export default function HomePage() {
   const [allGwPoints, setAllGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>(initialState.allGwPoints);
   const [overall, setOverall] = useState<Array<{user_id: string, name: string | null, ocp: number | null}>>(initialState.overall);
   
-  const [unreadByLeague, setUnreadByLeague] = useState<Record<string, number>>({});
   const [leagueData, setLeagueData] = useState<Record<string, LeagueDataInternal>>({});
   const [fixtures, setFixtures] = useState<Fixture[]>(initialState.fixtures);
   const [fixturesLoading, setFixturesLoading] = useState(initialState.fixturesLoading);
-  const [isInApiTestLeague, setIsInApiTestLeague] = useState(initialState.isInApiTestLeague);
   const [userPicks, setUserPicks] = useState<Record<number, "H" | "D" | "A">>(initialState.userPicks);
   const [showLiveOnly, setShowLiveOnly] = useState(false);
   const fixturesLoadedFromCacheRef = useRef(initialState.fixtures.length > 0);
-  const hasCheckedCacheRef = useRef(initialState.fixtures.length > 0 || initialState.isInApiTestLeague);
+  const hasCheckedCacheRef = useRef(initialState.fixtures.length > 0);
   
   // Get api_match_ids from fixtures for real-time subscription
   const apiMatchIds = useMemo(() => {
@@ -468,9 +467,9 @@ export default function HomePage() {
         
         // Parallel fetch: leagues, GW data, points, and overall in one batch
         // App reads from app_* tables (includes both App and mirrored Web users)
-        console.log('[Home] Making Supabase requests...');
+        // NOTE: Leagues are now handled by useLeagues hook - no need to fetch here
+        console.log('[Home] Making Supabase requests (non-league data)...');
         const fetchPromise = Promise.all([
-          supabase.from("league_members").select("leagues(id, name, code, avatar, created_at)").eq("user_id", user.id),
           supabase.from("app_gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
           supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle(),
           supabase.from("app_v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
@@ -478,7 +477,7 @@ export default function HomePage() {
         ]);
         
         console.log('[Home] Waiting for requests to complete...');
-        const [membersResult, latestGwResult, metaResult, allGwPointsResult, overallResult] = await Promise.race([
+        const [latestGwResult, metaResult, allGwPointsResult, overallResult] = await Promise.race([
           fetchPromise,
           fetchTimeout
         ]) as any;
@@ -487,21 +486,7 @@ export default function HomePage() {
         if (!alive) return;
         
         console.log('[Home] Data fetch completed, processing results');
-        console.log('[Home] Members result:', membersResult.error ? 'ERROR: ' + membersResult.error.message : 'OK');
         console.log('[Home] Meta result:', metaResult.error ? 'ERROR: ' + metaResult.error.message : 'OK');
-        
-        // Process leagues
-        let leaguesData: League[] = [];
-        if (membersResult.error) {
-          console.error('[Home] Error fetching leagues:', membersResult.error);
-          setLeagues([]);
-        } else {
-          leaguesData = (membersResult.data ?? [])
-            .map((m: any) => m.leagues)
-            .filter((l: any) => l !== null) as League[];
-          setLeagues(leaguesData);
-          setIsInApiTestLeague(leaguesData.some(l => l.name === "API Test"));
-        }
         
         // Process GW data (always use current GW, ignore test GWs)
         const lastCompletedGw = latestGwResult.data?.gw ?? metaResult.data?.current_gw ?? 1;
@@ -649,9 +634,9 @@ export default function HomePage() {
         }
 
         // Cache the processed data for next time (including form ranks)
+        // NOTE: Leagues are cached separately by useLeagues hook at `leagues:${userId}`
         try {
           setCached(cacheKey, {
-            leagues: leaguesData,
             currentGw,
             latestGw: currentGw,
             allGwPoints: allPoints,
@@ -660,7 +645,6 @@ export default function HomePage() {
             fiveGwRank: fiveGwRankData,
             tenGwRank: tenGwRankData,
             seasonRank: seasonRankData,
-            isInApiTestLeague: leaguesData.some(l => l.name === "API Test")
           }, CACHE_TTL.HOME);
           // Cached data for next time
         } catch (cacheError) {
@@ -1048,12 +1032,12 @@ export default function HomePage() {
           gwsWithResults.length > 0 ? gwsWithResults.includes(f.gw) : f.gw === 1
         );
         
-        // Process unread counts
+        // NOTE: Unread counts are now handled by useLeagues hook
+        // This local calculation is kept only for internal use in this effect
         const unreadCounts: Record<string, number> = {};
         unreadCountResults.forEach(({ leagueId, count }) => {
           unreadCounts[leagueId] = count;
         });
-        setUnreadByLeague(unreadCounts);
         
         // Process picks
         const picksByLeague = new Map<string, PickRow[]>();
@@ -1650,19 +1634,9 @@ export default function HomePage() {
     };
   }, [user?.id, gwPoints, latestGw, userSubmissions]);
 
-  // Sort leagues by unread - optimized, and filter out "API Test" league
-  const sortedLeagues = useMemo(() => {
-    if (!leagues.length) return [];
-    return [...leagues]
-      .filter(league => league.name !== 'API Test') // Hide API Test league
-      .sort((a, b) => {
-        const unreadA = unreadByLeague?.[a.id] ?? 0;
-        const unreadB = unreadByLeague?.[b.id] ?? 0;
-        if (unreadA > 0 && unreadB === 0) return -1;
-        if (unreadA === 0 && unreadB > 0) return 1;
-        return a.name.localeCompare(b.name);
-      });
-  }, [leagues, unreadByLeague]);
+  // Leagues from useLeagues hook are already sorted (by unread desc, then name asc)
+  // and filtered (no API Test league) - just use them directly
+  const sortedLeagues = leagues;
 
   // Memoize filtered fixtures
   const fixturesToShow = useMemo(() => {
@@ -1707,48 +1681,7 @@ export default function HomePage() {
   }, [fixturesToShow, liveScores, userPicks]);
 
   const isDataReady = !loading && !leaderboardDataLoading && !leagueDataLoading;
-  // Refresh unread counts when window gains focus (user returns from chat)
-  useEffect(() => {
-    if (!user?.id || leagues.length === 0) return;
-
-    const handleFocus = async () => {
-      try {
-        const leagueIds = leagues.map(l => l.id);
-        
-        const { data: reads } = await supabase
-          .from("league_message_reads")
-          .select("league_id,last_read_at")
-          .eq("user_id", user.id);
-
-        const lastReadMap = new Map<string, string>();
-        (reads ?? []).forEach((r: any) => lastReadMap.set(r.league_id, r.last_read_at));
-
-        const unreadCountPromises = leagueIds.map(async (leagueId) => {
-          const since = lastReadMap.get(leagueId) ?? "1970-01-01T00:00:00Z";
-          const { count } = await supabase
-            .from("league_messages")
-            .select("id", { count: "exact", head: true })
-            .eq("league_id", leagueId)
-            .gte("created_at", since)
-            .neq("user_id", user.id);
-          return { leagueId, count: typeof count === "number" ? count : 0 };
-        });
-
-        const unreadCountResults = await Promise.all(unreadCountPromises);
-        const unreadCounts: Record<string, number> = {};
-        unreadCountResults.forEach(({ leagueId, count }) => {
-          unreadCounts[leagueId] = count;
-        });
-        
-        setUnreadByLeague(unreadCounts);
-      } catch (error) {
-        console.error('[Home] Failed to refresh unread counts on focus:', error);
-      }
-    };
-
-    window.addEventListener("focus", handleFocus);
-    return () => window.removeEventListener("focus", handleFocus);
-  }, [user?.id, leagues]);
+  // NOTE: Unread counts refresh on focus is now handled by useLeagues hook
 
   return (
     <div className="max-w-6xl mx-auto px-4 pt-2 pb-4 min-h-screen relative">

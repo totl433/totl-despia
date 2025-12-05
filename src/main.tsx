@@ -35,6 +35,7 @@ import { useAppLifecycle } from "./hooks/useAppLifecycle";
 import LoadingScreen from "./components/LoadingScreen";
 // import { isLoadEverythingFirstEnabled } from "./lib/featureFlags"; // Unused - feature flag checked inline
 import { loadInitialData } from "./services/initialDataLoader";
+import { bootLog } from "./lib/logEvent";
 
 // Loading Fallback
 const PageLoader = () => (
@@ -127,11 +128,14 @@ function AppContent() {
     
     // Start loading
     console.log('[Pre-loading] Starting initial data load for user:', user.id);
+    bootLog.initialDataStart(user.id);
+    const startTime = Date.now();
     setInitialDataLoading(true);
     
     // Set a timeout to prevent infinite loading (10 seconds max)
     const timeoutId = setTimeout(() => {
       console.warn('[Pre-loading] Initial data loading timed out after 10 seconds, showing app anyway');
+      bootLog.initialDataTimeout();
       setInitialDataLoaded(true);
       setInitialDataLoading(false);
     }, 10000);
@@ -141,13 +145,16 @@ function AppContent() {
     loadInitialData(user.id)
       .then(() => {
         clearTimeout(timeoutId);
+        const duration = Date.now() - startTime;
         console.log('[Pre-loading] Initial data loaded successfully');
+        bootLog.initialDataSuccess(duration);
         setInitialDataLoaded(true);
         setInitialDataLoading(false);
       })
       .catch((error) => {
         clearTimeout(timeoutId);
         console.error('[Pre-loading] Failed to load initial data:', error);
+        bootLog.initialDataError(error?.message || 'Unknown error');
         // Even if loading fails, show the app (graceful degradation)
         setInitialDataLoaded(true);
         setInitialDataLoading(false);

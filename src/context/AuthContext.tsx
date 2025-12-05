@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { ensurePushSubscribed } from '../lib/pushNotifications';
+import { bootLog } from '../lib/logEvent';
 
 type AuthState = {
   user: User | null;
@@ -67,10 +68,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const authTimeout = setTimeout(() => {
       if (mounted && !fallbackSession) {
         console.warn('[Auth] Auth loading timed out after 5 seconds, proceeding without session');
+        bootLog.authTimeout();
         setLoading(false);
       }
     }, 5000);
 
+    bootLog.authStart();
     console.log('[Auth] Setting up auth state listener...');
     
     // Set up auth state change listener - this fires on initialization and state changes
@@ -84,6 +87,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(sess);
       setUser(sess?.user ?? null);
       setLoading(false);
+      
+      if (sess?.user) {
+        bootLog.authSuccess(sess.user.id);
+      }
       
       // Show welcome message only when user signs in via email confirmation (new users)
       if (event === 'SIGNED_IN' && sess?.user && !hasShownWelcome) {
