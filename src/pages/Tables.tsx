@@ -195,18 +195,18 @@ export default function TablesPage() {
 
         // Step 2: Fetch member data, results, fixtures, submissions
         // NOTE: We don't fetch leagues here - they come from useLeagues hook
+        // NOTE: Leagues metadata (start_gw, created_at) now comes from useLeagues hook
+        // No separate query to leagues table needed - RLS blocks direct access anyway
         const [
           memDataResult,
           allResultsResult,
           allFixturesResult,
-          allMembersWithUsersResult,
-          leaguesMetaResult
+          allMembersWithUsersResult
         ] = await Promise.all([
           supabase.from("league_members").select("league_id,user_id").in("league_id", leagueIds).limit(10000),
           supabase.from("app_gw_results").select("gw,fixture_index,result"),
           supabase.from("app_fixtures").select("gw,kickoff_time").order("gw", { ascending: true }).order("kickoff_time", { ascending: true }),
-          supabase.from("league_members").select("league_id,user_id, users(id, name)").in("league_id", leagueIds).limit(10000),
-          supabase.from("leagues").select("id,name,created_at,start_gw").in("id", leagueIds)
+          supabase.from("league_members").select("league_id,user_id, users(id, name)").in("league_id", leagueIds).limit(10000)
         ]);
         
         if (memDataResult.error) throw memDataResult.error;
@@ -283,21 +283,21 @@ export default function TablesPage() {
           membersByLeagueId.set(m.league_id, arr);
         });
 
-        const leaguesMetaData = leaguesMetaResult.data ?? [];
-        const leaguesMetaMap = new Map<string, any>();
-        leaguesMetaData.forEach((l: any) => {
+        // Build leagues metadata map from useLeagues data (already has start_gw, created_at)
+        const leaguesMetaMap = new Map<string, typeof leagues[0]>();
+        leagues.forEach((l) => {
           leaguesMetaMap.set(l.id, l);
         });
 
         // Calculate start_gw for all leagues
         const leagueStartGwMap = new Map<string, number>();
         for (const league of leagues) {
-          const meta = leaguesMetaMap.get(league.id);
+          // Use league data directly from useLeagues (already includes start_gw, created_at)
           const leagueWithMeta = {
             id: league.id,
-            name: meta?.name ?? league.name,
-            created_at: (meta?.created_at ?? league.created_at) || null,
-            start_gw: meta?.start_gw ?? league.start_gw
+            name: league.name,
+            created_at: league.created_at || null,
+            start_gw: league.start_gw
           };
           
           let leagueStartGw = metaGw;

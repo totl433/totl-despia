@@ -34,7 +34,7 @@ type DataSource = 'cache' | 'network' | 'prewarm';
 export async function fetchUserLeaguesFromDb(userId: string): Promise<League[]> {
   const { data, error } = await supabase
     .from('league_members')
-    .select('leagues(id, name, code, avatar, created_at)')
+    .select('leagues(id, name, code, avatar, created_at, start_gw)')
     .eq('user_id', userId);
 
   if (error) {
