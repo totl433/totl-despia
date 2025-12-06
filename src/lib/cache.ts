@@ -27,6 +27,20 @@ const CACHE_PREFIX = 'despia:cache:';
 // const MAX_CACHE_SIZE = 5 * 1024 * 1024; // 5MB max cache
 
 /**
+ * Cache metadata returned when getting cached data with metadata
+ */
+export interface CacheMeta {
+  /** Age of the cache entry in milliseconds */
+  ageMs: number;
+  /** Time-to-live of the cache entry in milliseconds */
+  ttlMs: number;
+  /** Whether the cache entry is fresh (age < ttl) */
+  isFresh: boolean;
+  /** Percentage of TTL remaining (0-100) */
+  freshnessPercent: number;
+}
+
+/**
  * Get cached data if it exists and hasn't expired
  */
 export function getCached<T>(key: string): T | null {
@@ -50,6 +64,42 @@ export function getCached<T>(key: string): T | null {
       localStorage.removeItem(`${CACHE_PREFIX}${key}`);
     } catch {}
     return null;
+  }
+}
+
+/**
+ * Get cached data with metadata about cache freshness.
+ * Useful for logging cache quality metrics.
+ */
+export function getCachedWithMeta<T>(key: string): { data: T | null; meta: CacheMeta | null } {
+  try {
+    const entryStr = localStorage.getItem(`${CACHE_PREFIX}${key}`);
+    if (!entryStr) return { data: null, meta: null };
+    
+    const entry: CacheEntry<T> = JSON.parse(entryStr);
+    const age = Date.now() - entry.timestamp;
+    const isFresh = age <= entry.ttl;
+    
+    const meta: CacheMeta = {
+      ageMs: age,
+      ttlMs: entry.ttl,
+      isFresh,
+      freshnessPercent: isFresh ? Math.round((1 - age / entry.ttl) * 100) : 0,
+    };
+    
+    if (!isFresh) {
+      // Expired - remove it
+      localStorage.removeItem(`${CACHE_PREFIX}${key}`);
+      return { data: null, meta };
+    }
+    
+    return { data: entry.data, meta };
+  } catch (e) {
+    // Invalid cache entry - remove it
+    try {
+      localStorage.removeItem(`${CACHE_PREFIX}${key}`);
+    } catch {}
+    return { data: null, meta: null };
   }
 }
 

@@ -27,34 +27,20 @@ function getLeagueStartOverride(name?: string | null): number | undefined {
 async function ensureLeagueMeta(league: LeagueRecord): Promise<LeagueRecord> {
   const needsName = typeof league.name !== "string";
   const needsCreatedAt = typeof league.created_at !== "string";
-  const needsStartGw = typeof league.start_gw === "undefined";
 
-  if (!needsName && !needsCreatedAt && !needsStartGw) {
+  // NOTE: start_gw column doesn't exist in production database
+  // We rely on LEAGUE_START_OVERRIDES or calculate from created_at instead
+
+  if (!needsName && !needsCreatedAt) {
     return league;
   }
 
+  // Only fetch name and created_at - start_gw doesn't exist
   const { data, error } = await supabase
     .from("leagues")
-    .select("name, start_gw, created_at")
+    .select("name, created_at")
     .eq("id", league.id)
     .maybeSingle();
-
-  if (error && (error as any)?.code === "42703") {
-    const { data: fallback, error: fallbackError } = await supabase
-      .from("leagues")
-      .select("name, created_at")
-      .eq("id", league.id)
-      .maybeSingle();
-
-    if (!fallbackError && fallback) {
-      return {
-        ...league,
-        name: needsName ? fallback.name : league.name,
-        start_gw: league.start_gw,
-        created_at: needsCreatedAt ? fallback.created_at : league.created_at,
-      };
-    }
-  }
 
   if (error || !data) {
     return league;
@@ -63,7 +49,6 @@ async function ensureLeagueMeta(league: LeagueRecord): Promise<LeagueRecord> {
   return {
     ...league,
     name: needsName ? data.name : league.name,
-    start_gw: needsStartGw ? data.start_gw : league.start_gw,
     created_at: needsCreatedAt ? data.created_at : league.created_at,
   };
 }

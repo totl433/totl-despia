@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { MiniLeagueCard } from "../components/MiniLeagueCard";
@@ -6,16 +6,20 @@ import type { LeagueRow, LeagueData } from "../components/MiniLeagueCard";
 import { getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import { getCached, setCached, CACHE_TTL, invalidateUserCache } from "../lib/cache";
+import { useLeagues } from "../hooks/useLeagues";
 
-// Types
-type League = { 
-  id: string; 
-  name: string; 
-  code: string; 
-  avatar?: string | null; 
-  created_at?: string | null; 
-  start_gw?: number | null;
-};
+/**
+ * Tables.tsx - Mini Leagues Page
+ * 
+ * IMPORTANT: This page uses the useLeagues hook for leagues and unread counts (single source of truth).
+ * It still fetches member data separately via Supabase for member counts and league data calculations.
+ * 
+ * Data flow:
+ * - Leagues: useLeagues hook (sorted by unread count, API Test filtered out)
+ * - Unread counts: useLeagues hook
+ * - Member counts: Fetched separately from league_members
+ * - League data (positions, winners): Calculated from picks data
+ */
 
 type LeagueMember = { id: string; name: string };
 type ResultRowRaw = {
@@ -33,9 +37,17 @@ function rowToOutcome(r: ResultRowRaw): "H" | "D" | "A" | null {
 export default function TablesPage() {
   const { user } = useAuth();
   
-  // Load initial state from cache synchronously to avoid loading spinner
+  // LEAGUES: Use centralized useLeagues hook (single source of truth)
+  // This provides leagues already sorted by unread count, filtered (no API Test)
+  const { 
+    leagues, 
+    unreadByLeague, 
+    loading: leaguesLoading,
+    invalidateAndRefresh: refreshLeagues
+  } = useLeagues({ pageName: 'tables' });
+  
+  // Load additional Tables-specific data from cache (member counts, league data, submissions)
   const loadInitialStateFromCache = () => {
-    // Try to get user ID from localStorage if user not available yet
     let userId: string | undefined = user?.id;
     if (!userId && typeof window !== 'undefined') {
       try {
@@ -51,13 +63,11 @@ export default function TablesPage() {
     
     if (typeof window === 'undefined' || !userId) {
       return {
-        rows: [],
-        loading: true,
+        memberCounts: {} as Record<string, number>,
         leagueDataLoading: true,
         currentGw: null,
         leagueSubmissions: {} as Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>,
         leagueData: {} as Record<string, LeagueData>,
-        unreadByLeague: {} as Record<string, number>,
       };
     }
     
@@ -67,13 +77,20 @@ export default function TablesPage() {
         rows: LeagueRow[];
         currentGw: number | null;
         leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
-        unreadByLeague: Record<string, number>;
         leagueData: Record<string, LeagueData>;
+        memberCounts?: Record<string, number>;
       }>(cacheKey);
       
-      if (cached && cached.rows && Array.isArray(cached.rows) && cached.rows.length > 0) {
-        // Filter out "API Test" league from cached data
-        const filteredRows = cached.rows.filter((r: LeagueRow) => r.name !== 'API Test');
+      if (cached) {
+        // Extract member counts from cached rows
+        const memberCounts: Record<string, number> = cached.memberCounts || {};
+        if (cached.rows && Array.isArray(cached.rows)) {
+          cached.rows.forEach(row => {
+            if (row.memberCount !== undefined) {
+              memberCounts[row.id] = row.memberCount;
+            }
+          });
+        }
         
         // Convert arrays back to Sets for submittedMembers and latestGwWinners
         const restoredLeagueData: Record<string, LeagueData> = {};
@@ -88,13 +105,11 @@ export default function TablesPage() {
         }
         
         return {
-          rows: filteredRows,
-          loading: false,
+          memberCounts,
           leagueDataLoading: false,
           currentGw: cached.currentGw,
           leagueSubmissions: cached.leagueSubmissions || {},
           leagueData: restoredLeagueData,
-          unreadByLeague: cached.unreadByLeague || {},
         };
       }
     } catch (error) {
@@ -102,20 +117,18 @@ export default function TablesPage() {
     }
     
     return {
-      rows: [],
-      loading: true,
+      memberCounts: {} as Record<string, number>,
       leagueDataLoading: true,
       currentGw: null,
       leagueSubmissions: {} as Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>,
       leagueData: {} as Record<string, LeagueData>,
-      unreadByLeague: {} as Record<string, number>,
     };
   };
   
   const initialState = loadInitialStateFromCache();
   
-  const [rows, setRows] = useState<LeagueRow[]>(initialState.rows);
-  const [loading, setLoading] = useState(initialState.loading);
+  // Member counts are fetched separately since useLeagues doesn't provide them
+  const [memberCounts, setMemberCounts] = useState<Record<string, number>>(initialState.memberCounts);
   const [leagueDataLoading, setLeagueDataLoading] = useState(initialState.leagueDataLoading);
   const [creating, setCreating] = useState(false);
   const [joinCode, setJoinCode] = useState("");
@@ -123,13 +136,40 @@ export default function TablesPage() {
   const [error, setError] = useState("");
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>(initialState.leagueSubmissions);
   const [leagueData, setLeagueData] = useState<Record<string, LeagueData>>(initialState.leagueData);
-  const [unreadByLeague, setUnreadByLeague] = useState<Record<string, number>>(initialState.unreadByLeague);
   const [currentGw, setCurrentGw] = useState<number | null>(initialState.currentGw);
+  
+  // Build rows from leagues (from hook) + member counts (fetched separately)
+  // Leagues from useLeagues are already sorted by unread count
+  const rows: LeagueRow[] = useMemo(() => {
+    return leagues.map(league => ({
+      id: league.id,
+      name: league.name,
+      code: league.code,
+      avatar: league.avatar ?? getDeterministicLeagueAvatar(league.id),
+      created_at: league.created_at,
+      start_gw: league.start_gw,
+      memberCount: memberCounts[league.id] ?? 0,
+    }));
+  }, [leagues, memberCounts]);
+  
+  // Combined loading state
+  const loading = leaguesLoading;
 
-  // Load everything in parallel - stale-while-revalidate pattern
+  // Fetch member data and other Tables-specific data
+  // NOTE: Leagues and unread counts come from useLeagues hook
+  // This effect only fetches member counts, submissions, league data calculations
   useEffect(() => {
     if (!user?.id) {
-      setLoading(false);
+      setLeagueDataLoading(false);
+      return;
+    }
+    
+    // Wait for leagues to load from hook
+    if (leaguesLoading) return;
+    
+    // Get league IDs from hook (already filtered and sorted)
+    const leagueIds = leagues.map(l => l.id);
+    if (!leagueIds.length) {
       setLeagueDataLoading(false);
       return;
     }
@@ -137,172 +177,74 @@ export default function TablesPage() {
     let alive = true;
     const cacheKey = `tables:${user.id}`;
     
-    // If we already loaded from cache in initial state, skip cache check here
-    // Otherwise check cache again (in case user just logged in)
-    if (initialState.loading) {
-      try {
-        const cached = getCached<{
-          rows: LeagueRow[];
-          currentGw: number | null;
-          leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
-          unreadByLeague: Record<string, number>;
-          leagueData: Record<string, LeagueData>;
-        }>(cacheKey);
-        
-        if (cached && cached.rows && Array.isArray(cached.rows) && cached.rows.length > 0) {
-          // INSTANT RENDER from cache!
-          // Filter out "API Test" league from cached data
-          const filteredRows = cached.rows.filter((r: LeagueRow) => r.name !== 'API Test');
-          setRows(filteredRows);
-          setCurrentGw(cached.currentGw);
-          setLeagueSubmissions(cached.leagueSubmissions || {});
-          setUnreadByLeague(cached.unreadByLeague || {});
-          if (cached.leagueData) {
-            // Convert arrays back to Sets for submittedMembers and latestGwWinners
-            const restoredLeagueData: Record<string, LeagueData> = {};
-            for (const [leagueId, data] of Object.entries(cached.leagueData)) {
-              restoredLeagueData[leagueId] = {
-                ...data,
-                submittedMembers: data.submittedMembers ? (Array.isArray(data.submittedMembers) ? new Set(data.submittedMembers) : new Set()) : undefined,
-                latestGwWinners: data.latestGwWinners ? (Array.isArray(data.latestGwWinners) ? new Set(data.latestGwWinners) : new Set()) : undefined,
-              };
-            }
-            setLeagueData(restoredLeagueData);
-          }
-          setLoading(false);
-          setLeagueDataLoading(false); // Hide spinner immediately when cache is available
-        }
-      } catch (error) {
-        // If cache is corrupted, just continue with fresh fetch
-        // Error loading from cache (non-critical)
-      }
-    }
-    
-    // 2. Fetch fresh data in background
+    // Fetch member data and other Tables-specific data in background
     (async () => {
       try {
-        // Step 1: Get league IDs and current GW in parallel
-        // App reads from app_* tables
-        const [membershipsResult, fixturesResult, metaResult] = await Promise.all([
-          supabase.from("league_members").select("league_id").eq("user_id", user.id),
+        // Step 1: Get current GW
+        const [fixturesResult, metaResult] = await Promise.all([
           supabase.from("app_fixtures").select("gw").order("gw", { ascending: false }).limit(1),
           supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle()
         ]);
         
-        if (membershipsResult.error) throw membershipsResult.error;
         if (!alive) return;
-        
-        const leagueIds = (membershipsResult.data ?? []).map((r: any) => r.league_id);
-        if (!leagueIds.length) {
-          setRows([]);
-          setCurrentGw(null);
-          setLoading(false);
-          setLeagueDataLoading(false);
-          return;
-        }
 
         const fixturesList = (fixturesResult.data as Array<{ gw: number }>) ?? [];
-        const currentGw = fixturesList.length ? Math.max(...fixturesList.map((f) => f.gw)) : 1;
-        const metaGw = (metaResult.data as any)?.current_gw ?? currentGw;
-        setCurrentGw(currentGw);
+        const fetchedCurrentGw = fixturesList.length ? Math.max(...fixturesList.map((f) => f.gw)) : 1;
+        const metaGw = (metaResult.data as any)?.current_gw ?? fetchedCurrentGw;
+        setCurrentGw(fetchedCurrentGw);
 
-        // Step 2: Fetch ALL data in parallel - leagues, members, reads, results, fixtures, submissions
+        // Step 2: Fetch member data, results, fixtures, submissions
+        // NOTE: We don't fetch leagues here - they come from useLeagues hook
+        // NOTE: Leagues metadata (start_gw, created_at) now comes from useLeagues hook
+        // No separate query to leagues table needed - RLS blocks direct access anyway
         const [
-          leaguesResult,
           memDataResult,
-          readsResult,
           allResultsResult,
           allFixturesResult,
-          allMembersWithUsersResult,
-          leaguesMetaResult
+          allMembersWithUsersResult
         ] = await Promise.all([
-          supabase.from("leagues").select("id,name,code,created_at,avatar").in("id", leagueIds).order("created_at", { ascending: true }),
           supabase.from("league_members").select("league_id,user_id").in("league_id", leagueIds).limit(10000),
-          supabase.from("league_message_reads").select("league_id,last_read_at").eq("user_id", user.id),
           supabase.from("app_gw_results").select("gw,fixture_index,result"),
           supabase.from("app_fixtures").select("gw,kickoff_time").order("gw", { ascending: true }).order("kickoff_time", { ascending: true }),
-          supabase.from("league_members").select("league_id,user_id, users(id, name)").in("league_id", leagueIds).limit(10000),
-          supabase.from("leagues").select("id,name,created_at").in("id", leagueIds)
+          supabase.from("league_members").select("league_id,user_id, users(id, name)").in("league_id", leagueIds).limit(10000)
         ]);
         
-        if (leaguesResult.error) throw leaguesResult.error;
         if (memDataResult.error) throw memDataResult.error;
         if (!alive) return;
-        
-        const leagues = (leaguesResult.data ?? []) as League[];
-        
-        // Assign avatars (non-blocking, don't wait)
-        for (const league of leagues) {
-          if (!league.avatar) {
-            league.avatar = getDeterministicLeagueAvatar(league.id);
-            void supabase.from("leagues").update({ avatar: league.avatar }).eq("id", league.id);
-          }
-        }
 
-        // Process members
+        // Process members and build member counts
         const membersByLeague = new Map<string, string[]>();
         (memDataResult.data ?? []).forEach((r: any) => {
           const arr = membersByLeague.get(r.league_id) ?? [];
           arr.push(r.user_id);
           membersByLeague.set(r.league_id, arr);
         });
+        
+        // Update member counts
+        const newMemberCounts: Record<string, number> = {};
+        leagueIds.forEach(leagueId => {
+          newMemberCounts[leagueId] = (membersByLeague.get(leagueId) ?? []).length;
+        });
+        setMemberCounts(newMemberCounts);
 
         // Optimize: use Set for faster lookups
         const allMemberIds = Array.from(new Set(Array.from(membersByLeague.values()).flat()));
-        const apiTestLeague = leagues.find(l => l.name === "API Test");
-        const apiTestMemberIds = apiTestLeague ? (membersByLeague.get(apiTestLeague.id) ?? []) : [];
         
-        // Step 3: Fetch submissions - App reads from app_gw_submissions for all users
-        // API Test league users are now in app_* tables too
-        const [submissionsResult, testMetaResult] = await Promise.all([
+        // Step 3: Fetch submissions
+        const [submissionsResult] = await Promise.all([
           allMemberIds.length > 0
-            ? supabase.from("app_gw_submissions").select("user_id").eq("gw", currentGw).in("user_id", allMemberIds).limit(10000)
+            ? supabase.from("app_gw_submissions").select("user_id").eq("gw", fetchedCurrentGw).in("user_id", allMemberIds).limit(10000)
             : Promise.resolve({ data: [], error: null }),
-          apiTestLeague && apiTestMemberIds.length > 0
-            ? supabase.from("test_api_meta").select("current_test_gw").eq("id", 1).maybeSingle()
-            : Promise.resolve({ data: null, error: null })
         ]);
         
         const submittedUserIds = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id));
-        let testApiSubmittedUserIds = new Set<string>();
         
-        if (apiTestLeague && apiTestMemberIds.length > 0 && testMetaResult.data) {
-          const currentTestGw = (testMetaResult.data as any)?.current_test_gw ?? 1;
-          
-          // App reads from app_* tables (not test_api_*)
-          const [testSubsResult, testPicksResult, testFixturesResult] = await Promise.all([
-            supabase.from("app_gw_submissions").select("user_id,submitted_at").eq("gw", currentTestGw).in("user_id", apiTestMemberIds).not("submitted_at", "is", null),
-            supabase.from("app_picks").select("user_id,fixture_index").eq("gw", currentTestGw).in("user_id", apiTestMemberIds),
-            supabase.from("app_fixtures").select("fixture_index").eq("gw", currentTestGw).order("fixture_index", { ascending: true })
-          ]);
-          
-          if (testFixturesResult.data && testPicksResult.data && testSubsResult.data) {
-            const currentFixtureIndicesSet = new Set(testFixturesResult.data.map((f: any) => f.fixture_index));
-            const requiredFixtureCount = currentFixtureIndicesSet.size;
-            
-            testSubsResult.data.forEach((sub: any) => {
-              const userPicks = (testPicksResult.data ?? []).filter((p: any) => p.user_id === sub.user_id);
-              const picksForCurrentFixtures = userPicks.filter((p: any) => currentFixtureIndicesSet.has(p.fixture_index));
-              const hasAllRequiredPicks = picksForCurrentFixtures.length === requiredFixtureCount && requiredFixtureCount > 0;
-              const uniqueFixtureIndices = new Set(picksForCurrentFixtures.map((p: any) => p.fixture_index));
-              const hasExactMatch = uniqueFixtureIndices.size === requiredFixtureCount;
-              
-              if (hasAllRequiredPicks && hasExactMatch) {
-                testApiSubmittedUserIds.add(sub.user_id);
-              }
-            });
-          }
-        }
-        
-        // Calculate submission status
+        // Calculate submission status for each league
         const submissionStatus: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }> = {};
         for (const league of leagues) {
           const memberIds = membersByLeague.get(league.id) ?? [];
           const totalCount = memberIds.length;
-          // Optimize: count directly instead of filtering
-          const submittedCount = league.id === apiTestLeague?.id
-            ? memberIds.reduce((count, id) => count + (testApiSubmittedUserIds.has(id) ? 1 : 0), 0)
-            : memberIds.reduce((count, id) => count + (submittedUserIds.has(id) ? 1 : 0), 0);
+          const submittedCount = memberIds.reduce((count, id) => count + (submittedUserIds.has(id) ? 1 : 0), 0);
           
           submissionStatus[league.id] = {
             allSubmitted: submittedCount === totalCount && totalCount > 0,
@@ -311,74 +253,6 @@ export default function TablesPage() {
           };
         }
         setLeagueSubmissions(submissionStatus);
-
-        // Process unread counts
-        const unreadCounts: Record<string, number> = {};
-        try {
-          const lastRead = new Map<string, string>();
-          (readsResult.data ?? []).forEach((r: any) => lastRead.set(r.league_id, r.last_read_at));
-          
-          if (leagueIds.length > 0) {
-            const sinceMap = new Map<string, string>();
-            leagueIds.forEach(id => {
-              sinceMap.set(id, lastRead.get(id) ?? "1970-01-01T00:00:00Z");
-            });
-            
-            const earliestSince = Math.min(...Array.from(sinceMap.values()).map(s => new Date(s).getTime()));
-            const earliestSinceStr = new Date(earliestSince).toISOString();
-            
-            const { data: allMessages } = await supabase
-              .from("league_messages")
-              .select("id,league_id,created_at,user_id")
-              .in("league_id", leagueIds)
-              .gte("created_at", earliestSinceStr)
-              .neq("user_id", user.id); // Exclude current user's messages
-            
-            // Optimize: pre-filter messages by league_id to avoid repeated filtering
-            const messagesByLeague = new Map<string, any[]>();
-            (allMessages ?? []).forEach((m: any) => {
-              const arr = messagesByLeague.get(m.league_id) ?? [];
-              arr.push(m);
-              messagesByLeague.set(m.league_id, arr);
-            });
-            
-            leagueIds.forEach(leagueId => {
-              const since = sinceMap.get(leagueId)!;
-              const sinceTime = new Date(since).getTime();
-              const leagueMessages = messagesByLeague.get(leagueId) ?? [];
-              const unread = leagueMessages.filter((m: any) => new Date(m.created_at).getTime() > sinceTime).length;
-              unreadCounts[leagueId] = unread;
-            });
-          }
-        } catch (e) {
-          // Silent fail
-        }
-        setUnreadByLeague(unreadCounts);
-
-        // Build rows - filter out "API Test" league
-        const out: LeagueRow[] = leagues
-          .filter((l) => l.name !== 'API Test')
-          .map((l) => {
-            const memberIds = membersByLeague.get(l.id) ?? [];
-            return {
-              id: l.id,
-              name: l.name,
-              code: l.code,
-              memberCount: memberIds.length,
-              avatar: l.avatar,
-              created_at: l.created_at,
-              start_gw: l.start_gw,
-            };
-          });
-
-        // Sort rows: unread messages first
-        out.sort((a, b) => {
-          const unreadA = unreadCounts[a.id] ?? 0;
-          const unreadB = unreadCounts[b.id] ?? 0;
-          if (unreadA > 0 && unreadB === 0) return -1;
-          if (unreadA === 0 && unreadB > 0) return 1;
-          return 0;
-        });
 
         if (!alive) return;
 
@@ -409,31 +283,31 @@ export default function TablesPage() {
           membersByLeagueId.set(m.league_id, arr);
         });
 
-        const leaguesMetaData = leaguesMetaResult.data ?? [];
-        const leaguesMetaMap = new Map<string, any>();
-        leaguesMetaData.forEach((l: any) => {
+        // Build leagues metadata map from useLeagues data (already has start_gw, created_at)
+        const leaguesMetaMap = new Map<string, typeof leagues[0]>();
+        leagues.forEach((l) => {
           leaguesMetaMap.set(l.id, l);
         });
 
         // Calculate start_gw for all leagues
         const leagueStartGwMap = new Map<string, number>();
-        for (const row of out) {
-          const meta = leaguesMetaMap.get(row.id);
-          const league = {
-            id: row.id,
-            name: meta?.name ?? row.name,
-            created_at: (meta?.created_at ?? row.created_at) || null,
-            start_gw: meta?.start_gw ?? row.start_gw
+        for (const league of leagues) {
+          // Use league data directly from useLeagues (already includes start_gw, created_at)
+          const leagueWithMeta = {
+            id: league.id,
+            name: league.name,
+            created_at: league.created_at || null,
+            start_gw: league.start_gw
           };
           
           let leagueStartGw = metaGw;
-          const override = league.name ? LEAGUE_START_OVERRIDES[league.name] : undefined;
+          const override = leagueWithMeta.name ? LEAGUE_START_OVERRIDES[leagueWithMeta.name] : undefined;
           if (typeof override === "number") {
             leagueStartGw = override;
-          } else if (league.start_gw !== null && league.start_gw !== undefined) {
-            leagueStartGw = league.start_gw;
-          } else if (league.created_at && gwsWithResults.length > 0) {
-            const leagueCreatedAt = new Date(league.created_at);
+          } else if (leagueWithMeta.start_gw !== null && leagueWithMeta.start_gw !== undefined) {
+            leagueStartGw = leagueWithMeta.start_gw;
+          } else if (leagueWithMeta.created_at && gwsWithResults.length > 0) {
+            const leagueCreatedAt = new Date(leagueWithMeta.created_at);
             const DEADLINE_BUFFER_MINUTES = 75;
             
             for (const gw of gwsWithResults) {
@@ -452,21 +326,21 @@ export default function TablesPage() {
               leagueStartGw = Math.max(...gwsWithResults) + 1;
             }
           }
-          leagueStartGwMap.set(row.id, leagueStartGw);
+          leagueStartGwMap.set(league.id, leagueStartGw);
         }
 
         // Fetch picks in parallel for all leagues
         const allRelevantGws = new Set<number>();
-        out.forEach(row => {
-          const leagueStartGw = leagueStartGwMap.get(row.id) ?? metaGw;
+        leagues.forEach(league => {
+          const leagueStartGw = leagueStartGwMap.get(league.id) ?? metaGw;
           gwsWithResults.filter(g => g >= leagueStartGw).forEach(gw => allRelevantGws.add(gw));
         });
         
-        const picksPromises = out.map(leagueRow => {
-          const memberIds = membersByLeagueId.get(leagueRow.id) ?? [];
+        const picksPromises = leagues.map(league => {
+          const memberIds = membersByLeagueId.get(league.id) ?? [];
           if (memberIds.length === 0) return Promise.resolve({ data: [], error: null });
           
-          const leagueStartGw = leagueStartGwMap.get(leagueRow.id) ?? metaGw;
+          const leagueStartGw = leagueStartGwMap.get(league.id) ?? metaGw;
           const relevantGws = Array.from(allRelevantGws).filter(gw => gw >= leagueStartGw);
           
           if (relevantGws.length === 0) return Promise.resolve({ data: [], error: null });
@@ -487,14 +361,14 @@ export default function TablesPage() {
         // Process league data
         const leagueDataMap: Record<string, LeagueData> = {};
         
-        for (let i = 0; i < out.length; i++) {
-          const leagueRow = out[i];
+        for (let i = 0; i < leagues.length; i++) {
+          const league = leagues[i];
           const picksResult = allPicksResults[i];
-          const memberIds = membersByLeagueId.get(leagueRow.id) ?? [];
+          const memberIds = membersByLeagueId.get(league.id) ?? [];
           
           if (memberIds.length === 0) continue;
           
-          const leagueStartGw = leagueStartGwMap.get(leagueRow.id) ?? metaGw;
+          const leagueStartGw = leagueStartGwMap.get(league.id) ?? metaGw;
           const relevantGws = Array.from(allRelevantGws).filter(gw => gw >= leagueStartGw);
           
           const picks = (picksResult.data ?? []) as PickRow[];
@@ -566,12 +440,12 @@ export default function TablesPage() {
             });
           }
           
-          leagueDataMap[leagueRow.id] = {
-            id: leagueRow.id,
+          leagueDataMap[league.id] = {
+            id: league.id,
             members: memberIds,
             userPosition: userPosition || null,
             positionChange,
-            submittedMembers: leagueRow.id === apiTestLeague?.id ? testApiSubmittedUserIds : submittedUserIdsSet,
+            submittedMembers: submittedUserIdsSet,
             sortedMemberIds: sortedMemberIds.map(m => m.id),
             latestGwWinners,
             latestRelevantGw
@@ -579,12 +453,11 @@ export default function TablesPage() {
         }
 
         if (alive) {
-          setRows(out);
           setLeagueData(leagueDataMap);
-          setLoading(false);
           setLeagueDataLoading(false);
           
           // Cache the processed data for next time
+          // Note: We don't cache leagues/unreadByLeague here - they're managed by useLeagues
           try {
             // Convert Sets to Arrays for JSON serialization
             const cacheableLeagueData: Record<string, any> = {};
@@ -597,28 +470,26 @@ export default function TablesPage() {
             }
             
             setCached(cacheKey, {
-              rows: out,
-              currentGw,
+              rows: rows, // Save current rows for member counts
+              currentGw: fetchedCurrentGw,
               leagueSubmissions: submissionStatus,
-              unreadByLeague: unreadCounts,
-              leagueData: cacheableLeagueData, // Also cache leagueData for instant loading
+              leagueData: cacheableLeagueData,
+              memberCounts: newMemberCounts,
             }, CACHE_TTL.TABLES);
-            // Cached data for next time
-        } catch (cacheError) {
+          } catch (cacheError) {
             // Failed to cache data (non-critical)
           }
         }
       } catch (e: any) {
         if (alive) {
-          setError(e?.message ?? "Failed to load leagues.");
-          setLoading(false);
+          setError(e?.message ?? "Failed to load league data.");
           setLeagueDataLoading(false);
         }
       }
     })();
     
     return () => { alive = false; };
-  }, [user?.id]);
+  }, [user?.id, leagues, leaguesLoading]);
 
 
   const createLeague = useCallback(async () => {
@@ -643,18 +514,17 @@ export default function TablesPage() {
       });
 
       setLeagueName("");
-      // Invalidate cache after creating league
+      // Invalidate cache and refresh leagues
       if (user?.id) {
         invalidateUserCache(user.id);
+        refreshLeagues();
       }
-      setRows([]);
-      setLoading(true);
     } catch (e: any) {
       setError(e?.message ?? "Failed to create league.");
     } finally {
       setCreating(false);
     }
-  }, [leagueName, user?.id]);
+  }, [leagueName, user?.id, refreshLeagues]);
 
   const joinLeague = useCallback(async () => {
     const code = joinCode.trim().toUpperCase();
@@ -688,16 +558,15 @@ export default function TablesPage() {
         { onConflict: "league_id,user_id" }
       );
       setJoinCode("");
-      // Invalidate cache after joining league
+      // Invalidate cache and refresh leagues
       if (user?.id) {
         invalidateUserCache(user.id);
+        refreshLeagues();
       }
-      setRows([]);
-      setLoading(true);
     } catch (e: any) {
       setError(e?.message ?? "Failed to join league.");
     }
-  }, [joinCode, user?.id]);
+  }, [joinCode, user?.id, refreshLeagues]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -722,7 +591,7 @@ export default function TablesPage() {
           )}
         </div>
         <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
-          Create or join a private league and battle it out with your friends. - COMPONENTS VERSION
+          Create or join a private league and battle it out with your friends.
         </p>
 
         {error && (

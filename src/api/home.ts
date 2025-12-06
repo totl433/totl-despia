@@ -57,9 +57,10 @@ export async function fetchUserLeagues(userId: string): Promise<League[]> {
   try {
     const result = await query(
       async () => {
+        // NOTE: start_gw column doesn't exist in production
         const { data, error } = await supabase
           .from("league_members")
-          .select("leagues(id,name,code,created_at,start_gw)")
+          .select("leagues(id,name,code,created_at)")
           .eq("user_id", userId);
         
         if (error) {

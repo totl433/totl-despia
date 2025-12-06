@@ -19,6 +19,19 @@
 [build.environment]
   SECRETS_SCAN_OMIT_PATHS = "register-devices.sh,check-*.sh,*.sh,.env"
 
+# Cache headers to prevent Despia WebView from serving stale HTML
+# HTML: no-cache to ensure fresh bundles are loaded after deployments
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+# Assets: long-term immutable cache (hashed filenames change on rebuild)
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
 # Don't redirect Netlify functions - they need to work directly
 # Note: Netlify functions are handled automatically, no redirect needed
 # [[redirects]]
