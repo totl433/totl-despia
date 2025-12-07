@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { getCached, setCached, removeCached, CACHE_TTL } from "../lib/cache";
+import { useLiveScores } from "../hooks/useLiveScores";
 
 type OverallRow = {
   user_id: string;
@@ -72,6 +73,99 @@ export default function GlobalLeaderboardPage() {
   const [activeTab, setActiveTab] = useState<"overall" | "form5" | "form10" | "lastgw">(validTab);
   // Track gw_results changes to trigger leaderboard recalculation
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
+  
+  // Subscribe to live scores for current GW
+  const { liveScores: liveScoresMap } = useLiveScores(
+    latestGw || undefined,
+    undefined // Fetch all live scores for the GW
+  );
+  
+  // Check if current GW is live (has any live scores)
+  const isCurrentGwLive = useMemo(() => {
+    if (!latestGw || liveScoresMap.size === 0) return false;
+    for (const score of liveScoresMap.values()) {
+      if (score.gw === latestGw) {
+        return true;
+      }
+    }
+    return false;
+  }, [latestGw, liveScoresMap]);
+  
+  // Fetch picks and calculate live scores for current GW
+  const [liveCurrentGwPoints, setLiveCurrentGwPoints] = useState<GwPointsRow[]>([]);
+  
+  useEffect(() => {
+    if (!latestGw || !isCurrentGwLive || liveScoresMap.size === 0) {
+      setLiveCurrentGwPoints([]);
+      return;
+    }
+    
+    let alive = true;
+    
+    (async () => {
+      // Convert live scores to outcomes
+      const outcomes = new Map<number, "H" | "D" | "A">();
+      liveScoresMap.forEach((liveScore) => {
+        if (liveScore.gw === latestGw && liveScore.status === 'FINISHED') {
+          const fixtureIndex = liveScore.fixture_index;
+          if (liveScore.home_score !== null && liveScore.away_score !== null) {
+            let outcome: "H" | "D" | "A";
+            if (liveScore.home_score > liveScore.away_score) {
+              outcome = "H";
+            } else if (liveScore.home_score < liveScore.away_score) {
+              outcome = "A";
+            } else {
+              outcome = "D";
+            }
+            outcomes.set(fixtureIndex, outcome);
+          }
+        }
+      });
+      
+      if (outcomes.size === 0) {
+        if (alive) setLiveCurrentGwPoints([]);
+        return;
+      }
+      
+      // Fetch all picks for current GW
+      const { data: allPicks } = await supabase
+        .from("app_picks")
+        .select("user_id, fixture_index, pick")
+        .eq("gw", latestGw);
+      
+      if (!alive || !allPicks) return;
+      
+      // Calculate points per user
+      // First, initialize all users who have picks (to ensure we include users with 0 points)
+      const userPoints = new Map<string, number>();
+      const uniqueUserIds = new Set(allPicks.map(p => p.user_id));
+      uniqueUserIds.forEach(userId => {
+        userPoints.set(userId, 0);
+      });
+      
+      // Then calculate points for correct predictions
+      allPicks.forEach((pick) => {
+        const outcome = outcomes.get(pick.fixture_index);
+        if (outcome && pick.pick === outcome) {
+          const current = userPoints.get(pick.user_id) || 0;
+          userPoints.set(pick.user_id, current + 1);
+        }
+      });
+      
+      // Convert to GwPointsRow format
+      const livePoints: GwPointsRow[] = Array.from(userPoints.entries()).map(([user_id, points]) => ({
+        user_id,
+        gw: latestGw,
+        points,
+      }));
+      
+      if (alive) {
+        setLiveCurrentGwPoints(livePoints);
+      }
+    })();
+    
+    return () => { alive = false; };
+  }, [latestGw, isCurrentGwLive, liveScoresMap]);
 
   // Sync activeTab with URL param and set default to lastgw if no tab specified
   useEffect(() => {
@@ -132,15 +226,20 @@ export default function GlobalLeaderboardPage() {
         }
         setErr("");
 
-        // 1) latest GW from results - App reads from app_gw_results
-        const { data: latest, error: lErr } = await supabase
-          .from("app_gw_results")
-          .select("gw")
-          .order("gw", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (lErr) throw lErr;
-        const gw = latest?.gw ?? 1;
+        // 1) Get current GW from app_meta (this is the active/live GW)
+        // Also get latest GW from results for fallback
+        const [metaResult, resultsResult] = await Promise.all([
+          supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle(),
+          supabase.from("app_gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle()
+        ]);
+        
+        if (resultsResult.error) throw resultsResult.error;
+        
+        // Use current_gw from meta if available, otherwise use latest from results
+        const currentGwFromMeta = (metaResult.data as any)?.current_gw;
+        const latestGwFromResults = resultsResult.data?.gw ?? 1;
+        const gw = currentGwFromMeta ?? latestGwFromResults;
+        
         if (alive) setLatestGw(gw);
 
         // 2) all GW points (needed for form leaderboards) - App reads from app_v_gw_points
@@ -320,10 +419,15 @@ export default function GlobalLeaderboardPage() {
   const form10Rows = useMemo(() => createFormRows(10), [createFormRows]);
   
   // Last GW leaderboard - only players who completed the last gameweek
+  // Use live scores if current GW is live (single source of truth)
   const lastGwRows = useMemo(() => {
     if (!latestGw) return [];
     
-    const lastGwPoints = gwPoints.filter(gp => gp.gw === latestGw);
+    // Use live scores if available, otherwise use database view
+    const lastGwPoints = isCurrentGwLive && liveCurrentGwPoints.length > 0
+      ? liveCurrentGwPoints
+      : gwPoints.filter(gp => gp.gw === latestGw);
+    
     const userMap = new Map(overall.map(o => [o.user_id, o.name ?? "User"]));
     
     const sorted = lastGwPoints
@@ -345,11 +449,14 @@ export default function GlobalLeaderboardPage() {
         rank: currentRank,
       };
     });
-  }, [gwPoints, latestGw, overall]);
+  }, [gwPoints, latestGw, overall, isCurrentGwLive, liveCurrentGwPoints]);
 
   const rows = useMemo(() => {
     // Get current GW points only for the Overall tab
-    const currentGwPoints = gwPoints.filter(gp => gp.gw === latestGw);
+    // Use live scores if current GW is live (single source of truth)
+    const currentGwPoints = isCurrentGwLive && liveCurrentGwPoints.length > 0
+      ? liveCurrentGwPoints
+      : gwPoints.filter(gp => gp.gw === latestGw);
     const byUserThisGw = new Map<string, number>();
     currentGwPoints.forEach((r) => byUserThisGw.set(r.user_id, r.points));
 
@@ -381,7 +488,7 @@ export default function GlobalLeaderboardPage() {
     // sort by OCP desc, then name
     merged.sort((a, b) => (b.ocp - a.ocp) || a.name.localeCompare(b.name));
     return merged;
-  }, [overall, gwPoints, latestGw]);
+  }, [overall, gwPoints, latestGw, isCurrentGwLive, liveCurrentGwPoints]);
 
   // Prevent body scrolling - lock the page
   useEffect(() => {
@@ -577,7 +684,18 @@ export default function GlobalLeaderboardPage() {
       <div className="max-w-6xl mx-auto px-4 pb-0 flex-1 flex flex-col overflow-hidden">
         {/* Fixed Header Section */}
         <div className="flex-shrink-0 bg-slate-50 py-4">
-          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Leaderboard</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Leaderboard</h2>
+            {isCurrentGwLive && latestGw && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 animate-pulse">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                </span>
+                LIVE GW{latestGw}
+              </span>
+            )}
+          </div>
           <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
             See how you rank against every TotL player in the world.
           </p>
@@ -736,7 +854,17 @@ export default function GlobalLeaderboardPage() {
                   {activeTab === "overall" && (
                     <>
                       <th className="px-4 py-3 text-center font-semibold" style={{ backgroundColor: '#f8fafc', width: '40px', borderTop: 'none', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
-                      <th className="px-1 py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '55px', color: '#64748b', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>GW{latestGw || '?'}</th>
+                      <th className="px-1 py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '55px', color: '#64748b', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
+                        <div className="flex items-center justify-center gap-1">
+                          GW{latestGw || '?'}
+                          {isCurrentGwLive && latestGw && (
+                            <span className="relative flex h-1.5 w-1.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
+                            </span>
+                          )}
+                        </div>
+                      </th>
                       <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#64748b' }}>OCP</th>
                     </>
                   )}
@@ -749,7 +877,17 @@ export default function GlobalLeaderboardPage() {
                   {activeTab === "lastgw" && (
                     <>
                       <th className="px-4 py-3 text-center font-semibold" style={{ backgroundColor: '#f8fafc', width: '40px', borderTop: 'none', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
-                      <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#64748b' }}>GW{latestGw || '?'}</th>
+                      <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#64748b' }}>
+                        <div className="flex items-center justify-center gap-1">
+                          GW{latestGw || '?'}
+                          {isCurrentGwLive && latestGw && (
+                            <span className="relative flex h-1.5 w-1.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
+                            </span>
+                          )}
+                        </div>
+                      </th>
                     </>
                   )}
                 </tr>
