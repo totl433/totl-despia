@@ -74,28 +74,45 @@ export default function GlobalLeaderboardPage() {
   // Track gw_results changes to trigger leaderboard recalculation
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
   
-  // Subscribe to live scores for current GW
+  // Get current GW from app_meta for LIVE functionality (only used for lastgw tab)
+  const [currentGwFromMeta, setCurrentGwFromMeta] = useState<number | null>(null);
+  
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data } = await supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle();
+      if (alive && data) {
+        setCurrentGwFromMeta((data as any)?.current_gw ?? null);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+  
+  // For LIVE functionality, use current_gw from meta if it has live scores, otherwise use latestGw
+  const liveGw = currentGwFromMeta ?? latestGw;
+  
+  // Subscribe to live scores for the live GW (only used for lastgw tab)
   const { liveScores: liveScoresMap } = useLiveScores(
-    latestGw || undefined,
+    liveGw || undefined,
     undefined // Fetch all live scores for the GW
   );
   
-  // Check if current GW is live (has any live scores)
+  // Check if current GW is live (has any live scores) - only relevant for lastgw tab
   const isCurrentGwLive = useMemo(() => {
-    if (!latestGw || liveScoresMap.size === 0) return false;
+    if (!liveGw || liveScoresMap.size === 0) return false;
     for (const score of liveScoresMap.values()) {
-      if (score.gw === latestGw) {
+      if (score.gw === liveGw) {
         return true;
       }
     }
     return false;
-  }, [latestGw, liveScoresMap]);
+  }, [liveGw, liveScoresMap]);
   
   // Fetch picks and calculate live scores for current GW
   const [liveCurrentGwPoints, setLiveCurrentGwPoints] = useState<GwPointsRow[]>([]);
   
   useEffect(() => {
-    if (!latestGw || !isCurrentGwLive || liveScoresMap.size === 0) {
+    if (!liveGw || !isCurrentGwLive || liveScoresMap.size === 0) {
       setLiveCurrentGwPoints([]);
       return;
     }
@@ -106,7 +123,7 @@ export default function GlobalLeaderboardPage() {
       // Convert live scores to outcomes
       const outcomes = new Map<number, "H" | "D" | "A">();
       liveScoresMap.forEach((liveScore) => {
-        if (liveScore.gw === latestGw && liveScore.status === 'FINISHED') {
+        if (liveScore.gw === liveGw && liveScore.status === 'FINISHED') {
           const fixtureIndex = liveScore.fixture_index;
           if (liveScore.home_score !== null && liveScore.away_score !== null) {
             let outcome: "H" | "D" | "A";
@@ -131,7 +148,7 @@ export default function GlobalLeaderboardPage() {
       const { data: allPicks } = await supabase
         .from("app_picks")
         .select("user_id, fixture_index, pick")
-        .eq("gw", latestGw);
+        .eq("gw", liveGw);
       
       if (!alive || !allPicks) return;
       
@@ -155,7 +172,7 @@ export default function GlobalLeaderboardPage() {
       // Convert to GwPointsRow format
       const livePoints: GwPointsRow[] = Array.from(userPoints.entries()).map(([user_id, points]) => ({
         user_id,
-        gw: latestGw,
+        gw: liveGw,
         points,
       }));
       
@@ -165,7 +182,7 @@ export default function GlobalLeaderboardPage() {
     })();
     
     return () => { alive = false; };
-  }, [latestGw, isCurrentGwLive, liveScoresMap]);
+  }, [liveGw, isCurrentGwLive, liveScoresMap]);
 
   // Sync activeTab with URL param and set default to lastgw if no tab specified
   useEffect(() => {
@@ -226,20 +243,15 @@ export default function GlobalLeaderboardPage() {
         }
         setErr("");
 
-        // 1) Get current GW from app_meta (this is the active/live GW)
-        // Also get latest GW from results for fallback
-        const [metaResult, resultsResult] = await Promise.all([
-          supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle(),
-          supabase.from("app_gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle()
-        ]);
-        
-        if (resultsResult.error) throw resultsResult.error;
-        
-        // Use current_gw from meta if available, otherwise use latest from results
-        const currentGwFromMeta = (metaResult.data as any)?.current_gw;
-        const latestGwFromResults = resultsResult.data?.gw ?? 1;
-        const gw = currentGwFromMeta ?? latestGwFromResults;
-        
+        // 1) latest GW from results - App reads from app_gw_results
+        const { data: latest, error: lErr } = await supabase
+          .from("app_gw_results")
+          .select("gw")
+          .order("gw", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (lErr) throw lErr;
+        const gw = latest?.gw ?? 1;
         if (alive) setLatestGw(gw);
 
         // 2) all GW points (needed for form leaderboards) - App reads from app_v_gw_points
@@ -453,10 +465,8 @@ export default function GlobalLeaderboardPage() {
 
   const rows = useMemo(() => {
     // Get current GW points only for the Overall tab
-    // Use live scores if current GW is live (single source of truth)
-    const currentGwPoints = isCurrentGwLive && liveCurrentGwPoints.length > 0
-      ? liveCurrentGwPoints
-      : gwPoints.filter(gp => gp.gw === latestGw);
+    // Overall tab always uses database views (not live scores)
+    const currentGwPoints = gwPoints.filter(gp => gp.gw === latestGw);
     const byUserThisGw = new Map<string, number>();
     currentGwPoints.forEach((r) => byUserThisGw.set(r.user_id, r.points));
 
@@ -488,7 +498,7 @@ export default function GlobalLeaderboardPage() {
     // sort by OCP desc, then name
     merged.sort((a, b) => (b.ocp - a.ocp) || a.name.localeCompare(b.name));
     return merged;
-  }, [overall, gwPoints, latestGw, isCurrentGwLive, liveCurrentGwPoints]);
+  }, [overall, gwPoints, latestGw]);
 
   // Prevent body scrolling - lock the page
   useEffect(() => {
@@ -686,13 +696,13 @@ export default function GlobalLeaderboardPage() {
         <div className="flex-shrink-0 bg-slate-50 py-4">
           <div className="flex items-center gap-3">
             <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Leaderboard</h2>
-            {isCurrentGwLive && latestGw && (
+            {activeTab === "lastgw" && isCurrentGwLive && liveGw && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 animate-pulse">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
                 </span>
-                LIVE GW{latestGw}
+                LIVE GW{liveGw}
               </span>
             )}
           </div>
@@ -854,17 +864,7 @@ export default function GlobalLeaderboardPage() {
                   {activeTab === "overall" && (
                     <>
                       <th className="px-4 py-3 text-center font-semibold" style={{ backgroundColor: '#f8fafc', width: '40px', borderTop: 'none', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
-                      <th className="px-1 py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '55px', color: '#64748b', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
-                        <div className="flex items-center justify-center gap-1">
-                          GW{latestGw || '?'}
-                          {isCurrentGwLive && latestGw && (
-                            <span className="relative flex h-1.5 w-1.5">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
-                            </span>
-                          )}
-                        </div>
-                      </th>
+                      <th className="px-1 py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '55px', color: '#64748b', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>GW{latestGw || '?'}</th>
                       <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#64748b' }}>OCP</th>
                     </>
                   )}
@@ -879,8 +879,8 @@ export default function GlobalLeaderboardPage() {
                       <th className="px-4 py-3 text-center font-semibold" style={{ backgroundColor: '#f8fafc', width: '40px', borderTop: 'none', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
                       <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#64748b' }}>
                         <div className="flex items-center justify-center gap-1">
-                          GW{latestGw || '?'}
-                          {isCurrentGwLive && latestGw && (
+                          GW{liveGw || latestGw || '?'}
+                          {isCurrentGwLive && liveGw && (
                             <span className="relative flex h-1.5 w-1.5">
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
