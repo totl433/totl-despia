@@ -74,6 +74,10 @@ export default function GlobalLeaderboardPage() {
   // Track gw_results changes to trigger leaderboard recalculation
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
   
+  // Toggle for filtering: Mini League Friends vs All Players
+  const [showMiniLeagueFriendsOnly, setShowMiniLeagueFriendsOnly] = useState(false);
+  const [miniLeagueFriendIds, setMiniLeagueFriendIds] = useState<Set<string>>(new Set());
+  
   // Get current GW from app_meta for LIVE functionality (only used for lastgw tab)
   const [currentGwFromMeta, setCurrentGwFromMeta] = useState<number | null>(null);
   
@@ -87,6 +91,52 @@ export default function GlobalLeaderboardPage() {
     })();
     return () => { alive = false; };
   }, []);
+
+  // Fetch all mini league friends (users in leagues with the current user)
+  useEffect(() => {
+    if (!user?.id) {
+      setMiniLeagueFriendIds(new Set());
+      return;
+    }
+
+    let alive = true;
+    (async () => {
+      try {
+        // Get all leagues the user is in
+        const { data: userLeagues, error: leaguesError } = await supabase
+          .from("league_members")
+          .select("league_id")
+          .eq("user_id", user.id);
+
+        if (leaguesError || !userLeagues || userLeagues.length === 0) {
+          if (alive) setMiniLeagueFriendIds(new Set());
+          return;
+        }
+
+        const leagueIds = userLeagues.map((l: any) => l.league_id);
+
+        // Get all members from those leagues
+        const { data: allMembers, error: membersError } = await supabase
+          .from("league_members")
+          .select("user_id")
+          .in("league_id", leagueIds);
+
+        if (membersError || !allMembers) {
+          if (alive) setMiniLeagueFriendIds(new Set());
+          return;
+        }
+
+        // Create Set of all user IDs (including the current user)
+        const friendIds = new Set<string>(allMembers.map((m: any) => m.user_id));
+        if (alive) setMiniLeagueFriendIds(friendIds);
+      } catch (error) {
+        console.error("[Global] Error fetching mini league friends:", error);
+        if (alive) setMiniLeagueFriendIds(new Set());
+      }
+    })();
+
+    return () => { alive = false; };
+  }, [user?.id]);
   
   // For LIVE functionality, use current_gw from meta if it has live scores, otherwise use latestGw
   const liveGw = currentGwFromMeta ?? latestGw;
@@ -424,15 +474,27 @@ export default function GlobalLeaderboardPage() {
     };
   }, [overall, gwPoints, latestGw]);
 
+  // Helper function to filter rows by mini league friends
+  const filterByMiniLeagueFriends = useMemo(() => {
+    return <T extends { user_id: string }>(rows: T[]): T[] => {
+      if (!showMiniLeagueFriendsOnly || miniLeagueFriendIds.size === 0) {
+        return rows;
+      }
+      return rows.filter(row => miniLeagueFriendIds.has(row.user_id));
+    };
+  }, [showMiniLeagueFriendsOnly, miniLeagueFriendIds]);
+
   // 5 Week Form leaderboard
-  const form5Rows = useMemo(() => createFormRows(5), [createFormRows]);
+  const form5RowsUnfiltered = useMemo(() => createFormRows(5), [createFormRows]);
+  const form5Rows = useMemo(() => filterByMiniLeagueFriends(form5RowsUnfiltered), [form5RowsUnfiltered, filterByMiniLeagueFriends]);
   
   // 10 Week Form leaderboard
-  const form10Rows = useMemo(() => createFormRows(10), [createFormRows]);
+  const form10RowsUnfiltered = useMemo(() => createFormRows(10), [createFormRows]);
+  const form10Rows = useMemo(() => filterByMiniLeagueFriends(form10RowsUnfiltered), [form10RowsUnfiltered, filterByMiniLeagueFriends]);
   
   // Last GW leaderboard - only players who completed the last gameweek
   // Use live scores if current GW is live (single source of truth)
-  const lastGwRows = useMemo(() => {
+  const lastGwRowsUnfiltered = useMemo(() => {
     if (!latestGw) return [];
     
     // Use live scores if available, otherwise use database view
@@ -462,23 +524,53 @@ export default function GlobalLeaderboardPage() {
       };
     });
   }, [gwPoints, latestGw, overall, isCurrentGwLive, liveCurrentGwPoints]);
+  
+  const lastGwRows = useMemo(() => filterByMiniLeagueFriends(lastGwRowsUnfiltered), [lastGwRowsUnfiltered, filterByMiniLeagueFriends]);
 
   const rows = useMemo(() => {
     // Get current GW points only for the Overall tab
-    // Overall tab always uses database views (not live scores)
-    const currentGwPoints = gwPoints.filter(gp => gp.gw === latestGw);
+    // Use live scores if current GW is live, otherwise use database views
+    const currentGwPoints = (isCurrentGwLive && liveCurrentGwPoints.length > 0 && liveGw)
+      ? liveCurrentGwPoints
+      : gwPoints.filter(gp => gp.gw === latestGw);
     const byUserThisGw = new Map<string, number>();
     currentGwPoints.forEach((r) => byUserThisGw.set(r.user_id, r.points));
 
     // Optimize: use Set to track which users are already in merged
     const mergedUserIds = new Set<string>();
+    
+    // Calculate OCP using single source of truth: app_v_gw_points
+    // If live: OCP = sum of all GW points up to (liveGw - 1) + live GW points
+    // Otherwise: use OCP from app_v_ocp_overall view (single source of truth)
+    let ocpByUser: Map<string, number>;
+    if (isCurrentGwLive && liveGw) {
+      // Calculate OCP from app_v_gw_points (single source of truth) up to previous GW
+      const prevGwPoints = gwPoints.filter(gp => gp.gw < liveGw);
+      ocpByUser = new Map<string, number>();
+      prevGwPoints.forEach((r) => {
+        ocpByUser.set(r.user_id, (ocpByUser.get(r.user_id) || 0) + (r.points || 0));
+      });
+      // Add live GW points
+      currentGwPoints.forEach((r) => {
+        ocpByUser.set(r.user_id, (ocpByUser.get(r.user_id) || 0) + (r.points || 0));
+      });
+    } else {
+      // Use OCP from app_v_ocp_overall view (single source of truth)
+      ocpByUser = new Map<string, number>();
+      overall.forEach((o) => {
+        ocpByUser.set(o.user_id, o.ocp || 0);
+      });
+    }
+    
     const merged = overall.map((o) => {
       mergedUserIds.add(o.user_id);
+      const liveGwPoints = byUserThisGw.get(o.user_id) ?? 0;
+      const totalOcp = ocpByUser.get(o.user_id) || 0;
       return {
         user_id: o.user_id,
         name: o.name ?? "User",
-        this_gw: byUserThisGw.get(o.user_id) ?? 0,
-        ocp: o.ocp ?? 0,
+        this_gw: liveGwPoints,
+        ocp: totalOcp,
       };
     });
 
@@ -486,11 +578,12 @@ export default function GlobalLeaderboardPage() {
     currentGwPoints.forEach((g) => {
       if (!mergedUserIds.has(g.user_id)) {
         mergedUserIds.add(g.user_id);
+        const totalOcp = ocpByUser.get(g.user_id) || g.points;
         merged.push({
           user_id: g.user_id,
           name: "User",
           this_gw: g.points,
-          ocp: g.points,
+          ocp: totalOcp,
         });
       }
     });
@@ -498,7 +591,10 @@ export default function GlobalLeaderboardPage() {
     // sort by OCP desc, then name
     merged.sort((a, b) => (b.ocp - a.ocp) || a.name.localeCompare(b.name));
     return merged;
-  }, [overall, gwPoints, latestGw]);
+  }, [overall, gwPoints, latestGw, isCurrentGwLive, liveCurrentGwPoints, liveGw]);
+  
+  // Filter rows for Overall tab
+  const rowsFiltered = useMemo(() => filterByMiniLeagueFriends(rows), [rows, filterByMiniLeagueFriends]);
 
   // Prevent body scrolling - lock the page
   useEffect(() => {
@@ -586,7 +682,7 @@ export default function GlobalLeaderboardPage() {
   useEffect(() => {
     if (!loading && user?.id && tableContainerRef.current && userRowRef.current) {
       // Find user's rank/index in the current tab's data
-      const currentRows = activeTab === "overall" ? rows : activeTab === "form5" ? form5Rows : activeTab === "form10" ? form10Rows : lastGwRows;
+      const currentRows = activeTab === "overall" ? rowsFiltered : activeTab === "form5" ? form5Rows : activeTab === "form10" ? form10Rows : lastGwRows;
       const userIndex = currentRows.findIndex(r => r.user_id === user.id);
       const userRank = userIndex >= 0 ? (currentRows[userIndex] as any).rank || userIndex + 1 : null;
       
@@ -694,20 +790,43 @@ export default function GlobalLeaderboardPage() {
       <div className="max-w-6xl mx-auto px-4 pb-0 flex-1 flex flex-col overflow-hidden">
         {/* Fixed Header Section */}
         <div className="flex-shrink-0 bg-slate-50 py-4">
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Leaderboard</h2>
-            {activeTab === "lastgw" && isCurrentGwLive && liveGw && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 animate-pulse">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Leaderboard</h2>
+              {(activeTab === "lastgw" || activeTab === "overall") && isCurrentGwLive && liveGw && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 animate-pulse">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                  </span>
+                  LIVE GW{liveGw}
                 </span>
-                LIVE GW{liveGw}
-              </span>
-            )}
+              )}
+            </div>
+            {/* Toggle for Mini League Friends */}
+            <div className="flex items-center justify-between gap-4 py-2 px-3 rounded-lg bg-slate-100 border border-slate-200">
+              <span className="text-sm font-medium text-slate-700">All Players</span>
+              <button
+                onClick={() => setShowMiniLeagueFriendsOnly(!showMiniLeagueFriendsOnly)}
+                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:ring-offset-2 ${
+                  showMiniLeagueFriendsOnly ? 'bg-[#1C8376]' : 'bg-slate-300'
+                }`}
+                role="switch"
+                aria-checked={showMiniLeagueFriendsOnly}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
+                    showMiniLeagueFriendsOnly ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+              <span className="text-sm font-medium text-slate-700">Mini League Friends</span>
+            </div>
           </div>
-          <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
-            See how you rank against every TotL player in the world.
+          <p className="mt-3 mb-6 text-sm text-slate-600 w-full">
+            {showMiniLeagueFriendsOnly 
+              ? "See how you rank against your Mini League friends."
+              : "See how you rank against every TotL player in the world."}
           </p>
 
         {/* Tabs */}
@@ -831,7 +950,7 @@ export default function GlobalLeaderboardPage() {
               Complete 10 game weeks in a row to unlock the 10 Week Form Leaderboard and see who's in the best form!
             </div>
           </div>
-        ) : (activeTab === "overall" ? rows : activeTab === "form5" ? form5Rows : activeTab === "form10" ? form10Rows : lastGwRows).length === 0 ? (
+        ) : (activeTab === "overall" ? rowsFiltered : activeTab === "form5" ? form5Rows : activeTab === "form10" ? form10Rows : lastGwRows).length === 0 ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-600">
             No leaderboard data yet.
           </div>
@@ -864,8 +983,28 @@ export default function GlobalLeaderboardPage() {
                   {activeTab === "overall" && (
                     <>
                       <th className="px-4 py-3 text-center font-semibold" style={{ backgroundColor: '#f8fafc', width: '40px', borderTop: 'none', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
-                      <th className="px-1 py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '55px', color: '#64748b', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>GW{latestGw || '?'}</th>
-                      <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#64748b' }}>OCP</th>
+                      <th className="px-1 py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '55px', color: '#64748b', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
+                        <div className="flex items-center justify-center gap-1">
+                          GW{isCurrentGwLive && liveGw ? liveGw : latestGw || '?'}
+                          {isCurrentGwLive && liveGw && (
+                            <span className="relative flex h-1.5 w-1.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
+                            </span>
+                          )}
+                        </div>
+                      </th>
+                      <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#64748b' }}>
+                        <div className="flex items-center justify-center gap-1">
+                          OCP
+                          {isCurrentGwLive && liveGw && (
+                            <span className="relative flex h-1.5 w-1.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
+                            </span>
+                          )}
+                        </div>
+                      </th>
                     </>
                   )}
                   {(activeTab === "form5" || activeTab === "form10") && (
@@ -893,7 +1032,7 @@ export default function GlobalLeaderboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {(activeTab === "overall" ? rows : activeTab === "form5" ? form5Rows : activeTab === "form10" ? form10Rows : lastGwRows).map((r, i, arr) => {
+                {(activeTab === "overall" ? rowsFiltered : activeTab === "form5" ? form5Rows : activeTab === "form10" ? form10Rows : lastGwRows).map((r, i, arr) => {
                   const isMe = r.user_id === user?.id;
                   
                   // Check if this rank has multiple players
