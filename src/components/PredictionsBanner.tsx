@@ -18,9 +18,12 @@ export default function PredictionsBanner() {
     const hostname = window.location.hostname.toLowerCase();
     if (hostname.includes('staging') || 
         hostname.includes('totl-staging')) {
+      console.log('[PredictionsBanner] Hidden on staging:', hostname);
       return null;
     }
   }
+  
+  console.log('[PredictionsBanner] Component rendered, checking visibility...');
   
   const [visible, setVisible] = React.useState(false);
   const [currentGw, setCurrentGw] = React.useState<number | null>(null);
@@ -32,29 +35,54 @@ export default function PredictionsBanner() {
     const refreshBanner = async () => {
       try {
         // current GW
-        const { data: meta } = await supabase
+        const { data: meta, error: metaError } = await supabase
           .from("app_meta")
           .select("current_gw")
           .eq("id", 1)
           .maybeSingle();
+        
+        if (metaError) {
+          console.error('[PredictionsBanner] Error fetching current_gw:', metaError);
+          if (alive) setVisible(false);
+          return;
+        }
+        
         const gw: number | null = (meta as any)?.current_gw ?? null;
         if (!alive) return;
 
         setCurrentGw(gw);
-        if (!gw) return setVisible(false);
+        if (!gw) {
+          console.log('[PredictionsBanner] No current_gw found');
+          if (alive) setVisible(false);
+          return;
+        }
 
         // fixtures exist for current GW?
-        const { count: fxCount } = await supabase
+        const { count: fxCount, error: fxError } = await supabase
           .from("app_fixtures")
           .select("id", { count: "exact", head: true })
           .eq("gw", gw);
+        
+        if (fxError) {
+          console.error('[PredictionsBanner] Error fetching fixtures:', fxError);
+          if (alive) setVisible(false);
+          return;
+        }
+        
         if (!alive) return;
 
         // results already published for current GW?
-        const { count: rsCount } = await supabase
+        const { count: rsCount, error: rsError } = await supabase
           .from("app_gw_results")
           .select("gw", { count: "exact", head: true })
           .eq("gw", gw);
+        
+        if (rsError) {
+          console.error('[PredictionsBanner] Error fetching results:', rsError);
+          if (alive) setVisible(false);
+          return;
+        }
+        
         if (!alive) return;
         const resultsPublished = (rsCount ?? 0) > 0;
 
@@ -102,10 +130,12 @@ export default function PredictionsBanner() {
           
           // Only show GW16 banner if GW16 fixtures don't exist yet
           if (!nextGwFxCount || nextGwFxCount === 0) {
+            console.log('[PredictionsBanner] Results published, next GW fixtures not ready, showing coming soon banner');
             setBannerType("watch-space");
             setVisible(true);
           } else {
             // Next GW fixtures exist, don't show banner
+            console.log('[PredictionsBanner] Next GW fixtures exist, hiding banner');
             setVisible(false);
           }
           return;
@@ -143,13 +173,16 @@ export default function PredictionsBanner() {
         
         if (!hasSubmitted) {
           // User hasn't submitted predictions - show predictions banner
+          console.log('[PredictionsBanner] User has not submitted, showing predictions banner');
           setBannerType("predictions");
           setVisible(true);
         } else {
+          console.log('[PredictionsBanner] User has already submitted, hiding banner');
           setVisible(false);
         }
-      } catch {
-        setVisible(false);
+      } catch (error) {
+        console.error('[PredictionsBanner] Error in refreshBanner:', error);
+        if (alive) setVisible(false);
       }
     };
 
