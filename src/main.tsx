@@ -273,7 +273,7 @@ function AppContent() {
       {location.pathname === '/' && <FloatingProfile />}
 
       {/* Global Predictions Banner - hide on auth page and full-screen pages */}
-            {!isFullScreenPage && location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions' && <PredictionsBanner />}
+            {!isFullScreenPage && location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions' && location.pathname !== '/global' && <PredictionsBanner />}
 
       {/* Welcome Message */}
       {showWelcome && (

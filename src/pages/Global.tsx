@@ -138,8 +138,9 @@ export default function GlobalLeaderboardPage() {
     return () => { alive = false; };
   }, [user?.id]);
   
-  // For LIVE functionality, use current_gw from meta if it has live scores, otherwise use latestGw
-  const liveGw = currentGwFromMeta ?? latestGw;
+  // For LIVE functionality, use current_gw from meta if it's greater than latestGw (meaning it's not finished yet)
+  // Single source of truth: GW is live if current_gw > latestGw (current GW hasn't been completed)
+  const liveGw = (currentGwFromMeta && latestGw && currentGwFromMeta > latestGw) ? currentGwFromMeta : null;
   
   // Subscribe to live scores for the live GW (only used for lastgw tab)
   const { liveScores: liveScoresMap } = useLiveScores(
@@ -147,16 +148,22 @@ export default function GlobalLeaderboardPage() {
     undefined // Fetch all live scores for the GW
   );
   
-  // Check if current GW is live (has any live scores) - only relevant for lastgw tab
+  // Check if current GW is live - single source of truth: current_gw > latestGw means GW is still active
+  // Also check if there are actual live scores for this GW
   const isCurrentGwLive = useMemo(() => {
-    if (!liveGw || liveScoresMap.size === 0) return false;
+    if (!liveGw || !currentGwFromMeta || !latestGw) return false;
+    // Single source of truth: GW is live if current_gw from meta is greater than latest completed GW
+    const gwIsActive = currentGwFromMeta > latestGw;
+    if (!gwIsActive) return false;
+    // Also check if there are actual live scores for this GW
+    if (liveScoresMap.size === 0) return false;
     for (const score of liveScoresMap.values()) {
       if (score.gw === liveGw) {
         return true;
       }
     }
     return false;
-  }, [liveGw, liveScoresMap]);
+  }, [liveGw, currentGwFromMeta, latestGw, liveScoresMap]);
   
   // Fetch picks and calculate live scores for current GW
   const [liveCurrentGwPoints, setLiveCurrentGwPoints] = useState<GwPointsRow[]>([]);
