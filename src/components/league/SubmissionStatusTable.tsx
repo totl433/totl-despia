@@ -1,4 +1,3 @@
-import React from 'react';
 
 export interface SubmissionStatusTableProps {
   members: Array<{ id: string; name: string }>;

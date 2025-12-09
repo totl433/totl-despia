@@ -7,20 +7,15 @@ import { resolveLeagueStartGw as getLeagueStartGw, shouldIncludeGwForLeague } fr
 import imageCompression from "browser-image-compression";
 import { getLeagueAvatarUrl } from "../lib/leagueAvatars";
 import { useLiveScores } from "../hooks/useLiveScores";
-import { getTeamBadgePath, getMediumName } from "../lib/teamNames";
-import TeamBadge from "../components/TeamBadge";
 import MiniLeagueChatBeta from "../components/MiniLeagueChatBeta";
 import MessageBubble from "../components/chat/MessageBubble";
-import PickChip from "../components/league/PickChip";
 import RulesButton from "../components/league/RulesButton";
 import WinnerBanner from "../components/league/WinnerBanner";
 import GwSelector from "../components/league/GwSelector";
 import PointsFormToggle from "../components/league/PointsFormToggle";
-import FormDisplay from "../components/league/FormDisplay";
-import DateHeader from "../components/DateHeader";
 import MiniLeagueTable from "../components/league/MiniLeagueTable";
 import ResultsTable from "../components/league/ResultsTable";
-import SubmissionStatusTable, { handleShareReminder } from "../components/league/SubmissionStatusTable";
+import SubmissionStatusTable from "../components/league/SubmissionStatusTable";
 import LeagueFixtureSection from "../components/league/LeagueFixtureSection";
 
 const MAX_MEMBERS = 8;
@@ -58,36 +53,6 @@ type ResultRowRaw = {
   away_goals?: number | null;
 };
 
-// Helper function to format minute display
-function formatMinuteDisplay(status: string, minute: number | null | undefined): string {
-  if (status === 'FINISHED') {
-    return 'FT';
-  }
-  if (status === 'PAUSED') {
-    return 'HT';
-  }
-  if (status === 'IN_PLAY') {
-    if (minute === null || minute === undefined) {
-      return 'LIVE';
-    }
-    // First half: 1-45 minutes
-    if (minute >= 1 && minute <= 45) {
-      return 'First Half';
-    }
-    // Stoppage time in first half: > 45 but before halftime (typically 45-50)
-    // Show "45+" until status becomes PAUSED (halftime)
-    if (minute > 45 && minute <= 50) {
-      return '45+';
-    }
-    // Second half: after halftime, typically minute > 50
-    if (minute > 50) {
-      return 'Second Half';
-    }
-  }
-  // Fallback
-  return 'LIVE';
-}
-
 type MltRow = {
   user_id: string;
   name: string;
@@ -111,13 +76,6 @@ type ChatMsg = {
 /* =========================
    Helpers
    ========================= */
-
-function initials(name: string) {
-  const parts = (name || "?").trim().split(/\s+/);
-  if (!parts.length) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
 
 function rowToOutcome(r: ResultRowRaw): "H" | "D" | "A" | null {
   if (r.result === "H" || r.result === "D" || r.result === "A") return r.result;
@@ -1996,7 +1954,7 @@ ${shareUrl}`;
     const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League'];
     const gw7StartLeagues = ['The Bird league'];
     const gw8StartLeagues = ['gregVjofVcarl', 'Let Down'];
-    const isLateStartingLeague = league && !specialLeagues.includes(league.name) && !gw7StartLeagues.includes(league.name) && !gw8StartLeagues.includes(league.name);
+    const isLateStartingLeague = !!(league && !specialLeagues.includes(league.name) && !gw7StartLeagues.includes(league.name) && !gw8StartLeagues.includes(league.name));
 
     const rows = mltRows.length
       ? mltRows

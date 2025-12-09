@@ -44,7 +44,7 @@ export default function NotificationCentre() {
       enabled: true,
     },
   ]);
-  const [systemNotifications, setSystemNotifications] = useState<NotificationOption[]>([
+  const [systemNotifications] = useState<NotificationOption[]>([
     {
       id: 'system-updates',
       label: 'System Updates',

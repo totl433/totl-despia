@@ -1,4 +1,3 @@
-import React from 'react';
 
 export type ResultRow = {
   user_id: string;

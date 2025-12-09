@@ -274,6 +274,14 @@ export default function TablesPage() {
         const allFixtures = allFixturesResult.data ?? [];
         setAllFixturesData(allFixtures as Array<{ gw: number; kickoff_time: string }>);
         
+        // Build fixturesByGw map for league start GW calculation
+        const fixturesByGw = new Map<number, string[]>();
+        allFixtures.forEach((f: { gw: number; kickoff_time: string }) => {
+          const arr = fixturesByGw.get(f.gw) ?? [];
+          arr.push(f.kickoff_time);
+          fixturesByGw.set(f.gw, arr);
+        });
+        
         // Process members with user names
         const membersByLeagueIdMap = new Map<string, LeagueMember[]>();
         (allMembersWithUsersResult.data ?? []).forEach((m: any) => {

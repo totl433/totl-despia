@@ -16,11 +16,9 @@ interface UserStats {
 }
 
 export default function Profile() {
-  const { user, signOut, session } = useAuth();
+  const { user, signOut } = useAuth();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [registering, setRegistering] = useState(false);
-  const [registerResult, setRegisterResult] = useState<string | null>(null);
   
   // Admin check
   const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';

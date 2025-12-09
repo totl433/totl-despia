@@ -1,4 +1,3 @@
-import React from 'react';
 import TeamBadge from '../TeamBadge';
 import PickChip from './PickChip';
 import { getMediumName } from '../../lib/teamNames';
@@ -108,9 +107,9 @@ export default function LeagueFixtureCard({
   const timeStr = timeOf(f.kickoff_time);
 
   // Determine game state
-  const isLive = liveScore && liveScore.status === 'IN_PLAY';
-  const isHalfTime = liveScore && (liveScore.status === 'PAUSED' || liveScore.status === 'HALF_TIME' || liveScore.status === 'HT');
-  const isFinished = liveScore && liveScore.status === 'FINISHED';
+  const isLive = !!(liveScore && liveScore.status === 'IN_PLAY');
+  const isHalfTime = !!(liveScore && (liveScore.status === 'PAUSED' || liveScore.status === 'HALF_TIME' || liveScore.status === 'HT'));
+  const isFinished = !!(liveScore && liveScore.status === 'FINISHED');
   const isOngoing = isLive || isHalfTime;
 
   // Determine actual result (from live score or outcome)

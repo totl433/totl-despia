@@ -1,4 +1,3 @@
-import React from 'react';
 import DateHeader from '../DateHeader';
 import LeagueFixtureCard, { type Fixture, type PickRow, type LiveScore } from './LeagueFixtureCard';
 
@@ -97,7 +96,7 @@ export default function LeagueFixtureSection({
       </div>
       <div className="rounded-2xl border bg-slate-50 overflow-hidden">
         <ul>
-          {fixtures.map((f, idx) => {
+          {fixtures.map((f) => {
             try {
               const picks = picksByFixture.get(f.fixture_index) ?? [];
               const outcome = outcomes.get(f.fixture_index) || null;
