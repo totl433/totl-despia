@@ -184,7 +184,7 @@ export const handler: Handler = async (event) => {
       })
     );
 
-    const validPlayerIds = uniquePlayerIds.filter((playerId, i) => {
+    let validPlayerIds = uniquePlayerIds.filter((playerId, i) => {
       const check = checks[i];
       if (check.status === 'fulfilled') {
         return (check as PromiseFulfilledResult<{ playerId: string; subscribed: boolean }>).value.subscribed;
