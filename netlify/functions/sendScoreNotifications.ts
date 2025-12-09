@@ -867,6 +867,19 @@ async function checkAndSendScoreNotifications() {
       return;
     }
 
+    // Load user notification preferences
+    const { data: userPrefs, error: prefsError } = await supabase
+      .from('user_notification_preferences')
+      .select('user_id, preferences')
+      .in('user_id', userIds);
+    
+    const prefsMap = new Map<string, Record<string, boolean>>();
+    if (!prefsError && userPrefs) {
+      userPrefs.forEach((pref: any) => {
+        prefsMap.set(pref.user_id, pref.preferences || {});
+      });
+    }
+
     const { data: subscriptions, error: subsError } = await supabase
       .from('push_subscriptions')
       .select('user_id, player_id')
@@ -966,6 +979,20 @@ async function checkAndSendScoreNotifications() {
 
         if (playerIds.length === 0 || !userPick) {
           continue;
+        }
+
+        // Check user preferences
+        const userPrefs = prefsMap.get(userId) || {};
+        if (notification.isGameFinished) {
+          // Check final-whistle preference
+          if (userPrefs['final-whistle'] === false) {
+            continue; // Skip if user disabled final-whistle notifications
+          }
+        } else if (notification.isScoreChange) {
+          // Check score-updates preference
+          if (userPrefs['score-updates'] === false) {
+            continue; // Skip if user disabled score-updates notifications
+          }
         }
 
         // Check if user got it right
@@ -1138,6 +1165,19 @@ async function checkAndSendScoreNotifications() {
           ])];
 
           if (userIdsWithPicks.length > 0) {
+            // Load user notification preferences for GW results
+            const { data: gwUserPrefs } = await supabase
+              .from('user_notification_preferences')
+              .select('user_id, preferences')
+              .in('user_id', userIdsWithPicks);
+            
+            const gwPrefsMap = new Map<string, Record<string, boolean>>();
+            if (gwUserPrefs) {
+              gwUserPrefs.forEach((pref: any) => {
+                gwPrefsMap.set(pref.user_id, pref.preferences || {});
+              });
+            }
+
             // Calculate scores for each user
             const userScores = new Map<string, number>();
             
@@ -1226,6 +1266,12 @@ async function checkAndSendScoreNotifications() {
             for (const userId of userIdsWithPicks) {
               const playerIds = playerIdsByUser.get(userId) || [];
               if (playerIds.length === 0) continue;
+
+              // Check user preference for gw-results
+              const userPrefs = gwPrefsMap.get(userId) || {};
+              if (userPrefs['gw-results'] === false) {
+                continue; // Skip if user disabled gw-results notifications
+              }
 
               const score = userScores.get(userId) || 0;
               const gwLabel = currentTestGw ? `Test GW ${currentTestGw}` : `GW ${currentGw}`;

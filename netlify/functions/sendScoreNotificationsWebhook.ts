@@ -691,6 +691,20 @@ export const handler: Handler = async (event, context) => {
 
       // Get push subscriptions
       const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
+      
+      // Load user notification preferences
+      const { data: userPrefs } = await supabase
+        .from('user_notification_preferences')
+        .select('user_id, preferences')
+        .in('user_id', userIds);
+      
+      const prefsMap = new Map<string, Record<string, boolean>>();
+      if (userPrefs) {
+        userPrefs.forEach((pref: any) => {
+          prefsMap.set(pref.user_id, pref.preferences || {});
+        });
+      }
+
       const { data: subscriptions } = await supabase
         .from('push_subscriptions')
         .select('user_id, player_id')
@@ -808,6 +822,12 @@ export const handler: Handler = async (event, context) => {
       for (const pick of picks) {
         const playerIds = playerIdsByUser.get(pick.user_id) || [];
         if (playerIds.length === 0) continue;
+
+        // Check user preference for score-updates
+        const userPrefs = prefsMap.get(pick.user_id) || {};
+        if (userPrefs['score-updates'] === false) {
+          continue; // Skip if user disabled score-updates notifications
+        }
 
         const teamName = isHomeTeam ? normalizedFixture.home_team : normalizedFixture.away_team;
         
@@ -1228,6 +1248,20 @@ export const handler: Handler = async (event, context) => {
       if (awayScore > homeScore) result = 'A';
 
       const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
+      
+      // Load user notification preferences
+      const { data: userPrefs } = await supabase
+        .from('user_notification_preferences')
+        .select('user_id, preferences')
+        .in('user_id', userIds);
+      
+      const prefsMap = new Map<string, Record<string, boolean>>();
+      if (userPrefs) {
+        userPrefs.forEach((pref: any) => {
+          prefsMap.set(pref.user_id, pref.preferences || {});
+        });
+      }
+
       const { data: subscriptions } = await supabase
         .from('push_subscriptions')
         .select('user_id, player_id')
@@ -1252,6 +1286,12 @@ export const handler: Handler = async (event, context) => {
       for (const pick of picks) {
         const playerIds = playerIdsByUser.get(pick.user_id) || [];
         if (playerIds.length === 0) continue;
+
+        // Check user preference for final-whistle
+        const userPrefs = prefsMap.get(pick.user_id) || {};
+        if (userPrefs['final-whistle'] === false) {
+          continue; // Skip if user disabled final-whistle notifications
+        }
 
         const isCorrect = pick.pick === result;
         const title = `FT: ${fixture.home_team} ${homeScore}-${awayScore} ${fixture.away_team}`;
@@ -1434,6 +1474,20 @@ export const handler: Handler = async (event, context) => {
         }
         
         const allUserIds = Array.from(new Set(allPicks.map((p: any) => p.user_id)));
+        
+        // Load user notification preferences for GW results
+        const { data: gwUserPrefs } = await supabase
+          .from('user_notification_preferences')
+          .select('user_id, preferences')
+          .in('user_id', allUserIds);
+        
+        const gwPrefsMap = new Map<string, Record<string, boolean>>();
+        if (gwUserPrefs) {
+          gwUserPrefs.forEach((pref: any) => {
+            gwPrefsMap.set(pref.user_id, pref.preferences || {});
+          });
+        }
+
         const { data: allSubscriptions } = await supabase
           .from('push_subscriptions')
           .select('user_id, player_id')
@@ -1472,6 +1526,12 @@ export const handler: Handler = async (event, context) => {
           for (const userId of allUserIds) {
             const playerIds = allPlayerIdsByUser.get(userId) || [];
             if (playerIds.length === 0) continue;
+            
+            // Check user preference for gw-results
+            const userPrefs = gwPrefsMap.get(userId) || {};
+            if (userPrefs['gw-results'] === false) {
+              continue; // Skip if user disabled gw-results notifications
+            }
             
             const gwTitle = `🎉 Gameweek ${fixtureGw} Complete!`;
             const gwMessage = `All games finished. Check your results!`;

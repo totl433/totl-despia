@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useMemo } from 'react';
 import { MiniLeagueCard, type LeagueRow, type LeagueData } from './MiniLeagueCard';
 import { HorizontalScrollContainer } from './HorizontalScrollContainer';
+import Section from './Section';
 
 interface MiniLeaguesSectionProps {
   leagues: LeagueRow[];
@@ -42,15 +43,7 @@ export function MiniLeaguesSection({
 
   if (!leagueDataLoading && leagues.length === 0) {
     return (
-      <section className="mt-6">
-        <div className="flex items-center justify-between mb-2 pt-5">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-medium text-slate-500 uppercase tracking-wide">Mini Leagues</h2>
-            <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center">
-              <span className="text-[10px] text-slate-500 font-bold">i</span>
-            </div>
-          </div>
-        </div>
+      <Section title="Mini Leagues" className="mt-6">
         <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
           <div className="text-slate-600 mb-3">You don't have any mini leagues yet.</div>
           <Link 
@@ -60,40 +53,23 @@ export function MiniLeaguesSection({
             Create one now!
           </Link>
         </div>
-      </section>
+      </Section>
     );
   }
 
   if (leagues.length === 0) {
     return (
-      <section className="mt-6">
-        <div className="flex items-center justify-between mb-2 pt-5">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-medium text-slate-500 uppercase tracking-wide">Mini Leagues</h2>
-            <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center">
-              <span className="text-[10px] text-slate-500 font-bold">i</span>
-            </div>
-          </div>
-        </div>
+      <Section title="Mini Leagues" className="mt-6">
         <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
           <div className="text-slate-600">Loading leagues...</div>
         </div>
-      </section>
+      </Section>
     );
   }
 
   return (
-    <section className="mt-6">
-      <div className="flex items-center justify-between mb-2 pt-5">
-        <div className="flex items-center gap-2">
-          <h2 className="text-base font-medium text-slate-500 uppercase tracking-wide">Mini Leagues</h2>
-          <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center">
-            <span className="text-[10px] text-slate-500 font-bold">i</span>
-          </div>
-        </div>
-      </div>
-      <div>
-        <HorizontalScrollContainer>
+    <Section title="Mini Leagues" className="mt-6">
+      <HorizontalScrollContainer>
           {Array.from({ length: Math.ceil(leagues.length / 3) }).map((_, batchIdx) => {
             const startIdx = batchIdx * 3;
             const batchLeagues = leagues.slice(startIdx, startIdx + 3);
@@ -126,9 +102,8 @@ export function MiniLeaguesSection({
               </div>
             );
           })}
-        </HorizontalScrollContainer>
-      </div>
-    </section>
+      </HorizontalScrollContainer>
+    </Section>
   );
 }
 

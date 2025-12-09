@@ -1,0 +1,266 @@
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { NotificationSection } from '../components/profile/NotificationSection';
+import type { NotificationOption } from '../components/profile/NotificationSection';
+import { PageHeader } from '../components/PageHeader';
+
+export default function NotificationCentre() {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [chatNotifications, setChatNotifications] = useState<NotificationOption[]>([
+    {
+      id: 'chat-messages',
+      label: 'Chat Messages',
+      description: 'Get notified when someone sends a message in your mini-leagues',
+      enabled: true,
+    },
+  ]);
+  const [gameNotifications, setGameNotifications] = useState<NotificationOption[]>([
+    {
+      id: 'new-gameweek',
+      label: 'New Gameweek Published',
+      description: 'Get notified when a new gameweek is published and ready for predictions',
+      enabled: true,
+    },
+    {
+      id: 'score-updates',
+      label: 'Score Updates',
+      description: 'Get notified when match scores are updated',
+      enabled: true,
+    },
+    {
+      id: 'final-whistle',
+      label: 'Final Whistle',
+      description: 'Get notified when matches finish',
+      enabled: true,
+    },
+    {
+      id: 'gw-results',
+      label: 'Gameweek Results',
+      description: 'Get notified when a gameweek is finalized',
+      enabled: true,
+    },
+  ]);
+  const [systemNotifications, setSystemNotifications] = useState<NotificationOption[]>([
+    {
+      id: 'system-updates',
+      label: 'System Updates',
+      description: 'Important updates and announcements',
+      enabled: true,
+      disabled: true, // System notifications can't be disabled
+    },
+  ]);
+
+  useEffect(() => {
+    if (user) {
+      loadNotificationPreferences();
+    }
+  }, [user]);
+
+  async function loadNotificationPreferences() {
+    if (!user) return;
+
+    try {
+      // Load user notification preferences from database
+      // For now, we'll use a simple approach - you can extend this with a proper table later
+      const { data, error } = await supabase
+        .from('user_notification_preferences')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        // PGRST116 = no rows returned, which is fine for first-time users
+        console.error('Error loading preferences:', error);
+      }
+
+      if (data) {
+        // Update preferences from database
+        const prefs = data.preferences || {};
+        
+        setChatNotifications([
+          {
+            id: 'chat-messages',
+            label: 'Chat Messages',
+            description: 'Get notified when someone sends a message in your mini-leagues',
+            enabled: prefs['chat-messages'] !== false,
+          },
+        ]);
+
+        setGameNotifications([
+          {
+            id: 'new-gameweek',
+            label: 'New Gameweek Published',
+            description: 'Get notified when a new gameweek is published and ready for predictions',
+            enabled: prefs['new-gameweek'] !== false,
+          },
+          {
+            id: 'score-updates',
+            label: 'Score Updates',
+            description: 'Get notified when match scores are updated',
+            enabled: prefs['score-updates'] !== false,
+          },
+          {
+            id: 'final-whistle',
+            label: 'Final Whistle',
+            description: 'Get notified when matches finish',
+            enabled: prefs['final-whistle'] !== false,
+          },
+          {
+            id: 'gw-results',
+            label: 'Gameweek Results',
+            description: 'Get notified when a gameweek is finalized',
+            enabled: prefs['gw-results'] !== false,
+          },
+        ]);
+      }
+    } catch (error) {
+      console.error('Error loading notification preferences:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleToggle(section: 'chat' | 'game' | 'system', id: string, enabled: boolean) {
+    if (!user) return;
+
+    setSaving(true);
+
+    try {
+      // Update local state immediately for better UX
+      if (section === 'chat') {
+        setChatNotifications((prev) =>
+          prev.map((opt) => (opt.id === id ? { ...opt, enabled } : opt))
+        );
+      } else if (section === 'game') {
+        setGameNotifications((prev) =>
+          prev.map((opt) => (opt.id === id ? { ...opt, enabled } : opt))
+        );
+      }
+
+      // Save to database
+      const allOptions = [...chatNotifications, ...gameNotifications, ...systemNotifications];
+      const preferences: Record<string, boolean> = {};
+      allOptions.forEach((opt) => {
+        if (opt.id === id) {
+          preferences[opt.id] = enabled;
+        } else {
+          preferences[opt.id] = opt.enabled;
+        }
+      });
+
+      const { error } = await supabase
+        .from('user_notification_preferences')
+        .upsert({
+          user_id: user.id,
+          preferences,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id',
+        });
+
+      if (error) {
+        console.error('Error saving preferences:', error);
+        // Revert local state on error
+        if (section === 'chat') {
+          setChatNotifications((prev) =>
+            prev.map((opt) => (opt.id === id ? { ...opt, enabled: !enabled } : opt))
+          );
+        } else if (section === 'game') {
+          setGameNotifications((prev) =>
+            prev.map((opt) => (opt.id === id ? { ...opt, enabled: !enabled } : opt))
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling notification:', error);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-xl shadow-md p-6 text-center">
+            <p className="text-slate-600">Please sign in to view your notification preferences.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-xl shadow-md p-6 text-center">
+            <p className="text-slate-600">Loading notification preferences...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="max-w-4xl mx-auto p-6">
+        <Link
+          to="/profile"
+          className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-800 mb-4 transition-colors"
+        >
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 19l-7-7 7-7"
+            />
+          </svg>
+          <span>Back to Profile</span>
+        </Link>
+        <PageHeader title="Notification Centre" as="h1" className="mb-6" />
+
+        <div className="space-y-6">
+          <NotificationSection
+            title="Chat Notifications"
+            description="Control when you receive notifications for mini-league messages"
+            options={chatNotifications}
+            onToggle={(id, enabled) => handleToggle('chat', id, enabled)}
+          />
+
+          <NotificationSection
+            title="Game Notifications"
+            description="Stay updated on match results and scores"
+            options={gameNotifications}
+            onToggle={(id, enabled) => handleToggle('game', id, enabled)}
+          />
+
+          <NotificationSection
+            title="System Notifications"
+            description="Important updates and announcements"
+            options={systemNotifications}
+            onToggle={(id, enabled) => handleToggle('system', id, enabled)}
+          />
+        </div>
+
+        {saving && (
+          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
+            <p className="text-sm text-blue-800">Saving preferences...</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+

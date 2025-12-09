@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Section from "../components/Section";
+import { PageHeader } from "../components/PageHeader";
 
 export default function HowToPlayPage() {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -16,7 +17,7 @@ export default function HowToPlayPage() {
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-6xl px-4 py-4 pb-16">
         {/* Header */}
-        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">How To Play</h2>
+        <PageHeader title="How To Play" as="h2" />
         <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
             Welcome to TOTL (Top of the League) — the game of quick Predictions and friendly rivalries. Here's how it all works.
           </p>

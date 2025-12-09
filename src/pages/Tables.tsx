@@ -7,6 +7,7 @@ import { getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import { getCached, setCached, CACHE_TTL, invalidateUserCache } from "../lib/cache";
 import { useLeagues } from "../hooks/useLeagues";
+import { PageHeader } from "../components/PageHeader";
 
 /**
  * Tables.tsx - Mini Leagues Page
@@ -138,6 +139,15 @@ export default function TablesPage() {
   const [leagueData, setLeagueData] = useState<Record<string, LeagueData>>(initialState.leagueData);
   const [currentGw, setCurrentGw] = useState<number | null>(initialState.currentGw);
   
+  // Store base data for reactive recalculation
+  const [baseResults, setBaseResults] = useState<ResultRowRaw[]>([]);
+  const [allFixturesData, setAllFixturesData] = useState<Array<{ gw: number; kickoff_time: string }>>([]);
+  const [picksData, setPicksData] = useState<Map<string, PickRow[]>>(new Map());
+  const [membersByLeagueId, setMembersByLeagueId] = useState<Map<string, LeagueMember[]>>(new Map());
+  const [leagueStartGwMap, setLeagueStartGwMap] = useState<Map<string, number>>(new Map());
+  const [gwsWithResults, setGwsWithResults] = useState<number[]>([]);
+  const [submittedUserIdsSet, setSubmittedUserIdsSet] = useState<Set<string>>(new Set());
+  
   // Build rows from leagues (from hook) + member counts (fetched separately)
   // Leagues from useLeagues are already sorted by unread count
   const rows: LeagueRow[] = useMemo(() => {
@@ -238,6 +248,7 @@ export default function TablesPage() {
         ]);
         
         const submittedUserIds = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id));
+        setSubmittedUserIdsSet(submittedUserIds);
         
         // Calculate submission status for each league
         const submissionStatus: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }> = {};
@@ -256,32 +267,22 @@ export default function TablesPage() {
 
         if (!alive) return;
 
-        // Process results and fixtures for league data
+        // Store base data for reactive recalculation
         const resultList = (allResultsResult.data as ResultRowRaw[]) ?? [];
-        const outcomeByGwIdx = new Map<string, "H" | "D" | "A">();
-        for (const r of resultList) {
-          const out = rowToOutcome(r);
-          if (out) outcomeByGwIdx.set(`${r.gw}:${r.fixture_index}`, out);
-        }
-
+        setBaseResults(resultList);
+        
         const allFixtures = allFixturesResult.data ?? [];
-        const fixturesByGw = new Map<number, string[]>();
-        allFixtures.forEach((f: any) => {
-          const arr = fixturesByGw.get(f.gw) ?? [];
-          arr.push(f.kickoff_time);
-          fixturesByGw.set(f.gw, arr);
-        });
-
-        const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
+        setAllFixturesData(allFixtures as Array<{ gw: number; kickoff_time: string }>);
         
         // Process members with user names
-        const membersByLeagueId = new Map<string, LeagueMember[]>();
+        const membersByLeagueIdMap = new Map<string, LeagueMember[]>();
         (allMembersWithUsersResult.data ?? []).forEach((m: any) => {
           if (!m.users?.name) return;
-          const arr = membersByLeagueId.get(m.league_id) ?? [];
+          const arr = membersByLeagueIdMap.get(m.league_id) ?? [];
           arr.push({ id: m.user_id, name: m.users.name });
-          membersByLeagueId.set(m.league_id, arr);
+          membersByLeagueIdMap.set(m.league_id, arr);
         });
+        setMembersByLeagueId(membersByLeagueIdMap);
 
         // Build leagues metadata map from useLeagues data (already has start_gw, created_at)
         const leaguesMetaMap = new Map<string, typeof leagues[0]>();
@@ -355,6 +356,25 @@ export default function TablesPage() {
 
         const allPicksResults = await Promise.all(picksPromises);
         if (!alive) return;
+        
+        // Store picks data by league
+        const picksDataMap = new Map<string, PickRow[]>();
+        for (let i = 0; i < leagues.length; i++) {
+          picksDataMap.set(leagues[i].id, (allPicksResults[i].data ?? []) as PickRow[]);
+        }
+        setPicksData(picksDataMap);
+        
+        // Store league start GW map
+        setLeagueStartGwMap(leagueStartGwMap);
+        
+        // Calculate initial gwsWithResults from base results
+        const initialOutcomeByGwIdx = new Map<string, "H" | "D" | "A">();
+        for (const r of resultList) {
+          const out = rowToOutcome(r);
+          if (out) initialOutcomeByGwIdx.set(`${r.gw}:${r.fixture_index}`, out);
+        }
+        const initialGwsWithResults = [...new Set(Array.from(initialOutcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
+        setGwsWithResults(initialGwsWithResults);
 
         const submittedUserIdsSet = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id));
         
@@ -363,15 +383,14 @@ export default function TablesPage() {
         
         for (let i = 0; i < leagues.length; i++) {
           const league = leagues[i];
-          const picksResult = allPicksResults[i];
-          const memberIds = membersByLeagueId.get(league.id) ?? [];
+          const memberIds = membersByLeagueIdMap.get(league.id) ?? [];
           
           if (memberIds.length === 0) continue;
           
           const leagueStartGw = leagueStartGwMap.get(league.id) ?? metaGw;
           const relevantGws = Array.from(allRelevantGws).filter(gw => gw >= leagueStartGw);
           
-          const picks = (picksResult.data ?? []) as PickRow[];
+          const picks = (allPicksResults[i].data ?? []) as PickRow[];
           const picksByUserGw = new Map<string, Map<number, Map<number, "H" | "D" | "A">>>();
           
           picks.forEach(p => {
@@ -490,6 +509,140 @@ export default function TablesPage() {
     
     return () => { alive = false; };
   }, [user?.id, leagues, leaguesLoading]);
+  
+  // Process results to create outcome map
+  const outcomeByGwIdx = useMemo(() => {
+    const outcomeMap = new Map<string, "H" | "D" | "A">();
+    
+    // Add all results from app_gw_results
+    for (const r of baseResults) {
+      const out = rowToOutcome(r);
+      if (out) outcomeMap.set(`${r.gw}:${r.fixture_index}`, out);
+    }
+    
+    return outcomeMap;
+  }, [baseResults]);
+  
+  // Recalculate league data when outcomes change (reactive to live score updates)
+  useEffect(() => {
+    if (!user?.id || leagues.length === 0 || picksData.size === 0 || membersByLeagueId.size === 0) return;
+    
+    const fixturesByGw = new Map<number, string[]>();
+    allFixturesData.forEach((f) => {
+      const arr = fixturesByGw.get(f.gw) ?? [];
+      arr.push(f.kickoff_time);
+      fixturesByGw.set(f.gw, arr);
+    });
+    
+    const updatedGwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
+    setGwsWithResults(updatedGwsWithResults);
+    
+    const allRelevantGws = new Set<number>();
+    leagues.forEach(league => {
+      const leagueStartGw = leagueStartGwMap.get(league.id) ?? currentGw ?? 1;
+      updatedGwsWithResults.filter(g => g >= leagueStartGw).forEach(gw => allRelevantGws.add(gw));
+    });
+    
+    const leagueDataMap: Record<string, LeagueData> = {};
+    
+    for (const league of leagues) {
+      const memberIds = membersByLeagueId.get(league.id) ?? [];
+      if (memberIds.length === 0) continue;
+      
+      const leagueStartGw = leagueStartGwMap.get(league.id) ?? currentGw ?? 1;
+      const relevantGws = Array.from(allRelevantGws).filter(gw => gw >= leagueStartGw);
+      
+      const picks = picksData.get(league.id) ?? [];
+      const picksByUserGw = new Map<string, Map<number, Map<number, "H" | "D" | "A">>>();
+      
+      picks.forEach(p => {
+        if (!picksByUserGw.has(p.user_id)) {
+          picksByUserGw.set(p.user_id, new Map());
+        }
+        const userGwMap = picksByUserGw.get(p.user_id)!;
+        if (!userGwMap.has(p.gw)) {
+          userGwMap.set(p.gw, new Map());
+        }
+        userGwMap.get(p.gw)!.set(p.fixture_index, p.pick);
+      });
+      
+      const userScores = new Map<string, number>();
+      const userGwScores = new Map<string, Map<number, number>>();
+      
+      relevantGws.forEach(gw => {
+        const gwFixtures = fixturesByGw.get(gw) ?? [];
+        const fixtureCount = gwFixtures.length;
+        if (fixtureCount === 0) return;
+        
+        memberIds.forEach(member => {
+          const userPicks = picksByUserGw.get(member.id)?.get(gw);
+          if (!userPicks) return;
+          
+          let gwScore = 0;
+          for (let fi = 0; fi < fixtureCount; fi++) {
+            const pick = userPicks.get(fi);
+            const outcome = outcomeByGwIdx.get(`${gw}:${fi}`);
+            if (pick && outcome && pick === outcome) {
+              gwScore++;
+            }
+          }
+          
+          if (!userGwScores.has(member.id)) {
+            userGwScores.set(member.id, new Map());
+          }
+          userGwScores.get(member.id)!.set(gw, gwScore);
+          
+          const currentTotal = userScores.get(member.id) ?? 0;
+          userScores.set(member.id, currentTotal + gwScore);
+        });
+      });
+      
+      const sortedMemberIds = [...memberIds].sort((a, b) => {
+        const scoreA = userScores.get(a.id) ?? 0;
+        const scoreB = userScores.get(b.id) ?? 0;
+        if (scoreB !== scoreA) return scoreB - scoreA;
+        return a.name.localeCompare(b.name);
+      });
+      
+      const userPosition = sortedMemberIds.findIndex(m => m.id === user.id) + 1;
+      const prevPosition = userPosition > 1 ? userPosition - 1 : null;
+      const positionChange: 'up' | 'down' | 'same' | null = prevPosition === null ? null : 
+        userPosition < prevPosition ? 'up' : userPosition > prevPosition ? 'down' : 'same';
+      
+      const latestRelevantGw = relevantGws.length > 0 ? Math.max(...relevantGws) : currentGw;
+      const latestGwWinners: string[] = [];
+      if (latestRelevantGw && userGwScores.has(user.id)) {
+        const latestGwScore = userGwScores.get(user.id)!.get(latestRelevantGw) ?? 0;
+        sortedMemberIds.forEach(m => {
+          const memberLatestScore = userGwScores.get(m.id)?.get(latestRelevantGw) ?? 0;
+          if (memberLatestScore === latestGwScore && latestGwScore > 0) {
+            latestGwWinners.push(m.id);
+          }
+        });
+      }
+      
+      // Get submitted members from submittedUserIdsSet
+      const submittedMembers = new Set<string>();
+      memberIds.forEach(member => {
+        if (submittedUserIdsSet.has(member.id)) {
+          submittedMembers.add(member.id);
+        }
+      });
+      
+      leagueDataMap[league.id] = {
+        id: league.id,
+        members: memberIds,
+        userPosition: userPosition || null,
+        positionChange,
+        submittedMembers: submittedMembers,
+        sortedMemberIds: sortedMemberIds.map(m => m.id),
+        latestGwWinners,
+        latestRelevantGw
+      };
+    }
+    
+    setLeagueData(leagueDataMap);
+  }, [user?.id, leagues, picksData, membersByLeagueId, leagueStartGwMap, allFixturesData, outcomeByGwIdx, currentGw, submittedUserIdsSet]);
 
 
   const createLeague = useCallback(async () => {
@@ -572,7 +725,7 @@ export default function TablesPage() {
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-6xl mx-auto px-4 py-4 pb-16">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Mini Leagues</h2>
+          <PageHeader title="Mini Leagues" as="h2" />
           {rows.length > 4 && (
             <button
               onClick={() => {

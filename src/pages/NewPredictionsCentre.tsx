@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { getMediumName } from "../lib/teamNames";
 import { useLiveScores } from "../hooks/useLiveScores";
+import { PageHeader } from "../components/PageHeader";
 
 function sideName(f: any, side: "home" | "away") {
   const nm = f?.[`${side}_name`];
@@ -378,7 +379,7 @@ export default function NewPredictionsCentre() {
         <div className="max-w-2xl mx-auto px-4 py-4">
           {/* Page Header */}
           <div className="mb-6">
-            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Predictions Centre</h2>
+            <PageHeader title="Predictions Centre" as="h2" />
             <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
               Call every game, lock in your results, and climb the table.
             </p>

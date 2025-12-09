@@ -30,19 +30,18 @@ export function GamesSection({
   hasCheckedCache,
   currentGw
 }: GamesSectionProps) {
-  // Calculate subtitle: "Game Week XX" format
-  const subtitle = useMemo(() => {
-    if (fixtures.length === 0) return undefined;
+  // Calculate title with GW number: "GAME WEEK (XX)" format
+  const title = useMemo(() => {
+    if (fixtures.length === 0) return "Games";
     
     // Always use the GW number from fixtures or currentGw, no test week distinction
     const gw = currentGw ?? fixtures[0]?.gw ?? 1;
-    return `Game Week ${gw}`;
+    return `GAME WEEK ${gw}`;
   }, [fixtures, currentGw]);
 
   return (
     <Section 
-      title="Games"
-      subtitle={subtitle}
+      title={title}
       className="mt-6"
       headerRight={
         <div className="flex items-center gap-3">

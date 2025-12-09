@@ -11,6 +11,17 @@ import { getTeamBadgePath, getMediumName } from "../lib/teamNames";
 import TeamBadge from "../components/TeamBadge";
 import MiniLeagueChatBeta from "../components/MiniLeagueChatBeta";
 import MessageBubble from "../components/chat/MessageBubble";
+import PickChip from "../components/league/PickChip";
+import RulesButton from "../components/league/RulesButton";
+import WinnerBanner from "../components/league/WinnerBanner";
+import GwSelector from "../components/league/GwSelector";
+import PointsFormToggle from "../components/league/PointsFormToggle";
+import FormDisplay from "../components/league/FormDisplay";
+import DateHeader from "../components/DateHeader";
+import MiniLeagueTable from "../components/league/MiniLeagueTable";
+import ResultsTable from "../components/league/ResultsTable";
+import SubmissionStatusTable, { handleShareReminder } from "../components/league/SubmissionStatusTable";
+import LeagueFixtureSection from "../components/league/LeagueFixtureSection";
 
 const MAX_MEMBERS = 8;
 
@@ -118,64 +129,7 @@ function rowToOutcome(r: ResultRowRaw): "H" | "D" | "A" | null {
   return null;
 }
 
-/* Small chip used in GW Picks grid */
-function Chip({
-  letter,
-  correct,
-  unicorn,
-  hasSubmitted,
-  isLive,
-  isOngoing,
-  isFinished,
-}: {
-  letter: string;
-  correct: boolean | null;
-  unicorn: boolean;
-  hasSubmitted?: boolean;
-  isLive?: boolean;
-  isOngoing?: boolean;
-  isFinished?: boolean;
-}) {
-  // Logic matches Home Page:
-  // - Pulsing green when correct during live/ongoing games
-  // - Pulsing shiny gradient when correct in finished games
-  // - Green when submitted (even if no result or incorrect)
-  // - Grey when member hasn't submitted
-  let tone: string;
-  if (correct === true) {
-    // PRIORITY: Check live/ongoing FIRST - never show shiny during live games
-    if (isLive || isOngoing) {
-      // Live and correct - pulse in emerald green
-      tone = "bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-lg shadow-emerald-500/50";
-    } else if (isFinished) {
-      // Shiny gradient with pulse for correct picks in finished games
-      tone = "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 relative overflow-hidden animate-pulse before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]";
-    } else {
-      // Correct but game hasn't started - show emerald green (no pulse, no shiny)
-      tone = "bg-emerald-600 text-white border-emerald-600";
-    }
-  } else if (hasSubmitted) {
-    // Green when submitted (even if no result or incorrect)
-    tone = "bg-emerald-600 text-white border-emerald-600";
-  } else {
-    // Grey when not submitted
-    tone = "bg-slate-100 text-slate-600 border-slate-200";
-  }
-
-  return (
-    <span
-      className={[
-        "inline-flex items-center justify-center h-5 min-w-[18px] px-1.5",
-        "rounded-full border text-[11px] font-semibold mb-0.5",
-        "align-middle",
-        tone,
-      ].join(" ")}
-      title={unicorn ? "Correct!" : undefined}
-    >
-      {letter}
-    </span>
-  );
-}
+// Chip component moved to src/components/league/PickChip.tsx
 
 /* =========================
    ChatTab (external to avoid remount on typing)
@@ -611,6 +565,7 @@ export default function LeaguePage() {
   const [tab, setTab] = useState<"chat" | "chat-beta" | "mlt" | "gw" | "gwr">("chat-beta");
   // Use ref to track manual tab selection immediately (synchronously) to prevent race conditions
   const manualTabSelectedRef = useRef(false);
+  const manualGwSelectedRef = useRef(false);
   const headerRef = useRef<HTMLDivElement | null>(null);
 
   const [showForm, setShowForm] = useState(false);
@@ -1457,12 +1412,21 @@ ${shareUrl}`;
       });
       
       // For API Test league in predictions/results tabs, use current test GW
-      // For "gwr" (Live Table/Results) tab, prioritize currentGw if it's live, otherwise use selectedGw
+      // For "gwr" (Live Table/Results) tab, prioritize selectedGw if manually selected, otherwise currentGw, otherwise selectedGw
       // For "gw" (Predictions) tab, always use currentGw
-      let gwForData = tab === "gwr" ? (currentGw || selectedGw) : tab === "gw" ? currentGw : currentGw;
+      let gwForData = tab === "gwr" ? (manualGwSelectedRef.current ? selectedGw : (currentGw || selectedGw)) : tab === "gw" ? currentGw : currentGw;
       if (isApiTestLeague && (tab === "gw" || tab === "gwr")) {
         gwForData = testGwForData; // Use current test GW for API Test league
       }
+      
+      console.log('[League] gwForData calculation:', {
+        tab,
+        manualGwSelected: manualGwSelectedRef.current,
+        selectedGw,
+        currentGw,
+        gwForData,
+        isApiTestLeague
+      });
       
       // For predictions tab with regular leagues, try to detect the GW from submissions
       // This ensures we show picks even if currentGw hasn't been updated yet or if members submitted for a different GW
@@ -2026,32 +1990,6 @@ ${shareUrl}`;
      ========================= */
 
   function MltTab() {
-    const renderForm = (formArr: ("W" | "D" | "L")[]) => {
-      const last5 = formArr.slice(-5);
-      const pad = 5 - last5.length;
-
-      return (
-        <div className="flex items-center justify-between w-full">
-          {Array.from({ length: pad }).map((_, i) => (
-            <div key={`dot-${i}`} className="w-1.5 h-1.5 rounded-full bg-slate-200"></div>
-          ))}
-          {last5.map((result, i) => (
-            <div
-              key={i}
-              className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${
-                result === "W"
-                  ? "bg-green-100 text-green-700"
-                  : result === "D"
-                  ? "bg-yellow-100 text-yellow-700"
-                  : "bg-red-100 text-red-700"
-              }`}
-            >
-              {result}
-            </div>
-          ))}
-        </div>
-      );
-    };
 
     // Check if this is a late-starting league (not one of the special leagues that start from GW0)
     // Note: "API Test" is excluded - it uses test API data, not regular game data
@@ -2091,167 +2029,22 @@ ${shareUrl}`;
 
     return (
       <div className="pt-4">
-        <style>{`
-          .mlt-table tbody tr:last-child {
-            border-bottom: none !important;
-            border: none !important;
-          }
-          .mlt-table tbody tr:last-child td {
-            border-bottom: none !important;
-            border: none !important;
-          }
-          .mlt-table tbody tr:last-child th {
-            border-bottom: none !important;
-            border: none !important;
-          }
-          .mlt-table {
-            border-bottom: none !important;
-          }
-          .mlt-table tbody {
-            border-bottom: none !important;
-          }
-          .mlt-table-container {
-            border-bottom: none !important;
-          }
-          .mlt-table-container table {
-            border-bottom: none !important;
-          }
-          .mlt-table-container tbody {
-            border-bottom: none !important;
-          }
-          .mlt-table-container tbody tr:last-child {
-            border-bottom: none !important;
-            border: none !important;
-          }
-          .mlt-table-container tbody tr:last-child td {
-            border-bottom: none !important;
-            border: none !important;
-          }
-        `}</style>
-        <div 
-          className="mlt-table-container overflow-y-auto overflow-x-hidden -mx-4 sm:mx-0 rounded-none sm:rounded-2xl border-x-0 sm:border-x bg-slate-50"
-          style={{ 
-            backgroundColor: '#f8fafc',
-            borderBottom: 'none',
-            boxShadow: 'none'
-          }}
-        >
-          <table className="mlt-table w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: '#f8fafc', border: 'none', borderBottom: 'none' }}>
-            <thead className="sticky top-0" style={{ 
-              position: 'sticky', 
-              top: 0, 
-              zIndex: 25, 
-              backgroundColor: '#f8fafc', 
-              display: 'table-header-group'
-            } as any}>
-              <tr style={{ backgroundColor: '#f8fafc', borderBottom: 'none' }}>
-                <th className="py-3 text-left font-normal" style={{ backgroundColor: '#f8fafc', width: '30px', paddingLeft: '0.75rem', paddingRight: '0.5rem', color: '#94a3b8' }}>#</th>
-                <th className="py-3 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem' }}>Player</th>
-                {showForm ? (
-                  <th className="px-4 py-3 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8' }}>Form</th>
-                ) : (
-                  <>
-                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '0.75rem' }}>W</th>
-                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '0.75rem' }}>D</th>
-                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '0.75rem' }}>{isLateStartingLeague ? 'CP' : 'OCP'}</th>
-                    {members.length >= 3 && <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '1rem' }}>🦄</th>}
-                    <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '0.75rem' }}>PTS</th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => {
-                const isMe = r.user_id === user?.id;
-                const isLastRow = i === rows.length - 1;
-                return (
-                  <tr 
-                    key={r.user_id} 
-                    className={isMe ? 'flash-user-row' : ''}
-                    style={{
-                      position: 'relative',
-                      backgroundColor: '#f8fafc',
-                      ...(isLastRow ? {} : { borderBottom: '1px solid #e2e8f0' })
-                    }}
-                  >
-                    <td className="py-4 text-left tabular-nums whitespace-nowrap relative" style={{ 
-                      paddingLeft: '0.75rem', 
-                      paddingRight: '0.5rem',
-                      backgroundColor: '#f8fafc',
-                      width: '30px'
-                    }}>
-                      {i + 1}
-                    </td>
-                    <td className="py-4 truncate whitespace-nowrap" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</td>
-                    {showForm ? (
-                      <td className="px-4 py-4" style={{ backgroundColor: '#f8fafc' }}>
-                        {renderForm(r.form)}
-                      </td>
-                    ) : (
-                      <>
-                        <td className="py-4 text-center tabular-nums" style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.wins}</td>
-                        <td className="py-4 text-center tabular-nums" style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.draws}</td>
-                        <td className="py-4 text-center tabular-nums" style={{ width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.ocp}</td>
-                        {members.length >= 3 && <td className="py-4 text-center tabular-nums" style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.unicorns}</td>}
-                        <td className="py-4 text-center tabular-nums font-bold" style={{ width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc', color: '#1C8376' }}>{r.mltPts}</td>
-                      </>
-                    )}
-                  </tr>
-                );
-              })}
-              {mltLoading && (
-                <tr style={{ backgroundColor: '#f8fafc' }}>
-                  <td className="px-4 py-6 text-slate-500 text-center" colSpan={showForm ? 3 : (members.length >= 3 ? 7 : 6)} style={{ backgroundColor: '#f8fafc' }}>
-                    Calculating…
-                  </td>
-                </tr>
-              )}
-          {!mltLoading && !mltRows.length && (
-                <tr style={{ backgroundColor: '#f8fafc' }}>
-                  <td className="px-4 py-6 text-slate-500 text-center" colSpan={showForm ? 3 : (members.length >= 3 ? 7 : 6)} style={{ backgroundColor: '#f8fafc' }}>
-                    No gameweeks completed yet — this will populate after the first results are saved.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <MiniLeagueTable
+          rows={rows}
+          members={members}
+          showForm={showForm}
+          currentUserId={user?.id}
+          loading={mltLoading}
+          isLateStartingLeague={isLateStartingLeague}
+        />
 
         <div className="mt-6 flex justify-between items-center">
           <div className="flex items-center justify-between w-full">
-            <div className="inline-flex rounded-full bg-slate-100 p-0.5 shadow-sm border border-slate-200">
-              <button
-                onClick={() => setShowForm(false)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors ${
-                  !showForm ? "bg-[#1C8376] text-white shadow-sm" : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
-                }`}
-              >
-                Points
-              </button>
-              <button
-                onClick={() => setShowForm(true)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors ${
-                  showForm ? "bg-[#1C8376] text-white shadow-sm" : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
-                }`}
-              >
-                Form
-              </button>
-            </div>
-            <button
-              onClick={() => {
-                console.log('Button clicked, setting modal to true');
-                setShowTableModal(true);
-              }}
-              className="flex items-center justify-center gap-1.5 bg-white border-2 border-slate-300 hover:bg-slate-50 rounded-full text-slate-600 hover:text-slate-800 cursor-help transition-colors flex-shrink-0 px-3 py-2"
-            >
-              <img 
-                src="/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png" 
-                alt="Rules" 
-                className="w-4 h-4"
-                style={{ filter: 'invert(40%) sepia(8%) saturate(750%) hue-rotate(180deg) brightness(95%) contrast(88%)' }}
-              />
-              <span className="text-sm font-medium">Rules</span>
-            </button>
+            <PointsFormToggle showForm={showForm} onToggle={setShowForm} />
+            <RulesButton onClick={() => {
+              console.log('Button clicked, setting modal to true');
+              setShowTableModal(true);
+            }} />
           </div>
         </div>
 
@@ -2474,126 +2267,15 @@ ${shareUrl}`;
         remaining
       });
       return (
-        <div className="mt-2 pt-2">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-medium text-slate-700">
-              <>Waiting for <span className="font-semibold">{remaining}</span> of {members.length} to submit.</>
-            </div>
-            {/* Share reminder button - only show if not all submitted */}
-            <button
-              onClick={() => {
-                // Generate share message
-                const message = `Game Week ${picksGw} Predictions Reminder!\n\nDEADLINE: THIS ${(() => {
-                  const firstKickoff = new Date(fixtures.find(f => f.gw === picksGw)?.kickoff_time || '');
-                  const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
-                  const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-                  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-                  const dayOfWeek = dayNames[deadlineTime.getUTCDay()];
-                  const day = deadlineTime.getUTCDate();
-                  const month = months[deadlineTime.getUTCMonth()];
-                  const hours = deadlineTime.getUTCHours().toString().padStart(2, '0');
-                  const minutes = deadlineTime.getUTCMinutes().toString().padStart(2, '0');
-                  return `${dayOfWeek} ${day} ${month}, ${hours}:${minutes} BST`;
-                })()}\n\nDon't forget!\nplaytotl.com`;
-                
-                // Create WhatsApp link
-                const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-                
-                // Try to open WhatsApp, fallback to copy to clipboard
-                try {
-                  window.open(whatsappUrl, '_blank');
-                } catch {
-                  navigator.clipboard.writeText(message).then(() => {
-                    alert('Message copied to clipboard! You can now paste it in WhatsApp or Messages.');
-                  }).catch(() => {
-                    alert('Unable to open WhatsApp. Please copy this message manually:\n\n' + message);
-                  });
-                }
-              }}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.488"/>
-              </svg>
-              Share Reminder
-            </button>
-          </div>
-
-          {/* Deadline display */}
-          {(() => {
-            const kickoffTimes = fixtures
-              .map(f => f.kickoff_time)
-              .filter((kt): kt is string => !!kt)
-              .map(kt => new Date(kt))
-              .filter(d => !isNaN(d.getTime()));
-            
-            if (kickoffTimes.length === 0) return null;
-            
-            const firstKickoff = new Date(Math.min(...kickoffTimes.map(d => d.getTime())));
-            const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
-            const deadlinePassed = new Date() >= deadlineTime;
-            
-            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const dayOfWeek = dayNames[deadlineTime.getUTCDay()];
-            const day = deadlineTime.getUTCDate();
-            const month = months[deadlineTime.getUTCMonth()];
-            const hours = deadlineTime.getUTCHours().toString().padStart(2, '0');
-            const minutes = deadlineTime.getUTCMinutes().toString().padStart(2, '0');
-            const deadlineStr = `${dayOfWeek} ${day} ${month}, ${hours}:${minutes} BST`;
-            
-            return (
-              <div className={`mb-3 text-xs font-medium ${deadlinePassed ? 'text-orange-600' : 'text-slate-600'} flex items-center gap-1.5`}>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {deadlinePassed ? 'Deadline Passed: ' : 'Deadline: '}{deadlineStr}
-              </div>
-            );
-          })()}
-
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-            <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="text-left px-4 py-3 w-2/3 font-semibold text-slate-600">Player</th>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-600">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {members
-                  .slice()
-                  .sort((a, b) => a.name.localeCompare(b.name))
-                  .map((m) => {
-                    const key = `${m.id}:${picksGw}`;
-                    const submitted = !!submittedMap.get(key);
-                    return (
-                      <tr key={m.id} className="border-t border-slate-200">
-                        <td className="px-4 py-3 font-bold text-slate-900 truncate whitespace-nowrap" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.name}</td>
-                        <td className="px-4 py-3">
-                          {submitted ? (
-                            <span className="inline-flex items-center gap-1.5 justify-center rounded-full bg-[#1C8376]/10 text-[#1C8376]/90 text-xs px-2.5 py-1 border border-emerald-300 font-bold shadow-sm whitespace-nowrap w-24">
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                              Submitted
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 justify-center rounded-full bg-amber-50 text-amber-700 text-xs px-2.5 py-1 border border-amber-200 font-semibold whitespace-nowrap w-24">
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              Not yet
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <SubmissionStatusTable
+          members={members}
+          submittedMap={submittedMap}
+          picksGw={picksGw}
+          allSubmitted={allSubmitted}
+          remaining={remaining}
+          fixtures={fixtures.filter(f => f.gw === picksGw)}
+          variant="compact"
+        />
       );
     }
 
@@ -2601,129 +2283,15 @@ ${shareUrl}`;
       <div className="mt-2 pt-2">
 
         {showSubmissionStatus ? (
-          <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-700">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                {allSubmitted ? (
-                  <>All {members.length} members have submitted.</>
-                ) : (
-                  <>Waiting for <span className="font-semibold">{remaining}</span> of {members.length} to submit.</>
-                )}
-              </div>
-              {/* Share reminder button - only show if not all submitted */}
-              {!allSubmitted && (
-              <button
-                onClick={() => {
-                  // Generate share message
-                  const message = `Game Week ${picksGw} Predictions Reminder!\n\nDEADLINE: THIS ${(() => {
-                    const firstKickoff = new Date(fixtures.find(f => f.gw === picksGw)?.kickoff_time || '');
-                    const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
-                    const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-                    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-                    const dayOfWeek = dayNames[deadlineTime.getUTCDay()];
-                    const day = deadlineTime.getUTCDate();
-                    const month = months[deadlineTime.getUTCMonth()];
-                    const hours = deadlineTime.getUTCHours().toString().padStart(2, '0');
-                    const minutes = deadlineTime.getUTCMinutes().toString().padStart(2, '0');
-                    return `${dayOfWeek} ${day} ${month}, ${hours}:${minutes} BST`;
-                  })()}\n\nDon't forget!\nplaytotl.com`;
-                  
-                  // Create WhatsApp link
-                  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-                  
-                  // Try to open WhatsApp, fallback to copy to clipboard
-                  try {
-                    window.open(whatsappUrl, '_blank');
-                  } catch {
-                    navigator.clipboard.writeText(message).then(() => {
-                      alert('Message copied to clipboard! You can now paste it in WhatsApp or Messages.');
-                    }).catch(() => {
-                      alert('Unable to open WhatsApp. Please copy this message manually:\n\n' + message);
-                    });
-                  }
-                }}
-                className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.488"/>
-                </svg>
-                Share Reminder
-              </button>
-              )}
-            </div>
-
-            {/* Deadline display - calculate from actual fixtures like Predictions page */}
-            {(() => {
-              // Calculate deadline from fixtures (same logic as Predictions page)
-              // Find the earliest kickoff time
-              const kickoffTimes = fixtures
-                .map(f => f.kickoff_time)
-                .filter((kt): kt is string => !!kt)
-                .map(kt => new Date(kt))
-                .filter(d => !isNaN(d.getTime()));
-              
-              if (kickoffTimes.length === 0) return null;
-              
-              const firstKickoff = new Date(Math.min(...kickoffTimes.map(d => d.getTime())));
-              const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000)); // 75 minutes before
-              const deadlinePassed = new Date() >= deadlineTime;
-              
-              // Format deadline (same as Predictions page)
-              const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-              const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-              const dayOfWeek = dayNames[deadlineTime.getUTCDay()];
-              const day = deadlineTime.getUTCDate();
-              const month = months[deadlineTime.getUTCMonth()];
-              const hours = deadlineTime.getUTCHours().toString().padStart(2, '0');
-              const minutes = deadlineTime.getUTCMinutes().toString().padStart(2, '0');
-              const deadlineStr = `${dayOfWeek} ${day} ${month}, ${hours}:${minutes} BST`;
-              
-              return (
-                <div className={`mb-3 text-sm ${deadlinePassed ? 'text-orange-600 font-semibold' : 'text-slate-600'}`}>
-                  {deadlinePassed ? '⏰ Deadline Passed: ' : '⏰ Deadline: '}{deadlineStr}
-                </div>
-              );
-            })()}
-
-            <div className="overflow-hidden rounded-lg border">
-              <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="text-left px-4 py-3 w-2/3 font-semibold text-slate-600">Player</th>
-                    <th className="text-left px-4 py-3 font-semibold text-slate-600">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {members
-                    .slice()
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((m) => {
-                      const key = `${m.id}:${picksGw}`;
-                      const submitted = !!submittedMap.get(key);
-                      if (m.name === 'Jof') {
-                        console.log(`Checking Jof submission: key=${key}, submitted=${submitted}, submittedMap has:`, submittedMap.has(key), 'picksGw=', picksGw);
-                      }
-                      return (
-                        <tr key={m.id} className="border-t border-slate-200">
-                          <td className="px-4 py-3 font-bold text-slate-900 truncate whitespace-nowrap" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.name}</td>
-                          <td className="px-4 py-3">
-                            {submitted ? (
-                              <span className="inline-flex items-center justify-center rounded-full bg-[#1C8376]/10 text-[#1C8376]/90 text-xs px-2 py-1 border border-emerald-300 font-bold shadow-sm whitespace-nowrap w-24">
-                                ✅ Submitted
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center justify-center rounded-full bg-amber-50 text-amber-700 text-xs px-2 py-1 border border-amber-200 font-semibold whitespace-nowrap w-24">
-                                ⏳ Not yet
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <SubmissionStatusTable
+            members={members}
+            submittedMap={submittedMap}
+            picksGw={picksGw}
+            allSubmitted={allSubmitted}
+            remaining={remaining}
+            fixtures={fixtures.filter(f => f.gw === picksGw)}
+            variant="full"
+          />
         ) : null}
 
         {/* API Test league "who picked who" view when all submitted - ONLY show if all submitted */}
@@ -2742,41 +2310,34 @@ ${shareUrl}`;
             }
           });
           
-          // Use filtered live scores
-          const combinedLiveScores = filteredLiveScores;
-          
           const hasLiveGames = fixturesToCheck.some(f => {
-            const score = combinedLiveScores[f.fixture_index];
+            const score = filteredLiveScores[f.fixture_index];
             return score && (score.status === 'IN_PLAY' || score.status === 'PAUSED');
           });
           const allGamesFinished = fixturesToCheck.length > 0 && fixturesToCheck.every(f => {
-            const score = combinedLiveScores[f.fixture_index];
+            const score = filteredLiveScores[f.fixture_index];
             return score && score.status === 'FINISHED';
           });
-          const hasStarted = hasLiveGames || allGamesFinished || fixturesToCheck.some(f => combinedLiveScores[f.fixture_index]);
+          const hasStarted = hasLiveGames || allGamesFinished || fixturesToCheck.some(f => filteredLiveScores[f.fixture_index]);
           
           // Count live fixtures where user has correct predictions (matches Home page logic)
           let liveFixturesCount = 0;
           if (user?.id) {
             fixturesToCheck.forEach(f => {
-              const liveScore = combinedLiveScores[f.fixture_index];
+              const liveScore = filteredLiveScores[f.fixture_index];
               const isLive = liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
               const isFinished = liveScore && liveScore.status === 'FINISHED';
               
-              // Count both live and finished games (like Home page)
               if (liveScore && (isLive || isFinished)) {
-                // Get user's pick for this fixture
                 const userPicks = picksByFixture.get(f.fixture_index) ?? [];
                 const userPick = userPicks.find(p => p.user_id === user.id);
                 
                 if (userPick) {
-                  // Determine if pick is correct based on live score (matches Home page logic)
                   let isCorrect = false;
                   if (userPick.pick === 'H' && liveScore.homeScore > liveScore.awayScore) isCorrect = true;
                   else if (userPick.pick === 'A' && liveScore.awayScore > liveScore.homeScore) isCorrect = true;
                   else if (userPick.pick === 'D' && liveScore.homeScore === liveScore.awayScore) isCorrect = true;
                   
-                  // Only count if user's pick is correct
                   if (isCorrect) {
                     liveFixturesCount++;
                   }
@@ -2788,255 +2349,25 @@ ${shareUrl}`;
           return (
             <div className="mt-3 space-y-6">
               {sections.map((sec, si) => (
-                <div key={si}>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="text-slate-700 font-normal text-lg">{sec.label}</div>
-                    {si === 0 && (
-                      <>
-                        {hasLiveGames && (() => {
-                          const totalFixtures = fixturesToCheck.length;
-                          
-                          return (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600 text-white text-sm font-bold border border-red-700 shadow-sm" style={{ marginTop: '-2px' }}>
-                              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
-                              <span className="text-xs sm:text-sm font-medium opacity-90">Live</span>
-                              <span className="flex items-baseline gap-0.5">
-                                <span className="text-base sm:text-lg font-extrabold">{liveFixturesCount}</span>
-                                <span className="text-xs sm:text-sm font-medium opacity-90">/</span>
-                                <span className="text-sm sm:text-base font-semibold opacity-80">{totalFixtures}</span>
-                              </span>
-                            </span>
-                          );
-                        })()}
-                        {allGamesFinished && (
-                          <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#1C8376]/10 text-[#1C8376]/90 text-sm font-bold border border-emerald-300 shadow-sm" style={{ marginTop: '-2px' }}>
-                            Round Complete!
-                          </span>
-                        )}
-                        {!hasStarted && (
-                          <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-bold border border-blue-300 shadow-sm" style={{ marginTop: '-2px' }}>
-                            All Submitted
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <div className="rounded-2xl border bg-slate-50 overflow-hidden">
-                    <ul>
-                      {sec.items.map((f, idx) => {
-                        try {
-                          // For API Test league, use short names first
-                          // Use medium display names for consistency
-                          const homeKey = f.home_code || f.home_team || f.home_name || "";
-                          const awayKey = f.away_code || f.away_team || f.away_name || "";
-                          const homeName = getMediumName(homeKey) || "Home";
-                          const awayName = getMediumName(awayKey) || "Away";
-                          // Use fallback pattern like Home.tsx - ensure we always have a key
-                          // const homeKey = (f.home_code || f.home_team || f.home_name || homeName || "").toUpperCase();
-                          // const awayKey = (f.away_code || f.away_team || f.away_name || awayName || "").toUpperCase();
-                          
-                          // Memoize badge paths to prevent flickering on re-renders
-                          // Use team code directly if available (badges are named like ARS.png, BOU.png)
-                          // Otherwise fall back to getTeamBadgePath which uses slugs
-                          const homeCode = f.home_code || '';
-                          const awayCode = f.away_code || '';
-                          const homeBadgeSrc = f.home_crest || 
-                            (homeCode ? `/assets/badges/${homeCode.toUpperCase()}.png` : getTeamBadgePath(f.home_team || f.home_name || homeName || ''));
-                          const awayBadgeSrc = f.away_crest || 
-                            (awayCode ? `/assets/badges/${awayCode.toUpperCase()}.png` : getTeamBadgePath(f.away_team || f.away_name || awayName || ''));
-                          
-                          // Debug: log badge paths to help diagnose
-                          if (idx === 0) {
-                            console.log('[League] Badge paths for first fixture:', {
-                              homeCode,
-                              awayCode,
-                              homeBadgeSrc,
-                              awayBadgeSrc,
-                              fixture: f
-                            });
-                          }
-
-                          const timeOf = (iso?: string | null) => {
-                            if (!iso) return "";
-                            const d = new Date(iso);
-                            if (isNaN(d.getTime())) return "";
-                            const hh = String(d.getUTCHours()).padStart(2, '0');
-                            const mm = String(d.getUTCMinutes()).padStart(2, '0');
-                            return `${hh}:${mm}`;
-                          };
-                          const timeStr = timeOf(f.kickoff_time);
-
-                          const fxIdx = f.fixture_index;
-                          const these = picksByFixture.get(fxIdx) ?? [];
-                          
-                          // Get live score for this fixture (using combined mock + real scores)
-                          const liveScore = combinedLiveScores[fxIdx];
-                          const isLive = liveScore && liveScore.status === 'IN_PLAY';
-                          const isHalfTime = liveScore && (liveScore.status === 'PAUSED' || liveScore.status === 'HALF_TIME' || liveScore.status === 'HT');
-                          const isFinished = liveScore && liveScore.status === 'FINISHED';
-                          const isOngoing = isLive || isHalfTime;
-
-                          const toChips = (want: "H" | "D" | "A") => {
-                            const filtered = these.filter((p) => p.pick === want);
-                            // For API Test league, check live scores for outcomes (for all test GWs)
-                            let actualResult: "H" | "D" | "A" | null = null;
-                            if (league?.name === 'API Test') {
-                              if (liveScore) {
-                                if (liveScore.homeScore > liveScore.awayScore) actualResult = 'H';
-                                else if (liveScore.awayScore > liveScore.homeScore) actualResult = 'A';
-                                else if (liveScore.homeScore === liveScore.awayScore) actualResult = 'D';
-                              }
-                            } else {
-                              actualResult = outcomes.get(fxIdx) || null;
-                            }
-                          const allPicked = these.length === members.length && filtered.length === members.length;
-                          
-                          // Group chips into rows of maximum 4
-                          const chipsPerRow = 4;
-                          const rows = [];
-                          
-                          for (let i = 0; i < filtered.length; i += chipsPerRow) {
-                            const rowChips = filtered.slice(i, i + chipsPerRow);
-                            rows.push(rowChips);
-                          }
-                          
-                          return (
-                            <div className="flex flex-col gap-1">
-                              {rows.map((row, rowIdx) => (
-                                <div key={rowIdx} className="flex items-center justify-center">
-                                  {row.map((p, idx) => {
-                                    const m = members.find((mm) => mm.id === p.user_id);
-                                    const letter = initials(m?.name ?? "?");
-                                    // Check if this member has submitted
-                                    const hasSubmitted = submittedMap.has(`${p.user_id}:${picksGw}`);
-                                    // Show correct=true only when result exists AND pick matches result
-                                    const isCorrect = actualResult && actualResult === want ? true : null;
-                                    
-                                    if (allPicked) {
-                                      // Stack effect - use relative positioning with negative margins
-                                      const overlapAmount = 8;
-                                      return (
-                                        <span 
-                                          key={p.user_id}
-                                          className="inline-block"
-                                          style={{
-                                            marginLeft: idx > 0 ? `-${overlapAmount}px` : '0',
-                                            position: 'relative',
-                                            zIndex: idx
-                                          }}
-                                        >
-                                          <Chip letter={letter} correct={isCorrect} unicorn={isCorrect === true} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
-                                        </span>
-                                      );
-                                    }
-                                    
-                                    return (
-                                      <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={isCorrect === true} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
-                                    );
-                                  })}
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        };
-
-                        return (
-                          <li key={`${f.gw}-${f.fixture_index}`} className={idx > 0 ? "border-t" : ""}>
-                            <div className="p-4 bg-white relative">
-                              {/* LIVE indicator - red dot top left for live games, always says LIVE */}
-                              {(isLive || isHalfTime) && (
-                                <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
-                                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                                  <span className="text-xs font-bold text-red-600">LIVE</span>
-                                </div>
-                              )}
-                              {/* FT indicator for finished games - grey, no pulse */}
-                              {isFinished && !isLive && !isHalfTime && (
-                                <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
-                                  <span className="text-xs font-semibold text-slate-500">FT</span>
-                                </div>
-                              )}
-                              {/* Fixture display - same as Home Page */}
-                              <div className={`grid grid-cols-3 items-center ${isOngoing ? 'pt-4' : ''}`}>
-                                <div className="flex items-center justify-center">
-                                  <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{homeName}</span>
-                                </div>
-                                <div className="flex items-center justify-center gap-2">
-                                  <TeamBadge 
-                                    code={f.home_code || undefined}
-                                    crest={f.home_crest || undefined}
-                                    size={24}
-                                    className="h-6 w-6"
-                                  />
-                                  <div className="text-[15px] sm:text-base font-semibold text-slate-600">
-                                    {liveScore && (isLive || isHalfTime || isFinished) ? (
-                                      <span className="font-bold text-base text-slate-900">
-                                        {liveScore.homeScore} - {liveScore.awayScore}
-                                      </span>
-                                    ) : (
-                                      <span>{timeStr}</span>
-                                    )}
-                                  </div>
-                                  <TeamBadge 
-                                    code={f.away_code || undefined}
-                                    crest={f.away_crest || undefined}
-                                    size={24}
-                                    className="h-6 w-6"
-                                  />
-                                </div>
-                                <div className="flex items-center justify-center">
-                                  <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{awayName}</span>
-                                </div>
-                              </div>
-                              {/* Score indicator (phase label for ML results table) */}
-                              {liveScore && (isOngoing || isFinished) && (
-                                <div className="flex justify-center mt-1">
-                                  <span className={`text-[10px] font-semibold ${isOngoing ? 'text-red-600' : 'text-slate-500'}`}>
-                                    {formatMinuteDisplay(liveScore.status, liveScore.minute)}
-                                  </span>
-                                </div>
-                              )}
-                              
-                              {/* Pips underneath - same as Home Page */}
-                              <div className="mt-2 grid grid-cols-3">
-                                <div className="relative min-h-6">
-                                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                                    {toChips("H")}
-                                  </div>
-                                </div>
-                                <div className="relative min-h-6">
-                                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                                    {toChips("D")}
-                                  </div>
-                                </div>
-                                <div className="relative min-h-6">
-                                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                                    {toChips("A")}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </li>
-                        );
-                      } catch (error) {
-                        console.error("Error rendering fixture:", error, f);
-                        return (
-                          <li key={`${f.gw}-${f.fixture_index}`} className="p-4 text-red-500">
-                            Error loading fixture: {f.fixture_index}
-                          </li>
-                        );
-                      }
-                    })}
-                    {!sec.items.length && (
-                      <li className="p-4 text-slate-500">
-                        No fixtures.
-                      </li>
-                    )}
-                  </ul>
-                </div>
-              </div>
-            ))}
-          </div>
+                <LeagueFixtureSection
+                  key={si}
+                  label={sec.label}
+                  fixtures={sec.items}
+                  picksByFixture={picksByFixture}
+                  members={members}
+                  outcomes={outcomes}
+                  liveScores={filteredLiveScores}
+                  submittedMap={submittedMap}
+                  picksGw={picksGw}
+                  isApiTestLeague={true}
+                  isFirstSection={si === 0}
+                  hasLiveGames={hasLiveGames}
+                  allGamesFinished={allGamesFinished}
+                  hasStarted={hasStarted}
+                  liveFixturesCount={liveFixturesCount}
+                />
+              ))}
+            </div>
           );
         })()}
 
@@ -3044,174 +2375,23 @@ ${shareUrl}`;
         {sections.length > 0 && league?.name !== 'API Test' && (
           <div className="mt-3 space-y-6">
             {sections.map((sec, si) => (
-              <div key={si}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-slate-700 font-normal text-lg">{sec.label}</div>
-                  {si === 0 && allSubmitted && resultsPublished && (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#1C8376]/10 text-[#1C8376]/90 text-sm font-bold border border-emerald-300 shadow-sm" style={{ marginTop: '-2px' }}>
-                      Round Complete!
-                    </span>
-                  )}
-                  {si === 0 && allSubmitted && !resultsPublished && (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-bold border border-blue-300 shadow-sm" style={{ marginTop: '-2px' }}>
-                      All Submitted
-                    </span>
-                  )}
-                  {si === 0 && deadlinePassed && !allSubmitted && (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full bg-orange-100 text-orange-800 text-sm font-bold border border-orange-300 shadow-sm" style={{ marginTop: '-2px' }}>
-                      Deadline Passed {whoDidntSubmit.length > 0 && `(${whoDidntSubmit.join(', ')} didn't submit)`}
-                    </span>
-                  )}
-                </div>
-                <div className="rounded-2xl border bg-slate-50 overflow-hidden">
-                  <ul>
-                    {sec.items.map((f, idx) => {
-                        try {
-                          const homeName = f.home_name || f.home_team || "Home";
-                          const awayName = f.away_name || f.away_team || "Away";
-                          const homeCode = f.home_code || "";
-                          const awayCode = f.away_code || "";
-
-                          const timeOf = (iso?: string | null) => {
-                            if (!iso) return "";
-                            const d = new Date(iso);
-                            if (isNaN(d.getTime())) return "";
-                            const hh = String(d.getUTCHours()).padStart(2, '0');
-                            const mm = String(d.getUTCMinutes()).padStart(2, '0');
-                            return `${hh}:${mm}`;
-                          };
-                          const timeStr = timeOf(f.kickoff_time);
-
-                          const fxIdx = f.fixture_index;
-                          const these = picksByFixture.get(fxIdx) ?? [];
-                          
-                          // Get live score for this fixture
-                          const liveScore = liveScores[fxIdx];
-                          const isLive = liveScore && liveScore.status === 'IN_PLAY';
-                          const isHalfTime = liveScore && (liveScore.status === 'PAUSED' || liveScore.status === 'HALF_TIME' || liveScore.status === 'HT');
-                          const isFinished = liveScore && liveScore.status === 'FINISHED';
-                          const isOngoing = isLive || isHalfTime;
-
-                          const toChips = (want: "H" | "D" | "A") => {
-                            const filtered = these.filter((p) => p.pick === want);
-                            const actualResult = outcomes.get(fxIdx);
-                            const allPicked = these.length === members.length && filtered.length === members.length;
-                            
-                            // Group chips into rows of maximum 4
-                            const chipsPerRow = 4;
-                            const rows = [];
-                            
-                            for (let i = 0; i < filtered.length; i += chipsPerRow) {
-                              const rowChips = filtered.slice(i, i + chipsPerRow);
-                              rows.push(rowChips);
-                            }
-                            
-                            return (
-                              <div className="flex flex-col gap-1">
-                                {rows.map((row, rowIdx) => (
-                                  <div key={rowIdx} className="flex items-center justify-center">
-                                    {row.map((p, idx) => {
-                                      const m = members.find((mm) => mm.id === p.user_id);
-                                      const letter = initials(m?.name ?? "?");
-                                      // Check if this member has submitted
-                                      const hasSubmitted = submittedMap.has(`${p.user_id}:${picksGw}`);
-                                      // Show correct=true only when result exists AND pick matches result
-                                      const isCorrect = actualResult && actualResult === want ? true : null;
-                                      
-                                      if (allPicked) {
-                                        // Stack effect - use relative positioning with negative margins
-                                        const overlapAmount = 8;
-                                        return (
-                                          <span 
-                                            key={p.user_id}
-                                            className="inline-block"
-                                            style={{
-                                              marginLeft: idx > 0 ? `-${overlapAmount}px` : '0',
-                                              position: 'relative',
-                                              zIndex: idx
-                                            }}
-                                          >
-                                            <Chip letter={letter} correct={isCorrect} unicorn={isCorrect === true} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
-                                          </span>
-                                        );
-                                      }
-                                      
-                                      return (
-                                        <Chip key={p.user_id} letter={letter} correct={isCorrect} unicorn={isCorrect === true} hasSubmitted={hasSubmitted} isLive={isLive} isOngoing={isOngoing} isFinished={isFinished} />
-                                      );
-                                    })}
-                                  </div>
-                                ))}
-                              </div>
-                            );
-                          };
-
-                          return (
-                            <li key={`${f.gw}-${f.fixture_index}`} className={idx > 0 ? "border-t" : ""}>
-                              <div className="p-4 bg-white">
-                                {/* Fixture display - same as Home Page */}
-                                <div className="grid grid-cols-3 items-center">
-                                  <div className="flex items-center justify-center">
-                                    <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{homeName}</span>
-                                  </div>
-                                  <div className="flex items-center justify-center gap-2">
-                                    <TeamBadge 
-                                      code={f.home_code || homeCode || null}
-                                      crest={f.home_crest || null}
-                                      size={24}
-                                    />
-                                    <div className="text-[15px] sm:text-base font-semibold text-slate-600">
-                                      {timeStr}
-                                    </div>
-                                    <TeamBadge 
-                                      code={f.away_code || awayCode || null}
-                                      crest={f.away_crest || null}
-                                      size={24}
-                                    />
-                                  </div>
-                                  <div className="flex items-center justify-center">
-                                    <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{awayName}</span>
-                                  </div>
-                                </div>
-                                
-                                {/* Pips underneath - same as Home Page */}
-                                <div className="mt-2 grid grid-cols-3">
-                                  <div className="relative min-h-6">
-                                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                                      {toChips("H")}
-                                    </div>
-                                  </div>
-                                  <div className="relative min-h-6">
-                                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                                      {toChips("D")}
-                                    </div>
-                                  </div>
-                                  <div className="relative min-h-6">
-                                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                                      {toChips("A")}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </li>
-                          );
-                        } catch (error) {
-                          console.error("Error rendering fixture:", error, f);
-                          return (
-                            <li key={`${f.gw}-${f.fixture_index}`} className="p-4 text-red-500">
-                              Error loading fixture: {f.fixture_index}
-                            </li>
-                          );
-                        }
-                      })}
-                      {!sec.items.length && (
-                        <li className="p-4 text-slate-500">
-                          No fixtures.
-                        </li>
-                      )}
-                  </ul>
-                </div>
-              </div>
+              <LeagueFixtureSection
+                key={si}
+                label={sec.label}
+                fixtures={sec.items}
+                picksByFixture={picksByFixture}
+                members={members}
+                outcomes={outcomes}
+                liveScores={liveScores}
+                submittedMap={submittedMap}
+                picksGw={picksGw}
+                isApiTestLeague={false}
+                isFirstSection={si === 0}
+                allSubmitted={allSubmitted}
+                resultsPublished={resultsPublished}
+                deadlinePassed={deadlinePassed}
+                whoDidntSubmit={whoDidntSubmit}
+              />
             ))}
           </div>
         )}
@@ -3226,10 +2406,11 @@ ${shareUrl}`;
 
   function GwResultsTab() {
     // For Live Table tab, prioritize currentGw (the active/live GW) over selectedGw
+    // UNLESS the user has manually selected a GW, in which case use selectedGw
     // For other tabs, use selectedGw
     const resGw = league?.name === 'API Test' 
       ? (currentTestGw ?? 1) 
-      : (tab === "gwr" ? (currentGw || selectedGw) : selectedGw);
+      : (tab === "gwr" ? (manualGwSelectedRef.current ? selectedGw : (currentGw || selectedGw)) : selectedGw);
     
     if (!resGw || (availableGws.length === 0 && league?.name !== 'API Test')) {
       return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No game week selected.</div>;
@@ -3251,8 +2432,11 @@ ${shareUrl}`;
     const outcomes = new Map<number, "H" | "D" | "A">();
     const isApiTestLeague = league?.name === 'API Test';
     
-    // Check if this GW is live (has live or finished games)
-    const hasLiveScores = fixtures.some((f: any) => {
+    // Filter fixtures to only those for the selected GW
+    const fixturesForGw = fixtures.filter((f: any) => f.gw === resGw);
+    
+    // Check if this GW is live (has live or finished games) - only check fixtures for this GW
+    const hasLiveScores = fixturesForGw.some((f: any) => {
       const liveScore = liveScores[f.fixture_index];
       return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
     });
@@ -3264,15 +2448,16 @@ ${shareUrl}`;
       hasLiveScores,
       liveScoresCount: Object.keys(liveScores).length,
       isApiTestLeague,
-      fixturesCount: fixtures.length
+      fixturesCount: fixtures.length,
+      fixturesForGwCount: fixturesForGw.length,
+      manualGwSelected: manualGwSelectedRef.current
     });
     
     // For API Test league, ONLY use live scores (ignore database results)
     // For regular leagues, use live scores if GW is live, otherwise use results
     if (isApiTestLeague && resGw === (currentTestGw ?? 1)) {
-      // Check live scores for first 3 fixtures - count both live and finished fixtures
-      const fixturesToCheck = fixtures;
-      fixturesToCheck.forEach((f: any) => {
+      // Check live scores for fixtures in this GW - count both live and finished fixtures
+      fixturesForGw.forEach((f: any) => {
         const liveScore = liveScores[f.fixture_index];
         if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
           // Determine outcome from live score
@@ -3289,7 +2474,7 @@ ${shareUrl}`;
     } else if (hasLiveScores && resGw === currentGw) {
       // Regular league with live GW - use live scores
       console.log('[League] Using live scores for regular league GW', resGw);
-      fixtures.forEach((f: any) => {
+      fixturesForGw.forEach((f: any) => {
         const liveScore = liveScores[f.fixture_index];
         if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
           // Determine outcome from live score
@@ -3305,13 +2490,21 @@ ${shareUrl}`;
       console.log('[League] Outcomes from live scores:', Array.from(outcomes.entries()));
     } else {
       // Regular league - use results (for past GWs)
-      console.log('[League] Using results table for GW', resGw, '(hasLiveScores:', hasLiveScores, ', resGw === currentGw:', resGw === currentGw, ')');
+      console.log('[League] Using results table for GW', resGw, {
+        hasLiveScores,
+        resGwEqualsCurrentGw: resGw === currentGw,
+        resultsCount: results.length,
+        resultsForThisGw: results.filter(r => r.gw === resGw).length,
+        manualGwSelected: manualGwSelectedRef.current,
+        selectedGw
+      });
       results.forEach((r) => {
         if (r.gw !== resGw) return;
         const out = rowToOutcome(r);
         if (!out) return;
         outcomes.set(r.fixture_index, out);
       });
+      console.log('[League] Outcomes from results:', Array.from(outcomes.entries()));
     }
 
     type Row = { user_id: string; name: string; score: number; unicorns: number };
@@ -3481,157 +2674,41 @@ ${shareUrl}`;
         
         {/* SP Wins Banner - only show when all fixtures have finished */}
         {rows.length > 0 && allFixturesFinished && (
-          <div className="mt-4 mb-4 py-6 px-6 rounded-xl bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 shadow-2xl shadow-slate-600/50 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/40 before:to-transparent before:animate-[shimmer_2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/30 after:to-transparent after:animate-[shimmer_2.5s_ease-in-out_infinite_0.6s]">
-            <div className="text-center relative z-10">
-              {rows[0].score === rows[1]?.score && rows[0].unicorns === rows[1]?.unicorns ? (
-                <div className="text-lg font-bold text-white break-words whitespace-normal px-2 leading-normal">🤝 It's a Draw!</div>
-              ) : (
-                <div className="text-lg font-bold text-white break-words whitespace-normal px-2 leading-normal">{rows[0].name} Wins!</div>
-              )}
-            </div>
-          </div>
+          <WinnerBanner 
+            winnerName={rows[0].name} 
+            isDraw={rows[0].score === rows[1]?.score && rows[0].unicorns === rows[1]?.unicorns}
+          />
         )}
 
         {/* Table */}
-        <div 
-          className="overflow-y-auto overflow-x-hidden -mx-4 sm:mx-0 rounded-none sm:rounded-2xl border-x-0 sm:border-x border-b border-slate-200 bg-slate-50 shadow-sm"
-          style={{ 
-            backgroundColor: '#f8fafc'
-          }}
-        >
-          <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: '#f8fafc' }}>
-            <thead className="sticky top-0" style={{ 
-              position: 'sticky', 
-              top: 0, 
-              zIndex: 25, 
-              backgroundColor: '#f8fafc', 
-              display: 'table-header-group'
-            } as any}>
-              <tr style={{ backgroundColor: '#f8fafc', borderBottom: 'none' }}>
-                <th className="py-4 text-left font-normal" style={{ backgroundColor: '#f8fafc', width: '30px', paddingLeft: '0.75rem', paddingRight: '0.5rem', color: '#94a3b8' }}>#</th>
-                <th className="py-4 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem' }}>
-                  <div className="flex items-center gap-2">
-                    Player
-                    {isApiTestLeague && hasLiveFixtures && (
-                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600 text-white shadow-md shadow-red-500/30">
-                        <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
-                        <span className="text-[10px] font-medium">
-                          LIVE
-                        </span>
-                      </div>
-                    )}
-                    {isApiTestLeague && !allFixturesFinished && hasStartingSoonFixtures && !hasLiveFixtures && (
-                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500 text-white shadow-md shadow-amber-500/30">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span className="text-[10px] font-medium">{hasStartedFixtures ? 'Next Game Starting Soon' : 'Starting soon'}</span>
-                      </div>
-                    )}
-                  </div>
-                </th>
-                <th className="py-4 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '50px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8' }}>Score</th>
-                {members.length >= 3 && <th className="py-4 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '1rem' }}>🦄</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => {
-                const isMe = r.user_id === user?.id;
-                const isLastRow = i === rows.length - 1;
-                const hasPositionChanged = positionChangeKeys.has(r.user_id);
-                return (
-                  <tr 
-                    key={r.user_id} 
-                    className={`${isMe ? 'flash-user-row' : ''} ${hasPositionChanged ? 'position-changed' : ''}`}
-                    style={{
-                      position: 'relative',
-                      backgroundColor: '#f8fafc',
-                      ...(isLastRow ? {} : { borderBottom: '1px solid #e2e8f0' })
-                    }}
-                  >
-                    <td className="py-4 text-left tabular-nums whitespace-nowrap relative" style={{ 
-                      paddingLeft: '0.75rem', 
-                      paddingRight: '0.5rem',
-                      backgroundColor: '#f8fafc',
-                      width: '30px'
-                    }}>
-                      {i + 1}
-                    </td>
-                    <td className="py-4 truncate whitespace-nowrap" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      <div className="flex items-center gap-2">
-                        {isApiTestLeague && hasLiveFixtures && (
-                          <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse flex-shrink-0" style={{ minWidth: '8px', minHeight: '8px' }}></div>
-                        )}
-                        {isApiTestLeague && !hasLiveFixtures && hasStartingSoonFixtures && (
-                          <svg className="w-3 h-3 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        )}
-                        <span>{r.name}</span>
-                      </div>
-                    </td>
-                    <td className={`py-4 text-center tabular-nums font-bold ${isApiTestLeague && hasLiveFixtures ? 'pulse-live-score' : ''}`} style={{ width: '50px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc', color: '#1C8376' }}>{r.score}</td>
-                    {members.length >= 3 && <td className={`py-4 text-center tabular-nums ${isApiTestLeague && hasLiveFixtures ? 'pulse-live-score' : ''}`} style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.unicorns}</td>}
-                </tr>
-                );
-              })}
-              {!rows.length && (
-                <tr style={{ backgroundColor: '#f8fafc' }}>
-                  <td className="px-4 py-6 text-slate-500 text-center" colSpan={members.length >= 3 ? 4 : 3} style={{ backgroundColor: '#f8fafc' }}>
-                    No results recorded for GW {resGw} yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ResultsTable
+          rows={rows}
+          members={members}
+          currentUserId={user?.id}
+          positionChangeKeys={positionChangeKeys}
+          isApiTestLeague={isApiTestLeague}
+          hasLiveFixtures={hasLiveFixtures}
+          hasStartingSoonFixtures={hasStartingSoonFixtures}
+          hasStartedFixtures={hasStartedFixtures}
+          allFixturesFinished={allFixturesFinished}
+          resGw={resGw}
+        />
 
         {/* GW Selector and Rules Button */}
         {availableGws.length > 1 && (
           <div className="mt-6 mb-4 flex flex-col items-center gap-3 px-4">
             <div className="flex items-center justify-center gap-3 w-full max-w-sm">
-              <div className="flex-1">
-                <select
-                  value={resGw || undefined}
-                  onChange={(e) => {
-                    const newGw = parseInt(e.target.value, 10);
-                    setSelectedGw(newGw);
-                    // If changing away from currentGw on Live Table, update selectedGw
-                    // This allows users to view past GWs even when current GW is live
-                  }}
-                  className="gw-selector w-full bg-white rounded-full border-2 border-slate-300 px-3 py-2 text-xs font-normal text-slate-600 text-center focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-[#1C8376] active:bg-slate-50 transition-colors"
-                  style={{
-                    fontSize: '12px',
-                    minHeight: '40px', // Smaller
-                    WebkitAppearance: 'none',
-                    MozAppearance: 'none',
-                    appearance: 'none',
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b' stroke-width='2.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 0.75rem center',
-                    backgroundSize: '1em 1em',
-                    paddingRight: '2.5rem'
-                  }}
-                >
-                  {availableGws.map((gw) => (
-                    <option key={gw} value={gw} style={{ fontSize: '12px', padding: '0.5rem', fontWeight: 'normal', color: '#64748b', textTransform: 'uppercase' }}>
-                      GAME WEEK {gw}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button
-                onClick={() => setShowScoringModal(true)}
-                className="flex items-center justify-center gap-1.5 bg-white border-2 border-slate-300 hover:bg-slate-50 rounded-full text-slate-600 hover:text-slate-800 cursor-help transition-colors flex-shrink-0 px-3 py-2"
-              >
-                <img 
-                  src="/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png" 
-                  alt="Rules" 
-                  className="w-4 h-4"
-                  style={{ filter: 'invert(40%) sepia(8%) saturate(750%) hue-rotate(180deg) brightness(95%) contrast(88%)' }}
-                />
-                <span className="text-sm font-medium">Rules</span>
-              </button>
+              <GwSelector 
+                availableGws={availableGws}
+                selectedGw={resGw}
+                onChange={(newGw) => {
+                  manualGwSelectedRef.current = true; // Mark as manually selected
+                  setSelectedGw(newGw);
+                  // If changing away from currentGw on Live Table, update selectedGw
+                  // This allows users to view past GWs even when current GW is live
+                }}
+              />
+              <RulesButton onClick={() => setShowScoringModal(true)} />
             </div>
           </div>
         )}

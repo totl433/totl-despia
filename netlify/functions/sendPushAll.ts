@@ -238,6 +238,57 @@ export const handler: Handler = async (event) => {
       });
     }
     
+    // Load user notification preferences if notification type is provided
+    let userIdsToFilter: string[] = [];
+    if (data?.type === 'new-gameweek' || data?.type === 'fixtures_published') {
+      // Get user IDs from subscriptions
+      userIdsToFilter = Array.from(new Set((subs || []).map((s: any) => s.user_id).filter(Boolean)));
+      
+      if (userIdsToFilter.length > 0) {
+        const { data: userPrefs } = await admin
+          .from('user_notification_preferences')
+          .select('user_id, preferences')
+          .in('user_id', userIdsToFilter);
+        
+        const prefsMap = new Map<string, Record<string, boolean>>();
+        if (userPrefs) {
+          userPrefs.forEach((pref: any) => {
+            prefsMap.set(pref.user_id, pref.preferences || {});
+          });
+        }
+        
+        // Filter out users who disabled new-gameweek notifications
+        const filteredSubs = (subs || []).filter((sub: any) => {
+          if (!sub.user_id) return true; // Keep if no user_id
+          const userPrefs = prefsMap.get(sub.user_id) || {};
+          return userPrefs['new-gameweek'] !== false; // Keep if not explicitly disabled
+        });
+        
+        // Update subs to only include users who want notifications
+        const filteredPlayerIds = filteredSubs
+          .map((s: any) => s.player_id)
+          .filter(Boolean);
+        
+        // Re-check subscriptions for filtered list
+        const filteredChecks = await Promise.allSettled(
+          filteredPlayerIds.map(async (playerId) => {
+            const result = await isSubscribed(playerId, ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY);
+            return { playerId, subscribed: result.subscribed };
+          })
+        );
+        
+        validPlayerIds = filteredPlayerIds.filter((playerId, i) => {
+          const check = filteredChecks[i];
+          if (check.status === 'fulfilled') {
+            return (check as PromiseFulfilledResult<{ playerId: string; subscribed: boolean }>).value.subscribed;
+          }
+          return false;
+        });
+        
+        console.log(`[sendPushAll] Filtered to ${validPlayerIds.length} users who want new-gameweek notifications (from ${userIdsToFilter.length} total users)`);
+      }
+    }
+
     // Build notification payload
     const notificationPayload = {
       app_id: ONESIGNAL_APP_ID,

@@ -1,0 +1,46 @@
+Web Users Who Haven't Submitted for GW15
+Generated: 2025-12-06T11:00:22.879Z
+
+Total web users: 67
+Users who submitted: 33
+Users who haven't submitted: 34
+Submission rate: 49.3%
+
+────────────────────────────────────────────────────────────────────────────────
+
+01. _ (a1e2ca5a-a901-49f9-bd4f-875f04f9d9d1)
+02. Angelique Wakan (104ef2b1-3ffe-439a-88e0-dc0e87b3544a)
+03. B_B (e588d485-78ed-4f60-b5e5-d06310b99b70)
+04. Ben B (cfd605da-7f4a-4646-ac86-8f40feff2d5d)
+05. D_Maestro (b887db39-3c16-4951-a7a6-0bdf9324895e)
+06. David M T (db0f9c97-3aa3-4fcb-aa88-08ebe1dc25ef)
+07. e (4f765827-77d2-48da-9760-45d9bbd7f5b7)
+08. Ed (18560d86-7650-4495-9b11-acbdd1dd97b7)
+09. EO (725a0ffc-ad72-45ac-8405-f2625096313c)
+10. Flatcher (fb5a55b1-5039-4f41-82ae-0429ec78a544)
+11. Gavino (3a3f9e6a-9638-4c3e-af3c-8ff2bed6223b)
+12. gwebby (04240510-b018-41ee-9c52-0850647ca55a)
+13. Info (0d3a9bbf-6a08-4ed3-976b-d00e79005a25)
+14. Jack (002d3123-e2d6-4d7a-b763-a53a79b9d6ed)
+15. JennyS (ded21a31-08bb-45fd-830e-c5abe8564585)
+16. Miles (20873bd6-f869-449f-b377-bd0ec088fecb)
+17. Miles_o (0c0658f6-46ea-41e2-a6ef-f6e592b3cef7)
+18. Milesodj (54f3f506-3df1-48ec-b129-31b5549344c1)
+19. Nick (93109914-a55e-440d-898c-2af3566180a1)
+20. Panda Rose (4729481a-d362-4656-a7b1-fe5751aa724c)
+21. Pau (b2cabf2d-a68f-40de-bc4f-24e79a988786)
+22. PRG (9ebf7acc-7351-470f-ae45-ed783c65ab4e)
+23. Rosaodiva (dab1bc27-0fb8-4b3a-8480-f9879fbd2938)
+24. Sam Cotton (6d14f468-6aab-4f2f-97f9-8db0323c4679)
+25. Sham G (df9a65d1-c13b-4d3f-bb6c-bda2ed4a88d9)
+26. sotbjof (10a4244a-580b-4ef3-8fd2-bd141f66550c)
+27. Sotbjof (c14413f4-da35-4283-acf6-4a89aefdab73)
+28. Tat (bec93194-088c-40b1-92a6-8abef6ec2e6f)
+29. Tat Fusté (d5cc608a-ff4f-4bf0-b129-f28a04f0c080)
+30. Thomas (eb4daa86-ecd4-48e4-8863-cb57ea521eec)
+31. Thomas Elliott (3a671f9c-5443-4987-a4d5-c32d46bf46f2)
+32. william middleton (a4df0fbb-075f-4eb5-a855-2f8ad5e4ea8b)
+33. Woodsy (828817c5-783f-4ff3-bc3a-922e85a27204)
+34. ZoeyP (14635e70-7c01-427c-a170-251e88813d1f)
+
+────────────────────────────────────────────────────────────────────────────────

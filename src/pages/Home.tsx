@@ -1859,7 +1859,18 @@ export default function HomePage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 pt-2 pb-4 min-h-screen relative">
-      <ScrollLogo />
+      {/* Logo and Unicorn header */}
+      <div className="relative mb-4">
+        {/* Unicorn positioned on the left, next to centered logo */}
+        <img 
+          src="/assets/Volley 256.png" 
+          alt="TOTL Unicorn" 
+          className="absolute left-0 top-1/2 -translate-y-1/2 w-24 h-24 object-contain z-10"
+          style={{ imageRendering: 'pixelated' }}
+        />
+        {/* Logo stays centered */}
+        <ScrollLogo />
+      </div>
       
       {!isDataReady ? (
         <div className="flex items-center justify-center py-12">

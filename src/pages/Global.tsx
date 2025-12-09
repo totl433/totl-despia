@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { getCached, setCached, removeCached, CACHE_TTL } from "../lib/cache";
 import { useLiveScores } from "../hooks/useLiveScores";
+import { PageHeader } from "../components/PageHeader";
 
 type OverallRow = {
   user_id: string;
@@ -799,7 +800,7 @@ export default function GlobalLeaderboardPage() {
         <div className="flex-shrink-0 bg-slate-50 py-4">
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-3">
-              <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Leaderboard</h2>
+          <PageHeader title="Leaderboard" as="h2" />
               {(activeTab === "lastgw" || activeTab === "overall") && isCurrentGwLive && liveGw && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 animate-pulse">
                   <span className="relative flex h-2 w-2">

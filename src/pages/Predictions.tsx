@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { getMediumName } from "../lib/teamNames";
 import PickButton from "../components/PickButton";
 import { invalidateUserCache } from "../lib/cache";
+import { PageHeader } from "../components/PageHeader";
 
 
 function sideName(f: any, side: "home" | "away") {
@@ -454,7 +455,7 @@ export default function PredictionsPage() {
   return (
     <div className={`min-h-screen bg-slate-50 ${oldSchoolMode ? 'oldschool-theme' : ''}`}>
       <div className="max-w-6xl mx-auto px-4 py-4">
-        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Predictions Center</h2>
+        <PageHeader title="Predictions Center" as="h2" />
         <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
           Call every game, lock in your results, and climb the table.
         </p>

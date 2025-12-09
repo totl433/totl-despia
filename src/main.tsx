@@ -14,6 +14,7 @@ import PredictionsPage from "./pages/Predictions";
 // Lazy load other pages
 const LeaguePage = lazy(() => import("./pages/League"));
 const AdminPage = lazy(() => import("./pages/Admin"));
+const AdminDataPage = lazy(() => import("./pages/AdminData"));
 const TempGlobalPage = lazy(() => import("./pages/TempGlobal"));
 const CreateLeaguePage = lazy(() => import("./pages/CreateLeague"));
 const HowToPlayPage = lazy(() => import("./pages/HowToPlay"));
@@ -24,6 +25,7 @@ const ApiAdmin = lazy(() => import("./pages/ApiAdmin"));
 const TestFixtures = lazy(() => import("./pages/TestFixtures"));
 const TestDespia = lazy(() => import("./pages/TestDespia"));
 const ProfilePage = lazy(() => import("./pages/Profile"));
+const NotificationCentrePage = lazy(() => import("./pages/NotificationCentre"));
 const SignIn = lazy(() => import("./pages/SignIn"));
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -312,9 +314,11 @@ function AppContent() {
             <Route path="/global" element={<RequireAuth><GlobalPage /></RequireAuth>} />
             <Route path="/temp-global" element={<RequireAuth><TempGlobalPage /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+            <Route path="/profile/notifications" element={<RequireAuth><NotificationCentrePage /></RequireAuth>} />
             <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
             <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
             <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
+            <Route path="/admin-data" element={<RequireAuth><AdminDataPage /></RequireAuth>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

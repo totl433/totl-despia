@@ -156,7 +156,7 @@ export const handler: Handler = async (event) => {
   recipients.delete(senderId);
   console.log(`[notifyLeagueMessage] Found ${totalMembers} total members, ${recipients.size} recipients (after excluding sender)`);
 
-  // 2) Remove muted
+  // 2) Remove muted (per-league settings)
   const { data: mutes, error: muteErr } = await admin
     .from('league_notification_settings')
     .select('user_id')
@@ -164,6 +164,21 @@ export const handler: Handler = async (event) => {
     .eq('muted', true);
   if (muteErr) return json(500, { error: 'Failed to load mutes', details: muteErr.message });
   for (const row of (mutes || [])) recipients.delete(row.user_id);
+
+  // 2b) Remove users who have disabled chat notifications globally
+  const { data: userPrefs, error: prefsErr } = await admin
+    .from('user_notification_preferences')
+    .select('user_id, preferences')
+    .in('user_id', Array.from(recipients));
+  if (!prefsErr && userPrefs) {
+    for (const pref of userPrefs) {
+      const prefs = pref.preferences || {};
+      // If user has explicitly disabled chat-messages, remove them
+      if (prefs['chat-messages'] === false) {
+        recipients.delete(pref.user_id);
+      }
+    }
+  }
 
   // 3) Remove currently active (optional)
   if (Array.isArray(activeUserIds)) {
