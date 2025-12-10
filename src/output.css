@@ -905,6 +905,10 @@ video {
   margin-top: -0.125rem;
 }
 
+.-mt-4{
+  margin-top: -1rem;
+}
+
 .mb-0{
   margin-bottom: 0px;
 }
@@ -1013,10 +1017,6 @@ video {
   margin-top: auto;
 }
 
-.-mt-4{
-  margin-top: -1rem;
-}
-
 .block{
   display: block;
 }
@@ -1089,10 +1089,6 @@ video {
   height: 5rem;
 }
 
-.h-24{
-  height: 6rem;
-}
-
 .h-28{
   height: 7rem;
 }
@@ -1159,14 +1155,6 @@ video {
 
 .h-screen{
   height: 100vh;
-}
-
-.h-\[132px\]{
-  height: 132px;
-}
-
-.h-\[66px\]{
-  height: 66px;
 }
 
 .max-h-60{
@@ -4815,14 +4803,6 @@ select option {
 
   .sm\:h-\[110px\]{
     height: 110px;
-  }
-
-  .sm\:h-\[165px\]{
-    height: 165px;
-  }
-
-  .sm\:h-\[88px\]{
-    height: 88px;
   }
 
   .sm\:w-14{

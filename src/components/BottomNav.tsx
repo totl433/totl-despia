@@ -53,7 +53,7 @@ export default function BottomNav() {
   const location = useLocation();
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const [indicatorStyle, setIndicatorStyle] = useState<{ width: number; left: number; top: number; borderRadius: number } | null>(null);
+  const [indicatorStyle, setIndicatorStyle] = useState<{ width: number; height: number; left: number; top: number; borderRadius: number } | null>(null);
 
   useEffect(() => {
     const updateIndicator = () => {
@@ -64,23 +64,20 @@ export default function BottomNav() {
         const buttonRect = button.getBoundingClientRect();
         const containerRect = container.getBoundingClientRect();
         
-        // Use button's height as the indicator size for perfect alignment
+        // Use button's full width and height to cover icon and text
+        const buttonWidth = buttonRect.width;
         const buttonHeight = buttonRect.height;
-        const indicatorSize = buttonHeight;
         
-        // Calculate button center X position relative to container
-        const buttonCenterX = buttonRect.left + buttonRect.width / 2;
-        const indicatorLeft = buttonCenterX - containerRect.left - indicatorSize / 2;
-        
-        // Calculate button center Y position relative to container
-        const buttonCenterY = buttonRect.top + buttonRect.height / 2;
-        const indicatorTop = buttonCenterY - containerRect.top - indicatorSize / 2;
+        // Calculate button position relative to container
+        const indicatorLeft = buttonRect.left - containerRect.left;
+        const indicatorTop = buttonRect.top - containerRect.top;
         
         setIndicatorStyle({
-          width: indicatorSize,
+          width: buttonWidth,
+          height: buttonHeight,
           left: indicatorLeft,
           top: indicatorTop,
-          borderRadius: indicatorSize / 2,
+          borderRadius: buttonHeight / 2, // Pill shape
         });
       }
     };
@@ -124,14 +121,14 @@ export default function BottomNav() {
         }
       `}</style>
       <div className="bottom-nav-absolute flex items-center justify-center px-4 pb-8">
-        <div ref={containerRef} className="bg-[#1C8376] border border-[#178f72] rounded-full shadow-2xl flex items-center max-w-md w-full px-2 py-2 mb-4 relative" style={{ boxShadow: '0 15px 35px -5px rgba(0, 0, 0, 0.5), 0 10px 15px -5px rgba(0, 0, 0, 0.4)' }}>
+        <div ref={containerRef} className="bg-[#1C8376] border border-[#178f72] rounded-full shadow-2xl flex items-center max-w-md w-full px-2 py-3 mb-4 relative" style={{ boxShadow: '0 15px 35px -5px rgba(0, 0, 0, 0.5), 0 10px 15px -5px rgba(0, 0, 0, 0.4)' }}>
           {/* Sliding background indicator */}
           {indicatorStyle && (
             <div 
               className="absolute bg-[#178f72]"
               style={{
                 width: `${indicatorStyle.width}px`,
-                height: `${indicatorStyle.width}px`,
+                height: `${indicatorStyle.height}px`,
                 left: `${indicatorStyle.left}px`,
                 top: `${indicatorStyle.top}px`,
                 borderRadius: `${indicatorStyle.borderRadius}px`,
@@ -146,15 +143,16 @@ export default function BottomNav() {
               key={item.name}
                 ref={(el) => { buttonRefs.current[index] = el; }}
               onClick={() => navigate(item.path)}
-                className={`relative z-10 flex-1 flex items-center justify-center py-3 px-4 rounded-full transition-all duration-300 ${
+                className={`relative z-10 flex-1 flex flex-col items-center justify-center py-2 px-2 rounded-full transition-all duration-300 ${
                 isActive 
                   ? 'text-white' 
                   : 'text-white/70 hover:text-white'
               }`}
             >
-                <div className={`relative transition-all duration-300 ${isActive ? 'scale-110' : 'scale-100'}`}>
+                <div className={`relative transition-all duration-300 ${isActive ? 'scale-110' : 'scale-100'} mb-1`}>
                 {item.icon}
               </div>
+              <span className="text-xs font-medium">{item.name}</span>
             </button>
           );
         })}
