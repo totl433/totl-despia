@@ -1863,9 +1863,9 @@ export default function HomePage() {
       <div className="relative mb-4">
         {/* Unicorn positioned on the left, next to centered logo */}
         <img 
-          src="/assets/Volley 256.png" 
+          src="/assets/Animation/Volley-Keepy-Uppies.gif" 
           alt="TOTL Unicorn" 
-          className="absolute left-0 top-1/2 -translate-y-1/2 w-24 h-24 object-contain z-10"
+          className="absolute left-0 top-1/2 -translate-y-1/2 w-20 h-20 object-contain z-10"
           style={{ imageRendering: 'pixelated' }}
         />
         {/* Logo stays centered */}

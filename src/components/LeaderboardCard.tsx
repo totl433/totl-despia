@@ -56,7 +56,7 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
             </svg>
           </div>
           <div className="mt-auto">
-            <div className="text-xs text-slate-500 mb-2">GAME WEEK {gw ?? '—'}</div>
+            <div className="text-xs text-slate-500 mb-2">Gameweek {gw ?? '—'}</div>
             <div className="flex items-center gap-1">
               <span className="text-xs font-semibold text-slate-900">
                 {displayText}

@@ -30,13 +30,13 @@ export function GamesSection({
   hasCheckedCache,
   currentGw
 }: GamesSectionProps) {
-  // Calculate title with GW number: "GAME WEEK (XX)" format
+  // Calculate title with GW number: "Gameweek (XX)" format
   const title = useMemo(() => {
     if (fixtures.length === 0) return "Games";
     
     // Always use the GW number from fixtures or currentGw, no test week distinction
     const gw = currentGw ?? fixtures[0]?.gw ?? 1;
-    return `GAME WEEK ${gw}`;
+    return `Gameweek ${gw}`;
   }, [fixtures, currentGw]);
 
   return (

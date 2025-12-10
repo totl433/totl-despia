@@ -81,7 +81,7 @@ export default function Section({
     <section className={className ?? ""}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="text-2xl font-medium text-slate-900 uppercase tracking-wide" style={{ fontFamily: '"video", serif', fontWeight: 700 }}>
+          <h2 className="text-xl font-medium text-slate-900 uppercase tracking-wide" style={{ fontFamily: '"Gramatika", sans-serif', fontWeight: 700 }}>
             {title}
           </h2>
           <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center">

@@ -1,6 +1,24 @@
 /* src/index.css */
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
+/* PressStart2P Font Family - Self-hosted for reliability */
+@font-face {
+  font-family: 'PressStart2P';
+  src: url('/Fonts/PressStart2P-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* DxLactos Font Family - Self-hosted for reliability */
+@font-face {
+  font-family: 'DxLactos';
+  src: url('/Fonts/DxLactosVol02-Medium-Free-Font.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Gramatika Font Family */
 @font-face {
   font-family: 'Gramatika';

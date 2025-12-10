@@ -43,8 +43,8 @@ export default function GwSelector({
         }}
       >
         {availableGws.map((gw) => (
-          <option key={gw} value={gw} style={{ fontSize: '12px', padding: '0.5rem', fontWeight: 'normal', color: '#64748b', textTransform: 'uppercase' }}>
-            GAME WEEK {gw}
+          <option key={gw} value={gw} style={{ fontSize: '12px', padding: '0.5rem', fontWeight: 'normal', color: '#64748b' }}>
+            Gameweek {gw}
           </option>
         ))}
       </select>

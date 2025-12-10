@@ -61,11 +61,11 @@ export default function ScrollLogo() {
   return (
     <div 
       ref={containerRef}
-      className="w-full flex justify-center items-start transition-all duration-200"
+      className="w-full flex justify-center items-center transition-all duration-200"
       style={{ 
         height: '130px', // Default height
         overflow: 'hidden',
-        paddingTop: '4px',
+        paddingTop: '0px',
         paddingBottom: '0px',
         perspective: '1000px', // Enable 3D perspective
       }}

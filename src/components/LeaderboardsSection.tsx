@@ -21,7 +21,7 @@ export function LeaderboardsSection({
   latestGw
 }: LeaderboardsSectionProps) {
   return (
-    <Section title="Leaderboards">
+    <Section title="Leaderboards" className="-mt-4">
       <HorizontalScrollContainer>
         <LeaderboardCard
           title="Last GW"
