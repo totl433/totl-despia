@@ -60,9 +60,7 @@ export default function BottomNav() {
     const updateIndicator = () => {
       const activeIndex = navItems.findIndex(item => location.pathname === item.path);
       if (activeIndex >= 0 && buttonRefs.current[activeIndex] && containerRef.current) {
-        const button = buttonRefs.current[activeIndex];
         const container = containerRef.current;
-        const buttonRect = button.getBoundingClientRect();
         const containerRect = container.getBoundingClientRect();
         
         // Exactly 25% of the pill width

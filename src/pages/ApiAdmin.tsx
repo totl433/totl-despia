@@ -319,10 +319,9 @@ export default function ApiAdmin() {
 
       // Update app_meta.current_gw to the saved GW
       console.log(`[ApiAdmin] Updating app_meta.current_gw to ${nextGw}...`);
-      const { data: metaData, error: metaError } = await supabase
+      const { error: metaError } = await supabase
         .from("app_meta")
-        .upsert({ id: 1, current_gw: nextGw }, { onConflict: 'id' })
-        .select();
+        .upsert({ id: 1, current_gw: nextGw }, { onConflict: 'id' });
 
       if (metaError) {
         console.error('[ApiAdmin] ❌ Error updating app_meta:', metaError);
