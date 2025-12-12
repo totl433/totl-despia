@@ -318,13 +318,30 @@ export default function ApiAdmin() {
       }
 
       // Update app_meta.current_gw to the saved GW
-      const { error: metaError } = await supabase
+      console.log(`[ApiAdmin] Updating app_meta.current_gw to ${nextGw}...`);
+      const { data: metaData, error: metaError } = await supabase
         .from("app_meta")
-        .upsert({ id: 1, current_gw: nextGw }, { onConflict: 'id' });
+        .upsert({ id: 1, current_gw: nextGw }, { onConflict: 'id' })
+        .select();
 
       if (metaError) {
-        console.error('[ApiAdmin] Error updating app_meta:', metaError);
-        // Don't throw - fixtures are saved, meta update is less critical
+        console.error('[ApiAdmin] ❌ Error updating app_meta:', metaError);
+        setError(`Fixtures saved but failed to update current_gw: ${metaError.message}`);
+        // Don't throw - fixtures are saved, but warn user
+      } else {
+        console.log(`[ApiAdmin] ✅ Successfully updated app_meta.current_gw to ${nextGw}`);
+        // Verify the update
+        const { data: verifyMeta, error: verifyMetaError } = await supabase
+          .from("app_meta")
+          .select("current_gw")
+          .eq("id", 1)
+          .single();
+        
+        if (verifyMetaError) {
+          console.warn('[ApiAdmin] ⚠️ Could not verify app_meta update:', verifyMetaError);
+        } else {
+          console.log(`[ApiAdmin] ✅ Verified: app_meta.current_gw = ${verifyMeta?.current_gw}`);
+        }
       }
 
       // Send push notification to all users
