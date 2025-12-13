@@ -1002,13 +1002,17 @@ export const handler: Handler = async (event, context) => {
     }
 
     // Handle kickoff
-    // Simple check: if we've already notified for kickoff, skip entirely
+    // Check if we've already notified for kickoff - check both state and timestamp
     const hasNotifiedKickoff = state?.last_notified_status === 'IN_PLAY' && 
                                state?.last_notified_home_score === 0 && 
                                state?.last_notified_away_score === 0;
     
-    if (hasNotifiedKickoff) {
-      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - already sent kickoff notification for match ${apiMatchId}`);
+    // Also check if notification was sent recently (within last 10 minutes) to prevent duplicates
+    const recentlyNotified = hasNotifiedKickoff && state?.last_notified_at && 
+      (new Date(state.last_notified_at).getTime() > Date.now() - 10 * 60 * 1000);
+    
+    if (recentlyNotified) {
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - already sent kickoff notification for match ${apiMatchId} at ${state?.last_notified_at}`);
       return {
         statusCode: 200,
         headers,
@@ -1046,9 +1050,37 @@ export const handler: Handler = async (event, context) => {
 
       if (updateError) {
         console.error(`[sendScoreNotificationsWebhook] [${requestId}] Error updating state:`, updateError);
-      } else {
-        console.log(`[sendScoreNotificationsWebhook] [${requestId}] ✅ State updated IMMEDIATELY for kickoff match ${apiMatchId}`);
+        // If we can't update state, don't send notification to prevent duplicates
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ message: 'Failed to update state, skipping notification' }),
+        };
       }
+
+      // Re-check state immediately after update to ensure we were the first
+      const { data: verifyState } = await supabase
+        .from('notification_state')
+        .select('last_notified_status, last_notified_home_score, last_notified_away_score, last_notified_at')
+        .eq('api_match_id', apiMatchId)
+        .maybeSingle();
+
+      const wasAlreadyNotified = verifyState?.last_notified_status === 'IN_PLAY' && 
+                                 verifyState?.last_notified_home_score === 0 && 
+                                 verifyState?.last_notified_away_score === 0 &&
+                                 verifyState?.last_notified_at &&
+                                 verifyState.last_notified_at !== now; // If timestamp is different, another webhook beat us
+
+      if (wasAlreadyNotified) {
+        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 RACE CONDITION DETECTED - another webhook already sent kickoff notification at ${verifyState?.last_notified_at}`);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ message: 'Race condition: another webhook already notified' }),
+        };
+      }
+
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] ✅ State updated and verified for kickoff match ${apiMatchId}`);
 
       // Get users who have picks
       let picks: any[] = [];
