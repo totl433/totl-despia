@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import InfoSheet from './InfoSheet';
 
 export type SectionProps = {
   id?: string;  // Required for collapsible sections
@@ -11,6 +12,8 @@ export type SectionProps = {
   defaultOpen?: boolean;  // For collapsible sections
   children?: React.ReactNode;
   onToggle?: (isOpen: boolean) => void;  // Callback for collapsible sections
+  infoTitle?: string;  // Title for info sheet
+  infoDescription?: string;  // Description for info sheet
 };
 
 /**
@@ -30,8 +33,11 @@ export default function Section({
   defaultOpen = false,
   children,
   onToggle,
+  infoTitle,
+  infoDescription,
 }: SectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
 
   // Collapsible mode (like HowToPlay)
   if (collapsible && id) {
@@ -78,23 +84,39 @@ export default function Section({
 
   // Simple mode (like Home page)
   return (
-    <section className={className ?? ""}>
-      <div className="flex items-center justify-between">
+    <>
+      <section className={className ?? ""}>
+        <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-medium text-slate-900 uppercase tracking-wide" style={{ fontFamily: '"Gramatika", sans-serif', fontWeight: 700 }}>
             {title}
           </h2>
-          <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center">
+          <div 
+            className={`w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center ${infoTitle && infoDescription ? 'hover:bg-slate-50 transition-colors cursor-pointer' : ''}`}
+            onClick={infoTitle && infoDescription ? () => setIsInfoOpen(true) : undefined}
+            role={infoTitle && infoDescription ? 'button' : undefined}
+            aria-label={infoTitle && infoDescription ? `Information about ${title}` : undefined}
+          >
             <span className="text-[10px] text-slate-500 font-bold">i</span>
           </div>
         </div>
-        {headerRight && <div>{headerRight}</div>}
-      </div>
-      {subtitle && (
-        <div className="mt-1 text-sm text-slate-500">{subtitle}</div>
+          {headerRight && <div>{headerRight}</div>}
+        </div>
+        {subtitle && (
+          <div className="mt-1 text-sm text-slate-500">{subtitle}</div>
+        )}
+        <div className="mt-3">{children}</div>
+      </section>
+      
+      {infoTitle && infoDescription && (
+        <InfoSheet
+          isOpen={isInfoOpen}
+          onClose={() => setIsInfoOpen(false)}
+          title={infoTitle}
+          description={infoDescription}
+        />
       )}
-      <div className="mt-3">{children}</div>
-    </section>
+    </>
   );
 }
 
