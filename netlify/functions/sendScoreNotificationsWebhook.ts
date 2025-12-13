@@ -1033,12 +1033,17 @@ export const handler: Handler = async (event, context) => {
       // Get users who have picks
       let picks: any[] = [];
       if (isAppFixture) {
-        const { data: appPicks } = await supabase
+        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Checking app_picks for GW ${fixtureGw}, fixture_index ${normalizedFixture.fixture_index}`);
+        const { data: appPicks, error: appPicksError } = await supabase
           .from('app_picks')
           .select('user_id')
           .eq('gw', fixtureGw)
           .eq('fixture_index', normalizedFixture.fixture_index);
+        if (appPicksError) {
+          console.error(`[sendScoreNotificationsWebhook] [${requestId}] Error fetching app_picks:`, appPicksError);
+        }
         picks = appPicks || [];
+        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Found ${picks.length} picks in app_picks`);
       } else if (isTestFixture && testGwForPicks) {
         const { data: testPicks } = await supabase
           .from('test_api_picks')
@@ -1056,11 +1061,28 @@ export const handler: Handler = async (event, context) => {
       }
 
       const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
-      const { data: subscriptions } = await supabase
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Found ${userIds.length} unique users with picks`);
+      
+      if (userIds.length === 0) {
+        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: No users with picks found for fixture ${normalizedFixture.fixture_index}`);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ message: 'No picks found for kickoff' }),
+        };
+      }
+
+      const { data: subscriptions, error: subsError } = await supabase
         .from('push_subscriptions')
         .select('user_id, player_id')
         .in('user_id', userIds)
         .eq('is_active', true);
+
+      if (subsError) {
+        console.error(`[sendScoreNotificationsWebhook] [${requestId}] Error fetching subscriptions:`, subsError);
+      }
+
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Found ${(subscriptions || []).length} active subscriptions for ${userIds.length} users`);
 
       const playerIdsByUser = new Map<string, string[]>();
       (subscriptions || []).forEach((sub: any) => {
@@ -1071,13 +1093,21 @@ export const handler: Handler = async (event, context) => {
         playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
       });
 
+      const usersWithSubscriptions = Array.from(playerIdsByUser.keys());
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: ${usersWithSubscriptions.length} users have active subscriptions out of ${userIds.length} users with picks`);
+
       let totalSent = 0;
       for (const userId of userIds) {
         const playerIds = playerIdsByUser.get(userId) || [];
-        if (playerIds.length === 0) continue;
+        if (playerIds.length === 0) {
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: User ${userId} has picks but no active subscriptions, skipping`);
+          continue;
+        }
 
         const title = `⚽ ${normalizedFixture.home_team} vs ${normalizedFixture.away_team}`;
         const message = `Kickoff!`;
+
+        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Sending to user ${userId} with ${playerIds.length} device(s)`);
 
         const result = await sendOneSignalNotification(
           playerIds,
@@ -1093,6 +1123,9 @@ export const handler: Handler = async (event, context) => {
 
         if (result.success) {
           totalSent += result.sentTo;
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Successfully sent to ${result.sentTo} device(s) for user ${userId}`);
+        } else {
+          console.error(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Failed to send to user ${userId}:`, result.error);
         }
       }
 
