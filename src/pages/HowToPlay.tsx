@@ -17,22 +17,18 @@ export default function HowToPlayPage() {
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-6xl px-4 py-4 pb-16">
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 mb-2">
-          <div className="flex-1">
-            <PageHeader title="How To Play" as="h2" />
-          </div>
-          <div className="flex-shrink-0">
-            <img 
-              src="/assets/Volley/Volley-Coach.png" 
-              alt="" 
-              className="w-16 h-16 object-contain"
-              style={{ imageRendering: 'pixelated' }}
-            />
-          </div>
-        </div>
+        <PageHeader title="How To Play" as="h2" />
         <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
             Welcome to TOTL (Top of the League) — the game of quick Predictions and friendly rivalries. Here's how it all works.
           </p>
+        <div className="flex justify-end mb-6">
+          <img 
+            src="/assets/Volley/Volley-Coach.png" 
+            alt="" 
+            className="w-16 h-16 object-contain"
+            style={{ imageRendering: 'pixelated' }}
+          />
+        </div>
 
         {/* Sections */}
         <div className="space-y-4">
