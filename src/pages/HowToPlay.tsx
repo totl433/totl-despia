@@ -21,11 +21,11 @@ export default function HowToPlayPage() {
         <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
             Welcome to TOTL (Top of the League) — the game of quick Predictions and friendly rivalries. Here's how it all works.
           </p>
-        <div className="flex justify-end mb-6">
+        <div className="flex justify-center mb-6">
           <img 
             src="/assets/Volley/Volley-Coach.png" 
             alt="" 
-            className="w-16 h-16 object-contain"
+            className="w-24 h-24 object-contain"
             style={{ imageRendering: 'pixelated' }}
           />
         </div>
