@@ -43,15 +43,8 @@ function formatMinuteDisplay(status: string, minute: number | null | undefined):
     if (minute === null || minute === undefined) {
       return 'LIVE';
     }
-    if (minute >= 1 && minute <= 45) {
-      return 'First Half';
-    }
-    if (minute > 45 && minute <= 50) {
-      return '45+';
-    }
-    if (minute > 50) {
-      return 'Second Half';
-    }
+    // Always show actual minute from API
+    return `${minute}'`;
   }
   return 'LIVE';
 }

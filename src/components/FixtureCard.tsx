@@ -28,22 +28,8 @@ function formatMinuteDisplay(status: string, minute: number | null | undefined, 
     if (minute === null || minute === undefined) {
       return 'LIVE';
     }
-    // For test API, always show actual minutes
-    if (isTestApi) {
-      return `${minute}'`;
-    }
-    // First half: 1-45 minutes
-    if (minute >= 1 && minute <= 45) {
-      return 'First Half';
-    }
-    // Stoppage time in first half: > 45 but before halftime (typically 45-50)
-    if (minute > 45 && minute <= 50) {
-      return '45+';
-    }
-    // Second half: after halftime, typically minute > 50
-    if (minute > 50) {
-      return 'Second Half';
-    }
+    // Always show actual minute from API
+    return `${minute}'`;
   }
   return 'LIVE';
 }
