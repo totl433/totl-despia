@@ -14,6 +14,7 @@ export type SectionProps = {
   onToggle?: (isOpen: boolean) => void;  // Callback for collapsible sections
   infoTitle?: string;  // Title for info sheet
   infoDescription?: string;  // Description for info sheet
+  infoImage?: string;  // Optional image for info sheet
   showInfoIcon?: boolean;  // Show info icon (default: true if infoTitle/infoDescription provided, false otherwise)
 };
 
@@ -36,6 +37,7 @@ export default function Section({
   onToggle,
   infoTitle,
   infoDescription,
+  infoImage,
   showInfoIcon,
 }: SectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -118,6 +120,7 @@ export default function Section({
           onClose={() => setIsInfoOpen(false)}
           title={infoTitle}
           description={infoDescription}
+          image={infoImage}
         />
       )}
     </>
