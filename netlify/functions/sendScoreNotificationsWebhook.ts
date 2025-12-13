@@ -1007,11 +1007,14 @@ export const handler: Handler = async (event, context) => {
                                state?.last_notified_home_score === 0 && 
                                state?.last_notified_away_score === 0;
     
-    // Also check if notification was sent recently (within last 10 minutes) to prevent duplicates
-    const recentlyNotified = hasNotifiedKickoff && state?.last_notified_at && 
-      (new Date(state.last_notified_at).getTime() > Date.now() - 10 * 60 * 1000);
+    // Check if notification was sent recently (within last 10 minutes) - this catches duplicates even if state doesn't match exactly
+    const recentlyNotified = state?.last_notified_at && 
+      (new Date(state.last_notified_at).getTime() > Date.now() - 10 * 60 * 1000) &&
+      state?.last_notified_status === 'IN_PLAY' &&
+      state?.last_notified_home_score === 0 &&
+      state?.last_notified_away_score === 0;
     
-    if (recentlyNotified) {
+    if (recentlyNotified || hasNotifiedKickoff) {
       console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - already sent kickoff notification for match ${apiMatchId} at ${state?.last_notified_at}`);
       return {
         statusCode: 200,
