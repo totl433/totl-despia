@@ -43,7 +43,18 @@ export function MiniLeaguesSection({
 
   if (!leagueDataLoading && leagues.length === 0) {
     return (
-      <Section title="Mini Leagues" className="mt-6">
+      <Section 
+        title="Mini Leagues" 
+        className="mt-6"
+        infoTitle="Mini Leagues"
+        infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
+
+You compete each Game Week and across the full season — with one overall winner at the end of the season.
+
+Start a Mini League →
+
+How To Play →`}
+      >
         <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
           <div className="text-slate-600 mb-3">You don't have any mini leagues yet.</div>
           <Link 
@@ -59,7 +70,18 @@ export function MiniLeaguesSection({
 
   if (leagues.length === 0) {
     return (
-      <Section title="Mini Leagues" className="mt-6">
+      <Section 
+        title="Mini Leagues" 
+        className="mt-6"
+        infoTitle="Mini Leagues"
+        infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
+
+You compete each Game Week and across the full season — with one overall winner at the end of the season.
+
+Start a Mini League →
+
+How To Play →`}
+      >
         <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
           <div className="text-slate-600">Loading leagues...</div>
         </div>
@@ -68,7 +90,18 @@ export function MiniLeaguesSection({
   }
 
   return (
-    <Section title="Mini Leagues" className="mt-6">
+    <Section 
+      title="Mini Leagues" 
+      className="mt-6"
+      infoTitle="Mini Leagues"
+      infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
+
+You compete each Game Week and across the full season — with one overall winner at the end of the season.
+
+Start a Mini League →
+
+How To Play →`}
+    >
       <HorizontalScrollContainer>
           {Array.from({ length: Math.ceil(leagues.length / 3) }).map((_, batchIdx) => {
             const startIdx = batchIdx * 3;

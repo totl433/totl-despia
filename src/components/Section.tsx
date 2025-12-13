@@ -14,6 +14,7 @@ export type SectionProps = {
   onToggle?: (isOpen: boolean) => void;  // Callback for collapsible sections
   infoTitle?: string;  // Title for info sheet
   infoDescription?: string;  // Description for info sheet
+  showInfoIcon?: boolean;  // Show info icon (default: true if infoTitle/infoDescription provided, false otherwise)
 };
 
 /**
@@ -35,6 +36,7 @@ export default function Section({
   onToggle,
   infoTitle,
   infoDescription,
+  showInfoIcon,
 }: SectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
@@ -91,14 +93,16 @@ export default function Section({
           <h2 className="text-lg font-medium text-slate-900 uppercase tracking-wide" style={{ fontFamily: '"Gramatika", sans-serif', fontWeight: 700 }}>
             {title}
           </h2>
-          <div 
-            className={`w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center ${infoTitle && infoDescription ? 'hover:bg-slate-50 transition-colors cursor-pointer' : ''}`}
-            onClick={infoTitle && infoDescription ? () => setIsInfoOpen(true) : undefined}
-            role={infoTitle && infoDescription ? 'button' : undefined}
-            aria-label={infoTitle && infoDescription ? `Information about ${title}` : undefined}
-          >
-            <span className="text-[10px] text-slate-500 font-bold">i</span>
-          </div>
+          {(showInfoIcon !== false && (infoTitle && infoDescription || showInfoIcon === true)) && (
+            <div 
+              className={`w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center ${infoTitle && infoDescription ? 'hover:bg-slate-50 transition-colors cursor-pointer' : ''}`}
+              onClick={infoTitle && infoDescription ? () => setIsInfoOpen(true) : undefined}
+              role={infoTitle && infoDescription ? 'button' : undefined}
+              aria-label={infoTitle && infoDescription ? `Information about ${title}` : undefined}
+            >
+              <span className="text-[10px] text-slate-500 font-bold">i</span>
+            </div>
+          )}
         </div>
           {headerRight && <div>{headerRight}</div>}
         </div>

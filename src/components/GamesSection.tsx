@@ -44,6 +44,7 @@ export function GamesSection({
       title={title}
       className="mt-6"
       headerRight={scoreComponent}
+      showInfoIcon={false}
     >
       {(!hasCheckedCache || fixturesLoading) ? (
         <div className="p-4 text-slate-500">Loading fixtures...</div>

@@ -104,22 +104,56 @@ export default function InfoSheet({ isOpen, onClose, title, description }: InfoS
                 .filter(line => line.length > 0);
               
               return paragraphs.map((paragraph, index) => {
-                // Check if paragraph contains "How To Play →"
-                if (paragraph.includes('How To Play →')) {
-                  const parts = paragraph.split('How To Play →');
+                // Render paragraph with links
+                const parts: React.ReactNode[] = [];
+                let remaining = paragraph;
+                
+                // Check for "Start a Mini League →"
+                if (remaining.includes('Start a Mini League →')) {
+                  const [before, after] = remaining.split('Start a Mini League →');
+                  if (before) parts.push(before);
+                  parts.push(
+                    <Link
+                      key="start-league"
+                      to="/tables"
+                      onClick={onClose}
+                      className="text-[#1C8376] font-semibold hover:underline inline-flex items-center gap-1"
+                    >
+                      Start a Mini League →
+                    </Link>
+                  );
+                  remaining = after || '';
+                }
+                
+                // Check for "How To Play →"
+                if (remaining.includes('How To Play →')) {
+                  const [before, after] = remaining.split('How To Play →');
+                  if (before) parts.push(before);
+                  parts.push(
+                    <Link
+                      key="how-to-play"
+                      to="/how-to-play"
+                      onClick={onClose}
+                      className="text-[#1C8376] font-semibold hover:underline inline-flex items-center gap-1"
+                    >
+                      How To Play →
+                    </Link>
+                  );
+                  remaining = after || '';
+                }
+                
+                // Add any remaining text
+                if (remaining) parts.push(remaining);
+                
+                // If we found links, render with links, otherwise render as plain text
+                if (parts.length > 1 || (parts.length === 1 && typeof parts[0] !== 'string')) {
                   return (
                     <p key={index} className={index === 0 ? '' : 'mt-4'}>
-                      {parts[0]}
-                      <Link
-                        to="/how-to-play"
-                        onClick={onClose}
-                        className="text-[#1C8376] font-semibold hover:underline inline-flex items-center gap-1"
-                      >
-                        How To Play →
-                      </Link>
+                      {parts}
                     </p>
                   );
                 }
+                
                 return (
                   <p key={index} className={index === 0 ? '' : 'mt-4'}>
                     {paragraph}
