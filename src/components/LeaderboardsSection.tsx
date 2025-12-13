@@ -30,7 +30,6 @@ export function LeaderboardsSection({
 Joined late? No stress — after 5 and 10 weeks you'll show up in the Form leaderboards.
 
 How To Play →`}
-      infoImage="/assets/Volley/Volley-Coach.png"
     >
       <HorizontalScrollContainer>
         <LeaderboardCard

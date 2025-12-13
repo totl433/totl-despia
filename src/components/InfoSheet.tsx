@@ -95,17 +95,7 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
         </div>
 
         {/* Content */}
-        <div className="px-6 pb-8 max-h-[70vh] overflow-y-auto">
-          {image && (
-            <div className="flex justify-center mb-4">
-              <img 
-                src={image} 
-                alt="" 
-                className="w-16 h-16 object-contain"
-                style={{ imageRendering: 'pixelated' }}
-              />
-            </div>
-          )}
+        <div className="px-6 pb-8 max-h-[70vh] overflow-y-auto relative">
           <div id="info-sheet-description" className="text-slate-600 leading-relaxed">
             {(() => {
               // Split on newlines and filter empty lines
@@ -173,6 +163,16 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
               });
             })()}
           </div>
+          {image && (
+            <div className="absolute bottom-4 right-6">
+              <img 
+                src={image} 
+                alt="" 
+                className="w-16 h-16 object-contain"
+                style={{ imageRendering: 'pixelated' }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Bottom handle */}
