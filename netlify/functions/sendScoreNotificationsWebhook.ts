@@ -219,13 +219,18 @@ export const handler: Handler = async (event, context) => {
     const isHalfTime = oldStatus === 'IN_PLAY' && status === 'PAUSED';
     const isFinished = status === 'FINISHED' || status === 'FT';
 
-    console.log(`[sendScoreNotificationsWebhook] Change detection:`, {
+    console.log(`[sendScoreNotificationsWebhook] [${requestId}] Change detection:`, {
       scoreChange: isScoreChange,
       goalsChanged,
       homeScore: `${oldHomeScore} -> ${homeScore}`,
       awayScore: `${oldAwayScore} -> ${awayScore}`,
+      status: `${oldStatus || 'null'} -> ${status}`,
+      isKickoff,
+      isHalfTime,
+      isFinished,
       currentGoalsCount: Array.isArray(goals) ? goals.length : 0,
       oldGoalsCount: Array.isArray(oldGoals) ? oldGoals.length : 0,
+      hasOldRecord: !!old_record,
     });
 
     // Get fixture info - check regular fixtures, test_api_fixtures, and app_fixtures
@@ -997,21 +1002,22 @@ export const handler: Handler = async (event, context) => {
     }
 
     // Handle kickoff
-    if (isKickoff) {
-      // Check if we've already sent a kickoff notification for this match
-      // Only send if we haven't notified for kickoff yet
-      const hasNotifiedKickoff = state?.last_notified_status === 'IN_PLAY' && 
-                                 state?.last_notified_home_score === 0 && 
-                                 state?.last_notified_away_score === 0;
-      
-      if (hasNotifiedKickoff) {
-        console.log(`[sendScoreNotificationsWebhook] 🚫 SKIPPING - already sent kickoff notification for match ${apiMatchId}`);
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ message: 'Already notified for kickoff' }),
-        };
-      }
+    // Check if we've already sent a kickoff notification for this match
+    const hasNotifiedKickoff = state?.last_notified_status === 'IN_PLAY' && 
+                               state?.last_notified_home_score === 0 && 
+                               state?.last_notified_away_score === 0;
+    
+    // Detect kickoff: either status changed from non-IN_PLAY to IN_PLAY with 0-0,
+    // OR game is IN_PLAY with 0-0 and we haven't notified yet (handles case where old_record is missing)
+    const isKickoffOrNewlyInPlay = (isKickoff || (
+      status === 'IN_PLAY' && 
+      homeScore === 0 && 
+      awayScore === 0 && 
+      !hasNotifiedKickoff
+    )) && !hasNotifiedKickoff;
+
+    if (isKickoffOrNewlyInPlay) {
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF DETECTED: isKickoff=${isKickoff}, status=${status}, oldStatus=${oldStatus || 'null'}, score=${homeScore}-${awayScore}, hasNotifiedKickoff=${hasNotifiedKickoff}`);
 
       // CRITICAL: Update state IMMEDIATELY before sending notifications
       // This prevents duplicate notifications if webhook fires multiple times
