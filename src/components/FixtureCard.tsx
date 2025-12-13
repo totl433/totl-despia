@@ -17,7 +17,7 @@ function getSurname(fullName: string | null | undefined): string {
 }
 
 // Helper function to format minute display
-function formatMinuteDisplay(status: string, minute: number | null | undefined, isTestApi: boolean = false): string {
+function formatMinuteDisplay(status: string, minute: number | null | undefined): string {
   if (status === 'FINISHED') {
     return 'FT';
   }
@@ -558,7 +558,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
                   </div>
                 </div>
                 <span className={`text-[10px] font-semibold mt-0.5 ${isOngoing ? 'text-red-600' : 'text-slate-500'}`}>
-                  {formatMinuteDisplay(liveScore!.status, liveScore!.minute, isTestApi)}
+                  {formatMinuteDisplay(liveScore!.status, liveScore!.minute)}
                 </span>
               </>
             ) : (
