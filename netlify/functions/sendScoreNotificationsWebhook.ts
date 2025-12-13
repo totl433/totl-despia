@@ -1023,13 +1023,9 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
-    // Detect kickoff: status changed from non-IN_PLAY to IN_PLAY with 0-0 score
-    // OR game is IN_PLAY with 0-0 and we haven't notified yet
-    const isKickoffOrNewlyInPlay = isKickoff || (
-      status === 'IN_PLAY' && 
-      homeScore === 0 && 
-      awayScore === 0
-    );
+    // Detect kickoff: ONLY when status actually changed from non-IN_PLAY to IN_PLAY with 0-0 score
+    // Don't trigger on games that are already IN_PLAY (pollLiveScores updates every minute)
+    const isKickoffOrNewlyInPlay = isKickoff;
 
     if (isKickoffOrNewlyInPlay) {
       console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF DETECTED: isKickoff=${isKickoff}, status=${status}, oldStatus=${oldStatus || 'null'}, score=${homeScore}-${awayScore}, hasNotifiedKickoff=${hasNotifiedKickoff}`);
