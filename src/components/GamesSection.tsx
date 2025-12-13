@@ -45,11 +45,6 @@ export function GamesSection({
       className="mt-6"
       headerRight={scoreComponent}
     >
-      {hasLiveGames && (
-        <div className="mb-3 flex justify-end">
-          <LiveGamesToggle value={showLiveOnly} onChange={onToggleLiveOnly} />
-        </div>
-      )}
       {(!hasCheckedCache || fixturesLoading) ? (
         <div className="p-4 text-slate-500">Loading fixtures...</div>
       ) : fixtures.length === 0 ? (
@@ -59,6 +54,9 @@ export function GamesSection({
           fixtureCards={fixtureCards}
           isTestApi={isInApiTestLeague}
           showPickButtons={true}
+          headerRightElement={hasLiveGames ? (
+            <LiveGamesToggle value={showLiveOnly} onChange={onToggleLiveOnly} />
+          ) : undefined}
         />
       ) : null}
     </Section>

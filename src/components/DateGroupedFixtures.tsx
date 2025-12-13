@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import type { ReactNode } from 'react';
 import DateHeader from './DateHeader';
 import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from './FixtureCard';
 
@@ -6,12 +7,14 @@ interface DateGroupedFixturesProps {
   fixtureCards: Array<{ fixture: FixtureCardFixture; liveScore: FixtureCardLiveScore | null; pick: "H" | "D" | "A" | undefined }>;
   isTestApi?: boolean;
   showPickButtons?: boolean;
+  headerRightElement?: ReactNode;
 }
 
 export default function DateGroupedFixtures({
   fixtureCards,
   isTestApi = false,
   showPickButtons = true,
+  headerRightElement,
 }: DateGroupedFixturesProps) {
   const groupedByDate = useMemo(() => {
     const groups = new Map<string, typeof fixtureCards>();
@@ -54,7 +57,7 @@ export default function DateGroupedFixtures({
     <div className="space-y-6">
       {groupedByDate.map(({ date, cards }, dateIdx) => (
         <div key={date} className={dateIdx > 0 ? 'mt-6' : ''}>
-          <DateHeader date={date} />
+          <DateHeader date={date} rightElement={dateIdx === 0 ? headerRightElement : undefined} />
           <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">
             {cards.map(({ fixture, liveScore, pick }, cardIdx) => (
               <div key={fixture.id} className={cardIdx < cards.length - 1 ? 'relative' : ''}>
