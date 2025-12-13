@@ -25,7 +25,7 @@ export function LeaderboardsSection({
       title="Leaderboards" 
       className="-mt-4"
       infoTitle="Leaderboards"
-      infoDescription="The leaderboards are where all TOTL players are ranked. Your position is based on OCP (Overall Correct Predictions). Joined late? No stress — after 5 and 10 weeks you'll show up in the Form leaderboards. See full rules →"
+      infoDescription="The leaderboards are where all TOTL players are ranked.\n\nYour position is based on OCP (Overall Correct Predictions).\n\nJoined late? No stress — after 5 and 10 weeks you'll show up in the Form leaderboards.\n\nSee full rules →"
     >
       <HorizontalScrollContainer>
         <LeaderboardCard
