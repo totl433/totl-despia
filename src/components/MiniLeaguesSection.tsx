@@ -54,7 +54,6 @@ You compete each Game Week and across the full season — with one overall winne
 Start a Mini League →
 
 How To Play →`}
-        infoImage="/assets/Volley/Volley-Coach.png"
       >
         <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
           <div className="text-slate-600 mb-3">You don't have any mini leagues yet.</div>
@@ -82,7 +81,6 @@ You compete each Game Week and across the full season — with one overall winne
 Start a Mini League →
 
 How To Play →`}
-        infoImage="/assets/Volley/Volley-Coach.png"
       >
         <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
           <div className="text-slate-600">Loading leagues...</div>
