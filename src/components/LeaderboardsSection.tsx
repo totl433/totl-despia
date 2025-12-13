@@ -29,7 +29,7 @@ export function LeaderboardsSection({
 
 Joined late? No stress — after 5 and 10 weeks you'll show up in the Form leaderboards.
 
-See full rules →`}
+See the full rules →`}
     >
       <HorizontalScrollContainer>
         <LeaderboardCard

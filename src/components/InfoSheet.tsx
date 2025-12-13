@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 
 export type InfoSheetProps = {
   isOpen: boolean;
@@ -95,14 +96,37 @@ export default function InfoSheet({ isOpen, onClose, title, description }: InfoS
         {/* Content */}
         <div className="px-6 pb-8 max-h-[70vh] overflow-y-auto">
           <div id="info-sheet-description" className="text-slate-600 leading-relaxed">
-            {description
-              .split(/\n+/)
-              .filter(line => line.trim())
-              .map((paragraph, index) => (
-                <p key={index} className={index === 0 ? '' : 'mt-4'}>
-                  {paragraph.trim()}
-                </p>
-              ))}
+            {(() => {
+              // Split on newlines and filter empty lines
+              const paragraphs = description
+                .split(/\n+/)
+                .map(line => line.trim())
+                .filter(line => line.length > 0);
+              
+              return paragraphs.map((paragraph, index) => {
+                // Check if paragraph contains "See the full rules →"
+                if (paragraph.includes('See the full rules →')) {
+                  const parts = paragraph.split('See the full rules →');
+                  return (
+                    <p key={index} className={index === 0 ? '' : 'mt-4'}>
+                      {parts[0]}
+                      <Link
+                        to="/how-to-play"
+                        onClick={onClose}
+                        className="text-[#1C8376] font-semibold hover:underline inline-flex items-center gap-1"
+                      >
+                        See the full rules →
+                      </Link>
+                    </p>
+                  );
+                }
+                return (
+                  <p key={index} className={index === 0 ? '' : 'mt-4'}>
+                    {paragraph}
+                  </p>
+                );
+              });
+            })()}
           </div>
         </div>
 
