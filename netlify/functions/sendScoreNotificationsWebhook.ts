@@ -1002,27 +1002,27 @@ export const handler: Handler = async (event, context) => {
     }
 
     // Handle kickoff
-    // Check if we've already sent a kickoff notification for this match
+    // Simple check: if we've already notified for kickoff, skip entirely
     const hasNotifiedKickoff = state?.last_notified_status === 'IN_PLAY' && 
                                state?.last_notified_home_score === 0 && 
                                state?.last_notified_away_score === 0;
     
-    // Also check if we notified recently (within last 5 minutes) to prevent duplicate notifications
-    // This handles cases where the webhook fires repeatedly
-    const recentlyNotified = state?.last_notified_at && 
-      state.last_notified_status === 'IN_PLAY' &&
-      state.last_notified_home_score === 0 &&
-      state.last_notified_away_score === 0 &&
-      (new Date(state.last_notified_at).getTime() > Date.now() - 5 * 60 * 1000); // 5 minutes ago
-    
-    // Detect kickoff: either status changed from non-IN_PLAY to IN_PLAY with 0-0,
-    // OR game is IN_PLAY with 0-0 and we haven't notified yet (handles case where old_record is missing)
-    const isKickoffOrNewlyInPlay = (isKickoff || (
+    if (hasNotifiedKickoff) {
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - already sent kickoff notification for match ${apiMatchId}`);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ message: 'Already notified for kickoff' }),
+      };
+    }
+
+    // Detect kickoff: status changed from non-IN_PLAY to IN_PLAY with 0-0 score
+    // OR game is IN_PLAY with 0-0 and we haven't notified yet
+    const isKickoffOrNewlyInPlay = isKickoff || (
       status === 'IN_PLAY' && 
       homeScore === 0 && 
-      awayScore === 0 && 
-      !hasNotifiedKickoff && !recentlyNotified
-    )) && !hasNotifiedKickoff && !recentlyNotified;
+      awayScore === 0
+    );
 
     if (isKickoffOrNewlyInPlay) {
       console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF DETECTED: isKickoff=${isKickoff}, status=${status}, oldStatus=${oldStatus || 'null'}, score=${homeScore}-${awayScore}, hasNotifiedKickoff=${hasNotifiedKickoff}`);
