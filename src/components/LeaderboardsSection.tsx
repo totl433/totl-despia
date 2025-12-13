@@ -21,7 +21,12 @@ export function LeaderboardsSection({
   latestGw
 }: LeaderboardsSectionProps) {
   return (
-    <Section title="Leaderboards" className="-mt-4">
+    <Section 
+      title="Leaderboards" 
+      className="-mt-4"
+      infoTitle="Leaderboards"
+      infoDescription="The leaderboards are where all TOTL players are ranked. Your position is based on OCP (Overall Correct Predictions). Joined late? No stress — after 5 and 10 weeks you'll show up in the Form leaderboards. See full rules →"
+    >
       <HorizontalScrollContainer>
         <LeaderboardCard
           title="Last GW"
