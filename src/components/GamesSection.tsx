@@ -43,15 +43,13 @@ export function GamesSection({
     <Section 
       title={title}
       className="mt-6"
-      headerRight={
-        <div className="flex items-center gap-3">
-          {hasLiveGames && (
-            <LiveGamesToggle value={showLiveOnly} onChange={onToggleLiveOnly} />
-          )}
-          {scoreComponent}
-        </div>
-      }
+      headerRight={scoreComponent}
     >
+      {hasLiveGames && (
+        <div className="mb-3 flex justify-end">
+          <LiveGamesToggle value={showLiveOnly} onChange={onToggleLiveOnly} />
+        </div>
+      )}
       {(!hasCheckedCache || fixturesLoading) ? (
         <div className="p-4 text-slate-500">Loading fixtures...</div>
       ) : fixtures.length === 0 ? (
