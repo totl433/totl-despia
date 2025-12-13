@@ -101,7 +101,6 @@ You compete each Game Week and across the full season — with one overall winne
 Start a Mini League →
 
 How To Play →`}
-      infoImage="/assets/Volley/Volley-Coach.png"
     >
       <HorizontalScrollContainer>
           {Array.from({ length: Math.ceil(leagues.length / 3) }).map((_, batchIdx) => {
