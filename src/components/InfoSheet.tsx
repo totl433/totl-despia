@@ -69,7 +69,7 @@ export default function InfoSheet({ isOpen, onClose, title, description }: InfoS
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 pb-4">
-          <h2 id="info-sheet-title" className="text-2xl font-bold text-slate-900">
+          <h2 id="info-sheet-title" className="text-lg font-medium text-slate-900 uppercase tracking-wide" style={{ fontFamily: '"Gramatika", sans-serif', fontWeight: 700 }}>
             {title}
           </h2>
           <button
