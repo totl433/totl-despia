@@ -104,9 +104,9 @@ export default function InfoSheet({ isOpen, onClose, title, description }: InfoS
                 .filter(line => line.length > 0);
               
               return paragraphs.map((paragraph, index) => {
-                // Check if paragraph contains "See the full rules →"
-                if (paragraph.includes('See the full rules →')) {
-                  const parts = paragraph.split('See the full rules →');
+                // Check if paragraph contains "How To Play →"
+                if (paragraph.includes('How To Play →')) {
+                  const parts = paragraph.split('How To Play →');
                   return (
                     <p key={index} className={index === 0 ? '' : 'mt-4'}>
                       {parts[0]}
@@ -115,7 +115,7 @@ export default function InfoSheet({ isOpen, onClose, title, description }: InfoS
                         onClick={onClose}
                         className="text-[#1C8376] font-semibold hover:underline inline-flex items-center gap-1"
                       >
-                        See the full rules →
+                        How To Play →
                       </Link>
                     </p>
                   );
