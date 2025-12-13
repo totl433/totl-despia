@@ -1007,34 +1007,48 @@ export const handler: Handler = async (event, context) => {
                                state?.last_notified_home_score === 0 && 
                                state?.last_notified_away_score === 0;
     
+    // Also check if we notified recently (within last 5 minutes) to prevent duplicate notifications
+    // This handles cases where the webhook fires repeatedly
+    const recentlyNotified = state?.last_notified_at && 
+      state.last_notified_status === 'IN_PLAY' &&
+      state.last_notified_home_score === 0 &&
+      state.last_notified_away_score === 0 &&
+      (new Date(state.last_notified_at).getTime() > Date.now() - 5 * 60 * 1000); // 5 minutes ago
+    
     // Detect kickoff: either status changed from non-IN_PLAY to IN_PLAY with 0-0,
     // OR game is IN_PLAY with 0-0 and we haven't notified yet (handles case where old_record is missing)
     const isKickoffOrNewlyInPlay = (isKickoff || (
       status === 'IN_PLAY' && 
       homeScore === 0 && 
       awayScore === 0 && 
-      !hasNotifiedKickoff
-    )) && !hasNotifiedKickoff;
+      !hasNotifiedKickoff && !recentlyNotified
+    )) && !hasNotifiedKickoff && !recentlyNotified;
 
     if (isKickoffOrNewlyInPlay) {
       console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF DETECTED: isKickoff=${isKickoff}, status=${status}, oldStatus=${oldStatus || 'null'}, score=${homeScore}-${awayScore}, hasNotifiedKickoff=${hasNotifiedKickoff}`);
 
       // CRITICAL: Update state IMMEDIATELY before sending notifications
       // This prevents duplicate notifications if webhook fires multiple times
-      await supabase
+      const now = new Date().toISOString();
+      const { error: updateError } = await supabase
         .from('notification_state')
         .upsert({
           api_match_id: apiMatchId,
           last_notified_home_score: 0,
           last_notified_away_score: 0,
           last_notified_status: 'IN_PLAY',
-          last_notified_at: new Date().toISOString(),
+          last_notified_at: now,
           last_notified_goals: null,
           last_notified_red_cards: null,
         } as any, {
           onConflict: 'api_match_id',
         });
-      console.log(`[sendScoreNotificationsWebhook] ✅ State updated IMMEDIATELY for kickoff match ${apiMatchId}`);
+
+      if (updateError) {
+        console.error(`[sendScoreNotificationsWebhook] [${requestId}] Error updating state:`, updateError);
+      } else {
+        console.log(`[sendScoreNotificationsWebhook] [${requestId}] ✅ State updated IMMEDIATELY for kickoff match ${apiMatchId}`);
+      }
 
       // Get users who have picks
       let picks: any[] = [];
