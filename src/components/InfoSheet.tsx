@@ -94,13 +94,11 @@ export default function InfoSheet({ isOpen, onClose, title, description }: InfoS
 
         {/* Content */}
         <div className="px-6 pb-8 max-h-[70vh] overflow-y-auto">
-          <div id="info-sheet-description" className="text-slate-600 leading-relaxed space-y-3">
-            {description.split('\n').map((paragraph, index) => (
-              paragraph.trim() && (
-                <p key={index} className={index === 0 ? '' : 'mt-3'}>
-                  {paragraph.trim()}
-                </p>
-              )
+          <div id="info-sheet-description" className="text-slate-600 leading-relaxed">
+            {description.split('\n').filter(line => line.trim()).map((paragraph, index) => (
+              <p key={index} className={index === 0 ? '' : 'mt-3'}>
+                {paragraph.trim()}
+              </p>
             ))}
           </div>
         </div>
