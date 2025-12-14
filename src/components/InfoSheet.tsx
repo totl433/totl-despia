@@ -121,7 +121,6 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
                       const afterChip = remaining.substring(remaining.indexOf('(TB)') + 4);
                       const isShiny = afterChip.toLowerCase().includes('gameweek winner');
                       const isGreen = afterChip.toLowerCase().includes('submitted') && !afterChip.toLowerCase().includes('not');
-                      const isGrey = afterChip.toLowerCase().includes('not submitted');
                       
                       let chipClassName = 'chip-container rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6 inline-flex mx-1';
                       if (isShiny) {

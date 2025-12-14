@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { MiniLeagueCard } from "../components/MiniLeagueCard";
 import type { LeagueRow, LeagueData } from "../components/MiniLeagueCard";
 import { getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
-import { LEAGUE_START_OVERRIDES, resolveLeagueStartGw } from "../lib/leagueStart";
+import { resolveLeagueStartGw } from "../lib/leagueStart";
 import { getCached, setCached, CACHE_TTL, invalidateUserCache } from "../lib/cache";
 import { useLeagues } from "../hooks/useLeagues";
 import { PageHeader } from "../components/PageHeader";
@@ -149,7 +149,6 @@ export default function TablesPage() {
   const [picksData, setPicksData] = useState<Map<string, PickRow[]>>(new Map());
   const [membersByLeagueId, setMembersByLeagueId] = useState<Map<string, LeagueMember[]>>(new Map());
   const [leagueStartGwMap, setLeagueStartGwMap] = useState<Map<string, number>>(new Map());
-  const [gwsWithResults, setGwsWithResults] = useState<number[]>([]);
   const [submittedUserIdsSet, setSubmittedUserIdsSet] = useState<Set<string>>(new Set());
   
   // Build rows from leagues (from hook) + member counts (fetched separately)
@@ -291,7 +290,6 @@ export default function TablesPage() {
           if (out) outcomeByGwIdx.set(`${r.gw}:${r.fixture_index}`, out);
         }
         const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
-        setGwsWithResults(gwsWithResults);
         
         // Build fixturesByGw map for league start GW calculation
         const fixturesByGw = new Map<number, string[]>();
@@ -522,7 +520,7 @@ export default function TablesPage() {
             });
             // Check if outcomeByGwIdx has GW 1
             const allOutcomeGws = new Set<number>();
-            outcomeByGwIdx.forEach((out, key) => {
+            outcomeByGwIdx.forEach((_out, key) => {
               const g = parseInt(key.split(":")[0], 10);
               allOutcomeGws.add(g);
             });
@@ -740,7 +738,6 @@ export default function TablesPage() {
       fixturesByGw.set(f.gw, arr);
     });
     
-    setGwsWithResults(updatedGwsWithResults);
     
     const leagueDataMap: Record<string, LeagueData> = {};
     
@@ -923,8 +920,8 @@ export default function TablesPage() {
       
       const userIndex = sortedMltRows.findIndex(r => r.user_id === user.id);
       const userPosition = userIndex !== -1 ? userIndex + 1 : null;
-      const prevPosition = userPosition > 1 ? userPosition - 1 : null;
-      const positionChange: 'up' | 'down' | 'same' | null = prevPosition === null ? null : 
+      const prevPosition = userPosition !== null && userPosition > 1 ? userPosition - 1 : null;
+      const positionChange: 'up' | 'down' | 'same' | null = prevPosition === null || userPosition === null ? null : 
         userPosition < prevPosition ? 'up' : userPosition > prevPosition ? 'down' : 'same';
       
       const latestRelevantGw = relevantGws.length > 0 ? Math.max(...relevantGws) : currentGw;

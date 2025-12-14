@@ -5,7 +5,7 @@ import ScrollLogo from "../components/ScrollLogo";
 import { LeaderboardsSection } from "../components/LeaderboardsSection";
 import { MiniLeaguesSection } from "../components/MiniLeaguesSection";
 import { GamesSection } from "../components/GamesSection";
-import { LEAGUE_START_OVERRIDES, resolveLeagueStartGw } from "../lib/leagueStart";
+import { resolveLeagueStartGw } from "../lib/leagueStart";
 import type { Fixture as FixtureCardFixture, LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { getCached, setCached, removeCached, CACHE_TTL } from "../lib/cache";
