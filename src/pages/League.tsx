@@ -2700,7 +2700,7 @@ ${shareUrl}`;
 
 The player with the most correct predictions wins.
 
-Unicorns
+🦄 Unicorns
 
 In Mini-Leagues with 3 or more players, if you're the only person to correctly predict a fixture, that's a Unicorn. In ties, the player with most Unicorns wins!`}
         />
