@@ -3255,13 +3255,13 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
         isOpen={showTableModal}
         onClose={() => setShowTableModal(false)}
         title="League Points"
-        description={`League Points:
+        description={`League Points
 
 Win the week – 3 points
 Draw – 1 point
 Lose – 0 points
 
-🤝 Ties:
+🤝 Ties
 
 If two or more players are tied on Points, the player with the most overall 🦄 Unicorns in the mini league is ranked higher.${league && (['The Bird league'].includes(league.name) || ['gregVjofVcarl', 'Let Down'].includes(league.name)) ? '\n\nNote: This mini league started after GW1, so the "CP" column shows correct predictions since this mini league began.' : ''}`}
       />
