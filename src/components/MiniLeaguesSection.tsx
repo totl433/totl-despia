@@ -49,7 +49,7 @@ export function MiniLeaguesSection({
         infoTitle="Mini Leagues"
         infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
 
-You compete each Game Week and across the full season — with one overall winner at the end of the season.
+You compete each Gameweek and across the full season — with one overall winner at the end of the season.
 
 (TB) Predictions submitted
 
@@ -84,7 +84,7 @@ How To Play →`}
         infoTitle="Mini Leagues"
         infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
 
-You compete each Game Week and across the full season — with one overall winner at the end of the season.
+You compete each Gameweek and across the full season — with one overall winner at the end of the season.
 
 (TB) Predictions submitted
 
@@ -112,7 +112,7 @@ How To Play →`}
       infoTitle="Mini Leagues"
       infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
 
-You compete each Game Week and across the full season — with one overall winner at the end of the season.
+You compete each Gameweek and across the full season — with one overall winner at the end of the season.
 
 (TB) Predictions submitted
 

@@ -459,7 +459,7 @@ export default function PredictionsPage() {
         <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
           Call every game, lock in your results, and climb the table.
         </p>
-        <div className="text-slate-600 text-lg font-semibold mt-1">Game Week {gwOr(gw)}</div>
+        <div className="text-slate-600 text-lg font-semibold mt-1">Gameweek {gwOr(gw)}</div>
 
       {/* status / summary */}
       <div className="mt-3">

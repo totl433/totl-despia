@@ -398,7 +398,7 @@ export default function NewPredictionsCentre() {
               ) : (
                 <div className="rounded-xl border bg-gradient-to-br from-[#1C8376]/5 to-blue-50/50 shadow-sm px-6 py-5">
                   <div className="text-center">
-                    <div className="font-bold text-slate-900 text-xl mb-3">Game Week {currentGw}</div>
+                    <div className="font-bold text-slate-900 text-xl mb-3">Gameweek {currentGw}</div>
                     {score !== null && (
                       <>
                         <div className="flex items-center justify-center gap-3 mb-3">

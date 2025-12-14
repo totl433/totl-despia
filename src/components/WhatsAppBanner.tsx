@@ -113,7 +113,7 @@ export default function WhatsAppBanner() {
               {showSecondMessage && (
                 <div className="bg-white rounded-2xl rounded-br-md px-4 py-2 shadow-sm animate-bounce-in-delayed">
                   <h3 className="text-gray-800 font-medium text-sm">
-                    Never miss a Game Week - join for<br className="sm:hidden" /> instant alerts 🔔 📢 🎯
+                    Never miss a Gameweek - join for<br className="sm:hidden" /> instant alerts 🔔 📢 🎯
                   </h3>
                 </div>
               )}

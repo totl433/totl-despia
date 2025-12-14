@@ -27,7 +27,7 @@ import { prewarmLeaguesCache } from '../api/leagues';
  * Pages should NOT use it - use the useLeagues hook instead.
  */
 export interface InitialData {
-  // Current game week
+  // Current gameweek
   currentGw: number;
   latestGw: number | null;
   

@@ -318,7 +318,7 @@ export default function AdminPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             title: `GW${gw} Results`,
-            message: `Results for Game Week ${gw} are published. See how you scored!`,
+            message: `Results for Gameweek ${gw} are published. See how you scored!`,
             data: { type: 'results_published', gw }
           })
         });

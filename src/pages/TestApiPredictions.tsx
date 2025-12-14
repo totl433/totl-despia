@@ -1563,7 +1563,7 @@ export default function TestApiPredictions() {
                 ✕
               </button>
               <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">
-                {currentTestGw ? `Game Week ${currentTestGw}` : 'Loading...'}
+                {currentTestGw ? `Gameweek ${currentTestGw}` : 'Loading...'}
               </span>
             </div>
           </div>
@@ -1633,7 +1633,7 @@ export default function TestApiPredictions() {
                   Back
                 </button>
                 <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">
-                  Game Week {currentTestGw}
+                  Gameweek {currentTestGw}
                 </span>
               </div>
             </div>
@@ -1727,7 +1727,7 @@ export default function TestApiPredictions() {
                 Back
               </button>
               <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">
-                Game Week {currentTestGw}
+                Gameweek {currentTestGw}
               </span>
             </div>
           </div>

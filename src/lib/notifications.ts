@@ -54,7 +54,7 @@ export function scheduleDeadlineReminder(
 const GWS_STARTING_SOON_KEY_PREFIX = 'scheduled_gw_starting_soon_';
 
 /**
- * Schedule a "Game Week Starting Soon" notification
+ * Schedule a "Gameweek Starting Soon" notification
  * @param firstKickoffTime - ISO string of first kickoff time
  * @param gameweek - Gameweek number
  */

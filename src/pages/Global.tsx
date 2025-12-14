@@ -426,7 +426,7 @@ export default function GlobalLeaderboardPage() {
     return (weeks: number) => {
       if (!latestGw || latestGw < weeks) return [];
       
-      // Get last N game weeks
+      // Get last N gameweeks
       const startGw = latestGw - weeks + 1;
       const formGwPoints = gwPoints.filter(gp => gp.gw >= startGw && gp.gw <= latestGw);
       
@@ -950,14 +950,14 @@ export default function GlobalLeaderboardPage() {
           <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center">
             <div className="text-lg font-semibold text-slate-700 mb-2">5 Week Form Leaderboard Coming Soon</div>
             <div className="text-slate-600">
-              Complete 5 game weeks in a row to unlock the 5 Week Form Leaderboard and see who's in the best form!
+              Complete 5 gameweeks in a row to unlock the 5 Week Form Leaderboard and see who's in the best form!
             </div>
           </div>
         ) : activeTab === "form10" && latestGw && latestGw < 10 ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center">
             <div className="text-lg font-semibold text-slate-700 mb-2">10 Week Form Leaderboard Coming Soon</div>
             <div className="text-slate-600">
-              Complete 10 game weeks in a row to unlock the 10 Week Form Leaderboard and see who's in the best form!
+              Complete 10 gameweeks in a row to unlock the 10 Week Form Leaderboard and see who's in the best form!
             </div>
           </div>
         ) : (activeTab === "overall" ? rowsFiltered : activeTab === "form5" ? form5Rows : activeTab === "form10" ? form10Rows : lastGwRows).length === 0 ? (

@@ -132,7 +132,7 @@ export default function ApiAdmin() {
     return () => { alive = false; };
   }, [isAdmin]);
 
-  // Fetch upcoming Premier League matches for the specific Game Week (matchday)
+  // Fetch upcoming Premier League matches for the specific Gameweek (matchday)
   const fetchUpcomingMatches = async (signal?: AbortSignal) => {
     if (!nextGw) {
       setApiError("Next GW not loaded yet.");
@@ -175,7 +175,7 @@ export default function ApiAdmin() {
         return null;
       }
 
-      // Filter matches by matchday (which corresponds to our Game Week)
+      // Filter matches by matchday (which corresponds to our Gameweek)
       const allMatches = result.data.matches || [];
       const filteredMatches = allMatches.filter((match: ApiMatch) => match.matchday === nextGw);
 
@@ -254,7 +254,7 @@ export default function ApiAdmin() {
     }
 
     // Confirm before saving
-    if (!confirm(`Are you sure you want to save GW ${nextGw} with ${selectedFixtures.size} fixture${selectedFixtures.size === 1 ? '' : 's'}? This will replace any existing fixtures for this game week.`)) {
+    if (!confirm(`Are you sure you want to save GW ${nextGw} with ${selectedFixtures.size} fixture${selectedFixtures.size === 1 ? '' : 's'}? This will replace any existing fixtures for this gameweek.`)) {
       return;
     }
 
@@ -349,7 +349,7 @@ export default function ApiAdmin() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            title: `GAME WEEK ${nextGw} - FIXTURES ARE OUT!`,
+            title: `GAMEWEEK ${nextGw} - FIXTURES ARE OUT!`,
             message: `Make your predictions now!`,
             data: { type: 'fixtures_published', gw: nextGw }
           })
@@ -367,7 +367,7 @@ export default function ApiAdmin() {
         // Don't throw - gameweek is saved, notification failure is non-critical
       }
 
-      setOk(`Game Week ${nextGw} saved with ${selectedFixtures.size} Premier League fixtures!`);
+      setOk(`Gameweek ${nextGw} saved with ${selectedFixtures.size} Premier League fixtures!`);
     } catch (e: any) {
       setError(e.message ?? "Failed to save gameweek.");
     } finally {
@@ -398,7 +398,7 @@ export default function ApiAdmin() {
           API Admin - Premier League
         </h2>
         <p className="text-sm text-slate-600 mb-6">
-          Select Premier League fixtures for Game Week {nextGw}. Check the feed for any cancelled or postponed games.
+          Select Premier League fixtures for Gameweek {nextGw}. Check the feed for any cancelled or postponed games.
         </p>
 
         {error && (
@@ -423,7 +423,7 @@ export default function ApiAdmin() {
         <div className="bg-white rounded-xl shadow-md p-4 mb-6">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm text-slate-600 mb-1">Next Game Week</div>
+              <div className="text-sm text-slate-600 mb-1">Next Gameweek</div>
               <div className="text-2xl font-bold text-slate-900">GW {nextGw}</div>
             </div>
             {selectedFixtures.size > 0 && (
