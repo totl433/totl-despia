@@ -2869,18 +2869,22 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           </div>
 
           {/* Tabs */}
-          <div className="flex border-b border-slate-200 bg-white">
+          <div className="flex border-b border-slate-200 bg-white gap-2">
             <button
               onClick={() => {
                 manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
                         setTab("chat-beta");
               }}
               className={
-                "flex-1 px-3 sm:px-6 py-3 text-[12px] font-semibold transition-colors relative " +
+                "flex-1 min-w-0 px-2 sm:px-4 py-3 text-[12px] font-semibold transition-colors relative leading-tight whitespace-normal " +
                 (tab === "chat-beta" ? "text-[#1C8376]" : "text-slate-400")
               }
             >
-              Chat (beta)
+              <span className="hidden sm:inline">Chat (beta)</span>
+              <span className="sm:hidden whitespace-pre-line text-center">
+                {`Chat
+(beta)`}
+              </span>
               {tab === "chat-beta" && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
               )}
@@ -2893,7 +2897,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                             setTab("gwr");
                 }}
                 className={
-                  "flex-1 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight flex items-center justify-center gap-1.5 " +
+                  "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight flex items-center justify-center gap-1.5 " +
                   (tab === "gwr" ? "text-[#1C8376]" : "text-slate-400")
                 }
               >
@@ -2928,7 +2932,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                         {displayGw ? `GW ${displayGw} ${label}` : `GW ${label}`}
                       </span>
                       <span className="sm:hidden whitespace-pre-line text-center">
-                        {displayGw ? `GW${displayGw}\n${label}` : `GW\n${label}`}
+                        {displayGw ? `GW${displayGw}\n${label.replace(' ', '\u00A0')}` : `GW\n${label.replace(' ', '\u00A0')}`}
                       </span>
                     </>
                   );
@@ -2947,7 +2951,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                             setTab("gw");
                 }}
                 className={
-                  "flex-1 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight " +
+                  "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight " +
                   (tab === "gw" ? "text-[#1C8376]" : "text-slate-400")
                 }
               >
@@ -2964,7 +2968,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                         setTab("mlt");
               }}
               className={
-                "flex-1 px-3 sm:px-6 py-3 text-sm font-semibold transition-colors relative " +
+                "flex-1 min-w-0 px-2 sm:px-4 py-3 text-sm font-semibold transition-colors relative " +
                 (tab === "mlt" ? "text-[#1C8376]" : "text-slate-400")
               }
             >
