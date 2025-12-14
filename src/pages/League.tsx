@@ -2698,7 +2698,7 @@ ${shareUrl}`;
           title="Weekly Winner"
           description={`🏆 How to Win the Week
 
-The player with the most correct predictions wins that gameweek.
+The player with the most correct predictions wins.
 
 🦄 Unicorn Rule
 
