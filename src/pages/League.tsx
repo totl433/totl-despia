@@ -3261,7 +3261,7 @@ Lose – 0 points
 
 🤝 Ties
 
-If two or more players are tied on Points in the table, the player with the most overall 🦄 Unicorns in the mini league is ranked higher.${league && (['The Bird league'].includes(league.name) || ['gregVjofVcarl', 'Let Down'].includes(league.name)) ? '\n\nNote: This mini league started after GW1, so the "CP" column shows correct predictions since this mini league began.' : ''}`}
+If two or more players are tied on Points in the table, the player with the most overall Unicorns in the mini league is ranked higher.${league && (['The Bird league'].includes(league.name) || ['gregVjofVcarl', 'Let Down'].includes(league.name)) ? '\n\nNote: This mini league started after GW1, so the "CP" column shows correct predictions since this mini league began.' : ''}`}
       />
 
       {/* Invite Modal */}
