@@ -62,17 +62,16 @@ export default function BottomNav() {
       if (activeIndex >= 0 && buttonRefs.current[activeIndex] && containerRef.current) {
         const container = containerRef.current;
         const containerRect = container.getBoundingClientRect();
+        const button = buttonRefs.current[activeIndex];
+        const buttonRect = button.getBoundingClientRect();
         
-        // Exactly 25% of the pill width
-        const containerWidth = containerRect.width;
+        // Use actual button position and width for perfect alignment
         const containerHeight = containerRect.height;
-        
-        // Active selector is exactly 25% of the pill
-        const indicatorWidth = containerWidth * 0.25;
+        const indicatorWidth = buttonRect.width;
         const indicatorHeight = containerHeight;
         
-        // Position based on index: 0%, 25%, 50%, 75% of container width
-        const indicatorLeft = activeIndex * indicatorWidth;
+        // Position based on actual button position relative to container
+        const indicatorLeft = buttonRect.left - containerRect.left;
         
         const isFirstItem = activeIndex === 0;
         const isLastItem = activeIndex === navItems.length - 1;
@@ -140,7 +139,7 @@ export default function BottomNav() {
         }
       `}</style>
       <div className="bottom-nav-absolute flex items-center justify-center px-4 pb-8">
-        <div ref={containerRef} className="bg-white border border-[#E5E7EB] flex items-center mb-4 relative overflow-hidden" style={{ width: '360px', height: '70px', borderRadius: '60px' }}>
+        <div ref={containerRef} className="bg-white border border-[#E5E7EB] flex items-center justify-between mb-4 relative overflow-hidden" style={{ width: '360px', height: '70px', borderRadius: '60px', padding: '0 8px' }}>
           {/* Active state indicator */}
           {indicatorStyle && (
             <div 
@@ -167,13 +166,12 @@ export default function BottomNav() {
               key={item.name}
                 ref={(el) => { buttonRefs.current[index] = el; }}
               onClick={() => navigate(item.path)}
-                className="relative z-10 flex flex-col items-center justify-center transition-all duration-300"
-                style={{ width: '90px', height: '70px', padding: '4px', gap: '4px', flexShrink: 0 }}
+                className="relative z-10 flex flex-col items-center justify-center transition-all duration-300 flex-1"
+                style={{ height: '70px', padding: '0', gap: '4px', minWidth: 0, maxWidth: '100%' }}
             >
                 <div 
-                  className="flex items-center justify-center"
+                  className="flex items-center justify-center w-full"
                   style={{ 
-                    width: '90px', 
                     height: '26px',
                     padding: '4px',
                     color: isActive ? '#1C8376' : '#353536',
@@ -184,11 +182,10 @@ export default function BottomNav() {
               </div>
                 </div>
                 <div 
-                  className="flex items-center justify-center"
+                  className="flex items-center justify-center w-full"
                   style={{ 
-                    width: '90px', 
                     height: '10px',
-                    padding: '0px 4px',
+                    padding: '0px 2px',
                     overflow: 'hidden',
                   }}
                 >
