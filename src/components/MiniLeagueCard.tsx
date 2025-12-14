@@ -63,12 +63,23 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
     const baseMembers = data.members ?? [];
     if (!baseMembers.length) return [];
 
+    // Debug logging for "forget it" league
+    if (row.name?.toLowerCase().includes('forget')) {
+      console.log(`[MiniLeagueCard] ${row.name} data.sortedMemberIds:`, data.sortedMemberIds);
+      console.log(`[MiniLeagueCard] ${row.name} baseMembers:`, baseMembers.map(m => ({ id: m.id, name: m.name })));
+    }
+
     const orderedMembers =
       data.sortedMemberIds && data.sortedMemberIds.length > 0
         ? data.sortedMemberIds
             .map((id) => baseMembers.find((m) => m.id === id))
             .filter((m): m is LeagueMember => m !== undefined)
         : [...baseMembers].sort((a, b) => a.name.localeCompare(b.name));
+
+    // Debug logging for "forget it" league
+    if (row.name?.toLowerCase().includes('forget')) {
+      console.log(`[MiniLeagueCard] ${row.name} orderedMembers (chips order):`, orderedMembers.map(m => ({ id: m.id, name: m.name, initials: initials(m.name) })));
+    }
 
     const submittedSet = toStringSet(data.submittedMembers);
     const winnersSet = toStringSet(data.latestGwWinners);
@@ -295,6 +306,10 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
   );
 }, (prevProps, nextProps) => {
   // Custom comparison function to prevent unnecessary re-renders
+  // CRITICAL: Must check sortedMemberIds to ensure chips re-render when order changes
+  const prevSortedIds = prevProps.data?.sortedMemberIds?.join(',') ?? '';
+  const nextSortedIds = nextProps.data?.sortedMemberIds?.join(',') ?? '';
+  
   return (
     prevProps.row.id === nextProps.row.id &&
     prevProps.row.name === nextProps.row.name &&
@@ -305,6 +320,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
     prevProps.data?.id === nextProps.data?.id &&
     prevProps.data?.userPosition === nextProps.data?.userPosition &&
     prevProps.data?.members?.length === nextProps.data?.members?.length &&
+    prevSortedIds === nextSortedIds && // CRITICAL: Re-render when sortedMemberIds changes
     prevProps.submissions?.allSubmitted === nextProps.submissions?.allSubmitted &&
     prevProps.submissions?.submittedCount === nextProps.submissions?.submittedCount
   );

@@ -5,7 +5,7 @@ import ScrollLogo from "../components/ScrollLogo";
 import { LeaderboardsSection } from "../components/LeaderboardsSection";
 import { MiniLeaguesSection } from "../components/MiniLeaguesSection";
 import { GamesSection } from "../components/GamesSection";
-import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
+import { LEAGUE_START_OVERRIDES, resolveLeagueStartGw } from "../lib/leagueStart";
 import type { Fixture as FixtureCardFixture, LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { getCached, setCached, removeCached, CACHE_TTL } from "../lib/cache";
@@ -200,7 +200,39 @@ export default function HomePage() {
   }, [leagues]);
   
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>({});
+  const [volleyAnimationKey, setVolleyAnimationKey] = useState<number | null>(null);
+  const [volleyStillFrame, setVolleyStillFrame] = useState<string | null>(null);
+  const volleyImgRef = useRef<HTMLImageElement>(null);
   const [gw, setGw] = useState<number>(initialState.gw);
+
+  // Extract first frame of gif for still image
+  useEffect(() => {
+    if (volleyStillFrame) return; // Already extracted
+    
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          const dataUrl = canvas.toDataURL('image/png');
+          setVolleyStillFrame(dataUrl);
+        }
+      } catch (e) {
+        console.warn('Could not extract still frame from volley gif:', e);
+        // Fallback: use gif as still (will show first frame)
+        setVolleyStillFrame('/assets/Animation/Volley-Keepy-Uppies.gif');
+      }
+    };
+    img.onerror = () => {
+      // Fallback if image fails to load
+      setVolleyStillFrame('/assets/Animation/Volley-Keepy-Uppies.gif');
+    };
+    img.src = '/assets/Animation/Volley-Keepy-Uppies.gif';
+  }, [volleyStillFrame]);
   const [latestGw, setLatestGw] = useState<number | null>(initialState.latestGw);
   // Track gw_results changes to trigger leaderboard recalculation
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
@@ -1095,33 +1127,16 @@ export default function HomePage() {
           }
         });
         
-        // Calculate league start GWs
+        // Calculate league start GWs using EXACT same logic as League.tsx
+        // Use resolveLeagueStartGw which queries fixtures table (same as League page)
         const leagueStartGws = new Map<string, number>();
-        leagues.forEach(league => {
-          const override = league.name && LEAGUE_START_OVERRIDES[league.name];
-          if (typeof override === "number") {
-            leagueStartGws.set(league.id, override);
-            return;
-          }
-          if (league.start_gw !== null && league.start_gw !== undefined) {
-            leagueStartGws.set(league.id, league.start_gw);
-            return;
-          }
-          if (league.created_at) {
-            const leagueCreatedAt = new Date(league.created_at);
-            for (const g of gwsWithResults) {
-              const deadline = gwDeadlines.get(g);
-              if (deadline && leagueCreatedAt <= deadline) {
-                leagueStartGws.set(league.id, g);
-                return;
-              }
-            }
-            if (gwsWithResults.length > 0) {
-              leagueStartGws.set(league.id, Math.max(...gwsWithResults) + 1);
-              return;
-            }
-          }
-          leagueStartGws.set(league.id, gw);
+        const leagueStartGwPromises = leagues.map(async (league) => {
+          const leagueStartGw = await resolveLeagueStartGw(league, gw);
+          return { leagueId: league.id, leagueStartGw };
+        });
+        const leagueStartGwResults = await Promise.all(leagueStartGwPromises);
+        leagueStartGwResults.forEach(({ leagueId, leagueStartGw }) => {
+          leagueStartGws.set(leagueId, leagueStartGw);
         });
         
         // Process league data
@@ -1862,12 +1877,36 @@ export default function HomePage() {
       {/* Logo and Unicorn header */}
       <div className="relative mb-4">
         {/* Unicorn positioned on the left, next to centered logo */}
-        <img 
-          src="/assets/Animation/Volley-Keepy-Uppies.gif" 
-          alt="TOTL Unicorn" 
-          className="absolute left-0 top-1/2 -translate-y-1/2 w-20 h-20 object-contain z-10"
-          style={{ imageRendering: 'pixelated' }}
-        />
+        <button
+          onClick={() => {
+            // Force gif to restart by changing key
+            setVolleyAnimationKey(Date.now());
+            // Reset after animation completes (gif is ~2 seconds)
+            setTimeout(() => {
+              setVolleyAnimationKey(null);
+            }, 2000);
+          }}
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 cursor-pointer"
+          style={{ touchAction: 'manipulation' }}
+        >
+          {volleyAnimationKey ? (
+            <img 
+              key={volleyAnimationKey}
+              src={`/assets/Animation/Volley-Keepy-Uppies.gif?t=${volleyAnimationKey}`}
+              alt="TOTL Unicorn" 
+              className="w-20 h-20 object-contain"
+              style={{ imageRendering: 'pixelated' }}
+            />
+          ) : (
+            <img 
+              ref={volleyImgRef}
+              src={volleyStillFrame || '/assets/Animation/Volley-Keepy-Uppies.gif'}
+              alt="TOTL Unicorn" 
+              className="w-20 h-20 object-contain"
+              style={{ imageRendering: 'pixelated' }}
+            />
+          )}
+        </button>
         {/* Logo stays centered */}
         <ScrollLogo />
       </div>

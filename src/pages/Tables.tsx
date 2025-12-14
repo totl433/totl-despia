@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { MiniLeagueCard } from "../components/MiniLeagueCard";
 import type { LeagueRow, LeagueData } from "../components/MiniLeagueCard";
 import { getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
-import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
+import { LEAGUE_START_OVERRIDES, resolveLeagueStartGw } from "../lib/leagueStart";
 import { getCached, setCached, CACHE_TTL, invalidateUserCache } from "../lib/cache";
 import { useLeagues } from "../hooks/useLeagues";
 import { PageHeader } from "../components/PageHeader";
@@ -94,6 +94,7 @@ export default function TablesPage() {
         }
         
         // Convert arrays back to Sets for submittedMembers and latestGwWinners
+        // NOTE: sortedMemberIds is NOT loaded from cache - it must be recalculated to ensure correct MLT order
         const restoredLeagueData: Record<string, LeagueData> = {};
         if (cached.leagueData) {
           for (const [leagueId, data] of Object.entries(cached.leagueData)) {
@@ -101,6 +102,9 @@ export default function TablesPage() {
               ...data,
               submittedMembers: data.submittedMembers ? (Array.isArray(data.submittedMembers) ? new Set(data.submittedMembers) : new Set()) : undefined,
               latestGwWinners: data.latestGwWinners ? (Array.isArray(data.latestGwWinners) ? new Set(data.latestGwWinners) : new Set()) : undefined,
+              // CRITICAL: sortedMemberIds is NOT loaded from cache - it will be recalculated in the initial effect
+              // This ensures the order always matches the MLT table (same as Home page)
+              sortedMemberIds: undefined,
             };
           }
         }
@@ -149,9 +153,9 @@ export default function TablesPage() {
   const [submittedUserIdsSet, setSubmittedUserIdsSet] = useState<Set<string>>(new Set());
   
   // Build rows from leagues (from hook) + member counts (fetched separately)
-  // Leagues from useLeagues are already sorted by unread count
+  // Sort by created_at to match database order (same as Home page)
   const rows: LeagueRow[] = useMemo(() => {
-    return leagues.map(league => ({
+    const rowsUnsorted = leagues.map(league => ({
       id: league.id,
       name: league.name,
       code: league.code,
@@ -160,6 +164,12 @@ export default function TablesPage() {
       start_gw: league.start_gw,
       memberCount: memberCounts[league.id] ?? 0,
     }));
+    
+    // Sort by created_at to match the order in the leagues table (same as Home page)
+    return rowsUnsorted.sort((a, b) => {
+      if (!a.created_at || !b.created_at) return 0;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
   }, [leagues, memberCounts]);
   
   // Combined loading state
@@ -274,6 +284,15 @@ export default function TablesPage() {
         const allFixtures = allFixturesResult.data ?? [];
         setAllFixturesData(allFixtures as Array<{ gw: number; kickoff_time: string }>);
         
+        // Calculate gwsWithResults FIRST (needed for league start GW calculation and picks fetching) - same as Home page
+        const outcomeByGwIdx = new Map<string, "H" | "D" | "A">();
+        for (const r of resultList) {
+          const out = rowToOutcome(r);
+          if (out) outcomeByGwIdx.set(`${r.gw}:${r.fixture_index}`, out);
+        }
+        const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
+        setGwsWithResults(gwsWithResults);
+        
         // Build fixturesByGw map for league start GW calculation
         const fixturesByGw = new Map<number, string[]>();
         allFixtures.forEach((f: { gw: number; kickoff_time: string }) => {
@@ -298,72 +317,86 @@ export default function TablesPage() {
           leaguesMetaMap.set(l.id, l);
         });
 
-        // Calculate start_gw for all leagues
+        // Calculate start_gw for all leagues using EXACT same logic as League.tsx
+        // Use resolveLeagueStartGw which queries fixtures table (same as League page)
         const leagueStartGwMap = new Map<string, number>();
-        for (const league of leagues) {
-          // Use league data directly from useLeagues (already includes start_gw, created_at)
-          const leagueWithMeta = {
-            id: league.id,
-            name: league.name,
-            created_at: league.created_at || null,
-            start_gw: league.start_gw
-          };
-          
-          let leagueStartGw = metaGw;
-          const override = leagueWithMeta.name ? LEAGUE_START_OVERRIDES[leagueWithMeta.name] : undefined;
-          if (typeof override === "number") {
-            leagueStartGw = override;
-          } else if (leagueWithMeta.start_gw !== null && leagueWithMeta.start_gw !== undefined) {
-            leagueStartGw = leagueWithMeta.start_gw;
-          } else if (leagueWithMeta.created_at && gwsWithResults.length > 0) {
-            const leagueCreatedAt = new Date(leagueWithMeta.created_at);
-            const DEADLINE_BUFFER_MINUTES = 75;
-            
-            for (const gw of gwsWithResults) {
-              const gwFixtures = fixturesByGw.get(gw);
-              if (gwFixtures && gwFixtures.length > 0) {
-                const firstKickoff = new Date(gwFixtures[0]);
-                const deadlineTime = new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000);
-                if (leagueCreatedAt <= deadlineTime) {
-                  leagueStartGw = gw;
-                  break;
-                }
-              }
-            }
-            
-            if (leagueStartGw === metaGw && gwsWithResults.length > 0) {
-              leagueStartGw = Math.max(...gwsWithResults) + 1;
-            }
-          }
-          leagueStartGwMap.set(league.id, leagueStartGw);
-        }
-
-        // Fetch picks in parallel for all leagues
-        const allRelevantGws = new Set<number>();
-        leagues.forEach(league => {
-          const leagueStartGw = leagueStartGwMap.get(league.id) ?? metaGw;
-          gwsWithResults.filter(g => g >= leagueStartGw).forEach(gw => allRelevantGws.add(gw));
+        const leagueStartGwPromises = leagues.map(async (league) => {
+          const leagueStartGw = await resolveLeagueStartGw(league, metaGw);
+          return { leagueId: league.id, leagueStartGw };
+        });
+        const leagueStartGwResults = await Promise.all(leagueStartGwPromises);
+        leagueStartGwResults.forEach(({ leagueId, leagueStartGw }) => {
+          leagueStartGwMap.set(leagueId, leagueStartGw);
         });
         
-        const picksPromises = leagues.map(league => {
-          const memberIds = membersByLeagueId.get(league.id) ?? [];
-          if (memberIds.length === 0) return Promise.resolve({ data: [], error: null });
+        // Fetch picks in parallel for all leagues (same as Home page)
+        // NOTE: Supabase default limit is 1000 rows - we use range() to get more if needed
+        const picksPromises = leagues.map(async league => {
+          const memberIds = membersByLeagueIdMap.get(league.id) ?? [];
+          if (memberIds.length === 0) return { data: [], error: null };
           
           const leagueStartGw = leagueStartGwMap.get(league.id) ?? metaGw;
-          const relevantGws = Array.from(allRelevantGws).filter(gw => gw >= leagueStartGw);
+          const relevantGws = leagueStartGw === 0 
+            ? gwsWithResults 
+            : gwsWithResults.filter(gw => gw >= leagueStartGw);
           
-          if (relevantGws.length === 0) return Promise.resolve({ data: [], error: null });
+          if (relevantGws.length === 0) return { data: [], error: null };
           
-          return supabase
+          // Fetch picks - Supabase defaults to 1000 rows max
+          // Use pagination if we might exceed that limit
+          const result = await supabase
             .from("app_picks")
             .select("user_id,gw,fixture_index,pick")
             .in("user_id", memberIds.map(m => m.id))
-            .in("gw", relevantGws)
-            .limit(10000);
+            .in("gw", relevantGws);
+          
+          if (result.error) {
+            console.error(`[Tables] Error fetching picks for ${league.name}:`, result.error);
+            return { data: [], error: result.error };
+          }
+          
+          const picks = (result.data ?? []) as PickRow[];
+          
+          // Warn if we might have hit Supabase's 1000 row limit
+          if (picks.length === 1000) {
+            console.warn(`[Tables] WARNING: ${league.name} may have hit Supabase 1000 row limit! Got exactly 1000 picks.`, {
+              memberIds: memberIds.length,
+              relevantGws: relevantGws.length,
+              estimatedPicks: memberIds.length * relevantGws.length * 10 // rough estimate
+            });
+          }
+          
+          return { data: picks, error: null };
         });
 
         const allPicksResults = await Promise.all(picksPromises);
         if (!alive) return;
+        
+        // Check for Supabase errors or data limits
+        for (let i = 0; i < leagues.length; i++) {
+          const league = leagues[i];
+          const result = allPicksResults[i];
+          if (result.error) {
+            console.error(`[Tables] Supabase error fetching picks for ${league.name}:`, result.error);
+          }
+          const picksCount = (result.data ?? []).length;
+          const memberIds = membersByLeagueIdMap.get(league.id) ?? [];
+          const leagueStartGw = leagueStartGwMap.get(league.id) ?? metaGw;
+          const relevantGws = leagueStartGw === 0 
+            ? gwsWithResults 
+            : gwsWithResults.filter(gw => gw >= leagueStartGw);
+          
+          if (league.name?.toLowerCase().includes('forget')) {
+            console.log(`[Tables Initial] ${league.name} picks query result:`, {
+              picksCount,
+              memberIdsCount: memberIds.length,
+              relevantGws,
+              error: result.error,
+              dataLength: result.data?.length ?? 0,
+              limit: 10000
+            });
+          }
+        }
         
         // Store picks data by league
         const picksDataMap = new Map<string, PickRow[]>();
@@ -374,15 +407,6 @@ export default function TablesPage() {
         
         // Store league start GW map
         setLeagueStartGwMap(leagueStartGwMap);
-        
-        // Calculate initial gwsWithResults from base results
-        const initialOutcomeByGwIdx = new Map<string, "H" | "D" | "A">();
-        for (const r of resultList) {
-          const out = rowToOutcome(r);
-          if (out) initialOutcomeByGwIdx.set(`${r.gw}:${r.fixture_index}`, out);
-        }
-        const initialGwsWithResults = [...new Set(Array.from(initialOutcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
-        setGwsWithResults(initialGwsWithResults);
 
         const submittedUserIdsSet = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id));
         
@@ -396,12 +420,49 @@ export default function TablesPage() {
           if (memberIds.length === 0) continue;
           
           const leagueStartGw = leagueStartGwMap.get(league.id) ?? metaGw;
-          const relevantGws = Array.from(allRelevantGws).filter(gw => gw >= leagueStartGw);
+          const relevantGws = leagueStartGw === 0 
+            ? gwsWithResults 
+            : gwsWithResults.filter(gw => gw >= leagueStartGw);
           
           const picks = (allPicksResults[i].data ?? []) as PickRow[];
+          
+          // Skip MLT calculation if no relevant GWs (picks can be empty for new leagues)
+          if (relevantGws.length === 0) {
+            if (league.name?.toLowerCase().includes('forget')) {
+              console.log(`[Tables Initial] ${league.name} SKIPPING - relevantGws: ${relevantGws.length}, picks: ${picks.length}`);
+            }
+            continue;
+          }
+          
+          // CRITICAL: Filter picks to ONLY include relevant GWs for this league
+          // This ensures we only count points from GWs that matter for THIS mini-league
+          const relevantGwsSet = new Set(relevantGws);
+          
+          // Debug: Check if picks query returned GW 1 picks
+          if (league.name?.toLowerCase().includes('forget')) {
+            const picksByGwBeforeFilter = new Map<number, number>();
+            picks.forEach((p: PickRow) => {
+              picksByGwBeforeFilter.set(p.gw, (picksByGwBeforeFilter.get(p.gw) ?? 0) + 1);
+            });
+            console.log(`[Tables Initial] ${league.name} picks BEFORE filter (from query):`, JSON.stringify(Object.fromEntries(picksByGwBeforeFilter)));
+          }
+          
+          const filteredPicks = picks.filter((p: PickRow) => relevantGwsSet.has(p.gw));
+          
+          // Debug logging for "forget it" league (before building outcomeByGwAndIdx)
+          if (league.name?.toLowerCase().includes('forget')) {
+            const picksByGw = new Map<number, number>();
+            filteredPicks.forEach((p: PickRow) => {
+              picksByGw.set(p.gw, (picksByGw.get(p.gw) ?? 0) + 1);
+            });
+            console.log(`[Tables Initial] ${league.name} leagueStartGw: ${leagueStartGw}, relevantGws: [${relevantGws.join(',')}]`);
+            console.log(`[Tables Initial] ${league.name} filtered picks by GW:`, JSON.stringify(Object.fromEntries(picksByGw)));
+            console.log(`[Tables Initial] ${league.name} total picks before filter: ${picks.length}, after filter: ${filteredPicks.length}`);
+          }
+          
           const picksByUserGw = new Map<string, Map<number, Map<number, "H" | "D" | "A">>>();
           
-          picks.forEach(p => {
+          filteredPicks.forEach(p => {
             if (!picksByUserGw.has(p.user_id)) {
               picksByUserGw.set(p.user_id, new Map());
             }
@@ -412,60 +473,174 @@ export default function TablesPage() {
             userGwMap.get(p.gw)!.set(p.fixture_index, p.pick);
           });
           
-          const userScores = new Map<string, number>();
-          const userGwScores = new Map<string, Map<number, number>>();
+          // Calculate per-GW scores and unicorns (same as Home page)
+          const perGw = new Map<number, Map<string, { user_id: string; score: number; unicorns: number }>>();
+          const gwWinners = new Map<number, Set<string>>();
           
-          relevantGws.forEach(gw => {
-            const gwFixtures = fixturesByGw.get(gw) ?? [];
-            const fixtureCount = gwFixtures.length;
-            if (fixtureCount === 0) return;
+          relevantGws.forEach((g) => {
+            const map = new Map<string, { user_id: string; score: number; unicorns: number }>();
+            memberIds.forEach((m) => map.set(m.id, { user_id: m.id, score: 0, unicorns: 0 }));
+            perGw.set(g, map);
+          });
+          
+          const picksByGwIdx = new Map<string, PickRow[]>();
+          filteredPicks.forEach((p: PickRow) => {
+            // Double-check: ensure we only process picks from relevant GWs
+            if (!relevantGwsSet.has(p.gw)) {
+              if (league.name?.toLowerCase().includes('forget')) {
+                console.error(`[Tables Initial] ERROR: ${league.name} pick from non-relevant GW ${p.gw}!`);
+              }
+              return;
+            }
+            const key = `${p.gw}:${p.fixture_index}`;
+            const arr = picksByGwIdx.get(key) ?? [];
+            arr.push(p);
+            picksByGwIdx.set(key, arr);
+          });
+          
+          const memberIdsSet = new Set(memberIds.map(m => m.id));
+          
+          // Build outcomeByGwAndIdx exactly like Home page (reuse relevantGwsSet from above)
+          const outcomeByGwAndIdx = new Map<number, Map<number, "H" | "D" | "A">>();
+          relevantGws.forEach((g) => {
+            outcomeByGwAndIdx.set(g, new Map<number, "H" | "D" | "A">());
+          });
+          outcomeByGwIdx.forEach((out: "H" | "D" | "A", key: string) => {
+            const [gwStr, idxStr] = key.split(":");
+            const g = parseInt(gwStr, 10);
+            const idx = parseInt(idxStr, 10);
+            if (relevantGwsSet.has(g)) {
+              outcomeByGwAndIdx.get(g)?.set(idx, out);
+            }
+          });
+          
+          // Debug logging for "forget it" league (after building outcomeByGwAndIdx)
+          if (league.name?.toLowerCase().includes('forget')) {
+            const outcomesByGw = new Map<number, number>();
+            outcomeByGwAndIdx.forEach((outcomes, gw) => {
+              outcomesByGw.set(gw, outcomes.size);
+            });
+            // Check if outcomeByGwIdx has GW 1
+            const allOutcomeGws = new Set<number>();
+            outcomeByGwIdx.forEach((out, key) => {
+              const g = parseInt(key.split(":")[0], 10);
+              allOutcomeGws.add(g);
+            });
+            console.log(`[Tables Initial] ${league.name} outcomes by GW:`, JSON.stringify(Object.fromEntries(outcomesByGw)));
+            console.log(`[Tables Initial] ${league.name} ALL outcome GWs in outcomeByGwIdx:`, Array.from(allOutcomeGws).sort((a,b) => a-b));
+          }
+          
+          relevantGws.forEach((g) => {
+            const gwOutcomes = outcomeByGwAndIdx.get(g)!;
+            const map = perGw.get(g)!;
             
-            memberIds.forEach(member => {
-              const userPicks = picksByUserGw.get(member.id)?.get(gw);
-              if (!userPicks) return;
+            gwOutcomes.forEach((out: "H" | "D" | "A", idx: number) => {
+              const key = `${g}:${idx}`;
+              const thesePicks = (picksByGwIdx.get(key) ?? []).filter((p: PickRow) => memberIdsSet.has(p.user_id));
+              const correctUsers: string[] = [];
               
-              let gwScore = 0;
-              for (let fi = 0; fi < fixtureCount; fi++) {
-                const pick = userPicks.get(fi);
-                const outcome = outcomeByGwIdx.get(`${gw}:${fi}`);
-                if (pick && outcome && pick === outcome) {
-                  gwScore++;
+              thesePicks.forEach((p: PickRow) => {
+                if (p.pick === out) {
+                  const row = map.get(p.user_id);
+                  if (row) {
+                    row.score += 1;
+                    correctUsers.push(p.user_id);
+                  }
                 }
-              }
+              });
               
-              if (!userGwScores.has(member.id)) {
-                userGwScores.set(member.id, new Map());
+              if (correctUsers.length === 1 && memberIds.length >= 3) {
+                const row = map.get(correctUsers[0]);
+                if (row) row.unicorns += 1;
               }
-              userGwScores.get(member.id)!.set(gw, gwScore);
-              
-              const currentTotal = userScores.get(member.id) ?? 0;
-              userScores.set(member.id, currentTotal + gwScore);
             });
           });
           
-          const sortedMemberIds = [...memberIds].sort((a, b) => {
-            const scoreA = userScores.get(a.id) ?? 0;
-            const scoreB = userScores.get(b.id) ?? 0;
-            if (scoreB !== scoreA) return scoreB - scoreA;
-            return a.name.localeCompare(b.name);
+          // Calculate MLT points, OCP, and unicorns (same as Home page)
+          const mltPts = new Map<string, number>();
+          const ocp = new Map<string, number>();
+          const unis = new Map<string, number>();
+          memberIds.forEach((m) => {
+            mltPts.set(m.id, 0);
+            ocp.set(m.id, 0);
+            unis.set(m.id, 0);
           });
           
-          const userPosition = sortedMemberIds.findIndex(m => m.id === user.id) + 1;
-          const prevPosition = userPosition > 1 ? userPosition - 1 : null;
+          relevantGws.forEach((g) => {
+            // Double-check: ensure we only process relevant GWs
+            if (!relevantGwsSet.has(g)) {
+              if (league.name?.toLowerCase().includes('forget')) {
+                console.error(`[Tables Initial] ERROR: ${league.name} processing non-relevant GW ${g}!`);
+              }
+              return;
+            }
+            const gwRows: Array<{ user_id: string; score: number; unicorns: number }> = Array.from(perGw.get(g)!.values());
+            gwRows.forEach((r) => {
+              ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);
+              unis.set(r.user_id, (unis.get(r.user_id) ?? 0) + r.unicorns);
+            });
+            
+            gwRows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns);
+            if (gwRows.length === 0) return;
+            
+            const top = gwRows[0];
+            const coTop = gwRows.filter((r) => r.score === top.score && r.unicorns === top.unicorns);
+            const winners = new Set(coTop.map((r) => r.user_id));
+            gwWinners.set(g, winners);
+            
+            if (coTop.length === 1) {
+              mltPts.set(top.user_id, (mltPts.get(top.user_id) ?? 0) + 3);
+            } else {
+              coTop.forEach((r) => {
+                mltPts.set(r.user_id, (mltPts.get(r.user_id) ?? 0) + 1);
+              });
+            }
+            
+            // Debug logging for "forget it" league
+            if (league.name?.toLowerCase().includes('forget')) {
+              console.log(`[Tables Initial] ${league.name} GW ${g} winner: ${coTop.map(r => memberIds.find(m => m.id === r.user_id)?.name || r.user_id).join(',')}, points: ${coTop.length === 1 ? 3 : 1} each`);
+            }
+          });
+          
+          // Build ML table rows and sort (same as Home page)
+          const mltRows = memberIds.map((m) => ({
+            user_id: m.id,
+            name: m.name,
+            mltPts: mltPts.get(m.id) ?? 0,
+            unicorns: unis.get(m.id) ?? 0,
+            ocp: ocp.get(m.id) ?? 0,
+          }));
+          
+          const sortedMltRows = [...mltRows].sort((a, b) =>
+            b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
+          );
+          
+          const sortedMemberIds = sortedMltRows.map(r => r.user_id);
+          
+          // Debug logging for "forget it" league
+          if (league.name?.toLowerCase().includes('forget')) {
+            console.log(`[Tables] ${league.name} sortedMltRows:`, JSON.stringify(sortedMltRows.map((r, i) => ({
+              position: i + 1,
+              name: r.name,
+              userId: r.user_id.slice(0, 8),
+              mltPts: r.mltPts,
+              unicorns: r.unicorns,
+              ocp: r.ocp
+            })), null, 2));
+            console.log(`[Tables] ${league.name} sortedMemberIds:`, sortedMemberIds);
+            console.log(`[Tables] ${league.name} relevantGws:`, relevantGws);
+            console.log(`[Tables] ${league.name} picks count:`, picks.length);
+          }
+          
+          const userIndex = sortedMltRows.findIndex(r => r.user_id === user.id);
+          const userPosition = userIndex !== -1 ? userIndex + 1 : null;
+          const prevPosition = userPosition && userPosition > 1 ? userPosition - 1 : null;
           const positionChange: 'up' | 'down' | 'same' | null = prevPosition === null ? null : 
-            userPosition < prevPosition ? 'up' : userPosition > prevPosition ? 'down' : 'same';
+            userPosition! < prevPosition ? 'up' : userPosition! > prevPosition ? 'down' : 'same';
           
           const latestRelevantGw = relevantGws.length > 0 ? Math.max(...relevantGws) : metaGw;
-          const latestGwWinners: string[] = [];
-          if (latestRelevantGw && userGwScores.has(user.id)) {
-            const latestGwScore = userGwScores.get(user.id)!.get(latestRelevantGw) ?? 0;
-            sortedMemberIds.forEach(m => {
-              const memberLatestScore = userGwScores.get(m.id)?.get(latestRelevantGw) ?? 0;
-              if (memberLatestScore === latestGwScore && latestGwScore > 0) {
-                latestGwWinners.push(m.id);
-              }
-            });
-          }
+          const latestGwWinnersSet = latestRelevantGw !== null ? (gwWinners.get(latestRelevantGw) ?? new Set<string>()) : new Set<string>();
+          const latestGwWinners = Array.from(latestGwWinnersSet);
           
           leagueDataMap[league.id] = {
             id: league.id,
@@ -473,10 +648,20 @@ export default function TablesPage() {
             userPosition: userPosition || null,
             positionChange,
             submittedMembers: submittedUserIdsSet,
-            sortedMemberIds: sortedMemberIds.map(m => m.id),
+            sortedMemberIds: sortedMemberIds, // CRITICAL: This must match ML table order
             latestGwWinners,
             latestRelevantGw
           };
+          
+          // Debug logging for "forget it" league - verify data before storing
+          if (league.name?.toLowerCase().includes('forget')) {
+            console.log(`[Tables Initial] ${league.name} STORING leagueData:`, {
+              sortedMemberIds: sortedMemberIds,
+              sortedMemberNames: sortedMemberIds.map(id => memberIds.find(m => m.id === id)?.name || id),
+              membersCount: memberIds.length,
+              sortedMemberIdsCount: sortedMemberIds.length
+            });
+          }
         }
 
         if (alive) {
@@ -533,7 +718,20 @@ export default function TablesPage() {
   
   // Recalculate league data when outcomes change (reactive to live score updates)
   useEffect(() => {
-    if (!user?.id || leagues.length === 0 || picksData.size === 0 || membersByLeagueId.size === 0) return;
+    if (!user?.id || leagues.length === 0 || membersByLeagueId.size === 0) {
+      console.log(`[Tables Reactive] SKIPPING - user: ${!!user?.id}, leagues: ${leagues.length}, membersByLeagueId: ${membersByLeagueId.size}`);
+      return;
+    }
+    
+    const updatedGwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
+    
+    // Skip if no results loaded yet - wait for initial effect to load them
+    if (updatedGwsWithResults.length === 0) {
+      console.log(`[Tables Reactive] SKIPPING - no results loaded yet (outcomeByGwIdx size: ${outcomeByGwIdx.size})`);
+      return;
+    }
+    
+    console.log(`[Tables Reactive] RUNNING for ${leagues.length} leagues, ${updatedGwsWithResults.length} GWs with results`);
     
     const fixturesByGw = new Map<number, string[]>();
     allFixturesData.forEach((f) => {
@@ -542,14 +740,7 @@ export default function TablesPage() {
       fixturesByGw.set(f.gw, arr);
     });
     
-    const updatedGwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
     setGwsWithResults(updatedGwsWithResults);
-    
-    const allRelevantGws = new Set<number>();
-    leagues.forEach(league => {
-      const leagueStartGw = leagueStartGwMap.get(league.id) ?? currentGw ?? 1;
-      updatedGwsWithResults.filter(g => g >= leagueStartGw).forEach(gw => allRelevantGws.add(gw));
-    });
     
     const leagueDataMap: Record<string, LeagueData> = {};
     
@@ -558,12 +749,44 @@ export default function TablesPage() {
       if (memberIds.length === 0) continue;
       
       const leagueStartGw = leagueStartGwMap.get(league.id) ?? currentGw ?? 1;
-      const relevantGws = Array.from(allRelevantGws).filter(gw => gw >= leagueStartGw);
+      const relevantGws = updatedGwsWithResults.filter(gw => gw >= leagueStartGw);
       
       const picks = picksData.get(league.id) ?? [];
+      
+      // Skip if no relevant GWs (picks can be empty for new leagues)
+      if (relevantGws.length === 0) {
+        if (league.name?.toLowerCase().includes('forget')) {
+          console.log(`[Tables Reactive] ${league.name} SKIPPING - relevantGws: ${relevantGws.length}, leagueStartGw: ${leagueStartGw}, updatedGwsWithResults: [${updatedGwsWithResults.join(',')}]`);
+        }
+        continue;
+      }
+      
+      // If no picks but we have relevant GWs, skip calculation (will be handled when picks load)
+      if (picks.length === 0) {
+        if (league.name?.toLowerCase().includes('forget')) {
+          console.log(`[Tables Reactive] ${league.name} SKIPPING - no picks yet (relevantGws: ${relevantGws.length})`);
+        }
+        continue;
+      }
+      
+      // CRITICAL: Filter picks to ONLY include relevant GWs for this league
+      // This ensures we only count points from GWs that matter for THIS mini-league
+      const relevantGwsSetForFilter = new Set(relevantGws);
+      const filteredPicks = picks.filter((p: PickRow) => relevantGwsSetForFilter.has(p.gw));
+      
+      // Debug logging for "forget it" league
+      if (league.name?.toLowerCase().includes('forget')) {
+        const picksByGw = new Map<number, number>();
+        filteredPicks.forEach((p: PickRow) => {
+          picksByGw.set(p.gw, (picksByGw.get(p.gw) ?? 0) + 1);
+        });
+        console.log(`[Tables Reactive] ${league.name} filtered picks by GW:`, Object.fromEntries(picksByGw));
+        console.log(`[Tables Reactive] ${league.name} total picks before filter: ${picks.length}, after filter: ${filteredPicks.length}`);
+      }
+      
       const picksByUserGw = new Map<string, Map<number, Map<number, "H" | "D" | "A">>>();
       
-      picks.forEach(p => {
+      filteredPicks.forEach(p => {
         if (!picksByUserGw.has(p.user_id)) {
           picksByUserGw.set(p.user_id, new Map());
         }
@@ -574,60 +797,139 @@ export default function TablesPage() {
         userGwMap.get(p.gw)!.set(p.fixture_index, p.pick);
       });
       
-      const userScores = new Map<string, number>();
-      const userGwScores = new Map<string, Map<number, number>>();
+      // Calculate per-GW scores and unicorns (same as Home page)
+      const perGw = new Map<number, Map<string, { user_id: string; score: number; unicorns: number }>>();
+      const gwWinners = new Map<number, Set<string>>();
       
-      relevantGws.forEach(gw => {
-        const gwFixtures = fixturesByGw.get(gw) ?? [];
-        const fixtureCount = gwFixtures.length;
-        if (fixtureCount === 0) return;
+      relevantGws.forEach((g) => {
+        const map = new Map<string, { user_id: string; score: number; unicorns: number }>();
+        memberIds.forEach((m) => map.set(m.id, { user_id: m.id, score: 0, unicorns: 0 }));
+        perGw.set(g, map);
+      });
+      
+      const picksByGwIdx = new Map<string, PickRow[]>();
+      filteredPicks.forEach((p: PickRow) => {
+        const key = `${p.gw}:${p.fixture_index}`;
+        const arr = picksByGwIdx.get(key) ?? [];
+        arr.push(p);
+        picksByGwIdx.set(key, arr);
+      });
+      
+      const memberIdsSet = new Set(memberIds.map(m => m.id));
+      
+      // Build outcomeByGwAndIdx exactly like Home page (reuse relevantGwsSetForFilter from above)
+      const outcomeByGwAndIdx = new Map<number, Map<number, "H" | "D" | "A">>();
+      relevantGws.forEach((g) => {
+        outcomeByGwAndIdx.set(g, new Map<number, "H" | "D" | "A">());
+      });
+      outcomeByGwIdx.forEach((out: "H" | "D" | "A", key: string) => {
+        const [gwStr, idxStr] = key.split(":");
+        const g = parseInt(gwStr, 10);
+        const idx = parseInt(idxStr, 10);
+        if (relevantGwsSetForFilter.has(g)) {
+          outcomeByGwAndIdx.get(g)?.set(idx, out);
+        }
+      });
+      
+      relevantGws.forEach((g) => {
+        const gwOutcomes = outcomeByGwAndIdx.get(g)!;
+        const map = perGw.get(g)!;
         
-        memberIds.forEach(member => {
-          const userPicks = picksByUserGw.get(member.id)?.get(gw);
-          if (!userPicks) return;
+        gwOutcomes.forEach((out: "H" | "D" | "A", idx: number) => {
+          const key = `${g}:${idx}`;
+          const thesePicks = (picksByGwIdx.get(key) ?? []).filter((p: PickRow) => memberIdsSet.has(p.user_id));
+          const correctUsers: string[] = [];
           
-          let gwScore = 0;
-          for (let fi = 0; fi < fixtureCount; fi++) {
-            const pick = userPicks.get(fi);
-            const outcome = outcomeByGwIdx.get(`${gw}:${fi}`);
-            if (pick && outcome && pick === outcome) {
-              gwScore++;
+          thesePicks.forEach((p: PickRow) => {
+            if (p.pick === out) {
+              const row = map.get(p.user_id);
+              if (row) {
+                row.score += 1;
+                correctUsers.push(p.user_id);
+              }
             }
-          }
+          });
           
-          if (!userGwScores.has(member.id)) {
-            userGwScores.set(member.id, new Map());
+          if (correctUsers.length === 1 && memberIds.length >= 3) {
+            const row = map.get(correctUsers[0]);
+            if (row) row.unicorns += 1;
           }
-          userGwScores.get(member.id)!.set(gw, gwScore);
-          
-          const currentTotal = userScores.get(member.id) ?? 0;
-          userScores.set(member.id, currentTotal + gwScore);
         });
       });
       
-      const sortedMemberIds = [...memberIds].sort((a, b) => {
-        const scoreA = userScores.get(a.id) ?? 0;
-        const scoreB = userScores.get(b.id) ?? 0;
-        if (scoreB !== scoreA) return scoreB - scoreA;
-        return a.name.localeCompare(b.name);
+      // Calculate MLT points, OCP, and unicorns (same as Home page)
+      const mltPts = new Map<string, number>();
+      const ocp = new Map<string, number>();
+      const unis = new Map<string, number>();
+      memberIds.forEach((m) => {
+        mltPts.set(m.id, 0);
+        ocp.set(m.id, 0);
+        unis.set(m.id, 0);
       });
       
-      const userPosition = sortedMemberIds.findIndex(m => m.id === user.id) + 1;
+      relevantGws.forEach((g) => {
+        const gwRows: Array<{ user_id: string; score: number; unicorns: number }> = Array.from(perGw.get(g)!.values());
+        gwRows.forEach((r) => {
+          ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);
+          unis.set(r.user_id, (unis.get(r.user_id) ?? 0) + r.unicorns);
+        });
+        
+        gwRows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns);
+        if (gwRows.length === 0) return;
+        
+        const top = gwRows[0];
+        const coTop = gwRows.filter((r) => r.score === top.score && r.unicorns === top.unicorns);
+        const winners = new Set(coTop.map((r) => r.user_id));
+        gwWinners.set(g, winners);
+        
+        if (coTop.length === 1) {
+          mltPts.set(top.user_id, (mltPts.get(top.user_id) ?? 0) + 3);
+        } else {
+          coTop.forEach((r) => {
+            mltPts.set(r.user_id, (mltPts.get(r.user_id) ?? 0) + 1);
+          });
+        }
+      });
+      
+      // Build ML table rows and sort (same as Home page)
+      const mltRows = memberIds.map((m) => ({
+        user_id: m.id,
+        name: m.name,
+        mltPts: mltPts.get(m.id) ?? 0,
+        unicorns: unis.get(m.id) ?? 0,
+        ocp: ocp.get(m.id) ?? 0,
+      }));
+      
+      const sortedMltRows = [...mltRows].sort((a, b) =>
+        b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
+      );
+      
+      const sortedMemberIds = sortedMltRows.map(r => r.user_id);
+      
+      // Debug logging for "forget it" league
+      if (league.name?.toLowerCase().includes('forget')) {
+        console.log(`[Tables Reactive] ${league.name} sortedMltRows:`, JSON.stringify(sortedMltRows.map((r, i) => ({
+          position: i + 1,
+          name: r.name,
+          userId: r.user_id.slice(0, 8),
+          mltPts: r.mltPts,
+          unicorns: r.unicorns,
+          ocp: r.ocp
+        })), null, 2));
+        console.log(`[Tables Reactive] ${league.name} sortedMemberIds:`, sortedMemberIds);
+        console.log(`[Tables Reactive] ${league.name} relevantGws:`, relevantGws);
+        console.log(`[Tables Reactive] ${league.name} picks count:`, picks.length);
+      }
+      
+      const userIndex = sortedMltRows.findIndex(r => r.user_id === user.id);
+      const userPosition = userIndex !== -1 ? userIndex + 1 : null;
       const prevPosition = userPosition > 1 ? userPosition - 1 : null;
       const positionChange: 'up' | 'down' | 'same' | null = prevPosition === null ? null : 
         userPosition < prevPosition ? 'up' : userPosition > prevPosition ? 'down' : 'same';
       
       const latestRelevantGw = relevantGws.length > 0 ? Math.max(...relevantGws) : currentGw;
-      const latestGwWinners: string[] = [];
-      if (latestRelevantGw && userGwScores.has(user.id)) {
-        const latestGwScore = userGwScores.get(user.id)!.get(latestRelevantGw) ?? 0;
-        sortedMemberIds.forEach(m => {
-          const memberLatestScore = userGwScores.get(m.id)?.get(latestRelevantGw) ?? 0;
-          if (memberLatestScore === latestGwScore && latestGwScore > 0) {
-            latestGwWinners.push(m.id);
-          }
-        });
-      }
+      const latestGwWinnersSet = latestRelevantGw !== null ? (gwWinners.get(latestRelevantGw) ?? new Set<string>()) : new Set<string>();
+      const latestGwWinners = Array.from(latestGwWinnersSet);
       
       // Get submitted members from submittedUserIdsSet
       const submittedMembers = new Set<string>();
@@ -643,10 +945,20 @@ export default function TablesPage() {
         userPosition: userPosition || null,
         positionChange,
         submittedMembers: submittedMembers,
-        sortedMemberIds: sortedMemberIds.map(m => m.id),
+        sortedMemberIds: sortedMemberIds, // CRITICAL: This must match ML table order
         latestGwWinners,
         latestRelevantGw
       };
+      
+      // Debug logging for "forget it" league - verify data before storing
+      if (league.name?.toLowerCase().includes('forget')) {
+        console.log(`[Tables Reactive] ${league.name} STORING leagueData:`, {
+          sortedMemberIds: sortedMemberIds,
+          sortedMemberNames: sortedMemberIds.map(id => memberIds.find(m => m.id === id)?.name || id),
+          membersCount: memberIds.length,
+          sortedMemberIdsCount: sortedMemberIds.length
+        });
+      }
     }
     
     setLeagueData(leagueDataMap);
@@ -772,17 +1084,29 @@ export default function TablesPage() {
                 <div className="px-4 py-4 text-sm">No leagues yet.</div>
               ) : (
                 <div className="space-y-3">
-                  {rows.map((r) => (
-                    <MiniLeagueCard
-                      key={r.id}
-                      row={r}
-                      data={leagueData[r.id]}
-                      unread={unreadByLeague?.[r.id] ?? 0}
-                      submissions={leagueSubmissions[r.id]}
-                      leagueDataLoading={false}
-                      currentGw={currentGw}
-                    />
-                  ))}
+                  {rows.map((r) => {
+                    const leagueDataForCard = leagueData[r.id];
+                    // Debug logging for "forget it" league
+                    if (r.name?.toLowerCase().includes('forget')) {
+                      console.log(`[Tables Render] ${r.name} passing to MiniLeagueCard:`, {
+                        sortedMemberIds: leagueDataForCard?.sortedMemberIds,
+                        members: leagueDataForCard?.members?.map(m => ({ id: m.id, name: m.name })),
+                        membersLength: leagueDataForCard?.members?.length,
+                        sortedMemberIdsLength: leagueDataForCard?.sortedMemberIds?.length
+                      });
+                    }
+                    return (
+                      <MiniLeagueCard
+                        key={r.id}
+                        row={r}
+                        data={leagueDataForCard}
+                        unread={unreadByLeague?.[r.id] ?? 0}
+                        submissions={leagueSubmissions[r.id]}
+                        leagueDataLoading={false}
+                        currentGw={currentGw}
+                      />
+                    );
+                  })}
                 </div>
               )}
             </div>

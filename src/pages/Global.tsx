@@ -811,34 +811,10 @@ export default function GlobalLeaderboardPage() {
                 </span>
               )}
             </div>
-            {/* Toggle for Mini League Friends */}
-            <div className="flex items-center justify-between gap-4 py-2 px-3 rounded-lg bg-slate-100 border border-slate-200">
-              <span className="text-sm font-medium text-slate-700">All Players</span>
-              <button
-                onClick={() => setShowMiniLeagueFriendsOnly(!showMiniLeagueFriendsOnly)}
-                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:ring-offset-2 ${
-                  showMiniLeagueFriendsOnly ? 'bg-[#1C8376]' : 'bg-slate-300'
-                }`}
-                role="switch"
-                aria-checked={showMiniLeagueFriendsOnly}
-              >
-                <span
-                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
-                    showMiniLeagueFriendsOnly ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-              <span className="text-sm font-medium text-slate-700">Mini League Friends</span>
-            </div>
           </div>
-          <p className="mt-3 mb-6 text-sm text-slate-600 w-full">
-            {showMiniLeagueFriendsOnly 
-              ? "See how you rank against your Mini League friends."
-              : "See how you rank against every TotL player in the world."}
-          </p>
 
         {/* Tabs */}
-        <div className="flex justify-center mb-6">
+        <div className="flex justify-center mb-6 mt-6">
             <div className="flex rounded-full bg-slate-100 p-1.5 border border-slate-200 shadow-sm w-full max-w-md">
             <button
               onClick={() => handleTabChange("lastgw")}
@@ -887,11 +863,37 @@ export default function GlobalLeaderboardPage() {
           </div>
         </div>
 
+        {/* Toggle for Mini League Friends - Segmented Control Style */}
+        <div className="flex justify-center mb-4">
+          <div className="inline-flex rounded-lg bg-slate-100 p-1 border border-slate-200 shadow-sm">
+            <button
+              onClick={() => setShowMiniLeagueFriendsOnly(false)}
+              className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${
+                !showMiniLeagueFriendsOnly
+                  ? 'bg-white text-[#1C8376] shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              All Players
+            </button>
+            <button
+              onClick={() => setShowMiniLeagueFriendsOnly(true)}
+              className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${
+                showMiniLeagueFriendsOnly
+                  ? 'bg-white text-[#1C8376] shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Mini League Friends
+            </button>
+          </div>
+        </div>
+
         {/* Form tab subtitles */}
           {activeTab === "overall" && (
             <div className="text-center mb-2">
               <div className="text-sm text-slate-600">
-                All players overall
+                All Players since the start of the season
               </div>
             </div>
           )}
@@ -900,7 +902,7 @@ export default function GlobalLeaderboardPage() {
             <div className="text-center mb-2">
               {latestGw && latestGw >= 5 ? (
                 <div className="text-sm text-slate-600">
-                  Completed the last 5 Rounds
+                  All Players who completed the last 5 Rounds
               </div>
             ) : (
               <div className="text-sm text-amber-600 font-medium">
@@ -914,7 +916,7 @@ export default function GlobalLeaderboardPage() {
             <div className="text-center mb-2">
             {latestGw && latestGw >= 10 ? (
                 <div className="text-sm text-slate-600">
-                  Completed the last 10 Rounds
+                  All Players who completed the last 10 Rounds
               </div>
             ) : (
               <div className="text-sm text-amber-600 font-medium">

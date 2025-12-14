@@ -91,7 +91,8 @@ export async function resolveLeagueStartGw(
       if (firstFixture?.kickoff_time) {
         const firstKickoff = new Date(firstFixture.kickoff_time);
         const deadlineTime = new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000);
-        if (leagueCreatedAt <= deadlineTime) {
+        // League can participate if created BEFORE the deadline (strictly less than)
+        if (leagueCreatedAt < deadlineTime) {
           return gw;
         }
       }
@@ -134,7 +135,8 @@ export function shouldIncludeGwForLeague(
   if (league?.created_at && gwDeadlines.has(gw)) {
     const leagueCreatedAt = new Date(league.created_at);
     const gwDeadline = gwDeadlines.get(gw)!;
-    return leagueCreatedAt <= gwDeadline;
+    // League can participate if created BEFORE the deadline (strictly less than)
+    return leagueCreatedAt < gwDeadline;
   }
 
   return true;

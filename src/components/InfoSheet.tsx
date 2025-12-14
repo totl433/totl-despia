@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 
 export type InfoSheetProps = {
@@ -38,7 +39,7 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
 
   if (!isOpen) return null;
 
-  return (
+  const content = (
     <>
       {/* Backdrop */}
       <div
@@ -105,52 +106,85 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
                 .filter(line => line.length > 0);
               
               return paragraphs.map((paragraph, index) => {
-                // Render paragraph with links
+                // Render paragraph with links and chip examples
                 const parts: React.ReactNode[] = [];
                 let remaining = paragraph;
                 
+                // Check for chip examples like "(TB)" and replace with actual chip components
+                const chipPattern = /\(TB\)/g;
+                if (chipPattern.test(remaining)) {
+                  const segments = remaining.split(chipPattern);
+                  segments.forEach((segment, segIndex) => {
+                    if (segment) parts.push(segment);
+                    if (segIndex < segments.length - 1) {
+                      // Add chip example - check text after (TB) to determine chip type
+                      const afterChip = remaining.substring(remaining.indexOf('(TB)') + 4);
+                      const isShiny = afterChip.toLowerCase().includes('gameweek winner');
+                      const isGreen = afterChip.toLowerCase().includes('submitted') && !afterChip.toLowerCase().includes('not');
+                      const isGrey = afterChip.toLowerCase().includes('not submitted');
+                      
+                      let chipClassName = 'chip-container rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6 inline-flex mx-1';
+                      if (isShiny) {
+                        chipClassName += ' bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 font-semibold';
+                      } else if (isGreen) {
+                        chipClassName += ' chip-green';
+                      } else {
+                        chipClassName += ' chip-grey';
+                      }
+                      
+                      parts.push(
+                        <span key={`chip-${segIndex}`} className={chipClassName} style={{ verticalAlign: 'middle' }}>
+                          TB
+                        </span>
+                      );
+                      remaining = remaining.substring(remaining.indexOf('(TB)') + 4);
+                    }
+                  });
+                } else {
+                  parts.push(remaining);
+                }
+                
                 // Check for "Start a Mini League →"
-                if (remaining.includes('Start a Mini League →')) {
-                  const [before, after] = remaining.split('Start a Mini League →');
-                  if (before) parts.push(before);
-                  parts.push(
-                    <Link
-                      key="start-league"
-                      to="/tables"
-                      onClick={onClose}
-                      className="text-[#1C8376] font-semibold hover:underline inline-flex items-center gap-1"
-                    >
-                      Start a Mini League →
-                    </Link>
-                  );
-                  remaining = after || '';
-                }
+                const finalParts: React.ReactNode[] = [];
+                parts.forEach((part) => {
+                  if (typeof part === 'string' && part.includes('Start a Mini League →')) {
+                    const [before, after] = part.split('Start a Mini League →');
+                    if (before) finalParts.push(before);
+                    finalParts.push(
+                      <Link
+                        key="start-league"
+                        to="/tables"
+                        onClick={onClose}
+                        className="text-[#1C8376] font-semibold hover:underline inline-flex items-center gap-1"
+                      >
+                        Start a Mini League →
+                      </Link>
+                    );
+                    if (after) finalParts.push(after);
+                  } else if (typeof part === 'string' && part.includes('How To Play →')) {
+                    const [before, after] = part.split('How To Play →');
+                    if (before) finalParts.push(before);
+                    finalParts.push(
+                      <Link
+                        key="how-to-play"
+                        to="/how-to-play"
+                        onClick={onClose}
+                        className="text-[#1C8376] font-semibold hover:underline inline-flex items-center gap-1"
+                      >
+                        How To Play →
+                      </Link>
+                    );
+                    if (after) finalParts.push(after);
+                  } else {
+                    finalParts.push(part);
+                  }
+                });
                 
-                // Check for "How To Play →"
-                if (remaining.includes('How To Play →')) {
-                  const [before, after] = remaining.split('How To Play →');
-                  if (before) parts.push(before);
-                  parts.push(
-                    <Link
-                      key="how-to-play"
-                      to="/how-to-play"
-                      onClick={onClose}
-                      className="text-[#1C8376] font-semibold hover:underline inline-flex items-center gap-1"
-                    >
-                      How To Play →
-                    </Link>
-                  );
-                  remaining = after || '';
-                }
-                
-                // Add any remaining text
-                if (remaining) parts.push(remaining);
-                
-                // If we found links, render with links, otherwise render as plain text
-                if (parts.length > 1 || (parts.length === 1 && typeof parts[0] !== 'string')) {
+                // If we found links or chips, render with components, otherwise render as plain text
+                if (finalParts.length > 1 || (finalParts.length === 1 && typeof finalParts[0] !== 'string')) {
                   return (
                     <p key={index} className={index === 0 ? '' : 'mt-4'}>
-                      {parts}
+                      {finalParts}
                     </p>
                   );
                 }
@@ -182,4 +216,11 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
       </div>
     </>
   );
+
+  // Render to document.body using portal to ensure it's above everything
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(content, document.body);
+  }
+  
+  return content;
 }
