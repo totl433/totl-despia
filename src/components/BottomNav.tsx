@@ -60,32 +60,21 @@ export default function BottomNav() {
   useEffect(() => {
     const updateIndicator = () => {
       const activeIndex = navItems.findIndex(item => location.pathname === item.path);
-      if (activeIndex >= 0 && buttonRefs.current[activeIndex] && containerRef.current) {
+      if (activeIndex >= 0 && containerRef.current) {
         const container = containerRef.current;
         const containerRect = container.getBoundingClientRect();
-        const button = buttonRefs.current[activeIndex];
-        const buttonRect = button.getBoundingClientRect();
         
-        // Use actual button position and width for perfect alignment
+        // Indicator is exactly 25% of the pill width
+        const containerWidth = containerRect.width;
         const containerHeight = containerRect.height;
-        const containerPadding = 8; // Matches padding: '0 8px'
-        let indicatorWidth = buttonRect.width;
+        const indicatorWidth = containerWidth * 0.25; // Exactly 25%
         const indicatorHeight = containerHeight;
         
-        // Position based on actual button position relative to container
-        let indicatorLeft = buttonRect.left - containerRect.left;
+        // Position based on index: 0%, 25%, 50%, 75% of container width
+        const indicatorLeft = activeIndex * indicatorWidth;
         
         const isFirstItem = activeIndex === 0;
         const isLastItem = activeIndex === navItems.length - 1;
-        
-        // When at edges, extend indicator to container edge to match curve exactly
-        if (isFirstItem) {
-          indicatorLeft = 0; // Extend to left edge
-          indicatorWidth = buttonRect.width + containerPadding; // Add padding width
-        } else if (isLastItem) {
-          indicatorLeft = containerRect.width - buttonRect.width - containerPadding; // Account for padding
-          indicatorWidth = buttonRect.width + containerPadding; // Add padding width
-        }
         
         // Border radius must match container exactly (60px) at edges
         const containerBorderRadius = 60;
@@ -151,7 +140,7 @@ export default function BottomNav() {
         }
       `}</style>
       <div className="bottom-nav-absolute flex items-center justify-center px-4 pb-8">
-        <div ref={containerRef} className="bg-white border border-[#E5E7EB] flex items-center justify-between mb-4 relative overflow-hidden" style={{ width: '360px', height: '70px', borderRadius: '60px', padding: '0 8px' }}>
+        <div ref={containerRef} className="bg-white border border-[#E5E7EB] flex items-center mb-4 relative overflow-hidden" style={{ width: '360px', height: '70px', borderRadius: '60px' }}>
           {/* Active state indicator */}
           {indicatorStyle && (
             <div 
@@ -178,8 +167,8 @@ export default function BottomNav() {
               key={item.name}
                 ref={(el) => { buttonRefs.current[index] = el; }}
               onClick={() => navigate(item.path)}
-                className="relative z-10 flex flex-col items-center justify-center transition-all duration-300 flex-1"
-                style={{ height: '70px', padding: '0', gap: '4px', minWidth: 0, maxWidth: '100%' }}
+                className="relative z-10 flex flex-col items-center justify-center transition-all duration-300"
+                style={{ width: '25%', height: '70px', padding: '0', gap: '4px', flexShrink: 0 }}
             >
                 <div 
                   className="flex items-center justify-center w-full"
