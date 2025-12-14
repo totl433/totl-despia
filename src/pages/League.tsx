@@ -3255,9 +3255,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
         isOpen={showTableModal}
         onClose={() => setShowTableModal(false)}
         title="League Points"
-        description={`League Points
-
-Win the week – 3 points
+        description={`Win the week – 3 points
 Draw – 1 point
 Lose – 0 points
 
