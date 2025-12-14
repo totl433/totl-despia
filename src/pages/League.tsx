@@ -2696,11 +2696,11 @@ ${shareUrl}`;
           isOpen={showScoringModal}
           onClose={() => setShowScoringModal(false)}
           title="Weekly Winner"
-          description={`🏆 How to Win the Week:
+          description={`🏆 How to Win the Week
 
 The player with the most correct predictions wins that gameweek.
 
-🦄 Unicorn Rule:
+🦄 Unicorn Rule
 
 In Mini-Leagues with 3 or more players, if you're the only person to correctly predict a fixture, that's a Unicorn. In ties, the player with most Unicorns wins!`}
         />
