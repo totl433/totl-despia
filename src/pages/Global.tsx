@@ -924,7 +924,7 @@ export default function GlobalLeaderboardPage() {
           </div>
         )}
         
-        {activeTab === "lastgw" && (
+        {activeTab === "lastgw" && !isCurrentGwLive && (
             <div className="text-center mb-2">
               <div className="text-sm text-slate-600">
                 Players who completed GW{latestGw}
