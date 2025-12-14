@@ -142,8 +142,8 @@ export default function Profile() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <div className="max-w-4xl mx-auto p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 overflow-x-hidden">
+      <div className="max-w-4xl mx-auto px-4 py-6 sm:p-6">
         {/* Page Title */}
         <PageHeader title="Profile" as="h1" className="mb-6" />
 

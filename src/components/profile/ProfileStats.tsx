@@ -20,18 +20,18 @@ export const ProfileStats = React.memo(function ProfileStats({
   }
 
   return (
-    <div className="space-y-0">
-      <div className="flex items-center justify-between py-3 border-b border-slate-200">
-        <span className="text-base text-slate-600">OCP</span>
-        <span className="text-lg sm:text-xl font-bold text-slate-800">{ocp}</span>
+    <div className="space-y-0 min-w-0">
+      <div className="flex items-center justify-between py-3 border-b border-slate-200 gap-2">
+        <span className="text-sm sm:text-base text-slate-600 flex-shrink-0">OCP</span>
+        <span className="text-lg sm:text-xl font-bold text-slate-800 truncate text-right">{ocp}</span>
       </div>
-      <div className="flex items-center justify-between py-3 border-b border-slate-200">
-        <span className="text-base text-slate-600">Mini Leagues</span>
-        <span className="text-lg sm:text-xl font-bold text-slate-800">{miniLeaguesCount}</span>
+      <div className="flex items-center justify-between py-3 border-b border-slate-200 gap-2">
+        <span className="text-sm sm:text-base text-slate-600 flex-shrink-0">Mini Leagues</span>
+        <span className="text-lg sm:text-xl font-bold text-slate-800 truncate text-right">{miniLeaguesCount}</span>
       </div>
-      <div className="flex items-center justify-between py-3">
-        <span className="text-base text-slate-600">Streak</span>
-        <span className="text-lg sm:text-xl font-bold text-slate-800">{weeksStreak}</span>
+      <div className="flex items-center justify-between py-3 gap-2">
+        <span className="text-sm sm:text-base text-slate-600 flex-shrink-0">Streak</span>
+        <span className="text-lg sm:text-xl font-bold text-slate-800 truncate text-right">{weeksStreak}</span>
       </div>
     </div>
   );

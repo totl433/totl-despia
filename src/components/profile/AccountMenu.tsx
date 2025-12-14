@@ -17,7 +17,7 @@ export const AccountMenu = React.memo(function AccountMenu({
   onLogout,
 }: AccountMenuProps) {
   return (
-    <div className="bg-white rounded-xl shadow-md p-6">
+    <div className="bg-white rounded-xl shadow-md p-4 sm:p-6 overflow-hidden">
       <h2 className="text-xl font-bold text-slate-800 mb-4">Your Account</h2>
       
       {/* Email Display */}
