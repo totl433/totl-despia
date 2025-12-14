@@ -9,7 +9,7 @@ import { getLeagueAvatarUrl } from "../lib/leagueAvatars";
 import { useLiveScores } from "../hooks/useLiveScores";
 import MiniLeagueChatBeta from "../components/MiniLeagueChatBeta";
 import MessageBubble from "../components/chat/MessageBubble";
-import RulesButton from "../components/league/RulesButton";
+import InfoSheet from "../components/InfoSheet";
 import WinnerBanner from "../components/league/WinnerBanner";
 import GwSelector from "../components/league/GwSelector";
 import PointsFormToggle from "../components/league/PointsFormToggle";
@@ -1999,10 +1999,18 @@ ${shareUrl}`;
         <div className="mt-6 flex justify-between items-center">
           <div className="flex items-center justify-between w-full">
             <PointsFormToggle showForm={showForm} onToggle={setShowForm} />
-            <RulesButton onClick={() => {
-              console.log('Button clicked, setting modal to true');
-              setShowTableModal(true);
-            }} />
+            <button
+              onClick={() => setShowTableModal(true)}
+              className="flex items-center justify-center gap-1.5 bg-white border-2 border-slate-300 hover:bg-slate-50 rounded-full text-slate-600 hover:text-slate-800 cursor-help transition-colors flex-shrink-0 px-3 py-2"
+            >
+              <img 
+                src="/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png" 
+                alt="Rules" 
+                className="w-4 h-4"
+                style={{ filter: 'invert(40%) sepia(8%) saturate(750%) hue-rotate(180deg) brightness(95%) contrast(88%)' }}
+              />
+              <span className="text-sm font-medium">Rules</span>
+            </button>
           </div>
         </div>
 
@@ -2666,50 +2674,36 @@ ${shareUrl}`;
                   // This allows users to view past GWs even when current GW is live
                 }}
               />
-              <RulesButton onClick={() => setShowScoringModal(true)} />
+              <button
+                onClick={() => setShowScoringModal(true)}
+                className="flex items-center justify-center gap-1.5 bg-white border-2 border-slate-300 hover:bg-slate-50 rounded-full text-slate-600 hover:text-slate-800 cursor-help transition-colors flex-shrink-0 px-3 py-2"
+              >
+                <img 
+                  src="/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png" 
+                  alt="Rules" 
+                  className="w-4 h-4"
+                  style={{ filter: 'invert(40%) sepia(8%) saturate(750%) hue-rotate(180deg) brightness(95%) contrast(88%)' }}
+                />
+                <span className="text-sm font-medium">Rules</span>
+              </button>
             </div>
           </div>
         )}
 
 
         {/* Scoring Modal */}
-        {showScoringModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowScoringModal(false)}>
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 relative" onClick={(e) => e.stopPropagation()}>
-              {/* Close button */}
-              <button
-                onClick={() => setShowScoringModal(false)}
-                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 hover:text-gray-800 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+        <InfoSheet
+          isOpen={showScoringModal}
+          onClose={() => setShowScoringModal(false)}
+          title="Weekly Winner"
+          description={`🏆 How to Win the Week:
 
-              {/* Modal content */}
-              <div className="p-6 pt-8">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Weekly Winner</h2>
-                
-                <div className="space-y-4">
-                  <div className="bg-[#1C8376]/10 border border-[#1C8376]/20 rounded-lg p-4">
-                    <h3 className="font-semibold text-[#1C8376]/90 mb-3">🏆 How to Win the Week:</h3>
-                    <p className="text-[#1C8376]/80">
-                      The player with the <strong>most correct predictions</strong> wins that gameweek.
-                    </p>
-                  </div>
+The player with the most correct predictions wins that gameweek.
 
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                    <h3 className="font-semibold text-purple-800 mb-2">🦄 Unicorn Rule</h3>
-                    <p className="text-purple-700">
-                      In Mini-Leagues with <strong>3 or more players</strong>, if you're the <strong>only person</strong> to correctly predict a
-                      fixture, that's a <strong>🦄 Unicorn</strong>. In ties, the player with most <strong>🦄 Unicorns</strong> wins!
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-        </div>
-      )}
+🦄 Unicorn Rule:
+
+In Mini-Leagues with 3 or more players, if you're the only person to correctly predict a fixture, that's a 🦄 Unicorn. In ties, the player with most 🦄 Unicorns wins!`}
+        />
 
     </div>
   );
@@ -3257,62 +3251,20 @@ ${shareUrl}`;
       )}
 
       {/* Table Modal */}
-      {showTableModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowTableModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 relative" onClick={(e) => e.stopPropagation()}>
-            {/* Close button */}
-            <button
-              onClick={() => setShowTableModal(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 hover:text-gray-800 transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+      <InfoSheet
+        isOpen={showTableModal}
+        onClose={() => setShowTableModal(false)}
+        title="League Points"
+        description={`League Points:
 
-            {/* Modal content */}
-            <div className="p-6 pt-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">League Points</h2>
-              
-              <div className="space-y-4">
-                <div className="bg-[#1C8376]/10 border border-[#1C8376]/20 rounded-lg p-4">
-                  <h3 className="font-semibold text-[#1C8376]/90 mb-3">League Points:</h3>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-3">
-                      <span className="text-[#1C8376] font-bold">■</span>
-                      <span className="text-[#1C8376]/80"><strong>Win the week</strong> – 3 points</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-[#1C8376] font-bold">■</span>
-                      <span className="text-[#1C8376]/80"><strong>Draw</strong> – 1 point</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-[#1C8376] font-bold">■</span>
-                      <span className="text-[#1C8376]/80"><strong>Lose</strong> – 0 points</span>
-                    </div>
-                  </div>
-                </div>
+Win the week – 3 points
+Draw – 1 point
+Lose – 0 points
 
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h3 className="font-semibold text-blue-800 mb-2">🤝 Ties</h3>
-                  <p className="text-blue-700">
-                    If two or more players are tied on Points, the player with the most overall <strong>🦄 Unicorns</strong> in the mini league is ranked higher.
-                  </p>
-                </div>
-              </div>
-              
-              {/* Late starting league explanation */}
-              {league && (['The Bird league'].includes(league.name) || ['gregVjofVcarl', 'Let Down'].includes(league.name)) && (
-                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-blue-700 text-sm">
-                    <strong>Note:</strong> This mini league started after GW1, so the "CP" column shows correct predictions since this mini league began.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+🤝 Ties:
+
+If two or more players are tied on Points, the player with the most overall 🦄 Unicorns in the mini league is ranked higher.${league && (['The Bird league'].includes(league.name) || ['gregVjofVcarl', 'Let Down'].includes(league.name)) ? '\n\nNote: This mini league started after GW1, so the "CP" column shows correct predictions since this mini league began.' : ''}`}
+      />
 
       {/* Invite Modal */}
       {showInvite && (
