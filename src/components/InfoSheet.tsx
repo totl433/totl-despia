@@ -47,7 +47,7 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
         aria-hidden="true"
         style={{
           animation: 'fadeIn 200ms ease-out',
-          zIndex: 100000,
+          zIndex: 999999,
         }}
       />
       
@@ -60,7 +60,7 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
         aria-describedby="info-sheet-description"
         style={{
           animation: 'slideUp 300ms ease-out',
-          zIndex: 100001,
+          zIndex: 1000000,
         }}
       >
         {/* Top handle */}
