@@ -54,6 +54,7 @@ export default function BottomNav() {
     borderBottomLeftRadius: number;
     borderTopRightRadius: number;
     borderBottomRightRadius: number;
+    activeIndex: number;
   } | null>(null);
 
   useEffect(() => {
@@ -67,24 +68,34 @@ export default function BottomNav() {
         
         // Use actual button position and width for perfect alignment
         const containerHeight = containerRect.height;
-        const indicatorWidth = buttonRect.width;
+        const containerPadding = 8; // Matches padding: '0 8px'
+        let indicatorWidth = buttonRect.width;
         const indicatorHeight = containerHeight;
         
         // Position based on actual button position relative to container
-        const indicatorLeft = buttonRect.left - containerRect.left;
+        let indicatorLeft = buttonRect.left - containerRect.left;
         
         const isFirstItem = activeIndex === 0;
         const isLastItem = activeIndex === navItems.length - 1;
         
-        // Border radius from Figma: container is 60px, active state is 72px
+        // When at edges, extend indicator to container edge to match curve exactly
+        if (isFirstItem) {
+          indicatorLeft = 0; // Extend to left edge
+          indicatorWidth = buttonRect.width + containerPadding; // Add padding width
+        } else if (isLastItem) {
+          indicatorLeft = containerRect.width - buttonRect.width - containerPadding; // Account for padding
+          indicatorWidth = buttonRect.width + containerPadding; // Add padding width
+        }
+        
+        // Border radius must match container exactly (60px) at edges
         const containerBorderRadius = 60;
         const activeBorderRadius = 72;
         
-        // Left border radius: match container (60px) when at left edge, otherwise use active radius
+        // Left border radius: match container (60px) exactly when at left edge
         const borderTopLeftRadius = isFirstItem ? containerBorderRadius : activeBorderRadius;
         const borderBottomLeftRadius = isFirstItem ? containerBorderRadius : activeBorderRadius;
         
-        // Right border radius: match container (60px) when at right edge, otherwise use active radius
+        // Right border radius: match container (60px) exactly when at right edge
         const borderTopRightRadius = isLastItem ? containerBorderRadius : activeBorderRadius;
         const borderBottomRightRadius = isLastItem ? containerBorderRadius : activeBorderRadius;
         
@@ -97,6 +108,7 @@ export default function BottomNav() {
           borderBottomLeftRadius: borderBottomLeftRadius,
           borderTopRightRadius: borderTopRightRadius,
           borderBottomRightRadius: borderBottomRightRadius,
+          activeIndex: activeIndex,
         });
       }
     };
