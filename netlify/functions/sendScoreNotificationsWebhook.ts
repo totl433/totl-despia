@@ -1494,6 +1494,249 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
+    // Check if all games in this GW are finished (end of gameweek)
+    // IMPORTANT: Check this whenever ANY game finishes, even if we've already notified for that specific game
+    // This ensures the gameweek ended notification triggers when the last game finishes
+    if (isFinished) {
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] Checking if all games finished for GW ${fixtureGw}...`);
+      
+      // We need to check ALL fixtures for the GW, not just ones in live_scores
+      let allFinished = false;
+      
+      // Get ALL fixtures for this GW
+      const { data: allFixtures } = await supabase
+        .from('app_fixtures')
+        .select('api_match_id, fixture_index')
+        .eq('gw', fixtureGw);
+      
+      if (allFixtures && allFixtures.length > 0) {
+        // Filter to only fixtures with api_match_id (these are the ones we track)
+        const fixturesWithApiId = allFixtures.filter((f: any) => f.api_match_id);
+        
+        if (fixturesWithApiId.length > 0) {
+          // Get live_scores for all fixtures with api_match_id
+          const apiMatchIds = fixturesWithApiId.map((f: any) => f.api_match_id);
+          const { data: allLiveScores } = await supabase
+            .from('live_scores')
+            .select('api_match_id, status')
+            .in('api_match_id', apiMatchIds);
+          
+          // Check that ALL fixtures with api_match_id have finished live_scores
+          const finishedScores = (allLiveScores || []).filter((score: any) => 
+            score.status === 'FINISHED' || score.status === 'FT'
+          );
+          
+          // All fixtures with api_match_id must have finished live_scores
+          allFinished = finishedScores.length === fixturesWithApiId.length;
+          
+          if (allFinished) {
+            console.log(`[sendScoreNotificationsWebhook] ✅ All ${fixturesWithApiId.length} fixtures with API IDs are finished for GW ${fixtureGw}`);
+          } else {
+            console.log(`[sendScoreNotificationsWebhook] ⏳ Not all fixtures finished: ${finishedScores.length}/${fixturesWithApiId.length} finished for GW ${fixtureGw}`);
+          }
+        } else {
+          // No fixtures with api_match_id, can't determine if GW is finished
+          console.log(`[sendScoreNotificationsWebhook] ⚠️ No fixtures with api_match_id for GW ${fixtureGw}, skipping end-of-GW check`);
+        }
+      } else {
+        // No fixtures found for this GW
+        console.log(`[sendScoreNotificationsWebhook] ⚠️ No fixtures found for GW ${fixtureGw}, skipping end-of-GW check`);
+      }
+      
+      if (allFinished) {
+        console.log(`[sendScoreNotificationsWebhook] 🎉 All games finished for GW ${fixtureGw} - writing results to app_gw_results`);
+        
+        // Check if results already exist for this GW
+        const { data: existingResults } = await supabase
+          .from('app_gw_results')
+          .select('gw')
+          .eq('gw', fixtureGw)
+          .limit(1);
+        
+        if (!existingResults || existingResults.length === 0) {
+          // Write results to app_gw_results based on live_scores
+          console.log(`[sendScoreNotificationsWebhook] Writing results for GW ${fixtureGw} to app_gw_results...`);
+          
+          // Get all fixtures for this GW with their fixture_index
+          const { data: gwFixtures } = await supabase
+            .from('app_fixtures')
+            .select('fixture_index, api_match_id')
+            .eq('gw', fixtureGw)
+            .order('fixture_index', { ascending: true });
+          
+          if (gwFixtures && gwFixtures.length > 0) {
+            // Get all live_scores for fixtures with api_match_id
+            const apiMatchIds = gwFixtures
+              .map((f: any) => f.api_match_id)
+              .filter((id: any) => id != null);
+            
+            const { data: allLiveScores } = await supabase
+              .from('live_scores')
+              .select('api_match_id, home_score, away_score, status')
+              .in('api_match_id', apiMatchIds);
+            
+            // Create a map of api_match_id -> result (H/D/A)
+            const liveScoresMap = new Map<number, 'H' | 'D' | 'A'>();
+            (allLiveScores || []).forEach((score: any) => {
+              if (score.status === 'FINISHED' || score.status === 'FT') {
+                const homeScore = score.home_score ?? 0;
+                const awayScore = score.away_score ?? 0;
+                let result: 'H' | 'D' | 'A';
+                if (homeScore > awayScore) {
+                  result = 'H';
+                } else if (awayScore > homeScore) {
+                  result = 'A';
+                } else {
+                  result = 'D';
+                }
+                liveScoresMap.set(score.api_match_id, result);
+              }
+            });
+            
+            // Build results array for app_gw_results
+            const resultsToInsert: Array<{ gw: number; fixture_index: number; result: 'H' | 'D' | 'A' }> = [];
+            
+            gwFixtures.forEach((fixture: any) => {
+              if (fixture.api_match_id && liveScoresMap.has(fixture.api_match_id)) {
+                resultsToInsert.push({
+                  gw: fixtureGw,
+                  fixture_index: fixture.fixture_index,
+                  result: liveScoresMap.get(fixture.api_match_id)!,
+                });
+              }
+            });
+            
+            if (resultsToInsert.length > 0) {
+              const { error: insertError } = await supabase
+                .from('app_gw_results')
+                .upsert(resultsToInsert, { onConflict: 'gw,fixture_index' });
+              
+              if (insertError) {
+                console.error(`[sendScoreNotificationsWebhook] Error writing results to app_gw_results:`, insertError);
+              } else {
+                console.log(`[sendScoreNotificationsWebhook] ✅ Successfully wrote ${resultsToInsert.length} results to app_gw_results for GW ${fixtureGw}`);
+              }
+            } else {
+              console.warn(`[sendScoreNotificationsWebhook] ⚠️ No results to write for GW ${fixtureGw} (no finished games found)`);
+            }
+          } else {
+            console.warn(`[sendScoreNotificationsWebhook] ⚠️ No fixtures found for GW ${fixtureGw}`);
+          }
+        } else {
+          console.log(`[sendScoreNotificationsWebhook] Results already exist for GW ${fixtureGw}, skipping write`);
+        }
+        
+        console.log(`[sendScoreNotificationsWebhook] 🎉 All games finished for GW ${fixtureGw} - sending end of GW notification`);
+        
+        // Get all users who have picks for this GW
+        let allPicks: any[] = [];
+        if (isAppFixture) {
+          const { data: appPicks } = await supabase
+            .from('app_picks')
+            .select('user_id')
+            .eq('gw', fixtureGw);
+          allPicks = appPicks || [];
+        } else if (isTestFixture && testGwForPicks) {
+          const { data: testPicks } = await supabase
+            .from('test_api_picks')
+            .select('user_id')
+            .eq('matchday', testGwForPicks);
+          allPicks = testPicks || [];
+        } else {
+          const { data: regularPicks } = await supabase
+            .from('picks')
+            .select('user_id')
+            .eq('gw', fixtureGw);
+          allPicks = regularPicks || [];
+        }
+        
+        const allUserIds = Array.from(new Set(allPicks.map((p: any) => p.user_id)));
+        
+        // Load user notification preferences for GW results using shared utility
+        const gwPrefsMap = await loadUserNotificationPreferences(allUserIds);
+
+        const { data: allSubscriptions } = await supabase
+          .from('push_subscriptions')
+          .select('user_id, player_id')
+          .in('user_id', allUserIds)
+          .eq('is_active', true);
+        
+        const allPlayerIdsByUser = new Map<string, string[]>();
+        (allSubscriptions || []).forEach((sub: any) => {
+          if (!sub.player_id) return;
+          if (!allPlayerIdsByUser.has(sub.user_id)) {
+            allPlayerIdsByUser.set(sub.user_id, []);
+          }
+          allPlayerIdsByUser.get(sub.user_id)!.push(sub.player_id);
+        });
+        
+        // Check if we've already notified for end of GW
+        // Check if any match in this GW has status 'GW_FINISHED' (our marker)
+        const { data: gwFinishedCheck } = await supabase
+          .from('notification_state')
+          .select('last_notified_status')
+          .eq('last_notified_status', 'GW_FINISHED')
+          .limit(1);
+        
+        // Also check if we notified recently (within last hour) to avoid duplicates
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const { data: recentNotifications } = await supabase
+          .from('notification_state')
+          .select('last_notified_at, last_notified_status')
+          .gte('last_notified_at', oneHourAgo)
+          .eq('last_notified_status', 'GW_FINISHED')
+          .limit(1);
+        
+        if (!recentNotifications || recentNotifications.length === 0) {
+          // Send end of GW notification to all users
+          let gwTotalSent = 0;
+          for (const userId of allUserIds) {
+            const playerIds = allPlayerIdsByUser.get(userId) || [];
+            if (playerIds.length === 0) continue;
+            
+            // Check if notification should be sent (OneSignal subscription + user preferences)
+            const userPrefs = gwPrefsMap.get(userId);
+            if (userPrefs && userPrefs['gw-results'] === false) {
+              continue; // Skip if user disabled gw-results notifications
+            }
+            
+            const gwTitle = `🎉 Gameweek ${fixtureGw} Complete!`;
+            const gwMessage = `All games finished. Check your results!`;
+            
+            const gwResult = await sendOneSignalNotification(
+              playerIds,
+              gwTitle,
+              gwMessage,
+              {
+                type: 'gameweek_finished',
+                gw: fixtureGw,
+              }
+            );
+            
+            if (gwResult.success) {
+              gwTotalSent += gwResult.sentTo;
+            }
+          }
+          
+          // Mark GW as notified by updating the current match's state with special status
+          // This marks that we've sent the end-of-GW notification
+          await supabase
+            .from('notification_state')
+            .upsert({
+              api_match_id: apiMatchId,
+              last_notified_at: new Date().toISOString(),
+              last_notified_home_score: homeScore,
+              last_notified_away_score: awayScore,
+              last_notified_status: 'GW_FINISHED',
+            } as any, {
+              onConflict: 'api_match_id',
+            });
+          
+          console.log(`[sendScoreNotificationsWebhook] Sent end of GW ${fixtureGw} notification to ${gwTotalSent} users`);
+        }
+      }
+    }
+
     // No notification needed
     return {
       statusCode: 200,
