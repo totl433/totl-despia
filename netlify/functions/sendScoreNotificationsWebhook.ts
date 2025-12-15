@@ -328,6 +328,9 @@ export const handler: Handler = async (event, context) => {
     // Check if this is a score change (for goal notifications)
     const isScoreChange = homeScore !== oldHomeScore || awayScore !== oldAwayScore;
     const isStatusChange = status !== oldStatus;
+    // Half-time is detected when status changes from IN_PLAY to PAUSED
+    // This happens regardless of minute (could be 45', 45+1', 45+4', etc. due to injury time)
+    // We rely on the API to set PAUSED status, not minute-based detection
     const isHalfTime = oldStatus === 'IN_PLAY' && status === 'PAUSED';
     const isFinished = status === 'FINISHED' || status === 'FT';
 
