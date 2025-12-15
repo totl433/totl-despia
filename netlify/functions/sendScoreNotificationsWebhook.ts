@@ -1166,8 +1166,17 @@ export const handler: Handler = async (event, context) => {
     }
 
     // Handle game finished (check this even if there were no new goals)
-    if (isFinished && oldStatus !== 'FINISHED' && oldStatus !== 'FT') {
-      console.log(`[sendScoreNotificationsWebhook] 🏁 Game finished detected for match ${apiMatchId}`);
+    // IMPORTANT: Check if game is finished regardless of oldStatus
+    // The webhook might fire multiple times when a game finishes, so we need to check
+    // if we've already notified for this finished game
+    if (isFinished) {
+      // Check if we've already notified for this finished game
+      const hasNotifiedFinished = state?.last_notified_status === 'FINISHED' || state?.last_notified_status === 'FT';
+      
+      // Only send notification if game JUST finished (transition from non-finished to finished)
+      // OR if we haven't notified for this finished game yet
+      if (oldStatus !== 'FINISHED' && oldStatus !== 'FT' && !hasNotifiedFinished) {
+        console.log(`[sendScoreNotificationsWebhook] 🏁 Game finished detected for match ${apiMatchId}`);
       // Get users who have picks
       const picks = await fetchFixturePicks(
         fixtureGw,
@@ -1230,7 +1239,25 @@ export const handler: Handler = async (event, context) => {
         }
       }
 
+      // Update state to mark that we've notified for this finished game
+      await supabase
+        .from('notification_state')
+        .upsert({
+          api_match_id: apiMatchId,
+          last_notified_status: status, // Mark as FINISHED or FT
+          last_notified_home_score: homeScore,
+          last_notified_away_score: awayScore,
+          last_notified_at: new Date().toISOString(),
+          last_notified_goals: goals || [],
+        } as any, {
+          onConflict: 'api_match_id',
+        });
+
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] ✅ Sent full-time notification for match ${apiMatchId} (${totalSent} users)`);
+
       // Check if all games in this GW are finished (end of gameweek)
+      // IMPORTANT: Check this even if we've already notified for this specific game
+      // because the gameweek might have just finished
       // We need to check ALL fixtures for the GW, not just ones in live_scores
       let allFinished = false;
       
