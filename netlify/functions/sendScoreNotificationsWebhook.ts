@@ -647,6 +647,47 @@ export const handler: Handler = async (event, context) => {
         newGoalsCount: newGoals.length,
       });
 
+      // Check if this is a goal reallocation (same score, same number of goals, just scorer changed)
+      // This happens when a goal is reattributed (e.g., changed to own goal) - we should update the app
+      // but NOT send a notification as it's confusing
+      let isGoalReallocation = false;
+      if (!isScoreChange && newGoals.length > 0 && goals.length === previousGoalsArray.length && goals.length > 0) {
+        // Create a hash based on minute + teamId (ignoring scorer) to detect reallocation
+        const normalizeGoalByMinuteAndTeam = (g: any): string => {
+          if (!g || typeof g !== 'object') return '';
+          const minute = g.minute !== null && g.minute !== undefined ? String(g.minute) : '';
+          const teamId = g.teamId !== null && g.teamId !== undefined ? String(g.teamId) : '';
+          return `${minute}|${teamId}`;
+        };
+        
+        const currentGoalsByMinuteTeam = new Set(goals.map(normalizeGoalByMinuteAndTeam));
+        const previousGoalsByMinuteTeam = new Set(previousGoalsArray.map(normalizeGoalByMinuteAndTeam));
+        
+        // If the minute+team combinations match, this is a reallocation
+        const minuteTeamMatch = currentGoalsByMinuteTeam.size === previousGoalsByMinuteTeam.size &&
+                                 [...currentGoalsByMinuteTeam].every(key => previousGoalsByMinuteTeam.has(key));
+        
+        if (minuteTeamMatch) {
+          isGoalReallocation = true;
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔄 GOAL REALLOCATION DETECTED - skipping notification (score unchanged, scorer updated)`);
+          // Update state with new goal data (so app shows correct scorer) but don't send notification
+          await supabase
+            .from('notification_state')
+            .upsert({
+              api_match_id: apiMatchId,
+              last_notified_home_score: homeScore,
+              last_notified_away_score: awayScore,
+              last_notified_status: status,
+              last_notified_at: new Date().toISOString(),
+              last_notified_goals: goals,
+              last_notified_red_cards: redCards || null,
+            } as any, {
+              onConflict: 'api_match_id',
+            });
+          // Don't return here - continue to check for FT/GW finished
+        }
+      }
+
       if (newGoals.length === 0) {
         console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - no new goals detected`, {
           currentGoalsCount: goals.length,
@@ -670,6 +711,9 @@ export const handler: Handler = async (event, context) => {
             onConflict: 'api_match_id',
           });
         // Don't return here - continue to check for FT/GW finished
+      } else if (isGoalReallocation) {
+        // Goal reallocation already handled above (state updated, notification skipped)
+        // Continue to check for FT/GW finished below
       } else {
         // CRITICAL: Use atomic "claim" operation to prevent duplicate notifications
         // Try to update state ONLY if it hasn't been updated in the last 10 seconds for these exact goals
