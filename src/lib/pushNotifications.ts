@@ -169,20 +169,24 @@ export async function ensurePushSubscribed(
       } catch (e) {
         errorData = { error: `HTTP ${res.status}: ${res.statusText}` };
       }
-      console.error('[Push] Failed to register device:', {
+      console.error('[Push] ❌ Failed to register device:', {
         status: res.status,
         statusText: res.statusText,
         error: errorData,
+        playerId: playerId?.slice(0, 8) + '…',
       });
       
       // Provide more specific error reasons
       if (res.status === 401) {
-        return { ok: false, reason: 'no-session' };
+        console.error('[Push] ❌ Authentication failed - session may have expired');
+        return { ok: false, reason: 'no-session', error: 'Authentication failed' };
       }
       if (res.status === 400 && errorData.error?.includes('playerId')) {
-        return { ok: false, reason: 'no-player-id' };
+        console.error('[Push] ❌ Invalid Player ID provided');
+        return { ok: false, reason: 'no-player-id', error: errorData.error };
       }
       
+      console.error('[Push] ❌ Unknown registration error:', errorData);
       return { ok: false, reason: 'unknown', error: errorData.error || `Server error (${res.status})` };
     }
 

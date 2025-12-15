@@ -200,14 +200,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log('[Push] Despia API not available - not in native app, skipping');
           // Don't retry - not a native app
         } else {
-          console.warn(`[Push] Registration failed: ${result.reason}`);
-          // Retry for unknown errors
+          console.error(`[Push] ❌ Registration failed: ${result.reason}`, result.error ? `- ${result.error}` : '');
+          // Retry for unknown errors, but log more details
           if (retryCount < 4 && !cancelled) {
+            console.log(`[Push] Will retry registration in 3s (attempt ${retryCount + 1}/5)`);
             setTimeout(() => attemptRegister(retryCount + 1), 3000);
+          } else {
+            console.error(`[Push] ❌ Registration failed after ${retryCount + 1} attempts. Reason: ${result.reason}`);
+            if (result.error) {
+              console.error(`[Push] Error details: ${result.error}`);
+            }
           }
         }
       } catch (err) {
-        console.error('[Push] Registration error:', err);
+        console.error('[Push] ❌ Registration exception:', err);
         // Retry on exception
         if (retryCount < 4 && !cancelled) {
           setTimeout(() => attemptRegister(retryCount + 1), 3000);
