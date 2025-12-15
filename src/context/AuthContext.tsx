@@ -282,7 +282,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user?.id, session?.access_token]);
+  }, [user?.id, session?.access_token]); // Effect retriggers when user.id or session.access_token changes
 
   async function signOut() {
     await supabase.auth.signOut();
