@@ -1482,7 +1482,6 @@ export const handler: Handler = async (event, context) => {
       headers,
       body: JSON.stringify({ message: 'No notification needed' }),
     };
-
   } catch (error: any) {
     console.error('[sendScoreNotificationsWebhook] Error:', error);
     return {
