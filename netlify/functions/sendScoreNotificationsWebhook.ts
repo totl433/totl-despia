@@ -594,10 +594,19 @@ export const handler: Handler = async (event, context) => {
       
       // Use state as primary source, but fall back to old_record if state is missing
       // This handles cases where webhook fires before state is updated
+      // IMPORTANT: When status is PAUSED (half-time), compare against old_record goals
+      // to catch goals scored right at half-time that might not be in state yet
       let previousGoals = state?.last_notified_goals;
       if (!previousGoals || !Array.isArray(previousGoals) || previousGoals.length === 0) {
         // Fall back to old_record goals if state doesn't have goals yet
         previousGoals = oldGoals || [];
+      } else if (status === 'PAUSED' && Array.isArray(oldGoals) && oldGoals.length > 0) {
+        // At half-time, also check old_record to catch goals scored right before status change
+        // If old_record has fewer goals than current, use old_record for comparison
+        if (oldGoals.length < goals.length) {
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔍 HALF-TIME: Using old_record goals for comparison (${oldGoals.length} vs ${goals.length} current)`);
+          previousGoals = oldGoals;
+        }
       }
       const previousGoalsArray = Array.isArray(previousGoals) ? previousGoals : [];
       const previousGoalsHash = JSON.stringify(previousGoalsArray.map(normalizeGoalKey).sort());
