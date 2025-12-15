@@ -1024,47 +1024,27 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
-    // Handle kickoff
-    // Check if we've already notified for kickoff - check both state and timestamp
-    const hasNotifiedKickoff = state?.last_notified_status === 'IN_PLAY' && 
-                               state?.last_notified_home_score === 0 && 
-                               state?.last_notified_away_score === 0;
+    // Handle kickoff - simple: if status is IN_PLAY with 0-0 score, send notification once
+    const isKickoff = status === 'IN_PLAY' && homeScore === 0 && awayScore === 0;
     
-    // Check if notification was sent recently (within last 10 minutes) - this catches duplicates even if state doesn't match exactly
-    const recentlyNotified = state?.last_notified_at && 
-      (new Date(state.last_notified_at).getTime() > Date.now() - 10 * 60 * 1000) &&
-      state?.last_notified_status === 'IN_PLAY' &&
-      state?.last_notified_home_score === 0 &&
-      state?.last_notified_away_score === 0;
-    
-    if (recentlyNotified || hasNotifiedKickoff) {
-      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - already sent kickoff notification for match ${apiMatchId} at ${state?.last_notified_at}`);
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ message: 'Already notified for kickoff' }),
-      };
-    }
+    if (isKickoff) {
+      // Check if we've already sent kickoff notification for this match
+      const hasNotifiedKickoff = state?.last_notified_status === 'IN_PLAY' && 
+                                 state?.last_notified_home_score === 0 && 
+                                 state?.last_notified_away_score === 0;
+      
+      if (hasNotifiedKickoff) {
+        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - already sent kickoff notification for match ${apiMatchId}`);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ message: 'Already notified for kickoff' }),
+        };
+      }
 
-    // Detect kickoff: status changed from non-IN_PLAY to IN_PLAY with 0-0 score
-    // Handle cases where oldStatus is undefined/null/TIMED/SCHEDULED (new record or missing old_record)
-    // Also handle case where oldStatus is 'FT' or 'FINISHED' (match restarted - shouldn't happen but be safe)
-    const isKickoffOrNewlyInPlay = isKickoff || 
-      ((oldStatus === null || oldStatus === undefined || oldStatus === 'TIMED' || oldStatus === 'SCHEDULED' || oldStatus === 'FT' || oldStatus === 'FINISHED') && 
-       status === 'IN_PLAY' && 
-       homeScore === 0 && 
-       awayScore === 0);
-    
-    // Enhanced logging for kickoff detection
-    if (status === 'IN_PLAY' && homeScore === 0 && awayScore === 0) {
-      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔍 KICKOFF CHECK: oldStatus=${oldStatus || 'null/undefined'}, status=${status}, isKickoff=${isKickoff}, isKickoffOrNewlyInPlay=${isKickoffOrNewlyInPlay}, hasOldRecord=${!!old_record}`);
-    }
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF DETECTED: status=${status}, score=${homeScore}-${awayScore}`);
 
-    if (isKickoffOrNewlyInPlay) {
-      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF DETECTED: isKickoff=${isKickoff}, status=${status}, oldStatus=${oldStatus || 'null'}, score=${homeScore}-${awayScore}, hasNotifiedKickoff=${hasNotifiedKickoff}`);
-
-      // CRITICAL: Update state IMMEDIATELY before sending notifications
-      // This prevents duplicate notifications if webhook fires multiple times
+      // Mark as notified BEFORE sending to prevent duplicates
       const now = new Date().toISOString();
       const { error: updateError } = await supabase
         .from('notification_state')
@@ -1082,37 +1062,12 @@ export const handler: Handler = async (event, context) => {
 
       if (updateError) {
         console.error(`[sendScoreNotificationsWebhook] [${requestId}] Error updating state:`, updateError);
-        // If we can't update state, don't send notification to prevent duplicates
         return {
           statusCode: 200,
           headers,
           body: JSON.stringify({ message: 'Failed to update state, skipping notification' }),
         };
       }
-
-      // Re-check state immediately after update to ensure we were the first
-      const { data: verifyState } = await supabase
-        .from('notification_state')
-        .select('last_notified_status, last_notified_home_score, last_notified_away_score, last_notified_at')
-        .eq('api_match_id', apiMatchId)
-        .maybeSingle();
-
-      const wasAlreadyNotified = verifyState?.last_notified_status === 'IN_PLAY' && 
-                                 verifyState?.last_notified_home_score === 0 && 
-                                 verifyState?.last_notified_away_score === 0 &&
-                                 verifyState?.last_notified_at &&
-                                 verifyState.last_notified_at !== now; // If timestamp is different, another webhook beat us
-
-      if (wasAlreadyNotified) {
-        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 RACE CONDITION DETECTED - another webhook already sent kickoff notification at ${verifyState?.last_notified_at}`);
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ message: 'Race condition: another webhook already notified' }),
-        };
-      }
-
-      console.log(`[sendScoreNotificationsWebhook] [${requestId}] ✅ State updated and verified for kickoff match ${apiMatchId}`);
 
       // Get users who have picks
       let picks: any[] = [];
