@@ -689,53 +689,45 @@ export const handler: Handler = async (event, context) => {
       const goalMinute = newestGoal.minute !== null && newestGoal.minute !== undefined ? `${newestGoal.minute}'` : '';
       const isOwnGoal = newestGoal.isOwnGoal === true;
       
-      // Determine which team scored - use score change (most reliable)
-      // Compare current score to old score to see which team scored
-      // Note: For own goals, pollLiveScores already swaps the team to the benefiting team
+      // Determine which team scored - use goal's team field (most reliable)
+      // pollLiveScores already normalizes the team correctly, including own goals
+      const scoringTeam = newestGoal.team || '';
+      const normalizedScoringTeam = scoringTeam.toLowerCase().trim();
+      const normalizedHomeTeam = (normalizedFixture.home_team || '').toLowerCase().trim();
+      const normalizedAwayTeam = (normalizedFixture.away_team || '').toLowerCase().trim();
+      
+      // Match goal's team to fixture's home/away team
+      const isHomeTeam = normalizedScoringTeam === normalizedHomeTeam ||
+                         normalizedScoringTeam.includes(normalizedHomeTeam) ||
+                         normalizedHomeTeam.includes(normalizedScoringTeam);
+      
+      // Verify with score change as sanity check
       const homeScoreIncreased = homeScore > (oldHomeScore || 0);
       const awayScoreIncreased = awayScore > (oldAwayScore || 0);
       const homeScoreDecreased = homeScore < (oldHomeScore || 0);
       const awayScoreDecreased = awayScore < (oldAwayScore || 0);
-      
-      // Check if this is a goal disallowed (score went DOWN)
       const isGoalDisallowed = homeScoreDecreased || awayScoreDecreased;
       
-      // If both increased (shouldn't happen, but handle it), use teamId from goal if available
-      let isHomeTeam: boolean;
-      if (homeScoreIncreased && !awayScoreIncreased) {
-        isHomeTeam = true;
-      } else if (awayScoreIncreased && !homeScoreIncreased) {
-        isHomeTeam = false;
-      } else if (homeScoreDecreased && !awayScoreDecreased) {
-        // Goal disallowed for home team
-        isHomeTeam = true;
-      } else if (awayScoreDecreased && !homeScoreIncreased) {
-        // Goal disallowed for away team
-        isHomeTeam = false;
-      } else {
-        // Fallback: try to match by teamId or team name
-        const goalTeamId = newestGoal.teamId;
-        const scoringTeam = newestGoal.team || '';
-        const normalizedScoringTeam = scoringTeam.toLowerCase().trim();
-        const normalizedHomeTeam = (normalizedFixture.home_team || '').toLowerCase().trim();
-        const normalizedAwayTeam = (normalizedFixture.away_team || '').toLowerCase().trim();
-        
-        // Try name matching as fallback
-        isHomeTeam = normalizedScoringTeam === normalizedHomeTeam ||
-                     normalizedScoringTeam.includes(normalizedHomeTeam) ||
-                     normalizedHomeTeam.includes(normalizedScoringTeam);
-        
-        console.log(`[sendScoreNotificationsWebhook] [${requestId}] Could not determine scoring team from score change, using name matching:`, {
-          goalTeamId,
-          scoringTeam,
-          isHomeTeam,
-          homeTeam: normalizedFixture.home_team,
-          awayTeam: normalizedFixture.away_team,
-        });
+      // Log if there's a mismatch between goal team and score change
+      if (!isGoalDisallowed) {
+        const scoreChangeSaysHome = homeScoreIncreased && !awayScoreIncreased;
+        const scoreChangeSaysAway = awayScoreIncreased && !homeScoreIncreased;
+        if (scoreChangeSaysHome !== isHomeTeam || scoreChangeSaysAway === isHomeTeam) {
+          console.warn(`[sendScoreNotificationsWebhook] [${requestId}] ⚠️ Mismatch: goal team says ${isHomeTeam ? 'home' : 'away'}, but score change says ${scoreChangeSaysHome ? 'home' : scoreChangeSaysAway ? 'away' : 'unknown'}`);
+        }
       }
       
-      // Calculate actual score from goals array if score fields are stale
-      // This handles cases where webhook fires before home_score/away_score are updated
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] Scoring team determined:`, {
+        goalTeam: scoringTeam,
+        isHomeTeam,
+        homeTeam: normalizedFixture.home_team,
+        awayTeam: normalizedFixture.away_team,
+        homeScore: `${oldHomeScore} -> ${homeScore}`,
+        awayScore: `${oldAwayScore} -> ${awayScore}`,
+      });
+      
+      // Calculate actual score from goals array (most reliable source)
+      // Always use goals array to count goals by team, as score fields may be wrong/swapped
       let actualHomeScore = homeScore;
       let actualAwayScore = awayScore;
       
@@ -751,7 +743,7 @@ export const handler: Handler = async (event, context) => {
           if (!goal || typeof goal !== 'object') continue;
           const goalTeam = (goal.team || '').toLowerCase().trim();
           
-          // Try to match by team name (most reliable)
+          // Match by team name (pollLiveScores already normalized team names)
           const isHomeGoal = goalTeam === homeTeamName ||
                             goalTeam.includes(homeTeamName) ||
                             homeTeamName.includes(goalTeam);
@@ -763,14 +755,13 @@ export const handler: Handler = async (event, context) => {
           }
         }
         
-        // Use goals array count if it's higher than recorded score (score fields are stale)
-        if (goalsFromArrayHome > homeScore) {
-          actualHomeScore = goalsFromArrayHome;
-          console.log(`[sendScoreNotificationsWebhook] [${requestId}] Score field stale - using goals array: home ${homeScore} -> ${actualHomeScore}`);
-        }
-        if (goalsFromArrayAway > awayScore) {
-          actualAwayScore = goalsFromArrayAway;
-          console.log(`[sendScoreNotificationsWebhook] [${requestId}] Score field stale - using goals array: away ${awayScore} -> ${actualAwayScore}`);
+        // Always use goals array count - it's the source of truth
+        // Score fields may be stale, wrong, or swapped
+        actualHomeScore = goalsFromArrayHome;
+        actualAwayScore = goalsFromArrayAway;
+        
+        if (goalsFromArrayHome !== homeScore || goalsFromArrayAway !== awayScore) {
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] Score mismatch - using goals array: home ${homeScore} -> ${actualHomeScore}, away ${awayScore} -> ${actualAwayScore}`);
         }
       }
       
