@@ -1147,35 +1147,6 @@ export const handler: Handler = async (event, context) => {
         }
       }
 
-        const isCorrect = pick.pick === result;
-        const title = `FT: ${fixture.home_team} ${homeScore}-${awayScore} ${fixture.away_team}`;
-        
-        // Format percentage message: remove brackets, add "Only" if 20% or below
-        const percentageText = correctPercentage <= 20
-          ? `Only ${correctPercentage}% of players got this fixture correct`
-          : `${correctPercentage}% of players got this fixture correct`;
-        
-        const message = isCorrect 
-          ? `✅ Got it right! ${percentageText}` 
-          : `❌ Wrong pick ${percentageText}`;
-
-        const result2 = await sendOneSignalNotification(
-          playerIds,
-          title,
-          message,
-          {
-            type: 'game_finished',
-            api_match_id: apiMatchId,
-            fixture_index: normalizedFixture.fixture_index,
-            gw: fixtureGw,
-          }
-        );
-
-        if (result2.success) {
-          totalSent += result2.sentTo;
-        }
-      }
-
       // Check if all games in this GW are finished (end of gameweek)
       // We need to check ALL fixtures for the GW, not just ones in live_scores
       let allFinished = false;
