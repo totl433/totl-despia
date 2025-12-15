@@ -955,25 +955,63 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
-    // Handle kickoff - simple: if status is IN_PLAY with 0-0 score, send notification once
-    const isKickoff = status === 'IN_PLAY' && homeScore === 0 && awayScore === 0;
+    // Handle kickoff - detect both first half and second half kickoff
+    // First half: status is IN_PLAY with 0-0 score, and we haven't notified kickoff yet
+    // Second half: oldStatus was PAUSED/HALF_TIME and status is now IN_PLAY (regardless of score)
+    const isFirstHalfKickoff = status === 'IN_PLAY' && homeScore === 0 && awayScore === 0;
+    const isSecondHalfKickoff = (oldStatus === 'PAUSED' || oldStatus === 'HALF_TIME') && status === 'IN_PLAY';
+    const isKickoff = isFirstHalfKickoff || isSecondHalfKickoff;
     
     if (isKickoff) {
-      // Check if we've already sent kickoff notification for this match
-      const hasNotifiedKickoff = state?.last_notified_status === 'IN_PLAY' && 
-                                 state?.last_notified_home_score === 0 && 
-                                 state?.last_notified_away_score === 0;
+      // For first half kickoff, check if we've already sent notification
+      if (isFirstHalfKickoff) {
+        const hasNotifiedKickoff = state?.last_notified_status === 'IN_PLAY' && 
+                                   state?.last_notified_home_score === 0 && 
+                                   state?.last_notified_away_score === 0;
+        
+        if (hasNotifiedKickoff) {
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - already sent first half kickoff notification for match ${apiMatchId}`);
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ message: 'Already notified for kickoff' }),
+          };
+        }
+      }
       
-      if (hasNotifiedKickoff) {
-        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - already sent kickoff notification for match ${apiMatchId}`);
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ message: 'Already notified for kickoff' }),
-        };
+      // For second half kickoff, check if we've already sent second half notification
+      // If state shows we've been through half-time (status was PAUSED) and then back to IN_PLAY,
+      // and we've already notified for IN_PLAY after PAUSED, skip
+      if (isSecondHalfKickoff) {
+        // Check if state shows we've already been through half-time and back to IN_PLAY
+        // This means we've already sent second half kickoff
+        const hasBeenThroughHalfTime = state?.last_notified_status === 'PAUSED' || 
+                                       (state?.last_notified_status === 'IN_PLAY' && 
+                                        state?.last_notified_at &&
+                                        oldStatus === 'PAUSED');
+        
+        // If state is IN_PLAY and we're coming from PAUSED, but state was already IN_PLAY before,
+        // that means we already sent second half kickoff
+        if (state?.last_notified_status === 'IN_PLAY' && oldStatus === 'PAUSED') {
+          // Check if this is a duplicate webhook by comparing timestamps
+          // If state was updated very recently (within 5 seconds), skip
+          if (state.last_notified_at) {
+            const lastNotifiedTime = new Date(state.last_notified_at).getTime();
+            const now = Date.now();
+            if (now - lastNotifiedTime < 5000) {
+              console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - already sent second half kickoff notification for match ${apiMatchId} (recent update)`);
+              return {
+                statusCode: 200,
+                headers,
+                body: JSON.stringify({ message: 'Already notified for second half kickoff' }),
+              };
+            }
+          }
+        }
       }
 
-      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF DETECTED: status=${status}, score=${homeScore}-${awayScore}`);
+      const kickoffType = isSecondHalfKickoff ? 'SECOND_HALF' : 'FIRST_HALF';
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 ${kickoffType} KICKOFF DETECTED: status=${status}, score=${homeScore}-${awayScore}, oldStatus=${oldStatus}`);
 
       // Mark as notified BEFORE sending to prevent duplicates
       const now = new Date().toISOString();
@@ -981,12 +1019,12 @@ export const handler: Handler = async (event, context) => {
         .from('notification_state')
         .upsert({
           api_match_id: apiMatchId,
-          last_notified_home_score: 0,
-          last_notified_away_score: 0,
+          last_notified_home_score: homeScore,
+          last_notified_away_score: awayScore,
           last_notified_status: 'IN_PLAY',
           last_notified_at: now,
-          last_notified_goals: null,
-          last_notified_red_cards: null,
+          last_notified_goals: goals || [],
+          last_notified_red_cards: redCards || null,
         } as any, {
           onConflict: 'api_match_id',
         });
@@ -1011,10 +1049,10 @@ export const handler: Handler = async (event, context) => {
       );
 
       const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
-      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Found ${userIds.length} unique users with picks`);
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 ${kickoffType} KICKOFF: Found ${userIds.length} unique users with picks`);
       
       if (userIds.length === 0) {
-        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: No users with picks found for fixture ${normalizedFixture.fixture_index}`);
+        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 ${kickoffType} KICKOFF: No users with picks found for fixture ${normalizedFixture.fixture_index}`);
         return {
           statusCode: 200,
           headers,
@@ -1026,7 +1064,7 @@ export const handler: Handler = async (event, context) => {
       const playerIdsByUser = await getSubscriptionsAndPlayerIds(userIds);
 
       const title = `⚽ ${normalizedFixture.home_team} vs ${normalizedFixture.away_team}`;
-      const message = `Kickoff!`;
+      const message = isSecondHalfKickoff ? `Second half underway` : `Kickoff!`;
 
       const totalSent = await sendNotificationsToUsers(
         picks,
@@ -1048,7 +1086,7 @@ export const handler: Handler = async (event, context) => {
         statusCode: 200,
         headers,
         body: JSON.stringify({
-          message: 'Kickoff notification sent',
+          message: `${kickoffType} kickoff notification sent`,
           sentTo: totalSent,
         }),
       };
