@@ -204,10 +204,58 @@ export const handler: Handler = async (event, context) => {
     const goals = record.goals || [];
     const redCards = record.red_cards || [];
 
-    const oldHomeScore = old_record?.home_score ?? 0;
-    const oldAwayScore = old_record?.away_score ?? 0;
-    const oldStatus = old_record?.status;
-    const oldGoals = old_record?.goals || [];
+    // If old_record is missing, try to fetch previous state from database
+    let oldHomeScore = old_record?.home_score ?? 0;
+    let oldAwayScore = old_record?.away_score ?? 0;
+    let oldStatus = old_record?.status;
+    let oldGoals = old_record?.goals || [];
+    
+    // If old_record is empty/missing, query database for previous state from live_scores
+    // This handles cases where webhook doesn't provide old_record (e.g., INSERT operations)
+    if (!old_record || Object.keys(old_record).length === 0 || !oldStatus) {
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] No old_record or oldStatus missing, querying live_scores for previous state`);
+      
+      // Try to get previous state from live_scores table (before the current update)
+      // We need to check if there's a record that was just updated
+      // Since we're in a webhook, the record might already be updated, so we check notification_state
+      // which stores the last notified state
+      const [previousLiveScore, previousNotificationState] = await Promise.all([
+        // Check notification_state first (most reliable for what we've already processed)
+        supabase
+          .from('notification_state')
+          .select('last_notified_status, last_notified_home_score, last_notified_away_score')
+          .eq('api_match_id', apiMatchId)
+          .maybeSingle(),
+        // Also check if there's a way to get the old live_scores value
+        // Note: This might not work if the update already happened, but worth trying
+        supabase
+          .from('live_scores')
+          .select('status, home_score, away_score')
+          .eq('api_match_id', apiMatchId)
+          .maybeSingle(),
+      ]);
+      
+      // Prefer notification_state as it represents what we last processed
+      // But if status changed, we need to detect it
+      if (previousNotificationState.data && previousNotificationState.data.last_notified_status) {
+        oldStatus = previousNotificationState.data.last_notified_status;
+        oldHomeScore = previousNotificationState.data.last_notified_home_score ?? oldHomeScore;
+        oldAwayScore = previousNotificationState.data.last_notified_away_score ?? oldAwayScore;
+        console.log(`[sendScoreNotificationsWebhook] [${requestId}] Found previous state in notification_state: status=${oldStatus}, score=${oldHomeScore}-${oldAwayScore}`);
+      } else if (previousLiveScore.data && previousLiveScore.data.status !== status) {
+        // If live_scores has different status, use that as old status
+        // This handles the case where status changed but notification_state wasn't updated yet
+        oldStatus = previousLiveScore.data.status;
+        oldHomeScore = previousLiveScore.data.home_score ?? oldHomeScore;
+        oldAwayScore = previousLiveScore.data.away_score ?? oldAwayScore;
+        console.log(`[sendScoreNotificationsWebhook] [${requestId}] Found previous state in live_scores: status=${oldStatus}, score=${oldHomeScore}-${oldAwayScore}`);
+      } else {
+        // If no previous state exists, assume this is a new record
+        // For kickoff detection: if oldStatus is undefined/null, treat it as "not IN_PLAY"
+        // This allows us to detect kickoff even for first-time inserts
+        console.log(`[sendScoreNotificationsWebhook] [${requestId}] No previous state found - treating as new record (oldStatus will be undefined/null for kickoff detection)`);
+      }
+    }
 
     // Check if goals array changed (compare JSON strings to detect any changes)
     const goalsChanged = JSON.stringify(goals || []) !== JSON.stringify(oldGoals || []);
@@ -1024,8 +1072,18 @@ export const handler: Handler = async (event, context) => {
     }
 
     // Detect kickoff: ONLY when status actually changed from non-IN_PLAY to IN_PLAY with 0-0 score
-    // Don't trigger on games that are already IN_PLAY (pollLiveScores updates every minute)
-    const isKickoffOrNewlyInPlay = isKickoff;
+    // Also handle case where oldStatus is undefined/null/TIMED/SCHEDULED (new record or missing old_record)
+    // In that case, if current status is IN_PLAY with 0-0, it's likely a kickoff
+    const isKickoffOrNewlyInPlay = isKickoff || 
+      ((oldStatus === null || oldStatus === undefined || oldStatus === 'TIMED' || oldStatus === 'SCHEDULED') && 
+       status === 'IN_PLAY' && 
+       homeScore === 0 && 
+       awayScore === 0);
+    
+    // Enhanced logging for kickoff detection
+    if (status === 'IN_PLAY' && homeScore === 0 && awayScore === 0) {
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔍 KICKOFF CHECK: oldStatus=${oldStatus || 'null/undefined'}, status=${status}, isKickoff=${isKickoff}, isKickoffOrNewlyInPlay=${isKickoffOrNewlyInPlay}, hasOldRecord=${!!old_record}`);
+    }
 
     if (isKickoffOrNewlyInPlay) {
       console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF DETECTED: isKickoff=${isKickoff}, status=${status}, oldStatus=${oldStatus || 'null'}, score=${homeScore}-${awayScore}, hasNotifiedKickoff=${hasNotifiedKickoff}`);
