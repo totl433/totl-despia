@@ -876,6 +876,7 @@ export const handler: Handler = async (event, context) => {
       // This ensures goals scored at half-time still trigger goal notifications
       // and then half-time notification is also sent
     }
+    }
 
     // Handle score changes without goals (for manual updates)
     // BUT: Skip if score went DOWN (this is handled above as goal disallowed)
@@ -1482,8 +1483,7 @@ export const handler: Handler = async (event, context) => {
       headers,
       body: JSON.stringify({ message: 'No notification needed' }),
     };
-  }
-  catch (error: any) {
+  } catch (error: any) {
     console.error('[sendScoreNotificationsWebhook] Error:', error);
     return {
       statusCode: 500,
