@@ -800,6 +800,10 @@ video {
   right: 1rem;
 }
 
+.right-6{
+  right: 1.5rem;
+}
+
 .right-8{
   right: 2rem;
 }
@@ -830,10 +834,6 @@ video {
 
 .top-40{
   top: 10rem;
-}
-
-.right-6{
-  right: 1.5rem;
 }
 
 .z-0{
@@ -1102,6 +1102,10 @@ video {
   height: 5rem;
 }
 
+.h-24{
+  height: 6rem;
+}
+
 .h-28{
   height: 7rem;
 }
@@ -1168,10 +1172,6 @@ video {
 
 .h-screen{
   height: 100vh;
-}
-
-.h-24{
-  height: 6rem;
 }
 
 .max-h-60{
@@ -4908,11 +4908,6 @@ select option {
   .sm\:px-4{
     padding-left: 1rem;
     padding-right: 1rem;
-  }
-
-  .sm\:px-6{
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
   }
 
   .sm\:text-2xl{
