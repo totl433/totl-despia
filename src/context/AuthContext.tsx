@@ -241,11 +241,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!currentSession?.access_token) {
         console.warn('[Push] ⚠️ Delaying registration - session.access_token not yet available');
         // Retry after a short delay if access_token isn't ready
+        // Use a closure to capture the latest session
         setTimeout(() => {
-          if (currentSession?.access_token && !cancelled) {
+          // Re-check session from the current state (it might have updated)
+          if (session?.access_token && !cancelled) {
             attemptRegister();
           } else {
-            console.warn('[Push] ⚠️ Session access_token still not available after delay');
+            console.warn('[Push] ⚠️ Session access_token still not available after delay - registration will be skipped');
           }
         }, 1000);
       } else {
@@ -255,7 +257,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Retry on app foreground (when user comes back to app)
     const handleVisibilityChange = () => {
-      if (!document.hidden && user && session && !cancelled) {
+      if (!document.hidden && user && session?.access_token && !cancelled) {
         console.log('[Push] App became visible, re-checking push subscription...');
         setTimeout(() => attemptRegister(0), 1000);
       }
@@ -264,7 +266,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Periodic re-registration to keep subscriptions active (every 5 minutes)
     // This ensures subscriptions stay fresh even if OneSignal state changes
     registrationInterval = setInterval(() => {
-      if (!cancelled && user && session) {
+      if (!cancelled && user && session?.access_token) {
         console.log('[Push] Periodic re-registration check...');
         attemptRegister(0);
       }
