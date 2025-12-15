@@ -87,6 +87,150 @@ function formatMinuteDisplay(status: string | null, minute: number | null): stri
   return '';
 }
 
+// Helper: Fetch picks for a fixture (handles app_picks, test_api_picks, or picks)
+async function fetchFixturePicks(
+  fixtureGw: number,
+  fixtureIndex: number,
+  isAppFixture: boolean,
+  isTestFixture: boolean,
+  testGwForPicks: number | null,
+  includePick: boolean = true
+): Promise<any[]> {
+  const selectFields = includePick ? 'user_id, pick' : 'user_id';
+  
+  if (isAppFixture) {
+    const { data } = await supabase
+      .from('app_picks')
+      .select(selectFields)
+      .eq('gw', fixtureGw)
+      .eq('fixture_index', fixtureIndex);
+    return data || [];
+  } else if (isTestFixture && testGwForPicks) {
+    const { data } = await supabase
+      .from('test_api_picks')
+      .select(selectFields)
+      .eq('matchday', testGwForPicks)
+      .eq('fixture_index', fixtureIndex);
+    return data || [];
+  } else {
+    const { data } = await supabase
+      .from('picks')
+      .select(selectFields)
+      .eq('gw', fixtureGw)
+      .eq('fixture_index', fixtureIndex);
+    return data || [];
+  }
+}
+
+// Helper: Get subscriptions and build playerIdsByUser map
+async function getSubscriptionsAndPlayerIds(userIds: string[]): Promise<Map<string, string[]>> {
+  const playerIdsByUser = new Map<string, string[]>();
+  
+  if (userIds.length === 0) return playerIdsByUser;
+  
+  const { data: subscriptions } = await supabase
+    .from('push_subscriptions')
+    .select('user_id, player_id')
+    .in('user_id', userIds)
+    .eq('is_active', true);
+  
+  (subscriptions || []).forEach((sub: any) => {
+    if (!sub.player_id) return;
+    if (!playerIdsByUser.has(sub.user_id)) {
+      playerIdsByUser.set(sub.user_id, []);
+    }
+    playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
+  });
+  
+  return playerIdsByUser;
+}
+
+// Helper: Calculate score from goals array (source of truth)
+function calculateScoreFromGoals(
+  goals: any[],
+  homeTeamName: string,
+  awayTeamName: string
+): { homeScore: number; awayScore: number } {
+  const normalizedHome = homeTeamName.toLowerCase().trim();
+  const normalizedAway = awayTeamName.toLowerCase().trim();
+  
+  let homeScore = 0;
+  let awayScore = 0;
+  
+  for (const goal of goals) {
+    if (!goal || typeof goal !== 'object') continue;
+    const goalTeam = (goal.team || '').toLowerCase().trim();
+    
+    const isHomeGoal = goalTeam === normalizedHome ||
+                      goalTeam.includes(normalizedHome) ||
+                      normalizedHome.includes(goalTeam);
+    
+    if (isHomeGoal) {
+      homeScore++;
+    } else {
+      awayScore++;
+    }
+  }
+  
+  return { homeScore, awayScore };
+}
+
+// Helper: Determine which team scored from goal object
+function determineScoringTeam(
+  goal: any,
+  homeTeamName: string,
+  awayTeamName: string
+): { isHomeTeam: boolean; teamName: string } {
+  const scoringTeam = (goal.team || '').toLowerCase().trim();
+  const normalizedHome = homeTeamName.toLowerCase().trim();
+  const normalizedAway = awayTeamName.toLowerCase().trim();
+  
+  const isHomeTeam = scoringTeam === normalizedHome ||
+                     scoringTeam.includes(normalizedHome) ||
+                     normalizedHome.includes(scoringTeam);
+  
+  return {
+    isHomeTeam,
+    teamName: isHomeTeam ? homeTeamName : awayTeamName,
+  };
+}
+
+// Helper: Send notifications to users with picks
+async function sendNotificationsToUsers(
+  picks: any[],
+  playerIdsByUser: Map<string, string[]>,
+  prefsMap: Map<string, Record<string, boolean>>,
+  title: string,
+  message: string,
+  data: Record<string, any>,
+  requestId: string,
+  preferenceKey?: string // Optional preference key to check (e.g., 'score-updates')
+): Promise<number> {
+  let totalSent = 0;
+  
+  for (const pick of picks) {
+    const playerIds = playerIdsByUser.get(pick.user_id) || [];
+    if (playerIds.length === 0) continue;
+
+    // Check user preferences if preference key provided
+    if (preferenceKey) {
+      const userPrefs = prefsMap.get(pick.user_id);
+      if (userPrefs && userPrefs[preferenceKey] === false) {
+        continue;
+      }
+    }
+
+    const result = await sendOneSignalNotification(playerIds, title, message, data);
+
+    if (result.success) {
+      totalSent += result.sentTo;
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] Sent notification to user ${pick.user_id} (${result.sentTo} devices)`);
+    }
+  }
+  
+  return totalSent;
+}
+
 /**
  * Webhook handler for instant notifications when live_scores is updated
  * This is called by Supabase database webhook when a row in live_scores is updated
@@ -372,76 +516,38 @@ export const handler: Handler = async (event, context) => {
       }
       
       // Get users who have picks for this fixture
-      let picks: any[] = [];
-      if (isAppFixture) {
-        const { data: appPicks } = await supabase
-          .from('app_picks')
-          .select('user_id, pick')
-          .eq('gw', fixtureGw)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = appPicks || [];
-      } else if (isTestFixture && testGwForPicks) {
-        const { data: testPicks } = await supabase
-          .from('test_api_picks')
-          .select('user_id, pick')
-          .eq('matchday', testGwForPicks)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = testPicks || [];
-      } else {
-        const { data: regularPicks } = await supabase
-          .from('picks')
-          .select('user_id, pick')
-          .eq('gw', fixtureGw)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = regularPicks || [];
-      }
+      const picks = await fetchFixturePicks(
+        fixtureGw,
+        normalizedFixture.fixture_index,
+        isAppFixture,
+        isTestFixture,
+        testGwForPicks
+      );
 
       if (picks.length > 0) {
-        // Get push subscriptions
         const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
-        const { data: subscriptions } = await supabase
-          .from('push_subscriptions')
-          .select('user_id, player_id')
-          .in('user_id', userIds)
-          .eq('is_active', true);
-
-        const playerIdsByUser = new Map<string, string[]>();
-        (subscriptions || []).forEach((sub: any) => {
-          if (!sub.player_id) return;
-          if (!playerIdsByUser.has(sub.user_id)) {
-            playerIdsByUser.set(sub.user_id, []);
-          }
-          playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
-        });
+        const playerIdsByUser = await getSubscriptionsAndPlayerIds(userIds);
 
         // Send goal disallowed notification
-        let totalSent = 0;
         const teamName = isHomeTeamDisallowed ? normalizedFixture.home_team : normalizedFixture.away_team;
         const scoreDisplay = `${normalizedFixture.home_team} ${homeScore}-${awayScore} ${normalizedFixture.away_team}`;
         const title = `🚫 Goal Disallowed`;
         const message = `${disallowedMinute} ${disallowedScorer}'s goal for ${teamName} was disallowed by VAR\n${scoreDisplay}`;
 
-        for (const pick of picks) {
-          const playerIds = playerIdsByUser.get(pick.user_id) || [];
-          if (playerIds.length === 0) continue;
-
-          const result = await sendOneSignalNotification(
-            playerIds,
-            title,
-            message,
-            {
-              type: 'goal_disallowed',
-              api_match_id: apiMatchId,
-              fixture_index: normalizedFixture.fixture_index,
-              gw: fixtureGw,
-            }
-          );
-
-          if (result.success) {
-            totalSent += result.sentTo;
-            console.log(`[sendScoreNotificationsWebhook] [${requestId}] Sent goal disallowed notification to user ${pick.user_id} (${result.sentTo} devices)`);
-          }
-        }
+        const totalSent = await sendNotificationsToUsers(
+          picks,
+          playerIdsByUser,
+          new Map(), // No preference check for goal disallowed
+          title,
+          message,
+          {
+            type: 'goal_disallowed',
+            api_match_id: apiMatchId,
+            fixture_index: normalizedFixture.fixture_index,
+            gw: fixtureGw,
+          },
+          requestId
+        );
 
         // Update state
         await supabase
@@ -627,33 +733,17 @@ export const handler: Handler = async (event, context) => {
           console.log(`[sendScoreNotificationsWebhook] [${requestId}] ✅ Successfully claimed notification for match ${apiMatchId}`);
         }
 
-      // Get users who have picks for this fixture - check app_picks for app_fixtures
-      let picks: any[] = [];
-      if (isAppFixture) {
-        const { data: appPicks } = await supabase
-          .from('app_picks')
-          .select('user_id, pick')
-          .eq('gw', fixtureGw)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = appPicks || [];
-      } else if (isTestFixture && testGwForPicks) {
-        const { data: testPicks } = await supabase
-          .from('test_api_picks')
-          .select('user_id, pick')
-          .eq('matchday', testGwForPicks)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = testPicks || [];
-      } else {
-        const { data: regularPicks } = await supabase
-          .from('picks')
-          .select('user_id, pick')
-          .eq('gw', fixtureGw)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = regularPicks || [];
-      }
+      // Get users who have picks for this fixture
+      const picks = await fetchFixturePicks(
+        fixtureGw,
+        normalizedFixture.fixture_index,
+        isAppFixture,
+        isTestFixture,
+        testGwForPicks
+      );
 
       if (picks.length === 0) {
-        console.log(`[sendScoreNotificationsWebhook] No picks found for fixture ${fixture.fixture_index}`);
+        console.log(`[sendScoreNotificationsWebhook] No picks found for fixture ${normalizedFixture.fixture_index}`);
         return {
           statusCode: 200,
           headers,
@@ -661,164 +751,67 @@ export const handler: Handler = async (event, context) => {
         };
       }
 
-      // Get push subscriptions
       const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
-      
-      // Load user notification preferences using shared utility
       const prefsMap = await loadUserNotificationPreferences(userIds);
+      const playerIdsByUser = await getSubscriptionsAndPlayerIds(userIds);
 
-      const { data: subscriptions } = await supabase
-        .from('push_subscriptions')
-        .select('user_id, player_id')
-        .in('user_id', userIds)
-        .eq('is_active', true);
-
-      const playerIdsByUser = new Map<string, string[]>();
-      (subscriptions || []).forEach((sub: any) => {
-        if (!sub.player_id) return;
-        if (!playerIdsByUser.has(sub.user_id)) {
-          playerIdsByUser.set(sub.user_id, []);
-        }
-        playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
-      });
-
-      // Send notification to each user
-      let totalSent = 0;
+      // Get newest goal details
       const newestGoal = newGoals.sort((a: any, b: any) => (b.minute ?? 0) - (a.minute ?? 0))[0];
       const scorer = newestGoal.scorer || 'Unknown';
       const goalMinute = newestGoal.minute !== null && newestGoal.minute !== undefined ? `${newestGoal.minute}'` : '';
       const isOwnGoal = newestGoal.isOwnGoal === true;
       
-      // Determine which team scored - use goal's team field (most reliable)
-      // pollLiveScores already normalizes the team correctly, including own goals
-      const scoringTeam = newestGoal.team || '';
-      const normalizedScoringTeam = scoringTeam.toLowerCase().trim();
-      const normalizedHomeTeam = (normalizedFixture.home_team || '').toLowerCase().trim();
-      const normalizedAwayTeam = (normalizedFixture.away_team || '').toLowerCase().trim();
+      // Determine which team scored from goal object (most reliable)
+      const { isHomeTeam, teamName } = determineScoringTeam(
+        newestGoal,
+        normalizedFixture.home_team,
+        normalizedFixture.away_team
+      );
       
-      // Match goal's team to fixture's home/away team
-      const isHomeTeam = normalizedScoringTeam === normalizedHomeTeam ||
-                         normalizedScoringTeam.includes(normalizedHomeTeam) ||
-                         normalizedHomeTeam.includes(normalizedScoringTeam);
+      // Check if goal was disallowed (score went down)
+      const isGoalDisallowed = homeScore < (oldHomeScore || 0) || awayScore < (oldAwayScore || 0);
       
-      // Verify with score change as sanity check
-      const homeScoreIncreased = homeScore > (oldHomeScore || 0);
-      const awayScoreIncreased = awayScore > (oldAwayScore || 0);
-      const homeScoreDecreased = homeScore < (oldHomeScore || 0);
-      const awayScoreDecreased = awayScore < (oldAwayScore || 0);
-      const isGoalDisallowed = homeScoreDecreased || awayScoreDecreased;
+      // Calculate score from goals array (source of truth)
+      const { homeScore: actualHomeScore, awayScore: actualAwayScore } = calculateScoreFromGoals(
+        goals,
+        normalizedFixture.home_team,
+        normalizedFixture.away_team
+      );
       
-      // Log if there's a mismatch between goal team and score change
-      if (!isGoalDisallowed) {
-        const scoreChangeSaysHome = homeScoreIncreased && !awayScoreIncreased;
-        const scoreChangeSaysAway = awayScoreIncreased && !homeScoreIncreased;
-        if (scoreChangeSaysHome !== isHomeTeam || scoreChangeSaysAway === isHomeTeam) {
-          console.warn(`[sendScoreNotificationsWebhook] [${requestId}] ⚠️ Mismatch: goal team says ${isHomeTeam ? 'home' : 'away'}, but score change says ${scoreChangeSaysHome ? 'home' : scoreChangeSaysAway ? 'away' : 'unknown'}`);
-        }
-      }
-      
-      console.log(`[sendScoreNotificationsWebhook] [${requestId}] Scoring team determined:`, {
-        goalTeam: scoringTeam,
-        isHomeTeam,
-        homeTeam: normalizedFixture.home_team,
-        awayTeam: normalizedFixture.away_team,
-        homeScore: `${oldHomeScore} -> ${homeScore}`,
-        awayScore: `${oldAwayScore} -> ${awayScore}`,
-      });
-      
-      // Calculate actual score from goals array (most reliable source)
-      // Always use goals array to count goals by team, as score fields may be wrong/swapped
-      let actualHomeScore = homeScore;
-      let actualAwayScore = awayScore;
-      
-      if (Array.isArray(goals) && goals.length > 0) {
-        // Count goals by team from goals array
-        const homeTeamName = (normalizedFixture.home_team || '').toLowerCase().trim();
-        const awayTeamName = (normalizedFixture.away_team || '').toLowerCase().trim();
-        
-        let goalsFromArrayHome = 0;
-        let goalsFromArrayAway = 0;
-        
-        for (const goal of goals) {
-          if (!goal || typeof goal !== 'object') continue;
-          const goalTeam = (goal.team || '').toLowerCase().trim();
-          
-          // Match by team name (pollLiveScores already normalized team names)
-          const isHomeGoal = goalTeam === homeTeamName ||
-                            goalTeam.includes(homeTeamName) ||
-                            homeTeamName.includes(goalTeam);
-          
-          if (isHomeGoal) {
-            goalsFromArrayHome++;
-          } else {
-            goalsFromArrayAway++;
-          }
-        }
-        
-        // Always use goals array count - it's the source of truth
-        // Score fields may be stale, wrong, or swapped
-        actualHomeScore = goalsFromArrayHome;
-        actualAwayScore = goalsFromArrayAway;
-        
-        if (goalsFromArrayHome !== homeScore || goalsFromArrayAway !== awayScore) {
-          console.log(`[sendScoreNotificationsWebhook] [${requestId}] Score mismatch - using goals array: home ${homeScore} -> ${actualHomeScore}, away ${awayScore} -> ${actualAwayScore}`);
-        }
-      }
-      
-      // Format score with new goal highlighted (FotMob style)
-      // Example: "Team A 1 - [2] Team B" or "Team A [1] - 0 Team B"
-      let scoreDisplay: string;
-      if (isHomeTeam) {
-        scoreDisplay = `${normalizedFixture.home_team} [${actualHomeScore}] - ${actualAwayScore} ${normalizedFixture.away_team}`;
+      // Format score display
+      const scoreDisplay = isHomeTeam
+        ? `${normalizedFixture.home_team} [${actualHomeScore}] - ${actualAwayScore} ${normalizedFixture.away_team}`
+        : `${normalizedFixture.home_team} ${actualHomeScore} - [${actualAwayScore}] ${normalizedFixture.away_team}`;
+
+      // Format notification message
+      let title: string;
+      let message: string;
+      if (isGoalDisallowed) {
+        title = `🚫 Goal Disallowed`;
+        message = `${goalMinute} ${scorer}'s goal for ${teamName} was disallowed by VAR\n${scoreDisplay}`;
+      } else if (isOwnGoal) {
+        title = `Own Goal`;
+        message = `${goalMinute} Own goal by ${scorer}\n${scoreDisplay}`;
       } else {
-        scoreDisplay = `${normalizedFixture.home_team} ${actualHomeScore} - [${actualAwayScore}] ${normalizedFixture.away_team}`;
+        title = `${teamName} scores!`;
+        message = `${goalMinute} ${scorer}\n${scoreDisplay}`;
       }
 
-      for (const pick of picks) {
-        const playerIds = playerIdsByUser.get(pick.user_id) || [];
-        if (playerIds.length === 0) continue;
-
-        // Check if notification should be sent (OneSignal subscription + user preferences)
-        // Note: sendOneSignalNotification already filters by subscription, so we just check preferences here
-        const userPrefs = prefsMap.get(pick.user_id);
-        if (userPrefs && userPrefs['score-updates'] === false) {
-          continue; // Skip if user disabled score-updates notifications
-        }
-
-        const teamName = isHomeTeam ? normalizedFixture.home_team : normalizedFixture.away_team;
-        
-        // Handle goal disallowed and own goals differently
-        let title: string;
-        let message: string;
-        if (isGoalDisallowed) {
-          title = `🚫 Goal Disallowed`;
-          message = `${goalMinute} ${scorer}'s goal for ${teamName} was disallowed by VAR\n${scoreDisplay}`;
-        } else if (isOwnGoal) {
-          // Own goal: format as "Own goal by [player]" instead of "[Team] scores!"
-          title = `Own Goal`;
-          message = `${goalMinute} Own goal by ${scorer}\n${scoreDisplay}`;
-        } else {
-          title = `${teamName} scores!`;
-          message = `${goalMinute} ${scorer}\n${scoreDisplay}`;
-        }
-
-        const result = await sendOneSignalNotification(
-          playerIds,
-          title,
-          message,
-          {
-            type: isGoalDisallowed ? 'goal_disallowed' : 'goal',
-            api_match_id: apiMatchId,
-            fixture_index: normalizedFixture.fixture_index,
-            gw: fixtureGw,
-          }
-        );
-
-        if (result.success) {
-          totalSent += result.sentTo;
-          console.log(`[sendScoreNotificationsWebhook] [${requestId}] Sent ${isGoalDisallowed ? 'goal disallowed' : 'goal'} notification to user ${pick.user_id} (${result.sentTo} devices)`);
-        }
-      }
+      const totalSent = await sendNotificationsToUsers(
+        picks,
+        playerIdsByUser,
+        prefsMap,
+        title,
+        message,
+        {
+          type: isGoalDisallowed ? 'goal_disallowed' : 'goal',
+          api_match_id: apiMatchId,
+          fixture_index: normalizedFixture.fixture_index,
+          gw: fixtureGw,
+        },
+        requestId,
+        'score-updates' // Check user preferences
+      );
 
         return {
           statusCode: 200,
@@ -837,32 +830,16 @@ export const handler: Handler = async (event, context) => {
     if (isScoreChange && (!Array.isArray(goals) || goals.length === 0) && !scoreWentDown) {
       // Score changed but no goals data - send simple score update notification
       // Note: We skip if score went down to avoid sending "NOT SCORED" when VAR disallows
-      let picks: any[] = [];
-      if (isAppFixture) {
-        const { data: appPicks } = await supabase
-          .from('app_picks')
-          .select('user_id, pick')
-          .eq('gw', fixtureGw)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = appPicks || [];
-      } else if (isTestFixture && testGwForPicks) {
-        const { data: testPicks } = await supabase
-          .from('test_api_picks')
-          .select('user_id, pick')
-          .eq('matchday', testGwForPicks)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = testPicks || [];
-      } else {
-        const { data: regularPicks } = await supabase
-          .from('picks')
-          .select('user_id, pick')
-          .eq('gw', fixtureGw)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = regularPicks || [];
-      }
+      const picks = await fetchFixturePicks(
+        fixtureGw,
+        normalizedFixture.fixture_index,
+        isAppFixture,
+        isTestFixture,
+        testGwForPicks
+      );
 
       if (picks.length === 0) {
-        console.log(`[sendScoreNotificationsWebhook] No picks found for fixture ${fixture.fixture_index}`);
+        console.log(`[sendScoreNotificationsWebhook] No picks found for fixture ${normalizedFixture.fixture_index}`);
         return {
           statusCode: 200,
           headers,
@@ -887,49 +864,27 @@ export const handler: Handler = async (event, context) => {
         }
       }
 
-      // Get push subscriptions
       const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
-      const { data: subscriptions } = await supabase
-        .from('push_subscriptions')
-        .select('user_id, player_id')
-        .in('user_id', userIds)
-        .eq('is_active', true);
-
-      const playerIdsByUser = new Map<string, string[]>();
-      (subscriptions || []).forEach((sub: any) => {
-        if (!sub.player_id) return;
-        if (!playerIdsByUser.has(sub.user_id)) {
-          playerIdsByUser.set(sub.user_id, []);
-        }
-        playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
-      });
+      const playerIdsByUser = await getSubscriptionsAndPlayerIds(userIds);
 
       // Send notification to each user
-      let totalSent = 0;
-      const title = `⚽ GOAL! ${fixture.home_team} ${homeScore}-${awayScore} ${fixture.away_team}`;
+      const title = `⚽ GOAL! ${normalizedFixture.home_team} ${homeScore}-${awayScore} ${normalizedFixture.away_team}`;
       const message = `Score updated`;
 
-      for (const pick of picks) {
-        const playerIds = playerIdsByUser.get(pick.user_id) || [];
-        if (playerIds.length === 0) continue;
-
-        const result = await sendOneSignalNotification(
-          playerIds,
-          title,
-          message,
-          {
-            type: 'goal',
-            api_match_id: apiMatchId,
-            fixture_index: normalizedFixture.fixture_index,
-            gw: fixtureGw,
-          }
-        );
-
-        if (result.success) {
-          totalSent += result.sentTo;
-          console.log(`[sendScoreNotificationsWebhook] Sent score update notification to user ${pick.user_id} (${result.sentTo} devices)`);
-        }
-      }
+      const totalSent = await sendNotificationsToUsers(
+        picks,
+        playerIdsByUser,
+        new Map(), // No preference check for score updates without goals
+        title,
+        message,
+        {
+          type: 'goal',
+          api_match_id: apiMatchId,
+          fixture_index: normalizedFixture.fixture_index,
+          gw: fixtureGw,
+        },
+        requestId
+      );
 
       // Update state
       await supabase
@@ -1002,34 +957,14 @@ export const handler: Handler = async (event, context) => {
       }
 
       // Get users who have picks
-      let picks: any[] = [];
-      if (isAppFixture) {
-        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Checking app_picks for GW ${fixtureGw}, fixture_index ${normalizedFixture.fixture_index}`);
-        const { data: appPicks, error: appPicksError } = await supabase
-          .from('app_picks')
-          .select('user_id')
-          .eq('gw', fixtureGw)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        if (appPicksError) {
-          console.error(`[sendScoreNotificationsWebhook] [${requestId}] Error fetching app_picks:`, appPicksError);
-        }
-        picks = appPicks || [];
-        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Found ${picks.length} picks in app_picks`);
-      } else if (isTestFixture && testGwForPicks) {
-        const { data: testPicks } = await supabase
-          .from('test_api_picks')
-          .select('user_id')
-          .eq('matchday', testGwForPicks)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = testPicks || [];
-      } else {
-        const { data: regularPicks } = await supabase
-          .from('picks')
-          .select('user_id')
-          .eq('gw', fixtureGw)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = regularPicks || [];
-      }
+      const picks = await fetchFixturePicks(
+        fixtureGw,
+        normalizedFixture.fixture_index,
+        isAppFixture,
+        isTestFixture,
+        testGwForPicks,
+        false // Don't need pick field for kickoff
+      );
 
       const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
       console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Found ${userIds.length} unique users with picks`);
@@ -1043,73 +978,27 @@ export const handler: Handler = async (event, context) => {
         };
       }
 
-      const { data: subscriptions, error: subsError } = await supabase
-        .from('push_subscriptions')
-        .select('user_id, player_id')
-        .in('user_id', userIds)
-        .eq('is_active', true);
-
-      if (subsError) {
-        console.error(`[sendScoreNotificationsWebhook] [${requestId}] Error fetching subscriptions:`, subsError);
-      }
-
-      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Found ${(subscriptions || []).length} active subscriptions for ${userIds.length} users`);
-
-      const playerIdsByUser = new Map<string, string[]>();
-      (subscriptions || []).forEach((sub: any) => {
-        if (!sub.player_id) return;
-        if (!playerIdsByUser.has(sub.user_id)) {
-          playerIdsByUser.set(sub.user_id, []);
-        }
-        playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
-      });
-
-      const usersWithSubscriptions = Array.from(playerIdsByUser.keys());
-      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: ${usersWithSubscriptions.length} users have active subscriptions out of ${userIds.length} users with picks`);
-
-      // Load user notification preferences (consistent with goal notifications)
       const prefsMap = await loadUserNotificationPreferences(userIds);
-      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Loaded preferences for ${prefsMap.size} users`);
+      const playerIdsByUser = await getSubscriptionsAndPlayerIds(userIds);
 
-      let totalSent = 0;
-      for (const userId of userIds) {
-        const playerIds = playerIdsByUser.get(userId) || [];
-        if (playerIds.length === 0) {
-          console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: User ${userId} has picks but no active subscriptions, skipping`);
-          continue;
-        }
+      const title = `⚽ ${normalizedFixture.home_team} vs ${normalizedFixture.away_team}`;
+      const message = `Kickoff!`;
 
-        // Check user preferences (consistent with goal notifications)
-        const userPrefs = prefsMap.get(userId);
-        if (userPrefs && userPrefs['score-updates'] === false) {
-          console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: User ${userId} has disabled score-updates notifications, skipping`);
-          continue;
-        }
-
-        const title = `⚽ ${normalizedFixture.home_team} vs ${normalizedFixture.away_team}`;
-        const message = `Kickoff!`;
-
-        console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Sending to user ${userId} with ${playerIds.length} device(s)`);
-
-        const result = await sendOneSignalNotification(
-          playerIds,
-          title,
-          message,
-          {
-            type: 'kickoff',
-            api_match_id: apiMatchId,
-            fixture_index: normalizedFixture.fixture_index,
-            gw: fixtureGw,
-          }
-        );
-
-        if (result.success) {
-          totalSent += result.sentTo;
-          console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Successfully sent to ${result.sentTo} device(s) for user ${userId}`);
-        } else {
-          console.error(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Failed to send to user ${userId}:`, result.error);
-        }
-      }
+      const totalSent = await sendNotificationsToUsers(
+        picks,
+        playerIdsByUser,
+        prefsMap,
+        title,
+        message,
+        {
+          type: 'kickoff',
+          api_match_id: apiMatchId,
+          fixture_index: normalizedFixture.fixture_index,
+          gw: fixtureGw,
+        },
+        requestId,
+        'score-updates' // Check user preferences
+      );
 
       return {
         statusCode: 200,
@@ -1152,72 +1041,36 @@ export const handler: Handler = async (event, context) => {
       console.log(`[sendScoreNotificationsWebhook] [${requestId}] ✅ State updated IMMEDIATELY for half-time match ${apiMatchId}`);
 
       // Get users who have picks
-      let picks: any[] = [];
-      if (isAppFixture) {
-        const { data: appPicks } = await supabase
-          .from('app_picks')
-          .select('user_id')
-          .eq('gw', fixtureGw)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = appPicks || [];
-      } else if (isTestFixture && testGwForPicks) {
-        const { data: testPicks } = await supabase
-          .from('test_api_picks')
-          .select('user_id')
-          .eq('matchday', testGwForPicks)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = testPicks || [];
-      } else {
-        const { data: regularPicks } = await supabase
-          .from('picks')
-          .select('user_id')
-          .eq('gw', fixtureGw)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = regularPicks || [];
-      }
+      const picks = await fetchFixturePicks(
+        fixtureGw,
+        normalizedFixture.fixture_index,
+        isAppFixture,
+        isTestFixture,
+        testGwForPicks,
+        false // Don't need pick field for half-time
+      );
 
       const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
-      const { data: subscriptions } = await supabase
-        .from('push_subscriptions')
-        .select('user_id, player_id')
-        .in('user_id', userIds)
-        .eq('is_active', true);
+      const playerIdsByUser = await getSubscriptionsAndPlayerIds(userIds);
 
-      const playerIdsByUser = new Map<string, string[]>();
-      (subscriptions || []).forEach((sub: any) => {
-        if (!sub.player_id) return;
-        if (!playerIdsByUser.has(sub.user_id)) {
-          playerIdsByUser.set(sub.user_id, []);
-        }
-        playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
-      });
-
-      let totalSent = 0;
       const htMinute = minute !== null && minute !== undefined ? `${minute}'` : '';
-      for (const userId of userIds) {
-        const playerIds = playerIdsByUser.get(userId) || [];
-        if (playerIds.length === 0) continue;
+      const title = `⏸️ Half-Time`;
+      const message = `${normalizedFixture.home_team} ${homeScore}-${awayScore} ${normalizedFixture.away_team}${htMinute ? ` ${htMinute}` : ''}`;
 
-        const title = `⏸️ Half-Time`;
-        const message = `${normalizedFixture.home_team} ${homeScore}-${awayScore} ${normalizedFixture.away_team}${htMinute ? ` ${htMinute}` : ''}`;
-
-        const result = await sendOneSignalNotification(
-          playerIds,
-          title,
-          message,
-          {
-            type: 'half_time',
-            api_match_id: apiMatchId,
-            fixture_index: normalizedFixture.fixture_index,
-            gw: fixtureGw,
-          }
-        );
-
-        if (result.success) {
-          totalSent += result.sentTo;
-          console.log(`[sendScoreNotificationsWebhook] [${requestId}] Sent half-time notification to user ${userId} (${result.sentTo} devices)`);
-        }
-      }
+      const totalSent = await sendNotificationsToUsers(
+        picks,
+        playerIdsByUser,
+        new Map(), // No preference check for half-time
+        title,
+        message,
+        {
+          type: 'half_time',
+          api_match_id: apiMatchId,
+          fixture_index: normalizedFixture.fixture_index,
+          gw: fixtureGw,
+        },
+        requestId
+      );
 
       return {
         statusCode: 200,
@@ -1233,29 +1086,14 @@ export const handler: Handler = async (event, context) => {
     if (isFinished && oldStatus !== 'FINISHED' && oldStatus !== 'FT') {
       console.log(`[sendScoreNotificationsWebhook] 🏁 Game finished detected for match ${apiMatchId}`);
       // Get users who have picks
-      let picks: any[] = [];
-      if (isAppFixture) {
-        const { data: appPicks } = await supabase
-          .from('app_picks')
-          .select('user_id, pick')
-          .eq('gw', fixtureGw)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = appPicks || [];
-      } else if (isTestFixture && testGwForPicks) {
-        const { data: testPicks } = await supabase
-          .from('test_api_picks')
-          .select('user_id, pick')
-          .eq('matchday', testGwForPicks)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = testPicks || [];
-      } else {
-        const { data: regularPicks } = await supabase
-          .from('picks')
-          .select('user_id, pick')
-          .eq('gw', fixtureGw)
-          .eq('fixture_index', normalizedFixture.fixture_index);
-        picks = regularPicks || [];
-      }
+      const picks = await fetchFixturePicks(
+        fixtureGw,
+        normalizedFixture.fixture_index,
+        isAppFixture,
+        isTestFixture,
+        testGwForPicks,
+        true // Need pick field for final whistle
+      );
 
       // Calculate result
       let result = 'D';
@@ -1263,40 +1101,51 @@ export const handler: Handler = async (event, context) => {
       if (awayScore > homeScore) result = 'A';
 
       const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
-      
-      // Load user notification preferences using shared utility
       const prefsMap = await loadUserNotificationPreferences(userIds);
-
-      const { data: subscriptions } = await supabase
-        .from('push_subscriptions')
-        .select('user_id, player_id')
-        .in('user_id', userIds)
-        .eq('is_active', true);
-
-      const playerIdsByUser = new Map<string, string[]>();
-      (subscriptions || []).forEach((sub: any) => {
-        if (!sub.player_id) return;
-        if (!playerIdsByUser.has(sub.user_id)) {
-          playerIdsByUser.set(sub.user_id, []);
-        }
-        playerIdsByUser.get(sub.user_id)!.push(sub.player_id);
-      });
+      const playerIdsByUser = await getSubscriptionsAndPlayerIds(userIds);
 
       // Calculate percentage of users who got it correct
       const totalPicks = picks.length;
       const correctPicks = picks.filter((p: any) => p.pick === result).length;
       const correctPercentage = totalPicks > 0 ? Math.round((correctPicks / totalPicks) * 100) : 0;
 
+      // Send final whistle notification (personalized per user)
       let totalSent = 0;
+      const title = `FT: ${normalizedFixture.home_team} ${homeScore}-${awayScore} ${normalizedFixture.away_team}`;
+      const percentageText = correctPercentage <= 20
+        ? `Only ${correctPercentage}% of players got this fixture correct`
+        : `${correctPercentage}% of players got this fixture correct`;
+
       for (const pick of picks) {
         const playerIds = playerIdsByUser.get(pick.user_id) || [];
         if (playerIds.length === 0) continue;
 
-        // Check if notification should be sent (OneSignal subscription + user preferences)
         const userPrefs = prefsMap.get(pick.user_id);
         if (userPrefs && userPrefs['final-whistle'] === false) {
-          continue; // Skip if user disabled final-whistle notifications
+          continue;
         }
+
+        const isCorrect = pick.pick === result;
+        const message = isCorrect 
+          ? `✅ Got it right! ${percentageText}` 
+          : `❌ Wrong pick ${percentageText}`;
+
+        const result2 = await sendOneSignalNotification(
+          playerIds,
+          title,
+          message,
+          {
+            type: 'game_finished',
+            api_match_id: apiMatchId,
+            fixture_index: normalizedFixture.fixture_index,
+            gw: fixtureGw,
+          }
+        );
+
+        if (result2.success) {
+          totalSent += result2.sentTo;
+        }
+      }
 
         const isCorrect = pick.pick === result;
         const title = `FT: ${fixture.home_team} ${homeScore}-${awayScore} ${fixture.away_team}`;
