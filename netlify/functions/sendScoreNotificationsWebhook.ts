@@ -592,12 +592,21 @@ export const handler: Handler = async (event, context) => {
 
       const currentGoalsHash = JSON.stringify(goals.map(normalizeGoalKey).sort());
       
-      // Use state as primary source, but fall back to old_record if state is missing
-      // This handles cases where webhook fires before state is updated
-      let previousGoals = state?.last_notified_goals;
+      // Compare against old_record FIRST to catch goals that were just added
+      // Then check state to see if we've already notified
+      // This ensures we detect new goals even if state was updated by a concurrent webhook
+      let previousGoals = oldGoals || [];
+      
+      // If old_record has fewer goals than current, definitely use old_record (new goal was added)
+      // Otherwise, check state to see if we've already notified for these goals
+      if (Array.isArray(oldGoals) && oldGoals.length >= goals.length && state?.last_notified_goals && Array.isArray(state.last_notified_goals)) {
+        // old_record has same or more goals, so check state to see if we've notified
+        previousGoals = state.last_notified_goals;
+      }
+      
+      // Fallback: if no old_record and no state, use empty array
       if (!previousGoals || !Array.isArray(previousGoals) || previousGoals.length === 0) {
-        // Fall back to old_record goals if state doesn't have goals yet
-        previousGoals = oldGoals || [];
+        previousGoals = [];
       }
       const previousGoalsArray = Array.isArray(previousGoals) ? previousGoals : [];
       const previousGoalsHash = JSON.stringify(previousGoalsArray.map(normalizeGoalKey).sort());
