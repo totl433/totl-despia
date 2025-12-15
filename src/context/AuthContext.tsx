@@ -237,19 +237,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Initial attempt with a small delay to let the app fully load
     // Also ensure session.access_token is available before attempting
+    let retryTimeout: number | null = null;
     const initialTimeout = setTimeout(() => {
-      if (!currentSession?.access_token) {
+      // Re-check session.access_token (it might have been updated since effect started)
+      // Use the latest session from the dependency, not the closure
+      if (!session?.access_token) {
         console.warn('[Push] ⚠️ Delaying registration - session.access_token not yet available');
-        // Retry after a short delay if access_token isn't ready
-        // Use a closure to capture the latest session
-        setTimeout(() => {
-          // Re-check session from the current state (it might have updated)
-          if (session?.access_token && !cancelled) {
+        // If access_token becomes available, the effect will retrigger due to dependency change
+        // But also set a one-time retry in case the effect doesn't retrigger
+        retryTimeout = setTimeout(() => {
+          if (!cancelled && session?.access_token) {
+            console.log('[Push] Retrying registration after delay - access_token now available');
             attemptRegister();
-          } else {
-            console.warn('[Push] ⚠️ Session access_token still not available after delay - registration will be skipped');
+          } else if (!cancelled) {
+            console.warn('[Push] ⚠️ Session access_token still not available after delay');
           }
-        }, 1000);
+        }, 2000) as unknown as number;
       } else {
         attemptRegister();
       }
@@ -277,6 +280,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
       clearTimeout(initialTimeout);
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+      }
       if (registrationInterval) {
         clearInterval(registrationInterval);
       }
