@@ -7,7 +7,7 @@ import { getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
 import { LEAGUE_START_OVERRIDES } from "../lib/leagueStart";
 import html2canvas from "html2canvas";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
-import { scheduleDeadlineReminder, scheduleGameweekStartingSoon } from "../lib/notifications";
+// Notification functions removed - now handled server-side
 import { LeaderboardCard } from "../components/LeaderboardCard";
 import { StreakCard } from "../components/StreakCard";
 import { useLiveScores } from "../hooks/useLiveScores";
@@ -809,7 +809,7 @@ export default function HomePage() {
         const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
         
         if (!deadlineReminderScheduledRef.current) {
-          scheduleDeadlineReminder(deadlineTime.toISOString(), 1, 2);
+          // scheduleDeadlineReminder(deadlineTime.toISOString(), 1, 2); // Removed - notifications now server-side
           deadlineReminderScheduledRef.current = true;
         }
         
