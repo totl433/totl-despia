@@ -687,9 +687,11 @@ export const handler: Handler = async (event, context) => {
       const newestGoal = newGoals.sort((a: any, b: any) => (b.minute ?? 0) - (a.minute ?? 0))[0];
       const scorer = newestGoal.scorer || 'Unknown';
       const goalMinute = newestGoal.minute !== null && newestGoal.minute !== undefined ? `${newestGoal.minute}'` : '';
+      const isOwnGoal = newestGoal.isOwnGoal === true;
       
       // Determine which team scored - use score change (most reliable)
       // Compare current score to old score to see which team scored
+      // Note: For own goals, pollLiveScores already swaps the team to the benefiting team
       const homeScoreIncreased = homeScore > (oldHomeScore || 0);
       const awayScoreIncreased = awayScore > (oldAwayScore || 0);
       const homeScoreDecreased = homeScore < (oldHomeScore || 0);
@@ -794,12 +796,16 @@ export const handler: Handler = async (event, context) => {
 
         const teamName = isHomeTeam ? normalizedFixture.home_team : normalizedFixture.away_team;
         
-        // Handle goal disallowed differently
+        // Handle goal disallowed and own goals differently
         let title: string;
         let message: string;
         if (isGoalDisallowed) {
           title = `🚫 Goal Disallowed`;
           message = `${goalMinute} ${scorer}'s goal for ${teamName} was disallowed by VAR\n${scoreDisplay}`;
+        } else if (isOwnGoal) {
+          // Own goal: format as "Own goal by [player]" instead of "[Team] scores!"
+          title = `Own Goal`;
+          message = `${goalMinute} Own goal by ${scorer}\n${scoreDisplay}`;
         } else {
           title = `${teamName} scores!`;
           message = `${goalMinute} ${scorer}\n${scoreDisplay}`;
