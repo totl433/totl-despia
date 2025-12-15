@@ -199,22 +199,42 @@ export const handler: Handler = async (event, context) => {
           .maybeSingle(),
       ]);
       
-      // Prefer notification_state as it represents what we last processed
-      // But if status changed, we need to detect it
+      // Determine oldStatus with priority: notification_state > live_scores > undefined
+      // For kickoff detection, we need to know if status changed from non-IN_PLAY to IN_PLAY
+      
+      // First, check notification_state (what we last notified about)
       if (previousNotificationState.data && previousNotificationState.data.last_notified_status) {
-        oldStatus = previousNotificationState.data.last_notified_status;
-        oldHomeScore = previousNotificationState.data.last_notified_home_score ?? oldHomeScore;
-        oldAwayScore = previousNotificationState.data.last_notified_away_score ?? oldAwayScore;
-        console.log(`[sendScoreNotificationsWebhook] [${requestId}] Found previous state in notification_state: status=${oldStatus}, score=${oldHomeScore}-${oldAwayScore}`);
+        const notifiedStatus = previousNotificationState.data.last_notified_status;
+        // Only use notification_state if it's different from current status
+        // This ensures we detect status changes even if notification_state exists
+        if (notifiedStatus !== status) {
+          oldStatus = notifiedStatus;
+          oldHomeScore = previousNotificationState.data.last_notified_home_score ?? oldHomeScore;
+          oldAwayScore = previousNotificationState.data.last_notified_away_score ?? oldAwayScore;
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] Found previous state in notification_state: status=${oldStatus}, score=${oldHomeScore}-${oldAwayScore}`);
+        } else {
+          // notification_state matches current status, so check live_scores for actual previous state
+          // This handles cases where status changed but notification_state wasn't updated yet
+          if (previousLiveScore.data && previousLiveScore.data.status !== status) {
+            oldStatus = previousLiveScore.data.status;
+            oldHomeScore = previousLiveScore.data.home_score ?? oldHomeScore;
+            oldAwayScore = previousLiveScore.data.away_score ?? oldAwayScore;
+            console.log(`[sendScoreNotificationsWebhook] [${requestId}] notification_state matches current status, using live_scores: status=${oldStatus}, score=${oldHomeScore}-${oldAwayScore}`);
+          } else {
+            // Both match current status, so this might be a duplicate update
+            // For kickoff: if current is IN_PLAY with 0-0, and we don't have a different oldStatus,
+            // we should still check if this is a kickoff (oldStatus will be undefined/null)
+            console.log(`[sendScoreNotificationsWebhook] [${requestId}] Both notification_state and live_scores match current status - oldStatus will be undefined for kickoff detection`);
+          }
+        }
       } else if (previousLiveScore.data && previousLiveScore.data.status !== status) {
-        // If live_scores has different status, use that as old status
-        // This handles the case where status changed but notification_state wasn't updated yet
+        // No notification_state, but live_scores has different status - use that
         oldStatus = previousLiveScore.data.status;
         oldHomeScore = previousLiveScore.data.home_score ?? oldHomeScore;
         oldAwayScore = previousLiveScore.data.away_score ?? oldAwayScore;
         console.log(`[sendScoreNotificationsWebhook] [${requestId}] Found previous state in live_scores: status=${oldStatus}, score=${oldHomeScore}-${oldAwayScore}`);
       } else {
-        // If no previous state exists, assume this is a new record
+        // No previous state exists - this is likely a new record or first update
         // For kickoff detection: if oldStatus is undefined/null, treat it as "not IN_PLAY"
         // This allows us to detect kickoff even for first-time inserts
         console.log(`[sendScoreNotificationsWebhook] [${requestId}] No previous state found - treating as new record (oldStatus will be undefined/null for kickoff detection)`);
@@ -1026,11 +1046,11 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
-    // Detect kickoff: ONLY when status actually changed from non-IN_PLAY to IN_PLAY with 0-0 score
-    // Also handle case where oldStatus is undefined/null/TIMED/SCHEDULED (new record or missing old_record)
-    // In that case, if current status is IN_PLAY with 0-0, it's likely a kickoff
+    // Detect kickoff: status changed from non-IN_PLAY to IN_PLAY with 0-0 score
+    // Handle cases where oldStatus is undefined/null/TIMED/SCHEDULED (new record or missing old_record)
+    // Also handle case where oldStatus is 'FT' or 'FINISHED' (match restarted - shouldn't happen but be safe)
     const isKickoffOrNewlyInPlay = isKickoff || 
-      ((oldStatus === null || oldStatus === undefined || oldStatus === 'TIMED' || oldStatus === 'SCHEDULED') && 
+      ((oldStatus === null || oldStatus === undefined || oldStatus === 'TIMED' || oldStatus === 'SCHEDULED' || oldStatus === 'FT' || oldStatus === 'FINISHED') && 
        status === 'IN_PLAY' && 
        homeScore === 0 && 
        awayScore === 0);
@@ -1160,11 +1180,22 @@ export const handler: Handler = async (event, context) => {
       const usersWithSubscriptions = Array.from(playerIdsByUser.keys());
       console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: ${usersWithSubscriptions.length} users have active subscriptions out of ${userIds.length} users with picks`);
 
+      // Load user notification preferences (consistent with goal notifications)
+      const prefsMap = await loadUserNotificationPreferences(userIds);
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: Loaded preferences for ${prefsMap.size} users`);
+
       let totalSent = 0;
       for (const userId of userIds) {
         const playerIds = playerIdsByUser.get(userId) || [];
         if (playerIds.length === 0) {
           console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: User ${userId} has picks but no active subscriptions, skipping`);
+          continue;
+        }
+
+        // Check user preferences (consistent with goal notifications)
+        const userPrefs = prefsMap.get(userId);
+        if (userPrefs && userPrefs['score-updates'] === false) {
+          console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🔵 KICKOFF: User ${userId} has disabled score-updates notifications, skipping`);
           continue;
         }
 
