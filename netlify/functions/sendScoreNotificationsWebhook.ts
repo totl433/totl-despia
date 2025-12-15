@@ -1168,7 +1168,7 @@ export const handler: Handler = async (event, context) => {
     // Handle game finished (check this even if there were no new goals)
     // Trigger when status changes from non-finished (IN_PLAY, PAUSED, etc.) to FINISHED/FT
     if (isFinished && oldStatus !== 'FINISHED' && oldStatus !== 'FT') {
-      console.log(`[sendScoreNotificationsWebhook] 🏁 Game finished detected for match ${apiMatchId}`);
+      console.log(`[sendScoreNotificationsWebhook] 🏁 Game finished detected for match ${apiMatchId} (oldStatus: ${oldStatus || 'undefined'}, newStatus: ${status})`);
       // Get users who have picks
       const picks = await fetchFixturePicks(
         fixtureGw,
