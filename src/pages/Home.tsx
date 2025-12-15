@@ -200,39 +200,7 @@ export default function HomePage() {
   }, [leagues]);
   
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>({});
-  const [volleyAnimationKey, setVolleyAnimationKey] = useState<number | null>(null);
-  const [volleyStillFrame, setVolleyStillFrame] = useState<string | null>(null);
-  const volleyImgRef = useRef<HTMLImageElement>(null);
   const [gw, setGw] = useState<number>(initialState.gw);
-
-  // Extract first frame of gif for still image
-  useEffect(() => {
-    if (volleyStillFrame) return; // Already extracted
-    
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0);
-          const dataUrl = canvas.toDataURL('image/png');
-          setVolleyStillFrame(dataUrl);
-        }
-      } catch (e) {
-        console.warn('Could not extract still frame from volley gif:', e);
-        // Fallback: use gif as still (will show first frame)
-        setVolleyStillFrame('/assets/Animation/Volley-Keepy-Uppies.gif');
-      }
-    };
-    img.onerror = () => {
-      // Fallback if image fails to load
-      setVolleyStillFrame('/assets/Animation/Volley-Keepy-Uppies.gif');
-    };
-    img.src = '/assets/Animation/Volley-Keepy-Uppies.gif';
-  }, [volleyStillFrame]);
   const [latestGw, setLatestGw] = useState<number | null>(initialState.latestGw);
   // Track gw_results changes to trigger leaderboard recalculation
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
@@ -1877,36 +1845,14 @@ export default function HomePage() {
       {/* Logo and Unicorn header */}
       <div className="relative mb-4">
         {/* Unicorn positioned on the left, next to centered logo */}
-        <button
-          onClick={() => {
-            // Force gif to restart by changing key
-            setVolleyAnimationKey(Date.now());
-            // Reset after animation completes (gif is ~2 seconds)
-            setTimeout(() => {
-              setVolleyAnimationKey(null);
-            }, 2000);
-          }}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 cursor-pointer"
-          style={{ touchAction: 'manipulation' }}
-        >
-          {volleyAnimationKey ? (
-            <img 
-              key={volleyAnimationKey}
-              src={`/assets/Animation/Volley-Keepy-Uppies.gif?t=${volleyAnimationKey}`}
-              alt="TOTL Unicorn" 
-              className="w-20 h-20 object-contain"
-              style={{ imageRendering: 'pixelated' }}
-            />
-          ) : (
-            <img 
-              ref={volleyImgRef}
-              src={volleyStillFrame || '/assets/Animation/Volley-Keepy-Uppies.gif'}
-              alt="TOTL Unicorn" 
-              className="w-20 h-20 object-contain"
-              style={{ imageRendering: 'pixelated' }}
-            />
-          )}
-        </button>
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 z-10">
+          <img 
+            src="/assets/Animation/Volley-Keepy-Uppies.gif"
+            alt="TOTL Unicorn" 
+            className="w-20 h-20 object-contain"
+            style={{ imageRendering: 'pixelated' }}
+          />
+        </div>
         {/* Logo stays centered */}
         <ScrollLogo />
       </div>
