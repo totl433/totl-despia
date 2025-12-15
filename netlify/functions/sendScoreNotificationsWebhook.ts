@@ -980,25 +980,17 @@ export const handler: Handler = async (event, context) => {
       }
       
       // For second half kickoff, check if we've already sent second half notification
-      // If state shows we've been through half-time (status was PAUSED) and then back to IN_PLAY,
-      // and we've already notified for IN_PLAY after PAUSED, skip
+      // We detect this by checking if state was already updated to IN_PLAY after being PAUSED
       if (isSecondHalfKickoff) {
-        // Check if state shows we've already been through half-time and back to IN_PLAY
-        // This means we've already sent second half kickoff
-        const hasBeenThroughHalfTime = state?.last_notified_status === 'PAUSED' || 
-                                       (state?.last_notified_status === 'IN_PLAY' && 
-                                        state?.last_notified_at &&
-                                        oldStatus === 'PAUSED');
-        
-        // If state is IN_PLAY and we're coming from PAUSED, but state was already IN_PLAY before,
-        // that means we already sent second half kickoff
+        // If state shows IN_PLAY and we're transitioning from PAUSED, check if we already notified
+        // The state update happens before notification, so if state is IN_PLAY and was updated recently,
+        // another webhook already handled this
         if (state?.last_notified_status === 'IN_PLAY' && oldStatus === 'PAUSED') {
-          // Check if this is a duplicate webhook by comparing timestamps
-          // If state was updated very recently (within 5 seconds), skip
+          // Check if state was updated very recently (within 10 seconds) - another webhook claimed it
           if (state.last_notified_at) {
             const lastNotifiedTime = new Date(state.last_notified_at).getTime();
             const now = Date.now();
-            if (now - lastNotifiedTime < 5000) {
+            if (now - lastNotifiedTime < 10000) {
               console.log(`[sendScoreNotificationsWebhook] [${requestId}] 🚫 SKIPPING - already sent second half kickoff notification for match ${apiMatchId} (recent update)`);
               return {
                 statusCode: 200,
