@@ -805,8 +805,9 @@ export default function HomePage() {
       // This is more reliable than client-side scheduling based on kickoff time
       
       if (fixtureIndex === 0 && fixture.kickoff_time) {
-        const firstKickoff = new Date(fixture.kickoff_time);
-        const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
+        // Notification scheduling removed - now handled server-side
+        // const firstKickoff = new Date(fixture.kickoff_time);
+        // const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
         
         if (!deadlineReminderScheduledRef.current) {
           // scheduleDeadlineReminder(deadlineTime.toISOString(), 1, 2); // Removed - notifications now server-side
@@ -814,7 +815,7 @@ export default function HomePage() {
         }
         
         if (!gameweekStartingSoonScheduledRef.current) {
-          scheduleGameweekStartingSoon(fixture.kickoff_time, 1);
+          // scheduleGameweekStartingSoon(fixture.kickoff_time, 1); // Removed - notifications now server-side
           gameweekStartingSoonScheduledRef.current = true;
         }
       }
