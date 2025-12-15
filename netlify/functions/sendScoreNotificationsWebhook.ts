@@ -575,10 +575,11 @@ export const handler: Handler = async (event, context) => {
       }
     }
 
-    // Process goals - ALWAYS check for new goals if goals exist, regardless of score change
+    // Process goals - ALWAYS check for new goals if goals exist, regardless of score change or status
     // This handles cases where webhook fires after goal is already in database
     // We compare against state.last_notified_goals (what we've already notified), not old_record.goals
     // NOTE: Skip if score went down (handled above)
+    // IMPORTANT: Process goals BEFORE half-time check, even if status is PAUSED, to catch goals scored at half-time
     if (Array.isArray(goals) && goals.length > 0 && !scoreWentDown) {
       // Always check for new goals compared to what we've notified about
       const normalizeGoalKey = (g: any): string => {
@@ -857,16 +858,11 @@ export const handler: Handler = async (event, context) => {
         'score-updates' // Check user preferences
       );
 
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({
-            message: 'Goal notification sent',
-            sentTo: totalSent,
-            newGoals: newGoals.length,
-          }),
-        };
-      }
+      console.log(`[sendScoreNotificationsWebhook] [${requestId}] ✅ Goal notification sent (${totalSent} users), continuing to check for half-time/final whistle`);
+
+      // Don't return here - continue to check for half-time/final whistle
+      // This ensures goals scored at half-time still trigger goal notifications
+      // and then half-time notification is also sent
     }
 
     // Handle score changes without goals (for manual updates)
