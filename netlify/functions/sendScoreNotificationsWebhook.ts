@@ -181,10 +181,9 @@ export const handler: Handler = async (event, context) => {
     // Check if goals array changed (compare JSON strings to detect any changes)
     const goalsChanged = JSON.stringify(goals || []) !== JSON.stringify(oldGoals || []);
 
-    // Check if this is a score change
+    // Check if this is a score change (for goal notifications)
     const isScoreChange = homeScore !== oldHomeScore || awayScore !== oldAwayScore;
     const isStatusChange = status !== oldStatus;
-    const isKickoff = oldStatus !== 'IN_PLAY' && status === 'IN_PLAY' && homeScore === 0 && awayScore === 0;
     const isHalfTime = oldStatus === 'IN_PLAY' && status === 'PAUSED';
     const isFinished = status === 'FINISHED' || status === 'FT';
 
@@ -194,7 +193,6 @@ export const handler: Handler = async (event, context) => {
       homeScore: `${oldHomeScore} -> ${homeScore}`,
       awayScore: `${oldAwayScore} -> ${awayScore}`,
       status: `${oldStatus || 'null'} -> ${status}`,
-      isKickoff,
       isHalfTime,
       isFinished,
       currentGoalsCount: Array.isArray(goals) ? goals.length : 0,
