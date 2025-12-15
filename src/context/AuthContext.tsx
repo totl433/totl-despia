@@ -151,7 +151,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Auto-register OneSignal Player ID (native) when signed in
   // Runs automatically on every app load and keeps subscriptions active
   useEffect(() => {
-    if (!user || !session) return;
+    // CRITICAL: Check both user AND session.access_token
+    // If session exists but access_token is missing, registration will fail
+    if (!user || !session || !session.access_token) {
+      if (user && session && !session.access_token) {
+        console.warn('[Push] ⚠️ User and session exist but access_token is missing - skipping registration');
+      }
+      return;
+    }
     const currentUser: User = user;
     const currentSession: Session = session;
     let cancelled = false;
@@ -160,6 +167,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async function attemptRegister(retryCount = 0): Promise<boolean> {
       if (cancelled) {
         console.log('[Push] Registration cancelled');
+        return false;
+      }
+
+      // Double-check session is still valid before each attempt
+      if (!currentSession?.access_token) {
+        console.warn(`[Push] ⚠️ Session access_token missing during registration attempt ${retryCount + 1}`);
         return false;
       }
 
@@ -223,8 +236,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Initial attempt with a small delay to let the app fully load
+    // Also ensure session.access_token is available before attempting
     const initialTimeout = setTimeout(() => {
-      attemptRegister();
+      if (!currentSession?.access_token) {
+        console.warn('[Push] ⚠️ Delaying registration - session.access_token not yet available');
+        // Retry after a short delay if access_token isn't ready
+        setTimeout(() => {
+          if (currentSession?.access_token && !cancelled) {
+            attemptRegister();
+          } else {
+            console.warn('[Push] ⚠️ Session access_token still not available after delay');
+          }
+        }, 1000);
+      } else {
+        attemptRegister();
+      }
     }, 500);
 
     // Retry on app foreground (when user comes back to app)
