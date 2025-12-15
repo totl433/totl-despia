@@ -1,5 +1,6 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import { isSubscribed } from './utils/notificationHelpers';
 
 function json(statusCode: number, body: unknown) {
   return {
@@ -7,59 +8,6 @@ function json(statusCode: number, body: unknown) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   };
-}
-
-// Check if a Player ID is actually subscribed in OneSignal
-async function isSubscribed(
-  playerId: string,
-  appId: string,
-  restKey: string
-): Promise<{ subscribed: boolean; player?: any }> {
-  const OS_BASE = 'https://onesignal.com/api/v1';
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Basic ${restKey}`,
-  };
-
-  try {
-    const url = `${OS_BASE}/players/${playerId}?app_id=${appId}`;
-    const r = await fetch(url, { headers });
-    
-    if (!r.ok) {
-      return { subscribed: false };
-    }
-
-    const player = await r.json();
-
-    // Heuristics that cover iOS/Android:
-    // - must have a valid push token (identifier)
-    // - must not be marked invalid
-    // - must be opted in / subscribed (notification_types: 1 = subscribed, -2 = unsubscribed, 0 = disabled)
-    // NOTE: If notification_types is null/undefined, OneSignal SDK hasn't initialized properly
-    // In this case, we'll be lenient IF the device has a token and is not invalid
-    const hasToken = !!player.identifier; // APNs/FCM token
-    const notInvalid = !player.invalid_identifier;
-    const notificationTypes = player.notification_types;
-    
-    // OneSignal considers a device subscribed if:
-    // - notification_types === 1 (explicitly subscribed)
-    // - notification_types is null/undefined BUT has valid token (legacy SDK, still initializing)
-    // OneSignal considers NOT subscribed if:
-    // - notification_types === -2 (unsubscribed)
-    // - notification_types === 0 (disabled)
-    const explicitlySubscribed = notificationTypes === 1;
-    const explicitlyUnsubscribed = notificationTypes === -2 || notificationTypes === 0;
-    const stillInitializing = (notificationTypes === null || notificationTypes === undefined) && hasToken && notInvalid;
-    
-    // Be lenient: if device has token and isn't explicitly unsubscribed, consider it subscribed
-    // This handles the case where OneSignal SDK hasn't fully initialized yet
-    const subscribed = explicitlySubscribed || (stillInitializing && !explicitlyUnsubscribed);
-
-    return { subscribed, player };
-  } catch (e) {
-    console.error(`[registerPlayer] Error checking subscription for ${playerId}:`, e);
-    return { subscribed: false };
-  }
 }
 
 export const handler: Handler = async (event) => {

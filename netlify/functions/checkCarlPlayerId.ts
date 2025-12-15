@@ -66,7 +66,7 @@ export const handler: Handler = async (event) => {
       },
     });
   } catch (error: any) {
-    console.error('[checkCarlPlayerId] Error:', error);
+    console.error('[checkPlayerId] Error:', error);
     return json(500, {
       error: 'Failed to check player',
       message: error.message,

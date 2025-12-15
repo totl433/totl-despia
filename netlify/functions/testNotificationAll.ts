@@ -1,5 +1,6 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import { isSubscribed } from './utils/notificationHelpers';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -7,43 +8,6 @@ const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID!;
 const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-// Check if a Player ID is subscribed in OneSignal
-async function isSubscribed(
-  playerId: string,
-  appId: string,
-  restKey: string
-): Promise<{ subscribed: boolean; player?: any }> {
-  const OS_BASE = 'https://onesignal.com/api/v1';
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Basic ${restKey}`,
-  };
-
-  try {
-    const url = `${OS_BASE}/players/${playerId}?app_id=${appId}`;
-    const r = await fetch(url, { headers });
-    
-    if (!r.ok) {
-      return { subscribed: false, player: null };
-    }
-
-    const player = await r.json();
-    const hasToken = !!player.identifier;
-    const notInvalid = !player.invalid_identifier;
-    const notificationTypes = player.notification_types;
-    
-    const explicitlySubscribed = notificationTypes === 1;
-    const explicitlyUnsubscribed = notificationTypes === -2 || notificationTypes === 0;
-    const stillInitializing = (notificationTypes === null || notificationTypes === undefined) && hasToken && notInvalid;
-    
-    const subscribed = explicitlySubscribed || (stillInitializing && !explicitlyUnsubscribed);
-
-    return { subscribed, player };
-  } catch (e) {
-    return { subscribed: false, player: null };
-  }
-}
 
 export const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST' && event.httpMethod !== 'GET') {
@@ -116,8 +80,8 @@ export const handler: Handler = async (event) => {
     }
 
     // Send notification to all subscribed devices
-    const title = '👀 Can Carl See this? 👀';
-    const message = '👀 Can Carl See this? 👀';
+    const title = 'Test Notification';
+    const message = 'Test notification to all subscribed devices';
 
     const payload = {
       app_id: ONESIGNAL_APP_ID,

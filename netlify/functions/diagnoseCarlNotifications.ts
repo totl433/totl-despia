@@ -1,5 +1,6 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import { isSubscribed } from './utils/notificationHelpers';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -8,59 +9,22 @@ const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-const CARL_USER_ID = 'f8a1669e-2512-4edf-9c21-b9f87b3efbe2';
-const JOF_USER_ID = '4542c037-5b38-40d0-b189-847b8f17c222';
-
-// Allow checking different users via query parameter
-const getUserIds = (queryParams: any) => {
-  const userParam = queryParams?.user;
-  if (userParam === 'jof') {
-    return [JOF_USER_ID];
+// Get user IDs from query parameter (userId or userIds)
+const getUserIds = (queryParams: any): string[] => {
+  // Support single userId
+  if (queryParams?.userId) {
+    return [queryParams.userId];
   }
-  if (userParam === 'carl') {
-    return [CARL_USER_ID];
+  
+  // Support multiple userIds (comma-separated)
+  if (queryParams?.userIds) {
+    return queryParams.userIds.split(',').map((id: string) => id.trim()).filter(Boolean);
   }
-  // Default to Carl for backward compatibility
-  return [CARL_USER_ID];
+  
+  // Legacy support: 'carl' or 'jof' (for backward compatibility)
+  // But require explicit userId going forward
+  return [];
 };
-
-// Check if a Player ID is subscribed in OneSignal
-async function isSubscribed(
-  playerId: string,
-  appId: string,
-  restKey: string
-): Promise<{ subscribed: boolean; player?: any }> {
-  const OS_BASE = 'https://onesignal.com/api/v1';
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Basic ${restKey}`,
-  };
-
-  try {
-    const url = `${OS_BASE}/players/${playerId}?app_id=${appId}`;
-    const r = await fetch(url, { headers });
-    
-    if (!r.ok) {
-      return { subscribed: false, player: null };
-    }
-
-    const player = await r.json();
-    const hasToken = !!player.identifier;
-    const notInvalid = !player.invalid_identifier;
-    const notificationTypes = player.notification_types;
-    
-    const explicitlySubscribed = notificationTypes === 1;
-    const explicitlyUnsubscribed = notificationTypes === -2 || notificationTypes === 0;
-    const stillInitializing = (notificationTypes === null || notificationTypes === undefined) && hasToken && notInvalid;
-    
-    const subscribed = explicitlySubscribed || (stillInitializing && !explicitlyUnsubscribed);
-
-    return { subscribed, player };
-  } catch (e) {
-    console.error(`Error checking subscription for ${playerId}:`, e);
-    return { subscribed: false, player: null };
-  }
-}
 
 export const handler: Handler = async (event) => {
   if (event.httpMethod !== 'GET' && event.httpMethod !== 'POST') {
@@ -78,6 +42,16 @@ export const handler: Handler = async (event) => {
   try {
     // Get subscriptions for the requested user(s)
     const userIds = getUserIds(event.queryStringParameters);
+    
+    if (userIds.length === 0) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ 
+          error: 'Missing userId parameter',
+          usage: 'Provide ?userId=<user-id> or ?userIds=<id1>,<id2>',
+        }),
+      };
+    }
     const { data: subscriptions, error: subsError } = await supabase
       .from('push_subscriptions')
       .select('*')
@@ -92,12 +66,12 @@ export const handler: Handler = async (event) => {
     }
 
     if (!subscriptions || subscriptions.length === 0) {
-      const userName = event.queryStringParameters?.user === 'jof' ? 'Jof' : 'Carl';
       return {
         statusCode: 200,
         body: JSON.stringify({
-          message: `No devices found for ${userName}`,
-          recommendation: `${userName} needs to register his device via the app`,
+          message: `No devices found for user(s)`,
+          userIds,
+          recommendation: `User(s) need to register their device via the app`,
         }),
       };
     }
@@ -175,8 +149,13 @@ export const handler: Handler = async (event) => {
       .sort((a, b) => (b.last_active_timestamp || 0) - (a.last_active_timestamp || 0));
     const mostRecentDevice = devicesWithActivity[0];
 
-    const userName = event.queryStringParameters?.user === 'jof' ? 'Jof' : 'Carl';
-    const userId = event.queryStringParameters?.user === 'jof' ? JOF_USER_ID : CARL_USER_ID;
+    // Get user names for response
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, name')
+      .in('id', userIds);
+    
+    const userNames = users ? users.map((u: any) => u.name).join(', ') : 'Unknown';
     
     // Check if the most recent device is different from the active one
     const activeDeviceId = activeDevices[0]?.player_id;
@@ -185,20 +164,20 @@ export const handler: Handler = async (event) => {
     
     let recommendation = '';
     if (activeDevices.length === 0) {
-      recommendation = `No active devices. ${userName} needs to re-register his device via the app or enable notifications in iOS Settings.`;
+      recommendation = `No active devices. User(s) need to re-register their device via the app or enable notifications in iOS Settings.`;
     } else if (subscribedDevices.length === 0) {
-      recommendation = `Devices are registered but not subscribed in OneSignal. ${userName} may need to enable notifications in iOS Settings.`;
+      recommendation = `Devices are registered but not subscribed in OneSignal. User(s) may need to enable notifications in iOS Settings.`;
     } else if (deviceMismatch) {
-      recommendation = `⚠️ Device mismatch detected! The most recently active device (${mostRecentDeviceId?.slice(0, 20)}...) is not marked as active. ${userName} may be using a different device than what's registered.`;
+      recommendation = `⚠️ Device mismatch detected! The most recently active device (${mostRecentDeviceId?.slice(0, 20)}...) is not marked as active. User(s) may be using a different device than what's registered.`;
     } else {
-      recommendation = `${userName} should receive notifications on active subscribed devices.`;
+      recommendation = `User(s) should receive notifications on active subscribed devices.`;
     }
     
     return {
       statusCode: 200,
       body: JSON.stringify({
-        user_id: userId,
-        user_name: userName,
+        user_ids: userIds,
+        user_names: userNames,
         total_devices: subscriptions.length,
         active_devices: activeDevices.length,
         subscribed_devices: subscribedDevices.length,

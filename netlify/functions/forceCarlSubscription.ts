@@ -8,8 +8,6 @@ const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-const CARL_USER_ID = 'f8a1669e-2512-4edf-9c21-b9f87b3efbe2';
-
 export const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return {
@@ -18,12 +16,28 @@ export const handler: Handler = async (event) => {
     };
   }
 
+  // Get user_id from query parameter or body
+  let userId: string | null = null;
   try {
-    // Get Carl's active device
+    const payload = event.body ? JSON.parse(event.body) : {};
+    userId = event.queryStringParameters?.userId || payload.userId || null;
+  } catch (e) {
+    userId = event.queryStringParameters?.userId || null;
+  }
+
+  if (!userId) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: 'Missing userId parameter. Provide ?userId=... or in body' }),
+    };
+  }
+
+  try {
+    // Get user's active device
     const { data: subscriptions, error: subsError } = await supabase
       .from('push_subscriptions')
       .select('*')
-      .eq('user_id', CARL_USER_ID)
+      .eq('user_id', userId)
       .eq('is_active', true)
       .order('created_at', { ascending: false })
       .limit(1);
@@ -32,7 +46,8 @@ export const handler: Handler = async (event) => {
       return {
         statusCode: 200,
         body: JSON.stringify({
-          error: 'No active device found for Carl',
+          error: 'No active device found for user',
+          userId,
         }),
       };
     }
@@ -44,7 +59,8 @@ export const handler: Handler = async (event) => {
       return {
         statusCode: 200,
         body: JSON.stringify({
-          error: 'No player ID found for Carl\'s device',
+          error: 'No player ID found for user\'s device',
+          userId,
         }),
       };
     }
@@ -92,7 +108,7 @@ export const handler: Handler = async (event) => {
     }
 
     // Also try to update external_user_id to ensure it's set
-    updatePayload.external_user_id = CARL_USER_ID;
+    updatePayload.external_user_id = userId;
     
     // Try to update last_active by setting it to current timestamp
     // This might help OneSignal recognize the device as active

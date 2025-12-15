@@ -58,16 +58,17 @@ Push Notifications (OneSignal)
     - ⚪ Grey "FT" for finished games
   - Stop polling when games finish
 
-### 4. **sendScoreNotifications** (Netlify Scheduled Function)
-- **Runs:** Every 2 minutes (`*/2 * * * *`)
+### 4. **sendScoreNotificationsWebhook** (Netlify Webhook Function)
+- **Runs:** Automatically triggered when `live_scores` table is updated (via Supabase webhook)
 - **What it does:**
-  - Reads from `live_scores` table
+  - Receives webhook payload with updated score data
   - Compares with `notification_state` table to detect changes
   - Sends push notifications for:
     - ⚽ **Score changes:** "⚽ GOAL! Team A 2-1 Team B"
     - 🏁 **Game finished:** "FT: Team A 2-1 Team B"
     - 🎉 **End of GW:** "GW1 Complete! 🎉 All games finished. Check your results!"
   - Updates `notification_state` to prevent duplicates
+- **Note:** This replaces the old scheduled `sendScoreNotifications` function for more reliable real-time notifications
 
 ### 5. **notification_state Table** (Supabase)
 - **Purpose:** Track what we've already notified about

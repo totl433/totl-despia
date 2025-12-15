@@ -1,5 +1,6 @@
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import { isSubscribed } from './utils/notificationHelpers';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -10,43 +11,6 @@ const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
-
-// Check if a Player ID is subscribed in OneSignal
-async function isSubscribed(
-  playerId: string,
-  appId: string,
-  restKey: string
-): Promise<{ subscribed: boolean; player?: any }> {
-  const OS_BASE = 'https://onesignal.com/api/v1';
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Basic ${restKey}`,
-  };
-
-  try {
-    const url = `${OS_BASE}/players/${playerId}?app_id=${appId}`;
-    const r = await fetch(url, { headers });
-    
-    if (!r.ok) {
-      return { subscribed: false };
-    }
-
-    const player = await r.json();
-    const hasToken = !!player.identifier;
-    const notInvalid = !player.invalid_identifier;
-    const notificationTypes = player.notification_types;
-    
-    const explicitlySubscribed = notificationTypes === 1;
-    const explicitlyUnsubscribed = notificationTypes === -2 || notificationTypes === 0;
-    const stillInitializing = (notificationTypes === null || notificationTypes === undefined) && hasToken && notInvalid;
-    
-    const subscribed = explicitlySubscribed || (stillInitializing && !explicitlyUnsubscribed);
-    return { subscribed, player };
-  } catch (e) {
-    console.error(`[notifyFinalSubmission] Error checking subscription for ${playerId}:`, e);
-    return { subscribed: false };
-  }
-}
 
 // Send notification via OneSignal
 async function sendOneSignalNotification(

@@ -1,5 +1,6 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import { isSubscribed } from './utils/notificationHelpers';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -7,46 +8,6 @@ const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID!;
 const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-const JOF_USER_ID = '4542c037-5b38-40d0-b189-847b8f17c222';
-
-// Check if a Player ID is subscribed in OneSignal
-async function isSubscribed(
-  playerId: string,
-  appId: string,
-  restKey: string
-): Promise<{ subscribed: boolean; player?: any }> {
-  const OS_BASE = 'https://onesignal.com/api/v1';
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Basic ${restKey}`,
-  };
-
-  try {
-    const url = `${OS_BASE}/players/${playerId}?app_id=${appId}`;
-    const r = await fetch(url, { headers });
-    
-    if (!r.ok) {
-      return { subscribed: false, player: null };
-    }
-
-    const player = await r.json();
-    const hasToken = !!player.identifier;
-    const notInvalid = !player.invalid_identifier;
-    const notificationTypes = player.notification_types;
-    
-    const explicitlySubscribed = notificationTypes === 1;
-    const explicitlyUnsubscribed = notificationTypes === -2 || notificationTypes === 0;
-    const stillInitializing = (notificationTypes === null || notificationTypes === undefined) && hasToken && notInvalid;
-    
-    const subscribed = explicitlySubscribed || (stillInitializing && !explicitlyUnsubscribed);
-
-    return { subscribed, player };
-  } catch (e) {
-    console.error(`Error checking subscription for ${playerId}:`, e);
-    return { subscribed: false, player: null };
-  }
-}
 
 export const handler: Handler = async (event) => {
   if (event.httpMethod !== 'GET') {
@@ -56,12 +17,22 @@ export const handler: Handler = async (event) => {
     };
   }
 
+  // Get user_id from query parameter
+  const userId = event.queryStringParameters?.userId;
+  
+  if (!userId) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: 'Missing userId parameter. Provide ?userId=...' }),
+    };
+  }
+
   try {
-    // Get all Jof's subscriptions
+    // Get all user's subscriptions
     const { data: subscriptions, error: subsError } = await supabase
       .from('push_subscriptions')
       .select('*')
-      .eq('user_id', JOF_USER_ID)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (subsError) {
@@ -75,8 +46,9 @@ export const handler: Handler = async (event) => {
       return {
         statusCode: 200,
         body: JSON.stringify({
-          message: 'No devices found for Jof',
-          recommendation: 'Jof needs to register his device via the app',
+          message: 'No devices found for user',
+          userId,
+          recommendation: 'User needs to register their device via the app',
         }),
       };
     }
@@ -117,16 +89,16 @@ export const handler: Handler = async (event) => {
     return {
       statusCode: 200,
       body: JSON.stringify({
-        user_id: JOF_USER_ID,
+        user_id: userId,
         total_devices: subscriptions.length,
         active_devices: activeDevices.length,
         subscribed_devices: subscribedDevices.length,
         devices: diagnostics,
         recommendation: activeDevices.length === 0
-          ? 'No active devices. Jof needs to re-register his device via the app or enable notifications in iOS Settings.'
+          ? 'No active devices. User needs to re-register their device via the app or enable notifications in iOS Settings.'
           : subscribedDevices.length === 0
-          ? 'Devices are registered but not subscribed in OneSignal. Jof may need to enable notifications in iOS Settings.'
-          : 'Jof should receive notifications on active subscribed devices.',
+          ? 'Devices are registered but not subscribed in OneSignal. User may need to enable notifications in iOS Settings.'
+          : 'User should receive notifications on active subscribed devices.',
       }),
     };
   } catch (error: any) {

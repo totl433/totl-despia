@@ -1,5 +1,6 @@
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import { isSubscribed, shouldSendNotification, loadUserNotificationPreferences } from './utils/notificationHelpers';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -10,43 +11,6 @@ const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
-
-// Check if a Player ID is subscribed in OneSignal
-async function isSubscribed(
-  playerId: string,
-  appId: string,
-  restKey: string
-): Promise<{ subscribed: boolean; player?: any }> {
-  const OS_BASE = 'https://onesignal.com/api/v1';
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Basic ${restKey}`,
-  };
-
-  try {
-    const url = `${OS_BASE}/players/${playerId}?app_id=${appId}`;
-    const r = await fetch(url, { headers });
-    
-    if (!r.ok) {
-      return { subscribed: false };
-    }
-
-    const player = await r.json();
-    const hasToken = !!player.identifier;
-    const notInvalid = !player.invalid_identifier;
-    const notificationTypes = player.notification_types;
-    
-    const explicitlySubscribed = notificationTypes === 1;
-    const explicitlyUnsubscribed = notificationTypes === -2 || notificationTypes === 0;
-    const stillInitializing = (notificationTypes === null || notificationTypes === undefined) && hasToken && notInvalid;
-    
-    const subscribed = explicitlySubscribed || (stillInitializing && !explicitlyUnsubscribed);
-    return { subscribed, player };
-  } catch (e) {
-    console.error(`[sendScoreNotificationsWebhook] Error checking subscription for ${playerId}:`, e);
-    return { subscribed: false };
-  }
-}
 
 async function sendOneSignalNotification(
   playerIds: string[],
@@ -63,7 +27,7 @@ async function sendOneSignalNotification(
     return { success: false, sentTo: 0, error: 'No player IDs provided' };
   }
 
-  // Filter to only subscribed players
+  // Filter to only subscribed players (technical check only - preferences checked at call site)
   const subscribedPlayerIds: string[] = [];
   for (const playerId of playerIds) {
     const { subscribed } = await isSubscribed(playerId, ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY);
@@ -745,18 +709,8 @@ export const handler: Handler = async (event, context) => {
       // Get push subscriptions
       const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
       
-      // Load user notification preferences
-      const { data: userPrefs } = await supabase
-        .from('user_notification_preferences')
-        .select('user_id, preferences')
-        .in('user_id', userIds);
-      
-      const prefsMap = new Map<string, Record<string, boolean>>();
-      if (userPrefs) {
-        userPrefs.forEach((pref: any) => {
-          prefsMap.set(pref.user_id, pref.preferences || {});
-        });
-      }
+      // Load user notification preferences using shared utility
+      const prefsMap = await loadUserNotificationPreferences(userIds);
 
       const { data: subscriptions } = await supabase
         .from('push_subscriptions')
@@ -876,9 +830,10 @@ export const handler: Handler = async (event, context) => {
         const playerIds = playerIdsByUser.get(pick.user_id) || [];
         if (playerIds.length === 0) continue;
 
-        // Check user preference for score-updates
-        const userPrefs = prefsMap.get(pick.user_id) || {};
-        if (userPrefs['score-updates'] === false) {
+        // Check if notification should be sent (OneSignal subscription + user preferences)
+        // Note: sendOneSignalNotification already filters by subscription, so we just check preferences here
+        const userPrefs = prefsMap.get(pick.user_id);
+        if (userPrefs && userPrefs['score-updates'] === false) {
           continue; // Skip if user disabled score-updates notifications
         }
 
@@ -1391,18 +1346,8 @@ export const handler: Handler = async (event, context) => {
 
       const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
       
-      // Load user notification preferences
-      const { data: userPrefs } = await supabase
-        .from('user_notification_preferences')
-        .select('user_id, preferences')
-        .in('user_id', userIds);
-      
-      const prefsMap = new Map<string, Record<string, boolean>>();
-      if (userPrefs) {
-        userPrefs.forEach((pref: any) => {
-          prefsMap.set(pref.user_id, pref.preferences || {});
-        });
-      }
+      // Load user notification preferences using shared utility
+      const prefsMap = await loadUserNotificationPreferences(userIds);
 
       const { data: subscriptions } = await supabase
         .from('push_subscriptions')
@@ -1429,9 +1374,9 @@ export const handler: Handler = async (event, context) => {
         const playerIds = playerIdsByUser.get(pick.user_id) || [];
         if (playerIds.length === 0) continue;
 
-        // Check user preference for final-whistle
-        const userPrefs = prefsMap.get(pick.user_id) || {};
-        if (userPrefs['final-whistle'] === false) {
+        // Check if notification should be sent (OneSignal subscription + user preferences)
+        const userPrefs = prefsMap.get(pick.user_id);
+        if (userPrefs && userPrefs['final-whistle'] === false) {
           continue; // Skip if user disabled final-whistle notifications
         }
 
@@ -1617,18 +1562,8 @@ export const handler: Handler = async (event, context) => {
         
         const allUserIds = Array.from(new Set(allPicks.map((p: any) => p.user_id)));
         
-        // Load user notification preferences for GW results
-        const { data: gwUserPrefs } = await supabase
-          .from('user_notification_preferences')
-          .select('user_id, preferences')
-          .in('user_id', allUserIds);
-        
-        const gwPrefsMap = new Map<string, Record<string, boolean>>();
-        if (gwUserPrefs) {
-          gwUserPrefs.forEach((pref: any) => {
-            gwPrefsMap.set(pref.user_id, pref.preferences || {});
-          });
-        }
+        // Load user notification preferences for GW results using shared utility
+        const gwPrefsMap = await loadUserNotificationPreferences(allUserIds);
 
         const { data: allSubscriptions } = await supabase
           .from('push_subscriptions')
@@ -1669,9 +1604,9 @@ export const handler: Handler = async (event, context) => {
             const playerIds = allPlayerIdsByUser.get(userId) || [];
             if (playerIds.length === 0) continue;
             
-            // Check user preference for gw-results
-            const userPrefs = gwPrefsMap.get(userId) || {};
-            if (userPrefs['gw-results'] === false) {
+            // Check if notification should be sent (OneSignal subscription + user preferences)
+            const userPrefs = gwPrefsMap.get(userId);
+            if (userPrefs && userPrefs['gw-results'] === false) {
               continue; // Skip if user disabled gw-results notifications
             }
             

@@ -1,5 +1,6 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import { isSubscribed } from './utils/notificationHelpers';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -7,46 +8,6 @@ const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID!;
 const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-const CARL_USER_ID = 'f8a1669e-2512-4edf-9c21-b9f87b3efbe2';
-
-// Check if a Player ID is subscribed in OneSignal
-async function isSubscribed(
-  playerId: string,
-  appId: string,
-  restKey: string
-): Promise<{ subscribed: boolean; player?: any }> {
-  const OS_BASE = 'https://onesignal.com/api/v1';
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Basic ${restKey}`,
-  };
-
-  try {
-    const url = `${OS_BASE}/players/${playerId}?app_id=${appId}`;
-    const r = await fetch(url, { headers });
-    
-    if (!r.ok) {
-      return { subscribed: false, player: null };
-    }
-
-    const player = await r.json();
-    const hasToken = !!player.identifier;
-    const notInvalid = !player.invalid_identifier;
-    const notificationTypes = player.notification_types;
-    
-    const explicitlySubscribed = notificationTypes === 1;
-    const explicitlyUnsubscribed = notificationTypes === -2 || notificationTypes === 0;
-    const stillInitializing = (notificationTypes === null || notificationTypes === undefined) && hasToken && notInvalid;
-    
-    const subscribed = explicitlySubscribed || (stillInitializing && !explicitlyUnsubscribed);
-
-    return { subscribed, player };
-  } catch (e) {
-    console.error(`Error checking subscription for ${playerId}:`, e);
-    return { subscribed: false, player: null };
-  }
-}
 
 export const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -56,12 +17,28 @@ export const handler: Handler = async (event) => {
     };
   }
 
+  // Get user_id from query parameter or body
+  let userId: string | null = null;
   try {
-    // Get all Carl's subscriptions
+    const payload = event.body ? JSON.parse(event.body) : {};
+    userId = event.queryStringParameters?.userId || payload.userId || null;
+  } catch (e) {
+    userId = event.queryStringParameters?.userId || null;
+  }
+
+  if (!userId) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: 'Missing userId parameter. Provide ?userId=... or in body' }),
+    };
+  }
+
+  try {
+    // Get all user's subscriptions
     const { data: subscriptions, error: subsError } = await supabase
       .from('push_subscriptions')
       .select('*')
-      .eq('user_id', CARL_USER_ID)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (subsError) {
@@ -75,8 +52,9 @@ export const handler: Handler = async (event) => {
       return {
         statusCode: 200,
         body: JSON.stringify({
-          error: 'No devices found for Carl',
-          recommendation: 'Carl needs to register his device via the app',
+          error: 'No devices found for user',
+          userId,
+          recommendation: 'User needs to register their device via the app',
         }),
       };
     }
@@ -134,9 +112,10 @@ export const handler: Handler = async (event) => {
       return {
         statusCode: 200,
         body: JSON.stringify({
-          error: 'No subscribed devices found for Carl',
+          error: 'No subscribed devices found for user',
+          userId,
           diagnostics,
-          recommendation: 'Carl needs to enable notifications in iOS Settings or re-register his device',
+          recommendation: 'User needs to enable notifications in iOS Settings or re-register their device',
         }),
       };
     }
@@ -150,9 +129,9 @@ export const handler: Handler = async (event) => {
     }
 
     const title = payload.title || 'Test Notification';
-    const message = payload.message || 'Can Carl see this? 👀';
+    const message = payload.message || 'Test notification';
 
-    // Send notification to Carl's devices
+    // Send notification to user's devices
     // Use same format as OneSignal dashboard for better compatibility
     const resp = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',

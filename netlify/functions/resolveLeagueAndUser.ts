@@ -35,7 +35,7 @@ export const handler: Handler = async (event) => {
   }
   if (!leagueId) return json(404, { error: 'League not found' })
 
-  // Resolve user (Carl)
+  // Resolve user
   let userRow: any = null
   if (userEmail) {
     const { data, error } = await admin.from('users').select('id,name,email').eq('email', userEmail).maybeSingle()

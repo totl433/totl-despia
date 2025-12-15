@@ -1,61 +1,9 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import { isSubscribed, loadUserNotificationPreferences } from './utils/notificationHelpers';
 
 function json(statusCode: number, body: unknown) {
   return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
-}
-
-// Check if a Player ID is actually subscribed in OneSignal
-async function isSubscribed(
-  playerId: string,
-  appId: string,
-  restKey: string
-): Promise<{ subscribed: boolean; player?: any }> {
-  const OS_BASE = 'https://onesignal.com/api/v1';
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Basic ${restKey}`,
-  };
-
-  try {
-    const url = `${OS_BASE}/players/${playerId}?app_id=${appId}`;
-    const r = await fetch(url, { headers });
-    
-    if (!r.ok) {
-      return { subscribed: false };
-    }
-
-    const player = await r.json();
-
-    // Heuristics that cover iOS/Android:
-    // - must have a valid push token (identifier)
-    // - must not be marked invalid
-    // - must be opted in / subscribed (notification_types: 1 = subscribed, -2 = unsubscribed, 0 = disabled)
-    // NOTE: If notification_types is null/undefined, OneSignal SDK hasn't initialized properly
-    // In this case, we'll be lenient IF the device has a token and is not invalid
-    const hasToken = !!player.identifier; // APNs/FCM token
-    const notInvalid = !player.invalid_identifier;
-    const notificationTypes = player.notification_types;
-    
-    // OneSignal considers a device subscribed if:
-    // - notification_types === 1 (explicitly subscribed)
-    // - notification_types is null/undefined BUT has valid token (legacy SDK, still initializing)
-    // OneSignal considers NOT subscribed if:
-    // - notification_types === -2 (unsubscribed)
-    // - notification_types === 0 (disabled)
-    const explicitlySubscribed = notificationTypes === 1;
-    const explicitlyUnsubscribed = notificationTypes === -2 || notificationTypes === 0;
-    const stillInitializing = (notificationTypes === null || notificationTypes === undefined) && hasToken && notInvalid;
-    
-    // Be lenient: if device has token and isn't explicitly unsubscribed, consider it subscribed
-    // This handles the case where OneSignal SDK hasn't fully initialized yet
-    const subscribed = explicitlySubscribed || (stillInitializing && !explicitlyUnsubscribed);
-
-    return { subscribed, player };
-  } catch (e) {
-    console.error(`[sendPushAll] Error checking subscription for ${playerId}:`, e);
-    return { subscribed: false };
-  }
 }
 
 export const handler: Handler = async (event) => {
@@ -208,35 +156,16 @@ export const handler: Handler = async (event) => {
     // Send notification to subscribed devices
     console.log(`[sendPushAll] Sending notification to ${validPlayerIds.length} subscribed devices...`);
     
-    // Map player IDs to user IDs (for debugging Carl's issue)
-    const playerIdToUserId = new Map<string, string>();
+    // Map player IDs to user IDs for response
     const userIdsIncluded = new Set<string>();
-    const CARL_USER_ID = 'f8a1669e-2512-4edf-9c21-b9f87b3efbe2';
-    
     validPlayerIds.forEach(playerId => {
       const sub = subs.find((s: any) => s.player_id === playerId);
       if (sub?.user_id) {
         userIdsIncluded.add(sub.user_id);
-        playerIdToUserId.set(playerId, sub.user_id);
       }
     });
     
-    // Check if Carl's Player ID is included
-    const carlPlayerId = subs.find((s: any) => s.user_id === CARL_USER_ID)?.player_id;
-    const carlIncluded = carlPlayerId && validPlayerIds.includes(carlPlayerId);
-    
-    console.log(`[sendPushAll] Sending to ${userIdsIncluded.size} unique users:`, Array.from(userIdsIncluded));
-    console.log(`[sendPushAll] Carl's Player ID: ${carlPlayerId ? carlPlayerId.slice(0, 20) + '...' : 'NOT FOUND'}`);
-    console.log(`[sendPushAll] Carl included in send: ${carlIncluded ? 'YES' : 'NO'}`);
-    if (carlPlayerId && !carlIncluded) {
-      console.warn(`[sendPushAll] ⚠️ Carl's Player ID exists but was filtered out! Checking why...`);
-      const carlSub = subs.find((s: any) => s.player_id === carlPlayerId);
-      console.warn(`[sendPushAll] Carl's device status:`, {
-        is_active: carlSub?.is_active,
-        subscribed: carlSub?.subscribed,
-        player_id: carlPlayerId.slice(0, 20) + '...',
-      });
-    }
+    console.log(`[sendPushAll] Sending to ${userIdsIncluded.size} unique users`);
     
     // Load user notification preferences if notification type is provided
     let userIdsToFilter: string[] = [];
@@ -245,23 +174,14 @@ export const handler: Handler = async (event) => {
       userIdsToFilter = Array.from(new Set((subs || []).map((s: any) => s.user_id).filter(Boolean)));
       
       if (userIdsToFilter.length > 0) {
-        const { data: userPrefs } = await admin
-          .from('user_notification_preferences')
-          .select('user_id, preferences')
-          .in('user_id', userIdsToFilter);
-        
-        const prefsMap = new Map<string, Record<string, boolean>>();
-        if (userPrefs) {
-          userPrefs.forEach((pref: any) => {
-            prefsMap.set(pref.user_id, pref.preferences || {});
-          });
-        }
+        // Load user notification preferences using shared utility
+        const prefsMap = await loadUserNotificationPreferences(userIdsToFilter);
         
         // Filter out users who disabled new-gameweek notifications
         const filteredSubs = (subs || []).filter((sub: any) => {
           if (!sub.user_id) return true; // Keep if no user_id
-          const userPrefs = prefsMap.get(sub.user_id) || {};
-          return userPrefs['new-gameweek'] !== false; // Keep if not explicitly disabled
+          const userPrefs = prefsMap.get(sub.user_id);
+          return userPrefs?.['new-gameweek'] !== false; // Keep if not explicitly disabled
         });
         
         // Update subs to only include users who want notifications
@@ -290,21 +210,24 @@ export const handler: Handler = async (event) => {
     }
 
     // Build notification payload
-    const notificationPayload = {
+    const notificationPayload: any = {
       app_id: ONESIGNAL_APP_ID,
       include_player_ids: validPlayerIds,
       headings: { en: title },
       contents: { en: message },
-      data: data ?? undefined,
-      // Add iOS-specific settings to ensure delivery
+      // Add iOS badge to app icon (shows red number badge)
+      // Used for new gameweek published notifications and manual admin notifications
       ios_badgeType: 'SetTo',
       ios_badgeCount: 1,
-      // Don't filter by subscription status - we already filtered
-      // This ensures we send to all player IDs we include
     };
     
-    console.log(`[sendPushAll] Sending to Player IDs:`, validPlayerIds.map(id => id.slice(0, 20) + '...'));
-    console.log(`[sendPushAll] Carl's Player ID in list: ${carlPlayerId && validPlayerIds.includes(carlPlayerId) ? 'YES' : 'NO'}`);
+    // Add data field if provided (for deep linking, etc.)
+    if (data) {
+      notificationPayload.data = data;
+    }
+    
+    console.log(`[sendPushAll] Sending to ${validPlayerIds.length} Player IDs`);
+    console.log(`[sendPushAll] Badge settings: ios_badgeType=${notificationPayload.ios_badgeType}, ios_badgeCount=${notificationPayload.ios_badgeCount}`);
     
     const resp = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
@@ -331,50 +254,6 @@ export const handler: Handler = async (event) => {
     const oneSignalErrors = body.errors || [];
     const oneSignalRecipients = body.recipients || 0;
     const oneSignalId = body.id; // OneSignal notification ID - if present, notification was created
-    
-    // Log full response for debugging Carl's issue
-    console.log(`[sendPushAll] OneSignal full response:`, JSON.stringify({
-      id: body.id,
-      recipients: body.recipients,
-      errors: body.errors,
-      invalid_player_ids: body.invalid_player_ids,
-    }, null, 2));
-    
-    // Check if Carl's Player ID is in invalid_player_ids
-    if (body.invalid_player_ids && Array.isArray(body.invalid_player_ids)) {
-      const carlInvalid = carlPlayerId && body.invalid_player_ids.includes(carlPlayerId);
-      if (carlInvalid) {
-        console.error(`[sendPushAll] ⚠️ Carl's Player ID was marked as INVALID by OneSignal!`);
-      } else if (carlPlayerId && body.invalid_player_ids.length > 0) {
-        console.log(`[sendPushAll] Carl's Player ID NOT in invalid list (${body.invalid_player_ids.length} invalid IDs total)`);
-      }
-    } else if (carlPlayerId) {
-      console.log(`[sendPushAll] No invalid_player_ids in response - Carl's device should be included`);
-    }
-    
-    // Log Carl's device status for debugging
-    if (carlPlayerId) {
-      const carlSub = subs.find((s: any) => s.player_id === carlPlayerId);
-      const carlCheck = checks.find((c: any) => c.status === 'fulfilled' && (c as PromiseFulfilledResult<{ playerId: string; subscribed: boolean }>).value.playerId === carlPlayerId);
-      const carlCheckResult = carlCheck?.status === 'fulfilled' ? (carlCheck as PromiseFulfilledResult<{ playerId: string; subscribed: boolean }>).value : null;
-      console.log(`[sendPushAll] Carl's device status:`, {
-        player_id: carlPlayerId.slice(0, 20) + '...',
-        is_active: carlSub?.is_active,
-        subscribed: carlSub?.subscribed,
-        included_in_send: carlIncluded,
-        subscription_check_passed: carlCheckResult?.subscribed ?? false,
-        last_active: carlSub?.last_active_at || 'unknown',
-      });
-      
-      if (carlIncluded && carlCheckResult?.subscribed) {
-        console.log(`[sendPushAll] ✅ Carl's device IS included in notification send`);
-      } else {
-        console.warn(`[sendPushAll] ⚠️ Carl's device NOT included. Reason:`, {
-          in_valid_list: carlIncluded,
-          subscription_check: carlCheckResult?.subscribed ?? 'check_failed',
-        });
-      }
-    }
     
     // OneSignal's recipients field is often 0 for iOS even when notifications are sent successfully
     // If we have a notification ID and no errors, assume it was sent successfully
@@ -417,9 +296,6 @@ export const handler: Handler = async (event) => {
       userIds: userIdsArray,
       userNames: userNames,
       hasNotificationId: hasNotificationId,
-      carlIncluded: carlIncluded,
-      carlPlayerId: carlPlayerId ? carlPlayerId.slice(0, 20) + '...' : null,
-      carlInvalid: carlPlayerId && body.invalid_player_ids && body.invalid_player_ids.includes(carlPlayerId),
       invalidPlayerIds: body.invalid_player_ids || [],
       oneSignalErrors: oneSignalErrors.length > 0 ? oneSignalErrors : undefined,
       result: body 
