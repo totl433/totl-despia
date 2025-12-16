@@ -127,17 +127,26 @@ export default function PredictionsBanner() {
             .select("id", { count: "exact", head: true })
             .eq("gw", nextGw);
           
+          if (!alive) return;
+          
+          // If there's an error checking next GW fixtures, assume they don't exist (show banner)
+          // This ensures banner shows on Despia even if queries are slow or fail
           if (nextGwFxError) {
             console.error('[PredictionsBanner] Error checking next GW fixtures:', nextGwFxError);
+            console.log(`[PredictionsBanner] ⚠️ Error checking GW ${nextGw} fixtures - assuming they don't exist, showing banner`);
+            setBannerType("watch-space");
+            setVisible(true);
+            return;
           }
-          
-          if (!alive) return;
           
           console.log(`[PredictionsBanner] Results published for GW ${gw}, checking GW ${nextGw} fixtures:`, nextGwFxCount || 0);
           
-          // Show banner if next GW fixtures don't exist yet
-          if (!nextGwFxCount || nextGwFxCount === 0) {
-            console.log(`[PredictionsBanner] ✅ Results published for GW ${gw}, GW ${nextGw} fixtures not ready - showing coming soon banner`);
+          // Show banner if next GW fixtures don't exist yet (or count is 0/undefined)
+          // Use explicit check: if count is null/undefined/0, show banner
+          const hasNextGwFixtures = nextGwFxCount !== null && nextGwFxCount !== undefined && nextGwFxCount > 0;
+          
+          if (!hasNextGwFixtures) {
+            console.log(`[PredictionsBanner] ✅ Results published for GW ${gw}, GW ${nextGw} fixtures not ready (count: ${nextGwFxCount}) - showing coming soon banner`);
             setBannerType("watch-space");
             setVisible(true);
           } else {
@@ -194,6 +203,15 @@ export default function PredictionsBanner() {
     };
 
     refreshBanner();
+    
+    // Periodic refresh to ensure banner shows on Despia even if initial check is slow
+    // This is a fallback in case realtime subscriptions don't work or queries are slow
+    const refreshInterval = setInterval(() => {
+      if (alive) {
+        console.log('[PredictionsBanner] 🔄 Periodic refresh check');
+        refreshBanner();
+      }
+    }, 30000); // Check every 30 seconds
     
     // Subscribe to app_gw_results changes for real-time updates
     const channel = supabase
@@ -274,6 +292,7 @@ export default function PredictionsBanner() {
     
     return () => {
       alive = false;
+      clearInterval(refreshInterval);
       supabase.removeChannel(channel);
       supabase.removeChannel(fixturesChannel);
       window.removeEventListener('predictionsSubmitted', handleSubmission);
@@ -281,7 +300,7 @@ export default function PredictionsBanner() {
       window.removeEventListener('fixturesPublished', handleFixturesPublished);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user?.id]);
+  }, [user?.id]); // Note: Effect runs even if user is null - "watch-space" banner doesn't need user
 
   if (!visible) return null;
 
