@@ -11,18 +11,7 @@ import GameweekBanner from "./ComingSoonBanner";
 export default function PredictionsBanner() {
   const { user } = useAuth();
   
-  // Hide banner on staging - it links to wrong predictions page
-  // Check hostname early and return null immediately
-  // NOTE: Removed localhost check so banner shows in development
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname.toLowerCase();
-    if (hostname.includes('staging') || 
-        hostname.includes('totl-staging')) {
-      console.log('[PredictionsBanner] Hidden on staging:', hostname);
-      return null;
-    }
-  }
-  
+  // NOTE: totl-staging.netlify.app IS Despia - banner should show there
   console.log('[PredictionsBanner] Component rendered, checking visibility...');
   
   const [visible, setVisible] = React.useState(false);
@@ -32,8 +21,11 @@ export default function PredictionsBanner() {
 
   React.useEffect(() => {
     let alive = true;
+    
     const refreshBanner = async () => {
       try {
+        console.log('[PredictionsBanner] 🔍 Starting banner check...');
+        
         // current GW
         const { data: meta, error: metaError } = await supabase
           .from("app_meta")
@@ -42,17 +34,23 @@ export default function PredictionsBanner() {
           .maybeSingle();
         
         if (metaError) {
-          console.error('[PredictionsBanner] Error fetching current_gw:', metaError);
-          if (alive) setVisible(false);
+          console.error('[PredictionsBanner] ❌ Error fetching current_gw:', metaError);
+          // Retry after a delay
+          if (alive) {
+            setTimeout(() => {
+              if (alive) refreshBanner();
+            }, 5000);
+          }
           return;
         }
         
         const gw: number | null = (meta as any)?.current_gw ?? null;
         if (!alive) return;
 
+        console.log('[PredictionsBanner] 📊 Current GW:', gw);
         setCurrentGw(gw);
         if (!gw) {
-          console.log('[PredictionsBanner] No current_gw found');
+          console.log('[PredictionsBanner] ⚠️ No current_gw found');
           if (alive) setVisible(false);
           return;
         }
@@ -64,12 +62,18 @@ export default function PredictionsBanner() {
           .eq("gw", gw);
         
         if (fxError) {
-          console.error('[PredictionsBanner] Error fetching fixtures:', fxError);
-          if (alive) setVisible(false);
+          console.error('[PredictionsBanner] ❌ Error fetching fixtures:', fxError);
+          // Retry after a delay
+          if (alive) {
+            setTimeout(() => {
+              if (alive) refreshBanner();
+            }, 5000);
+          }
           return;
         }
         
         if (!alive) return;
+        console.log('[PredictionsBanner] 📊 Current GW fixtures count:', fxCount || 0);
 
         // results already published for current GW?
         const { count: rsCount, error: rsError } = await supabase
@@ -78,13 +82,19 @@ export default function PredictionsBanner() {
           .eq("gw", gw);
         
         if (rsError) {
-          console.error('[PredictionsBanner] Error fetching results:', rsError);
-          if (alive) setVisible(false);
+          console.error('[PredictionsBanner] ❌ Error fetching results:', rsError);
+          // Retry after a delay
+          if (alive) {
+            setTimeout(() => {
+              if (alive) refreshBanner();
+            }, 5000);
+          }
           return;
         }
         
         if (!alive) return;
         const resultsPublished = (rsCount ?? 0) > 0;
+        console.log('[PredictionsBanner] 📊 Results published for GW', gw, ':', resultsPublished, '(count:', rsCount || 0, ')');
 
         if (!fxCount) {
           // No fixtures for current GW - show "watch this space" for next GW
@@ -122,6 +132,8 @@ export default function PredictionsBanner() {
           // Results published for current GW - check if next GW fixtures exist
           // Only show "watch this space" banner if next GW fixtures don't exist yet
           const nextGw = gw + 1;
+          console.log(`[PredictionsBanner] 🔍 Checking if GW ${nextGw} fixtures exist...`);
+          
           const { count: nextGwFxCount, error: nextGwFxError } = await supabase
             .from("app_fixtures")
             .select("id", { count: "exact", head: true })
@@ -132,14 +144,16 @@ export default function PredictionsBanner() {
           // If there's an error checking next GW fixtures, assume they don't exist (show banner)
           // This ensures banner shows on Despia even if queries are slow or fail
           if (nextGwFxError) {
-            console.error('[PredictionsBanner] Error checking next GW fixtures:', nextGwFxError);
+            console.error('[PredictionsBanner] ❌ Error checking next GW fixtures:', nextGwFxError);
             console.log(`[PredictionsBanner] ⚠️ Error checking GW ${nextGw} fixtures - assuming they don't exist, showing banner`);
-            setBannerType("watch-space");
-            setVisible(true);
+            if (alive) {
+              setBannerType("watch-space");
+              setVisible(true);
+            }
             return;
           }
           
-          console.log(`[PredictionsBanner] Results published for GW ${gw}, checking GW ${nextGw} fixtures:`, nextGwFxCount || 0);
+          console.log(`[PredictionsBanner] 📊 Results published for GW ${gw}, checking GW ${nextGw} fixtures:`, nextGwFxCount || 0);
           
           // Show banner if next GW fixtures don't exist yet (or count is 0/undefined)
           // Use explicit check: if count is null/undefined/0, show banner
@@ -147,12 +161,14 @@ export default function PredictionsBanner() {
           
           if (!hasNextGwFixtures) {
             console.log(`[PredictionsBanner] ✅ Results published for GW ${gw}, GW ${nextGw} fixtures not ready (count: ${nextGwFxCount}) - showing coming soon banner`);
-            setBannerType("watch-space");
-            setVisible(true);
+            if (alive) {
+              setBannerType("watch-space");
+              setVisible(true);
+            }
           } else {
             // Next GW fixtures exist, don't show banner
             console.log(`[PredictionsBanner] Next GW ${nextGw} fixtures exist (${nextGwFxCount}), hiding banner`);
-            setVisible(false);
+            if (alive) setVisible(false);
           }
           return;
         }
@@ -202,16 +218,20 @@ export default function PredictionsBanner() {
       }
     };
 
+    // Initial check
     refreshBanner();
     
     // Periodic refresh to ensure banner shows on Despia even if initial check is slow
     // This is a fallback in case realtime subscriptions don't work or queries are slow
+    // Check more frequently initially (every 10s for first 3 times), then every 30s
+    let refreshCount = 0;
     const refreshInterval = setInterval(() => {
       if (alive) {
-        console.log('[PredictionsBanner] 🔄 Periodic refresh check');
+        refreshCount++;
+        console.log(`[PredictionsBanner] 🔄 Periodic refresh check #${refreshCount}`);
         refreshBanner();
       }
-    }, 30000); // Check every 30 seconds
+    }, 10000); // Check every 10 seconds (more frequent to catch issues on Despia)
     
     // Subscribe to app_gw_results changes for real-time updates
     const channel = supabase
