@@ -205,7 +205,7 @@ export default function PredictionsBanner() {
           schema: 'public',
           table: 'app_gw_results',
         },
-        (payload) => {
+        (_payload) => {
           console.log('[PredictionsBanner] 🔔 app_gw_results change detected, refreshing banner');
           if (alive) {
             refreshBanner();
@@ -230,7 +230,7 @@ export default function PredictionsBanner() {
           schema: 'public',
           table: 'app_fixtures',
         },
-        (payload) => {
+        (_payload) => {
           console.log('[PredictionsBanner] 🔔 app_fixtures change detected, refreshing banner');
           if (alive) {
             refreshBanner();
