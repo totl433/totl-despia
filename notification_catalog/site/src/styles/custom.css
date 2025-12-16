@@ -1,0 +1,51 @@
+/* TOTL Notification Catalog Custom Styles */
+:root {
+  --sl-color-accent: #22c55e;
+  --sl-color-accent-high: #16a34a;
+  --sl-color-accent-low: #dcfce7;
+}
+
+/* Frontmatter metadata styling */
+.notification-meta {
+  background: var(--sl-color-gray-6);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.notification-meta dt {
+  font-weight: 600;
+  color: var(--sl-color-white);
+}
+
+.notification-meta dd {
+  margin-left: 0;
+  margin-bottom: 0.5rem;
+  color: var(--sl-color-gray-2);
+}
+
+/* Status badges */
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-active {
+  background: #22c55e;
+  color: white;
+}
+
+.status-deprecated {
+  background: #f59e0b;
+  color: white;
+}
+
+.status-disabled {
+  background: #6b7280;
+  color: white;
+}
+

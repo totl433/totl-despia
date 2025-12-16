@@ -45,6 +45,14 @@
   to = "/assets/:splat"
   status = 200
 
+# Notification Catalog docs site (Astro Starlight)
+# Served from /notification-docs/ path
+[[redirects]]
+  from = "/notification-docs/*"
+  to = "/.netlify/functions/notification-docs/:splat"
+  status = 200
+  force = true
+
 # Redirect everything else to index.html for SPA routing
 [[redirects]]
   from = "/*"

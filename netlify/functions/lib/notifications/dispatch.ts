@@ -1,0 +1,298 @@
+/**
+ * Unified Notification Dispatcher
+ * 
+ * The orchestrator for all notification sends. All notification senders
+ * MUST go through this module.
+ * 
+ * Flow:
+ * 1. Receive intent
+ * 2. Load catalog entry
+ * 3. For each user:
+ *    a. Claim idempotency lock (INSERT-first)
+ *    b. Run policy checks (prefs, cooldown, quiet hours, mutes)
+ *    c. Resolve OneSignal targets
+ *    d. Build and send notification
+ *    e. Update send log with result
+ */
+
+import { getCatalogEntry, isNotificationEnabled } from './catalog';
+import type { NotificationCatalogEntry } from './catalog';
+import {
+  claimIdempotencyLock,
+  updateSendLog,
+  getEnvironment,
+} from './idempotency';
+import {
+  loadUserPreferences,
+  runAllPolicyChecks,
+} from './policy';
+import {
+  resolveTargets,
+  verifyAndFilterSubscriptions,
+  getSinglePlayerIdPerUser,
+} from './targeting';
+import {
+  buildPayload,
+  sendNotification,
+  createPayloadSummary,
+} from './onesignal';
+import type {
+  NotificationIntent,
+  DispatchResult,
+  BatchDispatchResult,
+  NotificationResult,
+} from './types';
+
+/**
+ * Dispatch a notification to multiple users
+ * 
+ * This is the main entry point for sending notifications.
+ */
+export async function dispatchNotification(
+  intent: NotificationIntent
+): Promise<BatchDispatchResult> {
+  const {
+    notification_key,
+    event_id,
+    user_ids,
+    title,
+    body,
+    data,
+    url,
+    grouping_params,
+    skip_preference_check,
+    skip_cooldown_check,
+    league_id,
+  } = intent;
+  
+  const result: BatchDispatchResult = {
+    notification_key,
+    event_id,
+    total_users: user_ids.length,
+    results: {
+      accepted: 0,
+      failed: 0,
+      suppressed_duplicate: 0,
+      suppressed_preference: 0,
+      suppressed_cooldown: 0,
+      suppressed_quiet_hours: 0,
+      suppressed_muted: 0,
+      suppressed_unsubscribed: 0,
+      suppressed_rollout: 0,
+    },
+    user_results: [],
+    errors: [],
+  };
+  
+  // 1. Load catalog entry
+  const catalogEntry = getCatalogEntry(notification_key);
+  if (!catalogEntry) {
+    console.error(`[dispatch] Unknown notification_key: ${notification_key}`);
+    return result;
+  }
+  
+  // 2. Check if notification type is enabled
+  if (!isNotificationEnabled(notification_key)) {
+    console.log(`[dispatch] Notification type ${notification_key} is disabled`);
+    // Mark all users as suppressed due to rollout
+    for (const userId of user_ids) {
+      result.results.suppressed_rollout++;
+      result.user_results.push({
+        user_id: userId,
+        result: 'suppressed_rollout',
+        reason: 'Notification type is disabled',
+      });
+    }
+    return result;
+  }
+  
+  // 3. Load user preferences for all users
+  const userPrefsMap = await loadUserPreferences(user_ids);
+  
+  // 4. Get single player ID per user (to prevent duplicates)
+  const playerIdsByUser = await getSinglePlayerIdPerUser(user_ids);
+  
+  // 5. Process each user
+  const environment = getEnvironment();
+  
+  for (const userId of user_ids) {
+    const userResult: DispatchResult = {
+      user_id: userId,
+      result: 'pending',
+    };
+    
+    try {
+      // 5a. Claim idempotency lock
+      const lock = await claimIdempotencyLock(notification_key, event_id, userId);
+      
+      if (!lock.claimed) {
+        userResult.result = 'suppressed_duplicate';
+        userResult.reason = 'Already processed (idempotency)';
+        result.results.suppressed_duplicate++;
+        result.user_results.push(userResult);
+        continue;
+      }
+      
+      const logId = lock.log_id!;
+      
+      // 5b. Run policy checks
+      const userPrefs = userPrefsMap.get(userId);
+      const policyResult = await runAllPolicyChecks(
+        userId,
+        catalogEntry,
+        userPrefs,
+        {
+          skipPreferenceCheck: skip_preference_check,
+          skipCooldownCheck: skip_cooldown_check,
+          leagueId: league_id,
+        }
+      );
+      
+      if (!policyResult.allowed) {
+        const suppressionResult = policyResult.suppression_reason as NotificationResult;
+        userResult.result = suppressionResult;
+        userResult.reason = `Policy check failed: ${suppressionResult}`;
+        
+        // Update counters
+        const key = suppressionResult.replace('suppressed_', '') as keyof typeof result.results;
+        if (result.results[key] !== undefined) {
+          (result.results as any)[suppressionResult]++;
+        }
+        
+        // Update send log
+        await updateSendLog(logId, { result: suppressionResult });
+        
+        result.user_results.push(userResult);
+        continue;
+      }
+      
+      // 5c. Get player ID for this user
+      const playerId = playerIdsByUser.get(userId);
+      
+      if (!playerId) {
+        userResult.result = 'suppressed_unsubscribed';
+        userResult.reason = 'No active subscription found';
+        result.results.suppressed_unsubscribed++;
+        
+        await updateSendLog(logId, { result: 'suppressed_unsubscribed' });
+        
+        result.user_results.push(userResult);
+        continue;
+      }
+      
+      // 5d. Verify subscription with OneSignal
+      const { subscribed } = await verifyAndFilterSubscriptions([playerId]);
+      
+      if (subscribed.length === 0) {
+        userResult.result = 'suppressed_unsubscribed';
+        userResult.reason = 'Device not subscribed in OneSignal';
+        result.results.suppressed_unsubscribed++;
+        
+        await updateSendLog(logId, { result: 'suppressed_unsubscribed' });
+        
+        result.user_results.push(userResult);
+        continue;
+      }
+      
+      // 5e. Build notification payload
+      const notificationTitle = title || buildDefaultTitle(catalogEntry, data);
+      const notificationBody = body || buildDefaultBody(catalogEntry, data);
+      
+      const payload = buildPayload(catalogEntry, {
+        title: notificationTitle,
+        body: notificationBody,
+        playerIds: subscribed,
+        data: {
+          type: notification_key,
+          ...data,
+        },
+        url,
+        groupingParams: grouping_params,
+      });
+      
+      // 5f. Send notification
+      const sendResult = await sendNotification(payload);
+      
+      if (sendResult.success) {
+        userResult.result = 'accepted';
+        userResult.onesignal_notification_id = sendResult.notification_id;
+        result.results.accepted++;
+        
+        await updateSendLog(logId, {
+          result: 'accepted',
+          onesignal_notification_id: sendResult.notification_id || null,
+          target_type: 'player_ids',
+          targeting_summary: { player_ids: subscribed },
+          payload_summary: createPayloadSummary(payload),
+        });
+      } else {
+        userResult.result = 'failed';
+        userResult.error = sendResult.error;
+        result.results.failed++;
+        result.errors.push({ userId, error: sendResult.error });
+        
+        await updateSendLog(logId, {
+          result: 'failed',
+          error: sendResult.error,
+          target_type: 'player_ids',
+          targeting_summary: { player_ids: subscribed },
+          payload_summary: createPayloadSummary(payload),
+        });
+      }
+      
+      result.user_results.push(userResult);
+      
+    } catch (err: any) {
+      console.error(`[dispatch] Error processing user ${userId}:`, err);
+      userResult.result = 'failed';
+      userResult.error = err.message;
+      result.results.failed++;
+      result.errors.push({ userId, error: err.message });
+      result.user_results.push(userResult);
+    }
+  }
+  
+  // Log summary
+  console.log(`[dispatch] ${notification_key}/${event_id}: ${result.results.accepted} accepted, ${result.results.failed} failed, ${result.results.suppressed_duplicate} dup, ${result.results.suppressed_preference} pref, ${result.results.suppressed_unsubscribed} unsub`);
+  
+  return result;
+}
+
+/**
+ * Build default title based on notification type
+ */
+function buildDefaultTitle(
+  catalogEntry: NotificationCatalogEntry,
+  data?: Record<string, any>
+): string {
+  // This would be enhanced with template interpolation
+  return catalogEntry.notification_key.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+/**
+ * Build default body based on notification type
+ */
+function buildDefaultBody(
+  catalogEntry: NotificationCatalogEntry,
+  data?: Record<string, any>
+): string {
+  return 'You have a new notification';
+}
+
+/**
+ * Dispatch a broadcast notification (no per-user targeting)
+ * Used for admin broadcasts like "new gameweek"
+ */
+export async function dispatchBroadcast(
+  intent: Omit<NotificationIntent, 'user_ids'> & { user_ids?: string[] }
+): Promise<BatchDispatchResult> {
+  // If user_ids provided, use normal dispatch
+  if (intent.user_ids && intent.user_ids.length > 0) {
+    return dispatchNotification(intent as NotificationIntent);
+  }
+  
+  // Otherwise, this is a true broadcast - would need to fetch all subscribed users
+  // For now, throw an error to ensure callers provide user_ids
+  throw new Error('Broadcast without user_ids not yet implemented. Please provide user_ids.');
+}
+

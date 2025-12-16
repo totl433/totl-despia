@@ -18,10 +18,12 @@ END;
 $$;
 
 -- Create a function that will be called by the trigger
+-- UPDATED: Now uses V2 webhook with idempotency, grouping fields, and send logging
 CREATE OR REPLACE FUNCTION public.notify_live_scores_webhook()
 RETURNS TRIGGER AS $$
 DECLARE
-  webhook_url TEXT := 'https://totl-staging.netlify.app/.netlify/functions/sendScoreNotificationsWebhook';
+  -- V2 webhook URL - update this if deploying to production
+  webhook_url TEXT := 'https://totl-staging.netlify.app/.netlify/functions/sendScoreNotificationsWebhookV2';
   payload JSONB;
   request_id BIGINT;
 BEGIN

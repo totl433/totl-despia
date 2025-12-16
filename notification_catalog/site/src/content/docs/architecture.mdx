@@ -1,0 +1,101 @@
+---
+title: Architecture
+description: How the TOTL notification system works
+head: []
+---
+
+# Notification Architecture
+
+## System Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              USER DEVICE (iOS)                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                     DESPIA NATIVE WRAPPER                           │    │
+│  │  - OneSignal Native SDK                                             │    │
+│  │  - Exposes: window.onesignalplayerid                                │    │
+│  │  - Handles: Push permission, device registration                    │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                              │                                              │
+│                              ▼                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │   REACT WEB APP (WebView)                                           │    │
+│  │   - Registers player_id with backend                                │    │
+│  │   - Manages user preferences                                        │    │
+│  │   - Handles notification deep links                                 │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         NETLIFY FUNCTIONS                                   │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                    UNIFIED DISPATCHER                                │    │
+│  │  - Receives notification intents                                     │    │
+│  │  - Enforces idempotency (notification_send_log)                     │    │
+│  │  - Enforces preferences, cooldowns, quiet hours                     │    │
+│  │  - Targets OneSignal via external_user_id                           │    │
+│  │  - Sets collapse_id, thread_id, android_group                       │    │
+│  │  - Logs all send attempts                                            │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                               │                                             │
+│                               ▼                                             │
+│                    ┌─────────────────────┐                                  │
+│                    │  OneSignal REST API │                                  │
+│                    │  POST /notifications│                                  │
+│                    └─────────────────────┘                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                             SUPABASE                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ notification_send_log │ push_subscriptions │ user_notification_prefs │    │
+│  │ (idempotency + audit) │ (device registry)  │ (user choices)          │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Dispatcher Flow
+
+1. **Intent Received**: Trigger provides `notification_key`, `event_id`, `userIds[]`, and `data`
+2. **Idempotency Check**: For each user, try to INSERT into `notification_send_log` 
+   - If duplicate key error → skip (already sent)
+   - If inserted → continue
+3. **Policy Enforcement**:
+   - Check user preferences in `user_notification_preferences`
+   - Check cooldown (recent sends for same `notification_key`)
+   - Check quiet hours (catalog metadata)
+   - Check league mutes (for chat notifications)
+4. **Targeting**: Resolve OneSignal targets (external_user_id or player_ids)
+5. **Payload Build**: Set collapse_id, thread_id, android_group from catalog
+6. **Send**: Call OneSignal API
+7. **Log Result**: Update `notification_send_log` with outcome
+
+## Event ID Format
+
+Each notification type has a deterministic event_id format:
+
+| Type | Format | Example |
+|------|--------|---------|
+| goal-scored | `goal:{api_match_id}:{scorer}:{minute}` | `goal:12345:Haaland:52` |
+| kickoff | `kickoff:{api_match_id}:{half}` | `kickoff:12345:1` |
+| half-time | `halftime:{api_match_id}` | `halftime:12345` |
+| final-whistle | `ft:{api_match_id}` | `ft:12345` |
+| gameweek-complete | `gw_complete:{gw}` | `gw_complete:16` |
+| chat-message | `chat:{league_id}:{message_id}` | `chat:abc123:msg456` |
+| final-submission | `final_sub:{league_id}:{gw}` | `final_sub:abc123:16` |
+| new-gameweek | `new_gw:{gw}` | `new_gw:17` |
+
+## OneSignal Grouping
+
+Every notification includes grouping fields to prevent duplicate display:
+
+| Field | Purpose | Example |
+|-------|---------|---------|
+| `collapse_id` | Replaces existing notification with same ID | `goal:12345` |
+| `thread_id` | Groups iOS notifications by thread | `match:12345` |
+| `android_group` | Groups Android notifications | `totl_scores` |
+

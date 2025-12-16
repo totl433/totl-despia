@@ -1,0 +1,35 @@
+---
+title: TOTL Notification Catalog
+description: Source of truth for all push notifications in the TOTL app
+head: []
+---
+
+This is the **source of truth** for all push notifications in the TOTL application.
+
+## Quick Links
+
+- [Architecture](/architecture/) - Understand how the notification system works
+- [Notifications](/notifications/goal-scored/) - Browse all notification types
+- [Templates](/templates/en/) - View notification message templates
+
+## Notification Types
+
+| Type | Status | Description |
+|------|--------|-------------|
+| `goal-scored` | ✅ Active | Goal scored in a match |
+| `goal-disallowed` | ✅ Active | VAR disallowed goal |
+| `kickoff` | ✅ Active | Match kickoff (1st/2nd half) |
+| `half-time` | ✅ Active | Half-time score update |
+| `final-whistle` | ✅ Active | Full-time result with pick outcome |
+| `gameweek-complete` | ✅ Active | All matches in GW finished |
+| `chat-message` | ✅ Active | League chat message |
+| `final-submission` | ✅ Active | All league members submitted picks |
+| `new-gameweek` | ✅ Active | New gameweek fixtures published |
+
+## Key Features
+
+- **Idempotency**: Every notification has a deterministic `event_id` to prevent duplicates
+- **Preference Enforcement**: All user preferences are enforced server-side
+- **Grouping**: OneSignal `collapse_id`, `thread_id`, and `android_group` are set on every push
+- **Audit Log**: Every send attempt is logged in `notification_send_log`
+- **Cooldowns**: Per-user cooldowns prevent notification spam

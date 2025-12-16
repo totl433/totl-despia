@@ -1,0 +1,360 @@
+/**
+ * Score Notification Helpers
+ * 
+ * Helper functions for building score-related notifications.
+ * Used by sendScoreNotificationsWebhookV2.
+ */
+
+import { dispatchNotification } from './dispatch';
+import type { BatchDispatchResult } from './types';
+
+/**
+ * Normalize a scorer name for event_id
+ */
+export function normalizeScorer(scorer: string): string {
+  return scorer
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]/g, '_')
+    .slice(0, 30);
+}
+
+/**
+ * Build a goal notification event_id
+ */
+export function buildGoalEventId(apiMatchId: number, scorer: string, minute: number): string {
+  return `goal:${apiMatchId}:${normalizeScorer(scorer)}:${minute}`;
+}
+
+/**
+ * Build a kickoff notification event_id
+ */
+export function buildKickoffEventId(apiMatchId: number, half: 1 | 2): string {
+  return `kickoff:${apiMatchId}:${half}`;
+}
+
+/**
+ * Build a half-time notification event_id
+ */
+export function buildHalftimeEventId(apiMatchId: number): string {
+  return `halftime:${apiMatchId}`;
+}
+
+/**
+ * Build a final whistle notification event_id
+ */
+export function buildFinalWhistleEventId(apiMatchId: number): string {
+  return `ft:${apiMatchId}`;
+}
+
+/**
+ * Build a gameweek complete notification event_id
+ */
+export function buildGameweekCompleteEventId(gw: number): string {
+  return `gw_complete:${gw}`;
+}
+
+/**
+ * Build a goal disallowed notification event_id
+ */
+export function buildGoalDisallowedEventId(apiMatchId: number, minute: number): string {
+  return `goal_disallowed:${apiMatchId}:${minute}`;
+}
+
+/**
+ * Send a goal notification
+ */
+export async function sendGoalNotification(
+  userIds: string[],
+  params: {
+    apiMatchId: number;
+    fixtureIndex: number;
+    gw: number;
+    scorer: string;
+    minute: number;
+    teamName: string;
+    homeTeam: string;
+    awayTeam: string;
+    homeScore: number;
+    awayScore: number;
+    isHomeTeam: boolean;
+    isOwnGoal?: boolean;
+  }
+): Promise<BatchDispatchResult> {
+  const {
+    apiMatchId, fixtureIndex, gw, scorer, minute,
+    teamName, homeTeam, awayTeam, homeScore, awayScore,
+    isHomeTeam, isOwnGoal,
+  } = params;
+
+  const eventId = buildGoalEventId(apiMatchId, scorer, minute);
+  
+  const scoreDisplay = isHomeTeam
+    ? `${homeTeam} [${homeScore}] - ${awayScore} ${awayTeam}`
+    : `${homeTeam} ${homeScore} - [${awayScore}] ${awayTeam}`;
+
+  let title: string;
+  let body: string;
+
+  if (isOwnGoal) {
+    title = `Own Goal`;
+    body = `${minute}' Own goal by ${scorer}\n${scoreDisplay}`;
+  } else {
+    title = `${teamName} scores!`;
+    body = `${minute}' ${scorer}\n${scoreDisplay}`;
+  }
+
+  return dispatchNotification({
+    notification_key: 'goal-scored',
+    event_id: eventId,
+    user_ids: userIds,
+    title,
+    body,
+    data: {
+      type: 'goal',
+      api_match_id: apiMatchId,
+      fixture_index: fixtureIndex,
+      gw,
+    },
+    grouping_params: { api_match_id: apiMatchId },
+  });
+}
+
+/**
+ * Send a goal disallowed notification
+ */
+export async function sendGoalDisallowedNotification(
+  userIds: string[],
+  params: {
+    apiMatchId: number;
+    fixtureIndex: number;
+    gw: number;
+    scorer: string;
+    minute: number;
+    teamName: string;
+    homeTeam: string;
+    awayTeam: string;
+    homeScore: number;
+    awayScore: number;
+  }
+): Promise<BatchDispatchResult> {
+  const {
+    apiMatchId, fixtureIndex, gw, scorer, minute,
+    teamName, homeTeam, awayTeam, homeScore, awayScore,
+  } = params;
+
+  const eventId = buildGoalDisallowedEventId(apiMatchId, minute);
+  const scoreDisplay = `${homeTeam} ${homeScore}-${awayScore} ${awayTeam}`;
+
+  return dispatchNotification({
+    notification_key: 'goal-disallowed',
+    event_id: eventId,
+    user_ids: userIds,
+    title: `🚫 Goal Disallowed`,
+    body: `${minute}' ${scorer}'s goal for ${teamName} was disallowed by VAR\n${scoreDisplay}`,
+    data: {
+      type: 'goal_disallowed',
+      api_match_id: apiMatchId,
+      fixture_index: fixtureIndex,
+      gw,
+    },
+    grouping_params: { api_match_id: apiMatchId },
+  });
+}
+
+/**
+ * Send a kickoff notification
+ */
+export async function sendKickoffNotification(
+  userIds: string[],
+  params: {
+    apiMatchId: number;
+    fixtureIndex: number;
+    gw: number;
+    homeTeam: string;
+    awayTeam: string;
+    isSecondHalf: boolean;
+  }
+): Promise<BatchDispatchResult> {
+  const { apiMatchId, fixtureIndex, gw, homeTeam, awayTeam, isSecondHalf } = params;
+
+  const half = isSecondHalf ? 2 : 1;
+  const eventId = buildKickoffEventId(apiMatchId, half);
+
+  return dispatchNotification({
+    notification_key: 'kickoff',
+    event_id: eventId,
+    user_ids: userIds,
+    title: `⚽ ${homeTeam} vs ${awayTeam}`,
+    body: isSecondHalf ? 'Second half underway' : 'Kickoff!',
+    data: {
+      type: 'kickoff',
+      api_match_id: apiMatchId,
+      fixture_index: fixtureIndex,
+      gw,
+    },
+    grouping_params: { api_match_id: apiMatchId, half },
+  });
+}
+
+/**
+ * Send a half-time notification
+ */
+export async function sendHalftimeNotification(
+  userIds: string[],
+  params: {
+    apiMatchId: number;
+    fixtureIndex: number;
+    gw: number;
+    homeTeam: string;
+    awayTeam: string;
+    homeScore: number;
+    awayScore: number;
+    minute?: number;
+  }
+): Promise<BatchDispatchResult> {
+  const { apiMatchId, fixtureIndex, gw, homeTeam, awayTeam, homeScore, awayScore, minute } = params;
+
+  const eventId = buildHalftimeEventId(apiMatchId);
+  const minuteStr = minute ? ` ${minute}'` : '';
+
+  return dispatchNotification({
+    notification_key: 'half-time',
+    event_id: eventId,
+    user_ids: userIds,
+    title: `⏸️ Half-Time`,
+    body: `${homeTeam} ${homeScore}-${awayScore} ${awayTeam}${minuteStr}`,
+    data: {
+      type: 'half_time',
+      api_match_id: apiMatchId,
+      fixture_index: fixtureIndex,
+      gw,
+    },
+    grouping_params: { api_match_id: apiMatchId },
+    skip_preference_check: true, // Half-time has no preference
+  });
+}
+
+/**
+ * Send a final whistle notification (personalized per user)
+ */
+export async function sendFinalWhistleNotification(
+  userIds: string[],
+  params: {
+    apiMatchId: number;
+    fixtureIndex: number;
+    gw: number;
+    homeTeam: string;
+    awayTeam: string;
+    homeScore: number;
+    awayScore: number;
+    userPicks: Map<string, string>; // userId -> pick (H/D/A)
+    correctPercentage: number;
+  }
+): Promise<{ results: BatchDispatchResult[]; summary: { accepted: number; failed: number } }> {
+  const {
+    apiMatchId, fixtureIndex, gw, homeTeam, awayTeam,
+    homeScore, awayScore, userPicks, correctPercentage,
+  } = params;
+
+  const eventId = buildFinalWhistleEventId(apiMatchId);
+  const title = `FT: ${homeTeam} ${homeScore}-${awayScore} ${awayTeam}`;
+
+  // Determine match result
+  let result: string;
+  if (homeScore > awayScore) result = 'H';
+  else if (awayScore > homeScore) result = 'A';
+  else result = 'D';
+
+  const percentageText = correctPercentage <= 20
+    ? `Only ${correctPercentage}% of players got this fixture correct`
+    : `${correctPercentage}% of players got this fixture correct`;
+
+  // Group users by whether they got it right
+  const correctUsers: string[] = [];
+  const wrongUsers: string[] = [];
+
+  for (const userId of userIds) {
+    const pick = userPicks.get(userId);
+    if (pick === result) {
+      correctUsers.push(userId);
+    } else {
+      wrongUsers.push(userId);
+    }
+  }
+
+  const results: BatchDispatchResult[] = [];
+  let totalAccepted = 0;
+  let totalFailed = 0;
+
+  // Send to correct users
+  if (correctUsers.length > 0) {
+    const correctResult = await dispatchNotification({
+      notification_key: 'final-whistle',
+      event_id: `${eventId}:correct`,
+      user_ids: correctUsers,
+      title,
+      body: `✅ Got it right! ${percentageText}`,
+      data: {
+        type: 'game_finished',
+        api_match_id: apiMatchId,
+        fixture_index: fixtureIndex,
+        gw,
+      },
+      grouping_params: { api_match_id: apiMatchId },
+    });
+    results.push(correctResult);
+    totalAccepted += correctResult.results.accepted;
+    totalFailed += correctResult.results.failed;
+  }
+
+  // Send to wrong users
+  if (wrongUsers.length > 0) {
+    const wrongResult = await dispatchNotification({
+      notification_key: 'final-whistle',
+      event_id: `${eventId}:wrong`,
+      user_ids: wrongUsers,
+      title,
+      body: `❌ Wrong pick ${percentageText}`,
+      data: {
+        type: 'game_finished',
+        api_match_id: apiMatchId,
+        fixture_index: fixtureIndex,
+        gw,
+      },
+      grouping_params: { api_match_id: apiMatchId },
+    });
+    results.push(wrongResult);
+    totalAccepted += wrongResult.results.accepted;
+    totalFailed += wrongResult.results.failed;
+  }
+
+  return {
+    results,
+    summary: { accepted: totalAccepted, failed: totalFailed },
+  };
+}
+
+/**
+ * Send a gameweek complete notification
+ */
+export async function sendGameweekCompleteNotification(
+  userIds: string[],
+  gw: number
+): Promise<BatchDispatchResult> {
+  const eventId = buildGameweekCompleteEventId(gw);
+
+  return dispatchNotification({
+    notification_key: 'gameweek-complete',
+    event_id: eventId,
+    user_ids: userIds,
+    title: `🎉 Gameweek ${gw} Complete!`,
+    body: `All games finished. Check your results!`,
+    data: {
+      type: 'gameweek_finished',
+      gw,
+    },
+    grouping_params: { gw },
+  });
+}
+

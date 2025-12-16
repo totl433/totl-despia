@@ -1,7 +1,12 @@
 import { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { ensurePushSubscribed } from '../lib/pushNotifications';
+import { 
+  registerPushSubscription, 
+  deactivatePushSubscription, 
+  resetPushSessionState,
+  updateHeartbeat 
+} from '../lib/pushNotificationsV2';
 import { bootLog } from '../lib/logEvent';
 
 type AuthState = {
@@ -148,149 +153,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Auto-register OneSignal Player ID (native) when signed in
-  // Runs automatically on every app load and keeps subscriptions active
+  // Auto-register OneSignal Player ID (V2 - once per session with heartbeat)
   useEffect(() => {
-    // CRITICAL: Check both user AND session.access_token
-    // If session exists but access_token is missing, registration will fail
-    if (!user || !session || !session.access_token) {
-      if (user && session && !session.access_token) {
-        console.warn('[Push] ⚠️ User and session exist but access_token is missing - skipping registration');
-      }
+    if (!user || !session?.access_token) {
       return;
     }
-    const currentUser: User = user;
-    const currentSession: Session = session;
+    
     let cancelled = false;
-    let registrationInterval: number | null = null;
+    const currentSession = session;
 
-    async function attemptRegister(retryCount = 0): Promise<boolean> {
-      if (cancelled) {
-        console.log('[Push] Registration cancelled');
-        return false;
+    async function register() {
+      if (cancelled) return;
+      
+      console.log(`[PushV2] Starting registration for user ${user.id}`);
+      const result = await registerPushSubscription(currentSession);
+      
+      if (result.ok) {
+        console.log('[PushV2] ✅ Registration successful:', result.playerId?.slice(0, 8) + '…');
+      } else if (result.reason === 'api-not-available') {
+        console.log('[PushV2] Not in native app, skipping registration');
+      } else {
+        console.warn(`[PushV2] Registration issue: ${result.reason}`, result.error || '');
       }
-
-      // Double-check session is still valid before each attempt
-      if (!currentSession?.access_token) {
-        console.warn(`[Push] ⚠️ Session access_token missing during registration attempt ${retryCount + 1}`);
-        return false;
-      }
-
-      try {
-        console.log(`[Push] Attempting auto-registration (attempt ${retryCount + 1}/15) for user ${currentUser.id}`);
-        
-        // Use ensurePushSubscribed which handles permission + initialization + registration
-        const result = await ensurePushSubscribed(currentSession);
-        
-        if (result.ok && result.playerId) {
-          const lsKey = `totl:last_pid:${currentUser.id}`;
-          const lastPid = localStorage.getItem(lsKey);
-          localStorage.setItem(lsKey, result.playerId);
-          
-          if (lastPid !== result.playerId) {
-            console.log('[Push] ✅ Auto-registered Player ID:', result.playerId.slice(0, 8) + '…');
-          } else {
-            console.log('[Push] ✅ Player ID already registered:', result.playerId.slice(0, 8) + '…');
-          }
-          return true;
-        }
-
-        // Retry logic based on reason
-        if (result.reason === 'no-player-id') {
-          console.log(`[Push] Player ID not ready yet, will retry in 2s (attempt ${retryCount + 1}/15)`);
-          if (retryCount < 14 && !cancelled) {
-            setTimeout(() => attemptRegister(retryCount + 1), 2000);
-          } else {
-            console.warn('[Push] Failed to get Player ID after 15 attempts. OneSignal may not be initialized.');
-          }
-        } else if (result.reason === 'permission-denied') {
-          console.warn('[Push] Permission denied - user needs to enable notifications in OS settings');
-          // Still retry periodically in case user enables permissions
-          if (retryCount < 4 && !cancelled) {
-            setTimeout(() => attemptRegister(retryCount + 1), 5000);
-          }
-        } else if (result.reason === 'api-not-available') {
-          console.log('[Push] Despia API not available - not in native app, skipping');
-          // Don't retry - not a native app
-        } else {
-          console.error(`[Push] ❌ Registration failed: ${result.reason}`, result.error ? `- ${result.error}` : '');
-          // Retry for unknown errors, but log more details
-          if (retryCount < 4 && !cancelled) {
-            console.log(`[Push] Will retry registration in 3s (attempt ${retryCount + 1}/5)`);
-            setTimeout(() => attemptRegister(retryCount + 1), 3000);
-          } else {
-            console.error(`[Push] ❌ Registration failed after ${retryCount + 1} attempts. Reason: ${result.reason}`);
-            if (result.error) {
-              console.error(`[Push] Error details: ${result.error}`);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('[Push] ❌ Registration exception:', err);
-        // Retry on exception
-        if (retryCount < 4 && !cancelled) {
-          setTimeout(() => attemptRegister(retryCount + 1), 3000);
-        }
-      }
-      return false;
     }
 
-    // Initial attempt with a small delay to let the app fully load
-    // Also ensure session.access_token is available before attempting
-    let retryTimeout: number | null = null;
-    const initialTimeout = setTimeout(() => {
-      // Re-check session.access_token (it might have been updated since effect started)
-      // Use the latest session from the dependency, not the closure
-      if (!session?.access_token) {
-        console.warn('[Push] ⚠️ Delaying registration - session.access_token not yet available');
-        // If access_token becomes available, the effect will retrigger due to dependency change
-        // But also set a one-time retry in case the effect doesn't retrigger
-        retryTimeout = setTimeout(() => {
-          if (!cancelled && session?.access_token) {
-            console.log('[Push] Retrying registration after delay - access_token now available');
-            attemptRegister();
-          } else if (!cancelled) {
-            console.warn('[Push] ⚠️ Session access_token still not available after delay');
-          }
-        }, 2000) as unknown as number;
-      } else {
-        attemptRegister();
-      }
-    }, 500);
+    // Initial registration (delayed to let app load)
+    const initialTimeout = setTimeout(register, 500);
 
-    // Retry on app foreground (when user comes back to app)
+    // Heartbeat on app foreground (updates last_seen_at without re-registering)
     const handleVisibilityChange = () => {
-      if (!document.hidden && user && session?.access_token && !cancelled) {
-        console.log('[Push] App became visible, re-checking push subscription...');
-        setTimeout(() => attemptRegister(0), 1000);
+      if (!document.hidden && !cancelled) {
+        console.log('[PushV2] App visible, sending heartbeat...');
+        updateHeartbeat(currentSession);
       }
     };
 
-    // Periodic re-registration to keep subscriptions active (every 5 minutes)
-    // This ensures subscriptions stay fresh even if OneSignal state changes
-    registrationInterval = setInterval(() => {
-      if (!cancelled && user && session?.access_token) {
-        console.log('[Push] Periodic re-registration check...');
-        attemptRegister(0);
+    // Periodic heartbeat (every 5 minutes)
+    const heartbeatInterval = setInterval(() => {
+      if (!cancelled) {
+        updateHeartbeat(currentSession);
       }
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 5 * 60 * 1000);
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       cancelled = true;
       clearTimeout(initialTimeout);
-      if (retryTimeout) {
-        clearTimeout(retryTimeout);
-      }
-      if (registrationInterval) {
-        clearInterval(registrationInterval);
-      }
+      clearInterval(heartbeatInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user?.id, session?.access_token]); // Effect retriggers when user.id or session.access_token changes
+  }, [user?.id, session?.access_token]);
 
   async function signOut() {
+    // Deactivate push subscription before signing out to prevent ghost notifications
+    await deactivatePushSubscription(session);
+    resetPushSessionState();
     await supabase.auth.signOut();
   }
 

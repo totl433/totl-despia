@@ -1,0 +1,496 @@
+---
+title: Test Notifications
+description: Send test notifications to specific users
+head: []
+---
+
+import { Card } from '@astrojs/starlight/components';
+
+# 🧪 Notification Testing Console
+
+Send test push notifications to any user. Perfect for debugging and QA testing.
+
+<div id="notification-tester" style="margin-top: 2rem;">
+
+{/* Notification Type Selector */}
+<div style="margin-bottom: 1.5rem;">
+  <label for="notification-type" style="display: block; font-weight: 600; margin-bottom: 0.5rem; color: var(--sl-color-white);">
+    Notification Type
+  </label>
+  <select 
+    id="notification-type" 
+    style="width: 100%; padding: 0.75rem 1rem; border-radius: 0.5rem; background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-gray-5); color: var(--sl-color-white); font-size: 1rem; cursor: pointer;"
+  >
+    <option value="">— Select notification type —</option>
+    <optgroup label="Score Notifications">
+      <option value="goal-scored">⚽ Goal Scored</option>
+      <option value="goal-disallowed">❌ Goal Disallowed</option>
+      <option value="kickoff">🟢 Kickoff</option>
+      <option value="half-time">⏸️ Half-Time</option>
+      <option value="final-whistle">🏁 Final Whistle</option>
+      <option value="gameweek-complete">🎉 Gameweek Complete</option>
+    </optgroup>
+    <optgroup label="Other Notifications">
+      <option value="chat-message">💬 Chat Message</option>
+      <option value="final-submission">✅ Final Submission</option>
+      <option value="new-gameweek">🆕 New Gameweek</option>
+    </optgroup>
+  </select>
+</div>
+
+{/* User UUID Input */}
+<div style="margin-bottom: 1.5rem;">
+  <label for="user-uuid" style="display: block; font-weight: 600; margin-bottom: 0.5rem; color: var(--sl-color-white);">
+    User UUID
+  </label>
+  <input 
+    type="text" 
+    id="user-uuid" 
+    placeholder="e.g., 123e4567-e89b-12d3-a456-426614174000"
+    style="width: 100%; padding: 0.75rem 1rem; border-radius: 0.5rem; background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-gray-5); color: var(--sl-color-white); font-size: 1rem; font-family: monospace;"
+  />
+  <p style="margin-top: 0.25rem; font-size: 0.85rem; color: var(--sl-color-gray-3);">
+    The Supabase user ID to send the notification to
+  </p>
+</div>
+
+{/* Quick Fill Button */}
+<div style="margin-bottom: 1.5rem;">
+  <button 
+    id="fill-btn" 
+    style="padding: 0.5rem 1rem; border-radius: 0.5rem; background: var(--sl-color-gray-5); color: var(--sl-color-white); font-weight: 500; font-size: 0.9rem; border: 1px solid var(--sl-color-gray-4); cursor: pointer; transition: all 0.2s; margin-right: 0.5rem;"
+  >
+    ⚡ Fill Test Data
+  </button>
+  <button 
+    id="clear-btn" 
+    style="padding: 0.5rem 1rem; border-radius: 0.5rem; background: transparent; color: var(--sl-color-gray-3); font-weight: 500; font-size: 0.9rem; border: 1px solid var(--sl-color-gray-5); cursor: pointer; transition: all 0.2s;"
+  >
+    🗑️ Clear All
+  </button>
+</div>
+
+{/* Dynamic Parameters Section */}
+<div id="params-container" style="margin-bottom: 1.5rem; display: none;">
+  <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+    <span style="font-weight: 600; color: var(--sl-color-white);">Parameters</span>
+    <span style="font-size: 0.75rem; padding: 0.25rem 0.5rem; background: var(--sl-color-accent); color: white; border-radius: 0.25rem;">Required</span>
+  </div>
+  <div id="params-fields" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));">
+    {/* Fields will be dynamically inserted here */}
+  </div>
+</div>
+
+{/* Environment Indicator */}
+<div id="env-indicator" style="margin-bottom: 1rem; padding: 0.75rem 1rem; border-radius: 0.5rem; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); font-size: 0.85rem;">
+  <span style="color: var(--sl-color-gray-2);">Target: </span>
+  <code id="env-target" style="color: #3b82f6;">checking...</code>
+</div>
+
+{/* Send Button */}
+<button 
+  id="send-btn" 
+  disabled
+  style="width: 100%; padding: 1rem 1.5rem; border-radius: 0.5rem; background: var(--sl-color-accent); color: white; font-weight: 600; font-size: 1rem; border: none; cursor: pointer; transition: all 0.2s; opacity: 0.5;"
+>
+  🚀 Send Test Notification
+</button>
+
+{/* Result Display */}
+<div id="result-container" style="margin-top: 1.5rem; display: none;">
+  <div id="result-content" style="padding: 1rem; border-radius: 0.5rem; font-family: monospace; font-size: 0.9rem;">
+    {/* Result will be displayed here */}
+  </div>
+</div>
+
+</div>
+
+<script>
+{`
+(function() {
+  // Test data for quick fill
+  const testData = {
+    'goal-scored': {
+      api_match_id: 12345,
+      fixture_index: 0,
+      gw: 16,
+      scorer: 'Marcus Rashford',
+      minute: 52,
+      team_name: 'Man United',
+      home_team: 'Man United',
+      away_team: 'Liverpool',
+      home_score: 2,
+      away_score: 1,
+    },
+    'goal-disallowed': {
+      api_match_id: 12345,
+      minute: 67,
+      team_name: 'Arsenal',
+    },
+    'kickoff': {
+      api_match_id: 12345,
+      fixture_index: 0,
+      gw: 16,
+      half: 1,
+      home_team: 'Chelsea',
+      away_team: 'Tottenham',
+    },
+    'half-time': {
+      api_match_id: 12345,
+      fixture_index: 0,
+      gw: 16,
+      home_team: 'Chelsea',
+      away_team: 'Tottenham',
+      home_score: 1,
+      away_score: 1,
+    },
+    'final-whistle': {
+      api_match_id: 12345,
+      fixture_index: 0,
+      gw: 16,
+      home_team: 'Chelsea',
+      away_team: 'Tottenham',
+      home_score: 2,
+      away_score: 0,
+    },
+    'gameweek-complete': {
+      gw: 16,
+    },
+    'chat-message': {
+      league_id: 'test-league-123',
+      message_id: 'msg-456',
+      sender_name: 'John',
+      content: 'Good luck this week everyone! 🍀',
+    },
+    'final-submission': {
+      league_id: 'test-league-123',
+      gw: 16,
+    },
+    'new-gameweek': {
+      gw: 17,
+    },
+  };
+
+  // Parameter definitions for each notification type
+  const paramDefs = {
+    'goal-scored': [
+      { name: 'api_match_id', label: 'Match ID', type: 'number', placeholder: '12345' },
+      { name: 'fixture_index', label: 'Fixture Index', type: 'number', placeholder: '0' },
+      { name: 'gw', label: 'Gameweek', type: 'number', placeholder: '16' },
+      { name: 'scorer', label: 'Scorer Name', type: 'text', placeholder: 'Marcus Rashford' },
+      { name: 'minute', label: 'Minute', type: 'number', placeholder: '52' },
+      { name: 'team_name', label: 'Scoring Team', type: 'text', placeholder: 'Man United' },
+      { name: 'home_team', label: 'Home Team', type: 'text', placeholder: 'Man United' },
+      { name: 'away_team', label: 'Away Team', type: 'text', placeholder: 'Liverpool' },
+      { name: 'home_score', label: 'Home Score', type: 'number', placeholder: '2' },
+      { name: 'away_score', label: 'Away Score', type: 'number', placeholder: '1' },
+    ],
+    'goal-disallowed': [
+      { name: 'api_match_id', label: 'Match ID', type: 'number', placeholder: '12345' },
+      { name: 'minute', label: 'Minute', type: 'number', placeholder: '67' },
+      { name: 'team_name', label: 'Team Name', type: 'text', placeholder: 'Arsenal' },
+    ],
+    'kickoff': [
+      { name: 'api_match_id', label: 'Match ID', type: 'number', placeholder: '12345' },
+      { name: 'fixture_index', label: 'Fixture Index', type: 'number', placeholder: '0' },
+      { name: 'gw', label: 'Gameweek', type: 'number', placeholder: '16' },
+      { name: 'half', label: 'Half (1 or 2)', type: 'number', placeholder: '1' },
+      { name: 'home_team', label: 'Home Team', type: 'text', placeholder: 'Chelsea' },
+      { name: 'away_team', label: 'Away Team', type: 'text', placeholder: 'Tottenham' },
+    ],
+    'half-time': [
+      { name: 'api_match_id', label: 'Match ID', type: 'number', placeholder: '12345' },
+      { name: 'fixture_index', label: 'Fixture Index', type: 'number', placeholder: '0' },
+      { name: 'gw', label: 'Gameweek', type: 'number', placeholder: '16' },
+      { name: 'home_team', label: 'Home Team', type: 'text', placeholder: 'Chelsea' },
+      { name: 'away_team', label: 'Away Team', type: 'text', placeholder: 'Tottenham' },
+      { name: 'home_score', label: 'Home Score', type: 'number', placeholder: '1' },
+      { name: 'away_score', label: 'Away Score', type: 'number', placeholder: '1' },
+    ],
+    'final-whistle': [
+      { name: 'api_match_id', label: 'Match ID', type: 'number', placeholder: '12345' },
+      { name: 'fixture_index', label: 'Fixture Index', type: 'number', placeholder: '0' },
+      { name: 'gw', label: 'Gameweek', type: 'number', placeholder: '16' },
+      { name: 'home_team', label: 'Home Team', type: 'text', placeholder: 'Chelsea' },
+      { name: 'away_team', label: 'Away Team', type: 'text', placeholder: 'Tottenham' },
+      { name: 'home_score', label: 'Home Score', type: 'number', placeholder: '2' },
+      { name: 'away_score', label: 'Away Score', type: 'number', placeholder: '0' },
+    ],
+    'gameweek-complete': [
+      { name: 'gw', label: 'Gameweek', type: 'number', placeholder: '16' },
+    ],
+    'chat-message': [
+      { name: 'league_id', label: 'League ID', type: 'text', placeholder: 'league-uuid-here' },
+      { name: 'message_id', label: 'Message ID', type: 'text', placeholder: 'msg-123' },
+      { name: 'sender_name', label: 'Sender Name', type: 'text', placeholder: 'John' },
+      { name: 'content', label: 'Message Content', type: 'text', placeholder: 'Good luck this week!' },
+    ],
+    'final-submission': [
+      { name: 'league_id', label: 'League ID', type: 'text', placeholder: 'league-uuid-here' },
+      { name: 'gw', label: 'Gameweek', type: 'number', placeholder: '16' },
+    ],
+    'new-gameweek': [
+      { name: 'gw', label: 'Gameweek', type: 'number', placeholder: '17' },
+    ],
+  };
+
+  const typeSelect = document.getElementById('notification-type');
+  const userInput = document.getElementById('user-uuid');
+  const paramsContainer = document.getElementById('params-container');
+  const paramsFields = document.getElementById('params-fields');
+  const sendBtn = document.getElementById('send-btn');
+  const fillBtn = document.getElementById('fill-btn');
+  const clearBtn = document.getElementById('clear-btn');
+  const resultContainer = document.getElementById('result-container');
+  const resultContent = document.getElementById('result-content');
+
+  // Validate UUID format
+  function isValidUUID(str) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+  }
+
+  // Update send button state
+  function updateSendButton() {
+    const hasType = typeSelect.value !== '';
+    const hasUUID = isValidUUID(userInput.value.trim());
+    sendBtn.disabled = !(hasType && hasUUID);
+    sendBtn.style.opacity = sendBtn.disabled ? '0.5' : '1';
+    sendBtn.style.cursor = sendBtn.disabled ? 'not-allowed' : 'pointer';
+  }
+
+  // Render parameter fields
+  function renderParams(type) {
+    const params = paramDefs[type] || [];
+    
+    if (params.length === 0) {
+      paramsContainer.style.display = 'none';
+      return;
+    }
+    
+    paramsContainer.style.display = 'block';
+    paramsFields.innerHTML = params.map(p => \`
+      <div>
+        <label for="param-\${p.name}" style="display: block; font-size: 0.85rem; margin-bottom: 0.25rem; color: var(--sl-color-gray-2);">
+          \${p.label}
+        </label>
+        <input 
+          type="\${p.type}" 
+          id="param-\${p.name}" 
+          data-param="\${p.name}"
+          placeholder="\${p.placeholder}"
+          style="width: 100%; padding: 0.5rem 0.75rem; border-radius: 0.375rem; background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-gray-5); color: var(--sl-color-white); font-size: 0.9rem;"
+        />
+      </div>
+    \`).join('');
+  }
+
+  // Collect parameter values
+  function collectParams() {
+    const params = {};
+    document.querySelectorAll('[data-param]').forEach(input => {
+      const name = input.dataset.param;
+      const value = input.value.trim();
+      if (value) {
+        params[name] = input.type === 'number' ? Number(value) : value;
+      }
+    });
+    return params;
+  }
+
+  // Show result
+  function showResult(success, data) {
+    resultContainer.style.display = 'block';
+    
+    if (success) {
+      resultContent.style.background = 'rgba(34, 197, 94, 0.15)';
+      resultContent.style.border = '1px solid rgba(34, 197, 94, 0.3)';
+      resultContent.innerHTML = \`
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+          <span style="font-size: 1.25rem;">✅</span>
+          <strong style="color: #22c55e;">Notification Sent!</strong>
+        </div>
+        <div style="color: var(--sl-color-gray-2); font-size: 0.85rem;">
+          <p style="margin: 0.25rem 0;"><strong>Type:</strong> \${data.notification_type}</p>
+          <p style="margin: 0.25rem 0;"><strong>Title:</strong> \${data.title}</p>
+          <p style="margin: 0.25rem 0;"><strong>Body:</strong> \${data.body}</p>
+          <p style="margin: 0.25rem 0;"><strong>Event ID:</strong> <code>\${data.event_id}</code></p>
+          \${data.user_result?.onesignal_notification_id 
+            ? \`<p style="margin: 0.25rem 0;"><strong>OneSignal ID:</strong> <code>\${data.user_result.onesignal_notification_id}</code></p>\`
+            : ''
+          }
+          <p style="margin: 0.25rem 0;"><strong>Result:</strong> \${data.user_result?.result || 'unknown'}</p>
+        </div>
+      \`;
+    } else {
+      resultContent.style.background = 'rgba(239, 68, 68, 0.15)';
+      resultContent.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+      resultContent.innerHTML = \`
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+          <span style="font-size: 1.25rem;">❌</span>
+          <strong style="color: #ef4444;">Failed to Send</strong>
+        </div>
+        <div style="color: var(--sl-color-gray-2); font-size: 0.85rem;">
+          <p style="margin: 0.25rem 0;"><strong>Error:</strong> \${data.error || 'Unknown error'}</p>
+          \${data.details ? \`<p style="margin: 0.25rem 0;"><strong>Details:</strong> \${data.details}</p>\` : ''}
+          \${data.user_result?.reason ? \`<p style="margin: 0.25rem 0;"><strong>Reason:</strong> \${data.user_result.reason}</p>\` : ''}
+        </div>
+      \`;
+    }
+  }
+
+  // Send notification
+  async function sendNotification() {
+    const notificationType = typeSelect.value;
+    const userId = userInput.value.trim();
+    const params = collectParams();
+
+    // Update button state
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '⏳ Sending...';
+    sendBtn.style.opacity = '0.7';
+    resultContainer.style.display = 'none';
+
+    // Determine the API endpoint
+    // - If running on netlify dev (localhost:8888), use relative path
+    // - If running docs site locally (localhost:4321), use staging server
+    // - If running on production docs site, use relative path
+    const isLocalDocs = window.location.port === '4321';
+    const baseUrl = isLocalDocs ? 'https://totl-staging.netlify.app' : '';
+
+    try {
+      const response = await fetch(baseUrl + '/.netlify/functions/sendTestNotification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notification_type: notificationType,
+          user_id: userId,
+          params,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        showResult(true, data);
+      } else {
+        showResult(false, data);
+      }
+    } catch (error) {
+      showResult(false, { error: error.message });
+    } finally {
+      sendBtn.disabled = false;
+      sendBtn.innerHTML = '🚀 Send Test Notification';
+      updateSendButton();
+    }
+  }
+
+  // Fill with test data
+  function fillTestData() {
+    const type = typeSelect.value;
+    if (!type) {
+      // If no type selected, select goal-scored as default
+      typeSelect.value = 'goal-scored';
+      renderParams('goal-scored');
+    }
+    
+    const currentType = typeSelect.value;
+    const data = testData[currentType];
+    
+    if (data) {
+      // Fill parameter fields
+      Object.entries(data).forEach(([key, value]) => {
+        const input = document.querySelector(\`[data-param="\${key}"]\`);
+        if (input) {
+          input.value = value;
+        }
+      });
+    }
+    
+    // Fill a placeholder UUID if empty (user should replace with real one)
+    if (!userInput.value.trim()) {
+      userInput.value = '00000000-0000-0000-0000-000000000000';
+      userInput.select(); // Highlight so user knows to replace it
+    }
+    
+    updateSendButton();
+  }
+
+  // Clear all fields
+  function clearAll() {
+    typeSelect.value = '';
+    userInput.value = '';
+    paramsContainer.style.display = 'none';
+    paramsFields.innerHTML = '';
+    resultContainer.style.display = 'none';
+    updateSendButton();
+  }
+
+  // Event listeners
+  typeSelect.addEventListener('change', (e) => {
+    renderParams(e.target.value);
+    updateSendButton();
+  });
+
+  userInput.addEventListener('input', updateSendButton);
+  
+  sendBtn.addEventListener('click', sendNotification);
+  fillBtn.addEventListener('click', fillTestData);
+  clearBtn.addEventListener('click', clearAll);
+
+  // Update environment indicator
+  function updateEnvIndicator() {
+    const envTarget = document.getElementById('env-target');
+    const isLocalDocs = window.location.port === '4321';
+    if (isLocalDocs) {
+      envTarget.textContent = 'totl-staging.netlify.app (remote)';
+      envTarget.style.color = '#f59e0b'; // amber for remote
+    } else if (window.location.hostname.includes('staging')) {
+      envTarget.textContent = 'staging (current site)';
+      envTarget.style.color = '#3b82f6'; // blue
+    } else {
+      envTarget.textContent = 'production (current site)';
+      envTarget.style.color = '#22c55e'; // green
+    }
+  }
+
+  // Initialize
+  updateSendButton();
+  updateEnvIndicator();
+})();
+`}
+</script>
+
+---
+
+## How It Works
+
+1. **Select a notification type** from the dropdown
+2. **Enter the target user's UUID** (from Supabase)
+3. **Fill in the parameters** relevant to that notification type
+4. **Click Send** to trigger the notification
+
+### Notes
+
+- Test notifications **bypass preference and cooldown checks** so they always send
+- Each test notification gets a unique `event_id` with a timestamp suffix
+- All test notifications include `is_test: true` in their data payload
+- Check the `notification_send_log` table to see the audit trail
+
+### Finding User UUIDs
+
+To find a user's UUID, query Supabase:
+
+```sql
+SELECT id, email FROM auth.users WHERE email ILIKE '%example%';
+```
+
+Or check the `push_subscriptions` table:
+
+```sql
+SELECT DISTINCT user_id, created_at 
+FROM push_subscriptions 
+WHERE is_active = true 
+ORDER BY created_at DESC 
+LIMIT 10;
+```
+

@@ -281,7 +281,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         "User";
 
       try {
-        await fetch("/.netlify/functions/notifyLeagueMessage", {
+        await fetch("/.netlify/functions/notifyLeagueMessageV2", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -292,7 +292,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           }),
         });
       } catch (err) {
-        console.error("[MiniLeagueChatBeta] notifyLeagueMessage failed:", err);
+        console.error("[MiniLeagueChatBeta] notifyLeagueMessageV2 failed:", err);
       }
     },
     [miniLeagueId, user?.id]
