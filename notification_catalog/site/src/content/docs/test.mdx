@@ -81,10 +81,14 @@ Send test push notifications to any user. Perfect for debugging and QA testing.
   </div>
 </div>
 
-{/* Environment Indicator */}
-<div id="env-indicator" style="margin-bottom: 1rem; padding: 0.75rem 1rem; border-radius: 0.5rem; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); font-size: 0.85rem;">
-  <span style="color: var(--sl-color-gray-2);">Target: </span>
-  <code id="env-target" style="color: #3b82f6;">checking...</code>
+{/* Environment Selector */}
+<div id="env-selector" style="margin-bottom: 1rem; padding: 0.75rem 1rem; border-radius: 0.5rem; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); font-size: 0.85rem;">
+  <label style="color: var(--sl-color-gray-2); margin-right: 0.5rem;">Target Server:</label>
+  <select id="env-target" style="padding: 0.25rem 0.5rem; border-radius: 0.25rem; background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-gray-5); color: var(--sl-color-white); font-size: 0.85rem;">
+    <option value="staging">🟡 Staging (totl-staging.netlify.app)</option>
+    <option value="prod">🟢 Production (totl.app)</option>
+    <option value="local">⚪ Local (localhost:8888)</option>
+  </select>
 </div>
 
 {/* Send Button */}
@@ -350,12 +354,18 @@ Send test push notifications to any user. Perfect for debugging and QA testing.
     sendBtn.style.opacity = '0.7';
     resultContainer.style.display = 'none';
 
-    // Determine the API endpoint
-    // - If running on netlify dev (localhost:8888), use relative path
-    // - If running docs site locally (localhost:4321), use staging server
-    // - If running on production docs site, use relative path
-    const isLocalDocs = window.location.port === '4321';
-    const baseUrl = isLocalDocs ? 'https://totl-staging.netlify.app' : '';
+    // Get target server from dropdown
+    const envTarget = document.getElementById('env-target');
+    const selectedEnv = envTarget.value;
+    
+    let baseUrl = '';
+    if (selectedEnv === 'staging') {
+      baseUrl = 'https://totl-staging.netlify.app';
+    } else if (selectedEnv === 'prod') {
+      baseUrl = 'https://totl.app';
+    } else if (selectedEnv === 'local') {
+      baseUrl = 'http://localhost:8888';
+    }
 
     try {
       const response = await fetch(baseUrl + '/.netlify/functions/sendTestNotification', {
@@ -437,25 +447,8 @@ Send test push notifications to any user. Perfect for debugging and QA testing.
   fillBtn.addEventListener('click', fillTestData);
   clearBtn.addEventListener('click', clearAll);
 
-  // Update environment indicator
-  function updateEnvIndicator() {
-    const envTarget = document.getElementById('env-target');
-    const isLocalDocs = window.location.port === '4321';
-    if (isLocalDocs) {
-      envTarget.textContent = 'totl-staging.netlify.app (remote)';
-      envTarget.style.color = '#f59e0b'; // amber for remote
-    } else if (window.location.hostname.includes('staging')) {
-      envTarget.textContent = 'staging (current site)';
-      envTarget.style.color = '#3b82f6'; // blue
-    } else {
-      envTarget.textContent = 'production (current site)';
-      envTarget.style.color = '#22c55e'; // green
-    }
-  }
-
   // Initialize
   updateSendButton();
-  updateEnvIndicator();
 })();
 `}
 </script>

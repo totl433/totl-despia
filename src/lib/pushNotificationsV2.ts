@@ -296,7 +296,7 @@ export async function deactivatePushSubscription(
  * Get effective push notification state for UI display
  */
 export async function getEffectivePushState(
-  userId: string | null
+  _userId: string | null
 ): Promise<EffectivePushState> {
   const hasOsPermission = isDespiaAvailable() ? checkOsPermission() : false;
   const playerId = getPlayerIdFromDespia();

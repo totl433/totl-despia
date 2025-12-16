@@ -163,7 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const currentSession = session;
 
     async function register() {
-      if (cancelled) return;
+      if (cancelled || !user) return;
       
       console.log(`[PushV2] Starting registration for user ${user.id}`);
       const result = await registerPushSubscription(currentSession);
