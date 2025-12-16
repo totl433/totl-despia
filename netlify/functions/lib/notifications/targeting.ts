@@ -243,3 +243,44 @@ export async function getSinglePlayerIdPerUser(
   return result;
 }
 
+/**
+ * Check which users have at least one active subscription
+ * Used for filtering before sending via external_user_id
+ * 
+ * Note: This only checks our DB - the actual subscription validity
+ * is handled by OneSignal when we send via include_external_user_ids
+ */
+export async function checkUsersHaveSubscriptions(
+  userIds: string[]
+): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+  
+  const supabase = getSupabase();
+  
+  // Get users who have at least one active subscription
+  // We don't require subscribed=true because external_user_id targeting
+  // lets OneSignal handle the subscription check
+  const { data, error } = await supabase
+    .from('push_subscriptions')
+    .select('user_id')
+    .in('user_id', userIds)
+    .eq('is_active', true);
+  
+  if (error) {
+    console.error('[targeting] Error checking user subscriptions:', error);
+    return new Set();
+  }
+  
+  return new Set((data || []).map(row => row.user_id));
+}
+
+/**
+ * Check if a single user has an active subscription
+ */
+export async function checkUserHasActiveSubscription(
+  userId: string
+): Promise<boolean> {
+  const usersWithSubs = await checkUsersHaveSubscriptions([userId]);
+  return usersWithSubs.has(userId);
+}
+

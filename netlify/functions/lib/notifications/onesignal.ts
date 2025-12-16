@@ -13,13 +13,15 @@ const ONESIGNAL_API_URL = 'https://onesignal.com/api/v1/notifications';
 
 /**
  * Build a OneSignal notification payload
+ * Supports both external_user_ids (preferred) and player_ids (legacy) targeting
  */
 export function buildPayload(
   catalogEntry: NotificationCatalogEntry,
   options: {
     title: string;
     body: string;
-    playerIds: string[];
+    externalUserIds?: string[];
+    playerIds?: string[];
     data?: Record<string, any>;
     url?: string;
     groupingParams?: Record<string, string | number>;
@@ -30,7 +32,7 @@ export function buildPayload(
     throw new Error('ONESIGNAL_APP_ID not configured');
   }
   
-  const { title, body, playerIds, data, url, groupingParams = {} } = options;
+  const { title, body, externalUserIds, playerIds, data, url, groupingParams = {} } = options;
   
   // Build grouping fields from catalog templates
   const collapseId = formatCollapseId(catalogEntry.notification_key, groupingParams);
@@ -41,8 +43,15 @@ export function buildPayload(
     app_id: appId,
     headings: { en: title },
     contents: { en: body },
-    include_player_ids: playerIds,
   };
+  
+  // Prefer external_user_ids targeting (uses Supabase user ID)
+  // This avoids the player_id vs subscription_id confusion
+  if (externalUserIds && externalUserIds.length > 0) {
+    payload.include_external_user_ids = externalUserIds;
+  } else if (playerIds && playerIds.length > 0) {
+    payload.include_player_ids = playerIds;
+  }
   
   // Add grouping fields (CRITICAL for preventing duplicate display)
   if (collapseId) {
@@ -136,14 +145,15 @@ export async function sendNotification(
 
 /**
  * Send notification to multiple users, batching if necessary
- * OneSignal limits include_player_ids to 2000 per request
+ * OneSignal limits targeting arrays to 2000 per request
  */
 export async function sendBatchedNotification(
   catalogEntry: NotificationCatalogEntry,
   options: {
     title: string;
     body: string;
-    playerIds: string[];
+    externalUserIds?: string[];
+    playerIds?: string[];
     data?: Record<string, any>;
     url?: string;
     groupingParams?: Record<string, string | number>;
@@ -155,7 +165,11 @@ export async function sendBatchedNotification(
   errors: any[];
 }> {
   const BATCH_SIZE = 2000;
-  const { playerIds } = options;
+  const { externalUserIds, playerIds } = options;
+  
+  // Prefer external user IDs
+  const targetIds = externalUserIds && externalUserIds.length > 0 ? externalUserIds : (playerIds || []);
+  const useExternalIds = externalUserIds && externalUserIds.length > 0;
   
   const results = {
     success: true,
@@ -165,12 +179,13 @@ export async function sendBatchedNotification(
   };
   
   // Split into batches
-  for (let i = 0; i < playerIds.length; i += BATCH_SIZE) {
-    const batchPlayerIds = playerIds.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < targetIds.length; i += BATCH_SIZE) {
+    const batchIds = targetIds.slice(i, i + BATCH_SIZE);
     
     const payload = buildPayload(catalogEntry, {
       ...options,
-      playerIds: batchPlayerIds,
+      externalUserIds: useExternalIds ? batchIds : undefined,
+      playerIds: useExternalIds ? undefined : batchIds,
     });
     
     const result = await sendNotification(payload);
@@ -196,7 +211,9 @@ export function createPayloadSummary(payload: OneSignalPayload): Record<string, 
   return {
     title: payload.headings.en,
     body: payload.contents.en.slice(0, 100),
+    external_user_ids_count: payload.include_external_user_ids?.length || 0,
     player_ids_count: payload.include_player_ids?.length || 0,
+    target_type: payload.include_external_user_ids ? 'external_user_ids' : 'player_ids',
     has_data: !!payload.data,
     has_url: !!payload.url,
     collapse_id: payload.collapse_id,

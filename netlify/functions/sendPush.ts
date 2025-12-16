@@ -22,6 +22,7 @@ export const handler: Handler = async (event) => {
     const body = event.body ? JSON.parse(event.body) : {};
     const playerIds: string[] = body.playerIds || [];
     const subscriptionIds: string[] = body.subscriptionIds || [];
+    const externalUserIds: string[] = body.externalUserIds || [];
     const title: string = body.title || 'Notification';
     const message: string = body.message || '';
 
@@ -38,12 +39,14 @@ export const handler: Handler = async (event) => {
       contents: { en: message },
     };
 
-    if (subscriptionIds.length > 0) {
+    if (externalUserIds.length > 0) {
+      payload.include_external_user_ids = externalUserIds; // Target by Supabase user ID
+    } else if (subscriptionIds.length > 0) {
       payload.include_subscription_ids = subscriptionIds; // v5+ SDK
     } else if (playerIds.length > 0) {
       payload.include_player_ids = playerIds; // legacy fallback
     } else {
-      return json(400, { error: 'No targets: provide subscriptionIds or playerIds' });
+      return json(400, { error: 'No targets: provide externalUserIds, subscriptionIds, or playerIds' });
     }
 
     const res = await fetch('https://onesignal.com/api/v1/notifications', {

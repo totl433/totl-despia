@@ -30,6 +30,7 @@ import {
   resolveTargets,
   verifyAndFilterSubscriptions,
   getSinglePlayerIdPerUser,
+  checkUserHasActiveSubscription,
 } from './targeting';
 import {
   buildPayload,
@@ -109,10 +110,9 @@ export async function dispatchNotification(
   // 3. Load user preferences for all users
   const userPrefsMap = await loadUserPreferences(user_ids);
   
-  // 4. Get single player ID per user (to prevent duplicates)
-  const playerIdsByUser = await getSinglePlayerIdPerUser(user_ids);
-  
-  // 5. Process each user
+  // 4. Process each user
+  // Note: We now use external_user_id targeting instead of player_id lookup
+  // This avoids the player_id vs subscription_id confusion with newer OneSignal SDKs
   const environment = getEnvironment();
   
   for (const userId of user_ids) {
@@ -122,7 +122,7 @@ export async function dispatchNotification(
     };
     
     try {
-      // 5a. Claim idempotency lock
+      // 4a. Claim idempotency lock
       const lock = await claimIdempotencyLock(notification_key, event_id, userId);
       
       if (!lock.claimed) {
@@ -135,7 +135,7 @@ export async function dispatchNotification(
       
       const logId = lock.log_id!;
       
-      // 5b. Run policy checks
+      // 4b. Run policy checks
       const userPrefs = userPrefsMap.get(userId);
       const policyResult = await runAllPolicyChecks(
         userId,
@@ -166,42 +166,15 @@ export async function dispatchNotification(
         continue;
       }
       
-      // 5c. Get player ID for this user
-      const playerId = playerIdsByUser.get(userId);
-      
-      if (!playerId) {
-        userResult.result = 'suppressed_unsubscribed';
-        userResult.reason = 'No active subscription found';
-        result.results.suppressed_unsubscribed++;
-        
-        await updateSendLog(logId, { result: 'suppressed_unsubscribed' });
-        
-        result.user_results.push(userResult);
-        continue;
-      }
-      
-      // 5d. Verify subscription with OneSignal
-      const { subscribed } = await verifyAndFilterSubscriptions([playerId]);
-      
-      if (subscribed.length === 0) {
-        userResult.result = 'suppressed_unsubscribed';
-        userResult.reason = 'Device not subscribed in OneSignal';
-        result.results.suppressed_unsubscribed++;
-        
-        await updateSendLog(logId, { result: 'suppressed_unsubscribed' });
-        
-        result.user_results.push(userResult);
-        continue;
-      }
-      
-      // 5e. Build notification payload
+      // 4c. Build notification payload using external_user_id
+      // OneSignal will look up the correct subscription internally
       const notificationTitle = title || buildDefaultTitle(catalogEntry, data);
       const notificationBody = body || buildDefaultBody(catalogEntry, data);
       
       const payload = buildPayload(catalogEntry, {
         title: notificationTitle,
         body: notificationBody,
-        playerIds: subscribed,
+        externalUserIds: [userId], // Use Supabase user ID directly
         data: {
           type: notification_key,
           ...data,
@@ -210,7 +183,7 @@ export async function dispatchNotification(
         groupingParams: grouping_params,
       });
       
-      // 5f. Send notification
+      // 4d. Send notification
       const sendResult = await sendNotification(payload);
       
       if (sendResult.success) {
@@ -221,23 +194,42 @@ export async function dispatchNotification(
         await updateSendLog(logId, {
           result: 'accepted',
           onesignal_notification_id: sendResult.notification_id || null,
-          target_type: 'player_ids',
-          targeting_summary: { player_ids: subscribed },
+          target_type: 'external_user_ids',
+          targeting_summary: { external_user_id: userId },
           payload_summary: createPayloadSummary(payload),
         });
       } else {
-        userResult.result = 'failed';
-        userResult.error = sendResult.error;
-        result.results.failed++;
-        result.errors.push({ userId, error: sendResult.error });
+        // Check if the error is "All included players are not subscribed"
+        const isUnsubscribedError = 
+          sendResult.error?.errors?.includes('All included players are not subscribed') ||
+          sendResult.error?.body?.errors?.includes('All included players are not subscribed');
         
-        await updateSendLog(logId, {
-          result: 'failed',
-          error: sendResult.error,
-          target_type: 'player_ids',
-          targeting_summary: { player_ids: subscribed },
-          payload_summary: createPayloadSummary(payload),
-        });
+        if (isUnsubscribedError) {
+          userResult.result = 'suppressed_unsubscribed';
+          userResult.reason = 'User has no subscribed devices in OneSignal';
+          result.results.suppressed_unsubscribed++;
+          
+          await updateSendLog(logId, {
+            result: 'suppressed_unsubscribed',
+            error: sendResult.error,
+            target_type: 'external_user_ids',
+            targeting_summary: { external_user_id: userId },
+            payload_summary: createPayloadSummary(payload),
+          });
+        } else {
+          userResult.result = 'failed';
+          userResult.error = sendResult.error;
+          result.results.failed++;
+          result.errors.push({ userId, error: sendResult.error });
+          
+          await updateSendLog(logId, {
+            result: 'failed',
+            error: sendResult.error,
+            target_type: 'external_user_ids',
+            targeting_summary: { external_user_id: userId },
+            payload_summary: createPayloadSummary(payload),
+          });
+        }
       }
       
       result.user_results.push(userResult);
