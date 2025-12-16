@@ -195,6 +195,56 @@ export default function PredictionsBanner() {
 
     refreshBanner();
     
+    // Subscribe to app_gw_results changes for real-time updates
+    const channel = supabase
+      .channel('predictions-banner-gw-results')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'app_gw_results',
+        },
+        (payload) => {
+          console.log('[PredictionsBanner] 🔔 app_gw_results change detected, refreshing banner');
+          if (alive) {
+            refreshBanner();
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[PredictionsBanner] ✅ Subscribed to app_gw_results changes');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[PredictionsBanner] ❌ Subscription error for app_gw_results');
+        }
+      });
+    
+    // Subscribe to app_fixtures changes for real-time updates
+    const fixturesChannel = supabase
+      .channel('predictions-banner-fixtures')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'app_fixtures',
+        },
+        (payload) => {
+          console.log('[PredictionsBanner] 🔔 app_fixtures change detected, refreshing banner');
+          if (alive) {
+            refreshBanner();
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[PredictionsBanner] ✅ Subscribed to app_fixtures changes');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[PredictionsBanner] ❌ Subscription error for app_fixtures');
+        }
+      });
+    
     // Listen for submission events
     const handleSubmission = () => {
       refreshBanner();
@@ -224,6 +274,8 @@ export default function PredictionsBanner() {
     
     return () => {
       alive = false;
+      supabase.removeChannel(channel);
+      supabase.removeChannel(fixturesChannel);
       window.removeEventListener('predictionsSubmitted', handleSubmission);
       window.removeEventListener('resultsPublished', handleResultsPublished);
       window.removeEventListener('fixturesPublished', handleFixturesPublished);
