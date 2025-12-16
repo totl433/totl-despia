@@ -122,20 +122,27 @@ export default function PredictionsBanner() {
           // Results published for current GW - check if next GW fixtures exist
           // Only show "watch this space" banner if next GW fixtures don't exist yet
           const nextGw = gw + 1;
-          const { count: nextGwFxCount } = await supabase
+          const { count: nextGwFxCount, error: nextGwFxError } = await supabase
             .from("app_fixtures")
             .select("id", { count: "exact", head: true })
             .eq("gw", nextGw);
+          
+          if (nextGwFxError) {
+            console.error('[PredictionsBanner] Error checking next GW fixtures:', nextGwFxError);
+          }
+          
           if (!alive) return;
           
-          // Only show GW16 banner if GW16 fixtures don't exist yet
+          console.log(`[PredictionsBanner] Results published for GW ${gw}, checking GW ${nextGw} fixtures:`, nextGwFxCount || 0);
+          
+          // Show banner if next GW fixtures don't exist yet
           if (!nextGwFxCount || nextGwFxCount === 0) {
-            console.log('[PredictionsBanner] Results published, next GW fixtures not ready, showing coming soon banner');
+            console.log(`[PredictionsBanner] ✅ Results published for GW ${gw}, GW ${nextGw} fixtures not ready - showing coming soon banner`);
             setBannerType("watch-space");
             setVisible(true);
           } else {
             // Next GW fixtures exist, don't show banner
-            console.log('[PredictionsBanner] Next GW fixtures exist, hiding banner');
+            console.log(`[PredictionsBanner] Next GW ${nextGw} fixtures exist (${nextGwFxCount}), hiding banner`);
             setVisible(false);
           }
           return;
