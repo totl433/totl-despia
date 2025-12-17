@@ -1,8 +1,15 @@
 /**
  * Push Notification Service V2
  * 
- * Improved registration handling:
- * - Register ONCE per session (not repeatedly)
+ * Following Despia OneSignal V2 best practices:
+ * https://lovable.despia.com/default-guide/native-features/onesignal-v2
+ * 
+ * Key approach:
+ * - Call despia('setonesignalplayerid://?user_id=${userId}') on every app load
+ * - This links the device to the user in OneSignal's native SDK
+ * - Send notifications using include_external_user_ids (not player_ids)
+ * 
+ * Additional features:
  * - Heartbeat updates (last_seen_at) on app open
  * - Deactivate subscription on logout
  * - Track effective state for Notification Centre UI
@@ -27,6 +34,7 @@ export interface EffectivePushState {
 // Session-level flag to prevent duplicate registrations
 let hasRegisteredThisSession = false;
 let currentPlayerId: string | null = null;
+let hasSetExternalUserId = false;
 
 /**
  * Reset session state (call on logout)
@@ -34,6 +42,43 @@ let currentPlayerId: string | null = null;
 export function resetPushSessionState(): void {
   hasRegisteredThisSession = false;
   currentPlayerId = null;
+  hasSetExternalUserId = false;
+}
+
+/**
+ * Set the external user ID in OneSignal via Despia
+ * This is the KEY step for Despia V2 integration!
+ * 
+ * Per Despia docs: "on every app load call despia(`setonesignalplayerid://?user_id=${YOUR-LOGGEDIN-USER-ID}`)"
+ * https://lovable.despia.com/default-guide/native-features/onesignal-v2
+ * 
+ * This connects your Supabase user ID with the device in OneSignal,
+ * enabling notifications via include_external_user_ids targeting.
+ */
+export function setOneSignalExternalUserId(userId: string): boolean {
+  if (!userId) {
+    console.warn('[PushV2] Cannot set external user ID: no userId provided');
+    return false;
+  }
+  
+  const despia = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+  
+  if (!despia || typeof despia !== 'function') {
+    console.log('[PushV2] Despia not available - not in native app, skipping setonesignalplayerid');
+    return false;
+  }
+  
+  try {
+    // This is the critical Despia V2 call that links the device to the user
+    console.log(`[PushV2] Setting OneSignal external user ID: ${userId.slice(0, 8)}...`);
+    despia(`setonesignalplayerid://?user_id=${userId}`);
+    hasSetExternalUserId = true;
+    console.log('[PushV2] ✅ External user ID set successfully');
+    return true;
+  } catch (e) {
+    console.error('[PushV2] Failed to set external user ID:', e);
+    return false;
+  }
 }
 
 /**
@@ -118,10 +163,14 @@ async function pollForPlayerId(maxMs: number = 15000): Promise<string | null> {
 
 /**
  * Register device with backend (once per session)
+ * 
+ * This function does TWO things:
+ * 1. Calls setOneSignalExternalUserId() - the Despia V2 way to link device to user
+ * 2. Registers with our backend for tracking/auditing purposes
  */
 export async function registerPushSubscription(
-  session: { access_token: string } | null,
-  options: { force?: boolean } = {}
+  session: { access_token: string; user?: { id: string } } | null,
+  options: { force?: boolean; userId?: string } = {}
 ): Promise<PushSubscriptionResult> {
   // Check if already registered this session
   if (hasRegisteredThisSession && !options.force) {
@@ -146,6 +195,22 @@ export async function registerPushSubscription(
     return { ok: false, reason: 'no-session', subscriptionStatus: 'not-registered' };
   }
   
+  // Get user ID from session or options
+  const userId = options.userId || session.user?.id;
+  
+  // CRITICAL: Set external user ID via Despia V2 API
+  // This is the primary mechanism for linking device to user in OneSignal
+  if (userId) {
+    const externalIdSet = setOneSignalExternalUserId(userId);
+    if (externalIdSet) {
+      console.log('[PushV2] ✅ Despia V2: External user ID linked to device');
+    } else {
+      console.warn('[PushV2] Could not set external user ID via Despia');
+    }
+  } else {
+    console.warn('[PushV2] No user ID available for setOneSignalExternalUserId');
+  }
+  
   // Check OS permission
   const hasPermission = checkOsPermission();
   if (!hasPermission) {
@@ -153,12 +218,26 @@ export async function registerPushSubscription(
     return { ok: false, reason: 'permission-denied', subscriptionStatus: 'permission-denied' };
   }
   
-  // Get Player ID (poll with timeout)
+  // Get Player ID (poll with timeout) - still useful for tracking/debugging
   console.log('[PushV2] Waiting for Player ID...');
   const playerId = await pollForPlayerId(15000);
   
   if (!playerId) {
+    // With Despia V2, not having a player ID is less critical
+    // The external_user_id link via despia() is the primary mechanism
     console.warn('[PushV2] Player ID not available after 15 seconds');
+    
+    // If we successfully set external user ID, consider it a partial success
+    if (hasSetExternalUserId) {
+      console.log('[PushV2] External user ID was set, proceeding without player ID');
+      hasRegisteredThisSession = true;
+      return { 
+        ok: true, 
+        reason: undefined,
+        subscriptionStatus: 'subscribed'
+      };
+    }
+    
     return { 
       ok: false, 
       reason: 'no-player-id', 
@@ -169,7 +248,7 @@ export async function registerPushSubscription(
   
   console.log(`[PushV2] Got Player ID: ${playerId.slice(0, 8)}...`);
   
-  // Register with backend
+  // Register with backend (for tracking/auditing, not strictly required for V2)
   try {
     const isDev = import.meta.env.DEV || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
     const baseUrl = isDev ? 'https://totl-staging.netlify.app' : '';
@@ -188,7 +267,14 @@ export async function registerPushSubscription(
     
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
-      console.error('[PushV2] Registration failed:', errorData);
+      console.error('[PushV2] Backend registration failed:', errorData);
+      // With V2, backend registration is secondary - if external_user_id is set, we're good
+      if (hasSetExternalUserId) {
+        console.log('[PushV2] External user ID is set, marking as registered despite backend error');
+        hasRegisteredThisSession = true;
+        currentPlayerId = playerId;
+        return { ok: true, playerId, subscriptionStatus: 'subscribed' };
+      }
       return { 
         ok: false, 
         reason: res.status === 401 ? 'no-session' : 'unknown',
@@ -201,11 +287,18 @@ export async function registerPushSubscription(
     hasRegisteredThisSession = true;
     currentPlayerId = playerId;
     
-    console.log('[PushV2] ✅ Successfully registered device');
+    console.log('[PushV2] ✅ Successfully registered device (Despia V2 + backend)');
     return { ok: true, playerId, subscriptionStatus: 'subscribed' };
     
   } catch (e: any) {
     console.error('[PushV2] Registration error:', e);
+    // With V2, if external_user_id is set, we can still consider it successful
+    if (hasSetExternalUserId) {
+      console.log('[PushV2] External user ID is set, marking as registered despite error');
+      hasRegisteredThisSession = true;
+      currentPlayerId = playerId;
+      return { ok: true, playerId, subscriptionStatus: 'subscribed' };
+    }
     return { ok: false, reason: 'unknown', error: e.message, subscriptionStatus: 'not-registered' };
   }
 }

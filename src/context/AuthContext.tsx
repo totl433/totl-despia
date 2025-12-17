@@ -166,7 +166,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (cancelled || !user) return;
       
       console.log(`[PushV2] Starting registration for user ${user.id}`);
-      const result = await registerPushSubscription(currentSession);
+      // Pass userId explicitly for Despia V2 setonesignalplayerid call
+      const result = await registerPushSubscription(currentSession, { userId: user.id });
       
       if (result.ok) {
         console.log('[PushV2] ✅ Registration successful:', result.playerId?.slice(0, 8) + '…');
