@@ -42,7 +42,7 @@ export function GamesSection({
   return (
     <Section 
       title={title}
-      className="mt-6"
+      className="mt-8"
       headerRight={scoreComponent}
       showInfoIcon={false}
     >

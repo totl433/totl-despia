@@ -45,7 +45,7 @@ export function MiniLeaguesSection({
     return (
       <Section 
         title="Mini Leagues" 
-        className="mt-6"
+        className="mt-8"
         infoTitle="Mini Leagues"
         infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
 
@@ -80,7 +80,7 @@ How To Play →`}
     return (
       <Section 
         title="Mini Leagues" 
-        className="mt-6"
+        className="mt-8"
         infoTitle="Mini Leagues"
         infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
 
@@ -108,7 +108,7 @@ How To Play →`}
   return (
     <Section 
       title="Mini Leagues" 
-      className="mt-6"
+      className="mt-8"
       infoTitle="Mini Leagues"
       infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
 

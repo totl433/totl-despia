@@ -23,7 +23,7 @@ export function LeaderboardsSection({
   return (
     <Section 
       title="Leaderboards" 
-      className="-mt-4"
+      className="mt-6"
       infoTitle="Leaderboards"
       infoDescription={`The leaderboards are where all TOTL players are ranked. Your position is based on OCP (Overall Correct Predictions).
 

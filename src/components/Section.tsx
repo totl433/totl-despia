@@ -90,7 +90,7 @@ export default function Section({
   return (
     <>
       <section className={className ?? ""}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-medium text-slate-900 uppercase tracking-wide" style={{ fontFamily: '"Gramatika", sans-serif', fontWeight: 700 }}>
             {title}
@@ -106,7 +106,7 @@ export default function Section({
             </div>
           )}
         </div>
-          {headerRight && <div>{headerRight}</div>}
+          {headerRight && <div className="flex items-start">{headerRight}</div>}
         </div>
         {subtitle && (
           <div className="mt-1 text-sm text-slate-500">{subtitle}</div>

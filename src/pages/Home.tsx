@@ -1416,12 +1416,22 @@ export default function HomePage() {
     let finishedCount = 0;
     let allFinished = true;
     let hasAnyActive = false;
+    let hasStartingSoonFixtures = false;
+    const now = new Date();
     
     for (const f of fixtures) {
       const liveScore = liveScores[f.fixture_index];
       const pick = userPicks[f.fixture_index];
       const status = liveScore?.status;
       const isActive = status === 'IN_PLAY' || status === 'PAUSED' || status === 'FINISHED';
+      
+      // Check if fixture is starting soon (has kickoff time in future, no live score yet)
+      if (f.kickoff_time && !liveScore) {
+        const kickoffTime = new Date(f.kickoff_time);
+        if (kickoffTime > now) {
+          hasStartingSoonFixtures = true;
+        }
+      }
       
       if (isActive) {
         hasAnyActive = true;
@@ -1448,7 +1458,7 @@ export default function HomePage() {
       }
     }
     
-    if (!hasAnyActive && !hasSubmittedPicks) return null;
+    if (!hasAnyActive && !hasSubmittedPicks && !hasStartingSoonFixtures) return null;
     
     const ScoreBadge = ({ score: s, label, bgColor, icon }: { score: number | string; label: string; bgColor: string; icon?: JSX.Element }) => (
       <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white ${bgColor}`}>
@@ -1461,6 +1471,21 @@ export default function HomePage() {
         </span>
       </div>
     );
+    
+    // Starting Soon pill (similar to ResultsTable, but adapted for Home page)
+    const StartingSoonBadge = () => (
+      <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-500 text-white shadow-md shadow-amber-500/30 self-start">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span className="text-xs sm:text-sm font-medium">Starting soon</span>
+      </div>
+    );
+    
+    // Show "Starting Soon" if no active games but fixtures are scheduled
+    if (!hasAnyActive && hasStartingSoonFixtures) {
+      return <StartingSoonBadge />;
+    }
     
     if (!hasAnyActive && hasSubmittedPicks) {
       return <ScoreBadge score="--" label="Score" bgColor="bg-amber-500 shadow-lg shadow-amber-500/30" />;

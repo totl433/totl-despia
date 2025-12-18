@@ -326,7 +326,7 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
         }
       `}</style>
       <div className={`bottom-nav-absolute flex items-center justify-center px-4 pb-8 ${shouldHide ? 'bottom-nav-slide-out' : 'bottom-nav-slide-in'}`}>
-        <div ref={containerRef} className="bg-white border border-[#E5E7EB] flex items-center mb-4 relative overflow-hidden" style={{ width: '360px', height: '70px', borderRadius: '60px' }}>
+        <div ref={containerRef} className="bg-white border border-[#E5E7EB] flex items-center relative overflow-hidden" style={{ width: '360px', height: '70px', borderRadius: '60px', marginBottom: '1.5rem' }}>
           {/* Active state indicator */}
           {indicatorStyle && (
             <div 
