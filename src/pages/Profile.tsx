@@ -110,7 +110,7 @@ export default function Profile() {
     return <div className="p-6">Please sign in to view your profile.</div>;
   }
 
-  // Menu items with icons
+  // Menu items with icons (Stats removed - now has its own section)
   const menuItems = [
     {
       to: '/profile/notifications',

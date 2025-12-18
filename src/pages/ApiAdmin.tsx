@@ -132,6 +132,84 @@ export default function ApiAdmin() {
     return () => { alive = false; };
   }, [isAdmin]);
 
+  // Fetch and store team forms from Football Data API standings
+  // Expose to window for one-off manual calls
+  const fetchAndStoreTeamForms = async (gw: number) => {
+    try {
+      console.log(`[ApiAdmin] Fetching team forms for GW ${gw}...`);
+      
+      const functionUrl = getFunctionUrl();
+      const params = new URLSearchParams({
+        resource: 'standings',
+        competition: 'PL',
+      });
+      const url = `${functionUrl}?${params.toString()}`;
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        console.warn(`[ApiAdmin] Failed to fetch team forms: ${response.status}`);
+        return; // Non-critical error, just skip
+      }
+
+      const result = await response.json();
+
+      if (!result.success || !result.data) {
+        console.warn('[ApiAdmin] Invalid standings API response');
+        return;
+      }
+
+      // Parse standings data to extract form
+      const formsMap = new Map<string, string>();
+      const standings = result.data?.standings || result.data;
+      
+      if (standings && Array.isArray(standings)) {
+        // Standings is an array of tables (usually one for overall, one for home, one for away)
+        // We want the overall table
+        const overallTable = standings.find((s: any) => s.type === 'TOTAL') || standings[0];
+        
+        if (overallTable && overallTable.table && Array.isArray(overallTable.table)) {
+          overallTable.table.forEach((team: any) => {
+            // Use team.tla (three-letter code) as key
+            const teamCode = (team.team?.tla || team.team?.shortName || '').toUpperCase().trim();
+            const form = (team.form || '').trim().toUpperCase();
+            
+            if (teamCode && form) {
+              formsMap.set(teamCode, form);
+            }
+          });
+        }
+      }
+
+      if (formsMap.size > 0) {
+        // Store forms in database
+        const formsToInsert = Array.from(formsMap.entries()).map(([team_code, form]) => ({
+          gw,
+          team_code,
+          form,
+        }));
+
+        const { error: formsError } = await supabase
+          .from("app_team_forms")
+          .upsert(formsToInsert, {
+            onConflict: 'gw,team_code',
+            ignoreDuplicates: false,
+          });
+
+        if (formsError) {
+          console.error('[ApiAdmin] Error storing team forms:', formsError);
+        } else {
+          console.log(`[ApiAdmin] ✅ Successfully stored ${formsMap.size} team forms for GW ${gw}`);
+        }
+      } else {
+        console.warn('[ApiAdmin] ⚠️ No team forms found in API response');
+      }
+    } catch (error) {
+      console.error('[ApiAdmin] Error fetching team forms:', error);
+      // Non-critical error, don't block fixture saving
+    }
+  };
+
   // Fetch upcoming Premier League matches for the specific Gameweek (matchday)
   const fetchUpcomingMatches = async (signal?: AbortSignal) => {
     if (!nextGw) {
@@ -342,6 +420,9 @@ export default function ApiAdmin() {
           console.log(`[ApiAdmin] ✅ Verified: app_meta.current_gw = ${verifyMeta?.current_gw}`);
         }
       }
+
+      // Fetch and store team forms for this gameweek
+      await fetchAndStoreTeamForms(nextGw);
 
       // Send push notification to all users
       try {

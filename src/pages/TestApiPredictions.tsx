@@ -35,7 +35,6 @@ function getTeamColor(code: string | null | undefined, name: string | null | und
   return stringToColor(identifier);
 }
 
-// TeamBadge and formatMinuteDisplay are now imported from components/utils
 
 type Fixture = {
   id: string;
@@ -90,7 +89,7 @@ export default function TestApiPredictions() {
   const [currentTestGw, setCurrentTestGw] = useState<number | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   
-  // CRITICAL: Initialize state from cache synchronously to prevent loading flash
+  // Initialize state from cache synchronously to prevent loading flash
   const loadInitialStateFromCache = () => {
     if (typeof window === 'undefined' || !user?.id) {
       return {
@@ -166,9 +165,86 @@ export default function TestApiPredictions() {
   const [fixtures, setFixtures] = useState<Fixture[]>(initialState.fixtures);
   const [picks, setPicks] = useState<Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>>(initialState.picks);
   const [results, setResults] = useState<Map<number, "H" | "D" | "A">>(initialState.results);
+  const [teamForms, setTeamForms] = useState<Map<string, string>>(new Map()); // Map<teamCode, formString>
   
-  // CRITICAL: Initialize viewMode - check sessionStorage synchronously to prevent flash
-  // Check for ANY submission in sessionStorage, even if we don't know the user ID yet
+  // Fetch team forms from database (fetched once per GW when published)
+  const fetchTeamForms = async (gw: number) => {
+    try {
+      console.log(`[TestApiPredictions] Fetching team forms from database for GW ${gw}...`);
+      
+      const { data, error } = await supabase
+        .from("app_team_forms")
+        .select("team_code, form")
+        .eq("gw", gw);
+
+      if (error) {
+        console.warn('[TestApiPredictions] Error fetching team forms from database:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const formsMap = new Map<string, string>();
+        data.forEach((row: { team_code: string; form: string }) => {
+          const teamCode = row.team_code.toUpperCase().trim();
+          const form = row.form.trim().toUpperCase();
+          if (teamCode && form) {
+            formsMap.set(teamCode, form);
+          }
+        });
+        
+        console.log(`[TestApiPredictions] ✓ Loaded ${formsMap.size} team forms from database for GW ${gw}`);
+        console.log('[TestApiPredictions] Forms map entries:', Array.from(formsMap.entries()));
+        setTeamForms(formsMap);
+      } else {
+        console.warn(`[TestApiPredictions] ⚠ No team forms found in database for GW ${gw}`);
+        setTeamForms(new Map()); // Clear forms if none found
+      }
+    } catch (error) {
+      console.warn('[TestApiPredictions] Error fetching team forms:', error);
+      setTeamForms(new Map()); // Clear on error
+    }
+  };
+
+  // Fetch team forms when currentTestGw changes
+  useEffect(() => {
+    if (currentTestGw) {
+      fetchTeamForms(currentTestGw);
+    } else {
+      setTeamForms(new Map()); // Clear forms if no GW
+    }
+  }, [currentTestGw]);
+
+  // Debug: Log when teamForms changes
+  useEffect(() => {
+    if (teamForms.size > 0) {
+      console.log('[TestApiPredictions] teamForms state updated:', {
+        size: teamForms.size,
+        entries: Array.from(teamForms.entries()),
+        fixtureCodes: fixtures.length > 0 ? Array.from(new Set([
+          ...fixtures.map(f => f.home_code?.toUpperCase().trim()).filter(Boolean),
+          ...fixtures.map(f => f.away_code?.toUpperCase().trim()).filter(Boolean),
+        ])) : []
+      });
+      
+      // Check if we have forms for the teams in our fixtures
+      if (fixtures.length > 0) {
+        const missingForms: string[] = [];
+        fixtures.forEach(f => {
+          const homeCode = f.home_code?.toUpperCase().trim();
+          const awayCode = f.away_code?.toUpperCase().trim();
+          if (homeCode && !teamForms.has(homeCode)) missingForms.push(`Home: ${homeCode}`);
+          if (awayCode && !teamForms.has(awayCode)) missingForms.push(`Away: ${awayCode}`);
+        });
+        if (missingForms.length > 0) {
+          console.warn('[TestApiPredictions] Missing forms for some teams:', missingForms);
+        } else {
+          console.log('[TestApiPredictions] ✓ All fixture teams have form data');
+        }
+      }
+    }
+  }, [teamForms, fixtures]);
+  
+  // Initialize viewMode - check sessionStorage synchronously to prevent flash
   const getInitialViewMode = (): "cards" | "list" => {
     if (typeof window === 'undefined') return "cards";
     try {
@@ -181,13 +257,11 @@ export default function TestApiPredictions() {
           if (value === 'true') {
             // If user ID is available, check if it matches
             if (user?.id && key.endsWith(`_${user.id}`)) {
-              console.log('[TestApiPredictions] 🚫 Initial viewMode set to "list" - found submission in sessionStorage for user');
               return "list";
             }
             // If no user ID yet but we found any submission, default to "list" to be safe
             // This prevents flash when user ID loads later
             if (!user?.id) {
-              console.log('[TestApiPredictions] 🚫 Initial viewMode set to "list" - found submission in sessionStorage (user ID not available yet)');
               return "list";
             }
           }
@@ -235,7 +309,7 @@ export default function TestApiPredictions() {
       sessionStorage.removeItem(key);
     }
   };
-  // CRITICAL: Define ref BEFORE it's used in state initializers
+  // Define ref before it's used in state initializers
   const hasEverBeenSubmittedRef = useRef<boolean>(getHasEverBeenSubmitted());
   
   const [submitted, setSubmitted] = useState(() => {
@@ -264,16 +338,15 @@ export default function TestApiPredictions() {
     return false;
   });
   
-  // CRITICAL: Check sessionStorage immediately when currentTestGw and user are available
-  // This prevents swipe cards from showing even for 1 second
+  // Check sessionStorage immediately when currentTestGw and user are available
+  // to prevent swipe cards from showing even briefly
   useEffect(() => {
     if (currentTestGw && user?.id && typeof window !== 'undefined') {
       try {
         const key = `test_api_submitted_${currentTestGw}_${user.id}`;
         const hasSubmitted = sessionStorage.getItem(key) === 'true';
         if (hasSubmitted) {
-          console.log('[TestApiPredictions] 🚫 Setting viewMode to "list" immediately - user has submitted (from sessionStorage)');
-          // CRITICAL: Set both state values synchronously to prevent any flash
+          // Set both state values synchronously to prevent any flash
           setViewMode("list");
           setSubmitted(true);
           hasEverBeenSubmittedRef.current = true;
@@ -284,11 +357,9 @@ export default function TestApiPredictions() {
     }
   }, [currentTestGw, user?.id]);
   
-  // CRITICAL: Set viewMode to "list" immediately when submitted is detected
-  // This must run on every render to catch any state changes
+  // Set viewMode to "list" immediately when submitted is detected
   useEffect(() => {
     if (submitted && viewMode === "cards") {
-      console.log('[TestApiPredictions] ✅ FORCING viewMode to "list" - user has submitted');
       setViewMode("list");
     }
   }, [submitted, viewMode]);
@@ -342,12 +413,9 @@ export default function TestApiPredictions() {
     
     return scores;
   }, [liveScoresMap, fixtures]);
-  // Track when halftime ends for each fixture (when status changes from PAUSED to IN_PLAY)
-  // const halftimeEndTimeRef = useRef<Record<number, Date>>({}); // Unused - kept for future use
-  // getHasEverBeenSubmitted, setHasEverBeenSubmitted, and hasEverBeenSubmittedRef are now defined earlier
   
-  // CRITICAL: Use a ref to track if we should show cards - updated synchronously
-  // This prevents any flash because refs don't cause re-renders
+  // Use a ref to track if we should show cards - updated synchronously
+  // Refs don't cause re-renders, preventing flash
   const getInitialShouldShowCards = (): boolean => {
     // Check synchronously if we should show cards
     if (typeof window === 'undefined') return true;
@@ -380,8 +448,7 @@ export default function TestApiPredictions() {
     }
   }, [submitted]);
 
-  // Cleanup scroll lock on mount - ensure scrolling is restored when component loads
-  // This fixes the issue where scroll lock from SwipePredictions persists when navigating to this page
+  // Cleanup scroll lock on mount - restore scrolling when component loads
   useEffect(() => {
       const html = document.documentElement;
       const body = document.body;
@@ -657,6 +724,16 @@ export default function TestApiPredictions() {
           setResults(new Map());
         }
         
+        // Log team codes from fixtures for debugging
+        if (fixturesData.length > 0) {
+          const uniqueCodes = new Set<string>();
+          fixturesData.forEach(f => {
+            if (f.home_code) uniqueCodes.add(f.home_code.toUpperCase().trim());
+            if (f.away_code) uniqueCodes.add(f.away_code.toUpperCase().trim());
+          });
+          console.log('[TestApiPredictions] Team codes in fixtures:', Array.from(uniqueCodes));
+        }
+        
         // Get api_match_ids for live score subscription
         const matchIds = fixturesData
           .map(f => f.api_match_id)
@@ -760,7 +837,6 @@ export default function TestApiPredictions() {
             } else {
               // Picks don't match current fixtures - clear them
               if (alive && pk.length > 0) {
-                console.log('[TestApiPredictions] Picks found but don\'t match current fixtures - clearing old picks');
                 // Clear invalid picks from database
                 await supabase
                   .from("app_picks")
@@ -963,213 +1039,7 @@ export default function TestApiPredictions() {
     };
   }, [user?.id]);
 
-  // NOTE: Manual polling is now replaced by useLiveScores hook which provides real-time updates
-  // fetchLiveScore function removed - no longer needed as useLiveScores hook handles all live score updates
-
-  // NOTE: Manual polling removed - now using useLiveScores hook for real-time updates
-  // The hook automatically subscribes to live_scores table changes via Supabase real-time
-  // Commented out manual polling code below (kept for reference):
-  /*
-  // Poll for live scores
-  useEffect(() => {
-    if (!fixtures.length) return;
-    
-    // Only poll first 3 fixtures
-    const fixturesToPoll = fixtures.filter(f => f.api_match_id && f.kickoff_time);
-    if (fixturesToPoll.length === 0) return;
-    
-    const intervals = new Map<number, ReturnType<typeof setInterval>>();
-    const timeouts: ReturnType<typeof setTimeout>[] = [];
-    
-    fixturesToPoll.forEach((fixture) => {
-      if (!fixture.api_match_id || !fixture.kickoff_time) return;
-      
-      const kickoffTime = new Date(fixture.kickoff_time);
-      const now = new Date();
-      const fixtureIndex = fixture.fixture_index;
-      
-      // Helper function to start polling for a fixture
-      const startPolling = () => {
-        // Check if game is already finished
-        const currentScore = liveScores[fixtureIndex];
-        if (currentScore && currentScore.status === 'FINISHED') {
-          // Already finished, don't poll
-          return;
-        }
-        
-        // Track HT state to resume polling after 15 minutes
-        const htResumeTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
-        
-        const poll = async () => {
-          const scoreData = await fetchLiveScore(fixture.api_match_id!, fixture.kickoff_time);
-          if (scoreData) {
-            const isLive = scoreData.status === 'IN_PLAY' || scoreData.status === 'PAUSED';
-            const isHalfTime = scoreData.status === 'HALF_TIME' || scoreData.status === 'HT';
-            const isFinished = scoreData.status === 'FINISHED';
-            
-            console.log('[TestApiPredictions] Poll result for fixture', fixtureIndex, ':', {
-              status: scoreData.status,
-              isLive,
-              isHalfTime,
-              isFinished,
-              homeScore: scoreData.homeScore,
-              awayScore: scoreData.awayScore,
-              minute: scoreData.minute,
-              apiMatchId: fixture.api_match_id
-            });
-            
-            // Debug: log if game should be live but isn't detected
-            if (!isLive && !isFinished && !isHalfTime) {
-              console.warn('[TestApiPredictions] Game', fixtureIndex, 'has status', scoreData.status, 'but is not detected as live');
-            }
-            
-            // Track when halftime ends (status changes from PAUSED to IN_PLAY)
-            const prevStatus = liveScores[fixtureIndex]?.status;
-            if (prevStatus === 'PAUSED' && scoreData.status === 'IN_PLAY') {
-              // Halftime just ended - record the time
-              halftimeEndTimeRef.current[fixture.api_match_id!] = new Date();
-              console.log('[TestApiPredictions] Halftime ended for fixture', fixtureIndex, 'match', fixture.api_match_id);
-            }
-            
-            // Recalculate minute if we're in second half and have halftime end time
-            let finalMinute = scoreData.minute;
-            const halftimeEndTime = halftimeEndTimeRef.current[fixture.api_match_id!];
-            if (scoreData.status === 'IN_PLAY') {
-              if (halftimeEndTime) {
-                // We have halftime end time - calculate second half minute from that
-                const now = new Date();
-                const minutesSinceHalftimeEnd = Math.floor((now.getTime() - halftimeEndTime.getTime()) / (1000 * 60));
-                finalMinute = 46 + minutesSinceHalftimeEnd;
-                console.log('[TestApiPredictions] Recalculated minute from halftime end:', {
-                  fixtureIndex,
-                  apiMatchId: fixture.api_match_id,
-                  originalMinute: scoreData.minute,
-                  finalMinute,
-                  minutesSinceHalftimeEnd
-                });
-              }
-            }
-            
-            setLiveScores(prev => ({
-              ...prev,
-              [fixtureIndex]: {
-                homeScore: scoreData.homeScore,
-                awayScore: scoreData.awayScore,
-                status: scoreData.status,
-                minute: finalMinute ?? null,
-                goals: scoreData.goals || null,
-                red_cards: scoreData.red_cards || null,
-                home_team: scoreData.home_team || null,
-                away_team: scoreData.away_team || null
-              }
-            }));
-            
-            // Handle different game states
-            if (isFinished) {
-              // Game finished - stop polling
-              console.log('[TestApiPredictions] Game', fixtureIndex, 'finished, stopping polling');
-              const pollInterval = intervals.get(fixtureIndex);
-              if (pollInterval) {
-                clearInterval(pollInterval);
-                intervals.delete(fixtureIndex);
-              }
-              // Clear any HT resume timeout
-              const htTimeout = htResumeTimeouts.get(fixtureIndex);
-              if (htTimeout) {
-                clearTimeout(htTimeout);
-                htResumeTimeouts.delete(fixtureIndex);
-              }
-            } else if (isHalfTime) {
-              // Half-time - stop polling, resume in 15 minutes
-              console.log('[TestApiPredictions] Game', fixtureIndex, 'at half-time, stopping polling, will resume in 15 minutes');
-              const pollInterval = intervals.get(fixtureIndex);
-              if (pollInterval) {
-                clearInterval(pollInterval);
-                intervals.delete(fixtureIndex);
-              }
-              
-              // Clear any existing HT resume timeout
-              const existingTimeout = htResumeTimeouts.get(fixtureIndex);
-              if (existingTimeout) {
-                clearTimeout(existingTimeout);
-              }
-              
-              // Set timeout to resume polling in 15 minutes
-              const htResumeTimeout = setTimeout(() => {
-                console.log('[TestApiPredictions] Resuming polling for fixture', fixtureIndex, 'after half-time');
-                // Resume polling every minute until game starts or finishes
-                const resumePoll = async () => {
-                  const resumeScoreData = await fetchLiveScore(fixture.api_match_id!);
-                  if (resumeScoreData) {
-                    const resumeIsFinished = resumeScoreData.status === 'FINISHED';
-                    const resumeIsLive = resumeScoreData.status === 'IN_PLAY' || resumeScoreData.status === 'PAUSED';
-                    const resumeIsHalfTime = resumeScoreData.status === 'HALF_TIME' || resumeScoreData.status === 'HT';
-                    
-                    setLiveScores(prev => ({
-                      ...prev,
-                      [fixtureIndex]: {
-                        homeScore: resumeScoreData.homeScore,
-                        awayScore: resumeScoreData.awayScore,
-                        status: resumeScoreData.status,
-                        minute: resumeScoreData.minute ?? null,
-                        goals: resumeScoreData.goals || null,
-                        red_cards: resumeScoreData.red_cards || null
-                      }
-                    }));
-                    
-                    if (resumeIsFinished) {
-                      console.log('[TestApiPredictions] Game', fixtureIndex, 'finished, stopping polling');
-                      const resumeInterval = intervals.get(fixtureIndex);
-                      if (resumeInterval) {
-                        clearInterval(resumeInterval);
-                        intervals.delete(fixtureIndex);
-                      }
-                      htResumeTimeouts.delete(fixtureIndex);
-                    } else if (resumeIsLive) {
-                      // Second half has started - continue polling every minute until FT
-                      console.log('[TestApiPredictions] Game', fixtureIndex, 'second half started - status:', resumeScoreData.status, 'minute:', resumeScoreData.minute);
-                    } else if (resumeIsHalfTime) {
-                      // Still at half-time, keep polling every minute until second half starts
-                      console.log('[TestApiPredictions] Game', fixtureIndex, 'still at half-time, continuing to poll...');
-                    }
-                  }
-                };
-                
-                resumePoll(); // Poll immediately
-                const resumeInterval = setInterval(resumePoll, 60 * 1000); // Every 1 minute
-                intervals.set(fixtureIndex, resumeInterval);
-                htResumeTimeouts.delete(fixtureIndex);
-              }, 15 * 60 * 1000); // 15 minutes
-              
-              htResumeTimeouts.set(fixtureIndex, htResumeTimeout);
-            } else if (isLive) {
-              console.log('[TestApiPredictions] Game', fixtureIndex, 'is LIVE - status:', scoreData.status, 'minute:', scoreData.minute);
-            }
-          }
-        };
-        
-        poll(); // Poll immediately
-        const pollInterval = setInterval(poll, 60 * 1000); // Every 1 minute
-        intervals.set(fixtureIndex, pollInterval);
-      };
-      
-      if (kickoffTime > now) {
-        const delay = kickoffTime.getTime() - now.getTime();
-        const timeout = setTimeout(startPolling, delay);
-        timeouts.push(timeout);
-      } else {
-        // Kickoff already happened, start polling immediately
-        startPolling();
-      }
-    });
-    
-    return () => {
-      console.log('[TestApiPredictions] Cleaning up polling intervals and timeouts');
-      intervals.forEach(clearInterval);
-      timeouts.forEach(clearTimeout);
-    };
-  }, [fixtures.map(f => f.api_match_id).join(',')]);
-  */
+  // Live scores are now handled by useLiveScores hook via Supabase real-time
 
   // Update results map based on live scores
   useEffect(() => {
@@ -1256,15 +1126,6 @@ export default function TestApiPredictions() {
     })();
   }, [results, picks, fixtures, currentTestGw, user?.id]);
 
-  // Keep cards view - don't auto-switch to list view
-  // useEffect(() => {
-  //   if (fixtures.length > 0 && user?.id) {
-  //     const allMade = fixtures.every(f => picks.has(f.fixture_index));
-  //     setViewMode(allMade ? "list" : "cards");
-  //   } else {
-  //     setViewMode("cards");
-  //   }
-  // }, [fixtures, picks, user?.id]);
 
   const currentFixture = fixtures[currentIndex];
 
@@ -1375,7 +1236,6 @@ export default function TestApiPredictions() {
       if (submissionError) {
         console.error('[TestApiPredictions] Error deleting test_api_submission:', submissionError);
       } else {
-        console.log('[TestApiPredictions] ✅ Successfully deleted submission on Start Over');
       }
       
       // Delete ALL picks from database for this GW
@@ -1388,7 +1248,6 @@ export default function TestApiPredictions() {
       if (picksError) {
         console.error('[TestApiPredictions] ❌ Error deleting test_api_picks:', picksError);
       } else {
-        console.log(`[TestApiPredictions] ✅ Successfully deleted picks on Start Over`);
       }
       
       // Reset ALL state after successful deletion
@@ -1407,7 +1266,6 @@ export default function TestApiPredictions() {
         removeCached(`predictions:${user.id}:${currentTestGw}`);
       }
       
-      console.log('[TestApiPredictions] ✅ All picks and submissions cleared - reset to swipe mode');
     } catch (error) {
       console.error('[TestApiPredictions] ❌ Error resetting picks:', error);
       // Even if deletion fails, reset state to allow user to try again
@@ -1488,7 +1346,6 @@ export default function TestApiPredictions() {
         throw submissionError;
       }
 
-      console.log('[TestApiPredictions] Successfully confirmed test picks and submission');
       setSubmitted(true);
       hasEverBeenSubmittedRef.current = true;
       setHasEverBeenSubmitted(true); // Persist in sessionStorage immediately
@@ -1522,22 +1379,9 @@ export default function TestApiPredictions() {
     }
   };
 
-  // Show loading/skeleton until we've loaded fixtures AND checked for picks AND checked submission status
-  // CRITICAL: Never show swipe view until we know for sure the user hasn't submitted
-  const loadingState = {
-    loading,
-    currentTestGw: !!currentTestGw,
-    picksChecked,
-    submissionChecked,
-    submitted,
-    sessionStorageSubmitted: getHasEverBeenSubmitted(),
-  };
-  console.log('[TestApiPredictions] Render check - loading state:', loadingState);
-  
-  // Show simple loading spinner until fixtures are loaded and ready
-  // CRITICAL: Don't render ANYTHING until we know submission status and have fixtures
+  // Never show swipe view until we know for sure the user hasn't submitted
+  // Don't render until we know submission status and have fixtures
   // This prevents blank screens and swipe card flashes
-  // const isFullyReady = !loading && fixtures.length > 0 && submissionChecked && picksChecked; // Unused - kept for debugging
   const needsMoreData = loading || fixtures.length === 0 || !submissionChecked || !picksChecked;
   
   if (needsMoreData) {
@@ -1549,7 +1393,7 @@ export default function TestApiPredictions() {
     );
   }
   
-  // Legacy check - should not be needed now but keeping as safety
+  // Additional loading check
   if (loading && fixtures.length === 0) {
     return (
       <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col overflow-hidden">
@@ -1574,8 +1418,8 @@ export default function TestApiPredictions() {
       </div>
     );
   }
-  // CRITICAL: Don't render anything until submission status is confirmed
-  // This prevents blank screens and swipe card flashes
+  // Don't render until submission status is confirmed
+  // Prevents blank screens and swipe card flashes
   if ((!picksChecked || !submissionChecked) && fixtures.length > 0) {
     // Still checking submission status - show loading spinner
     return (
@@ -1604,16 +1448,11 @@ export default function TestApiPredictions() {
     );
   }
 
-  // Confirmed Predictions View (after submission) - separate from review mode
-  // BUT: Only show fixtures if all members have submitted
+  // Confirmed Predictions View (after submission)
   // Check both state and sessionStorage for maximum safety
-  // Only trust state - if state says not submitted, ignore sessionStorage (it may be stale)
-  // Only use sessionStorage if we haven't checked the database yet (during loading)
   const sessionStorageCheck = getHasEverBeenSubmitted();
   const isUserSubmitted = submitted || (!submissionChecked && sessionStorageCheck);
-  console.log('[TestApiPredictions] Checking if submitted - state:', submitted, 'sessionStorage:', sessionStorageCheck, 'submissionChecked:', submissionChecked, 'isUserSubmitted:', isUserSubmitted);
   if (isUserSubmitted) {
-    console.log('[TestApiPredictions] ✅ Showing submitted view');
     // If not all members have submitted, show "Who's submitted" view (similar to League page)
     if (!allMembersSubmitted && leagueMembers.length > 0) {
       const remaining = leagueMembers.filter(m => !submittedMemberIds.has(m.id)).length;
@@ -1871,7 +1710,6 @@ export default function TestApiPredictions() {
   // Only trust state - if state says not submitted, clear sessionStorage and proceed
   if (!submitted && sessionStorageSubmittedReview && submissionChecked) {
     // sessionStorage says submitted but state says no - clear it and proceed
-    console.log('[TestApiPredictions] WARNING: sessionStorage says submitted but state says no - clearing sessionStorage');
     setHasEverBeenSubmitted(false);
     hasEverBeenSubmittedRef.current = false;
   }
@@ -2099,10 +1937,9 @@ export default function TestApiPredictions() {
     );
   }
 
-  // CRITICAL: Never show swipe view if submitted (triple-check with state, ref, and sessionStorage)
-  // Check sessionStorage synchronously on EVERY render to catch submission immediately
+  // Never show swipe view if submitted - check state, ref, and sessionStorage
   const sessionStorageSubmitted = getHasEverBeenSubmitted();
-  // Also check ALL sessionStorage keys for this user (in case currentTestGw isn't set yet)
+  // Check all sessionStorage keys for this user (in case currentTestGw isn't set yet)
   const checkAllSessionStorage = (): boolean => {
     if (typeof window === 'undefined' || !user?.id) return false;
     try {
@@ -2120,8 +1957,8 @@ export default function TestApiPredictions() {
   };
   const anySessionStorageSubmitted = checkAllSessionStorage();
   
-  // CRITICAL: Check submission status synchronously on every render
-  // This ensures we catch submission even if state hasn't updated yet
+  // Check submission status synchronously on every render
+  // to catch submission even if state hasn't updated yet
   const checkSubmittedBeforeSwipe = submitted || 
     (sessionStorageSubmitted && hasEverBeenSubmittedRef.current) ||
     anySessionStorageSubmitted;
@@ -2137,7 +1974,6 @@ export default function TestApiPredictions() {
   if (checkSubmittedBeforeSwipe) {
     // If viewMode is still "cards", show loading until it updates
     if (viewMode === "cards") {
-      console.log('[TestApiPredictions] 🚫 BLOCKING cards - submission detected, viewMode still cards, showing loading');
       return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
@@ -2147,12 +1983,9 @@ export default function TestApiPredictions() {
     // If viewMode is already "list", continue to render list view below
   }
   
-  console.log('[TestApiPredictions] 🔴 SWIPE VIEW CHECK - submitted:', submitted, 'ref:', hasEverBeenSubmittedRef.current, 'sessionStorage:', sessionStorageSubmitted, 'anySessionStorage:', anySessionStorageSubmitted, 'checkSubmittedBeforeSwipe:', checkSubmittedBeforeSwipe, 'viewMode:', viewMode, 'effectiveViewMode:', effectiveViewMode);
-  console.log('[TestApiPredictions] ✅ Showing view - mode:', effectiveViewMode);
   
   // Safety check: ensure currentIndex is valid
   if (!currentFixture && fixtures.length > 0) {
-    console.log('[TestApiPredictions] ⚠️ currentFixture is undefined, resetting to index 0');
     setCurrentIndex(0);
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -2174,6 +2007,19 @@ export default function TestApiPredictions() {
   }
   
   return (
+    <>
+      <style>{`
+        @media (max-height: 700px) {
+          .swipe-cards-container {
+            padding-top: 0 !important;
+          }
+        }
+        @media (min-height: 701px) {
+          .swipe-cards-container {
+            padding-top: 1.5rem;
+          }
+        }
+      `}</style>
     <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col overflow-hidden">
       {/* CRITICAL: Only render cards if NOT submitted - use ref for immediate check */}
       {/* Also add inline style to hide immediately if submitted (CSS failsafe) */}
@@ -2248,8 +2094,8 @@ export default function TestApiPredictions() {
       {/* CRITICAL: Cards section - ONLY render if NOT submitted and viewMode is cards */}
       {/* Use ref check first for immediate synchronous evaluation */}
       {shouldShowCardsRef.current && !checkSubmittedBeforeSwipe && !submitted && effectiveViewMode === "cards" && viewMode === "cards" && (
-        <div className="flex flex-col min-h-0 overflow-hidden flex-1" style={{ height: '100%', paddingBottom: '120px' }}>
-          <div className="flex items-center justify-center px-4 relative overflow-hidden flex-1" style={{ minHeight: 0, width: '100%', paddingTop: '0.125rem' }}>
+        <div className="flex flex-col min-h-0 overflow-hidden flex-1" style={{ height: '100%', paddingBottom: '0' }}>
+          <div className="swipe-cards-container flex items-start justify-center px-4 relative overflow-hidden flex-1" style={{ minHeight: 0, width: '100%' }}>
             <div className={`absolute left-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "home" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">←</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg whitespace-nowrap">Home Win</div></div>
             <div className={`absolute right-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "away" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">→</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg whitespace-nowrap">Away Win</div></div>
             <div className={`absolute bottom-32 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "draw" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">↓</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg">Draw</div></div>
@@ -2269,6 +2115,8 @@ export default function TestApiPredictions() {
                       homeColor={getTeamColor(nextFixture.home_code, nextFixture.home_name)}
                       awayColor={getTeamColor(nextFixture.away_code, nextFixture.away_name)}
                       showSwipeHint={false}
+                      homeForm={teamForms.get((nextFixture.home_code || '').toUpperCase().trim()) || null}
+                      awayForm={teamForms.get((nextFixture.away_code || '').toUpperCase().trim()) || null}
                     />
                   </div>
                 );
@@ -2289,6 +2137,8 @@ export default function TestApiPredictions() {
                   homeColor={getTeamColor(currentFixture.home_code, currentFixture.home_name)}
                   awayColor={getTeamColor(currentFixture.away_code, currentFixture.away_name)}
                   showSwipeHint={true}
+                  homeForm={teamForms.get((currentFixture.home_code || '').toUpperCase().trim()) || null}
+                  awayForm={teamForms.get((currentFixture.away_code || '').toUpperCase().trim()) || null}
                 />
               </div>
               {/* SEPARATE touch handler layer - sits on top of everything, covers 100% */}
@@ -2322,7 +2172,7 @@ export default function TestApiPredictions() {
               />
             </div>
           </div>
-          <div className="fixed bottom-0 left-0 right-0 pt-3 px-4 bg-[#eef4f3] z-[10000] safe-area-inset-bottom" style={{ paddingBottom: `calc(1rem + env(safe-area-inset-bottom, 0px))` }}>
+          <div className="fixed bottom-0 left-0 right-0 px-4 bg-[#eef4f3] z-[10000] safe-area-inset-bottom" style={{ paddingBottom: `calc(1.5rem + env(safe-area-inset-bottom, 0px))`, paddingTop: '1.5rem' }}>
             <div className="max-w-md mx-auto">
               <div className="flex items-stretch justify-center gap-3">
                 <button
@@ -2355,5 +2205,6 @@ export default function TestApiPredictions() {
         </div>
       )}
     </div>
+    </>
   );
 }

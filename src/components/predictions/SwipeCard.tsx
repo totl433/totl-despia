@@ -19,6 +19,8 @@ export interface SwipeCardProps {
   homeColor?: string;
   awayColor?: string;
   showSwipeHint?: boolean;
+  homeForm?: string | null; // e.g., "WWLDW"
+  awayForm?: string | null; // e.g., "LDWWL"
 }
 
 export default function SwipeCard({
@@ -26,6 +28,8 @@ export default function SwipeCard({
   homeColor = "#EF0107",
   awayColor = "#034694",
   showSwipeHint = true,
+  homeForm = null,
+  awayForm = null,
 }: SwipeCardProps) {
   const kickoffDate = fixture.kickoff_time
     ? new Date(fixture.kickoff_time).toLocaleDateString('en-GB', {
@@ -42,8 +46,46 @@ export default function SwipeCard({
       })
     : null;
 
+  // Helper function to render form dots
+  const renderFormDots = (form: string | null | undefined) => {
+    if (!form || form.length === 0) {
+      // Show empty grey dots if no form data
+      return Array.from({ length: 5 }, (_, i) => (
+        <div
+          key={i}
+          className="w-2 h-2 rounded-full bg-gray-300"
+          style={{ pointerEvents: 'none' }}
+        />
+      ));
+    }
+
+    // Take last 5 characters (most recent 5 games)
+    const lastFive = form.slice(-5).padStart(5, '?');
+    
+    return lastFive.split('').map((result, i) => {
+      let color = 'bg-gray-400'; // Default grey for draw or unknown
+      
+      const upperResult = result.toUpperCase();
+      if (upperResult === 'W') {
+        color = 'bg-green-500'; // Win = green
+      } else if (upperResult === 'L') {
+        color = 'bg-red-500'; // Loss = red
+      } else if (upperResult === 'D') {
+        color = 'bg-gray-400'; // Draw = grey
+      }
+      
+      return (
+        <div
+          key={i}
+          className={`w-2 h-2 rounded-full ${color}`}
+          style={{ pointerEvents: 'none' }}
+        />
+      );
+    });
+  };
+
   return (
-    <div className="bg-white rounded-3xl shadow-2xl overflow-hidden select-none flex flex-col" style={{ pointerEvents: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', width: '100%', height: '100%' }}>
+    <div className="bg-white rounded-3xl shadow-2xl overflow-hidden select-none flex flex-col" style={{ pointerEvents: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', width: '100%', height: '100%', position: 'relative' }}>
       <div className="pt-2 px-8 pb-8 relative flex-shrink-0 pointer-events-none" style={{ pointerEvents: 'none' }}>
         {showSwipeHint && (
           <div className="absolute top-2 right-4 flex items-center gap-2 text-slate-400 text-xs font-semibold pointer-events-none" style={{ pointerEvents: 'none' }}>
@@ -74,8 +116,12 @@ export default function SwipeCard({
                 size={120}
               />
             </div>
-            <div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px] pointer-events-none" style={{ pointerEvents: 'none' }}>
+            <div className="text-sm font-bold text-slate-700 mt-2 text-center max-w-[120px] pointer-events-none" style={{ pointerEvents: 'none' }}>
               {fixture.home_team || fixture.home_name}
+            </div>
+            {/* Form dots */}
+            <div className="flex items-center gap-1.5 mt-2 pointer-events-none" style={{ pointerEvents: 'none' }}>
+              {renderFormDots(homeForm)}
             </div>
           </div>
           <div className="flex flex-col items-center pointer-events-none" style={{ pointerEvents: 'none' }}>
@@ -86,8 +132,12 @@ export default function SwipeCard({
                 size={120}
               />
             </div>
-            <div className="text-sm font-bold text-slate-700 mt-4 text-center max-w-[120px] pointer-events-none" style={{ pointerEvents: 'none' }}>
+            <div className="text-sm font-bold text-slate-700 mt-2 text-center max-w-[120px] pointer-events-none" style={{ pointerEvents: 'none' }}>
               {fixture.away_team || fixture.away_name}
+            </div>
+            {/* Form dots */}
+            <div className="flex items-center gap-1.5 mt-2 pointer-events-none" style={{ pointerEvents: 'none' }}>
+              {renderFormDots(awayForm)}
             </div>
           </div>
         </div>

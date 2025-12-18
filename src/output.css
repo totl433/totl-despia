@@ -2481,6 +2481,10 @@ video {
   --tw-gradient-to: transparent var(--tw-gradient-to-position);
 }
 
+.to-\[\#1C8376\]\/90{
+  --tw-gradient-to: rgb(28 131 118 / 0.9) var(--tw-gradient-to-position);
+}
+
 .object-contain{
   -o-object-fit: contain;
      object-fit: contain;
@@ -2711,6 +2715,14 @@ video {
 
 .pt-8{
   padding-top: 2rem;
+}
+
+.pt-6{
+  padding-top: 1.5rem;
+}
+
+.pr-2{
+  padding-right: 0.5rem;
 }
 
 .text-left{
@@ -4593,6 +4605,12 @@ select option {
   --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
 }
 
+.hover\:from-\[\#1C8376\]\/90:hover{
+  --tw-gradient-from: rgb(28 131 118 / 0.9) var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(28 131 118 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
 .hover\:via-emerald-700:hover{
   --tw-gradient-to: rgb(4 120 87 / 0)  var(--tw-gradient-to-position);
   --tw-gradient-stops: var(--tw-gradient-from), #047857 var(--tw-gradient-via-position), var(--tw-gradient-to);
@@ -4604,6 +4622,10 @@ select option {
 
 .hover\:to-slate-200:hover{
   --tw-gradient-to: #e2e8f0 var(--tw-gradient-to-position);
+}
+
+.hover\:to-\[\#1C8376\]:hover{
+  --tw-gradient-to: #1C8376 var(--tw-gradient-to-position);
 }
 
 .hover\:text-\[\#1C8376\]:hover{
@@ -4752,6 +4774,17 @@ select option {
   opacity: 0.7;
 }
 
+.group:hover .group-hover\:translate-x-1{
+  --tw-translate-x: 0.25rem;
+  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+}
+
+.group:hover .group-hover\:scale-110{
+  --tw-scale-x: 1.1;
+  --tw-scale-y: 1.1;
+  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+}
+
 .peer:checked ~ .peer-checked\:bg-\[\#1C8376\]{
   --tw-bg-opacity: 1;
   background-color: rgb(28 131 118 / var(--tw-bg-opacity, 1));
@@ -4890,6 +4923,10 @@ select option {
 
   .sm\:px-4{
     padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .sm\:pr-4{
     padding-right: 1rem;
   }
 

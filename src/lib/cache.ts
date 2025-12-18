@@ -20,6 +20,7 @@ export const CACHE_TTL = {
   HOME: 5 * 60 * 1000,           // 5 minutes
   GLOBAL: 1 * 60 * 1000,         // 1 minute
   PREDICTIONS: 5 * 60 * 1000,    // 5 minutes
+  TEAM_FORMS: 24 * 60 * 60 * 1000, // 24 hours (form updates daily after matches)
 } as const;
 
 const CACHE_PREFIX = 'despia:cache:';

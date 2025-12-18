@@ -27,6 +27,7 @@ const TestDespia = lazy(() => import("./pages/TestDespia"));
 const ProfilePage = lazy(() => import("./pages/Profile"));
 const NotificationCentrePage = lazy(() => import("./pages/NotificationCentre"));
 const EmailPreferencesPage = lazy(() => import("./pages/EmailPreferences"));
+const StatsPage = lazy(() => import("./pages/Stats"));
 const SignIn = lazy(() => import("./pages/SignIn"));
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -376,6 +377,7 @@ function AppContent() {
             <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
             <Route path="/profile/notifications" element={<RequireAuth><NotificationCentrePage /></RequireAuth>} />
             <Route path="/profile/email-preferences" element={<RequireAuth><EmailPreferencesPage /></RequireAuth>} />
+            <Route path="/profile/stats" element={<RequireAuth><StatsPage /></RequireAuth>} />
             <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
             <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
             <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
@@ -388,7 +390,7 @@ function AppContent() {
       {/* Bottom Navigation - hide on auth page, swipe predictions, and when making predictions or viewing league pages */}
       {location.pathname !== '/auth' && 
        location.pathname !== '/predictions/swipe' && 
-       !(location.pathname === '/predictions' && isSwipeMode) &&
+       !(location.pathname === '/predictions' && isSwipeMode) && 
        <BottomNav shouldHide={
          (location.pathname === '/predictions' && hasSubmittedPredictions === false) ||
          location.pathname.startsWith('/league/')

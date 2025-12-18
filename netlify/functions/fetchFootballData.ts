@@ -30,6 +30,48 @@ export const handler: Handler = async (event) => {
     // Parse query parameters
     const params = new URLSearchParams(event.queryStringParameters || {});
     const matchId = params.get('matchId');
+    const resource = params.get('resource'); // 'standings' or 'matches'
+    const competition = params.get('competition') || 'PL';
+    
+    // If resource is 'standings', fetch standings
+    if (resource === 'standings') {
+      const apiUrl = `${FOOTBALL_DATA_BASE_URL}/competitions/${competition}/standings`;
+      console.log('[fetchFootballData] Fetching standings:', apiUrl);
+      
+      const response = await fetch(apiUrl, {
+        headers: {
+          'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+          'Cache-Control': 'no-cache',
+        },
+        cache: 'no-store',
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[fetchFootballData] API error:', response.status, errorText);
+        
+        if (response.status === 429) {
+          return json(429, { 
+            error: 'Rate limit reached', 
+            message: 'Too many requests. Please wait a moment.',
+            retryAfter: response.headers.get('Retry-After') || '60'
+          });
+        }
+        
+        return json(response.status, { 
+          error: 'API error', 
+          status: response.status,
+          message: errorText
+        });
+      }
+
+      const data = await response.json();
+      
+      return json(200, {
+        success: true,
+        data: data,
+      });
+    }
     
     // If matchId is provided, fetch single match
     if (matchId) {
@@ -72,7 +114,6 @@ export const handler: Handler = async (event) => {
     }
     
     // Otherwise, fetch competition matches (existing logic)
-    const competition = params.get('competition') || 'PL';
     const matchday = params.get('matchday');
     const dateFrom = params.get('dateFrom');
     const dateTo = params.get('dateTo');
