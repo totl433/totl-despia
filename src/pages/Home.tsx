@@ -12,6 +12,7 @@ import { getCached, setCached, removeCached, CACHE_TTL } from "../lib/cache";
 import { useLeagues } from "../hooks/useLeagues";
 import { calculateFormRank, calculateLastGwRank, calculateSeasonRank } from "../lib/helpers";
 import { fireConfettiCannon } from "../lib/confettiCannon";
+import { APP_ONLY_USER_IDS } from "../lib/appOnlyUsers";
 
 // Types (League type is now from useLeagues hook)
 type LeagueMember = { id: string; name: string };
@@ -817,14 +818,9 @@ export default function HomePage() {
         // who has made picks via Web interface at some point.
         const webPicksUserIds = new Set((webPicksResult.data ?? []).map((p: any) => p.user_id));
         
-        // The 4 App test user IDs (hardcoded from mirror triggers)
+        // App-only user IDs (from shared constants)
         // These users have picks mirrored FROM app_picks TO picks, so they shouldn't get blue outlines
-        const appTestUserIds = new Set([
-          '4542c037-5b38-40d0-b189-847b8f17c222', // Jof
-          'f8a1669e-2512-4edf-9c21-b9f87b3efbe2', // Carl
-          '9c0bcf50-370d-412d-8826-95371a72b4fe', // SP
-          '36f31625-6d6c-4aa4-815a-1493a812841b'  // ThomasJamesBird
-        ]);
+        const appTestUserIds = new Set(APP_ONLY_USER_IDS);
         
         // Web users = have picks in Web table (for ANY GW) AND are NOT one of the 4 App test users
         // App test users have picks in both tables (mirrored from app_picks), so we exclude them
