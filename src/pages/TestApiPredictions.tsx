@@ -11,6 +11,7 @@ import ConfirmationModal from "../components/predictions/ConfirmationModal";
 import DateHeader from "../components/DateHeader";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
+import Confetti from "react-confetti";
 
 // Generate a color from a string (team name or code)
 function stringToColor(str: string): string {
@@ -290,6 +291,8 @@ export default function TestApiPredictions() {
   const [showFeedback, setShowFeedback] = useState<"home" | "draw" | "away" | null>(null);
   const [returnToReview, setReturnToReview] = useState(false);
   const [confirmCelebration, setConfirmCelebration] = useState<{ success: boolean; message: string } | null>(null);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
   const [loading, setLoading] = useState(initialState.loading);
   const [picksChecked, setPicksChecked] = useState(initialState.picksChecked);
   const [submissionChecked, setSubmissionChecked] = useState(initialState.submissionChecked);
@@ -506,6 +509,16 @@ export default function TestApiPredictions() {
       }, 50);
     };
   }, []); // Run once on mount
+
+  // Track window size for confetti
+  useEffect(() => {
+    const updateWindowSize = () => {
+      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    };
+    updateWindowSize();
+    window.addEventListener('resize', updateWindowSize);
+    return () => window.removeEventListener('resize', updateWindowSize);
+  }, []);
 
   useEffect(() => {
     // Only lock scrolling when in card swipe mode, not on review page, and not submitted
@@ -1353,10 +1366,18 @@ export default function TestApiPredictions() {
       if (user?.id) {
         invalidateUserCache(user.id);
       }
-      setConfirmCelebration({ success: true, message: "Your test predictions are locked in. Good luck!" });
+      
+      // Show confetti
+      setShowConfetti(true);
+      
+      // Dispatch event for bottom nav
+      window.dispatchEvent(new Event('predictionsSubmitted'));
+      
+      // Navigate to home after confetti animation
       setTimeout(() => {
-        setConfirmCelebration(null);
-      }, 2500);
+        setShowConfetti(false);
+        navigate("/");
+      }, 3000);
 
       // Check if all members have submitted and notify (fire-and-forget)
       if (apiTestLeagueId && currentTestGw) {
@@ -1459,6 +1480,15 @@ export default function TestApiPredictions() {
       
       return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
+          {showConfetti && windowSize.width > 0 && windowSize.height > 0 && (
+            <Confetti
+              width={windowSize.width}
+              height={windowSize.height}
+              recycle={false}
+              numberOfPieces={500}
+              gravity={0.3}
+            />
+          )}
           <div className="p-4">
             <div className="max-w-2xl mx-auto">
               <div className="relative flex items-center justify-between">
@@ -1553,6 +1583,15 @@ export default function TestApiPredictions() {
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
+        {showConfetti && windowSize.width > 0 && windowSize.height > 0 && (
+          <Confetti
+            width={windowSize.width}
+            height={windowSize.height}
+            recycle={false}
+            numberOfPieces={500}
+            gravity={0.3}
+          />
+        )}
         <div className="p-4">
           <div className="max-w-2xl mx-auto">
             <div className="relative flex items-center justify-between">
@@ -1698,6 +1737,23 @@ export default function TestApiPredictions() {
             })()}
           </div>
         </div>
+        {/* Dummy button for submitted state - triggers confetti and navigates to home */}
+        <div className="p-6 pb-6">
+          <div className="max-w-2xl mx-auto">
+            <button
+              onClick={() => {
+                // Set flag for home page to show confetti
+                sessionStorage.setItem('showConfettiOnHome', 'true');
+                // Navigate and scroll to top immediately
+                navigate("/");
+                window.scrollTo({ top: 0, behavior: 'instant' });
+              }}
+              className="w-full py-4 bg-green-600 text-white rounded-2xl font-bold hover:bg-green-700 transition-colors"
+            >
+              SUBMIT YOUR PREDICTIONS
+            </button>
+          </div>
+        </div>
         </div>
       </div>
     );
@@ -1721,6 +1777,15 @@ export default function TestApiPredictions() {
     console.log('[TestApiPredictions] ✅ Showing review mode');
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
+        {showConfetti && windowSize.width > 0 && windowSize.height > 0 && (
+          <Confetti
+            width={windowSize.width}
+            height={windowSize.height}
+            recycle={false}
+            numberOfPieces={500}
+            gravity={0.3}
+          />
+        )}
         {confirmCelebration && (
           <ConfirmationModal
             success={confirmCelebration.success}
@@ -1908,26 +1973,42 @@ export default function TestApiPredictions() {
                 {myScore > 0 && (
                   <div className="mt-4 text-2xl font-bold text-purple-700">{myScore}/{fixtures.length}</div>
                 )}
+                <button 
+                  onClick={() => {
+                    // Set flag for home page to show confetti
+                    sessionStorage.setItem('showConfettiOnHome', 'true');
+                    // Navigate and scroll to top immediately
+                    navigate("/");
+                    window.scrollTo({ top: 0, behavior: 'instant' });
+                  }}
+                  className="w-full mt-4 py-4 bg-green-600 text-white rounded-2xl font-bold hover:bg-green-700 transition-colors"
+                >
+                  SUBMIT YOUR PREDICTIONS
+                </button>
               </div>
             ) : (
               <>
                 {!allPicksMade && (<div className="text-center text-sm text-amber-600 mb-2">You haven't made all your predictions yet</div>)}
                 <div className="grid gap-3">
-                  <button 
-                    onClick={handleStartOver}
-                    disabled={submitted}
-                    className="w-full py-3 bg-slate-200 text-slate-700 rounded-2xl font-semibold hover:bg-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Start Over
-                  </button>
+                  {!allPicksMade && (
+                    <button 
+                      onClick={handleStartOver}
+                      disabled={submitted}
+                      className="w-full py-3 bg-slate-200 text-slate-700 rounded-2xl font-semibold hover:bg-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Start Over
+                    </button>
+                  )}
                   <button 
                     onClick={handleConfirmClick} 
                     disabled={!allPicksMade}
                     className="w-full py-4 bg-green-600 text-white rounded-2xl font-bold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {allPicksMade?"Confirm Predictions (TEST)":"Complete All Predictions First"}
+                    {allPicksMade ? "SUBMIT YOUR PREDICTIONS" : "Complete All Predictions First"}
                   </button>
-                  <button onClick={()=>navigate("/")} className="w-full py-3 text-slate-600 hover:text-slate-800 font-medium">Cancel</button>
+                  {!allPicksMade && (
+                    <button onClick={()=>navigate("/")} className="w-full py-3 text-slate-600 hover:text-slate-800 font-medium">Cancel</button>
+                  )}
                 </div>
               </>
             )}

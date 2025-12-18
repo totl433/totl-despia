@@ -195,6 +195,19 @@ export function getMediumName(input: string): string {
   return k ? CLUBS[k].medium : input;
 }
 
+/** Full team name like "Tottenham Hotspur", "Manchester City". Falls back to the original input. */
+export function getFullName(input: string): string {
+  const k = resolveKey(input);
+  if (!k) return input;
+  // Return the first alias which is usually the full name
+  const aliases = CLUBS[k].aliases;
+  if (aliases.length > 0) {
+    // Capitalize first letter of each word
+    return aliases[0].split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  }
+  return CLUBS[k].medium;
+}
+
 /** Badge asset path. Expects PNGs in /assets/badges/{slug}.png */
 export function getTeamBadgePath(input: string): string {
   const k = resolveKey(input);

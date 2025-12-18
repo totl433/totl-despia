@@ -11,6 +11,7 @@ import { useLiveScores } from "../hooks/useLiveScores";
 import { getCached, setCached, removeCached, CACHE_TTL } from "../lib/cache";
 import { useLeagues } from "../hooks/useLeagues";
 import { calculateFormRank, calculateLastGwRank, calculateSeasonRank } from "../lib/helpers";
+import { fireConfettiCannon } from "../lib/confettiCannon";
 
 // Types (League type is now from useLeagues hook)
 type LeagueMember = { id: string; name: string };
@@ -203,6 +204,7 @@ export default function HomePage() {
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>({});
   const [gw, setGw] = useState<number>(initialState.gw);
   const [latestGw, setLatestGw] = useState<number | null>(initialState.latestGw);
+  const logoContainerRef = useRef<HTMLDivElement>(null);
   
   // Validate cached GW immediately on mount - check if it's stale
   useEffect(() => {
@@ -246,6 +248,38 @@ export default function HomePage() {
     
     return () => { alive = false; };
   }, [user?.id, initialState.gw]); // Only run once on mount
+
+  // Check for confetti flag on mount and after navigation
+  useEffect(() => {
+    const checkConfetti = () => {
+      const shouldShow = sessionStorage.getItem('showConfettiOnHome') === 'true';
+      if (shouldShow) {
+        // Clear the flag
+        sessionStorage.removeItem('showConfettiOnHome');
+        // Scroll to top
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        // Trigger confetti after a tiny delay to ensure we're on the page and logo is rendered
+        setTimeout(() => {
+          // Get logo position
+          if (logoContainerRef.current) {
+            const logoRect = logoContainerRef.current.getBoundingClientRect();
+            const logoCenterX = (logoRect.left + logoRect.width / 2) / window.innerWidth;
+            const logoCenterY = (logoRect.top + logoRect.height / 2) / window.innerHeight;
+            fireConfettiCannon({ x: logoCenterX, y: logoCenterY });
+          } else {
+            // Fallback to center if logo not found
+            fireConfettiCannon();
+          }
+        }, 100);
+      }
+    };
+    
+    checkConfetti();
+    // Also check on location change (in case we navigate via React Router)
+    const timeout = setTimeout(checkConfetti, 100);
+    return () => clearTimeout(timeout);
+  }, []);
+
   // Track gw_results changes to trigger leaderboard recalculation
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
   const [gwPoints, setGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>(initialState.gwPoints);
@@ -1660,7 +1694,7 @@ export default function HomePage() {
   return (
     <div className="max-w-6xl mx-auto px-4 pt-2 pb-4 min-h-screen relative">
       {/* Logo header */}
-      <div className="relative mb-4">
+      <div ref={logoContainerRef} className="relative mb-4">
         <ScrollLogo />
       </div>
       

@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getFullName } from '../lib/teamNames';
 
 export interface UserStatsData {
   // Last completed GW percentile
@@ -512,7 +513,7 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
       // Get fixtures to map picks to teams
       const { data: allFixtures } = await supabase
         .from('app_fixtures')
-        .select('gw, fixture_index, home_code, away_code, home_team, away_team');
+        .select('gw, fixture_index, home_code, away_code, home_team, away_team, home_name, away_name');
 
       if (allFixtures) {
         const fixturesMap = new Map<string, any>();
@@ -538,32 +539,46 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
           if (!result || !userPick) return; // Skip if no result or user didn't make a pick
           
           // Check both teams in this fixture
-          const homeTeam = { code: fixture.home_code, name: fixture.home_team || '' };
-          const awayTeam = { code: fixture.away_code, name: fixture.away_team || '' };
+          // Use home_name/away_name if available, otherwise fall back to home_team/away_team, then resolve full name from code
+          const homeTeamName = fixture.home_name || fixture.home_team || '';
+          const awayTeamName = fixture.away_name || fixture.away_team || '';
+          const homeTeam = { 
+            code: fixture.home_code, 
+            name: fixture.home_code ? getFullName(fixture.home_code) : homeTeamName 
+          };
+          const awayTeam = { 
+            code: fixture.away_code, 
+            name: fixture.away_code ? getFullName(fixture.away_code) : awayTeamName 
+          };
           
-          [homeTeam, awayTeam].forEach((team) => {
-            if (!team.code || !team.name) return;
-            
-            const key = team.code.toUpperCase();
-            const existing = teamStats.get(key) || { correct: 0, total: 0, code: team.code, name: team.name };
-            
-            // Count this match for this team
+          // Only count a team as "correct" if the user's pick was for that team AND it matched the result
+          // Home team: correct if user picked 'H' and result is 'H'
+          // Away team: correct if user picked 'A' and result is 'A'
+          // Draw: both teams count as correct if user picked 'D' and result is 'D'
+          
+          if (homeTeam.code) {
+            const key = homeTeam.code.toUpperCase();
+            const existing = teamStats.get(key) || { correct: 0, total: 0, code: homeTeam.code, name: homeTeam.name };
             existing.total++;
-            
-            // Check if the user's pick matched the result (correct prediction)
-            const isCorrect = userPick === result;
+            // Home team is correct if: (user picked H and result is H) OR (user picked D and result is D)
+            const isCorrect = (userPick === 'H' && result === 'H') || (userPick === 'D' && result === 'D');
             if (isCorrect) {
               existing.correct++;
             }
-            
-            // Debug logging for specific team
-            if (key === 'FUL') {
-              const teamPosition = team.code === fixture.home_code ? 'HOME' : 'AWAY';
-              console.log(`[userStats] Fulham: GW${fixture.gw}, ${fixture.home_team} vs ${fixture.away_team}, Fulham ${teamPosition}, picked ${userPick}, result ${result}, ${isCorrect ? 'CORRECT' : 'WRONG'}`);
-            }
-            
             teamStats.set(key, existing);
-          });
+          }
+          
+          if (awayTeam.code) {
+            const key = awayTeam.code.toUpperCase();
+            const existing = teamStats.get(key) || { correct: 0, total: 0, code: awayTeam.code, name: awayTeam.name };
+            existing.total++;
+            // Away team is correct if: (user picked A and result is A) OR (user picked D and result is D)
+            const isCorrect = (userPick === 'A' && result === 'A') || (userPick === 'D' && result === 'D');
+            if (isCorrect) {
+              existing.correct++;
+            }
+            teamStats.set(key, existing);
+          }
         });
 
         // Debug logging for team stats
