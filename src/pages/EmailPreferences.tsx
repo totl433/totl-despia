@@ -60,8 +60,14 @@ export default function EmailPreferences() {
         return;
       }
 
+      // Determine function URL - use production URL in dev, or relative path in production
+      const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const functionUrl = isDevelopment 
+        ? 'https://playtotl.com/.netlify/functions/syncEmailPreferences'
+        : '/.netlify/functions/syncEmailPreferences';
+
       // Call Netlify function to sync preferences
-      const response = await fetch('/.netlify/functions/syncEmailPreferences', {
+      const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

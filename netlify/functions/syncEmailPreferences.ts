@@ -17,10 +17,18 @@ import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { upsertSubscriber, unsubscribeSubscriber } from './utils/mailerlite';
 
-function json(statusCode: number, body: unknown) {
+function json(statusCode: number, body: unknown, cors: boolean = false) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  
+  if (cors) {
+    headers['Access-Control-Allow-Origin'] = '*';
+    headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization';
+    headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS';
+  }
+  
   return {
     statusCode,
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   };
 }
@@ -28,19 +36,24 @@ function json(statusCode: number, body: unknown) {
 export const handler: Handler = async (event) => {
   console.log('[syncEmailPreferences] Function invoked');
 
+  // Handle CORS preflight
+  if (event.httpMethod === 'OPTIONS') {
+    return json(200, {}, true);
+  }
+
   const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
   const SUPABASE_ANON_KEY = (process.env.SUPABASE_ANON_KEY || '').trim();
   const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     console.error('[syncEmailPreferences] Missing Supabase env vars');
-    return json(500, { error: 'Missing Supabase environment variables' });
+    return json(500, { error: 'Missing Supabase environment variables' }, true);
   }
 
   // Check for MailerLite API key
   if (!process.env.MAILERLITE_API_KEY?.trim()) {
     console.error('[syncEmailPreferences] Missing MailerLite API key');
-    return json(500, { error: 'Missing MAILERLITE_API_KEY environment variable' });
+    return json(500, { error: 'Missing MAILERLITE_API_KEY environment variable' }, true);
   }
 
   const syncAll = event.queryStringParameters?.all === 'true';
@@ -49,7 +62,7 @@ export const handler: Handler = async (event) => {
   if (syncAll) {
     const providedKey = event.queryStringParameters?.serviceKey;
     if (providedKey !== SUPABASE_SERVICE_ROLE_KEY) {
-      return json(403, { error: 'Unauthorized: service key required for syncing all users' });
+      return json(403, { error: 'Unauthorized: service key required for syncing all users' }, true);
     }
   }
 
@@ -69,7 +82,7 @@ export const handler: Handler = async (event) => {
       : undefined;
 
     if (!bearer) {
-      return json(401, { error: 'Unauthorized: Bearer token required' });
+      return json(401, { error: 'Unauthorized: Bearer token required' }, true);
     }
 
     userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -78,7 +91,7 @@ export const handler: Handler = async (event) => {
 
     const { data: userData, error: userError } = await userClient.auth.getUser();
     if (userError || !userData?.user?.id) {
-      return json(401, { error: 'Invalid token' });
+      return json(401, { error: 'Invalid token' }, true);
     }
 
     userId = userData.user.id;
@@ -105,14 +118,14 @@ export const handler: Handler = async (event) => {
 
       if (prefError) {
         console.error('[syncEmailPreferences] Error fetching preferences:', prefError);
-        return json(500, { error: 'Failed to fetch email preferences', details: prefError.message });
+        return json(500, { error: 'Failed to fetch email preferences', details: prefError.message }, true);
       }
 
       if (!allPreferences || allPreferences.length === 0) {
         return json(200, { 
           synced: 0, 
           message: 'No email preferences found to sync' 
-        });
+        }, true);
       }
 
       // Get user emails for all user IDs
@@ -121,7 +134,7 @@ export const handler: Handler = async (event) => {
 
       if (usersError) {
         console.error('[syncEmailPreferences] Error fetching users:', usersError);
-        return json(500, { error: 'Failed to fetch users', details: usersError.message });
+        return json(500, { error: 'Failed to fetch users', details: usersError.message }, true);
       }
 
       const userEmailMap = new Map<string, string>();
@@ -160,11 +173,11 @@ export const handler: Handler = async (event) => {
         synced: syncedCount,
         errors: errorCount,
         total: allPreferences.length,
-      });
+      }, true);
     } else {
       // Sync single user
       if (!userId) {
-        return json(400, { error: 'User ID required' });
+        return json(400, { error: 'User ID required' }, true);
       }
 
       console.log(`[syncEmailPreferences] Syncing user ${userId}...`);
@@ -178,14 +191,14 @@ export const handler: Handler = async (event) => {
 
       if (prefError && prefError.code !== 'PGRST116') {
         console.error('[syncEmailPreferences] Error fetching preferences:', prefError);
-        return json(500, { error: 'Failed to fetch email preferences', details: prefError.message });
+        return json(500, { error: 'Failed to fetch email preferences', details: prefError.message }, true);
       }
 
       // Get user email
       const { data: userData, error: userError } = await adminClient.auth.admin.getUserById(userId);
 
       if (userError || !userData?.user?.email) {
-        return json(404, { error: 'User not found or has no email' });
+        return json(404, { error: 'User not found or has no email' }, true);
       }
 
       const email = userData.user.email;
@@ -197,7 +210,7 @@ export const handler: Handler = async (event) => {
         return json(200, {
           synced: success,
           message: success ? 'Unsubscribed from MailerLite' : 'Failed to unsubscribe',
-        });
+        }, true);
       }
 
       // Sync preferences to MailerLite
@@ -215,14 +228,14 @@ export const handler: Handler = async (event) => {
           results_published: preferences.results_published,
           news_updates: preferences.news_updates,
         },
-      });
+      }, true);
     }
   } catch (error: any) {
     console.error('[syncEmailPreferences] Error:', error);
     return json(500, {
       error: 'Internal server error',
       details: error.message,
-    });
+    }, true);
   }
 };
 
