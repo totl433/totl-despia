@@ -34,7 +34,9 @@ function json(statusCode: number, body: unknown, cors: boolean = false) {
 }
 
 export const handler: Handler = async (event) => {
-  console.log('[syncEmailPreferences] Function invoked - v4');
+  console.log('[syncEmailPreferences] Function invoked - v5');
+  // Debug: Log ALL env vars to see what's available
+  console.log('[syncEmailPreferences] All process.env keys:', Object.keys(process.env).slice(0, 20));
 
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
