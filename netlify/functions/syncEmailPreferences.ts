@@ -51,8 +51,15 @@ export const handler: Handler = async (event) => {
   }
 
   // Check for MailerLite API key
+  console.log('[syncEmailPreferences] Checking MAILERLITE_API_KEY:', {
+    exists: !!process.env.MAILERLITE_API_KEY,
+    length: process.env.MAILERLITE_API_KEY?.length || 0,
+    firstChars: process.env.MAILERLITE_API_KEY?.substring(0, 20) || 'N/A'
+  });
+  
   if (!process.env.MAILERLITE_API_KEY?.trim()) {
     console.error('[syncEmailPreferences] Missing MailerLite API key');
+    console.error('[syncEmailPreferences] All env vars:', Object.keys(process.env).filter(k => k.includes('MAILER')));
     return json(500, { error: 'Missing MAILERLITE_API_KEY environment variable' }, true);
   }
 
