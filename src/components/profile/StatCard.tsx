@@ -29,7 +29,7 @@ export const StatCard = React.memo(function StatCard({
       <div className="text-sm font-medium text-slate-600 mb-2">{label}</div>
       <div className="text-2xl font-bold text-slate-800 mb-1">{value}</div>
       {subcopy && (
-        <div className="text-sm text-slate-500 mt-2 italic">"{subcopy}"</div>
+        <div className="text-sm text-slate-500 mt-2">{subcopy}</div>
       )}
     </div>
   );

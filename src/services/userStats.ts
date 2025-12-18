@@ -18,6 +18,23 @@ export interface UserStatsData {
   // Average points per week
   avgPointsPerWeek: number | null;
   
+  // Best single GW
+  bestSingleGw: {
+    points: number;
+    gw: number;
+  } | null;
+  
+  // Lowest single GW
+  lowestSingleGw: {
+    points: number;
+    gw: number;
+  } | null;
+  
+  // Chaos Index (percentage of picks that 25% or fewer players made)
+  chaosIndex: number | null; // 0-100
+  chaosCorrectCount: number | null; // How many chaos picks were correct
+  chaosTotalCount: number | null; // Total number of chaos picks
+  
   // Most correctly predicted team
   mostCorrectTeam: {
     code: string | null;
@@ -105,6 +122,11 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
     bestStreak: 0,
     bestStreakGwRange: null,
     avgPointsPerWeek: null,
+    bestSingleGw: null,
+    lowestSingleGw: null,
+    chaosIndex: null,
+    chaosCorrectCount: null,
+    chaosTotalCount: null,
     mostCorrectTeam: null,
     mostIncorrectTeam: null,
   };
@@ -292,7 +314,11 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
       let bestStreakEnd = 0;
       let currentStreakStart = 0;
 
-      for (const gw of Array.from(completedGws).sort((a, b) => a - b)) {
+      const sortedGws = Array.from(completedGws).sort((a, b) => a - b);
+      console.log('[userStats] Calculating best streak. Completed GWs:', sortedGws);
+      console.log('[userStats] User percentiles per GW:', Array.from(gwPercentiles.entries()).map(([gw, pct]) => ({ gw, percentile: pct.toFixed(2), inTop25: pct >= 75 })));
+
+      for (const gw of sortedGws) {
         const percentile = gwPercentiles.get(gw);
         if (percentile !== undefined && percentile >= 75) {
           // Top 25% means percentile >= 75
@@ -306,6 +332,9 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
             bestStreakEnd = gw;
           }
         } else {
+          if (currentStreak > 0) {
+            console.log(`[userStats] Streak broken at GW${gw} (percentile: ${percentile?.toFixed(2) || 'N/A'}). Previous streak was ${currentStreak} games`);
+          }
           currentStreak = 0;
         }
       }
@@ -313,6 +342,161 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
       stats.bestStreak = bestStreak;
       if (bestStreak > 0) {
         stats.bestStreakGwRange = `GW${bestStreakStart}–GW${bestStreakEnd}`;
+        console.log(`[userStats] Best streak: ${bestStreak} games from ${stats.bestStreakGwRange}`);
+      } else {
+        console.log('[userStats] No streak found (user never in top 25%)');
+      }
+
+      // Calculate best and lowest single GW
+      let bestGw = { points: -1, gw: 0 };
+      let lowestGw = { points: 999, gw: 0 };
+      
+      userGwPoints.forEach((p: any) => {
+        const points = p.points || 0;
+        if (points > bestGw.points) {
+          bestGw = { points, gw: p.gw };
+        }
+        if (points < lowestGw.points) {
+          lowestGw = { points, gw: p.gw };
+        }
+      });
+
+      if (bestGw.points >= 0) {
+        stats.bestSingleGw = bestGw;
+      }
+      if (lowestGw.points < 999) {
+        stats.lowestSingleGw = lowestGw;
+      }
+    }
+
+    // Calculate Chaos Index - how often user picks against the crowd (25% or fewer picked the same)
+    if (allPicks && allPicks.length > 0) {
+      // Get all picks from all users for fixtures where this user made a pick
+      const userPickGwFixtures = new Set<string>();
+      allPicks.forEach((pick: any) => {
+        userPickGwFixtures.add(`${pick.gw}:${pick.fixture_index}`);
+      });
+
+      if (userPickGwFixtures.size > 0) {
+        // Get unique GWs to fetch
+        const uniqueGws = Array.from(userPickGwFixtures).map((key: string) => parseInt(key.split(':')[0]));
+        const gwSet = new Set(uniqueGws);
+        
+        // Fetch all picks from BOTH tables for those fixtures (same as we do for user picks)
+        const [allUsersPicksApp, allUsersPicksLegacy] = await Promise.all([
+          supabase
+            .from('app_picks')
+            .select('gw, fixture_index, pick')
+            .in('gw', Array.from(gwSet)),
+          supabase
+            .from('picks')
+            .select('gw, fixture_index, pick')
+            .in('gw', Array.from(gwSet))
+        ]);
+
+        // Group picks by fixture to count popularity
+        // We need to count ALL picks from ALL users, not overwrite duplicates
+        const pickCounts = new Map<string, Map<'H' | 'D' | 'A', number>>();
+        
+        // Count picks from legacy table first
+        if (allUsersPicksLegacy.data) {
+          allUsersPicksLegacy.data.forEach((pick: any) => {
+            const key = `${pick.gw}:${pick.fixture_index}`;
+            if (userPickGwFixtures.has(key)) {
+              if (!pickCounts.has(key)) {
+                pickCounts.set(key, new Map());
+              }
+              const counts = pickCounts.get(key)!;
+              counts.set(pick.pick, (counts.get(pick.pick) || 0) + 1);
+            }
+          });
+        }
+        
+        // Count picks from app_picks table (adds to existing counts)
+        if (allUsersPicksApp.data) {
+          allUsersPicksApp.data.forEach((pick: any) => {
+            const key = `${pick.gw}:${pick.fixture_index}`;
+            if (userPickGwFixtures.has(key)) {
+              if (!pickCounts.has(key)) {
+                pickCounts.set(key, new Map());
+              }
+              const counts = pickCounts.get(key)!;
+              // If this exact user already has a pick counted from legacy, skip to avoid double counting
+              // Actually, we should count all picks regardless - different users might have picks in different tables
+              // But we need to avoid counting the same user's pick twice. Let's just count all for now.
+              counts.set(pick.pick, (counts.get(pick.pick) || 0) + 1);
+            }
+          });
+        }
+
+        // Calculate total unique picks counted
+        let totalPicksCounted = 0;
+        pickCounts.forEach((counts) => {
+          totalPicksCounted += Array.from(counts.values()).reduce((sum, count) => sum + count, 0);
+        });
+        
+        console.log(`[userStats] Chaos Index: Checking ${allPicks.length} user picks across ${userPickGwFixtures.size} fixtures`);
+        console.log(`[userStats] Chaos Index: Found ${totalPicksCounted} total picks from all users across all fixtures`);
+
+        // Calculate chaos index: percentage of user's picks that were made by 25% or fewer players
+        // Also track how many chaos picks were correct
+        let chaosPicks = 0;
+        let chaosCorrectPicks = 0;
+        let totalPicks = 0;
+
+        // Create results map for checking correctness
+        const chaosResultsMap = new Map<string, 'H' | 'D' | 'A'>();
+        if (allResults) {
+          allResults.forEach((r: any) => {
+            if (r.result) {
+              chaosResultsMap.set(`${r.gw}:${r.fixture_index}`, r.result);
+            }
+          });
+        }
+
+        let sampleLogged = false;
+        allPicks.forEach((userPick: any) => {
+          const key = `${userPick.gw}:${userPick.fixture_index}`;
+          const counts = pickCounts.get(key);
+          
+          if (counts) {
+            const totalPickers = Array.from(counts.values()).reduce((sum, count) => sum + count, 0);
+            const userPickCount = counts.get(userPick.pick) || 0;
+            const userPickPercentage = totalPickers > 0 ? (userPickCount / totalPickers) * 100 : 0;
+            
+            // Log a sample for debugging
+            if (!sampleLogged && totalPickers > 0) {
+              const hCount = counts.get('H') || 0;
+              const dCount = counts.get('D') || 0;
+              const aCount = counts.get('A') || 0;
+              console.log(`[userStats] Chaos Index sample: GW${userPick.gw} fixture ${userPick.fixture_index}, user picked ${userPick.pick}, totals: H=${hCount}, D=${dCount}, A=${aCount}, total=${totalPickers}, userPickPercentage=${userPickPercentage.toFixed(2)}%`);
+              sampleLogged = true;
+            }
+            
+            totalPicks++;
+            // Chaos pick: 25% or fewer players picked the same thing
+            if (userPickPercentage <= 25) {
+              chaosPicks++;
+              
+              // Check if this chaos pick was correct
+              const result = chaosResultsMap.get(key);
+              if (result && userPick.pick === result) {
+                chaosCorrectPicks++;
+              }
+            }
+          } else {
+            // No counts found for this fixture - might not have enough data
+            console.warn(`[userStats] Chaos Index: No pick counts found for ${key}`);
+          }
+        });
+
+        if (totalPicks > 0) {
+          stats.chaosIndex = (chaosPicks / totalPicks) * 100;
+          stats.chaosCorrectCount = chaosCorrectPicks;
+          stats.chaosTotalCount = chaosPicks;
+          console.log(`[userStats] Chaos Index: ${stats.chaosIndex.toFixed(2)}% (${chaosPicks} of ${totalPicks} picks, ${chaosCorrectPicks} correct)`);
+          console.log(`[userStats] Chaos Index breakdown: ${totalPicks} total picks, ${chaosPicks} chaos picks`);
+        }
       }
     }
 

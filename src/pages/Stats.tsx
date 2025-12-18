@@ -139,7 +139,7 @@ export default function Stats() {
               />
             )}
 
-            {/* 4. Most incorrectly picked team */}
+            {/* 5. Most incorrectly picked team */}
             {stats && stats.mostIncorrectTeam && (
               <TeamStatCard
                 label="Most incorrectly picked team"
@@ -151,7 +151,7 @@ export default function Stats() {
               />
             )}
 
-            {/* 5. Correct prediction rate */}
+            {/* 6. Correct prediction rate */}
             {stats && stats.correctPredictionRate !== null && (
               <StatCard
                 label="Correct prediction rate"
@@ -160,7 +160,17 @@ export default function Stats() {
               />
             )}
 
-            {/* 6. Best Streak (Top 25%) */}
+            {/* 6. Chaos Index */}
+            {stats && stats.chaosIndex !== null && (
+              <StatCard
+                label="Chaos Index"
+                value={`${stats.chaosIndex.toFixed(2)}%`}
+                subcopy="How often you pick an outcome that 25% or fewer players picked"
+                loading={loading}
+              />
+            )}
+
+            {/* 7. Best Streak (Top 25%) */}
             {stats && stats.bestStreak > 0 && stats.bestStreakGwRange && (
               <StreakStatCard
                 label="Most consecutive weeks in the top 25%"
@@ -170,11 +180,29 @@ export default function Stats() {
               />
             )}
 
-            {/* 7. Average points per week */}
+            {/* 8. Average points per week */}
             {stats && stats.avgPointsPerWeek !== null && (
               <StatCard
                 label="Avg points / week"
                 value={stats.avgPointsPerWeek.toFixed(2)}
+                loading={loading}
+              />
+            )}
+
+            {/* 9. Best single GW */}
+            {stats && stats.bestSingleGw && (
+              <StatCard
+                label="Best single Gameweek"
+                value={`${stats.bestSingleGw.points} on GW${stats.bestSingleGw.gw}`}
+                loading={loading}
+              />
+            )}
+
+            {/* 10. Lowest single GW */}
+            {stats && stats.lowestSingleGw && (
+              <StatCard
+                label="Lowest single Gameweek"
+                value={`${stats.lowestSingleGw.points} on GW${stats.lowestSingleGw.gw}`}
                 loading={loading}
               />
             )}
