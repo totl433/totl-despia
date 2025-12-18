@@ -1373,11 +1373,16 @@ export default function TestApiPredictions() {
       // Dispatch event for bottom nav
       window.dispatchEvent(new Event('predictionsSubmitted'));
       
-      // Navigate to home after confetti animation
+      // Set flag for home page to show confetti and navigate immediately
+      sessionStorage.setItem('showConfettiOnHome', 'true');
+      // Navigate and scroll to top immediately
+      navigate("/");
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      
+      // Stop confetti after a brief moment
       setTimeout(() => {
         setShowConfetti(false);
-        navigate("/");
-      }, 3000);
+      }, 1000);
 
       // Check if all members have submitted and notify (fire-and-forget)
       if (apiTestLeagueId && currentTestGw) {
@@ -1737,23 +1742,6 @@ export default function TestApiPredictions() {
             })()}
           </div>
         </div>
-        {/* Dummy button for submitted state - triggers confetti and navigates to home */}
-        <div className="p-6 pb-6">
-          <div className="max-w-2xl mx-auto">
-            <button
-              onClick={() => {
-                // Set flag for home page to show confetti
-                sessionStorage.setItem('showConfettiOnHome', 'true');
-                // Navigate and scroll to top immediately
-                navigate("/");
-                window.scrollTo({ top: 0, behavior: 'instant' });
-              }}
-              className="w-full py-4 bg-green-600 text-white rounded-2xl font-bold hover:bg-green-700 transition-colors"
-            >
-              SUBMIT YOUR PREDICTIONS
-            </button>
-          </div>
-        </div>
         </div>
       </div>
     );
@@ -1973,18 +1961,6 @@ export default function TestApiPredictions() {
                 {myScore > 0 && (
                   <div className="mt-4 text-2xl font-bold text-purple-700">{myScore}/{fixtures.length}</div>
                 )}
-                <button 
-                  onClick={() => {
-                    // Set flag for home page to show confetti
-                    sessionStorage.setItem('showConfettiOnHome', 'true');
-                    // Navigate and scroll to top immediately
-                    navigate("/");
-                    window.scrollTo({ top: 0, behavior: 'instant' });
-                  }}
-                  className="w-full mt-4 py-4 bg-green-600 text-white rounded-2xl font-bold hover:bg-green-700 transition-colors"
-                >
-                  SUBMIT YOUR PREDICTIONS
-                </button>
               </div>
             ) : (
               <>
