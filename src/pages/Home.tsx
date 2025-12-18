@@ -10,6 +10,7 @@ import type { Fixture as FixtureCardFixture, LiveScore as FixtureCardLiveScore }
 import { useLiveScores } from "../hooks/useLiveScores";
 import { getCached, setCached, removeCached, CACHE_TTL } from "../lib/cache";
 import { useLeagues } from "../hooks/useLeagues";
+import { calculateFormRank, calculateLastGwRank, calculateSeasonRank } from "../lib/helpers";
 
 // Types (League type is now from useLeagues hook)
 type LeagueMember = { id: string; name: string };
@@ -191,7 +192,7 @@ export default function HomePage() {
   // This hook reads from cache pre-warmed by initialDataLoader and handles refresh
   const { 
     leagues, 
-    unreadByLeague,
+    unreadByLeague, 
   } = useLeagues({ pageName: 'home' });
   
   // Check if user is in API Test league
@@ -202,6 +203,49 @@ export default function HomePage() {
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>({});
   const [gw, setGw] = useState<number>(initialState.gw);
   const [latestGw, setLatestGw] = useState<number | null>(initialState.latestGw);
+  
+  // Validate cached GW immediately on mount - check if it's stale
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    let alive = true;
+    (async () => {
+      try {
+        // Get cached GW directly from cache (not from state, which might already be updated)
+        const cacheKey = `home:basic:${user.id}`;
+        const cached = getCached<{ currentGw?: number }>(cacheKey);
+        const cachedGw = cached?.currentGw ?? initialState.gw;
+        
+        const { data: meta, error } = await supabase
+          .from("app_meta")
+          .select("current_gw")
+          .eq("id", 1)
+          .maybeSingle();
+        
+        if (!alive || error) return;
+        
+        const dbCurrentGw = meta?.current_gw ?? 1;
+        
+        if (cachedGw !== dbCurrentGw) {
+          console.log('[Home] ⚠️ Cached GW is stale on mount! Cached:', cachedGw, 'DB:', dbCurrentGw, '- clearing cache and updating');
+          // Clear all caches
+          removeCached(cacheKey);
+          if (cachedGw) {
+            const oldFixturesCacheKey = `home:fixtures:${user.id}:${cachedGw}`;
+            removeCached(oldFixturesCacheKey);
+          }
+          // Update GW immediately
+          setGw(dbCurrentGw);
+        } else {
+          console.log('[Home] ✅ Cached GW is valid:', cachedGw);
+        }
+      } catch (error) {
+        console.error('[Home] Error validating cached GW:', error);
+      }
+    })();
+    
+    return () => { alive = false; };
+  }, [user?.id, initialState.gw]); // Only run once on mount
   // Track gw_results changes to trigger leaderboard recalculation
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
   const [gwPoints, setGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>(initialState.gwPoints);
@@ -215,9 +259,9 @@ export default function HomePage() {
   const [tenGwRank, setTenGwRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(initialState.tenGwRank ?? null);
   const [seasonRank, setSeasonRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(initialState.seasonRank ?? null);
   
-  // Additional data for form calculations
-  const [allGwPoints, setAllGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>(initialState.allGwPoints);
-  const [overall, setOverall] = useState<Array<{user_id: string, name: string | null, ocp: number | null}>>(initialState.overall);
+  // Additional data for form calculations (set by refetch effect, kept for potential future use)
+  const [_allGwPoints, setAllGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>(initialState.allGwPoints);
+  const [_overall, setOverall] = useState<Array<{user_id: string, name: string | null, ocp: number | null}>>(initialState.overall);
   
   const [leagueData, setLeagueData] = useState<Record<string, LeagueDataInternal>>({});
   const [fixtures, setFixtures] = useState<Fixture[]>(initialState.fixtures);
@@ -494,6 +538,8 @@ export default function HomePage() {
         const lastCompletedGw = latestGwResult.data?.gw ?? metaResult.data?.current_gw ?? 1;
         const currentGw = metaResult.data?.current_gw ?? 1;
         console.log('[Home] 📊 Fetched current_gw from app_meta:', currentGw, 'metaResult.data:', metaResult.data);
+        
+        // Update GW state (realtime subscription and mount validation handle stale cache)
         setGw(currentGw);
         // Set latestGw to the latest GW with results (not just current GW)
         const newLatestGw = latestGwResult.data?.gw ?? currentGw;
@@ -518,31 +564,10 @@ export default function HomePage() {
           setAllGwPoints(allPoints);
           setGwPoints(allPoints.filter(gp => gp.user_id === user.id));
           
-          // Calculate Last GW ranking inline
-          const lastGwData = allPoints.filter(gp => gp.gw === lastCompletedGw);
-          if (lastGwData.length > 0) {
-            const sorted = [...lastGwData].sort((a, b) => b.points - a.points);
-            let currentRank = 1;
-            const ranked = sorted.map((player, index) => {
-              if (index > 0 && sorted[index - 1].points !== player.points) {
-                currentRank = index + 1;
-              }
-              return { ...player, rank: currentRank };
-            });
-            
-            const userEntry = ranked.find(r => r.user_id === user.id);
-            if (userEntry) {
-              const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
-              lastGwRankData = {
-                rank: userEntry.rank,
-                total: ranked.length,
-                score: userEntry.points,
-                gw: lastCompletedGw,
-                totalFixtures: 10,
-                isTied: rankCount > 1
-              };
-              setLastGwRank(lastGwRankData);
-            }
+          // Calculate Last GW ranking using shared helper (single source of truth)
+          lastGwRankData = calculateLastGwRank(user.id, lastCompletedGw, allPoints);
+          if (lastGwRankData) {
+            setLastGwRank(lastGwRankData);
           }
         }
         
@@ -555,89 +580,16 @@ export default function HomePage() {
           setOverall(overallData);
         }
         
-        // Calculate form ranks from fresh data (same logic as preloader)
-        const calculateFormRank = (startGw: number, endGw: number, allPoints: any[], allUsers: any[]): { rank: number; total: number; isTied: boolean } | null => {
-          if (endGw < startGw || !currentGw || currentGw < endGw) return null;
-          
-          const formPoints = allPoints.filter((gp: any) => gp.gw >= startGw && gp.gw <= endGw);
-          const userData = new Map<string, { user_id: string; name: string; formPoints: number; weeksPlayed: Set<number> }>();
-          
-          allUsers.forEach((o: any) => {
-            userData.set(o.user_id, {
-              user_id: o.user_id,
-              name: o.name ?? "User",
-              formPoints: 0,
-              weeksPlayed: new Set()
-            });
-          });
-          
-          formPoints.forEach((gp: any) => {
-            const user = userData.get(gp.user_id);
-            if (user) {
-              user.formPoints += gp.points ?? 0;
-              user.weeksPlayed.add(gp.gw);
-            }
-          });
-          
-          const sorted = Array.from(userData.values())
-            .filter(u => {
-              for (let g = startGw; g <= endGw; g++) {
-                if (!u.weeksPlayed.has(g)) return false;
-              }
-              return true;
-            })
-            .sort((a, b) => b.formPoints - a.formPoints || a.name.localeCompare(b.name));
-          
-          if (sorted.length === 0) return null;
-          
-          let currentRank = 1;
-          const ranked = sorted.map((player, index) => {
-            if (index > 0 && sorted[index - 1].formPoints !== player.formPoints) {
-              currentRank = index + 1;
-            }
-            return { ...player, rank: currentRank };
-          });
-          
-          const userEntry = ranked.find((u: any) => u.user_id === user.id);
-          if (!userEntry) return null;
-          
-          const rankCount = ranked.filter((r: any) => r.rank === userEntry.rank).length;
-          return {
-            rank: userEntry.rank,
-            total: ranked.length,
-            isTied: rankCount > 1
-          };
-        };
-
+        // Calculate form ranks using shared helpers (single source of truth)
         const fiveGwRankData = lastCompletedGw >= 5 
-          ? calculateFormRank(lastCompletedGw - 4, lastCompletedGw, allPoints, overallData)
+          ? calculateFormRank(user.id, lastCompletedGw - 4, lastCompletedGw, allPoints, overallData)
           : null;
         const tenGwRankData = lastCompletedGw >= 10
-          ? calculateFormRank(lastCompletedGw - 9, lastCompletedGw, allPoints, overallData)
+          ? calculateFormRank(user.id, lastCompletedGw - 9, lastCompletedGw, allPoints, overallData)
           : null;
 
-        // Calculate season rank
-        let seasonRankData: { rank: number; total: number; isTied: boolean } | null = null;
-        if (overallData.length > 0) {
-          const sorted = [...overallData].sort((a: any, b: any) => (b.ocp ?? 0) - (a.ocp ?? 0) || (a.name ?? "User").localeCompare(b.name ?? "User"));
-          let currentRank = 1;
-          const ranked = sorted.map((player: any, index: number) => {
-            if (index > 0 && (sorted[index - 1].ocp ?? 0) !== (player.ocp ?? 0)) {
-              currentRank = index + 1;
-            }
-            return { ...player, rank: currentRank };
-          });
-          
-          const userEntry = ranked.find((o: any) => o.user_id === user.id);
-          if (userEntry) {
-            const rankCount = ranked.filter((r: any) => r.rank === userEntry.rank).length;
-            seasonRankData = {
-              rank: userEntry.rank,
-              total: overallData.length,
-              isTied: rankCount > 1
-            };
-          }
-        }
+        // Calculate season rank using shared helper (single source of truth)
+        const seasonRankData = calculateSeasonRank(user.id, overallData);
 
         // Update state with calculated ranks
         if (alive) {
@@ -651,7 +603,7 @@ export default function HomePage() {
         try {
           setCached(cacheKey, {
             currentGw,
-            latestGw: currentGw,
+            latestGw: newLatestGw,
             allGwPoints: allPoints,
             overall: overallData,
             lastGwRank: lastGwRankData,
@@ -678,214 +630,54 @@ export default function HomePage() {
     
     return () => { alive = false; };
   }, [user?.id]);
-  
-  // Calculate form rankings and season rank - optimized
-  // Use refs to track previous values and avoid unnecessary recalculations
-  const prevAllGwPointsRef = useRef<string>('');
-  const prevOverallRef = useRef<string>('');
-  const prevLatestGwRef = useRef<number | null>(null);
-  
+
+  // Subscribe to app_meta changes to detect when current_gw changes
   useEffect(() => {
-    if (!user?.id || !latestGw) {
-      // Reset ranks if no user or GW
-      setFiveGwRank(null);
-      setTenGwRank(null);
-      setSeasonRank(null);
-      return;
-    }
+    if (!user?.id) return;
+
+    console.log('[Home] Setting up realtime subscription for app_meta.current_gw changes');
     
-    // If no data yet, set ranks to null and return early (but don't block - will recalculate when data loads)
-    if (!allGwPoints.length || !overall.length) {
-      // Only set to null if we've actually tried to load data (not just initial state)
-      // This prevents clearing ranks unnecessarily during initial load
-      if (allGwPoints.length === 0 && overall.length === 0) {
-        // Data might still be loading, don't clear ranks yet
-        return;
-      }
-      setFiveGwRank(null);
-      setTenGwRank(null);
-      setSeasonRank(null);
-      return;
-    }
-    
-    // Check if data actually changed to avoid unnecessary recalculations
-    const allGwPointsKey = JSON.stringify(allGwPoints.slice(0, 10)); // Sample for comparison
-    const overallKey = JSON.stringify(overall.slice(0, 10)); // Sample for comparison
-    
-    if (
-      prevAllGwPointsRef.current === allGwPointsKey &&
-      prevOverallRef.current === overallKey &&
-      prevLatestGwRef.current === latestGw
-    ) {
-      return; // Data hasn't changed, skip recalculation
-    }
-    
-    prevAllGwPointsRef.current = allGwPointsKey;
-    prevOverallRef.current = overallKey;
-    prevLatestGwRef.current = latestGw;
-    
-    let alive = true;
-    
-    (async () => {
-      try {
-        // Use latestGw directly (it's already the latest GW with results)
-        const lastCompletedGw = latestGw;
-        
-        // Helper to calculate form rankings - returns the rank value
-        const calculateFormRank = (startGw: number, endGw: number): { rank: number; total: number; isTied: boolean } | null => {
-          if (endGw < startGw) {
-            return null;
-          }
-          
-          const formPoints = allGwPoints.filter(gp => gp.gw >= startGw && gp.gw <= endGw);
-          const userData = new Map<string, { user_id: string; name: string; formPoints: number; weeksPlayed: Set<number> }>();
-          
-          // Initialize userData from overall (all users who have played)
-          overall.forEach(o => {
-            userData.set(o.user_id, {
-              user_id: o.user_id,
-              name: o.name ?? "User",
-              formPoints: 0,
-              weeksPlayed: new Set()
-            });
-          });
-          
-          // Add points for each GW in the form period
-          formPoints.forEach(gp => {
-            const user = userData.get(gp.user_id);
-            if (user) {
-              user.formPoints += gp.points ?? 0;
-              user.weeksPlayed.add(gp.gw);
-            }
-          });
-          
-          // Filter to only users who played ALL weeks in the form period
-          const sorted = Array.from(userData.values())
-            .filter(u => {
-              for (let g = startGw; g <= endGw; g++) {
-                if (!u.weeksPlayed.has(g)) return false;
-              }
-              return true;
-            })
-            .sort((a, b) => b.formPoints - a.formPoints || a.name.localeCompare(b.name));
-          
-          if (sorted.length > 0) {
-            let currentRank = 1;
-            const ranked = sorted.map((player, index) => {
-              if (index > 0 && sorted[index - 1].formPoints !== player.formPoints) {
-                currentRank = index + 1;
-              }
-              return { ...player, rank: currentRank };
-            });
-            
-            const userEntry = ranked.find(u => u.user_id === user.id);
-            if (userEntry) {
-              const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
-              return {
-                rank: userEntry.rank,
-                total: ranked.length,
-                isTied: rankCount > 1
-              };
-            }
-          }
-          return null;
-        };
-        
-        // Calculate lastGwRank for the latest GW
-        let newLastGwRank: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null = null;
-        if (lastCompletedGw !== null && allGwPoints.length > 0) {
-          const lastGwData = allGwPoints.filter(gp => gp.gw === lastCompletedGw);
-          if (lastGwData.length > 0) {
-            const sorted = [...lastGwData].sort((a, b) => b.points - a.points);
-            let currentRank = 1;
-            const ranked = sorted.map((player, index) => {
-              if (index > 0 && sorted[index - 1].points !== player.points) {
-                currentRank = index + 1;
-              }
-              return { ...player, rank: currentRank };
-            });
-            
-            const userEntry = ranked.find(r => r.user_id === user.id);
-            if (userEntry) {
-              const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
-              newLastGwRank = {
-                rank: userEntry.rank,
-                total: ranked.length,
-                score: userEntry.points,
-                gw: lastCompletedGw,
-                totalFixtures: 10, // TODO: get actual fixture count
-                isTied: rankCount > 1
-              };
-              if (alive) setLastGwRank(newLastGwRank);
-            }
-          }
-        }
-        
-        // 5-WEEK FORM
-        const newFiveGwRank = lastCompletedGw !== null && lastCompletedGw >= 5 ? calculateFormRank(lastCompletedGw - 4, lastCompletedGw) : null;
-        if (alive) setFiveGwRank(newFiveGwRank);
-        
-        // 10-WEEK FORM
-        const newTenGwRank = lastCompletedGw !== null && lastCompletedGw >= 10 ? calculateFormRank(lastCompletedGw - 9, lastCompletedGw) : null;
-        if (alive) setTenGwRank(newTenGwRank);
-        
-        // SEASON RANK
-        let newSeasonRank: { rank: number; total: number; isTied: boolean } | null = null;
-        if (overall.length > 0 && alive) {
-          const sorted = [...overall].sort((a, b) => (b.ocp ?? 0) - (a.ocp ?? 0) || (a.name ?? "User").localeCompare(b.name ?? "User"));
-          let currentRank = 1;
-          const ranked = sorted.map((player, index) => {
-            if (index > 0 && (sorted[index - 1].ocp ?? 0) !== (player.ocp ?? 0)) {
-              currentRank = index + 1;
-            }
-            return { ...player, rank: currentRank };
-          });
-          
-          const userEntry = ranked.find(o => o.user_id === user.id);
-          if (userEntry) {
-            const rankCount = ranked.filter(r => r.rank === userEntry.rank).length;
-            newSeasonRank = {
-              rank: userEntry.rank,
-              total: overall.length,
-              isTied: rankCount > 1
-            };
-          }
-        }
-        if (alive) setSeasonRank(newSeasonRank);
-        
-        // Update cache with recalculated ranks (if user exists)
-        if (user?.id && alive) {
-          try {
+    const channel = supabase
+      .channel('app_meta_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'app_meta',
+          filter: 'id=eq.1'
+        },
+        (payload) => {
+          console.log('[Home] 🔔 app_meta.current_gw changed:', payload.new);
+          const newCurrentGw = (payload.new as any)?.current_gw;
+          if (newCurrentGw && typeof newCurrentGw === 'number') {
+            console.log('[Home] 🔄 Detected current_gw change, updating GW to:', newCurrentGw);
+            const oldGw = gw;
+            setGw(newCurrentGw);
+            // Clear all caches to force fresh data fetch
             const cacheKey = `home:basic:${user.id}`;
-            setCached(cacheKey, {
-              leagues,
-              currentGw: gw,
-              latestGw: lastCompletedGw,
-              allGwPoints,
-              overall,
-              lastGwRank: newLastGwRank,
-              fiveGwRank: newFiveGwRank,
-              tenGwRank: newTenGwRank,
-              seasonRank: newSeasonRank,
-              isInApiTestLeague,
-            }, CACHE_TTL.HOME);
-          } catch (e) {
-            // Cache update failed, non-critical
+            removeCached(cacheKey);
+            // Clear fixtures cache for old GW
+            if (oldGw) {
+              const oldFixturesCacheKey = `home:fixtures:${user.id}:${oldGw}`;
+              removeCached(oldFixturesCacheKey);
+            }
+            // Clear fixtures cache for new GW (will be repopulated)
+            const newFixturesCacheKey = `home:fixtures:${user.id}:${newCurrentGw}`;
+            removeCached(newFixturesCacheKey);
+            // Trigger refetch by incrementing version
+            setGwResultsVersion(prev => prev + 1);
+            console.log('[Home] ✅ Cleared caches and triggered refetch for GW', newCurrentGw);
           }
         }
-      } catch (e) {
-        console.error('[Home] Error calculating form ranks:', e);
-        // Set ranks to null on error to show "—" instead of blank
-        if (alive) {
-          setFiveGwRank(null);
-          setTenGwRank(null);
-          setSeasonRank(null);
-        }
-      }
-    })();
-    
-    return () => { alive = false; };
-  }, [user?.id, latestGw, allGwPoints, overall]);
+      )
+      .subscribe();
+
+    return () => {
+      console.log('[Home] Cleaning up app_meta realtime subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, gw]);
 
   // Fetch league data - optimized with caching
   useEffect(() => {
@@ -1842,18 +1634,8 @@ export default function HomePage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 pt-2 pb-4 min-h-screen relative">
-      {/* Logo and Unicorn header */}
+      {/* Logo header */}
       <div className="relative mb-4">
-        {/* Unicorn positioned on the left, next to centered logo */}
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 z-10">
-          <img 
-            src="/assets/Animation/Volley-Keepy-Uppies.gif"
-            alt="TOTL Unicorn" 
-            className="w-20 h-20 object-contain"
-            style={{ imageRendering: 'pixelated' }}
-          />
-        </div>
-        {/* Logo stays centered */}
         <ScrollLogo />
       </div>
       

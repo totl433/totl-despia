@@ -1026,6 +1026,14 @@ video {
   margin-top: auto;
 }
 
+.ml-\[36px\]{
+  margin-left: 36px;
+}
+
+.ml-\[32px\]{
+  margin-left: 32px;
+}
+
 .block{
   display: block;
 }
@@ -1331,6 +1339,10 @@ video {
   width: 100%;
 }
 
+.w-\[270px\]{
+  width: 270px;
+}
+
 .min-w-0{
   min-width: 0px;
 }
@@ -1632,6 +1644,10 @@ video {
   gap: 4px;
 }
 
+.gap-0{
+  gap: 0px;
+}
+
 .space-y-0 > :not([hidden]) ~ :not([hidden]){
   --tw-space-y-reverse: 0;
   margin-top: calc(0px * calc(1 - var(--tw-space-y-reverse)));
@@ -1762,6 +1778,10 @@ video {
 
 .rounded-xl{
   border-radius: 0.75rem;
+}
+
+.rounded-\[20px\]{
+  border-radius: 20px;
 }
 
 .rounded-t{

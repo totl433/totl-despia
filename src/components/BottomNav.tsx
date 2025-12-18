@@ -1,5 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useRef, useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 
   const navItems = [
     {
@@ -43,6 +45,7 @@ import { useRef, useEffect, useState } from 'react';
 export default function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [indicatorStyle, setIndicatorStyle] = useState<{ 
@@ -56,6 +59,7 @@ export default function BottomNav() {
     borderBottomRightRadius: number;
     activeIndex: number;
   } | null>(null);
+  const [hasPredictionsToDo, setHasPredictionsToDo] = useState(false);
 
   useEffect(() => {
     const updateIndicator = () => {
@@ -110,6 +114,86 @@ export default function BottomNav() {
     };
   }, [location.pathname]);
 
+  // Check if user has predictions to do
+  useEffect(() => {
+    let alive = true;
+
+    const checkPredictions = async () => {
+      if (!user?.id) {
+        setHasPredictionsToDo(false);
+        return;
+      }
+
+      try {
+        // Get current GW
+        const { data: meta } = await supabase
+          .from("app_meta")
+          .select("current_gw")
+          .eq("id", 1)
+          .maybeSingle();
+        
+        const gw: number | null = (meta as any)?.current_gw ?? null;
+        if (!gw || !alive) {
+          setHasPredictionsToDo(false);
+          return;
+        }
+
+        // Check if fixtures exist for current GW
+        const { count: fxCount } = await supabase
+          .from("app_fixtures")
+          .select("id", { count: "exact", head: true })
+          .eq("gw", gw);
+        
+        if (!fxCount || !alive) {
+          setHasPredictionsToDo(false);
+          return;
+        }
+
+        // Check if results are already published
+        const { count: rsCount } = await supabase
+          .from("app_gw_results")
+          .select("gw", { count: "exact", head: true })
+          .eq("gw", gw);
+        
+        const resultsPublished = (rsCount ?? 0) > 0;
+        if (resultsPublished || !alive) {
+          setHasPredictionsToDo(false);
+          return;
+        }
+
+        // Check if user has submitted predictions
+        const { data: submission } = await supabase
+          .from("app_gw_submissions")
+          .select("submitted_at")
+          .eq("user_id", user.id)
+          .eq("gw", gw)
+          .maybeSingle();
+        
+        if (!alive) return;
+
+        const hasSubmitted = submission?.submitted_at !== null && submission?.submitted_at !== undefined;
+        setHasPredictionsToDo(!hasSubmitted);
+      } catch (error) {
+        console.error('[BottomNav] Error checking predictions:', error);
+        if (alive) setHasPredictionsToDo(false);
+      }
+    };
+
+    checkPredictions();
+
+    // Listen for prediction submission events
+    const handleSubmission = () => {
+      checkPredictions();
+    };
+
+    window.addEventListener('predictionsSubmitted', handleSubmission);
+    
+    return () => {
+      alive = false;
+      window.removeEventListener('predictionsSubmitted', handleSubmission);
+    };
+  }, [user?.id]);
+
   return (
     <>
       <style>{`
@@ -138,6 +222,99 @@ export default function BottomNav() {
             bottom: 0px !important;
           }
         }
+        @keyframes shimmer {
+          0% {
+            transform: translateX(-100%) skewX(-15deg);
+            opacity: 0;
+          }
+          50% {
+            opacity: 1;
+          }
+          100% {
+            transform: translateX(100%) skewX(-15deg);
+            opacity: 0;
+          }
+        }
+        .predictions-shiny {
+          animation: shiny-gradient 3s ease-in-out infinite;
+        }
+        @keyframes shiny-gradient {
+          0%, 100% {
+            color: #facc15; /* yellow-400 */
+          }
+          25% {
+            color: #f97316; /* orange-500 */
+          }
+          50% {
+            color: #ec4899; /* pink-500 */
+          }
+          75% {
+            color: #9333ea; /* purple-600 */
+          }
+        }
+        .predictions-shiny svg {
+          position: relative;
+          z-index: 2;
+          overflow: visible;
+        }
+        .predictions-shiny svg path {
+          fill: currentColor;
+        }
+        .predictions-shiny-icon-wrapper {
+          position: relative;
+          display: inline-flex;
+          width: 41px;
+          height: 22px;
+          overflow: hidden;
+        }
+        .predictions-shiny-icon-wrapper svg {
+          position: relative;
+          z-index: 2;
+        }
+        .predictions-shiny-icon-wrapper::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(
+            90deg,
+            transparent 0%,
+            transparent 40%,
+            rgba(255, 255, 255, 0.7) 50%,
+            transparent 60%,
+            transparent 100%
+          );
+          animation: shimmer 1.2s ease-in-out infinite;
+          pointer-events: none;
+          z-index: 3;
+          mix-blend-mode: overlay;
+        }
+        .predictions-shiny-icon-wrapper::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(
+            90deg,
+            transparent 0%,
+            transparent 40%,
+            rgba(254, 240, 138, 0.5) 50%,
+            transparent 60%,
+            transparent 100%
+          );
+          animation: shimmer 1.8s ease-in-out infinite 0.4s;
+          pointer-events: none;
+          z-index: 3;
+          mix-blend-mode: overlay;
+        }
+        .predictions-shiny-text {
+          position: relative;
+          z-index: 2;
+        }
       `}</style>
       <div className="bottom-nav-absolute flex items-center justify-center px-4 pb-8">
         <div ref={containerRef} className="bg-white border border-[#E5E7EB] flex items-center mb-4 relative overflow-hidden" style={{ width: '360px', height: '70px', borderRadius: '60px' }}>
@@ -162,6 +339,8 @@ export default function BottomNav() {
           )}
           {navItems.map((item, index) => {
           const isActive = location.pathname === item.path;
+          const isPredictions = item.name === 'Predictions';
+          const shouldShine = isPredictions && hasPredictionsToDo && !isActive;
           return (
             <button
               key={item.name}
@@ -171,27 +350,28 @@ export default function BottomNav() {
                 style={{ width: '25%', height: '70px', padding: '0', gap: '4px', flexShrink: 0 }}
             >
                 <div 
-                  className="flex items-center justify-center w-full"
+                  className={`flex items-center justify-center w-full ${shouldShine ? 'predictions-shiny' : ''}`}
                   style={{ 
                     height: '26px',
                     padding: '4px',
-                    color: isActive ? '#1C8376' : '#353536',
+                    ...(shouldShine ? {} : { color: isActive ? '#1C8376' : '#353536' }),
                   }}
                 >
-                  <div className="flex items-center justify-center" style={{ height: '21px', width: 'auto', fontSize: '20px' }}>
+                  <div className={`flex items-center justify-center ${shouldShine ? 'predictions-shiny-icon-wrapper' : ''}`} style={{ height: '21px', width: 'auto', fontSize: '20px', position: 'relative' }}>
                 {item.icon}
               </div>
                 </div>
                 <div 
-                  className="flex items-center justify-center w-full"
+                  className={`flex items-center justify-center w-full ${shouldShine ? 'predictions-shiny' : ''}`}
                   style={{ 
                     height: '10px',
                     padding: '0px 2px',
                     overflow: 'hidden',
+                    position: 'relative',
                   }}
                 >
                   <span 
-                    className="relative z-10 font-medium whitespace-nowrap"
+                    className={`relative z-10 font-medium whitespace-nowrap ${shouldShine ? 'predictions-shiny-text' : ''}`}
                     style={{ 
                       fontSize: '8px',
                       lineHeight: '10px',
