@@ -1,5 +1,4 @@
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../lib/supabase';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
@@ -47,17 +46,6 @@ export default function Stats() {
         </div>
       </div>
     );
-  }
-
-  // Helper to format percentile text
-  function formatPercentileText(percentile: number | null, isTop: boolean): string {
-    if (percentile === null) return 'N/A';
-    const rounded = Math.round(percentile);
-    if (isTop) {
-      return `You were in the top ${100 - rounded + 1}% of players`;
-    } else {
-      return `You were in the bottom ${rounded}% of players`;
-    }
   }
 
   // Check if user has enough data

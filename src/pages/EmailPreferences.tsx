@@ -49,7 +49,7 @@ export default function EmailPreferences() {
   }, [user]);
 
   // Helper function to sync preferences to MailerLite
-  async function syncToMailerLite(preferences: Record<string, boolean>) {
+  async function syncToMailerLite(_preferences: Record<string, boolean>) {
     if (!user) return;
 
     try {

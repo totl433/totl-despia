@@ -410,7 +410,7 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
         let mostCorrect: { code: string | null; name: string; percentage: number } | null = null;
         let mostIncorrect: { code: string | null; name: string; percentage: number } | null = null;
 
-        teamStats.forEach((stats, teamCode) => {
+        teamStats.forEach((stats, _teamCode) => {
           if (stats.total >= 3) { // Require at least 3 predictions
             const correctPct = (stats.correct / stats.total) * 100;
             const incorrectPct = ((stats.total - stats.correct) / stats.total) * 100;
