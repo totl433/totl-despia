@@ -39,6 +39,7 @@ import LoadingScreen from "./components/LoadingScreen";
 // import { isLoadEverythingFirstEnabled } from "./lib/featureFlags"; // Unused - feature flag checked inline
 import { loadInitialData } from "./services/initialDataLoader";
 import { bootLog } from "./lib/logEvent";
+import { supabase } from "./lib/supabase";
 
 // Loading Fallback
 const PageLoader = () => (
@@ -69,6 +70,7 @@ function AppContent() {
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [maxLoadingTimeout, setMaxLoadingTimeout] = useState(false);
   const [isSwipeMode, setIsSwipeMode] = useState(false);
+  const [hasSubmittedPredictions, setHasSubmittedPredictions] = useState<boolean | null>(null);
   
   // Pre-loading is enabled by default (can be disabled via localStorage)
   const [loadEverythingFirst, setLoadEverythingFirst] = useState(() => {
@@ -198,6 +200,63 @@ function AppContent() {
       clearInterval(interval);
     };
   }, [location.pathname]);
+
+  // Check if user has submitted predictions for current GW
+  useEffect(() => {
+    let alive = true;
+
+    const checkSubmission = async () => {
+      if (!user?.id || location.pathname !== '/predictions') {
+        setHasSubmittedPredictions(null);
+        return;
+      }
+
+      try {
+        // Get current GW
+        const { data: meta } = await supabase
+          .from("app_meta")
+          .select("current_gw")
+          .eq("id", 1)
+          .maybeSingle();
+        
+        const gw: number | null = (meta as any)?.current_gw ?? null;
+        if (!gw || !alive) {
+          setHasSubmittedPredictions(null);
+          return;
+        }
+
+        // Check if user has submitted predictions
+        const { data: submission } = await supabase
+          .from("gw_submissions")
+          .select("submitted_at")
+          .eq("user_id", user.id)
+          .eq("gw", gw)
+          .maybeSingle();
+        
+        if (!alive) return;
+
+        const hasSubmitted = submission?.submitted_at !== null && submission?.submitted_at !== undefined;
+        setHasSubmittedPredictions(hasSubmitted);
+      } catch (error) {
+        console.error('[AppContent] Error checking predictions submission:', error);
+        if (alive) setHasSubmittedPredictions(null);
+      }
+    };
+
+    checkSubmission();
+
+    // Listen for prediction submission events
+    const handleSubmission = () => {
+      checkSubmission();
+    };
+
+    window.addEventListener('predictionsSubmitted', handleSubmission);
+    
+    return () => {
+      alive = false;
+      window.removeEventListener('predictionsSubmitted', handleSubmission);
+    };
+  }, [user?.id, location.pathname]);
   
   // Hide header/banner for full-screen pages
   const isFullScreenPage = false;
@@ -326,12 +385,14 @@ function AppContent() {
         </Suspense>
       </ErrorBoundary>
 
-      {/* Bottom Navigation - hide on auth page, league pages, and swipe predictions only */}
+      {/* Bottom Navigation - hide on auth page, swipe predictions, and when making predictions or viewing league pages */}
       {location.pathname !== '/auth' && 
-       !location.pathname.startsWith('/league/') && 
        location.pathname !== '/predictions/swipe' && 
-       !(location.pathname === '/predictions' && isSwipeMode) && 
-       <BottomNav />}
+       !(location.pathname === '/predictions' && isSwipeMode) &&
+       <BottomNav shouldHide={
+         (location.pathname === '/predictions' && hasSubmittedPredictions === false) ||
+         location.pathname.startsWith('/league/')
+       } />}
     </>
   );
 }

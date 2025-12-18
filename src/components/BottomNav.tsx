@@ -42,7 +42,7 @@ import { supabase } from '../lib/supabase';
   },
   ];
 
-export default function BottomNav() {
+export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
@@ -210,6 +210,15 @@ export default function BottomNav() {
           will-change: transform !important;
           contain: layout style paint !important;
           pointer-events: auto !important;
+          transition: transform 0.3s ease-in-out !important;
+        }
+        .bottom-nav-slide-out {
+          transform: translate3d(0, 100%, 0) !important;
+          -webkit-transform: translate3d(0, 100%, 0) !important;
+        }
+        .bottom-nav-slide-in {
+          transform: translate3d(0, 0, 0) !important;
+          -webkit-transform: translate3d(0, 0, 0) !important;
         }
         @supports (padding-bottom: env(safe-area-inset-bottom)) {
           .bottom-nav-absolute {
@@ -316,7 +325,7 @@ export default function BottomNav() {
           z-index: 2;
         }
       `}</style>
-      <div className="bottom-nav-absolute flex items-center justify-center px-4 pb-8">
+      <div className={`bottom-nav-absolute flex items-center justify-center px-4 pb-8 ${shouldHide ? 'bottom-nav-slide-out' : 'bottom-nav-slide-in'}`}>
         <div ref={containerRef} className="bg-white border border-[#E5E7EB] flex items-center mb-4 relative overflow-hidden" style={{ width: '360px', height: '70px', borderRadius: '60px' }}>
           {/* Active state indicator */}
           {indicatorStyle && (

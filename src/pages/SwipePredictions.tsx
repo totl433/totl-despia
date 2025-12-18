@@ -303,7 +303,7 @@ export default function SwipePredictions() {
     setConfirmCelebration({ success: true, message: "Your predictions are locked in. Good luck!" });
     setTimeout(() => {
       setConfirmCelebration(null);
-      navigate("/predictions");
+      navigate("/");
     }, 2500);
   };
 

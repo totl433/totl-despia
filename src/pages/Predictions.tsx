@@ -1,5 +1,6 @@
 // src/pages/Predictions.tsx
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { getMediumName } from "../lib/teamNames";
@@ -111,6 +112,7 @@ function ResultButton({
 ------------------------------------------------ */
 export default function PredictionsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [oldSchoolMode] = useState(() => {
     const saved = localStorage.getItem('oldSchoolMode');
     return saved ? JSON.parse(saved) : false;
@@ -416,6 +418,11 @@ export default function PredictionsPage() {
           });
         });
       }
+
+      // Navigate to home page after confirmation
+      setTimeout(() => {
+        navigate('/');
+      }, 500); // Small delay to show confirmation message
     } else {
       setError(error.message);
     }

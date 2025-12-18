@@ -930,6 +930,11 @@ export default function NewPredictionsCentre() {
                       
                       // Trigger banner refresh
                       window.dispatchEvent(new CustomEvent('predictionsSubmitted'));
+                      
+                      // Navigate to home page after confirmation
+                      setTimeout(() => {
+                        window.location.href = '/';
+                      }, 1500); // Delay to show success message - using window.location for full page reload
                     } catch (error) {
                       console.error('Error confirming picks:', error);
                       alert('Failed to confirm predictions. Please try again.');
