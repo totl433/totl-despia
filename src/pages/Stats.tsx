@@ -170,6 +170,16 @@ export default function Stats() {
               />
             )}
 
+            {/* 6b. Chaos Index Success Rate */}
+            {stats && stats.chaosTotalCount !== null && stats.chaosTotalCount > 0 && stats.chaosCorrectCount !== null && (
+              <StatCard
+                label="Chaos Index Success Rate"
+                value={`${((stats.chaosCorrectCount / stats.chaosTotalCount) * 100).toFixed(2)}%`}
+                subcopy="How often you're right when you pick an outcome that 25% or fewer players picked"
+                loading={loading}
+              />
+            )}
+
             {/* 7. Best Streak (Top 25%) */}
             {stats && stats.bestStreak > 0 && stats.bestStreakGwRange && (
               <StreakStatCard
@@ -193,7 +203,12 @@ export default function Stats() {
             {stats && stats.bestSingleGw && (
               <StatCard
                 label="Best single Gameweek"
-                value={`${stats.bestSingleGw.points} on GW${stats.bestSingleGw.gw}`}
+                value={
+                  <span>
+                    <span className="text-2xl font-bold text-slate-800">{stats.bestSingleGw.points}</span>
+                    <span className="text-sm text-slate-600 ml-2">on GW{stats.bestSingleGw.gw}</span>
+                  </span>
+                }
                 loading={loading}
               />
             )}
@@ -202,7 +217,12 @@ export default function Stats() {
             {stats && stats.lowestSingleGw && (
               <StatCard
                 label="Lowest single Gameweek"
-                value={`${stats.lowestSingleGw.points} on GW${stats.lowestSingleGw.gw}`}
+                value={
+                  <span>
+                    <span className="text-2xl font-bold text-slate-800">{stats.lowestSingleGw.points}</span>
+                    <span className="text-sm text-slate-600 ml-2">on GW{stats.lowestSingleGw.gw}</span>
+                  </span>
+                }
                 loading={loading}
               />
             )}

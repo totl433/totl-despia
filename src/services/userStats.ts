@@ -532,6 +532,8 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
         });
 
         // Iterate through ALL fixtures with results to find matches for each team
+        const burnleyDebugLog: Array<{gw: number; fixture_index: number; home: string; away: string; pick: string; result: string; isCorrect: boolean}> = [];
+        
         allFixtures.forEach((fixture: any) => {
           const result = resultsMap.get(`${fixture.gw}:${fixture.fixture_index}`);
           const userPick = picksMap.get(`${fixture.gw}:${fixture.fixture_index}`);
@@ -551,35 +553,72 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
             name: fixture.away_code ? getFullName(fixture.away_code) : awayTeamName 
           };
           
-          // Only count a team as "correct" if the user's pick was for that team AND it matched the result
-          // Home team: correct if user picked 'H' and result is 'H'
-          // Away team: correct if user picked 'A' and result is 'A'
-          // Draw: both teams count as correct if user picked 'D' and result is 'D'
+          // Count a team as "correct" if the user correctly predicted the outcome of any game they played in
+          // If Burnley is playing (home or away), and the user got the result right, it counts for Burnley
+          // This means: if userPick === result, both teams get credit for that correct prediction
+          const userGotItRight = userPick === result;
           
           if (homeTeam.code) {
             const key = homeTeam.code.toUpperCase();
             const existing = teamStats.get(key) || { correct: 0, total: 0, code: homeTeam.code, name: homeTeam.name };
             existing.total++;
-            // Home team is correct if: (user picked H and result is H) OR (user picked D and result is D)
-            const isCorrect = (userPick === 'H' && result === 'H') || (userPick === 'D' && result === 'D');
-            if (isCorrect) {
+            // Home team gets credit if the user correctly predicted the outcome (regardless of what they picked)
+            if (userGotItRight) {
               existing.correct++;
             }
             teamStats.set(key, existing);
+            
+            // Debug logging for Burnley
+            if (key === 'BUR' || homeTeam.code.toUpperCase() === 'BUR') {
+              burnleyDebugLog.push({
+                gw: fixture.gw,
+                fixture_index: fixture.fixture_index,
+                home: homeTeam.name,
+                away: awayTeam.name,
+                pick: userPick,
+                result: result,
+                isCorrect: userGotItRight
+              });
+            }
           }
           
           if (awayTeam.code) {
             const key = awayTeam.code.toUpperCase();
             const existing = teamStats.get(key) || { correct: 0, total: 0, code: awayTeam.code, name: awayTeam.name };
             existing.total++;
-            // Away team is correct if: (user picked A and result is A) OR (user picked D and result is D)
-            const isCorrect = (userPick === 'A' && result === 'A') || (userPick === 'D' && result === 'D');
-            if (isCorrect) {
+            // Away team gets credit if the user correctly predicted the outcome (regardless of what they picked)
+            if (userGotItRight) {
               existing.correct++;
             }
             teamStats.set(key, existing);
+            
+            // Debug logging for Burnley
+            if (key === 'BUR' || awayTeam.code.toUpperCase() === 'BUR') {
+              burnleyDebugLog.push({
+                gw: fixture.gw,
+                fixture_index: fixture.fixture_index,
+                home: homeTeam.name,
+                away: awayTeam.name,
+                pick: userPick,
+                result: result,
+                isCorrect: userGotItRight
+              });
+            }
           }
         });
+        
+        // Log Burnley-specific debug info
+        if (burnleyDebugLog.length > 0) {
+          console.log('[userStats] Burnley picks breakdown:', JSON.stringify(burnleyDebugLog, null, 2));
+          const burnleyStats = teamStats.get('BUR');
+          if (burnleyStats) {
+            console.log('[userStats] Burnley final stats:', {
+              correct: burnleyStats.correct,
+              total: burnleyStats.total,
+              percentage: ((burnleyStats.correct / burnleyStats.total) * 100).toFixed(2) + '%'
+            });
+          }
+        }
 
         // Debug logging for team stats
         const teamStatsArray = Array.from(teamStats.entries()).map(([code, stats]) => ({

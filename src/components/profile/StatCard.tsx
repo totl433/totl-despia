@@ -24,10 +24,15 @@ export const StatCard = React.memo(function StatCard({
     );
   }
 
+  // Check if value is a ReactNode (object) or string
+  const isReactNode = typeof value === 'object' && value !== null;
+  
   return (
     <div className={`bg-white rounded-xl shadow-md p-6 ${className}`}>
       <div className="text-sm font-medium text-slate-600 mb-2">{label}</div>
-      <div className="text-2xl font-bold text-slate-800 mb-1">{value}</div>
+      <div className={`mb-1 flex items-baseline ${isReactNode ? '' : 'text-2xl font-bold text-slate-800'}`}>
+        {value}
+      </div>
       {subcopy && (
         <div className="text-sm text-slate-500 mt-2">{subcopy}</div>
       )}
