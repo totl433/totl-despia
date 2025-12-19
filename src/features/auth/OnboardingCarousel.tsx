@@ -91,6 +91,7 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
     <div 
       className="fixed inset-0 bg-white flex flex-col overflow-hidden"
       {...swipeHandlers}
+      style={{ touchAction: 'pan-y' }}
       tabIndex={0}
       role="region"
       aria-label="Onboarding carousel"

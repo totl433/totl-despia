@@ -44,8 +44,12 @@ interface AuthFlowProps {
 }
 
 export default function AuthFlow({ initialStep = 'onboarding', onAuthSuccess }: AuthFlowProps) {
+  // Check for reset query param (for testing)
+  const urlParams = new URLSearchParams(window.location.search);
+  const forceOnboarding = urlParams.get('onboarding') === '1';
+  
   // Check for persisted step (survives parent re-renders)
-  const storedStep = getStoredStep();
+  const storedStep = forceOnboarding ? null : getStoredStep();
   const effectiveInitialStep = storedStep || initialStep;
   
   const [guestStep, setGuestStep] = useState<GuestStep>(effectiveInitialStep);
