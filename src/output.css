@@ -914,10 +914,6 @@ video {
   margin-top: -0.125rem;
 }
 
-.-mt-4{
-  margin-top: -1rem;
-}
-
 .mb-0{
   margin-bottom: 0px;
 }
@@ -1030,6 +1026,14 @@ video {
   margin-top: auto;
 }
 
+.mb-10{
+  margin-bottom: 2.5rem;
+}
+
+.mb-12{
+  margin-bottom: 3rem;
+}
+
 .block{
   display: block;
 }
@@ -1064,6 +1068,14 @@ video {
 
 .hidden{
   display: none;
+}
+
+.aspect-\[4\/3\]{
+  aspect-ratio: 4/3;
+}
+
+.aspect-square{
+  aspect-ratio: 1 / 1;
 }
 
 .h-0\.5{
@@ -1178,6 +1190,10 @@ video {
   height: 100vh;
 }
 
+.h-\[78px\]{
+  height: 78px;
+}
+
 .max-h-60{
   max-height: 15rem;
 }
@@ -1192,6 +1208,10 @@ video {
 
 .max-h-\[70vh\]{
   max-height: 70vh;
+}
+
+.max-h-full{
+  max-height: 100%;
 }
 
 .min-h-0{
@@ -1393,6 +1413,10 @@ video {
 
 .max-w-xs{
   max-width: 20rem;
+}
+
+.max-w-\[280px\]{
+  max-width: 280px;
 }
 
 .flex-1{
@@ -1638,6 +1662,10 @@ video {
 
 .gap-\[4px\]{
   gap: 4px;
+}
+
+.gap-12{
+  gap: 3rem;
 }
 
 .space-y-0 > :not([hidden]) ~ :not([hidden]){
@@ -2445,6 +2473,10 @@ video {
   --tw-gradient-stops: var(--tw-gradient-from), rgb(255 255 255 / 0.3) var(--tw-gradient-via-position), var(--tw-gradient-to);
 }
 
+.to-\[\#1C8376\]\/90{
+  --tw-gradient-to: rgb(28 131 118 / 0.9) var(--tw-gradient-to-position);
+}
+
 .to-blue-50{
   --tw-gradient-to: #eff6ff var(--tw-gradient-to-position);
 }
@@ -2483,10 +2515,6 @@ video {
 
 .to-transparent{
   --tw-gradient-to: transparent var(--tw-gradient-to-position);
-}
-
-.to-\[\#1C8376\]\/90{
-  --tw-gradient-to: rgb(28 131 118 / 0.9) var(--tw-gradient-to-position);
 }
 
 .object-contain{
@@ -2689,6 +2717,10 @@ video {
   padding-right: 2.5rem;
 }
 
+.pr-2{
+  padding-right: 0.5rem;
+}
+
 .pr-4{
   padding-right: 1rem;
 }
@@ -2717,16 +2749,24 @@ video {
   padding-top: 1.25rem;
 }
 
-.pt-8{
-  padding-top: 2rem;
-}
-
 .pt-6{
   padding-top: 1.5rem;
 }
 
-.pr-2{
-  padding-right: 0.5rem;
+.pt-8{
+  padding-top: 2rem;
+}
+
+.pt-16{
+  padding-top: 4rem;
+}
+
+.pt-10{
+  padding-top: 2.5rem;
+}
+
+.pr-16{
+  padding-right: 4rem;
 }
 
 .text-left{
@@ -2827,6 +2867,10 @@ video {
   line-height: 1rem;
 }
 
+.text-\[40px\]{
+  font-size: 40px;
+}
+
 .font-bold{
   font-weight: 700;
 }
@@ -2887,6 +2931,10 @@ video {
 
 .leading-tight{
   line-height: 1.25;
+}
+
+.leading-\[1\.2\]{
+  line-height: 1.2;
 }
 
 .tracking-tight{
@@ -3370,6 +3418,10 @@ video {
 
 .duration-500{
   transition-duration: 500ms;
+}
+
+.duration-150{
+  transition-duration: 150ms;
 }
 
 .ease-in-out{
@@ -4597,6 +4649,17 @@ select option {
   background-color: rgb(255 255 255 / 0.5);
 }
 
+.hover\:bg-\[\#166b60\]:hover{
+  --tw-bg-opacity: 1;
+  background-color: rgb(22 107 96 / var(--tw-bg-opacity, 1));
+}
+
+.hover\:from-\[\#1C8376\]\/90:hover{
+  --tw-gradient-from: rgb(28 131 118 / 0.9) var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(28 131 118 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
 .hover\:from-emerald-600:hover{
   --tw-gradient-from: #059669 var(--tw-gradient-from-position);
   --tw-gradient-to: rgb(5 150 105 / 0) var(--tw-gradient-to-position);
@@ -4609,15 +4672,13 @@ select option {
   --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
 }
 
-.hover\:from-\[\#1C8376\]\/90:hover{
-  --tw-gradient-from: rgb(28 131 118 / 0.9) var(--tw-gradient-from-position);
-  --tw-gradient-to: rgb(28 131 118 / 0) var(--tw-gradient-to-position);
-  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
-}
-
 .hover\:via-emerald-700:hover{
   --tw-gradient-to: rgb(4 120 87 / 0)  var(--tw-gradient-to-position);
   --tw-gradient-stops: var(--tw-gradient-from), #047857 var(--tw-gradient-via-position), var(--tw-gradient-to);
+}
+
+.hover\:to-\[\#1C8376\]:hover{
+  --tw-gradient-to: #1C8376 var(--tw-gradient-to-position);
 }
 
 .hover\:to-emerald-800:hover{
@@ -4626,10 +4687,6 @@ select option {
 
 .hover\:to-slate-200:hover{
   --tw-gradient-to: #e2e8f0 var(--tw-gradient-to-position);
-}
-
-.hover\:to-\[\#1C8376\]:hover{
-  --tw-gradient-to: #1C8376 var(--tw-gradient-to-position);
 }
 
 .hover\:text-\[\#1C8376\]:hover{

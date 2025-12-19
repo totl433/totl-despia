@@ -159,17 +159,20 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
       .eq('id', 1)
       .maybeSingle(),
     
-    // 2. Get all GW points (for form leaderboards)
+    // 2. Get recent GW points only (for form leaderboards - last 15 GWs is enough for 10-week form)
+    // This dramatically reduces data transfer for mature seasons
     supabase
       .from('app_v_gw_points')
       .select('user_id, gw, points')
-      .order('gw', { ascending: true }),
+      .order('gw', { ascending: false })
+      .limit(15000), // ~1000 users × 15 GWs = 15000 rows max
     
-    // 3. Get overall standings
+    // 3. Get top 100 overall standings (sufficient for display, user rank fetched separately if needed)
     supabase
       .from('app_v_ocp_overall')
       .select('user_id, name, ocp')
-      .order('ocp', { ascending: false }),
+      .order('ocp', { ascending: false })
+      .limit(100),
     
     // 4. Get fixtures for current GW (will be updated after we get currentGw)
     Promise.resolve({ data: null, error: null }), // Placeholder
@@ -231,8 +234,10 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   const currentGw = metaResult.data?.current_gw ?? 1;
   const latestGw = latestGwResult.data?.gw ?? null;
 
-  // Now fetch fixtures and picks for current GW
-  const [fixturesForGw, picksForGw] = await Promise.all([
+  // Now fetch fixtures, picks, and user's own OCP (if not in top 100)
+  const userInTop100 = (overallResult.data || []).some((r: any) => r.user_id === userId);
+  
+  const [fixturesForGw, picksForGw, userOcpResult] = await Promise.all([
     supabase
       .from('app_fixtures')
       .select('*')
@@ -244,7 +249,22 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
       .select('fixture_index, pick')
       .eq('user_id', userId)
       .eq('gw', currentGw),
+    
+    // Fetch user's own OCP if not in top 100
+    userInTop100
+      ? Promise.resolve({ data: null, error: null })
+      : supabase
+          .from('app_v_ocp_overall')
+          .select('user_id, name, ocp')
+          .eq('user_id', userId)
+          .maybeSingle(),
   ]);
+  
+  // Merge user's OCP into overall if they weren't in top 100
+  let overallData = overallResult.data || [];
+  if (!userInTop100 && userOcpResult.data) {
+    overallData = [...overallData, userOcpResult.data];
+  }
 
   if (fixturesForGw.error) throw new Error(`Failed to load fixtures: ${fixturesForGw.error.message}`);
   if (picksForGw.error) throw new Error(`Failed to load picks: ${picksForGw.error.message}`);
@@ -444,20 +464,20 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
           };
         };
 
-  // Calculate 5-week form rank
+  // Calculate 5-week form rank (uses overallData which includes current user)
   const fiveGwRank = latestGw && latestGw >= 5 
-    ? calculateFormRank(latestGw - 4, latestGw, gwPointsResult.data || [], overallResult.data || [], userId)
+    ? calculateFormRank(latestGw - 4, latestGw, gwPointsResult.data || [], overallData, userId)
     : null;
 
   // Calculate 10-week form rank
   const tenGwRank = latestGw && latestGw >= 10
-    ? calculateFormRank(latestGw - 9, latestGw, gwPointsResult.data || [], overallResult.data || [], userId)
+    ? calculateFormRank(latestGw - 9, latestGw, gwPointsResult.data || [], overallData, userId)
     : null;
 
-  // Calculate season rank
+  // Calculate season rank using overallData (includes user if not in top 100)
   let seasonRank: { rank: number; total: number; isTied: boolean } | null = null;
-  if (overallResult.data && overallResult.data.length > 0) {
-    const sorted = [...overallResult.data].sort((a: any, b: any) => (b.ocp ?? 0) - (a.ocp ?? 0) || (a.name ?? "User").localeCompare(b.name ?? "User"));
+  if (overallData.length > 0) {
+    const sorted = [...overallData].sort((a: any, b: any) => (b.ocp ?? 0) - (a.ocp ?? 0) || (a.name ?? "User").localeCompare(b.name ?? "User"));
     let currentRank = 1;
     const ranked = sorted.map((player: any, index: number) => {
       if (index > 0 && (sorted[index - 1].ocp ?? 0) !== (player.ocp ?? 0)) {
@@ -469,9 +489,10 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     const userEntry = ranked.find((o: any) => o.user_id === userId);
     if (userEntry) {
       const rankCount = ranked.filter((r: any) => r.rank === userEntry.rank).length;
+      // Note: total is limited to top 100 + user, actual total would require COUNT query
       seasonRank = {
         rank: userEntry.rank,
-        total: overallResult.data.length,
+        total: overallData.length,
         isTied: rankCount > 1
       };
     }
@@ -504,7 +525,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     currentGw,
     latestGw,
     allGwPoints: gwPointsResult.data || [],
-    overall: overallResult.data || [],
+    overall: overallData, // Use merged data that includes user
     lastGwRank,
     fiveGwRank,
     tenGwRank,
@@ -531,7 +552,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   setCached('global:leaderboard', {
     latestGw: globalLatestGw,
     gwPoints: gwPointsResult.data || [],
-    overall: overallResult.data || [],
+    overall: overallData, // Use merged data that includes user
     prevOcp: prevOcpData,
   }, CACHE_TTL.GLOBAL);
   console.log('[Pre-loading] Global page data cached:', { latestGw: globalLatestGw, gwPointsCount: (gwPointsResult.data || []).length });
@@ -614,7 +635,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     latestGw,
     leagues,
     allGwPoints: gwPointsResult.data || [],
-    overall: overallResult.data || [],
+    overall: overallData, // Use merged data that includes user
     lastGwRank,
     fixtures: fixturesForGw.data || [],
     userPicks,

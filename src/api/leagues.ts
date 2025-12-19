@@ -53,6 +53,11 @@ export async function fetchUserLeaguesFromDb(userId: string): Promise<League[]> 
 /**
  * Fetch unread message counts for leagues.
  * Returns a map of leagueId -> unreadCount
+ * 
+ * OPTIMIZED: Uses only 2 queries instead of N+1
+ * 1. Fetch last_read_at for all leagues
+ * 2. Fetch ALL messages for these leagues (with created_at, league_id, user_id)
+ * 3. Count unread client-side
  */
 export async function fetchUnreadCountsFromDb(
   userId: string,
@@ -61,11 +66,12 @@ export async function fetchUnreadCountsFromDb(
   if (leagueIds.length === 0) return {};
 
   try {
-    // Fetch last read times for user
+    // Query 1: Fetch last read times for user (all leagues at once)
     const { data: readsData, error: readsError } = await supabase
       .from('league_message_reads')
       .select('league_id, last_read_at')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .in('league_id', leagueIds);
 
     if (readsError) {
       log.warn('api/fetch_unread_reads_error', { error: readsError.message });
@@ -75,28 +81,39 @@ export async function fetchUnreadCountsFromDb(
     const lastRead = new Map<string, string>();
     (readsData ?? []).forEach((r: any) => lastRead.set(r.league_id, r.last_read_at));
 
-    // Fetch unread counts for each league in parallel
-    const countPromises = leagueIds.map(async (leagueId) => {
-      const since = lastRead.get(leagueId) ?? '1970-01-01T00:00:00Z';
-      const { count, error } = await supabase
-        .from('league_messages')
-        .select('id', { count: 'exact', head: true })
-        .eq('league_id', leagueId)
-        .gte('created_at', since)
-        .neq('user_id', userId); // Exclude own messages
-
-      if (error) {
-        log.warn('api/fetch_unread_count_error', { leagueId: leagueId.slice(0, 8), error: error.message });
-        return { leagueId, count: 0 };
+    // Find the earliest last_read_at to minimize message fetch
+    const defaultTime = '1970-01-01T00:00:00Z';
+    let earliestTime = defaultTime;
+    leagueIds.forEach(id => {
+      const time = lastRead.get(id) ?? defaultTime;
+      if (time < earliestTime || earliestTime === defaultTime) {
+        earliestTime = time;
       }
-
-      return { leagueId, count: typeof count === 'number' ? count : 0 };
     });
 
-    const results = await Promise.all(countPromises);
+    // Query 2: Fetch all messages since earliest last_read (single query for all leagues)
+    const { data: messagesData, error: messagesError } = await supabase
+      .from('league_messages')
+      .select('league_id, created_at, user_id')
+      .in('league_id', leagueIds)
+      .gte('created_at', earliestTime)
+      .neq('user_id', userId) // Exclude own messages
+      .limit(10000); // Safety limit
+
+    if (messagesError) {
+      log.warn('api/fetch_unread_messages_error', { error: messagesError.message });
+      return {};
+    }
+
+    // Count unread messages client-side
     const unreadMap: Record<string, number> = {};
-    results.forEach(({ leagueId, count }) => {
-      unreadMap[leagueId] = count;
+    leagueIds.forEach(id => { unreadMap[id] = 0; });
+
+    (messagesData ?? []).forEach((msg: any) => {
+      const leagueLastRead = lastRead.get(msg.league_id) ?? defaultTime;
+      if (msg.created_at >= leagueLastRead) {
+        unreadMap[msg.league_id] = (unreadMap[msg.league_id] ?? 0) + 1;
+      }
     });
 
     return unreadMap;

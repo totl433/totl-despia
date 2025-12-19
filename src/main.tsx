@@ -28,7 +28,9 @@ const ProfilePage = lazy(() => import("./pages/Profile"));
 const NotificationCentrePage = lazy(() => import("./pages/NotificationCentre"));
 const EmailPreferencesPage = lazy(() => import("./pages/EmailPreferences"));
 const StatsPage = lazy(() => import("./pages/Stats"));
-const SignIn = lazy(() => import("./pages/SignIn"));
+
+// New onboarding + auth flow
+import { AuthGate } from "./features/auth";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import PredictionsBanner from "./components/PredictionsBanner";
@@ -132,7 +134,22 @@ function AppContent() {
       return;
     }
     
-    // Start loading
+    // Check if this is a fresh install (no cache exists for this user)
+    // If fresh install, skip blocking preload and let pages load their own data
+    const cacheKey = `home:basic:${user.id}`;
+    const hasExistingCache = localStorage.getItem(`despia:cache:${cacheKey}`) !== null;
+    
+    if (!hasExistingCache) {
+      console.log('[Pre-loading] Fresh install detected (no cache), skipping blocking preload');
+      // Start loading in background (non-blocking) so cache is ready for next time
+      loadInitialData(user.id)
+        .then(() => console.log('[Pre-loading] Background preload complete'))
+        .catch((e) => console.warn('[Pre-loading] Background preload failed:', e));
+      setInitialDataLoaded(true);
+      return;
+    }
+    
+    // Start loading (blocking - we have cache, so user expects instant experience)
     console.log('[Pre-loading] Starting initial data load for user:', user.id);
     bootLog.initialDataStart(user.id);
     const startTime = Date.now();
@@ -324,7 +341,10 @@ function AppContent() {
   }, [loadEverythingFirst]);
   
   // Show loading screen if "load everything first" is enabled and data is still loading
-  if (loadEverythingFirst && !maxLoadingTimeout && (authLoading || initialDataLoading || !initialDataLoaded)) {
+  // But allow /auth route to render for logged out users (don't block auth flow)
+  const isAuthRoute = location.pathname === '/auth';
+  const isLoggedOut = !authLoading && !user;
+  if (loadEverythingFirst && !maxLoadingTimeout && !isLoggedOut && (authLoading || initialDataLoading || !initialDataLoaded)) {
     return <LoadingScreen />;
   }
   
@@ -361,7 +381,7 @@ function AppContent() {
       <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/auth" element={<SignIn />} />
+            <Route path="/auth" element={<AuthGate />} />
             <Route path="/new-predictions" element={<RequireAuth><NewPredictionsCentre /></RequireAuth>} />
                   <Route path="/predictions" element={<RequireAuth><Predictions /></RequireAuth>} />
             <Route path="/test-admin-api" element={<RequireAuth><TestAdminApi /></RequireAuth>} />
