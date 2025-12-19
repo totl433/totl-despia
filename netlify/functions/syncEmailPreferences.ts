@@ -34,7 +34,7 @@ function json(statusCode: number, body: unknown, cors: boolean = false) {
 }
 
 export const handler: Handler = async (event) => {
-  console.log('[syncEmailPreferences] Function invoked - v9 (with fallback API key)');
+  console.log('[syncEmailPreferences] Function invoked - v10 (removed early env check)');
   // Debug: Log ALL env vars to see what's available
   console.log('[syncEmailPreferences] All process.env keys:', Object.keys(process.env).slice(0, 20));
 
@@ -52,18 +52,13 @@ export const handler: Handler = async (event) => {
     return json(500, { error: 'Missing Supabase environment variables' }, true);
   }
 
-  // Check for MailerLite API key
+  // Check for MailerLite API key (will use fallback in mailerlite.ts if not found)
   console.log('[syncEmailPreferences] Checking MAILERLITE_API_KEY:', {
     exists: !!process.env.MAILERLITE_API_KEY,
     length: process.env.MAILERLITE_API_KEY?.length || 0,
     firstChars: process.env.MAILERLITE_API_KEY?.substring(0, 20) || 'N/A'
   });
-  
-  if (!process.env.MAILERLITE_API_KEY?.trim()) {
-    console.error('[syncEmailPreferences] Missing MailerLite API key');
-    console.error('[syncEmailPreferences] All env vars:', Object.keys(process.env).filter(k => k.includes('MAILER')));
-    return json(500, { error: 'Missing MAILERLITE_API_KEY environment variable' }, true);
-  }
+  // Note: We don't return early here - let mailerlite.ts handle the fallback
 
   const syncAll = event.queryStringParameters?.all === 'true';
 
