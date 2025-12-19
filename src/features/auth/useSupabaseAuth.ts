@@ -1,7 +1,7 @@
 /**
  * Hook wrapping Supabase session + auth state listener
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 

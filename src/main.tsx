@@ -341,8 +341,7 @@ function AppContent() {
   }, [loadEverythingFirst]);
   
   // Show loading screen if "load everything first" is enabled and data is still loading
-  // But allow /auth route to render for logged out users (don't block auth flow)
-  const isAuthRoute = location.pathname === '/auth';
+  // But allow logged out users through (don't block auth flow)
   const isLoggedOut = !authLoading && !user;
   if (loadEverythingFirst && !maxLoadingTimeout && !isLoggedOut && (authLoading || initialDataLoading || !initialDataLoaded)) {
     return <LoadingScreen />;

@@ -31,7 +31,6 @@ interface OnboardingCarouselProps {
 
 export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [translateX, setTranslateX] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const [textFading, setTextFading] = useState(false);
   const [displayedIndex, setDisplayedIndex] = useState(0);
