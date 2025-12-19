@@ -4,6 +4,13 @@
 
 [functions]
   directory = "netlify/functions"
+  
+  # Environment variables for functions
+  # Note: These should also be set in Netlify dashboard, but adding here
+  # to ensure they're available to the function runtime
+  [functions.environment]
+    # MAILERLITE_API_KEY is set in Netlify dashboard for security
+    # Do not commit API keys directly in netlify.toml
 
 # Scheduled function to poll live scores every minute
 # Note: Netlify cron minimum is 1 minute

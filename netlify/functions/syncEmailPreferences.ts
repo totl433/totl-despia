@@ -34,7 +34,7 @@ function json(statusCode: number, body: unknown, cors: boolean = false) {
 }
 
 export const handler: Handler = async (event) => {
-  console.log('[syncEmailPreferences] Function invoked - v7');
+  console.log('[syncEmailPreferences] Function invoked - v8');
   // Debug: Log ALL env vars to see what's available
   console.log('[syncEmailPreferences] All process.env keys:', Object.keys(process.env).slice(0, 20));
 
