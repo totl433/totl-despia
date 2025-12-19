@@ -97,7 +97,7 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
       aria-label="Onboarding carousel"
     >
       {/* Skip button row - above the title */}
-      <div className="flex justify-end px-6 pt-14 pb-4">
+      <div className="flex justify-end px-6 pt-8 pb-4">
         <button 
           onClick={onSkip}
           className="text-sm text-slate-500 hover:text-slate-700 py-2 px-3"
