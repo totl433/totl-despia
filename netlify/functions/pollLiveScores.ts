@@ -430,11 +430,50 @@ export const handler: Handler = async (event) => {
   // 1. Scheduled function (Netlify cron) - event will have event.source = 'netlify-scheduled-function'
   // 2. Manual HTTP call (GET or POST)
   
-  // Log environment info for debugging
+  // Only run on staging environment
+  // Check multiple environment variables that Netlify sets
   const context = process.env.CONTEXT || process.env.NETLIFY_CONTEXT || 'unknown';
   const branch = process.env.BRANCH || process.env.HEAD || process.env.COMMIT_REF || 'unknown';
+  const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || '';
   
-  console.log(`[pollLiveScores] Environment: context=${context}, branch=${branch}`);
+  // Consider it staging if:
+  // 1. Context is deploy-preview or branch deploy
+  // 2. Branch is "Staging"
+  // 3. Site URL contains "staging" or "deploy-preview"
+  // 4. Or if we're on a branch that's not "main" (scheduled functions typically run on all branches)
+  const isStaging = 
+    context === 'deploy-preview' || 
+    context === 'branch-deploy' ||
+    branch === 'Staging' || 
+    branch.toLowerCase() === 'staging' ||
+    siteUrl.toLowerCase().includes('staging') ||
+    siteUrl.toLowerCase().includes('deploy-preview');
+  
+  // Log environment info for debugging
+  console.log(`[pollLiveScores] Environment check:`, {
+    context,
+    branch,
+    siteUrl: siteUrl ? siteUrl.substring(0, 50) + '...' : 'none',
+    isStaging,
+    allEnvVars: {
+      CONTEXT: process.env.CONTEXT,
+      NETLIFY_CONTEXT: process.env.NETLIFY_CONTEXT,
+      BRANCH: process.env.BRANCH,
+      HEAD: process.env.HEAD,
+      COMMIT_REF: process.env.COMMIT_REF,
+      URL: process.env.URL ? process.env.URL.substring(0, 50) + '...' : undefined,
+      DEPLOY_PRIME_URL: process.env.DEPLOY_PRIME_URL ? process.env.DEPLOY_PRIME_URL.substring(0, 50) + '...' : undefined,
+    }
+  });
+  
+  if (!isStaging) {
+    console.log(`[pollLiveScores] Skipping - not staging environment (context: ${context}, branch: ${branch})`);
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: false, message: 'Only runs on staging', context, branch }),
+    };
+  }
   
   // Use meta table to store lock timestamp with aggressive check
   // For test API, we want 15-second polling, but Netlify cron minimum is 1 minute
