@@ -255,6 +255,7 @@ async function pollAllLiveScores() {
 
     // Poll each fixture with a small delay to avoid rate limits
     const updates: any[] = [];
+    const resultsUpserts: Array<{ gw: number; fixture_index: number; result: 'H' | 'A' | 'D' }> = [];
     
     for (let i = 0; i < fixturesToPoll.length; i++) {
       const fixture = fixturesToPoll[i];
@@ -386,6 +387,20 @@ async function pollAllLiveScores() {
         red_cards: redCards.length > 0 ? redCards : null,
       });
 
+      // If finished, derive outcome and stage for app_gw_results upsert
+      if (status === 'FINISHED' || status === 'FT') {
+        let outcome: 'H' | 'A' | 'D';
+        if (homeScore > awayScore) outcome = 'H';
+        else if (awayScore > homeScore) outcome = 'A';
+        else outcome = 'D';
+
+        resultsUpserts.push({
+          gw: fixture.gw || currentGw,
+          fixture_index: fixture.fixture_index,
+          result: outcome,
+        });
+      }
+
       const goalsCount = goals.length;
       const redCardsCount = redCards.length;
       console.log(`[pollLiveScores] Updated match ${apiMatchId}: ${homeScore}-${awayScore} (${status}) - ${goalsCount} goals, ${redCardsCount} red cards`);
@@ -416,6 +431,45 @@ async function pollAllLiveScores() {
         // Note: Webhooks are now handled by Supabase Dashboard webhook (see SUPABASE_WEBHOOK_SETUP.md)
         // Supabase will automatically call sendScoreNotificationsWebhook when live_scores is updated
       }
+    }
+
+    // Upsert finished results into app_gw_results (idempotent)
+    if (resultsUpserts.length > 0) {
+      const { error: resultsError } = await supabase
+        .from('app_gw_results')
+        .upsert(resultsUpserts, { onConflict: 'gw,fixture_index' });
+
+      if (resultsError) {
+        console.error('[pollLiveScores] Error upserting app_gw_results:', resultsError);
+      } else {
+        console.log(`[pollLiveScores] Upserted ${resultsUpserts.length} results into app_gw_results`);
+      }
+    }
+
+    // Completeness check: compare app_fixtures vs app_gw_results counts for GWs in range
+    try {
+      const { data: resultsRows } = await supabase
+        .from('app_gw_results')
+        .select('gw, fixture_index');
+
+      const resultsByGw = new Map<number, number>();
+      (resultsRows || []).forEach((r: any) => {
+        resultsByGw.set(r.gw, (resultsByGw.get(r.gw) || 0) + 1);
+      });
+
+      const fixtureCountByGw = new Map<number, number>();
+      (allAppFixtures || []).forEach((f: any) => {
+        fixtureCountByGw.set(f.gw, (fixtureCountByGw.get(f.gw) || 0) + 1);
+      });
+
+      Array.from(fixtureCountByGw.entries()).forEach(([gw, fxCount]) => {
+        const resCount = resultsByGw.get(gw) || 0;
+        if (resCount < fxCount) {
+          console.warn(`[pollLiveScores] Results missing for GW ${gw}: ${resCount}/${fxCount} app_gw_results rows`);
+        }
+      });
+    } catch (e) {
+      console.error('[pollLiveScores] Completeness check failed:', e);
     }
 
   } catch (error: any) {

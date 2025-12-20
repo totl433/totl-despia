@@ -205,7 +205,9 @@ export const handler: Handler = async (event, context) => {
     const scoreWentDown = homeScore < oldHomeScore || awayScore < oldAwayScore;
     const isHalfTime = oldStatus === 'IN_PLAY' && status === 'PAUSED';
     const isFinished = status === 'FINISHED' || status === 'FT';
-    const isFirstHalfKickoff = status === 'IN_PLAY' && homeScore === 0 && awayScore === 0;
+    // Kickoff detection: first transition to IN_PLAY (regardless of score), and second-half restart
+    const wasInPlay = oldStatus === 'IN_PLAY';
+    const isFirstHalfKickoff = status === 'IN_PLAY' && !wasInPlay;
     const isSecondHalfKickoff = (oldStatus === 'PAUSED' || oldStatus === 'HALF_TIME') && status === 'IN_PLAY';
 
     let totalSent = 0;

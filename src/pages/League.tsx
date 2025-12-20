@@ -1799,7 +1799,8 @@ ${shareUrl}`;
       
       setMltLoading(true);
 
-      const { data: rs } = await supabase.from("gw_results").select("gw,fixture_index,result");
+      // Use app results for mini-league calculations (app data source)
+      const { data: rs } = await supabase.from("app_gw_results").select("gw,fixture_index,result");
       const resultList = (rs as ResultRowRaw[]) ?? [];
 
       const outcomeByGwIdx = new Map<string, "H" | "D" | "A">();
@@ -1836,7 +1837,7 @@ ${shareUrl}`;
       }
 
       const { data: pk } = await supabase
-        .from("picks")
+        .from("app_picks")
         .select("user_id,gw,fixture_index,pick")
         .in("user_id", members.map((m) => m.id))
         .in("gw", relevantGws);

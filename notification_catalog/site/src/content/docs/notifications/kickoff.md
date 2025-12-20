@@ -24,7 +24,9 @@ head: []
 
 ## Trigger
 
-Triggered when match status changes to `IN_PLAY`.
+- First half: first time the match status reaches `IN_PLAY` (regardless of score)
+- Second half: status changes from `PAUSED`/`HALF_TIME` to `IN_PLAY`
+- Idempotency: deduped per user via `kickoff:{api_match_id}:{half}` event id
 
 ## Audience
 
