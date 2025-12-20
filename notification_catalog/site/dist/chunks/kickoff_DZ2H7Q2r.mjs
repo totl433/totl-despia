@@ -1,0 +1,12 @@
+const id = "notifications/kickoff.md";
+						const collection = "docs";
+						const slug = "notifications/kickoff";
+						const body = "\n# Kickoff Notification\n\n**Notification Key:** `kickoff`  \n**Owner:** score-webhook  \n**Status:** Active  \n\n## Configuration\n\n| Field | Value |\n|-------|-------|\n| Event ID Format | `kickoff:{api_match_id}:{half}` |\n| Dedupe Scope | per_user_per_event |\n| TTL | 300 seconds |\n| Preference Key | `score-updates` |\n| Collapse ID | `kickoff:{api_match_id}:{half}` |\n| Thread ID | `match:{api_match_id}` |\n| Android Group | `totl_scores` |\n\n## Trigger\n\nTriggered when match status changes to `IN_PLAY`.\n\n## Audience\n\nUsers with picks for the fixture.\n";
+						const data = {title:"Kickoff",description:"Notification sent when a match kicks off (1st or 2nd half)",notification_key:"kickoff",owner:"score-webhook",status:"active",channels:["push"],audience:"users_with_picks_for_fixture",source:"supabase_webhook",trigger:{name:"live_scores_status_change",event_id_format:"kickoff:{api_match_id}:{half}"},dedupe:{scope:"per_user_per_event",ttl_seconds:300},cooldown:{per_user_seconds:0},quiet_hours:{start:null,end:null},preferences:{preference_key:"score-updates",default:true},onesignal:{collapse_id_format:"kickoff:{api_match_id}:{half}",thread_id_format:"match:{api_match_id}",android_group_format:"totl_scores"},deep_links:{url_format:null},rollout:{enabled:true,percentage:100}};
+						const _internal = {
+							type: 'content',
+							filePath: "/Users/carlstratton/Documents/totl-despia2/totl-despia/notification_catalog/site/src/content/docs/notifications/kickoff.md",
+							rawData: "\ntitle: Kickoff\ndescription: Notification sent when a match kicks off (1st or 2nd half)\nnotification_key: kickoff\nowner: score-webhook\nstatus: active\nchannels:\n  - push\naudience: users_with_picks_for_fixture\nsource: supabase_webhook\ntrigger:\n  name: live_scores_status_change\n  event_id_format: \"kickoff:{api_match_id}:{half}\"\ndedupe:\n  scope: per_user_per_event\n  ttl_seconds: 300\ncooldown:\n  per_user_seconds: 0\nquiet_hours:\n  start: null\n  end: null\npreferences:\n  preference_key: score-updates\n  default: true\nonesignal:\n  collapse_id_format: \"kickoff:{api_match_id}:{half}\"\n  thread_id_format: \"match:{api_match_id}\"\n  android_group_format: totl_scores\ndeep_links:\n  url_format: null\nrollout:\n  enabled: true\n  percentage: 100",
+						};
+
+export { _internal, body, collection, data, id, slug };
