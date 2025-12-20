@@ -7,7 +7,6 @@ import { getMediumName } from "../lib/teamNames";
 import PickButton from "../components/PickButton";
 import { invalidateUserCache } from "../lib/cache";
 import { PageHeader } from "../components/PageHeader";
-import Confetti from "react-confetti";
 
 
 function sideName(f: any, side: "home" | "away") {
@@ -136,18 +135,6 @@ export default function PredictionsPage() {
   const [error, setError] = useState<string>("");
   const [showSubmitConfirm, setShowSubmitConfirm] = useState<boolean>(false);
   const [isPastDeadline, setIsPastDeadline] = useState<boolean>(false);
-  const [showConfetti, setShowConfetti] = useState(false);
-  const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
-
-  // Track window size for confetti
-  useEffect(() => {
-    const updateWindowSize = () => {
-      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
-    };
-    updateWindowSize();
-    window.addEventListener('resize', updateWindowSize);
-    return () => window.removeEventListener('resize', updateWindowSize);
-  }, []);
 
   // Auto-scroll to top when submitted
   useEffect(() => {
@@ -408,9 +395,6 @@ export default function PredictionsPage() {
       // Dispatch custom event to hide banner immediately
       window.dispatchEvent(new CustomEvent('predictionsSubmitted'));
 
-      // Show confetti
-      setShowConfetti(true);
-
       // Check if all members have submitted in user's leagues and notify (fire-and-forget)
       // Get user's leagues
       const { data: userLeagues } = await supabase
@@ -435,11 +419,10 @@ export default function PredictionsPage() {
         });
       }
 
-      // Navigate to home page after confetti animation
-      setTimeout(() => {
-        setShowConfetti(false);
-        navigate('/');
-      }, 3000);
+      // Set flag for home page to show confetti cannon and navigate immediately
+      sessionStorage.setItem('showConfettiOnHome', 'true');
+      navigate('/');
+      window.scrollTo({ top: 0, behavior: 'instant' });
     } else {
       setError(error.message);
     }
@@ -478,15 +461,6 @@ export default function PredictionsPage() {
 
   return (
     <div className={`min-h-screen bg-slate-50 ${oldSchoolMode ? 'oldschool-theme' : ''}`}>
-      {showConfetti && windowSize.width > 0 && windowSize.height > 0 && (
-        <Confetti
-          width={windowSize.width}
-          height={windowSize.height}
-          recycle={false}
-          numberOfPieces={500}
-          gravity={0.3}
-        />
-      )}
       <div className="max-w-6xl mx-auto px-4 py-4">
         <PageHeader title="Predictions Center" as="h2" />
         <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
