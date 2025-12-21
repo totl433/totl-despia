@@ -168,11 +168,15 @@ async function pollForPlayerId(maxMs: number = 15000): Promise<string | null> {
  * 1. Calls setOneSignalExternalUserId() - the Despia V2 way to link device to user
  * 2. Registers with our backend for tracking/auditing purposes
  */
+type BackendRegisterResult =
+  | { ok: true }
+  | { ok: false; reason: PushSubscriptionResult['reason']; error?: string };
+
 export async function registerPushSubscription(
   session: { access_token: string; user?: { id: string } } | null,
   options: { force?: boolean; userId?: string } = {}
 ): Promise<PushSubscriptionResult> {
-  const registerBackend = async (playerId: string) => {
+  const registerBackend = async (playerId: string): Promise<BackendRegisterResult> => {
     try {
       const isDev = import.meta.env.DEV || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
       const baseUrl = isDev ? 'https://totl-staging.netlify.app' : '';
@@ -195,7 +199,7 @@ export async function registerPushSubscription(
         return { ok: false, reason: res.status === 401 ? 'no-session' : 'unknown', error: errorData.error || `Server error (${res.status})` };
       }
       
-      return { ok: true as const };
+      return { ok: true };
     } catch (e: any) {
       console.error('[PushV2] Registration error:', e);
       return { ok: false, reason: 'unknown', error: e.message };
@@ -318,9 +322,10 @@ export async function registerPushSubscription(
     return { ok: true, playerId, subscriptionStatus: 'subscribed' };
   }
 
+  const fallbackReason: PushSubscriptionResult['reason'] = backendRes.reason ?? 'unknown';
   return { 
     ok: false, 
-    reason: backendRes.reason || 'unknown', 
+    reason: fallbackReason, 
     error: backendRes.error,
     subscriptionStatus: 'not-registered' 
   };
