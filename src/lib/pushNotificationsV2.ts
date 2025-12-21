@@ -64,7 +64,7 @@ export function setOneSignalExternalUserId(userId: string): boolean {
   const despia = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
   
   if (!despia || typeof despia !== 'function') {
-    console.log('[PushV2] Despia not available - not in native app, skipping setonesignalplayerid');
+    console.warn('[PushV2] Despia bridge not available - cannot set external user ID (native rebuild or bridge issue?)');
     return false;
   }
   
@@ -172,6 +172,35 @@ export async function registerPushSubscription(
   session: { access_token: string; user?: { id: string } } | null,
   options: { force?: boolean; userId?: string } = {}
 ): Promise<PushSubscriptionResult> {
+  const registerBackend = async (playerId: string) => {
+    try {
+      const isDev = import.meta.env.DEV || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
+      const baseUrl = isDev ? 'https://totl-staging.netlify.app' : '';
+      
+      const res = await fetch(`${baseUrl}/.netlify/functions/registerPlayer`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          playerId,
+          platform: 'ios', // TODO: detect platform
+        }),
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('[PushV2] Backend registration failed:', errorData);
+        return { ok: false, reason: res.status === 401 ? 'no-session' : 'unknown', error: errorData.error || `Server error (${res.status})` };
+      }
+      
+      return { ok: true as const };
+    } catch (e: any) {
+      console.error('[PushV2] Registration error:', e);
+      return { ok: false, reason: 'unknown', error: e.message };
+    }
+  };
   // Check if already registered this session
   if (hasRegisteredThisSession && !options.force) {
     console.log('[PushV2] Already registered this session, skipping');
@@ -220,7 +249,13 @@ export async function registerPushSubscription(
   
   // Get Player ID (poll with timeout) - still useful for tracking/debugging
   console.log('[PushV2] Waiting for Player ID...');
-  const playerId = await pollForPlayerId(15000);
+  let playerId = await pollForPlayerId(15000);
+
+  // If still not available, extend the wait with a backoff to reduce flakiness
+  if (!playerId) {
+    console.log('[PushV2] Player ID not found in first window, retrying with extended backoff...');
+    playerId = await pollForPlayerId(15000); // extra 15s
+  }
   
   if (!playerId) {
     // With Despia V2, not having a player ID is less critical
@@ -238,10 +273,28 @@ export async function registerPushSubscription(
       };
     }
     
+    // Fire a background retry to capture the token if it becomes available shortly after
+    if (session?.access_token) {
+      setTimeout(async () => {
+        const retryId = await pollForPlayerId(15000);
+        if (retryId) {
+          console.log('[PushV2] ✅ Background retry obtained Player ID:', retryId.slice(0, 8) + '…');
+          const backendRes = await registerBackend(retryId);
+          if (backendRes.ok) {
+            hasRegisteredThisSession = true;
+            currentPlayerId = retryId;
+            console.log('[PushV2] ✅ Background registration succeeded');
+          } else {
+            console.warn('[PushV2] Background registration failed:', backendRes.reason, backendRes.error || '');
+          }
+        }
+      }, 3000);
+    }
+
     return { 
       ok: false, 
       reason: 'no-player-id', 
-      error: 'OneSignal Player ID not available. Please restart the app.',
+      error: 'OneSignal Player ID not available. Please restart the app and re-enable notifications in OS settings.',
       subscriptionStatus: 'not-registered'
     };
   }
@@ -249,58 +302,28 @@ export async function registerPushSubscription(
   console.log(`[PushV2] Got Player ID: ${playerId.slice(0, 8)}...`);
   
   // Register with backend (for tracking/auditing, not strictly required for V2)
-  try {
-    const isDev = import.meta.env.DEV || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
-    const baseUrl = isDev ? 'https://totl-staging.netlify.app' : '';
-    
-    const res = await fetch(`${baseUrl}/.netlify/functions/registerPlayer`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        playerId,
-        platform: 'ios', // TODO: detect platform
-      }),
-    });
-    
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      console.error('[PushV2] Backend registration failed:', errorData);
-      // With V2, backend registration is secondary - if external_user_id is set, we're good
-      if (hasSetExternalUserId) {
-        console.log('[PushV2] External user ID is set, marking as registered despite backend error');
-        hasRegisteredThisSession = true;
-        currentPlayerId = playerId;
-        return { ok: true, playerId, subscriptionStatus: 'subscribed' };
-      }
-      return { 
-        ok: false, 
-        reason: res.status === 401 ? 'no-session' : 'unknown',
-        error: errorData.error || `Server error (${res.status})`,
-        subscriptionStatus: 'not-registered'
-      };
-    }
-    
-    // Success - mark as registered for this session
+  const backendRes = await registerBackend(playerId);
+  if (backendRes.ok) {
     hasRegisteredThisSession = true;
     currentPlayerId = playerId;
-    
     console.log('[PushV2] ✅ Successfully registered device (Despia V2 + backend)');
     return { ok: true, playerId, subscriptionStatus: 'subscribed' };
-    
-  } catch (e: any) {
-    console.error('[PushV2] Registration error:', e);
-    // With V2, if external_user_id is set, we can still consider it successful
-    if (hasSetExternalUserId) {
-      console.log('[PushV2] External user ID is set, marking as registered despite error');
-      hasRegisteredThisSession = true;
-      currentPlayerId = playerId;
-      return { ok: true, playerId, subscriptionStatus: 'subscribed' };
-    }
-    return { ok: false, reason: 'unknown', error: e.message, subscriptionStatus: 'not-registered' };
   }
+
+  // With V2, if external_user_id is set, we can still consider it successful
+  if (hasSetExternalUserId) {
+    console.log('[PushV2] External user ID is set, marking as registered despite backend error');
+    hasRegisteredThisSession = true;
+    currentPlayerId = playerId;
+    return { ok: true, playerId, subscriptionStatus: 'subscribed' };
+  }
+
+  return { 
+    ok: false, 
+    reason: backendRes.reason || 'unknown', 
+    error: backendRes.error,
+    subscriptionStatus: 'not-registered' 
+  };
 }
 
 /**

@@ -164,11 +164,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function register() {
       if (cancelled || !user) return;
-      
+
       console.log(`[PushV2] Starting registration for user ${user.id}`);
+      // Give OneSignal/Despia a grace period to fetch the device token before we navigate away
+      const MIN_WAIT_MS = 2000;
+      const wait = new Promise((res) => setTimeout(res, MIN_WAIT_MS));
+
       // Pass userId explicitly for Despia V2 setonesignalplayerid call
-      const result = await registerPushSubscription(currentSession, { userId: user.id });
-      
+      const resultPromise = registerPushSubscription(currentSession, { userId: user.id });
+
+      const [result] = await Promise.all([resultPromise, wait]);
+
       if (result.ok) {
         console.log('[PushV2] ✅ Registration successful:', result.playerId?.slice(0, 8) + '…');
       } else if (result.reason === 'api-not-available') {

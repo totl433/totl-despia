@@ -75,6 +75,25 @@ export const handler: Handler = async (event) => {
 
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+  // If this playerId is currently associated with another user, reassign it to the current user
+  try {
+    const { data: existingPlayer } = await admin
+      .from('push_subscriptions')
+      .select('user_id')
+      .eq('player_id', playerId)
+      .maybeSingle();
+
+    if (existingPlayer?.user_id && existingPlayer.user_id !== userId) {
+      console.warn(`[registerPlayer] Reassigning playerId ${playerId.slice(0, 8)}… from user ${existingPlayer.user_id} to ${userId}`);
+      await admin
+        .from('push_subscriptions')
+        .update({ user_id: userId, is_active: true })
+        .eq('player_id', playerId);
+    }
+  } catch (e) {
+    console.warn('[registerPlayer] Failed to check/reassign player ownership:', e);
+  }
+
   // 1) Mark other devices for this user as inactive (single-device mode)
   // If you want multi-device support, remove this block
   await admin
