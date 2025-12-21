@@ -221,6 +221,19 @@ export async function registerPushSubscription(
     console.log('[PushV2] Despia not available - not in native app');
     return { ok: false, reason: 'api-not-available', subscriptionStatus: 'not-registered' };
   }
+
+  // Explicitly trigger native push permission/registration via Despia bridge
+  const despiaFn = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
+  if (despiaFn && typeof despiaFn === 'function') {
+    try {
+      despiaFn('registerpush://');
+      console.log('[PushV2] Triggered native push registration via despia registerpush://');
+    } catch (e) {
+      console.warn('[PushV2] Failed to trigger native push registration:', e);
+    }
+  } else {
+    console.warn('[PushV2] Despia bridge not available to request push permissions');
+  }
   
   // Check session
   if (!session?.access_token) {
