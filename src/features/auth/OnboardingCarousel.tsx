@@ -9,18 +9,22 @@ const ONBOARDING_SLIDES = [
   {
     title: 'Predict every gameweek',
     description: 'Ten fixtures. Three outcomes. Score out of 10 depending on how often you\'re right, or confidently wrong.',
+    imageUrl: '/assets/onboarding-1.png',
   },
   {
     title: 'Climb the global leaderboard',
     description: 'Every correct prediction adds up. Follow your gut, stay consistent and work from beginner to actual menace.',
+    imageUrl: '/assets/onboarding-2.png',
   },
   {
     title: 'Mini leagues get personal',
     description: 'Create leagues with 2–8 friends. Each week is head-to-head. Highest score wins. Group chats take a hit.',
+    imageUrl: '/assets/onboarding-3.png',
   },
   {
     title: 'Start anytime and still compete',
     description: 'Joined late? Fear not. Your form tracks the last 5 and 10 weeks, so every gameweek is a chance to push on.',
+    imageUrl: '/assets/onboarding-4.png',
   },
 ];
 
@@ -119,6 +123,7 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
             <div key={index} className="w-full h-full flex-shrink-0">
               <OnboardingSlide
                 title={slide.title}
+                imageUrl={slide.imageUrl}
               />
             </div>
           ))}
