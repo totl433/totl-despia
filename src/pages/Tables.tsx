@@ -171,8 +171,34 @@ export default function TablesPage() {
     });
   }, [leagues, memberCounts]);
   
-  // Combined loading state
-  const loading = leaguesLoading;
+  // Simple check: is everything ready (including chips)?
+  const isDataReady = useMemo(() => {
+    // Must have leagues loaded
+    if (leaguesLoading) return false;
+    
+    // Must have league data loaded
+    if (leagueDataLoading) return false;
+    
+    // If we have leagues, check that leagueData is complete for leagues with members
+    if (leagues.length > 0) {
+      // Check if we have data for all leagues that have members
+      const leaguesWithMembers = leagues.filter(l => (memberCounts[l.id] ?? 0) > 0);
+      if (leaguesWithMembers.length > 0) {
+        // All leagues with members must have complete leagueData with sortedMemberIds
+        const allHaveData = leaguesWithMembers.every(league => {
+          const data = leagueData[league.id];
+          return data && 
+                 data.members && 
+                 data.members.length > 0 && 
+                 data.sortedMemberIds && 
+                 data.sortedMemberIds.length > 0;
+        });
+        if (!allHaveData) return false;
+      }
+    }
+    
+    return true;
+  }, [leaguesLoading, leagueDataLoading, leagues, memberCounts, leagueData]);
 
   // Fetch member data and other Tables-specific data
   // NOTE: Leagues and unread counts come from useLeagues hook
@@ -663,6 +689,7 @@ export default function TablesPage() {
         }
 
         if (alive) {
+          console.log('[Tables] Initial load complete, setting leagueData for', Object.keys(leagueDataMap).length, 'leagues');
           setLeagueData(leagueDataMap);
           setLeagueDataLoading(false);
           
@@ -716,6 +743,16 @@ export default function TablesPage() {
   
   // Recalculate league data when outcomes change (reactive to live score updates)
   useEffect(() => {
+    // Skip if still loading initial data - let the initial effect handle it
+    if (leagueDataLoading) {
+      return;
+    }
+    
+    // Skip if leagueData is not yet populated (initial load still in progress)
+    if (Object.keys(leagueData).length === 0) {
+      return;
+    }
+    
     if (!user?.id || leagues.length === 0 || membersByLeagueId.size === 0) {
       console.log(`[Tables Reactive] SKIPPING - user: ${!!user?.id}, leagues: ${leagues.length}, membersByLeagueId: ${membersByLeagueId.size}`);
       return;
@@ -961,7 +998,6 @@ export default function TablesPage() {
     setLeagueData(leagueDataMap);
   }, [user?.id, leagues, picksData, membersByLeagueId, leagueStartGwMap, allFixturesData, outcomeByGwIdx, currentGw, submittedUserIdsSet]);
 
-
   const createLeague = useCallback(async () => {
     if (!leagueName.trim() || !user?.id) return;
     setCreating(true);
@@ -1070,7 +1106,7 @@ export default function TablesPage() {
           </div>
         )}
 
-        {loading || leagueDataLoading ? (
+        {!isDataReady ? (
           <div className="mt-6 flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
           </div>

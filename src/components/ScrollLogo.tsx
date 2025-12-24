@@ -28,10 +28,14 @@ export default function ScrollLogo() {
           const rotateY = flipProgress * 180;
           const logoOpacity = Math.max(0, 1 - scrollY / 250);
           const logoScale = Math.max(0.4, 1 - scrollY / 400);
-          const logoVisible = scrollY < 400;
           
-          // Update container height
-          containerRef.current.style.height = logoVisible ? '130px' : '0px';
+          // Use transform scaleY to collapse without affecting layout
+          // This prevents scroll jumps by not changing the actual height
+          const collapseProgress = Math.min(1, Math.max(0, (scrollY - 350) / 50));
+          const scaleY = 1 - collapseProgress;
+          
+          containerRef.current.style.transform = `scaleY(${scaleY})`;
+          containerRef.current.style.transformOrigin = 'top';
           
           // Update logo transform and opacity
           if (scrollY > 0) {
@@ -61,13 +65,16 @@ export default function ScrollLogo() {
   return (
     <div 
       ref={containerRef}
-      className="w-full flex justify-center items-center transition-all duration-200"
+      className="w-full flex justify-center items-center"
       style={{ 
-        height: '130px', // Default height
+        height: '130px', // Keep height constant to prevent layout shift
         overflow: 'hidden',
         paddingTop: '0px',
         paddingBottom: '0px',
         perspective: '1000px', // Enable 3D perspective
+        transition: 'transform 0.3s ease-out', // Smooth scale transition
+        transform: 'scaleY(1)', // Initial scale
+        transformOrigin: 'top', // Scale from top
       }}
     >
       <div

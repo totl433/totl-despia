@@ -2786,6 +2786,15 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           -webkit-transform: translate3d(0, 0, 0) !important;
           will-change: transform !important;
           contain: layout style paint !important;
+          touch-action: none !important;
+          user-select: none !important;
+          -webkit-user-select: none !important;
+        }
+        .league-header-fixed a,
+        .league-header-fixed button {
+          touch-action: manipulation !important;
+          user-select: none !important;
+          -webkit-user-select: none !important;
         }
         .league-header-fixed .relative {
           position: relative !important;

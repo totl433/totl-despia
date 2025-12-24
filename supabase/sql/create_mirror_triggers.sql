@@ -241,17 +241,18 @@ CREATE TRIGGER trigger_mirror_fixtures_to_app
 -- ============================================================================
 -- REVERSE MIRRORING: Mirror App → Web (for app-only users)
 -- ============================================================================
--- The app-only users (Jof, Carl, SP, ThomasJamesBird, Sim, Will Middleton) submit on App
+-- The app-only users (Jof, Carl, SP, ThomasJamesBird, Sim, Will Middleton, David Bird) submit on App
 -- but need to appear on Web too, so we mirror their App submissions to Web
 -- ============================================================================
 
--- App-only user IDs (6 users who submit on App)
+-- App-only user IDs (7 users who submit on App)
 -- Jof: 4542c037-5b38-40d0-b189-847b8f17c222
 -- Carl: f8a1669e-2512-4edf-9c21-b9f87b3efbe2
 -- SP: 9c0bcf50-370d-412d-8826-95371a72b4fe
 -- ThomasJamesBird: 36f31625-6d6c-4aa4-815a-1493a812841b
 -- Sim: c94f9804-ba11-4cd2-8892-49657aa6412c
 -- Will Middleton: 42b48136-040e-42a3-9b0a-dc9550dd1cae
+-- David Bird: d2cbeca9-7dae-4be1-88fb-706911d67256
 
 -- ============================================================================
 -- TRIGGER 4: Mirror picks from App (app_picks) to Web (picks) - App-only users
@@ -273,7 +274,8 @@ BEGIN
     '9c0bcf50-370d-412d-8826-95371a72b4fe', -- SP
     '36f31625-6d6c-4aa4-815a-1493a812841b', -- ThomasJamesBird
     'c94f9804-ba11-4cd2-8892-49657aa6412c', -- Sim
-    '42b48136-040e-42a3-9b0a-dc9550dd1cae'  -- Will Middleton
+    '42b48136-040e-42a3-9b0a-dc9550dd1cae', -- Will Middleton
+    'd2cbeca9-7dae-4be1-88fb-706911d67256'  -- David Bird
   );
   
   -- Only mirror if this is a test user
@@ -371,7 +373,8 @@ BEGIN
     '9c0bcf50-370d-412d-8826-95371a72b4fe', -- SP
     '36f31625-6d6c-4aa4-815a-1493a812841b', -- ThomasJamesBird
     'c94f9804-ba11-4cd2-8892-49657aa6412c', -- Sim
-    '42b48136-040e-42a3-9b0a-dc9550dd1cae'  -- Will Middleton
+    '42b48136-040e-42a3-9b0a-dc9550dd1cae', -- Will Middleton
+    'd2cbeca9-7dae-4be1-88fb-706911d67256'  -- David Bird
   );
   
   -- Only mirror if this is a test user
@@ -424,7 +427,7 @@ CREATE TRIGGER trigger_mirror_submissions_to_web
 -- 6. All picks in app_picks (App users + mirrored Web users) are scored by the API
 -- 7. The API writes results directly to app_gw_results (not mirrored from Web)
 -- 8. Circular updates are prevented by checking if data already exists with same values
--- 9. App → Web mirroring only applies to app-only users (Jof, Carl, SP, ThomasJamesBird, Sim, Will Middleton)
+-- 9. App → Web mirroring only applies to app-only users (Jof, Carl, SP, ThomasJamesBird, Sim, Will Middleton, David Bird)
 -- 10. Web → App mirroring applies to all Web users
 -- 11. Fixture matching: Triggers match fixtures by team codes/names, not just fixture_index
 --     This allows fixtures to be in different orders between web and app tables

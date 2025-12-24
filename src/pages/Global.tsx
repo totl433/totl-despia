@@ -907,7 +907,7 @@ export default function GlobalLeaderboardPage() {
             <div className="text-center mb-2">
               {latestGw && latestGw >= 5 ? (
                 <div className="text-sm text-slate-600">
-                  All Players who completed the last 5 Rounds
+                  All Players who completed the last 5 Gameweeks
               </div>
             ) : (
               <div className="text-sm text-amber-600 font-medium">
@@ -921,7 +921,7 @@ export default function GlobalLeaderboardPage() {
             <div className="text-center mb-2">
             {latestGw && latestGw >= 10 ? (
                 <div className="text-sm text-slate-600">
-                  All Players who completed the last 10 Rounds
+                  All Players who completed the last 10 Gameweeks
               </div>
             ) : (
               <div className="text-sm text-amber-600 font-medium">

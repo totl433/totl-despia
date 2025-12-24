@@ -1235,62 +1235,6 @@ export default function TestApiPredictions() {
     setPicks(newPicks);
   };
   
-  const handleStartOver = async () => {
-    if (!user?.id || !currentTestGw) return;
-    
-    try {
-      // Delete submission FIRST to ensure nothing is marked as confirmed
-      const { error: submissionError } = await supabase
-        .from('app_gw_submissions')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('gw', currentTestGw);
-      
-      if (submissionError) {
-        console.error('[TestApiPredictions] Error deleting test_api_submission:', submissionError);
-      } else {
-      }
-      
-      // Delete ALL picks from database for this GW
-      const { error: picksError } = await supabase
-        .from('app_picks')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('gw', currentTestGw);
-      
-      if (picksError) {
-        console.error('[TestApiPredictions] ❌ Error deleting test_api_picks:', picksError);
-      } else {
-      }
-      
-      // Reset ALL state after successful deletion
-      setPicks(new Map());
-      setCurrentIndex(0);
-      setSubmitted(false);
-      setViewMode("cards"); // Ensure we're in swipe mode
-      hasEverBeenSubmittedRef.current = false;
-      setHasEverBeenSubmitted(false); // Clear sessionStorage
-      // Don't reset picksChecked/submissionChecked - keep them true so page doesn't show loading
-      // The data is already loaded, we just cleared the picks/submission
-      setLoading(false); // Ensure loading is false so page can render
-      
-      // Clear predictions cache so fresh data loads on next visit
-      if (user?.id && currentTestGw) {
-        removeCached(`predictions:${user.id}:${currentTestGw}`);
-      }
-      
-    } catch (error) {
-      console.error('[TestApiPredictions] ❌ Error resetting picks:', error);
-      // Even if deletion fails, reset state to allow user to try again
-      setPicks(new Map());
-      setCurrentIndex(0);
-      setSubmitted(false);
-      setViewMode("cards");
-      hasEverBeenSubmittedRef.current = false;
-      setHasEverBeenSubmitted(false);
-    }
-  };
-
   const handleConfirmClick = async () => {
     if (!allPicksMade) {
       setConfirmCelebration({ success: false, message: "You still have fixtures to call!" });
@@ -1310,7 +1254,7 @@ export default function TestApiPredictions() {
         .maybeSingle();
       
       if (existingSubmission?.submitted_at) {
-        console.warn('[TestApiPredictions] Already submitted - this should not happen if Start Over worked');
+        console.warn('[TestApiPredictions] Already submitted - this should not happen');
         setSubmitted(true);
         return;
       }
@@ -1996,15 +1940,6 @@ export default function TestApiPredictions() {
               <>
                 {!allPicksMade && (<div className="text-center text-sm text-amber-600 mb-2">You haven't made all your predictions yet</div>)}
                 <div className="grid gap-3">
-                  {!allPicksMade && (
-                    <button 
-                      onClick={handleStartOver}
-                      disabled={submitted}
-                      className="w-full py-3 bg-slate-200 text-slate-700 rounded-2xl font-semibold hover:bg-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Start Over
-                    </button>
-                  )}
                   <button 
                     onClick={handleConfirmClick} 
                     disabled={!allPicksMade}
@@ -2134,14 +2069,30 @@ export default function TestApiPredictions() {
             {!checkSubmittedBeforeSwipe && effectiveViewMode === "cards" && (
               <div className="mt-4 flex justify-center mb-0">
                 <div className="inline-flex items-center gap-2 rounded-full bg-[#e6f3f0] px-3 py-2">
-                  {fixtures.map((_, idx) => {
+                  {fixtures.map((fixture, idx) => {
                     const isComplete = idx < currentIndex;
                     const isCurrent = idx === currentIndex;
+                    const hasPick = picks.has(fixture.fixture_index);
+                    const showCheckmark = hasPick && !isCurrent;
+                    // If fixture has a pick but isn't complete yet, use green background
+                    const bgColor = isCurrent 
+                      ? "bg-[#178f72]" 
+                      : hasPick 
+                        ? "bg-[#116f59]" 
+                        : isComplete 
+                          ? "bg-[#116f59]" 
+                          : "bg-white";
                     return (
                       <div
                         key={idx}
-                        className={`flex items-center justify-center transition-all ${isCurrent ? "h-2 w-6 rounded-full bg-[#178f72]" : "h-3 w-3 rounded-full"} ${isComplete && !isCurrent ? "bg-[#116f59]" : !isCurrent ? "bg-white" : ""}`}
-                      />
+                        className={`flex items-center justify-center transition-all ${isCurrent ? "h-2 w-6 rounded-full" : "h-3 w-3 rounded-full"} ${bgColor}`}
+                      >
+                        {showCheckmark && (
+                          <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

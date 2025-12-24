@@ -742,23 +742,6 @@ export default function PredictionsPage() {
         </div>
       )}
 
-      {/* Dummy button for submitted state - triggers confetti and navigates to home */}
-      {submitted && fixtures.length > 0 && (
-        <div className="mt-6 pb-6">
-          <button
-            onClick={() => {
-              // Set flag for home page to show confetti
-              sessionStorage.setItem('showConfettiOnHome', 'true');
-              // Navigate and scroll to top immediately
-              navigate('/');
-              window.scrollTo({ top: 0, behavior: 'instant' });
-            }}
-            className="w-full py-4 bg-green-600 text-white rounded-2xl font-bold hover:bg-green-700 transition-colors"
-          >
-            SUBMIT YOUR PREDICTIONS
-          </button>
-        </div>
-      )}
 
       {/* Submit Confirmation Modal */}
       {showSubmitConfirm && (

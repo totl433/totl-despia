@@ -716,6 +716,10 @@ video {
   visibility: visible;
 }
 
+.collapse{
+  visibility: collapse;
+}
+
 .static{
   position: static;
 }
@@ -1345,6 +1349,10 @@ video {
 
 .w-full{
   width: 100%;
+}
+
+.w-2\.5{
+  width: 0.625rem;
 }
 
 .min-w-0{
