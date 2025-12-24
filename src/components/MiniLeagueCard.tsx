@@ -2,7 +2,6 @@ import { useMemo, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
 import { ordinal, initials, toStringSet } from '../lib/helpers';
-import { useGameweekFinished } from '../hooks/useGameweekFinished';
 import { useGameweekState } from '../hooks/useGameweekState';
 
 export type LeagueRow = {
