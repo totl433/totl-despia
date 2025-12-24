@@ -9,16 +9,44 @@ export function openWhatsApp(message: string): void {
   const isDespia = isDespiaAvailable();
   const encodedMessage = encodeURIComponent(message);
   
+  console.log('[WhatsApp] Opening WhatsApp, isDespia:', isDespia);
+  
   if (isDespia) {
     // In Despia native app, use native deep links
     // Both iOS and Android support whatsapp://send?text=
-    // Use location.href for native deep links in webviews (more reliable than window.open)
     const whatsappUrl = `whatsapp://send?text=${encodedMessage}`;
+    console.log('[WhatsApp] Attempting to open deep link:', whatsappUrl);
+    
+    // Try multiple methods - different webviews prefer different approaches
     try {
-      // In webviews, location.href is the standard way to open deep links
+      // Method 1: Create anchor and click (most reliable in webviews)
+      const link = document.createElement('a');
+      link.href = whatsappUrl;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (document.body.contains(link)) {
+          document.body.removeChild(link);
+        }
+      }, 100);
+    } catch (e) {
+      console.log('[WhatsApp] Anchor method failed:', e);
+    }
+    
+    // Method 2: Try window.open without _blank (some webviews prefer this for deep links)
+    try {
+      window.open(whatsappUrl);
+    } catch (e) {
+      console.log('[WhatsApp] window.open failed:', e);
+    }
+    
+    // Method 3: Try window.location.href as last resort
+    try {
       window.location.href = whatsappUrl;
-    } catch (error) {
-      // Fallback to web version if deep link fails
+    } catch (e) {
+      console.log('[WhatsApp] window.location.href failed:', e);
+      // If all deep link methods fail, fallback to web version
       window.open(`https://wa.me/?text=${encodedMessage}`, '_blank');
     }
   } else {

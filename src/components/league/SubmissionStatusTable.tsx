@@ -27,8 +27,15 @@ export function generateShareReminderMessage(picksGw: number, fixtures: Array<{ 
 
 // Helper function to handle share reminder click
 export function handleShareReminder(picksGw: number, fixtures: Array<{ gw: number; kickoff_time?: string | null }>) {
-  const message = generateShareReminderMessage(picksGw, fixtures);
-  openWhatsApp(message);
+  console.log('[SubmissionStatusTable] handleShareReminder called, picksGw:', picksGw);
+  try {
+    const message = generateShareReminderMessage(picksGw, fixtures);
+    console.log('[SubmissionStatusTable] Generated message:', message);
+    openWhatsApp(message);
+  } catch (error) {
+    console.error('[SubmissionStatusTable] Error in handleShareReminder:', error);
+    alert('Error sharing reminder. Please try again.');
+  }
 }
 
 /**
@@ -88,7 +95,13 @@ export default function SubmissionStatusTable({
           </div>
           {!allSubmitted && (
             <button
-              onClick={handleShare}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[SubmissionStatusTable] Button clicked (compact variant)');
+                handleShare();
+              }}
               className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -166,7 +179,13 @@ export default function SubmissionStatusTable({
         </div>
         {!allSubmitted && (
           <button
-            onClick={handleShare}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('[SubmissionStatusTable] Button clicked (full variant)');
+              handleShare();
+            }}
             className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
