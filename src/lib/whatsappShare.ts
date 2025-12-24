@@ -1,23 +1,6 @@
 import { isDespiaAvailable } from './pushNotificationsV2';
 
 /**
- * Detect if we're on iOS
- */
-function isIOS(): boolean {
-  if (typeof window === 'undefined') return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-
-/**
- * Detect if we're on Android
- */
-function isAndroid(): boolean {
-  if (typeof window === 'undefined') return false;
-  return /Android/.test(navigator.userAgent);
-}
-
-/**
  * Open WhatsApp with a pre-filled message
  * In Despia (native app), uses native deep links (whatsapp://)
  * In regular browsers, uses web links (wa.me)
