@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import ScrollLogo from "../components/ScrollLogo";
@@ -1456,6 +1457,52 @@ export default function HomePage() {
     return () => { alive = false; };
   }, [user?.id, gw]);
 
+  // Load user submissions to check streak and whether to show pick buttons
+  const [userSubmissions, setUserSubmissions] = useState<Set<number>>(new Set());
+  
+  useEffect(() => {
+    if (!user?.id) {
+      setUserSubmissions(new Set());
+      return;
+    }
+    
+    let alive = true;
+    const loadSubmissions = async () => {
+      // Get all submissions for the user
+      const { data: submissions } = await supabase
+        .from('app_gw_submissions')
+        .select('gw')
+        .eq('user_id', user.id)
+        .order('gw', { ascending: false });
+      
+      if (alive && submissions) {
+        setUserSubmissions(new Set(submissions.map((s: any) => s.gw)));
+      }
+    };
+    
+    loadSubmissions();
+    
+    // Listen for prediction submission events to update immediately
+    const handleSubmission = () => {
+      if (alive) {
+        loadSubmissions();
+      }
+    };
+    
+    window.addEventListener('predictionsSubmitted', handleSubmission);
+    
+    return () => {
+      alive = false;
+      window.removeEventListener('predictionsSubmitted', handleSubmission);
+    };
+  }, [user?.id, gw]); // Also refresh when current GW changes
+
+  // Check if user has submitted predictions for current GW
+  const hasSubmittedCurrentGw = useMemo(() => {
+    if (!user?.id || !gw) return false;
+    return userSubmissions.has(gw);
+  }, [user?.id, gw, userSubmissions]);
+
   // Calculate score component - memoized
   const scoreComponent = useMemo(() => {
     if (!fixtures.length) return null;
@@ -1522,7 +1569,7 @@ export default function HomePage() {
       </div>
     );
     
-    // Starting Soon pill (similar to ResultsTable, but adapted for Home page)
+    // Starting Soon pill (shown after user has submitted)
     const StartingSoonBadge = () => (
       <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-500 text-white shadow-md shadow-amber-500/30 self-start">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1532,9 +1579,25 @@ export default function HomePage() {
       </div>
     );
     
-    // Show "Starting Soon" if no active games but fixtures are scheduled
+    // Make Your Predictions CTA button (identical to GO button in banner)
+    const MakePredictionsCTA = () => (
+      <Link
+        to="/predictions"
+        className="flex-shrink-0 px-4 py-2 bg-[#1C8376] text-white rounded-[20px] font-medium hover:bg-[#1C8376]/90 transition-colors flex items-center gap-1"
+      >
+        Go
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+        </svg>
+      </Link>
+    );
+    
+    // Show "Make Your Predictions" CTA if no active games, fixtures are scheduled, and user hasn't submitted
+    // Show "Starting soon" if user has already submitted
     if (!hasAnyActive && hasStartingSoonFixtures) {
-      return <StartingSoonBadge />;
+      // Check if user has submitted for current GW
+      const hasSubmitted = hasSubmittedCurrentGw;
+      return hasSubmitted ? <StartingSoonBadge /> : <MakePredictionsCTA />;
     }
     
     if (!hasAnyActive && hasSubmittedPicks) {
@@ -1572,7 +1635,7 @@ export default function HomePage() {
         />
       </div>
     );
-  }, [isInApiTestLeague, fixtures, liveScores, userPicks]);
+  }, [isInApiTestLeague, fixtures, liveScores, userPicks, hasSubmittedCurrentGw]);
 
   // Check if there are any live games - optimized
   const hasLiveGames = useMemo(() => {
@@ -1587,34 +1650,6 @@ export default function HomePage() {
   }, [fixtures, liveScores]);
 
   // Calculate streak data - optimized
-  // Load user submissions to check streak (needed for current GW that hasn't finished yet)
-  const [userSubmissions, setUserSubmissions] = useState<Set<number>>(new Set());
-  
-  useEffect(() => {
-    if (!user?.id || !latestGw) {
-      setUserSubmissions(new Set());
-      return;
-    }
-    
-    let alive = true;
-    (async () => {
-      // Get all submissions for the user
-      const { data: submissions } = await supabase
-        .from('app_gw_submissions')
-        .select('gw')
-        .eq('user_id', user.id)
-        .order('gw', { ascending: false });
-      
-      if (alive && submissions) {
-        setUserSubmissions(new Set(submissions.map((s: any) => s.gw)));
-      }
-    })();
-    
-    return () => {
-      alive = false;
-    };
-  }, [user?.id, latestGw]);
-  
   const userStreakData = useMemo(() => {
     if (!user?.id || !latestGw) return null;
     
@@ -1752,6 +1787,7 @@ export default function HomePage() {
             fixturesLoading={fixturesLoading}
             hasCheckedCache={hasCheckedCacheRef.current}
             currentGw={gw}
+            showPickButtons={hasSubmittedCurrentGw}
           />
 
           {/* Bottom padding */}

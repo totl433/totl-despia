@@ -3312,6 +3312,11 @@ video {
   --tw-shadow: var(--tw-shadow-colored);
 }
 
+.shadow-\[\#1C8376\]\/30{
+  --tw-shadow-color: rgb(28 131 118 / 0.3);
+  --tw-shadow: var(--tw-shadow-colored);
+}
+
 .outline{
   outline-style: solid;
 }

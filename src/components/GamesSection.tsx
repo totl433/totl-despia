@@ -16,6 +16,7 @@ interface GamesSectionProps {
   fixturesLoading: boolean;
   hasCheckedCache: boolean;
   currentGw: number | null;
+  showPickButtons?: boolean;
 }
 
 export function GamesSection({
@@ -28,7 +29,8 @@ export function GamesSection({
   scoreComponent,
   fixturesLoading,
   hasCheckedCache,
-  currentGw
+  currentGw,
+  showPickButtons = true,
 }: GamesSectionProps) {
   // Calculate title with GW number: "Gameweek (XX)" format
   const title = useMemo(() => {
@@ -54,7 +56,7 @@ export function GamesSection({
         <DateGroupedFixtures
           fixtureCards={fixtureCards}
           isTestApi={isInApiTestLeague}
-          showPickButtons={true}
+          showPickButtons={showPickButtons}
           headerRightElement={hasLiveGames ? (
             <LiveGamesToggle value={showLiveOnly} onChange={onToggleLiveOnly} />
           ) : undefined}
