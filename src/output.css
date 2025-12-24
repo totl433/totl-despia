@@ -1038,6 +1038,14 @@ video {
   margin-top: auto;
 }
 
+.-mt-2{
+  margin-top: -0.5rem;
+}
+
+.-mt-4{
+  margin-top: -1rem;
+}
+
 .block{
   display: block;
 }
@@ -1188,6 +1196,14 @@ video {
 
 .h-screen{
   height: 100vh;
+}
+
+.h-\[60px\]{
+  height: 60px;
+}
+
+.h-\[57px\]{
+  height: 57px;
 }
 
 .max-h-60{
@@ -1353,6 +1369,14 @@ video {
 
 .w-2\.5{
   width: 0.625rem;
+}
+
+.w-\[60px\]{
+  width: 60px;
+}
+
+.w-\[57px\]{
+  width: 57px;
 }
 
 .min-w-0{

@@ -54,9 +54,9 @@ export default function DateGroupedFixtures({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {groupedByDate.map(({ date, cards }, dateIdx) => (
-        <div key={date} className={dateIdx > 0 ? 'mt-6' : ''}>
+        <div key={date} className={dateIdx > 0 ? 'mt-4' : ''}>
           <DateHeader date={date} rightElement={dateIdx === 0 ? headerRightElement : undefined} />
           <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">
             {cards.map(({ fixture, liveScore, pick }, cardIdx) => (

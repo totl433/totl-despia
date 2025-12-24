@@ -1581,15 +1581,23 @@ export default function HomePage() {
     
     // Make Your Predictions CTA button (identical to GO button in banner)
     const MakePredictionsCTA = () => (
-      <Link
-        to="/predictions"
-        className="flex-shrink-0 px-4 py-2 bg-[#1C8376] text-white rounded-[20px] font-medium hover:bg-[#1C8376]/90 transition-colors flex items-center gap-1"
-      >
-        Go
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-        </svg>
-      </Link>
+      <div className="flex items-center gap-1">
+        <img 
+          src="/assets/Animation/Volley-Pointing.gif" 
+          alt="Volley pointing" 
+          className="w-[57px] h-[57px] object-contain -mt-4"
+          style={{ imageRendering: 'pixelated' }}
+        />
+        <Link
+          to="/predictions"
+          className="flex-shrink-0 px-4 py-2 bg-[#1C8376] text-white rounded-[20px] font-medium hover:bg-[#1C8376]/90 transition-colors flex items-center gap-1"
+        >
+          Go
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+          </svg>
+        </Link>
+      </div>
     );
     
     // Show "Make Your Predictions" CTA if no active games, fixtures are scheduled, and user hasn't submitted

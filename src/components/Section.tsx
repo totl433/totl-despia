@@ -111,7 +111,7 @@ export default function Section({
         {subtitle && (
           <div className="mt-1 text-sm text-slate-500">{subtitle}</div>
         )}
-        <div className="mt-3">{children}</div>
+        <div className="mt-2">{children}</div>
       </section>
       
       {infoTitle && infoDescription && (
