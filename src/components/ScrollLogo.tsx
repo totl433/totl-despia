@@ -40,7 +40,8 @@ export default function ScrollLogo() {
           
           // Calculate which face should be visible based on rotation
           const normalizedAngle = ((rotateY % 360) + 360) % 360; // Normalize to 0-360
-          const showBackFace = normalizedAngle > 90 && normalizedAngle < 270;
+          // Show back face when rotated between 80-280 degrees (with buffer to prevent overlap)
+          const showBackFace = normalizedAngle > 80 && normalizedAngle < 280;
           
           // Get face elements
           const frontFace = logoRef.current?.querySelector('[data-face="front"]') as HTMLElement;
@@ -52,12 +53,18 @@ export default function ScrollLogo() {
             logoRef.current.style.transform = `perspective(1000px) rotateY(${rotateY}deg) scale(${logoScale})`;
             logoRef.current.style.transition = 'opacity 0.1s ease-out, transform 0.1s ease-out';
             
-            // Control face visibility
+            // Control face visibility - instant switch, no transition
             if (frontFace) {
+              frontFace.style.transition = 'opacity 0s, visibility 0s';
               frontFace.style.opacity = showBackFace ? '0' : '1';
+              frontFace.style.visibility = showBackFace ? 'hidden' : 'visible';
+              frontFace.style.pointerEvents = showBackFace ? 'none' : 'auto';
             }
             if (backFace) {
+              backFace.style.transition = 'opacity 0s, visibility 0s';
               backFace.style.opacity = showBackFace ? '1' : '0';
+              backFace.style.visibility = showBackFace ? 'visible' : 'hidden';
+              backFace.style.pointerEvents = showBackFace ? 'auto' : 'none';
             }
           } else {
             // Reset to initial state
@@ -65,8 +72,18 @@ export default function ScrollLogo() {
             logoRef.current.style.transform = `perspective(1000px) rotateY(0deg) scale(1)`;
             logoRef.current.style.transition = 'opacity 0.6s ease-out, transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)';
             
-            if (frontFace) frontFace.style.opacity = '1';
-            if (backFace) backFace.style.opacity = '0';
+            if (frontFace) {
+              frontFace.style.transition = 'opacity 0s, visibility 0s';
+              frontFace.style.opacity = '1';
+              frontFace.style.visibility = 'visible';
+              frontFace.style.pointerEvents = 'auto';
+            }
+            if (backFace) {
+              backFace.style.transition = 'opacity 0s, visibility 0s';
+              backFace.style.opacity = '0';
+              backFace.style.visibility = 'hidden';
+              backFace.style.pointerEvents = 'none';
+            }
           }
         }
       });
@@ -144,7 +161,8 @@ export default function ScrollLogo() {
             justifyContent: 'center',
             zIndex: 2,
             opacity: 1,
-            transition: 'opacity 0.1s ease-out',
+            visibility: 'visible',
+            transition: 'opacity 0s, visibility 0s',
           }}
         >
           <img 
@@ -173,28 +191,39 @@ export default function ScrollLogo() {
             justifyContent: 'center',
             zIndex: 1,
             opacity: 0,
-            transition: 'opacity 0.1s ease-out',
+            visibility: 'hidden',
+            transition: 'opacity 0s, visibility 0s',
           }}
         >
-          {/* Shiny gradient with logo mask - using the correct predictions gradient */}
+          {/* Shiny gradient with logo mask - using regular mask, mirror via wrapper */}
           <div
             style={{
               width: '123px',
               height: '110px',
-              background: 'linear-gradient(to bottom right, #facc15 0%, #f97316 25%, #ec4899 50%, #9333ea 100%)',
-              backgroundSize: '200% 200%',
-              position: 'relative',
-              overflow: 'hidden',
-              WebkitMaskImage: 'url(/assets/badges/totl-logo1.svg)',
-              WebkitMaskSize: 'contain',
-              WebkitMaskRepeat: 'no-repeat',
-              WebkitMaskPosition: 'center',
-              maskImage: 'url(/assets/badges/totl-logo1.svg)',
-              maskSize: 'contain',
-              maskRepeat: 'no-repeat',
-              maskPosition: 'center',
+              transform: 'scaleX(-1)', // Mirror the entire content
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
+            <div
+              style={{
+                width: '123px',
+                height: '110px',
+                background: 'linear-gradient(to bottom right, #facc15 0%, #f97316 25%, #ec4899 50%, #9333ea 100%)',
+                backgroundSize: '200% 200%',
+                position: 'relative',
+                overflow: 'hidden',
+                WebkitMaskImage: 'url(/assets/badges/totl-logo1.svg)',
+                WebkitMaskSize: 'contain',
+                WebkitMaskRepeat: 'no-repeat',
+                WebkitMaskPosition: 'center',
+                maskImage: 'url(/assets/badges/totl-logo1.svg)',
+                maskSize: 'contain',
+                maskRepeat: 'no-repeat',
+                maskPosition: 'center',
+              }}
+            >
             {/* Shimmer effect overlay - synchronized animations */}
             <div
               style={{
@@ -220,6 +249,7 @@ export default function ScrollLogo() {
             />
           </div>
         </div>
+      </div>
       </div>
     </div>
     </>
