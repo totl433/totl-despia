@@ -85,9 +85,18 @@ export default function ScrollLogo() {
   return (
     <>
       <style>{`
-        @keyframes shimmer {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
+        @keyframes logo-shimmer {
+          0% {
+            transform: translateX(-100%) skewX(-15deg);
+            opacity: 0;
+          }
+          50% {
+            opacity: 1;
+          }
+          100% {
+            transform: translateX(100%) skewX(-15deg);
+            opacity: 0;
+          }
         }
       `}</style>
       <div 
@@ -186,13 +195,16 @@ export default function ScrollLogo() {
               maskPosition: 'center',
             }}
           >
-            {/* Shimmer effect overlay */}
+            {/* Shimmer effect overlay - synchronized animations */}
             <div
               style={{
                 position: 'absolute',
                 inset: 0,
                 background: 'linear-gradient(to right, transparent 0%, rgba(255,255,255,0.7) 50%, transparent 100%)',
-                animation: 'shimmer 1.2s ease-in-out infinite',
+                animation: 'logo-shimmer 1.2s linear infinite',
+                willChange: 'transform, opacity',
+                backfaceVisibility: 'hidden',
+                WebkitBackfaceVisibility: 'hidden',
               }}
             />
             <div
@@ -200,7 +212,10 @@ export default function ScrollLogo() {
                 position: 'absolute',
                 inset: 0,
                 background: 'linear-gradient(to right, transparent 0%, rgba(254,240,138,0.5) 50%, transparent 100%)',
-                animation: 'shimmer 1.8s ease-in-out infinite 0.4s',
+                animation: 'logo-shimmer 1.8s linear infinite 0.4s',
+                willChange: 'transform, opacity',
+                backfaceVisibility: 'hidden',
+                WebkitBackfaceVisibility: 'hidden',
               }}
             />
           </div>
