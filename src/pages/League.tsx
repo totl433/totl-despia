@@ -440,6 +440,62 @@ export default function LeaguePage() {
     localStorage.setItem('oldSchoolMode', JSON.stringify(oldSchoolMode));
   }, [oldSchoolMode]);
 
+  // Prevent body/html scrolling and keep header fixed
+  useEffect(() => {
+    // Prevent body and html from scrolling
+    document.body.classList.add('league-page-active');
+    document.documentElement.classList.add('league-page-active');
+    
+    // Ensure header stays fixed - check periodically and on scroll
+    const preventHeaderScroll = () => {
+      const header = document.querySelector('.league-header-fixed') as HTMLElement;
+      if (header) {
+        const currentTop = header.style.top || window.getComputedStyle(header).top;
+        if (currentTop !== '0px' && currentTop !== '0') {
+          header.style.top = '0';
+          header.style.transform = 'translate3d(0, 0, 0)';
+        }
+      }
+    };
+    
+    // Monitor window scroll and reset header if it moves
+    const handleWindowScroll = () => {
+      preventHeaderScroll();
+      // Reset window scroll to 0 if it somehow scrolled
+      if (window.scrollY !== 0 || window.pageYOffset !== 0) {
+        window.scrollTo(0, 0);
+      }
+    };
+    
+    // Prevent touchmove outside content wrapper that could cause body scroll
+    const handleTouchMove = (e: TouchEvent) => {
+      const target = e.target as HTMLElement;
+      // Only prevent if touching outside scrollable areas
+      const isInScrollableArea = target.closest('.league-content-wrapper') || 
+                                  target.closest('.league-header-fixed') ||
+                                  target.closest('.chat-tab-wrapper');
+      if (!isInScrollableArea) {
+        e.preventDefault();
+      }
+    };
+    
+    window.addEventListener('scroll', handleWindowScroll, { passive: true });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    
+    // Check periodically to ensure header stays fixed
+    const checkInterval = setInterval(preventHeaderScroll, 100);
+    
+    preventHeaderScroll();
+    
+    return () => {
+      document.body.classList.remove('league-page-active');
+      document.documentElement.classList.remove('league-page-active');
+      window.removeEventListener('scroll', handleWindowScroll);
+      document.removeEventListener('touchmove', handleTouchMove);
+      clearInterval(checkInterval);
+    };
+  }, []);
+
   // Keep header fixed when keyboard appears
   useEffect(() => {
     const handleFocusIn = (e: FocusEvent) => {
@@ -2774,8 +2830,19 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
       height: '100vh',
       maxHeight: '100vh',
       overflow: 'hidden',
+      touchAction: 'none',
     }}>
       <style>{`
+        /* Prevent body/html scrolling that could affect fixed header */
+        body.league-page-active {
+          overflow: hidden !important;
+          position: fixed !important;
+          width: 100% !important;
+          height: 100% !important;
+        }
+        html.league-page-active {
+          overflow: hidden !important;
+        }
         .league-header-fixed {
           position: fixed !important;
           top: 0 !important;
@@ -2789,6 +2856,9 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           touch-action: none !important;
           user-select: none !important;
           -webkit-user-select: none !important;
+          pointer-events: auto !important;
+          -webkit-overflow-scrolling: auto !important;
+          overflow: visible !important;
         }
         .league-header-fixed a,
         .league-header-fixed button {
@@ -2814,7 +2884,10 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           overflow-y: auto;
           overflow-x: hidden;
           -webkit-overflow-scrolling: touch;
-          overscroll-behavior: contain;
+          overscroll-behavior: none;
+          overscroll-behavior-y: none;
+          overscroll-behavior-x: none;
+          touch-action: pan-y;
           padding-bottom: 2rem;
           padding-left: 1rem;
           padding-right: 1rem;
