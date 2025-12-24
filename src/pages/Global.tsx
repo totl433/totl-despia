@@ -634,60 +634,67 @@ export default function GlobalLeaderboardPage() {
     const container = tableContainerRef.current;
     if (!container) return;
 
+    // Simple scroll correction - use passive for better performance
     const handleScroll = () => {
-      // Aggressively prevent scrolling past the header
       if (container.scrollTop < 0) {
         container.scrollTop = 0;
       }
-      // Also use requestAnimationFrame to ensure it stays at 0
-      requestAnimationFrame(() => {
-        if (container.scrollTop < 0) {
-          container.scrollTop = 0;
-        }
-      });
     };
 
-    // Use both scroll and touchmove events to catch all scroll scenarios
-    container.addEventListener('scroll', handleScroll, { passive: false });
-    container.addEventListener('touchmove', handleScroll, { passive: false });
-    
-    // Prevent on wheel events when at top
+    // Prevent wheel scrolling past top
     const handleWheel = (e: WheelEvent) => {
       if (container.scrollTop <= 0 && e.deltaY < 0) {
         e.preventDefault();
-        e.stopPropagation();
         container.scrollTop = 0;
       }
     };
-    container.addEventListener('wheel', handleWheel, { passive: false });
-    
-    // Also prevent touch scrolling past top
+
+    // Prevent touch scrolling past top
+    let touchStartY = 0;
+    let isTrackingTouch = false;
+
     const handleTouchStart = (e: TouchEvent) => {
-      if (container.scrollTop <= 0) {
-        const touch = e.touches[0];
-        if (touch) {
-          const startY = touch.clientY;
-          const handleTouchMove = (e2: TouchEvent) => {
-            const touch2 = e2.touches[0];
-            if (touch2 && touch2.clientY < startY) {
-              // Scrolling up when already at top - prevent it
-              e2.preventDefault();
-            }
-          };
-          container.addEventListener('touchmove', handleTouchMove, { passive: false });
-          container.addEventListener('touchend', () => {
-            container.removeEventListener('touchmove', handleTouchMove);
-          }, { once: true });
+      if (container.scrollTop <= 0 && e.touches.length > 0) {
+        touchStartY = e.touches[0].clientY;
+        isTrackingTouch = true;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isTrackingTouch || container.scrollTop > 0) {
+        isTrackingTouch = false;
+        return;
+      }
+
+      if (e.touches.length > 0) {
+        const touchY = e.touches[0].clientY;
+        // Prevent scrolling up when already at top
+        if (touchY < touchStartY) {
+          e.preventDefault();
+          container.scrollTop = 0;
         }
       }
     };
-    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+
+    const handleTouchEnd = () => {
+      isTrackingTouch = false;
+    };
+
+    // Attach event listeners
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+    container.addEventListener('touchcancel', handleTouchEnd, { passive: true });
     
     return () => {
       container.removeEventListener('scroll', handleScroll);
-      container.removeEventListener('touchmove', handleScroll);
       container.removeEventListener('wheel', handleWheel);
       container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchEnd);
     };
   }, []);
 
