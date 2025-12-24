@@ -15,7 +15,6 @@ export default function ScoreIndicator({
 
   // Determine icon and text based on state
   let iconElement: JSX.Element | null = null;
-  let statusText: string | null = null;
 
   if (state === 'starting-soon') {
     // Clock icon for starting soon

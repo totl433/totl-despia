@@ -107,6 +107,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
       // This ensures winners show for finished GWs, not live ones
       const shouldShowShiny = isLatestWinner && 
         data.latestRelevantGw !== null && 
+        data.latestRelevantGw !== undefined &&
         currentGw !== null && 
         (data.latestRelevantGw < currentGw || (data.latestRelevantGw === currentGw && isCurrentGwFinished));
       
