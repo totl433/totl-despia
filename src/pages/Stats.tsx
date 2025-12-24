@@ -188,15 +188,6 @@ export default function Stats() {
               const aboveAverageCount = stats.weeklyParData.filter(d => d.userPoints > d.averagePoints).length;
               const aboveAveragePercent = ((aboveAverageCount / stats.weeklyParData.length) * 100).toFixed(0);
               
-              // Calculate total swing (sum of all differences from average)
-              const totalSwing = stats.weeklyParData.reduce((sum, d) => {
-                return sum + (d.userPoints - d.averagePoints);
-              }, 0);
-              
-              const swingText = totalSwing >= 0 
-                ? `+${totalSwing.toFixed(1)}` 
-                : totalSwing.toFixed(1);
-              
               return (
               <div className="bg-white rounded-l-xl shadow-md" style={{ marginRight: '-100vw', paddingRight: '100vw', paddingTop: '1.5rem', paddingBottom: '1.5rem', paddingLeft: '1.5rem' }}>
                 <div className="flex items-center justify-between mb-2">

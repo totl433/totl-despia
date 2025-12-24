@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+  <defs>
+    <pattern id="totl-sunderland" width="16.6667" height="100" patternUnits="userSpaceOnUse">
+      <rect width="8.3333" height="100" fill="#E03A3E"/>
+      <rect x="8.3333" width="8.3333" height="100" fill="#F3F3F3"/>
+    </pattern>
+  </defs>
+  <rect width="100" height="100" fill="url(#totl-sunderland)"/>
+</svg>
