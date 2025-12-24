@@ -1,3 +1,4 @@
+import { openWhatsApp } from '../../lib/whatsappShare';
 
 export interface SubmissionStatusTableProps {
   members: Array<{ id: string; name: string }>;
@@ -27,17 +28,7 @@ export function generateShareReminderMessage(picksGw: number, fixtures: Array<{ 
 // Helper function to handle share reminder click
 export function handleShareReminder(picksGw: number, fixtures: Array<{ gw: number; kickoff_time?: string | null }>) {
   const message = generateShareReminderMessage(picksGw, fixtures);
-  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-  
-  try {
-    window.open(whatsappUrl, '_blank');
-  } catch {
-    navigator.clipboard.writeText(message).then(() => {
-      alert('Message copied to clipboard! You can now paste it in WhatsApp or Messages.');
-    }).catch(() => {
-      alert('Unable to open WhatsApp. Please copy this message manually:\n\n' + message);
-    });
-  }
+  openWhatsApp(message);
 }
 
 /**
