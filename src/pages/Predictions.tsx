@@ -271,7 +271,6 @@ export default function PredictionsPage() {
       }
       if (mounted) setGwResults((rs as ResultRow[]) ?? []);
 
-
       setLoading(false);
     })();
 
