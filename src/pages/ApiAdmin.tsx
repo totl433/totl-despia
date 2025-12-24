@@ -459,8 +459,15 @@ export default function ApiAdmin() {
         }
       }
 
-      // Fetch and store team forms for this gameweek
-      await fetchAndStoreTeamForms(nextGw);
+      // Fetch and store team forms for this gameweek (automatic)
+      console.log(`[ApiAdmin] 🔄 Automatically fetching team forms for GW ${nextGw}...`);
+      try {
+        await fetchAndStoreTeamForms(nextGw);
+        console.log(`[ApiAdmin] ✅ Team forms fetch completed for GW ${nextGw}`);
+      } catch (formsError) {
+        console.error('[ApiAdmin] ⚠️ Team forms fetch failed (non-critical):', formsError);
+        // Don't throw - gameweek is published, form data fetch failure is non-critical
+      }
 
       // Send push notification to all users - using V2 dispatcher
       try {

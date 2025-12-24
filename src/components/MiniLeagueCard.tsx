@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
 import { ordinal, initials, toStringSet } from '../lib/helpers';
 import { useGameweekFinished } from '../hooks/useGameweekFinished';
+import { useGameweekState } from '../hooks/useGameweekState';
 
 export type LeagueRow = {
   id: string;
@@ -59,8 +60,8 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
   const userPosition = data?.userPosition;
   const badge = unread > 0 ? Math.min(unread, 99) : 0;
 
-  // Check if current GW has finished (for showing winner chips)
-  const isCurrentGwFinished = useGameweekFinished(currentGw);
+  // Check current GW state - shiny chips should ONLY show during RESULTS_PRE_GW
+  const { state: currentGwState } = useGameweekState(currentGw);
 
   const memberChips = useMemo(() => {
     if (leagueDataLoading || !data) return [];
@@ -100,16 +101,14 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
       // GPU-optimized: Use CSS classes instead of inline styles
       let chipClassName = 'chip-container rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
       
-      // Show shiny chip if:
-      // 1. User is a winner for latestRelevantGw
-      // 2. latestRelevantGw is from a previous completed GW (latestRelevantGw < currentGw)
-      // OR latestRelevantGw === currentGw AND currentGw has finished (moved to RESULTS_PRE_GW state)
-      // This ensures winners show for finished GWs, not live ones
+      // Show shiny chip ONLY during RESULTS_PRE_GW state (when GW has finished)
+      // This ensures winners only show after a GW has fully finished, not during GW_OPEN or LIVE
       const shouldShowShiny = isLatestWinner && 
         data.latestRelevantGw !== null && 
         data.latestRelevantGw !== undefined &&
         currentGw !== null && 
-        (data.latestRelevantGw < currentGw || (data.latestRelevantGw === currentGw && isCurrentGwFinished));
+        currentGwState === 'RESULTS_PRE_GW' &&
+        (data.latestRelevantGw < currentGw || data.latestRelevantGw === currentGw);
       
       if (shouldShowShiny) {
         // Shiny chip for last GW winner (already GPU-optimized with transforms)
@@ -151,7 +150,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
         </div>
       );
     });
-  }, [data, leagueDataLoading, row.name, currentGw, isCurrentGwFinished]);
+  }, [data, leagueDataLoading, row.name, currentGw, currentGwState]);
 
   const extraMembers = useMemo(() => {
     if (!data) return 0;
