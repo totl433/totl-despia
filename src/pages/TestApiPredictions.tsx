@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import TeamBadge from "../components/TeamBadge";
 import { useNavigate } from "react-router-dom";
-import { invalidateUserCache, getCached, setCached, CACHE_TTL, removeCached } from "../lib/cache";
+import { invalidateUserCache, getCached, setCached, CACHE_TTL } from "../lib/cache";
 import SwipeCard from "../components/predictions/SwipeCard";
 import ScoreIndicator from "../components/predictions/ScoreIndicator";
 import ConfirmationModal from "../components/predictions/ConfirmationModal";

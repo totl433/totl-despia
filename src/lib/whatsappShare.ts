@@ -31,7 +31,6 @@ export function openWhatsApp(message: string): void {
     // Try multiple methods - different webviews prefer different approaches
     let method1Success = false;
     let method2Success = false;
-    let method3Success = false;
     
     try {
       // Method 1: Create anchor and click (most reliable in webviews)
@@ -71,7 +70,6 @@ export function openWhatsApp(message: string): void {
       try {
         if (DEBUG_MODE) alert('[DEBUG] Trying Method 3: window.location.href');
         window.location.href = whatsappUrl;
-        method3Success = true;
         if (DEBUG_MODE) alert('[DEBUG] Method 3: location.href set');
       } catch (e) {
         console.log('[WhatsApp] window.location.href failed:', e);
