@@ -5,12 +5,15 @@ import { PageHeader } from '../components/PageHeader';
 import { StatCard } from '../components/profile/StatCard';
 import { StreakStatCard } from '../components/profile/StreakStatCard';
 import { TeamStatCard } from '../components/profile/TeamStatCard';
+import { ParChart } from '../components/profile/ParChart';
 import { fetchUserStats, type UserStatsData } from '../services/userStats';
+import LiveGamesToggle from '../components/LiveGamesToggle';
 
 export default function Stats() {
   const { user } = useAuth();
   const [stats, setStats] = useState<UserStatsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showParChartInfo, setShowParChartInfo] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -52,7 +55,7 @@ export default function Stats() {
   const hasEnoughData = stats && (stats.lastCompletedGw !== null || stats.overallPercentile !== null);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 overflow-x-hidden">
       <div className="max-w-4xl mx-auto p-6">
         <Link
           to="/profile"
@@ -179,6 +182,86 @@ export default function Stats() {
                 loading={loading}
               />
             )}
+
+            {/* 6c. Weekly Par Chart */}
+            {stats && stats.weeklyParData && stats.weeklyParData.length > 0 && stats.lastCompletedGw && (() => {
+              const aboveAverageCount = stats.weeklyParData.filter(d => d.userPoints > d.averagePoints).length;
+              const aboveAveragePercent = ((aboveAverageCount / stats.weeklyParData.length) * 100).toFixed(0);
+              
+              // Calculate total swing (sum of all differences from average)
+              const totalSwing = stats.weeklyParData.reduce((sum, d) => {
+                return sum + (d.userPoints - d.averagePoints);
+              }, 0);
+              
+              const swingText = totalSwing >= 0 
+                ? `+${totalSwing.toFixed(1)}` 
+                : totalSwing.toFixed(1);
+              
+              return (
+              <div className="bg-white rounded-l-xl shadow-md" style={{ marginRight: '-100vw', paddingRight: '100vw', paddingTop: '1.5rem', paddingBottom: '1.5rem', paddingLeft: '1.5rem' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm font-medium text-slate-600">
+                    Weekly Performance vs Average
+                  </div>
+                  <div className="pr-2">
+                    <LiveGamesToggle 
+                      value={showParChartInfo} 
+                      onChange={setShowParChartInfo}
+                      labels={{ on: 'Complex', off: 'Simple' }}
+                    />
+                  </div>
+                </div>
+                <div 
+                  className="overflow-x-auto scrollbar-hide" 
+                  style={{ 
+                    scrollbarWidth: 'none', 
+                    msOverflowStyle: 'none', 
+                    WebkitOverflowScrolling: 'touch', 
+                    overscrollBehaviorX: 'contain',
+                    overscrollBehaviorY: 'auto',
+                    touchAction: 'pan-x',
+                    marginLeft: '-1.5rem',
+                    marginRight: '-1.5rem',
+                    paddingLeft: '1.5rem',
+                    paddingRight: '1.5rem',
+                    width: 'calc(100% + 3rem)',
+                  }}
+                >
+                  <style>{`.scrollbar-hide::-webkit-scrollbar { display: none; }`}</style>
+                  <ParChart
+                    weeklyData={stats.weeklyParData}
+                    latestGw={stats.lastCompletedGw}
+                    showInfo={showParChartInfo}
+                  />
+                </div>
+                <div className="text-sm font-bold text-slate-700 mt-2">
+                  You perform above average {aboveAveragePercent}% of the time.
+                </div>
+              </div>
+              );
+            })()}
+            
+            {/* Total Swing Stat Card */}
+            {stats && stats.weeklyParData && stats.weeklyParData.length > 0 && (() => {
+              const totalSwing = stats.weeklyParData.reduce((sum, d) => {
+                return sum + (d.userPoints - d.averagePoints);
+              }, 0);
+              
+              const swingText = totalSwing >= 0 
+                ? `+${totalSwing.toFixed(1)}` 
+                : totalSwing.toFixed(1);
+              
+              if (swingText === '0.0') return null;
+              
+              return (
+                <StatCard
+                  label="Total Swing"
+                  value={swingText}
+                  subcopy="Your total points difference from the average across all gameweeks"
+                  loading={loading}
+                />
+              );
+            })()}
 
             {/* 7. Best Streak (Top 25%) */}
             {stats && stats.bestStreak > 0 && stats.bestStreakGwRange && (

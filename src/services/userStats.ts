@@ -49,6 +49,13 @@ export interface UserStatsData {
     name: string;
     percentage: number;
   } | null;
+  
+  // Weekly Par data (user points vs average for each week)
+  weeklyParData: Array<{
+    gw: number;
+    userPoints: number;
+    averagePoints: number;
+  }> | null;
 }
 
 /**
@@ -130,6 +137,7 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
     chaosTotalCount: null,
     mostCorrectTeam: null,
     mostIncorrectTeam: null,
+    weeklyParData: null,
   };
 
   try {
@@ -368,6 +376,37 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
       if (lowestGw.points < 999) {
         stats.lowestSingleGw = lowestGw;
       }
+
+      // Calculate weekly Par data (user points vs average for each week)
+      const weeklyParData: Array<{ gw: number; userPoints: number; averagePoints: number }> = [];
+      
+      // Calculate average for each GW using the already-fetched allGwPoints
+      const gwAverages = new Map<number, number>();
+      
+      gwPointsMap.forEach((points, gw) => {
+        const average = points.reduce((sum, p) => sum + p.points, 0) / points.length;
+        gwAverages.set(gw, average);
+      });
+
+      // Build weekly Par data for user's GWs
+      userGwPoints.forEach((p: any) => {
+        const gw = p.gw;
+        const userPoints = p.points || 0;
+        const averagePoints = gwAverages.get(gw);
+        
+        if (averagePoints !== undefined) {
+          weeklyParData.push({
+            gw,
+            userPoints,
+            averagePoints,
+          });
+        }
+      });
+
+      // Sort by GW
+      weeklyParData.sort((a, b) => a.gw - b.gw);
+      
+      stats.weeklyParData = weeklyParData.length > 0 ? weeklyParData : null;
     }
 
     // Calculate Chaos Index - how often user picks against the crowd (25% or fewer picked the same)
