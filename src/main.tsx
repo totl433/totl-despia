@@ -28,6 +28,7 @@ const ProfilePage = lazy(() => import("./pages/Profile"));
 const NotificationCentrePage = lazy(() => import("./pages/NotificationCentre"));
 const EmailPreferencesPage = lazy(() => import("./pages/EmailPreferences"));
 const StatsPage = lazy(() => import("./pages/Stats"));
+const SwipeCardPreview = lazy(() => import("./pages/SwipeCardPreview"));
 
 // New onboarding + auth flow
 import { AuthGate } from "./features/auth";
@@ -387,6 +388,7 @@ function AppContent() {
             <Route path="/api-admin" element={<RequireAuth><ApiAdmin /></RequireAuth>} />
             <Route path="/test-fixtures" element={<RequireAuth><TestFixtures /></RequireAuth>} />
             <Route path="/test-despia" element={<RequireAuth><TestDespia /></RequireAuth>} />
+            <Route path="/swipe-card-preview" element={<RequireAuth><SwipeCardPreview /></RequireAuth>} />
             <Route path="/" element={<RequireAuth><ErrorBoundary><HomePage /></ErrorBoundary></RequireAuth>} />
             <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
             <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
@@ -409,6 +411,7 @@ function AppContent() {
       {/* Bottom Navigation - hide on auth page, swipe predictions, and when making predictions or viewing league pages */}
       {location.pathname !== '/auth' && 
        location.pathname !== '/predictions/swipe' && 
+       location.pathname !== '/swipe-card-preview' &&
        !(location.pathname === '/predictions' && isSwipeMode) && 
        <BottomNav shouldHide={
          (location.pathname === '/predictions' && hasSubmittedPredictions === false) ||

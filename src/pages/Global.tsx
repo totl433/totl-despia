@@ -178,21 +178,26 @@ export default function GlobalLeaderboardPage() {
     let alive = true;
     
     (async () => {
-      // Convert live scores to outcomes
+      // Convert live scores to outcomes (Active Live: derive H/D/A from current scores during games)
+      // This works for IN_PLAY, PAUSED, and FINISHED games
       const outcomes = new Map<number, "H" | "D" | "A">();
       liveScoresMap.forEach((liveScore) => {
-        if (liveScore.gw === liveGw && liveScore.status === 'FINISHED') {
-          const fixtureIndex = liveScore.fixture_index;
-          if (liveScore.home_score !== null && liveScore.away_score !== null) {
-            let outcome: "H" | "D" | "A";
-            if (liveScore.home_score > liveScore.away_score) {
-              outcome = "H";
-            } else if (liveScore.home_score < liveScore.away_score) {
-              outcome = "A";
-            } else {
-              outcome = "D";
+        if (liveScore.gw === liveGw) {
+          // Process games that have started (IN_PLAY, PAUSED, or FINISHED)
+          // For Active Live, we derive the result from current scores even during games
+          if (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED') {
+            const fixtureIndex = liveScore.fixture_index;
+            if (liveScore.home_score !== null && liveScore.away_score !== null) {
+              let outcome: "H" | "D" | "A";
+              if (liveScore.home_score > liveScore.away_score) {
+                outcome = "H";
+              } else if (liveScore.home_score < liveScore.away_score) {
+                outcome = "A";
+              } else {
+                outcome = "D";
+              }
+              outcomes.set(fixtureIndex, outcome);
             }
-            outcomes.set(fixtureIndex, outcome);
           }
         }
       });

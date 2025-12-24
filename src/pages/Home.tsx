@@ -888,6 +888,17 @@ export default function HomePage() {
         });
         
         const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
+        
+        // If current GW has results, ensure it's included (GW has finished)
+        // This ensures winners are calculated for the current GW once it finishes
+        if (gw && !gwsWithResults.includes(gw)) {
+          // Check if current GW has any results (might have finished but not yet in gwsWithResults)
+          const currentGwResults = (resultsResult.data ?? []).filter((r: any) => r.gw === gw);
+          if (currentGwResults.length > 0) {
+            gwsWithResults.push(gw);
+            gwsWithResults.sort((a, b) => a - b);
+          }
+        }
         const relevantFixtures = (fixturesResult.data ?? []).filter((f: any) => 
           gwsWithResults.length > 0 ? gwsWithResults.includes(f.gw) : f.gw === 1
         );
@@ -962,9 +973,18 @@ export default function HomePage() {
           }
           
           const leagueStartGw = leagueStartGws.get(league.id) ?? gw;
-          const relevantGws = leagueStartGw === 0 
+          
+          // Include current GW if it has finished (moved to RESULTS_PRE_GW state)
+          // This ensures winners are calculated for the current GW once it finishes
+          const currentGwFinished = gwsWithResults.includes(gw);
+          const allRelevantGws = leagueStartGw === 0 
             ? gwsWithResults 
             : gwsWithResults.filter(g => g >= leagueStartGw);
+          
+          // If current GW has results (finished), make sure it's included
+          const relevantGws = currentGwFinished && !allRelevantGws.includes(gw)
+            ? [...allRelevantGws, gw].sort((a, b) => a - b)
+            : allRelevantGws;
           
           if (relevantGws.length === 0) {
             const sortedMembers = members.sort((a, b) => a.name.localeCompare(b.name));

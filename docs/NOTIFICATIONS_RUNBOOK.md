@@ -280,21 +280,30 @@ WHERE result = 'suppressed_duplicate'
 
 ## Migration Status
 
-### V2 Senders (use dispatcher)
-- [ ] `notifyLeagueMessageV2.ts` - Chat notifications
-- [ ] `sendPushAllV2.ts` - Broadcast notifications
-- [ ] `sendScoreNotificationsWebhookV2.ts` - Score notifications
+### V2 Senders (use dispatcher) ✅ ACTIVE
+- [x] `notifyLeagueMessageV2.ts` - Chat notifications (with badge count support)
+- [x] `sendPushAllV2.ts` - Broadcast notifications
+- [x] `sendScoreNotificationsWebhookV2.ts` - Score notifications
+- [x] `notifyFinalSubmission.ts` - Final submission notifications
 
-### V1 Senders (direct OneSignal - to be deprecated)
-- `notifyLeagueMessage.ts`
-- `sendPushAll.ts`
-- `sendScoreNotificationsWebhook.ts`
-- `notifyFinalSubmission.ts`
-- `sendPush.ts`
+### Frontend Integration ✅ COMPLETE
+- [x] `src/pages/League.tsx` - Uses `notifyLeagueMessageV2`
+- [x] `src/pages/Admin.tsx` - Uses `sendPushAllV2`
+- [x] `src/pages/ApiAdmin.tsx` - Uses `sendPushAllV2`
 
-### To Fully Migrate
-1. Deploy V2 functions
-2. Update client code to call V2 endpoints
-3. Monitor send_log for V2 results
-4. Disable V1 functions once V2 is stable
+### V1 Senders (direct OneSignal - DEPRECATED)
+- `notifyLeagueMessage.ts` - ⚠️ DEPRECATED (use V2)
+- `sendPushAll.ts` - ⚠️ DEPRECATED (use V2)
+- `sendScoreNotificationsWebhook.ts` - ⚠️ DEPRECATED (use V2)
+- `sendPush.ts` - Legacy utility (may still be used for testing)
+
+### Webhook Configuration
+- Supabase webhook should point to: `sendScoreNotificationsWebhookV2`
+- See `SUPABASE_WEBHOOK_SETUP.md` for configuration details
+
+### Migration Complete ✅
+1. ✅ V2 functions deployed and active
+2. ✅ Client code updated to call V2 endpoints
+3. ✅ Monitor send_log for V2 results
+4. ⚠️ V1 functions can be disabled once V2 is confirmed stable in production
 

@@ -27,8 +27,10 @@ Click **"Create a new webhook"** or **"New webhook"**
 
 **URL:** 
 ```
-https://totl-staging.netlify.app/.netlify/functions/sendScoreNotificationsWebhook
+https://totl-staging.netlify.app/.netlify/functions/sendScoreNotificationsWebhookV2
 ```
+
+**Note:** This webhook now uses the V2 dispatcher system with idempotency, policy checks, and proper grouping fields.
 
 **Headers:**
 ```

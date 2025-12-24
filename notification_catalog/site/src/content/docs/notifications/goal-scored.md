@@ -47,10 +47,10 @@ head: []
 
 ## Message Template
 
-**Title:** `{teamName} scores!`
+**Title:** `Goal {teamName}!`
 
 **Body:** `{minute}' {scorer}\n{homeTeam} [{homeScore}] - {awayScore} {awayTeam}`
 
 Example: 
-- Title: `Man United scores!`
+- Title: `Goal Man United!`
 - Body: `52' Marcus Rashford\nMan United [2] - 1 Liverpool`

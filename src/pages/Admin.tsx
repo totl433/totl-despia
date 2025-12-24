@@ -311,9 +311,9 @@ export default function AdminPage() {
       // Dispatch event to refresh banners across the site
       window.dispatchEvent(new CustomEvent('resultsPublished', { detail: { gw } }));
 
-      // Broadcast push to all users (with error handling)
+      // Broadcast push to all users (with error handling) - using V2 dispatcher
       try {
-        const pushRes = await fetch('/.netlify/functions/sendPushAll', {
+        const pushRes = await fetch('/.netlify/functions/sendPushAllV2', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -327,19 +327,17 @@ export default function AdminPage() {
         
         if (pushRes.ok && pushData.ok) {
           const sentTo = pushData.sentTo || 0;
-          const checked = pushData.checked || 0;
+          const userCount = pushData.userCount || 0;
           if (sentTo > 0) {
-            console.log(`[Admin] Push notification sent to ${sentTo} subscribed devices (checked ${checked} total)`);
-            setOk(`GW ${gw} results published! Push notification sent to ${sentTo} devices.`);
-          } else if (pushData.warning) {
-            console.warn(`[Admin] Push notification warning: ${pushData.warning}`);
-            setOk(`GW ${gw} results published! (No subscribed devices found for push notifications)`);
+            console.log(`[Admin] Push notification sent to ${sentTo} users (out of ${userCount} subscribed)`);
+            setOk(`GW ${gw} results published! Push notification sent to ${sentTo} users.`);
+          } else {
+            console.warn(`[Admin] Push notification warning: No users received notification`);
+            setOk(`GW ${gw} results published! (No users received push notification - may be suppressed by preferences)`);
           }
         } else {
           console.error('[Admin] Push notification failed:', pushData);
-          const errorMsg = pushData.oneSignalErrors 
-            ? `OneSignal Error: ${JSON.stringify(pushData.oneSignalErrors)}`
-            : pushData.error || 'Failed to send push notification';
+          const errorMsg = pushData.error || 'Failed to send push notification';
           setError(`Results published, but push notification failed: ${errorMsg}`);
         }
       } catch (pushErr: any) {

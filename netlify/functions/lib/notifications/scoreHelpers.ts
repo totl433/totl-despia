@@ -7,6 +7,14 @@
 
 import { dispatchNotification } from './dispatch';
 import type { BatchDispatchResult } from './types';
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = process.env.SUPABASE_URL!;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
 
 /**
  * Normalize a scorer name for event_id
@@ -31,6 +39,41 @@ export function buildGoalEventId(apiMatchId: number, scorer: string, minute: num
  */
 export function buildKickoffEventId(apiMatchId: number, half: 1 | 2): string {
   return `kickoff:${apiMatchId}:${half}`;
+}
+
+/**
+ * Check if a kickoff notification was already sent for a match
+ * Returns the highest half number that was sent, or 0 if none
+ */
+export async function getExistingKickoffHalf(
+  apiMatchId: number,
+  userIds: string[]
+): Promise<number> {
+  // Query notification_send_log for any kickoff notification for this match
+  // Event ID format: kickoff:{apiMatchId}:{half}
+  const eventIdPrefix = `kickoff:${apiMatchId}:`;
+  
+  const { data: existing } = await supabase
+    .from('notification_send_log')
+    .select('event_id')
+    .eq('notification_key', 'kickoff')
+    .in('user_id', userIds)
+    .like('event_id', `${eventIdPrefix}%`)
+    .in('result', ['accepted', 'pending'])
+    .limit(100);
+  
+  let maxHalf = 0;
+  (existing || []).forEach((entry: any) => {
+    if (entry.event_id && entry.event_id.startsWith(eventIdPrefix)) {
+      const halfStr = entry.event_id.replace(eventIdPrefix, '');
+      const half = parseInt(halfStr, 10);
+      if (!isNaN(half) && half > maxHalf) {
+        maxHalf = half;
+      }
+    }
+  });
+  
+  return maxHalf;
 }
 
 /**
@@ -59,6 +102,42 @@ export function buildGameweekCompleteEventId(gw: number): string {
  */
 export function buildGoalDisallowedEventId(apiMatchId: number, minute: number): string {
   return `goal_disallowed:${apiMatchId}:${minute}`;
+}
+
+/**
+ * Check if a goal notification was already sent for this match/minute
+ * Used to suppress scorer-only attribution changes
+ */
+export async function hasGoalNotificationForMinute(
+  apiMatchId: number,
+  minute: number,
+  userIds: string[]
+): Promise<Set<string>> {
+  // Query notification_send_log for any goal-scored notification for this match/minute
+  // Event ID format: goal:{apiMatchId}:{scorer}:{minute}
+  // We check for pattern: goal:{apiMatchId}:*:{minute}
+  const eventIdPrefix = `goal:${apiMatchId}:`;
+  const eventIdSuffix = `:${minute}`;
+  
+  const { data: existing } = await supabase
+    .from('notification_send_log')
+    .select('user_id, event_id')
+    .eq('notification_key', 'goal-scored')
+    .in('user_id', userIds)
+    .like('event_id', `${eventIdPrefix}%${eventIdSuffix}`)
+    .in('result', ['accepted', 'pending']);
+  
+  const usersWithExisting = new Set<string>();
+  (existing || []).forEach((entry: any) => {
+    if (entry.user_id && entry.event_id) {
+      // Verify it's actually for this minute
+      if (entry.event_id.endsWith(eventIdSuffix) && entry.event_id.startsWith(eventIdPrefix)) {
+        usersWithExisting.add(entry.user_id);
+      }
+    }
+  });
+  
+  return usersWithExisting;
 }
 
 /**
@@ -100,7 +179,7 @@ export async function sendGoalNotification(
     title = `Own Goal`;
     body = `${minute}' Own goal by ${scorer}\n${scoreDisplay}`;
   } else {
-    title = `${teamName} scores!`;
+    title = `Goal ${teamName}!`;
     body = `${minute}' ${scorer}\n${scoreDisplay}`;
   }
 
@@ -150,8 +229,8 @@ export async function sendGoalDisallowedNotification(
     notification_key: 'goal-disallowed',
     event_id: eventId,
     user_ids: userIds,
-    title: `🚫 Goal Disallowed`,
-    body: `${minute}' ${scorer}'s goal for ${teamName} was disallowed by VAR\n${scoreDisplay}`,
+    title: `Goal Disallowed`,
+    body: `${minute}' ${scorer}'s goal for ${teamName} was disallowed\n${scoreDisplay}`,
     data: {
       type: 'goal_disallowed',
       api_match_id: apiMatchId,
@@ -185,7 +264,7 @@ export async function sendKickoffNotification(
     notification_key: 'kickoff',
     event_id: eventId,
     user_ids: userIds,
-    title: `⚽ ${homeTeam} vs ${awayTeam}`,
+    title: `${homeTeam} vs ${awayTeam}`,
     body: isSecondHalf ? 'Second half underway' : 'Kickoff!',
     data: {
       type: 'kickoff',
@@ -210,20 +289,18 @@ export async function sendHalftimeNotification(
     awayTeam: string;
     homeScore: number;
     awayScore: number;
-    minute?: number;
   }
 ): Promise<BatchDispatchResult> {
-  const { apiMatchId, fixtureIndex, gw, homeTeam, awayTeam, homeScore, awayScore, minute } = params;
+  const { apiMatchId, fixtureIndex, gw, homeTeam, awayTeam, homeScore, awayScore } = params;
 
   const eventId = buildHalftimeEventId(apiMatchId);
-  const minuteStr = minute ? ` ${minute}'` : '';
 
   return dispatchNotification({
     notification_key: 'half-time',
     event_id: eventId,
     user_ids: userIds,
-    title: `⏸️ Half-Time`,
-    body: `${homeTeam} ${homeScore}-${awayScore} ${awayTeam}${minuteStr}`,
+    title: `Half-Time`,
+    body: `${homeTeam} ${homeScore}-${awayScore} ${awayTeam}`,
     data: {
       type: 'half_time',
       api_match_id: apiMatchId,
@@ -348,13 +425,14 @@ export async function sendGameweekCompleteNotification(
     notification_key: 'gameweek-complete',
     event_id: eventId,
     user_ids: userIds,
-    title: `🎉 Gameweek ${gw} Complete!`,
+    title: `Gameweek ${gw} Complete!`,
     body: `All games finished. Check your results!`,
     data: {
       type: 'gameweek_finished',
       gw,
     },
     grouping_params: { gw },
+    badge_count: 1,
   });
 }
 

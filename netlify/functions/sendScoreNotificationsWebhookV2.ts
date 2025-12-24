@@ -21,6 +21,8 @@ import {
   sendHalftimeNotification,
   sendFinalWhistleNotification,
   sendGameweekCompleteNotification,
+  hasGoalNotificationForMinute,
+  getExistingKickoffHalf,
 } from './lib/notifications/scoreHelpers';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
@@ -205,10 +207,12 @@ export const handler: Handler = async (event, context) => {
     const scoreWentDown = homeScore < oldHomeScore || awayScore < oldAwayScore;
     const isHalfTime = oldStatus === 'IN_PLAY' && status === 'PAUSED';
     const isFinished = status === 'FINISHED' || status === 'FT';
-    // Kickoff detection: first transition to IN_PLAY (regardless of score), and second-half restart
-    const wasInPlay = oldStatus === 'IN_PLAY';
-    const isFirstHalfKickoff = status === 'IN_PLAY' && !wasInPlay;
-    const isSecondHalfKickoff = (oldStatus === 'PAUSED' || oldStatus === 'HALF_TIME') && status === 'IN_PLAY';
+    
+    // Kickoff detection: Simplified using idempotency (doesn't rely on oldStatus)
+    // If status is IN_PLAY, attempt to send kickoff notification
+    // Idempotency will prevent duplicates (event_id includes half number)
+    const isInPlay = status === 'IN_PLAY';
+    const shouldCheckKickoff = isInPlay;
 
     let totalSent = 0;
 
@@ -218,15 +222,45 @@ export const handler: Handler = async (event, context) => {
       const userIds = [...new Set(picksData.map(p => p.userId))];
 
       if (userIds.length > 0) {
-        const result = await sendGoalDisallowedNotification(userIds, {
-          apiMatchId, fixtureIndex: fixture_index, gw,
-          scorer: 'Unknown', minute: minute || 0,
-          teamName: homeScore < oldHomeScore ? home_team : away_team,
-          homeTeam: home_team, awayTeam: away_team,
-          homeScore, awayScore,
-        });
-        totalSent += result.results.accepted;
-        console.log(`[scoreWebhookV2] [${requestId}] Goal disallowed: ${result.results.accepted} sent`);
+        // Find which goal was disallowed by comparing oldGoals vs new goals
+        // A goal was disallowed if it exists in oldGoals but not in new goals
+        const normalizeGoalKey = (g: any): string => {
+          if (!g || typeof g !== 'object') return '';
+          const scorer = (g.scorer || '').toString().trim().toLowerCase();
+          const goalMinute = g.minute !== null && g.minute !== undefined ? String(g.minute) : '';
+          return `${scorer}|${goalMinute}`;
+        };
+
+        const newGoalKeys = new Set(goals.map(normalizeGoalKey));
+        const disallowedGoals = oldGoals.filter((g: any) => !newGoalKeys.has(normalizeGoalKey(g)));
+
+        if (disallowedGoals.length > 0) {
+          // Use the most recent disallowed goal (highest minute)
+          const disallowedGoal = disallowedGoals.sort((a: any, b: any) => (b.minute ?? 0) - (a.minute ?? 0))[0];
+          const scorer = disallowedGoal.scorer || 'Unknown';
+          const goalMinute = disallowedGoal.minute ?? 0;
+          const { isHomeTeam, teamName } = determineScoringTeam(disallowedGoal, home_team, away_team);
+
+          const result = await sendGoalDisallowedNotification(userIds, {
+            apiMatchId, fixtureIndex: fixture_index, gw,
+            scorer, minute: goalMinute, teamName,
+            homeTeam: home_team, awayTeam: away_team,
+            homeScore, awayScore,
+          });
+          totalSent += result.results.accepted;
+          console.log(`[scoreWebhookV2] [${requestId}] Goal disallowed ${goalMinute}' (${scorer}): ${result.results.accepted} sent`);
+        } else {
+          // Fallback if we can't identify the goal (shouldn't happen, but be safe)
+          const result = await sendGoalDisallowedNotification(userIds, {
+            apiMatchId, fixtureIndex: fixture_index, gw,
+            scorer: 'Unknown', minute: minute || 0,
+            teamName: homeScore < oldHomeScore ? home_team : away_team,
+            homeTeam: home_team, awayTeam: away_team,
+            homeScore, awayScore,
+          });
+          totalSent += result.results.accepted;
+          console.log(`[scoreWebhookV2] [${requestId}] Goal disallowed (fallback): ${result.results.accepted} sent`);
+        }
       }
 
       return { statusCode: 200, headers, body: JSON.stringify({ message: 'Goal disallowed notification sent', sentTo: totalSent }) };
@@ -250,38 +284,64 @@ export const handler: Handler = async (event, context) => {
         const userIds = [...new Set(picksData.map(p => p.userId))];
 
         if (userIds.length > 0) {
-          // Send notification for the newest goal
-          const newestGoal = newGoals.sort((a: any, b: any) => (b.minute ?? 0) - (a.minute ?? 0))[0];
-          const scorer = newestGoal.scorer || 'Unknown';
-          const goalMinute = newestGoal.minute ?? 0;
-          const { isHomeTeam, teamName } = determineScoringTeam(newestGoal, home_team, away_team);
-
-          const result = await sendGoalNotification(userIds, {
-            apiMatchId, fixtureIndex: fixture_index, gw,
-            scorer, minute: goalMinute, teamName,
-            homeTeam: home_team, awayTeam: away_team,
-            homeScore, awayScore, isHomeTeam,
-            isOwnGoal: newestGoal.isOwnGoal === true,
-          });
-          totalSent += result.results.accepted;
-          console.log(`[scoreWebhookV2] [${requestId}] Goal: ${result.results.accepted} sent`);
+          // Send notification for each new goal
+          // Sort by minute (oldest first) to maintain chronological order
+          const sortedNewGoals = newGoals.sort((a: any, b: any) => (a.minute ?? 0) - (b.minute ?? 0));
+          
+          for (const goal of sortedNewGoals) {
+            const scorer = goal.scorer || 'Unknown';
+            const goalMinute = goal.minute ?? 0;
+            const { isHomeTeam, teamName } = determineScoringTeam(goal, home_team, away_team);
+            
+            // Check if we've already sent a notification for this match/minute (scorer-only change suppression)
+            const usersWithExisting = await hasGoalNotificationForMinute(apiMatchId, goalMinute, userIds);
+            const usersToNotify = userIds.filter(uid => !usersWithExisting.has(uid));
+            
+            if (usersToNotify.length > 0) {
+              const result = await sendGoalNotification(usersToNotify, {
+                apiMatchId, fixtureIndex: fixture_index, gw,
+                scorer, minute: goalMinute, teamName,
+                homeTeam: home_team, awayTeam: away_team,
+                homeScore, awayScore, isHomeTeam,
+                isOwnGoal: goal.isOwnGoal === true,
+              });
+              totalSent += result.results.accepted;
+              console.log(`[scoreWebhookV2] [${requestId}] Goal ${goalMinute}' (${scorer}): ${result.results.accepted} sent (${usersWithExisting.size} suppressed - scorer-only change)`);
+            } else {
+              console.log(`[scoreWebhookV2] [${requestId}] Goal ${goalMinute}' (${scorer}): All ${userIds.length} users already notified (scorer-only change)`);
+            }
+          }
         }
       }
     }
 
-    // 3. Handle kickoff
-    if (isFirstHalfKickoff || isSecondHalfKickoff) {
+    // 3. Handle kickoff (simplified - uses idempotency, doesn't rely on oldStatus)
+    if (shouldCheckKickoff) {
       const picksData = await fetchUserIdsWithPicks(gw, fixture_index, isAppFixture, isTestFixture, testGwForPicks);
       const userIds = [...new Set(picksData.map(p => p.userId))];
 
       if (userIds.length > 0) {
+        // Determine which half: check if we've already sent kickoff notifications
+        // If oldStatus available, use it for reliability. Otherwise check database.
+        let isSecondHalf = false;
+        
+        if (oldStatus) {
+          // Use oldStatus if available (most reliable)
+          const wasPaused = oldStatus === 'PAUSED' || oldStatus === 'HALF_TIME';
+          isSecondHalf = wasPaused;
+        } else {
+          // oldStatus missing - check database for existing kickoff notifications
+          const existingHalf = await getExistingKickoffHalf(apiMatchId, userIds);
+          isSecondHalf = existingHalf >= 1; // If we've sent half 1, this must be half 2
+        }
+        
         const result = await sendKickoffNotification(userIds, {
           apiMatchId, fixtureIndex: fixture_index, gw,
           homeTeam: home_team, awayTeam: away_team,
-          isSecondHalf: isSecondHalfKickoff,
+          isSecondHalf,
         });
         totalSent += result.results.accepted;
-        console.log(`[scoreWebhookV2] [${requestId}] Kickoff: ${result.results.accepted} sent`);
+        console.log(`[scoreWebhookV2] [${requestId}] Kickoff (half ${isSecondHalf ? 2 : 1}): ${result.results.accepted} sent`);
       }
 
       return { statusCode: 200, headers, body: JSON.stringify({ message: 'Kickoff notification sent', sentTo: totalSent }) };
@@ -296,7 +356,7 @@ export const handler: Handler = async (event, context) => {
         const result = await sendHalftimeNotification(userIds, {
           apiMatchId, fixtureIndex: fixture_index, gw,
           homeTeam: home_team, awayTeam: away_team,
-          homeScore, awayScore, minute: minute ?? undefined,
+          homeScore, awayScore,
         });
         totalSent += result.results.accepted;
         console.log(`[scoreWebhookV2] [${requestId}] Half-time: ${result.results.accepted} sent`);

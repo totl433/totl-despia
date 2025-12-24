@@ -34,8 +34,12 @@ async function fetchAndStoreTeamForms(gw) {
   try {
     console.log(`Fetching team forms for GW ${gw}...`);
     
+    // Use current date in YYYY-MM-DD format for form calculation
+    const today = new Date().toISOString().split('T')[0];
+    const apiUrl = `https://api.football-data.org/v4/competitions/PL/standings?date=${today}`;
+    console.log(`📅 Using date parameter: ${today}`);
+    
     // Fetch from Football Data API
-    const apiUrl = `https://api.football-data.org/v4/competitions/PL/standings`;
     const response = await fetch(apiUrl, {
       headers: {
         'X-Auth-Token': FOOTBALL_DATA_API_KEY,
@@ -60,7 +64,10 @@ async function fetchAndStoreTeamForms(gw) {
       if (overallTable && overallTable.table && Array.isArray(overallTable.table)) {
         overallTable.table.forEach((team) => {
           const teamCode = (team.team?.tla || team.team?.shortName || '').toUpperCase().trim();
-          const form = (team.form || '').trim().toUpperCase();
+          // API returns comma-separated format (e.g., "D,L,W,D,W") with newest FIRST
+          // Reverse it so newest is LAST for display (oldest → newest)
+          const formRaw = (team.form || '').trim().toUpperCase().replace(/,/g, '');
+          const form = formRaw ? formRaw.split('').reverse().join('') : '';
           
           if (teamCode && form) {
             formsMap.set(teamCode, form);

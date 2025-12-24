@@ -35,7 +35,9 @@ export const handler: Handler = async (event) => {
     
     // If resource is 'standings', fetch standings
     if (resource === 'standings') {
-      const apiUrl = `${FOOTBALL_DATA_BASE_URL}/competitions/${competition}/standings`;
+      // Use date parameter for form calculation (defaults to today if not provided)
+      const dateParam = params.get('date') || new Date().toISOString().split('T')[0];
+      const apiUrl = `${FOOTBALL_DATA_BASE_URL}/competitions/${competition}/standings?date=${dateParam}`;
       console.log('[fetchFootballData] Fetching standings:', apiUrl);
       
       const response = await fetch(apiUrl, {

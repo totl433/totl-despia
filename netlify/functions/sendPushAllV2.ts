@@ -93,6 +93,7 @@ export const handler: Handler = async (event) => {
     body: message,
     data,
     grouping_params: data?.gw ? { gw: data.gw } : {},
+    badge_count: notificationKey === 'new-gameweek' ? 1 : undefined,
   });
 
   console.log('[sendPushAllV2] Dispatch result:', {

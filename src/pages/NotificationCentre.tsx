@@ -27,12 +27,12 @@ export default function NotificationCentre() {
       description: 'Get notified when a new gameweek is published and ready for predictions',
       enabled: true,
     },
-    {
-      id: 'score-updates',
-      label: 'Score Updates',
-      description: 'Get notified when match scores are updated',
-      enabled: true,
-    },
+          {
+            id: 'score-updates',
+            label: 'Match Updates',
+            description: 'Get notified about match updates including kickoffs, goals, and scorers',
+            enabled: true,
+          },
     {
       id: 'final-whistle',
       label: 'Final Whistle',
@@ -64,7 +64,22 @@ export default function NotificationCentre() {
   }, [user]);
 
   async function loadPushState() {
-    const state = await getEffectivePushState(user?.id || null);
+    // Give Despia a moment to initialize and provide Player ID
+    // This prevents showing "Unavailable" immediately on refresh
+    let state = await getEffectivePushState(user?.id || null);
+    
+    // If we don't have a Player ID yet but Despia is available, wait a bit and retry
+    if (state.effectiveState === 'not_registered' && state.hasOsPermission) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      state = await getEffectivePushState(user?.id || null);
+      
+      // One more retry after another short delay
+      if (state.effectiveState === 'not_registered' && state.hasOsPermission) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        state = await getEffectivePushState(user?.id || null);
+      }
+    }
+    
     setPushState(state);
   }
 
@@ -107,8 +122,8 @@ export default function NotificationCentre() {
           },
           {
             id: 'score-updates',
-            label: 'Score Updates',
-            description: 'Get notified when match scores are updated',
+            label: 'Match Updates',
+            description: 'Get notified about match updates including kickoffs, goals, and scorers',
             enabled: prefs['score-updates'] !== false,
           },
           {

@@ -1625,6 +1625,41 @@ export default function TestApiPredictions() {
                 return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
               });
               
+              // Check if any games are currently live (IN_PLAY or PAUSED)
+              const hasLiveGames = fixtures.length > 0 && fixtures.some(f => {
+                const liveScore = liveScores[f.fixture_index];
+                return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+              });
+              
+              // Check if all fixtures are finished
+              const allFinished = fixtures.length > 0 && fixtures.every(f => {
+                const liveScore = liveScores[f.fixture_index];
+                return liveScore && liveScore.status === 'FINISHED';
+              });
+              
+              // Check if fixtures are starting soon (have kickoff time in future, no live score yet)
+              const now = new Date();
+              const hasStartingSoon = fixtures.length > 0 && fixtures.some(f => {
+                if (!f.kickoff_time) return false;
+                const kickoffTime = new Date(f.kickoff_time);
+                const liveScore = liveScores[f.fixture_index];
+                const hasNotStarted = !liveScore || (liveScore.status !== 'IN_PLAY' && liveScore.status !== 'PAUSED' && liveScore.status !== 'FINISHED');
+                return hasNotStarted && kickoffTime > now;
+              });
+              
+              // Determine state
+              let state: 'starting-soon' | 'live' | 'finished' = 'finished';
+              if (hasLiveGames) {
+                state = 'live';
+              } else if (hasStartingSoon && !hasAnyLiveOrFinished) {
+                state = 'starting-soon';
+              } else if (allFinished) {
+                state = 'finished';
+              } else if (hasAnyLiveOrFinished) {
+                // Some games finished but not all - still consider it live if any are live
+                state = hasLiveGames ? 'live' : 'finished';
+              }
+              
               // Calculate current score
               let currentScore = 0;
               if (hasAnyLiveOrFinished) {
@@ -1654,14 +1689,8 @@ export default function TestApiPredictions() {
                 });
               }
               
-              // Check if all fixtures are finished
-              // const checkAllFinished = fixtures.length > 0 && fixtures.every(f => {
-              //   const liveScore = liveScores[f.fixture_index];
-              //   return liveScore && liveScore.status === 'FINISHED';
-              // });
-              
               // Show score indicator if games have started/finished or user has submitted
-              if (hasAnyLiveOrFinished || (submitted && fixtures.length > 0)) {
+              if (hasAnyLiveOrFinished || (submitted && fixtures.length > 0) || hasStartingSoon) {
                 const displayScore = hasAnyLiveOrFinished ? currentScore : (submitted ? myScore : 0);
                 
                 return (
@@ -1669,6 +1698,7 @@ export default function TestApiPredictions() {
                     score={displayScore}
                     total={fixtures.length}
                     topPercent={topPercent}
+                    state={state}
                   />
                 );
               }

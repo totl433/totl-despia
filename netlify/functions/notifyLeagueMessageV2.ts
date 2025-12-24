@@ -15,6 +15,89 @@ import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { dispatchNotification, formatEventId } from './lib/notifications';
 
+/**
+ * Calculate total unread message count across all leagues for a user
+ * and determine the appropriate deep link URL
+ */
+async function calculateUnreadCountAndUrl(
+  userId: string,
+  currentLeagueId: string,
+  currentLeagueCode: string,
+  admin: ReturnType<typeof createClient>
+): Promise<{ badgeCount: number; url: string }> {
+  try {
+    // Get all leagues the user is in
+    const { data: userLeagues } = await admin
+      .from('league_members')
+      .select('league_id')
+      .eq('user_id', userId);
+    
+    if (!userLeagues || userLeagues.length === 0) {
+      return { badgeCount: 1, url: `/league/${currentLeagueCode}` };
+    }
+    
+    const leagueIds = userLeagues.map((l: any) => l.league_id);
+    
+    // Get last read times for all leagues
+    const { data: readsData } = await admin
+      .from('league_message_reads')
+      .select('league_id, last_read_at')
+      .eq('user_id', userId)
+      .in('league_id', leagueIds);
+    
+    const lastRead = new Map<string, string>();
+    (readsData || []).forEach((r: any) => lastRead.set(r.league_id, r.last_read_at));
+    
+    // Find earliest last_read_at
+    const defaultTime = '1970-01-01T00:00:00Z';
+    let earliestTime = defaultTime;
+    leagueIds.forEach(id => {
+      const time = lastRead.get(id) ?? defaultTime;
+      if (time < earliestTime || earliestTime === defaultTime) {
+        earliestTime = time;
+      }
+    });
+    
+    // Fetch all unread messages
+    const { data: messagesData } = await admin
+      .from('league_messages')
+      .select('league_id, created_at, user_id')
+      .in('league_id', leagueIds)
+      .gte('created_at', earliestTime)
+      .neq('user_id', userId) // Exclude own messages
+      .limit(10000);
+    
+    // Count unread per league
+    const unreadByLeague: Record<string, number> = {};
+    leagueIds.forEach(id => { unreadByLeague[id] = 0; });
+    
+    (messagesData || []).forEach((msg: any) => {
+      const leagueLastRead = lastRead.get(msg.league_id) ?? defaultTime;
+      if (msg.created_at >= leagueLastRead) {
+        unreadByLeague[msg.league_id] = (unreadByLeague[msg.league_id] || 0) + 1;
+      }
+    });
+    
+    // Calculate total badge count
+    const badgeCount = Object.values(unreadByLeague).reduce((sum, count) => sum + count, 0);
+    
+    // Determine URL: if only current league has unread, link to it. Otherwise link to leagues list.
+    const leaguesWithUnread = Object.entries(unreadByLeague)
+      .filter(([_, count]) => count > 0)
+      .map(([id]) => id);
+    
+    const url = leaguesWithUnread.length === 1 && leaguesWithUnread[0] === currentLeagueId
+      ? `/league/${currentLeagueCode}`
+      : '/leagues';
+    
+    return { badgeCount, url };
+  } catch (error) {
+    console.error('[notifyLeagueMessageV2] Error calculating unread count:', error);
+    // Fallback: just use current league
+    return { badgeCount: 1, url: `/league/${currentLeagueCode}` };
+  }
+}
+
 function json(statusCode: number, body: unknown) {
   return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
 }
@@ -133,45 +216,70 @@ export const handler: Handler = async (event) => {
   const msgHash = messageId || hashString(`${senderId}:${content}:${Date.now()}`);
   const eventId = `chat:${leagueId}:${msgHash}`;
 
-  // 5) Build deep link URL
-  const leagueUrl = `/league/${leagueCode}`;
+  // 5) Calculate unread counts and determine deep link URL for each recipient
+  // Group recipients by their badge count and URL to minimize dispatch calls
+  const recipientGroups = new Map<string, string[]>(); // key: "{badgeCount}|{url}", value: user_ids
+  
+  for (const userId of recipientIds) {
+    const { badgeCount, url } = await calculateUnreadCountAndUrl(userId, leagueId, leagueCode, admin);
+    const groupKey = `${badgeCount}|${url}`;
+    if (!recipientGroups.has(groupKey)) {
+      recipientGroups.set(groupKey, []);
+    }
+    recipientGroups.get(groupKey)!.push(userId);
+  }
 
-  // 6) Dispatch via unified system
-  const result = await dispatchNotification({
-    notification_key: 'chat-message',
-    event_id: eventId,
-    user_ids: Array.from(recipientIds),
-    title: senderName || 'New message',
-    body: String(content).slice(0, 180),
-    data: {
-      type: 'league_message',
-      leagueId,
-      leagueCode,
-      senderId,
-      url: leagueUrl,
-    },
-    url: leagueUrl,
-    grouping_params: {
-      league_id: leagueId,
-    },
-    league_id: leagueId, // For mute checking
-  });
+  // 6) Dispatch notifications for each group
+  let totalAccepted = 0;
+  const results: any[] = [];
+  
+  for (const [groupKey, userIds] of recipientGroups) {
+    const [badgeCountStr, url] = groupKey.split('|');
+    const badgeCount = parseInt(badgeCountStr, 10) || 1;
+    
+    const result = await dispatchNotification({
+      notification_key: 'chat-message',
+      event_id: eventId,
+      user_ids: userIds,
+      title: senderName || 'New message',
+      body: String(content).slice(0, 180),
+      data: {
+        type: 'league_message',
+        leagueId,
+        leagueCode,
+        senderId,
+        url,
+      },
+      url,
+      grouping_params: {
+        league_id: leagueId,
+      },
+      league_id: leagueId, // For mute checking
+      badge_count: badgeCount,
+    });
+    
+    totalAccepted += result.results.accepted;
+    results.push(result);
+  }
 
-  console.log('[notifyLeagueMessageV2] Dispatch result:', {
-    accepted: result.results.accepted,
-    failed: result.results.failed,
-    suppressed_duplicate: result.results.suppressed_duplicate,
-    suppressed_preference: result.results.suppressed_preference,
-    suppressed_muted: result.results.suppressed_muted,
-    suppressed_cooldown: result.results.suppressed_cooldown,
-  });
+  const combinedResults = {
+    accepted: totalAccepted,
+    failed: results.reduce((sum, r) => sum + r.results.failed, 0),
+    suppressed_duplicate: results.reduce((sum, r) => sum + r.results.suppressed_duplicate, 0),
+    suppressed_preference: results.reduce((sum, r) => sum + r.results.suppressed_preference, 0),
+    suppressed_muted: results.reduce((sum, r) => sum + r.results.suppressed_muted, 0),
+    suppressed_cooldown: results.reduce((sum, r) => sum + r.results.suppressed_cooldown, 0),
+  };
+
+  console.log('[notifyLeagueMessageV2] Dispatch result:', combinedResults);
 
   return json(200, {
     ok: true,
-    sent: result.results.accepted,
+    sent: totalAccepted,
     recipients: recipientIds.size,
-    results: result.results,
+    results: combinedResults,
     event_id: eventId,
+    groups: recipientGroups.size,
   });
 };
 

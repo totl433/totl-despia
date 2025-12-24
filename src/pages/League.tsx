@@ -916,12 +916,12 @@ ${shareUrl}`;
       }
       
       setAvailableGws(gwList);
-      if (gwList.length > 0) setSelectedGw(gwList[0]);
+      if (gwList.length > 0 && !selectedGw) setSelectedGw(gwList[0]);
     })();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [gwResultsVersion]); // Re-run when app_gw_results changes
 
   // data for GW tabs
   const memberIds = useMemo(() => members.map((m) => m.id), [members]);
@@ -1753,18 +1753,18 @@ ${shareUrl}`;
 
   /* ---------- Subscribe to gw_results changes for real-time table updates ---------- */
   useEffect(() => {
-    // Subscribe to changes in gw_results table to trigger table recalculation
+    // Subscribe to changes in app_gw_results table to trigger table recalculation and update available GWs
     const channel = supabase
-      .channel('gw-results-changes')
+      .channel('app-gw-results-changes')
       .on(
         'postgres_changes',
         {
           event: '*', // Listen to INSERT, UPDATE, DELETE
           schema: 'public',
-          table: 'gw_results',
+          table: 'app_gw_results',
         },
         () => {
-          // Increment version to trigger recalculation
+          // Increment version to trigger recalculation and update available GWs
           setGwResultsVersion(prev => prev + 1);
         }
       )
@@ -2578,7 +2578,28 @@ ${shareUrl}`;
       // For regular leagues, check if all fixtures have results
       const fixturesForGw = fixtures.filter(f => f.gw === resGw);
       if (fixturesForGw.length > 0) {
-        allFixturesFinished = fixturesForGw.every(f => outcomes.has(f.fixture_index));
+        // Check if all fixtures have results in outcomes map
+        const allHaveResults = fixturesForGw.every(f => outcomes.has(f.fixture_index));
+        
+        // Check if there are any active games (IN_PLAY or PAUSED)
+        const hasActiveGames = fixturesForGw.some((f: any) => {
+          const liveScore = liveScores[f.fixture_index];
+          return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+        });
+        
+        // GW is finished if:
+        // 1. All fixtures have results (outcomes map has all fixture indices)
+        // 2. No active games (no IN_PLAY or PAUSED status)
+        // If results are published, we trust that the GW has finished
+        allFixturesFinished = allHaveResults && !hasActiveGames;
+        
+        console.log(`[League] GW ${resGw} finished check:`, {
+          allHaveResults,
+          hasActiveGames,
+          fixturesCount: fixturesForGw.length,
+          outcomesCount: fixturesForGw.filter(f => outcomes.has(f.fixture_index)).length,
+          allFixturesFinished
+        });
       }
     }
 
@@ -2639,7 +2660,7 @@ ${shareUrl}`;
           }
         `}</style>
         
-        {/* SP Wins Banner - only show when all fixtures have finished */}
+        {/* SP Wins Banner - only show when all fixtures have finished AND GW is not still live */}
         {rows.length > 0 && allFixturesFinished && (
           <WinnerBanner 
             winnerName={rows[0].name} 

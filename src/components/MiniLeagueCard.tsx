@@ -2,6 +2,7 @@ import { useMemo, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
 import { ordinal, initials, toStringSet } from '../lib/helpers';
+import { useGameweekFinished } from '../hooks/useGameweekFinished';
 
 export type LeagueRow = {
   id: string;
@@ -58,6 +59,9 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
   const userPosition = data?.userPosition;
   const badge = unread > 0 ? Math.min(unread, 99) : 0;
 
+  // Check if current GW has finished (for showing winner chips)
+  const isCurrentGwFinished = useGameweekFinished(currentGw);
+
   const memberChips = useMemo(() => {
     if (leagueDataLoading || !data) return [];
     const baseMembers = data.members ?? [];
@@ -96,9 +100,15 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
       // GPU-optimized: Use CSS classes instead of inline styles
       let chipClassName = 'chip-container rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
       
-      // Only show shiny chip if latestRelevantGw matches currentGw (same GW)
-      // If currentGw > latestRelevantGw, a new GW has been published - hide shiny chips
-      const shouldShowShiny = isLatestWinner && data.latestRelevantGw !== null && currentGw !== null && data.latestRelevantGw === currentGw;
+      // Show shiny chip if:
+      // 1. User is a winner for latestRelevantGw
+      // 2. latestRelevantGw is from a previous completed GW (latestRelevantGw < currentGw)
+      // OR latestRelevantGw === currentGw AND currentGw has finished (moved to RESULTS_PRE_GW state)
+      // This ensures winners show for finished GWs, not live ones
+      const shouldShowShiny = isLatestWinner && 
+        data.latestRelevantGw !== null && 
+        currentGw !== null && 
+        (data.latestRelevantGw < currentGw || (data.latestRelevantGw === currentGw && isCurrentGwFinished));
       
       if (shouldShowShiny) {
         // Shiny chip for last GW winner (already GPU-optimized with transforms)
@@ -140,7 +150,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
         </div>
       );
     });
-  }, [data, leagueDataLoading, row.name, currentGw]);
+  }, [data, leagueDataLoading, row.name, currentGw, isCurrentGwFinished]);
 
   const extraMembers = useMemo(() => {
     if (!data) return 0;

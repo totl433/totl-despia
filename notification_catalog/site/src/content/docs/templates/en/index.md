@@ -8,34 +8,34 @@ head: []
 
 ## Goal Scored
 ```
-Title: {teamName} scores!
+Title: Goal {teamName}!
 Body: {minute}' {scorer}
       {homeTeam} [{homeScore}] - {awayScore} {awayTeam}
 ```
 
 ## Goal Disallowed
 ```
-Title: 🚫 Goal Disallowed
-Body: {minute}' {scorer}'s goal for {teamName} was disallowed by VAR
+Title: Goal Disallowed
+Body: {minute}' {scorer}'s goal for {teamName} was disallowed
       {homeTeam} {homeScore}-{awayScore} {awayTeam}
 ```
 
 ## Kickoff (First Half)
 ```
-Title: ⚽ {homeTeam} vs {awayTeam}
+Title: {homeTeam} vs {awayTeam}
 Body: Kickoff!
 ```
 
 ## Kickoff (Second Half)
 ```
-Title: ⚽ {homeTeam} vs {awayTeam}
+Title: {homeTeam} vs {awayTeam}
 Body: Second half underway
 ```
 
 ## Half-Time
 ```
-Title: ⏸️ Half-Time
-Body: {homeTeam} {homeScore}-{awayScore} {awayTeam} {minute}'
+Title: Half-Time
+Body: {homeTeam} {homeScore}-{awayScore} {awayTeam}
 ```
 
 ## Final Whistle (Correct Pick)
@@ -52,7 +52,7 @@ Body: ❌ Wrong pick {percentage}% of players got this fixture correct
 
 ## Gameweek Complete
 ```
-Title: 🎉 Gameweek {gw} Complete!
+Title: Gameweek {gw} Complete!
 Body: All games finished. Check your results!
 ```
 
@@ -64,8 +64,8 @@ Body: {messageContent}
 
 ## Final Submission
 ```
-Title: All predictions submitted! 🎉
-Body: Everyone in {leagueName} has submitted for {matchdayLabel}. Check out who picked what!
+Title: All predictions submitted!
+Body: Everyone in {leagueName} has submitted for GW {gw}. Check out who picked what!
 ```
 
 ## New Gameweek (Admin Custom)

@@ -25,6 +25,7 @@ export function buildPayload(
     data?: Record<string, any>;
     url?: string;
     groupingParams?: Record<string, string | number>;
+    badgeCount?: number;
   }
 ): OneSignalPayload {
   const appId = process.env.ONESIGNAL_APP_ID;
@@ -32,7 +33,7 @@ export function buildPayload(
     throw new Error('ONESIGNAL_APP_ID not configured');
   }
   
-  const { title, body, externalUserIds, playerIds, data, url, groupingParams = {} } = options;
+  const { title, body, externalUserIds, playerIds, data, url, groupingParams = {}, badgeCount } = options;
   
   // Build grouping fields from catalog templates
   const collapseId = formatCollapseId(catalogEntry.notification_key, groupingParams);
@@ -62,6 +63,12 @@ export function buildPayload(
   }
   if (androidGroup) {
     payload.android_group = androidGroup;
+  }
+  
+  // Add iOS badge if specified
+  if (badgeCount !== undefined && badgeCount > 0) {
+    payload.ios_badgeType = 'SetTo';
+    payload.ios_badgeCount = badgeCount;
   }
   
   // Add data payload

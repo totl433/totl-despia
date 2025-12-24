@@ -191,9 +191,9 @@ export default function PredictionsPage() {
         return;
       }
 
-      // 1) fixtures for GW
+      // 1) fixtures for GW - read from app_fixtures (where ApiAdmin saves fixtures)
       const { data: fx, error: fxErr } = await supabase
-        .from("fixtures")
+        .from("app_fixtures")
         .select(
           "gw, fixture_index, home_name, away_name, home_team, away_team, home_code, away_code, kickoff_time"
         )
@@ -225,9 +225,9 @@ export default function PredictionsPage() {
         setIsPastDeadline(false);
       }
 
-      // 2) my picks for this GW
+      // 2) my picks for this GW - read from app_picks
       const { data: pk, error: pkErr } = await supabase
-        .from("picks")
+        .from("app_picks")
         .select("gw, fixture_index, pick")
         .eq("gw", gw)
         .eq("user_id", user?.id);
@@ -246,9 +246,9 @@ export default function PredictionsPage() {
       if (!mounted) return;
       setChoices(next);
 
-      // 3) submission state
+      // 3) submission state - read from app_gw_submissions
       const { data: sub, error: subErr } = await supabase
-        .from("gw_submissions")
+        .from("app_gw_submissions")
         .select("gw, submitted_at")
         .eq("gw", gw)
         .eq("user_id", user?.id)
@@ -260,9 +260,9 @@ export default function PredictionsPage() {
       if (!mounted) return;
       setSubmitted(Boolean((sub as SubmissionRow | null)?.submitted_at));
 
-      // 4) results for this GW
+      // 4) results for this GW - read from app_gw_results
       const { data: rs, error: rsErr } = await supabase
-        .from("gw_results")
+        .from("app_gw_results")
         .select("gw, fixture_index, result")
         .eq("gw", gw);
 
@@ -318,10 +318,10 @@ export default function PredictionsPage() {
           pick: pick as "H" | "D" | "A",
         }));
 
-      // Upsert by (user_id, gw, fixture_index)
+      // Upsert by (user_id, gw, fixture_index) - save to app_picks
       if (rows.length) {
         const { error } = await supabase
-          .from("picks")
+          .from("app_picks")
           .upsert(rows, { onConflict: "user_id,gw,fixture_index" });
         if (error) throw error;
       }
@@ -394,7 +394,7 @@ export default function PredictionsPage() {
     }
 
     const { error } = await supabase
-      .from("gw_submissions")
+      .from("app_gw_submissions")
       .upsert([{ user_id: user?.id, gw, submitted_at: new Date().toISOString() }], {
         onConflict: "user_id,gw",
       });
@@ -793,10 +793,10 @@ export default function PredictionsPage() {
   );
 }
 
-// Fetch the current GW from meta (server)
+// Fetch the current GW from app_meta (server)
 async function fetchCurrentGw(): Promise<number | null> {
   const { data } = await supabase
-    .from("meta")
+    .from("app_meta")
     .select("current_gw")
     .eq("id", 1)
     .single();

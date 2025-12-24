@@ -1,6 +1,7 @@
 import React from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
+import { isGameweekFinished } from "../lib/gameweekState";
 import GameweekBanner from "./ComingSoonBanner";
 
 /**
@@ -18,6 +19,12 @@ export default function PredictionsBanner() {
   const [currentGw, setCurrentGw] = React.useState<number | null>(null);
   const [bannerType, setBannerType] = React.useState<"predictions" | "watch-space" | null>(null);
   const [deadlineText, setDeadlineText] = React.useState<string | null>(null);
+  
+  // Always start with banner hidden - only show if we're certain it should be visible
+  React.useEffect(() => {
+    setVisible(false);
+    setBannerType(null);
+  }, []);
 
   React.useEffect(() => {
     let alive = true;
@@ -129,10 +136,30 @@ export default function PredictionsBanner() {
         }
 
         if (resultsPublished) {
-          // Results published for current GW - check if next GW fixtures exist
-          // Only show "watch this space" banner if next GW fixtures don't exist yet
+          // Results published for current GW - check if GW is still "live"
+          // If GW is still live, don't show banner
+          console.log(`[PredictionsBanner] 🔍 Results published for GW ${gw}, checking if GW has finished...`);
+          
+          // Use centralized gameweek state check
+          const gwFinished = await isGameweekFinished(gw);
+          
+          if (!alive) return;
+          
+          // If GW is still live (not finished), hide banner
+          if (!gwFinished) {
+            console.log(`[PredictionsBanner] ⏳ GW ${gw} is still live - HIDING BANNER`);
+            if (alive) {
+              setVisible(false);
+              setBannerType(null);
+            }
+            return;
+          }
+          
+          console.log(`[PredictionsBanner] ✅ GW ${gw} has finished - proceeding to check next GW fixtures...`);
+          
+          // All fixtures have finished - now check if next GW fixtures exist
           const nextGw = gw + 1;
-          console.log(`[PredictionsBanner] 🔍 Checking if GW ${nextGw} fixtures exist...`);
+          console.log(`[PredictionsBanner] ✅ GW ${gw} is fully finished, checking if GW ${nextGw} fixtures exist...`);
           
           const { count: nextGwFxCount, error: nextGwFxError } = await supabase
             .from("app_fixtures")
@@ -153,14 +180,14 @@ export default function PredictionsBanner() {
             return;
           }
           
-          console.log(`[PredictionsBanner] 📊 Results published for GW ${gw}, checking GW ${nextGw} fixtures:`, nextGwFxCount || 0);
+          console.log(`[PredictionsBanner] 📊 GW ${gw} finished, checking GW ${nextGw} fixtures:`, nextGwFxCount || 0);
           
           // Show banner if next GW fixtures don't exist yet (or count is 0/undefined)
           // Use explicit check: if count is null/undefined/0, show banner
           const hasNextGwFixtures = nextGwFxCount !== null && nextGwFxCount !== undefined && nextGwFxCount > 0;
           
           if (!hasNextGwFixtures) {
-            console.log(`[PredictionsBanner] ✅ Results published for GW ${gw}, GW ${nextGw} fixtures not ready (count: ${nextGwFxCount}) - showing coming soon banner`);
+            console.log(`[PredictionsBanner] ✅ GW ${gw} finished, GW ${nextGw} fixtures not ready (count: ${nextGwFxCount}) - showing coming soon banner`);
             if (alive) {
               setBannerType("watch-space");
               setVisible(true);

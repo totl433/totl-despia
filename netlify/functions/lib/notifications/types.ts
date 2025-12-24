@@ -60,6 +60,9 @@ export interface NotificationIntent {
   
   /** League ID (for mute checking) */
   league_id?: string;
+  
+  /** iOS badge count (optional) */
+  badge_count?: number;
 }
 
 /**

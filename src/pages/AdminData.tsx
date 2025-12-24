@@ -549,7 +549,7 @@ export default function AdminDataPage() {
                   const baseUrl = isDev 
                     ? 'https://totl-staging.netlify.app'
                     : '';
-                  const url = `${baseUrl}/.netlify/functions/sendPushAll`;
+                  const url = `${baseUrl}/.netlify/functions/sendPushAllV2`;
                   console.log('[AdminData] Sending notification to:', url);
                   
                   const response = await fetch(url, {

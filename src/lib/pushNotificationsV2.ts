@@ -428,17 +428,29 @@ export async function deactivatePushSubscription(
 
 /**
  * Get effective push notification state for UI display
+ * 
+ * This function checks the actual state of push notifications by:
+ * 1. Checking if Despia is available (native app)
+ * 2. Checking OS permission status
+ * 3. Checking if we have a Player ID from Despia (indicates registration)
+ * 
+ * Note: We use the Player ID from Despia directly rather than relying on
+ * in-memory state, so this works correctly even after page refresh.
  */
 export async function getEffectivePushState(
   _userId: string | null
 ): Promise<EffectivePushState> {
-  const hasOsPermission = isDespiaAvailable() ? checkOsPermission() : false;
+  const isDespia = isDespiaAvailable();
+  const hasOsPermission = isDespia ? checkOsPermission() : false;
   const playerId = getPlayerIdFromDespia();
-  const isRegistered = hasRegisteredThisSession && !!currentPlayerId;
+  
+  // If we have a Player ID from Despia, we're registered (even if in-memory state isn't set)
+  // Also check in-memory state as a fallback for cases where Player ID isn't available yet
+  const isRegistered = !!playerId || (hasRegisteredThisSession && !!currentPlayerId);
   
   // Determine effective state
   let effectiveState: EffectivePushState['effectiveState'];
-  if (!isDespiaAvailable()) {
+  if (!isDespia) {
     effectiveState = 'not_registered';
   } else if (!hasOsPermission) {
     effectiveState = 'muted_by_os';

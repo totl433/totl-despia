@@ -1,91 +1,42 @@
+/**
+ * Final Submission Notification (V2 - using unified dispatcher)
+ * 
+ * Migrated to use the new notification system.
+ * 
+ * Changes:
+ * - Uses dispatchNotification() instead of direct OneSignal API calls
+ * - Works for all mini-leagues (not just test league)
+ * - Checks all pick tables (picks, app_picks, test_api_picks)
+ * - Uses unified idempotency via notification_send_log
+ * - Removed emoji from title
+ */
+
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
-import { isSubscribed } from './utils/notificationHelpers';
+import { dispatchNotification, formatEventId } from './lib/notifications';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID!;
-const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY!;
 
-// Initialize Supabase admin client
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-// Send notification via OneSignal
-async function sendOneSignalNotification(
-  playerIds: string[],
-  title: string,
-  message: string,
-  data?: Record<string, any>
-): Promise<{ success: boolean; sentTo: number; errors?: any[] }> {
-  if (playerIds.length === 0) {
-    return { success: true, sentTo: 0 };
-  }
-
-  // Verify subscriptions first
-  const checks = await Promise.allSettled(
-    playerIds.map(async (playerId) => {
-      const result = await isSubscribed(playerId, ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY);
-      return { playerId, subscribed: result.subscribed };
-    })
-  );
-
-  const validPlayerIds = playerIds.filter((playerId, i) => {
-    const check = checks[i];
-    if (check.status === 'fulfilled') {
-      return check.value.subscribed;
-    }
-    return false;
-  });
-
-  if (validPlayerIds.length === 0) {
-    return { success: true, sentTo: 0 };
-  }
-
-  const payload: any = {
-    app_id: ONESIGNAL_APP_ID,
-    headings: { en: title },
-    contents: { en: message },
-    include_player_ids: validPlayerIds,
+function json(statusCode: number, body: unknown) {
+  return {
+    statusCode,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   };
-
-  if (data) {
-    payload.data = data;
-  }
-
-  try {
-    const response = await fetch('https://onesignal.com/api/v1/notifications', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const result = await response.json();
-    
-    if (!response.ok) {
-      console.error('[notifyFinalSubmission] OneSignal API error:', result);
-      return { success: false, sentTo: 0, errors: result.errors };
-    }
-
-    return { success: true, sentTo: result.recipients || 0 };
-  } catch (error: any) {
-    console.error('[notifyFinalSubmission] Error sending notification:', error);
-    return { success: false, sentTo: 0, errors: [error.message] };
-  }
 }
 
 /**
  * Check if all members have submitted and notify league members
- * This should be called when a submission is made (via database trigger or scheduled function)
+ * Works for all mini-leagues by checking all pick tables
  */
 async function checkAndNotifyFinalSubmission(
   leagueId: string,
-  matchday: number,
-  isTestApi: boolean = false
+  gw: number
 ) {
   try {
     // Get all league members
@@ -96,140 +47,119 @@ async function checkAndNotifyFinalSubmission(
 
     if (membersError || !members || members.length === 0) {
       console.error('[notifyFinalSubmission] Error fetching league members:', membersError);
-      return;
+      return { success: false, error: 'Failed to fetch league members' };
     }
 
     const memberIds = members.map((m: any) => m.user_id);
+    console.log(`[notifyFinalSubmission] Checking ${memberIds.length} members for league ${leagueId}, GW ${gw}`);
 
-    // Check submissions - try app_gw_submissions first (for GW14+ created via API Admin), 
-    // then fall back to test_api_submissions or gw_submissions
+    // Check submissions across all pick tables
+    // Try app_gw_submissions first (for app tables), then gw_submissions, then test_api_submissions
     let submissions: any[] = [];
-    let subsError: any = null;
     
-    // First, try app_gw_submissions (for app tables)
-    const { data: appSubmissions, error: appSubsError } = await supabase
+    // 1. Try app_gw_submissions (for app tables)
+    const { data: appSubmissions } = await supabase
       .from('app_gw_submissions')
       .select('user_id')
-      .eq('gw', matchday)
+      .eq('gw', gw)
       .in('user_id', memberIds)
       .not('submitted_at', 'is', null);
     
-    if (!appSubsError && appSubmissions && appSubmissions.length > 0) {
-      // Use app_gw_submissions
+    if (appSubmissions && appSubmissions.length > 0) {
       submissions = appSubmissions;
-      console.log(`[notifyFinalSubmission] Using app_gw_submissions for matchday ${matchday}`);
+      console.log(`[notifyFinalSubmission] Using app_gw_submissions: ${submissions.length} submissions found`);
     } else {
-      // Fall back to test_api_submissions or gw_submissions
-      const submissionsTable = isTestApi ? 'test_api_submissions' : 'gw_submissions';
-      const matchdayField = isTestApi ? 'matchday' : 'gw';
-      
-      const { data: regularSubmissions, error: regularSubsError } = await supabase
-        .from(submissionsTable)
+      // 2. Try gw_submissions (for web tables)
+      const { data: webSubmissions } = await supabase
+        .from('gw_submissions')
         .select('user_id')
-        .eq(matchdayField, matchday)
+        .eq('gw', gw)
         .in('user_id', memberIds)
         .not('submitted_at', 'is', null);
       
-      submissions = regularSubmissions || [];
-      subsError = regularSubsError;
-    }
-
-    if (subsError) {
-      console.error('[notifyFinalSubmission] Error fetching submissions:', subsError);
-      return;
+      if (webSubmissions && webSubmissions.length > 0) {
+        submissions = webSubmissions;
+        console.log(`[notifyFinalSubmission] Using gw_submissions: ${submissions.length} submissions found`);
+      } else {
+        // 3. Try test_api_submissions (for test API)
+        const { data: testSubmissions } = await supabase
+          .from('test_api_submissions')
+          .select('user_id')
+          .eq('matchday', gw)
+          .in('user_id', memberIds)
+          .not('submitted_at', 'is', null);
+        
+        if (testSubmissions && testSubmissions.length > 0) {
+          submissions = testSubmissions;
+          console.log(`[notifyFinalSubmission] Using test_api_submissions: ${submissions.length} submissions found`);
+        }
+      }
     }
 
     const submittedUserIds = new Set((submissions || []).map((s: any) => s.user_id));
-    const allSubmitted = submittedUserIds.size === memberIds.length;
+    const allSubmitted = submittedUserIds.size === memberIds.length && memberIds.length > 0;
 
-    if (allSubmitted) {
-      console.log(`[notifyFinalSubmission] All ${memberIds.length} members have submitted for league ${leagueId}, matchday ${matchday}`);
-
-      // Check if we've already sent this notification
-      const notificationKey = `final_submission_${leagueId}_${matchday}_${isTestApi ? 'test' : 'regular'}`;
-      const { data: existingNotification } = await supabase
-        .from('notification_state')
-        .select('*')
-        .eq('api_match_id', 888888 - matchday) // Use special marker
-        .maybeSingle();
-
-      // Use a more specific marker that includes league ID hash
-      const leagueHash = leagueId.split('-')[0];
-      const markerId = 888888 - matchday - parseInt(leagueHash.slice(0, 6), 16) % 10000;
-
-      const { data: existingNotification2 } = await supabase
-        .from('notification_state')
-        .select('*')
-        .eq('api_match_id', markerId)
-        .maybeSingle();
-
-      if (existingNotification2) {
-        console.log('[notifyFinalSubmission] Notification already sent, skipping');
-        return;
-      }
-
-      // Get league name
-      const { data: league } = await supabase
-        .from('leagues')
-        .select('name')
-        .eq('id', leagueId)
-        .maybeSingle();
-
-      const leagueName = league?.name || 'your league';
-
-      // Get player IDs for all league members
-      const { data: subscriptions } = await supabase
-        .from('push_subscriptions')
-        .select('user_id, player_id')
-        .in('user_id', memberIds)
-        .eq('is_active', true);
-
-      const allPlayerIds = (subscriptions || [])
-        .map((s: any) => s.player_id)
-        .filter(Boolean);
-
-      if (allPlayerIds.length > 0) {
-        const matchdayLabel = isTestApi ? `Test GW ${matchday}` : `GW ${matchday}`;
-        const result = await sendOneSignalNotification(
-          allPlayerIds,
-          `All predictions submitted! 🎉`,
-          `Everyone in ${leagueName} has submitted for ${matchdayLabel}. Check out who picked what!`,
-          {
-            type: 'final_submission',
-            league_id: leagueId,
-            matchday: matchday,
-            is_test_api: isTestApi,
-          }
-        );
-
-        if (result.success) {
-          console.log(`[notifyFinalSubmission] Sent final submission notification to ${result.sentTo} devices`);
-          
-          // Mark that we've sent this notification
-          await supabase
-            .from('notification_state')
-            .upsert({
-              api_match_id: markerId,
-              last_notified_home_score: 0,
-              last_notified_away_score: 0,
-              last_notified_status: 'FINAL_SUBMISSION',
-              last_notified_at: new Date().toISOString(),
-            }, {
-              onConflict: 'api_match_id',
-            });
-        } else {
-          console.error('[notifyFinalSubmission] Failed to send notification:', result.errors);
-        }
-      } else {
-        console.log('[notifyFinalSubmission] No active subscriptions found for league members');
-      }
-    } else {
+    if (!allSubmitted) {
       const remaining = memberIds.length - submittedUserIds.size;
       console.log(`[notifyFinalSubmission] Not all submitted yet: ${remaining} remaining in league ${leagueId}`);
+      return { success: true, message: 'Not all members have submitted yet', remaining };
     }
+
+    console.log(`[notifyFinalSubmission] All ${memberIds.length} members have submitted for league ${leagueId}, GW ${gw}`);
+
+    // Get league name
+    const { data: league } = await supabase
+      .from('leagues')
+      .select('name, code')
+      .eq('id', leagueId)
+      .maybeSingle();
+
+    const leagueName = league?.name || 'your league';
+    const leagueCode = league?.code;
+
+    // Build event ID using catalog format
+    const eventId = formatEventId('final-submission', { league_id: leagueId, gw });
+    if (!eventId) {
+      console.error('[notifyFinalSubmission] Failed to format event ID');
+      return { success: false, error: 'Failed to format event ID' };
+    }
+
+    // Dispatch via unified system
+    const result = await dispatchNotification({
+      notification_key: 'final-submission',
+      event_id: eventId,
+      user_ids: memberIds,
+      title: 'All predictions submitted!',
+      body: `Everyone in ${leagueName} has submitted for GW ${gw}. Check out who picked what!`,
+      data: {
+        type: 'final_submission',
+        league_id: leagueId,
+        league_code: leagueCode,
+        gw,
+      },
+      url: leagueCode ? `/league/${leagueCode}` : undefined,
+      grouping_params: {
+        league_id: leagueId,
+        gw,
+      },
+      league_id: leagueId,
+    });
+
+    console.log('[notifyFinalSubmission] Dispatch result:', {
+      accepted: result.results.accepted,
+      failed: result.results.failed,
+      suppressed_duplicate: result.results.suppressed_duplicate,
+    });
+
+    return {
+      success: true,
+      sent: result.results.accepted,
+      results: result.results,
+      event_id: eventId,
+    };
   } catch (error: any) {
     console.error('[notifyFinalSubmission] Error:', error);
-    throw error;
+    return { success: false, error: error?.message || 'Unknown error' };
   }
 }
 
@@ -237,11 +167,7 @@ export const handler: Handler = async (event) => {
   console.log('[notifyFinalSubmission] Invoked', event.source || 'manually');
   
   if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Method Not Allowed' }),
-    };
+    return json(405, { error: 'Method Not Allowed' });
   }
 
   try {
@@ -249,37 +175,26 @@ export const handler: Handler = async (event) => {
     try {
       payload = event.body ? JSON.parse(event.body) : {};
     } catch (e) {
-      return {
-        statusCode: 400,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Invalid JSON body' }),
-      };
+      return json(400, { error: 'Invalid JSON body' });
     }
 
-    const { leagueId, matchday, isTestApi } = payload;
+    // Support both 'matchday' (legacy) and 'gw' (new) parameters
+    const { leagueId, matchday, gw, isTestApi } = payload;
+    const gameweek = gw !== undefined ? gw : matchday;
 
-    if (!leagueId || matchday === undefined) {
-      return {
-        statusCode: 400,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Missing leagueId or matchday' }),
-      };
+    if (!leagueId || gameweek === undefined) {
+      return json(400, { error: 'Missing leagueId or gw/matchday' });
     }
 
-    await checkAndNotifyFinalSubmission(leagueId, matchday, isTestApi || false);
+    const result = await checkAndNotifyFinalSubmission(leagueId, gameweek);
 
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ success: true, message: 'Final submission check completed' }),
-    };
+    if (result.success) {
+      return json(200, result);
+    } else {
+      return json(500, result);
+    }
   } catch (error: any) {
     console.error('[notifyFinalSubmission] Error:', error);
-    return {
-      statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: error?.message || 'Failed to check final submission' }),
-    };
+    return json(500, { error: error?.message || 'Failed to check final submission' });
   }
 };
-

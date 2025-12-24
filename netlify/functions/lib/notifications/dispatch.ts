@@ -64,6 +64,7 @@ export async function dispatchNotification(
     skip_preference_check,
     skip_cooldown_check,
     league_id,
+    badge_count,
   } = intent;
   
   const result: BatchDispatchResult = {
@@ -181,6 +182,7 @@ export async function dispatchNotification(
         },
         url,
         groupingParams: grouping_params,
+        badgeCount: badge_count,
       });
       
       // 4d. Send notification

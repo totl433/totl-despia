@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
+import { isGameweekFinished } from "../lib/gameweekState";
 
 // Football Data API types
 type ApiMatch = {
@@ -66,6 +67,7 @@ export default function ApiAdmin() {
   const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
 
   const [nextGw, setNextGw] = useState<number | null>(null);
+  const [currentGw, setCurrentGw] = useState<number | null>(null);
   const [availableMatches, setAvailableMatches] = useState<ApiMatch[]>([]);
   const [selectedFixtures, setSelectedFixtures] = useState<Map<number, SelectedFixture>>(new Map());
   const [saving, setSaving] = useState(false);
@@ -74,6 +76,10 @@ export default function ApiAdmin() {
   const [ok, setOk] = useState("");
   const [apiError, setApiError] = useState<string | null>(null);
   const [loadingGw, setLoadingGw] = useState(true);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [recalling, setRecalling] = useState(false);
+  const [currentGwFinished, setCurrentGwFinished] = useState<boolean | null>(null);
+  const [checkingFinished, setCheckingFinished] = useState(false);
 
   // Load next GW from app_meta
   useEffect(() => {
@@ -91,9 +97,18 @@ export default function ApiAdmin() {
         if (error) throw error;
         
         if (alive && data) {
-          const currentGw = data.current_gw || 13;
-          const next = currentGw + 1;
+          const currentGwValue = data.current_gw || 13;
+          setCurrentGw(currentGwValue);
+          const next = currentGwValue + 1;
           setNextGw(next);
+          
+          // Check if current GW is finished
+          setCheckingFinished(true);
+          const finished = await isGameweekFinished(currentGwValue);
+          if (alive) {
+            setCurrentGwFinished(finished);
+            setCheckingFinished(false);
+          }
           
           // Load existing fixtures for next GW if they exist
           const { data: existingFixtures } = await supabase
@@ -139,9 +154,12 @@ export default function ApiAdmin() {
       console.log(`[ApiAdmin] Fetching team forms for GW ${gw}...`);
       
       const functionUrl = getFunctionUrl();
+      // Use current date for form calculation
+      const today = new Date().toISOString().split('T')[0];
       const params = new URLSearchParams({
         resource: 'standings',
         competition: 'PL',
+        date: today,
       });
       const url = `${functionUrl}?${params.toString()}`;
 
@@ -172,7 +190,10 @@ export default function ApiAdmin() {
           overallTable.table.forEach((team: any) => {
             // Use team.tla (three-letter code) as key
             const teamCode = (team.team?.tla || team.team?.shortName || '').toUpperCase().trim();
-            const form = (team.form || '').trim().toUpperCase();
+            // API returns comma-separated format (e.g., "D,L,W,D,W") with newest FIRST
+            // Reverse it so newest is LAST for display (oldest → newest)
+            const formRaw = (team.form || '').trim().toUpperCase().replace(/,/g, '');
+            const form = formRaw ? formRaw.split('').reverse().join('') : '';
             
             if (teamCode && form) {
               formsMap.set(teamCode, form);
@@ -313,9 +334,20 @@ export default function ApiAdmin() {
     }
   };
 
-  const saveGameweek = async () => {
+  // Check if next GW is already published (current_gw === nextGw)
+  const isPublished = currentGw !== null && nextGw !== null && currentGw >= nextGw;
+  
+  // Can only publish next GW if current GW is finished
+  const canPublishNextGw = currentGwFinished === true;
+
+  const publishGameweek = async () => {
     if (!nextGw) {
       setError("Next GW not loaded");
+      return;
+    }
+
+    if (!canPublishNextGw) {
+      setError(`Cannot publish GW ${nextGw}: GW ${currentGw} is not finished yet. All fixtures must have results before publishing the next gameweek.`);
       return;
     }
 
@@ -327,14 +359,18 @@ export default function ApiAdmin() {
     // Validate that all selected fixtures have api_match_id
     const fixturesWithoutApiId = Array.from(selectedFixtures.values()).filter(f => !f.api_match_id || f.api_match_id === 0);
     if (fixturesWithoutApiId.length > 0) {
-      setError(`Cannot save: ${fixturesWithoutApiId.length} fixture${fixturesWithoutApiId.length === 1 ? '' : 's'} missing api_match_id. Please select fixtures from the API matches list.`);
+      setError(`Cannot publish: ${fixturesWithoutApiId.length} fixture${fixturesWithoutApiId.length === 1 ? '' : 's'} missing api_match_id. Please select fixtures from the API matches list.`);
       return;
     }
 
-    // Confirm before saving
-    if (!confirm(`Are you sure you want to save GW ${nextGw} with ${selectedFixtures.size} fixture${selectedFixtures.size === 1 ? '' : 's'}? This will replace any existing fixtures for this gameweek.`)) {
-      return;
-    }
+    // Show confirmation dialog
+    setShowPublishConfirm(true);
+  };
+
+  const confirmPublish = async () => {
+    if (!nextGw) return;
+    
+    setShowPublishConfirm(false);
 
     setSaving(true);
     setError("");
@@ -395,18 +431,20 @@ export default function ApiAdmin() {
         }
       }
 
-      // Update app_meta.current_gw to the saved GW
-      console.log(`[ApiAdmin] Updating app_meta.current_gw to ${nextGw}...`);
+      // CRITICAL: Update app_meta.current_gw to the saved GW
+      // This triggers the notification and makes the GW live
+      console.log(`[ApiAdmin] ⚠️ PUBLISHING: Updating app_meta.current_gw to ${nextGw}...`);
       const { error: metaError } = await supabase
         .from("app_meta")
         .upsert({ id: 1, current_gw: nextGw }, { onConflict: 'id' });
 
       if (metaError) {
-        console.error('[ApiAdmin] ❌ Error updating app_meta:', metaError);
-        setError(`Fixtures saved but failed to update current_gw: ${metaError.message}`);
-        // Don't throw - fixtures are saved, but warn user
+        console.error('[ApiAdmin] ❌ CRITICAL ERROR updating app_meta:', metaError);
+        throw new Error(`Failed to publish: Could not update current_gw to ${nextGw}. ${metaError.message}`);
       } else {
-        console.log(`[ApiAdmin] ✅ Successfully updated app_meta.current_gw to ${nextGw}`);
+        console.log(`[ApiAdmin] ✅ Successfully published: app_meta.current_gw = ${nextGw}`);
+        setCurrentGw(nextGw); // Update local state
+        
         // Verify the update
         const { data: verifyMeta, error: verifyMetaError } = await supabase
           .from("app_meta")
@@ -424,9 +462,9 @@ export default function ApiAdmin() {
       // Fetch and store team forms for this gameweek
       await fetchAndStoreTeamForms(nextGw);
 
-      // Send push notification to all users
+      // Send push notification to all users - using V2 dispatcher
       try {
-        const pushRes = await fetch('/.netlify/functions/sendPushAll', {
+        const pushRes = await fetch('/.netlify/functions/sendPushAllV2', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -439,7 +477,7 @@ export default function ApiAdmin() {
         const pushData = await pushRes.json().catch(() => ({}));
         
         if (pushRes.ok && pushData.ok) {
-          console.log(`[ApiAdmin] Push notification sent to ${pushData.sentTo || 0} users`);
+          console.log(`[ApiAdmin] Push notification sent to ${pushData.sentTo || 0} users (out of ${pushData.userCount || 0} subscribed)`);
         } else {
           console.warn('[ApiAdmin] Push notification failed:', pushData);
         }
@@ -448,11 +486,48 @@ export default function ApiAdmin() {
         // Don't throw - gameweek is saved, notification failure is non-critical
       }
 
-      setOk(`Gameweek ${nextGw} saved with ${selectedFixtures.size} Premier League fixtures!`);
+      setOk(`✅ Gameweek ${nextGw} PUBLISHED with ${selectedFixtures.size} Premier League fixtures! Notification sent to all users.`);
     } catch (e: any) {
-      setError(e.message ?? "Failed to save gameweek.");
+      setError(e.message ?? "Failed to publish gameweek.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const recallGameweek = async () => {
+    if (!nextGw || !currentGw) return;
+    
+    if (currentGw !== nextGw) {
+      setError(`Cannot recall: GW ${nextGw} is not the current published gameweek (current is GW ${currentGw})`);
+      return;
+    }
+
+    if (!confirm(`⚠️ Are you sure you want to RECALL GW ${nextGw}?\n\nThis will:\n- Set current_gw back to ${currentGw - 1}\n- Users will no longer see GW ${nextGw} fixtures\n- You can edit and republish later`)) {
+      return;
+    }
+
+    setRecalling(true);
+    setError("");
+    setOk("");
+
+    try {
+      const previousGw = currentGw - 1;
+      console.log(`[ApiAdmin] Recalling GW ${nextGw}, setting current_gw to ${previousGw}...`);
+      
+      const { error: metaError } = await supabase
+        .from("app_meta")
+        .upsert({ id: 1, current_gw: previousGw }, { onConflict: 'id' });
+
+      if (metaError) {
+        throw new Error(`Failed to recall: ${metaError.message}`);
+      }
+
+      setCurrentGw(previousGw);
+      setOk(`✅ GW ${nextGw} recalled. Current gameweek is now GW ${previousGw}.`);
+    } catch (e: any) {
+      setError(e.message ?? "Failed to recall gameweek.");
+    } finally {
+      setRecalling(false);
     }
   };
 
@@ -475,6 +550,50 @@ export default function ApiAdmin() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
       <div className="max-w-4xl mx-auto">
+        {/* Current GW Status */}
+        <div className="bg-white border-2 border-slate-300 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm text-slate-600 mb-1">Current Gameweek</div>
+              <div className="text-2xl font-bold text-slate-900">GW {currentGw ?? '...'}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm text-slate-600 mb-1">Next Gameweek</div>
+              <div className="text-2xl font-bold text-slate-900">GW {nextGw ?? '...'}</div>
+            </div>
+          </div>
+          
+          <div className="mt-4 pt-4 border-t border-slate-200">
+            <div className="flex items-center justify-between">
+              <div>
+                {checkingFinished ? (
+                  <span className="text-sm text-slate-500">Checking status...</span>
+                ) : currentGwFinished === true ? (
+                  <span className="text-sm font-medium text-green-700">✅ GW {currentGw} finished - Ready to publish GW {nextGw}</span>
+                ) : currentGwFinished === false ? (
+                  <span className="text-sm font-medium text-amber-700">⏳ GW {currentGw} still in progress - Cannot publish GW {nextGw} yet</span>
+                ) : (
+                  <span className="text-sm text-slate-500">Loading status...</span>
+                )}
+              </div>
+              {currentGw !== null && (
+                <button
+                  onClick={async () => {
+                    setCheckingFinished(true);
+                    const finished = await isGameweekFinished(currentGw);
+                    setCurrentGwFinished(finished);
+                    setCheckingFinished(false);
+                  }}
+                  disabled={checkingFinished}
+                  className="px-3 py-1 text-sm bg-slate-100 hover:bg-slate-200 rounded border border-slate-300 disabled:opacity-50"
+                >
+                  {checkingFinished ? 'Checking...' : 'Refresh Status'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900 mb-2">
           API Admin - Premier League
         </h2>
@@ -485,6 +604,15 @@ export default function ApiAdmin() {
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
             {error}
+          </div>
+        )}
+
+        {!canPublishNextGw && currentGw !== null && currentGwFinished === false && (
+          <div className="mb-4 p-4 bg-amber-50 border-2 border-amber-400 rounded-lg text-amber-800">
+            <div className="font-semibold mb-2">⚠️ Cannot publish GW {nextGw} yet</div>
+            <div className="text-sm">
+              GW {currentGw} is still in progress. All fixtures must be finished (have results) before you can publish the next gameweek.
+            </div>
           </div>
         )}
 
@@ -506,27 +634,49 @@ export default function ApiAdmin() {
             <div>
               <div className="text-sm text-slate-600 mb-1">Next Gameweek</div>
               <div className="text-2xl font-bold text-slate-900">GW {nextGw}</div>
+              {isPublished && (
+                <div className="mt-2 inline-block px-3 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
+                  ✅ PUBLISHED (Current GW)
+                </div>
+              )}
             </div>
-            {selectedFixtures.size > 0 && (
-              <div className="text-right">
-                <div className="text-sm text-slate-600 mb-1">Selected Fixtures</div>
-                <div className="text-2xl font-bold text-[#1C8376]">{selectedFixtures.size}</div>
-              </div>
-            )}
+            <div className="text-right">
+              {selectedFixtures.size > 0 && (
+                <>
+                  <div className="text-sm text-slate-600 mb-1">Selected Fixtures</div>
+                  <div className="text-2xl font-bold text-[#1C8376]">{selectedFixtures.size}</div>
+                </>
+              )}
+              {isPublished && (
+                <button
+                  onClick={recallGameweek}
+                  disabled={recalling}
+                  className="mt-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 font-semibold text-sm"
+                >
+                  {recalling ? "Recalling..." : `RECALL GW ${nextGw}`}
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Fetch Matches */}
-        <div className="bg-white rounded-xl shadow-md p-4 mb-6">
+        <div className={`bg-white rounded-xl shadow-md p-4 mb-6 ${isPublished ? 'opacity-60' : ''}`}>
           <h3 className="text-lg font-semibold text-slate-800 mb-4">
             Premier League Matches for GW {nextGw} (Matchday {nextGw})
           </h3>
+          {isPublished && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
+              ⚠️ This gameweek is published and cannot be edited. Use RECALL to make changes.
+            </div>
+          )}
           <p className="text-sm text-slate-500 mb-4">
             Loading matches from the API that are tagged with Matchday {nextGw} (corresponds to GW {nextGw}).
           </p>
           
           <button
             onClick={() => {
+              if (isPublished) return;
               if (fetchingMatches || !nextGw) return;
               
               setFetchingMatches(true);
@@ -570,7 +720,7 @@ export default function ApiAdmin() {
                   setFetchingMatches(false);
                 });
             }}
-            disabled={fetchingMatches || !nextGw}
+            disabled={fetchingMatches || !nextGw || isPublished}
             className="px-4 py-2 bg-[#1C8376] text-white rounded-lg hover:bg-[#1C8376]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             type="button"
           >
@@ -580,18 +730,21 @@ export default function ApiAdmin() {
 
         {/* Available Matches List */}
         {availableMatches.length > 0 && (
-          <div className="bg-white rounded-xl shadow-md p-4 mb-6">
+          <div className={`bg-white rounded-xl shadow-md p-4 mb-6 ${isPublished ? 'opacity-60' : ''}`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-slate-800">
                 Available Matches ({availableMatches.length}) - All Selected by Default
               </h3>
-              <button
-                onClick={saveGameweek}
-                disabled={saving || selectedFixtures.size === 0}
-                className="px-4 py-2 bg-[#1C8376] text-white rounded-lg hover:bg-[#1C8376]/90 disabled:opacity-50 font-semibold"
-              >
-                {saving ? "Saving..." : `Save GW ${nextGw} (${selectedFixtures.size} fixtures)`}
-              </button>
+              {!isPublished && (
+                <button
+                  onClick={publishGameweek}
+                  disabled={saving || selectedFixtures.size === 0 || !canPublishNextGw}
+                  className="px-6 py-3 bg-[#1C8376] text-white rounded-lg hover:bg-[#1C8376]/90 disabled:opacity-50 disabled:cursor-not-allowed font-bold text-lg shadow-lg"
+                  title={!canPublishNextGw ? `GW ${currentGw} must be finished before publishing GW ${nextGw}` : ''}
+                >
+                  {saving ? "Publishing..." : `PUBLISH GW ${nextGw}`}
+                </button>
+              )}
             </div>
             
             <div className="space-y-2">
@@ -633,8 +786,9 @@ export default function ApiAdmin() {
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          onChange={() => toggleFixture(match)}
-                          className="w-6 h-6 cursor-pointer appearance-none border-2 rounded transition-all"
+                          onChange={() => !isPublished && toggleFixture(match)}
+                          disabled={isPublished}
+                          className="w-6 h-6 cursor-pointer appearance-none border-2 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           style={{ 
                             minWidth: '24px', 
                             minHeight: '24px',
@@ -670,6 +824,47 @@ export default function ApiAdmin() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Publish Confirmation Dialog */}
+        {showPublishConfirm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+              <h3 className="text-2xl font-bold text-slate-900 mb-4">
+                ⚠️ PUBLISH GAMEWEEK {nextGw}?
+              </h3>
+              
+              <div className="mb-6 space-y-3 text-sm text-slate-700">
+                <p className="font-semibold">This will:</p>
+                <ul className="list-disc list-inside space-y-2 ml-2">
+                  <li>Save {selectedFixtures.size} fixture{selectedFixtures.size === 1 ? '' : 's'} to the database</li>
+                  <li><strong className="text-red-600">Set current_gw to {nextGw}</strong> (makes it live)</li>
+                  <li><strong className="text-red-600">Send push notification to ALL users</strong></li>
+                  <li>Make this gameweek visible to all users</li>
+                  <li>Lock editing (you'll need to RECALL to make changes)</li>
+                </ul>
+                <p className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800">
+                  <strong>Are you sure?</strong> Once published, users will receive notifications and can start making predictions.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowPublishConfirm(false)}
+                  className="flex-1 px-4 py-2 bg-slate-200 text-slate-800 rounded-lg hover:bg-slate-300 font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmPublish}
+                  disabled={saving}
+                  className="flex-1 px-4 py-2 bg-[#1C8376] text-white rounded-lg hover:bg-[#1C8376]/90 disabled:opacity-50 font-bold"
+                >
+                  {saving ? "Publishing..." : "YES, PUBLISH GW " + nextGw}
+                </button>
+              </div>
             </div>
           </div>
         )}
