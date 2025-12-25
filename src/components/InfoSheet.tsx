@@ -106,6 +106,17 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
                 .filter(line => line.length > 0);
               
               return paragraphs.map((paragraph, index) => {
+                // Check if this paragraph is a category header (all caps, short, no punctuation)
+                const isCategoryHeader = paragraph.length < 20 && paragraph === paragraph.toUpperCase() && /^[A-Z\s-]+$/.test(paragraph);
+                
+                if (isCategoryHeader) {
+                  return (
+                    <h3 key={index} className={`font-bold text-slate-900 ${index === 0 ? '' : 'mt-6'}`} style={{ fontSize: '0.95rem' }}>
+                      {paragraph}
+                    </h3>
+                  );
+                }
+                
                 // Render paragraph with links and chip examples
                 const parts: React.ReactNode[] = [];
                 let remaining = paragraph;

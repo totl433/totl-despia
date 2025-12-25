@@ -6,6 +6,7 @@ import { StatCard } from '../components/profile/StatCard';
 import { StreakStatCard } from '../components/profile/StreakStatCard';
 import { TeamStatCard } from '../components/profile/TeamStatCard';
 import { ParChart } from '../components/profile/ParChart';
+import { TrophyCabinet } from '../components/profile/TrophyCabinet';
 import { fetchUserStats, type UserStatsData } from '../services/userStats';
 import LiveGamesToggle from '../components/LiveGamesToggle';
 
@@ -31,6 +32,7 @@ export default function Stats() {
       console.log('[Stats] Fetching user stats for user:', user.id);
       const userStats = await fetchUserStats(user.id);
       console.log('[Stats] Fetched stats:', userStats);
+      console.log('[Stats] Trophy cabinet:', userStats?.trophyCabinet);
       setStats(userStats);
     } catch (error) {
       console.error('[Stats] Error loading stats:', error);
@@ -56,6 +58,30 @@ export default function Stats() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 overflow-x-hidden">
+      <style>{`
+        @keyframes sparkle {
+          0%, 100% {
+            opacity: 1;
+            transform: scale(1) rotate(0deg);
+          }
+          25% {
+            opacity: 0.9;
+            transform: scale(1.05) rotate(-3deg);
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1.1) rotate(3deg);
+          }
+          75% {
+            opacity: 0.9;
+            transform: scale(1.05) rotate(-3deg);
+          }
+        }
+        .sparkle-trophy {
+          animation: sparkle 2s ease-in-out infinite;
+          filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6));
+        }
+      `}</style>
       <div className="max-w-4xl mx-auto p-6">
         <Link
           to="/profile"
@@ -159,6 +185,17 @@ export default function Stats() {
               <StatCard
                 label="Correct prediction rate"
                 value={`${stats.correctPredictionRate.toFixed(2)}%`}
+                loading={loading}
+              />
+            )}
+
+            {/* Trophy Cabinet */}
+            {stats && stats.trophyCabinet !== null && (
+              <TrophyCabinet
+                lastGw={stats.trophyCabinet.lastGw}
+                form5={stats.trophyCabinet.form5}
+                form10={stats.trophyCabinet.form10}
+                overall={stats.trophyCabinet.overall}
                 loading={loading}
               />
             )}

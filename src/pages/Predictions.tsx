@@ -418,20 +418,33 @@ export default function PredictionsPage() {
         .eq('user_id', user?.id);
 
       if (userLeagues && userLeagues.length > 0) {
-        // Call notifyFinalSubmission for each league (fire-and-forget)
-        userLeagues.forEach(({ league_id }) => {
-          fetch('/.netlify/functions/notifyFinalSubmission', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              leagueId: league_id,
-              matchday: gw,
-              isTestApi: false,
-            }),
-          }).catch(err => {
-            console.error('[Predictions] Failed to check final submission:', err);
+        // Add a small delay to ensure DB consistency before checking submissions
+        setTimeout(() => {
+          // Call notifyFinalSubmission for each league (fire-and-forget)
+          userLeagues.forEach(({ league_id }) => {
+            fetch('/.netlify/functions/notifyFinalSubmission', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                leagueId: league_id,
+                gw: gw, // Use 'gw' instead of 'matchday' for clarity
+                isTestApi: false,
+              }),
+            })
+              .then(async (res) => {
+                if (!res.ok) {
+                  const error = await res.json().catch(() => ({ error: 'Unknown error' }));
+                  console.error('[Predictions] notifyFinalSubmission failed:', error);
+                } else {
+                  const result = await res.json().catch(() => ({}));
+                  console.log('[Predictions] notifyFinalSubmission result:', result);
+                }
+              })
+              .catch(err => {
+                console.error('[Predictions] Failed to check final submission:', err);
+              });
           });
-        });
+        }, 500); // 500ms delay to ensure DB consistency
       }
 
       // Navigate to home page after confetti animation

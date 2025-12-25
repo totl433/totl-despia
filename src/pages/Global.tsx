@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { getCached, setCached, removeCached, CACHE_TTL } from "../lib/cache";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { PageHeader } from "../components/PageHeader";
+import SegmentedToggle from "../components/SegmentedToggle";
 
 type OverallRow = {
   user_id: string;
@@ -483,7 +484,17 @@ export default function GlobalLeaderboardPage() {
         }))
         .sort((a, b) => (b.formPoints - a.formPoints) || a.name.localeCompare(b.name));
       
-      return completeFormPlayers;
+      // Add joint ranking
+      let currentRank = 1;
+      return completeFormPlayers.map((player, index) => {
+        if (index > 0 && completeFormPlayers[index - 1].formPoints !== player.formPoints) {
+          currentRank = index + 1;
+        }
+        return {
+          ...player,
+          rank: currentRank,
+        };
+      });
     };
   }, [overall, gwPoints, latestGw]);
 
@@ -603,7 +614,18 @@ export default function GlobalLeaderboardPage() {
 
     // sort by OCP desc, then name
     merged.sort((a, b) => (b.ocp - a.ocp) || a.name.localeCompare(b.name));
-    return merged;
+    
+    // Add joint ranking
+    let currentRank = 1;
+    return merged.map((player, index) => {
+      if (index > 0 && merged[index - 1].ocp !== player.ocp) {
+        currentRank = index + 1;
+      }
+      return {
+        ...player,
+        rank: currentRank,
+      };
+    });
   }, [overall, gwPoints, latestGw, isCurrentGwLive, liveCurrentGwPoints, liveGw]);
   
   // Filter rows for Overall tab
@@ -622,9 +644,10 @@ export default function GlobalLeaderboardPage() {
     };
   }, []);
 
-  // Scroll to top when tab changes to ensure header is visible
+  // Scroll to top when tab changes to ensure header is visible (no animation)
   useEffect(() => {
     if (tableContainerRef.current) {
+      tableContainerRef.current.style.scrollBehavior = 'auto';
       tableContainerRef.current.scrollTop = 0;
     }
   }, [activeTab]);
@@ -649,107 +672,43 @@ export default function GlobalLeaderboardPage() {
       }
     };
 
-    // Prevent touch scrolling past top
-    let touchStartY = 0;
-    let isTrackingTouch = false;
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (container.scrollTop <= 0 && e.touches.length > 0) {
-        touchStartY = e.touches[0].clientY;
-        isTrackingTouch = true;
-      }
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (!isTrackingTouch || container.scrollTop > 0) {
-        isTrackingTouch = false;
-        return;
-      }
-
-      if (e.touches.length > 0) {
-        const touchY = e.touches[0].clientY;
-        // Prevent scrolling up when already at top
-        if (touchY < touchStartY) {
-          e.preventDefault();
-          container.scrollTop = 0;
-        }
-      }
-    };
-
-    const handleTouchEnd = () => {
-      isTrackingTouch = false;
-    };
-
-    // Attach event listeners
+    // Attach event listeners - minimal intervention
     container.addEventListener('scroll', handleScroll, { passive: true });
     container.addEventListener('wheel', handleWheel, { passive: false });
-    container.addEventListener('touchstart', handleTouchStart, { passive: true });
-    container.addEventListener('touchmove', handleTouchMove, { passive: false });
-    container.addEventListener('touchend', handleTouchEnd, { passive: true });
-    container.addEventListener('touchcancel', handleTouchEnd, { passive: true });
     
     return () => {
       container.removeEventListener('scroll', handleScroll);
       container.removeEventListener('wheel', handleWheel);
-      container.removeEventListener('touchstart', handleTouchStart);
-      container.removeEventListener('touchmove', handleTouchMove);
-      container.removeEventListener('touchend', handleTouchEnd);
-      container.removeEventListener('touchcancel', handleTouchEnd);
     };
   }, []);
 
-  // Animate scroll to user's row when data loads - starts at top then animates down
+  // Scroll to user's row when data loads (if not in top 10)
   useEffect(() => {
     if (!loading && user?.id && tableContainerRef.current && userRowRef.current) {
-      // Find user's rank/index in the current tab's data
+      // Find user's rank in the current tab's data
       const currentRows = activeTab === "overall" ? rowsFiltered : activeTab === "form5" ? form5Rows : activeTab === "form10" ? form10Rows : lastGwRows;
       const userIndex = currentRows.findIndex(r => r.user_id === user.id);
       const userRank = userIndex >= 0 ? (currentRows[userIndex] as any).rank || userIndex + 1 : null;
       
-      // If user is in top 8, skip scroll animation
-      if (userRank !== null && userRank <= 8) {
+      // If user is in top 10, start at top (do nothing)
+      if (userRank !== null && userRank <= 10) {
         return;
       }
       
-      // First, ensure we start at the top
-      if (tableContainerRef.current) {
-        tableContainerRef.current.scrollTop = 0;
-      }
-      
-      // Use setTimeout to ensure DOM is fully rendered
-      const timer = setTimeout(() => {
+      // Otherwise, scroll to center user's row
+      requestAnimationFrame(() => {
         const container = tableContainerRef.current;
         const row = userRowRef.current;
         if (container && row) {
-          // Wait a moment so users can see it starts at the top, then animate
-          setTimeout(() => {
-            if (container && row) {
-              // Calculate position relative to the scrollable container
-              const rowTopRelativeToContainer = row.offsetTop;
-              const containerHeight = container.clientHeight;
-              const rowHeight = row.offsetHeight;
-              
-              // Calculate target scroll position to center the row
-              const targetScrollTop = rowTopRelativeToContainer - (containerHeight / 2) + (rowHeight / 2);
-              
-              // Enable smooth scrolling
-              container.style.scrollBehavior = 'smooth';
-              container.scrollTop = targetScrollTop;
-              
-              // Reset scroll behavior after animation completes
-              setTimeout(() => {
-                if (container) {
-                  container.style.scrollBehavior = 'auto';
-                }
-              }, 1000);
-            }
-          }, 500); // Wait 500ms before starting scroll animation
+          container.style.scrollBehavior = 'auto';
+          const rowTop = row.offsetTop;
+          const containerHeight = container.clientHeight;
+          const rowHeight = row.offsetHeight;
+          container.scrollTop = rowTop - (containerHeight / 2) + (rowHeight / 2);
         }
-      }, 150);
-      
-      return () => clearTimeout(timer);
+      });
     }
-  }, [loading, user?.id, activeTab, rows, form5Rows, form10Rows, lastGwRows]);
+  }, [loading, user?.id, activeTab, rowsFiltered, form5Rows, form10Rows, lastGwRows]);
 
   return (
     <div className="fixed inset-0 bg-slate-50 overflow-hidden flex flex-col">
@@ -809,10 +768,11 @@ export default function GlobalLeaderboardPage() {
       `}</style>
       <div className="max-w-6xl mx-auto px-4 pb-0 flex-1 flex flex-col overflow-hidden">
         {/* Fixed Header Section */}
-        <div className="flex-shrink-0 bg-slate-50 py-4">
-          <div className="flex flex-col gap-3">
+        <div className="flex-shrink-0 bg-slate-50 border-b border-slate-200">
+          {/* Title Row */}
+          <div className="py-4">
             <div className="flex items-center gap-3">
-          <PageHeader title="Leaderboard" as="h2" />
+              <PageHeader title="Leaderboard" as="h2" />
               {(activeTab === "lastgw" || activeTab === "overall") && isCurrentGwLive && liveGw && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 animate-pulse">
                   <span className="relative flex h-2 w-2">
@@ -825,85 +785,68 @@ export default function GlobalLeaderboardPage() {
             </div>
           </div>
 
-        {/* Tabs */}
-        <div className="flex justify-center mb-6 mt-6">
+          {/* Tabs */}
+          <div className="flex justify-center pb-4">
             <div className="flex rounded-full bg-slate-100 p-1.5 border border-slate-200 shadow-sm w-full max-w-md">
-            <button
-              onClick={() => handleTabChange("lastgw")}
+              <button
+                onClick={() => handleTabChange("lastgw")}
                 className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
-                activeTab === "lastgw"
+                  activeTab === "lastgw"
                     ? "bg-[#1C8376] text-white shadow-md"
                     : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
-              }`}
-            >
+                }`}
+              >
                 GW
-            </button>
-            <button
-              onClick={() => handleTabChange("form5")}
+              </button>
+              <button
+                onClick={() => handleTabChange("form5")}
                 className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
-                activeTab === "form5"
+                  activeTab === "form5"
                     ? "bg-[#1C8376] text-white shadow-md"
                     : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
-              }`}
-            >
+                }`}
+              >
                 5
-            </button>
-            <button
-              onClick={() => handleTabChange("form10")}
+              </button>
+              <button
+                onClick={() => handleTabChange("form10")}
                 className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
-                activeTab === "form10"
+                  activeTab === "form10"
                     ? "bg-[#1C8376] text-white shadow-md"
                     : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
-              }`}
-            >
+                }`}
+              >
                 10
-            </button>
-            <button
-              onClick={() => handleTabChange("overall")}
+              </button>
+              <button
+                onClick={() => handleTabChange("overall")}
                 className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all flex items-center justify-center ${
-                activeTab === "overall"
+                  activeTab === "overall"
                     ? "bg-[#1C8376] text-white shadow-md"
                     : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
-              }`}
-            >
+                }`}
+              >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="w-5 h-5">
                   <g>
                     <path fill="currentColor" d="M16 3c1.1046 0 2 0.89543 2 2h2c1.1046 0 2 0.89543 2 2v1c0 2.695 -2.1323 4.89 -4.8018 4.9941 -0.8777 1.5207 -2.4019 2.6195 -4.1982 2.9209V19h3c0.5523 0 1 0.4477 1 1s-0.4477 1 -1 1H8c-0.55228 0 -1 -0.4477 -1 -1s0.44772 -1 1 -1h3v-3.085c-1.7965 -0.3015 -3.32148 -1.4 -4.19922 -2.9209C4.13175 12.8895 2 10.6947 2 8V7c0 -1.10457 0.89543 -2 2 -2h2c0 -1.10457 0.89543 -2 2 -2zm-8 7c0 2.2091 1.79086 4 4 4 2.2091 0 4 -1.7909 4 -4V5H8zM4 8c0 1.32848 0.86419 2.4532 2.06055 2.8477C6.02137 10.5707 6 10.2878 6 10V7H4zm14 2c0 0.2878 -0.0223 0.5706 -0.0615 0.8477C19.1353 10.4535 20 9.32881 20 8V7h-2z" strokeWidth="1"></path>
                   </g>
                 </svg>
-            </button>
+              </button>
+            </div>
           </div>
-        </div>
 
-        {/* Toggle for Mini League Friends - Segmented Control Style */}
-        <div className="flex justify-center mb-4">
-          <div className="inline-flex rounded-lg bg-slate-100 p-1 border border-slate-200 shadow-sm">
-            <button
-              onClick={() => setShowMiniLeagueFriendsOnly(false)}
-              className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${
-                !showMiniLeagueFriendsOnly
-                  ? 'bg-white text-[#1C8376] shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              All Players
-            </button>
-            <button
-              onClick={() => setShowMiniLeagueFriendsOnly(true)}
-              className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${
-                showMiniLeagueFriendsOnly
-                  ? 'bg-white text-[#1C8376] shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Mini League Friends
-            </button>
+          {/* Toggle for Mini League Friends */}
+          <div className="flex justify-center pb-4">
+            <SegmentedToggle
+              value={showMiniLeagueFriendsOnly}
+              onToggle={setShowMiniLeagueFriendsOnly}
+              labels={{ left: "All Players", right: "Mini League Friends" }}
+            />
           </div>
-        </div>
 
-        {/* Form tab subtitles */}
+          {/* Tab Subtitles */}
           {activeTab === "overall" && (
-            <div className="text-center mb-2">
+            <div className="text-center pb-3">
               <div className="text-sm text-slate-600">
                 All Players since the start of the season
               </div>
@@ -911,35 +854,35 @@ export default function GlobalLeaderboardPage() {
           )}
           
           {activeTab === "form5" && (
-            <div className="text-center mb-2">
+            <div className="text-center pb-3">
               {latestGw && latestGw >= 5 ? (
                 <div className="text-sm text-slate-600">
                   All Players who completed the last 5 Gameweeks
-              </div>
-            ) : (
-              <div className="text-sm text-amber-600 font-medium">
+                </div>
+              ) : (
+                <div className="text-sm text-amber-600 font-medium">
                   ⚠️ Watch this space! Complete 5 GW in a row to see the 5 Week Form Leaderboard.
-              </div>
-            )}
-          </div>
-        )}
-        
-        {activeTab === "form10" && (
-            <div className="text-center mb-2">
-            {latestGw && latestGw >= 10 ? (
+                </div>
+              )}
+            </div>
+          )}
+          
+          {activeTab === "form10" && (
+            <div className="text-center pb-3">
+              {latestGw && latestGw >= 10 ? (
                 <div className="text-sm text-slate-600">
                   All Players who completed the last 10 Gameweeks
-              </div>
-            ) : (
-              <div className="text-sm text-amber-600 font-medium">
+                </div>
+              ) : (
+                <div className="text-sm text-amber-600 font-medium">
                   ⚠️ Watch this space! Complete 10 GW in a row to see the 10 Week Form Leaderboard.
-              </div>
-            )}
-          </div>
-        )}
-        
-        {activeTab === "lastgw" && !isCurrentGwLive && (
-            <div className="text-center mb-2">
+                </div>
+              )}
+            </div>
+          )}
+          
+          {activeTab === "lastgw" && !isCurrentGwLive && (
+            <div className="text-center pb-3">
               <div className="text-sm text-slate-600">
                 Players who completed GW{latestGw}
               </div>
@@ -983,6 +926,7 @@ export default function GlobalLeaderboardPage() {
             style={{ 
               overscrollBehavior: 'contain',
               WebkitOverflowScrolling: 'touch',
+              scrollBehavior: 'auto',
               minHeight: 0,
               paddingBottom: '100px',
               paddingLeft: '1rem',
@@ -992,20 +936,16 @@ export default function GlobalLeaderboardPage() {
             }}
           >
             <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: '#f8fafc' }}>
-              <thead className="sticky top-0 full-width-header-border" style={{ 
-                position: 'sticky', 
-                top: 0, 
-                zIndex: 25, 
-                backgroundColor: '#f8fafc', 
+              <thead className="sticky top-0 z-[25] full-width-header-border bg-slate-50" style={{ 
                 display: 'table-header-group'
               } as any}>
-                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #cbd5e1' }}>
-                  <th className="py-3 text-left font-normal" style={{ backgroundColor: '#f8fafc', width: '45px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#64748b' }}>#</th>
-                  <th className="px-4 py-3 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#64748b' }}>Player</th>
+                <tr className="border-b border-slate-200">
+                  <th className="py-3 text-left font-normal bg-slate-50" style={{ width: '45px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#64748b' }}>#</th>
+                  <th className="px-4 py-3 text-left font-normal text-xs bg-slate-50" style={{ color: '#64748b' }}>Player</th>
                   {activeTab === "overall" && (
                     <>
-                      <th className="px-4 py-3 text-center font-semibold" style={{ backgroundColor: '#f8fafc', width: '40px', borderTop: 'none', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
-                      <th className="px-1 py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '55px', color: '#64748b', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
+                      <th className="px-4 py-3 text-center font-semibold bg-slate-50" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
+                      <th className="px-1 py-3 text-center font-normal bg-slate-50 text-slate-500" style={{ width: '55px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
                         <div className="flex items-center justify-center gap-1">
                           GW{isCurrentGwLive && liveGw ? liveGw : latestGw || '?'}
                           {isCurrentGwLive && liveGw && (
@@ -1016,7 +956,7 @@ export default function GlobalLeaderboardPage() {
                           )}
                         </div>
                       </th>
-                      <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#64748b' }}>
+                      <th className="py-3 text-center font-normal bg-slate-50 text-slate-500" style={{ width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
                         <div className="flex items-center justify-center gap-1">
                           OCP
                           {isCurrentGwLive && liveGw && (
@@ -1031,14 +971,14 @@ export default function GlobalLeaderboardPage() {
                   )}
                   {(activeTab === "form5" || activeTab === "form10") && (
                     <>
-                      <th className="px-4 py-3 text-center font-semibold" style={{ backgroundColor: '#f8fafc', width: '40px', borderTop: 'none', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
-                      <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#64748b' }}>PTS</th>
+                      <th className="px-4 py-3 text-center font-semibold bg-slate-50" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
+                      <th className="py-3 text-center font-normal bg-slate-50 text-slate-500" style={{ width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>PTS</th>
                     </>
                   )}
                   {activeTab === "lastgw" && (
                     <>
-                      <th className="px-4 py-3 text-center font-semibold" style={{ backgroundColor: '#f8fafc', width: '40px', borderTop: 'none', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
-                      <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#64748b' }}>
+                      <th className="px-4 py-3 text-center font-semibold bg-slate-50" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
+                      <th className="py-3 text-center font-normal bg-slate-50 text-slate-500" style={{ width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
                         <div className="flex items-center justify-center gap-1">
                           GW{liveGw || latestGw || '?'}
                           {isCurrentGwLive && liveGw && (

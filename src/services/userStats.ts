@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { getFullName } from '../lib/teamNames';
+import { calculateLastGwRank, calculateFormRank, calculateSeasonRank } from '../lib/helpers';
 
 export interface UserStatsData {
   // Last completed GW percentile
@@ -56,6 +57,14 @@ export interface UserStatsData {
     userPoints: number;
     averagePoints: number;
   }> | null;
+  
+  // Trophy Cabinet - counts of top finishes
+  trophyCabinet: {
+    lastGw: number;
+    form5: number;
+    form10: number;
+    overall: number;
+  } | null;
 }
 
 /**
@@ -138,6 +147,7 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
     mostCorrectTeam: null,
     mostIncorrectTeam: null,
     weeklyParData: null,
+    trophyCabinet: null,
   };
 
   try {
@@ -407,6 +417,114 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
       weeklyParData.sort((a, b) => a.gw - b.gw);
       
       stats.weeklyParData = weeklyParData.length > 0 ? weeklyParData : null;
+
+      // Calculate trophy counts
+      let trophyCabinet = {
+        lastGw: 0,
+        form5: 0,
+        form10: 0,
+        overall: 0,
+      };
+
+      // Reuse completedGwResults that was already fetched above
+      if (completedGwResults && allGwPoints) {
+        console.log('[userStats] Calculating trophy cabinet...');
+        const completedGwsArray = [...new Set(completedGwResults.map((r: any) => r.gw))].sort((a, b) => a - b);
+        
+        // Fetch all GW points for all users (needed for ranking calculations)
+        const { data: allUsersGwPoints } = await supabase
+          .from('app_v_gw_points')
+          .select('user_id, gw, points')
+          .order('gw', { ascending: true });
+        
+        // Fetch overall OCP data (needed for overall ranking)
+        const { data: allOverallData } = await supabase
+          .from('app_v_ocp_overall')
+          .select('user_id, name, ocp');
+        
+        completedGwsArray.forEach((gw) => {
+          // Last GW trophy
+          const lastGwRank = calculateLastGwRank(userId, gw, allUsersGwPoints || []);
+          if (lastGwRank && lastGwRank.rank === 1) {
+            trophyCabinet.lastGw++;
+          }
+          
+          // 5-Week Form trophy (only if user has 5+ GWs completed)
+          if (gw >= 5) {
+            const form5Rank = calculateFormRank(
+              userId,
+              gw - 4,
+              gw,
+              allUsersGwPoints || [],
+              allOverallData || []
+            );
+            if (form5Rank && form5Rank.rank === 1) {
+              trophyCabinet.form5++;
+            }
+          }
+          
+          // 10-Week Form trophy (only if user has 10+ GWs completed)
+          if (gw >= 10) {
+            const form10Rank = calculateFormRank(
+              userId,
+              gw - 9,
+              gw,
+              allUsersGwPoints || [],
+              allOverallData || []
+            );
+            if (form10Rank && form10Rank.rank === 1) {
+              trophyCabinet.form10++;
+            }
+          }
+          
+          // Overall trophy - calculate overall ranking at this GW point
+          // Need to calculate cumulative OCP up to this GW for all users
+          // Get all unique user IDs who have played up to this GW
+          const usersUpToGw = new Set<string>();
+          (allUsersGwPoints || []).forEach((p: any) => {
+            if (p.gw <= gw) {
+              usersUpToGw.add(p.user_id);
+            }
+          });
+          
+          // Calculate cumulative points for each user up to this GW
+          const overallAtGw = Array.from(usersUpToGw).map((uid: string) => {
+            const userPointsUpToGw = (allUsersGwPoints || [])
+              .filter((p: any) => p.user_id === uid && p.gw <= gw)
+              .reduce((sum: number, p: any) => sum + (p.points || 0), 0);
+            
+            // Get user name from allOverallData if available
+            const userData = (allOverallData || []).find((u: any) => u.user_id === uid);
+            return {
+              user_id: uid,
+              name: userData?.name || null,
+              ocp: userPointsUpToGw
+            };
+          });
+          
+          const overallRank = calculateSeasonRank(userId, overallAtGw);
+          if (overallRank && overallRank.rank === 1) {
+            trophyCabinet.overall++;
+          }
+        });
+        
+        console.log('[userStats] Trophy cabinet calculated:', trophyCabinet);
+      } else {
+        console.log('[userStats] Skipping trophy calculation - missing data:', {
+          hasCompletedGwResults: !!completedGwResults,
+          hasAllGwPoints: !!allGwPoints,
+        });
+      }
+
+      stats.trophyCabinet = trophyCabinet;
+    } else {
+      // User has no GW points, initialize trophy cabinet with zeros
+      stats.trophyCabinet = {
+        lastGw: 0,
+        form5: 0,
+        form10: 0,
+        overall: 0,
+      };
     }
 
     // Calculate Chaos Index - how often user picks against the crowd (25% or fewer picked the same)

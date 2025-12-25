@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { getGameweekState, type GameweekState } from '../lib/gameweekState';
+import { getUserGameweekState, getGameweekState, type GameweekState } from '../lib/gameweekState';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
 /**
- * Hook to get the current state of a gameweek (GW_OPEN, LIVE, or RESULTS_PRE_GW)
- * Subscribes to real-time updates from app_gw_results and live_scores
+ * Hook to get the state of a gameweek (GW_OPEN, GW_PREDICTED, LIVE, or RESULTS_PRE_GW)
+ * If userId is provided, returns user-specific state (includes GW_PREDICTED)
+ * If userId is not provided, returns global state (GW_OPEN, LIVE, or RESULTS_PRE_GW)
+ * Subscribes to real-time updates from app_gw_results, live_scores, and app_gw_submissions
  */
-export function useGameweekState(gw: number | null | undefined) {
+export function useGameweekState(gw: number | null | undefined, userId?: string | null | undefined) {
   const [state, setState] = useState<GameweekState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,13 +24,17 @@ export function useGameweekState(gw: number | null | undefined) {
     let alive = true;
     let resultsChannel: RealtimeChannel | null = null;
     let liveScoresChannel: RealtimeChannel | null = null;
+    let submissionsChannel: RealtimeChannel | null = null;
 
     const checkState = async () => {
       if (!alive) return;
       setLoading(true);
       setError(null);
       try {
-        const gameweekState = await getGameweekState(gw);
+        // Use user-specific state if userId is provided, otherwise use global state
+        const gameweekState = userId 
+          ? await getUserGameweekState(gw, userId)
+          : await getGameweekState(gw);
         if (alive) {
           setState(gameweekState);
         }
@@ -85,13 +91,29 @@ export function useGameweekState(gw: number | null | undefined) {
       )
       .subscribe();
 
+    // Subscribe to app_gw_submissions changes (user submission status)
+    if (userId) {
+      submissionsChannel = supabase
+        .channel(`gameweek-state-submissions-${gw}-${userId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'app_gw_submissions', filter: `gw=eq.${gw}` },
+          () => {
+            console.log(`[useGameweekState] 🔔 app_gw_submissions change for GW ${gw}, re-checking state`);
+            checkState();
+          }
+        )
+        .subscribe();
+    }
+
     return () => {
       alive = false;
       if (resultsChannel) supabase.removeChannel(resultsChannel);
       if (liveScoresChannel) supabase.removeChannel(liveScoresChannel);
       if (fixturesChannel) supabase.removeChannel(fixturesChannel);
+      if (submissionsChannel) supabase.removeChannel(submissionsChannel);
     };
-  }, [gw]);
+  }, [gw, userId]);
 
   return { state, loading, error };
 }
