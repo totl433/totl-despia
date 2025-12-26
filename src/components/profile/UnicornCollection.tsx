@@ -55,34 +55,45 @@ export default function UnicornCollection({ userId, loading: externalLoading }: 
     if (unicorns.length === 0 || !containerRef.current) return;
 
     const container = containerRef.current;
+    let rafId: number | null = null;
+    let ticking = false;
     
     const handleScroll = () => {
-      const containerRect = container.getBoundingClientRect();
-      const containerCenter = containerRect.left + containerRect.width / 2;
-      
-      let closestIndex = 0;
-      let closestDistance = Infinity;
-      
-      cardRefs.current.forEach((card, index) => {
-        if (card) {
-          const cardRect = card.getBoundingClientRect();
-          const cardCenter = cardRect.left + cardRect.width / 2;
-          const distance = Math.abs(cardCenter - containerCenter);
+      if (!ticking) {
+        rafId = requestAnimationFrame(() => {
+          const containerRect = container.getBoundingClientRect();
+          const containerCenter = containerRect.left + containerRect.width / 2;
           
-          if (distance < closestDistance) {
-            closestDistance = distance;
-            closestIndex = index;
-          }
-        }
-      });
-      
-      setActiveIndex(closestIndex);
+          let closestIndex = 0;
+          let closestDistance = Infinity;
+          
+          cardRefs.current.forEach((card, index) => {
+            if (card) {
+              const cardRect = card.getBoundingClientRect();
+              const cardCenter = cardRect.left + cardRect.width / 2;
+              const distance = Math.abs(cardCenter - containerCenter);
+              
+              if (distance < closestDistance) {
+                closestDistance = distance;
+                closestIndex = index;
+              }
+            }
+          });
+          
+          setActiveIndex(closestIndex);
+          ticking = false;
+        });
+        ticking = true;
+      }
     };
 
-    container.addEventListener('scroll', handleScroll);
+    container.addEventListener('scroll', handleScroll, { passive: true });
     handleScroll(); // Initial check
 
     return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
       container.removeEventListener('scroll', handleScroll);
     };
   }, [unicorns.length]);
@@ -115,7 +126,7 @@ export default function UnicornCollection({ userId, loading: externalLoading }: 
 
   return (
     <div className="bg-white rounded-xl p-6" style={{ marginRight: '-100vw', paddingRight: '100vw' }}>
-      <div className="text-sm font-medium text-slate-600 mb-4 flex items-center gap-2">
+      <div className="text-sm font-medium text-slate-600 mb-4 flex items-center gap-2" style={{ paddingLeft: '1.5rem', marginLeft: '-1.5rem' }}>
         <h2 className="text-lg font-bold text-slate-800">Your Unicorns</h2>
         <div 
           className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center hover:bg-slate-50 transition-colors cursor-pointer"
@@ -137,10 +148,11 @@ export default function UnicornCollection({ userId, loading: externalLoading }: 
           overscrollBehaviorX: 'contain',
           scrollBehavior: 'smooth',
           scrollSnapType: 'x mandatory',
+          marginLeft: '-1.5rem',
           marginRight: '-1.5rem',
-          paddingLeft: '0',
-          paddingRight: 'max(1.5rem, calc(100vw - 280px - 1.5rem))',
-          width: 'calc(100% + 1.5rem)',
+          paddingLeft: 'calc(50vw - 140px + 1.5rem)',
+          paddingRight: 'calc(50vw - 140px)',
+          width: 'calc(100% + 3rem)',
         }}
       >
         <style>{`.scrollbar-hide::-webkit-scrollbar { display: none; }`}</style>

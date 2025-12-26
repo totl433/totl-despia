@@ -41,17 +41,19 @@ export default function UnicornCard({ fixture, leagueNames, isActive = false }: 
     kickoff_time: fixture.kickoff_time,
   };
 
-  const scale = isActive ? 1 : 0.85;
-  const opacity = isActive ? 1 : 0.7;
+  const scale = isActive ? 1 : 0.92;
+  const opacity = isActive ? 1 : 0.75;
 
   return (
     <div 
-      className="flex-shrink-0 relative transition-all duration-300 ease-out" 
+      className="flex-shrink-0 relative" 
       style={{ 
-        scrollSnapAlign: 'start',
+        scrollSnapAlign: 'center',
         transform: `scale(${scale})`,
         opacity: opacity,
         width: '280px',
+        willChange: 'transform, opacity',
+        transition: 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1), opacity 500ms cubic-bezier(0.4, 0, 0.2, 1)',
       }}
     >
       <style>{`
