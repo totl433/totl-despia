@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { fetchUserUnicorns, type UnicornCard } from '../../services/unicorns';
+import { fetchUserUnicorns, type UnicornCard as UnicornCardData } from '../../services/unicorns';
 import UnicornCard from './UnicornCard';
 import InfoSheet from '../InfoSheet';
 
@@ -9,7 +9,7 @@ interface UnicornCollectionProps {
 }
 
 export default function UnicornCollection({ userId, loading: externalLoading }: UnicornCollectionProps) {
-  const [unicorns, setUnicorns] = useState<UnicornCard[]>([]);
+  const [unicorns, setUnicorns] = useState<UnicornCardData[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isInfoOpen, setIsInfoOpen] = useState(false);

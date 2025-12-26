@@ -30,7 +30,6 @@ export async function fetchUserUnicorns(userId: string): Promise<UnicornCard[]> 
     if (leagues.length === 0) return [];
 
     const leagueIds = leagues.map(l => l.id);
-    const leagueMap = new Map(leagues.map(l => [l.id, l.name]));
 
     // Get all league members for these leagues
     const { data: leagueMembersData, error: membersError } = await supabase
@@ -201,10 +200,11 @@ export async function fetchUserUnicorns(userId: string): Promise<UnicornCard[]> 
       home_name: string | null;
       away_name: string | null;
       kickoff_time: string | null;
+      pick: "H" | "D" | "A";
       league_names: string[];
     }>();
 
-    unicorns.forEach(unicorn => {
+    unicorns.forEach((unicorn: any) => {
       const key = `${unicorn.gw}:${unicorn.fixture_index}`;
       const existing = groupedByFixture.get(key);
       
