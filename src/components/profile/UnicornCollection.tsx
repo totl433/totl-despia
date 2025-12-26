@@ -100,11 +100,16 @@ export default function UnicornCollection({ userId, loading: externalLoading }: 
 
   const isLoading = externalLoading || loading;
 
+  // Don't render anything until external loading is complete to prevent flash
+  if (externalLoading) {
+    return null;
+  }
+
   if (isLoading) {
     return (
-      <div className="bg-white rounded-xl p-6">
-        <div className="text-sm font-medium text-slate-600 mb-4">
-          Your Unicorns
+      <div className="bg-white rounded-xl p-6" style={{ marginRight: '-100vw', paddingRight: '100vw' }}>
+        <div className="text-sm font-medium text-slate-600 mb-4 flex items-center gap-2">
+          <h2 className="text-lg font-bold text-slate-800">Your Unicorns</h2>
         </div>
         <div className="h-8 bg-slate-200 rounded animate-pulse" />
       </div>
