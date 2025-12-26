@@ -345,35 +345,51 @@ export async function registerPushSubscription(
 }
 
 /**
- * Update heartbeat (last_seen_at) without re-registering
+ * Update heartbeat (last_seen_at) and re-link external_user_id
+ * This ensures the device stays linked to the user even if OneSignal clears it
  */
 export async function updateHeartbeat(
-  session: { access_token: string } | null
+  session: { access_token: string; user?: { id: string } } | null,
+  options: { userId?: string } = {}
 ): Promise<void> {
-  if (!currentPlayerId || !session?.access_token) {
+  if (!session?.access_token) {
     return;
   }
   
-  try {
-    const isDev = import.meta.env.DEV || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
-    const baseUrl = isDev ? 'https://totl-staging.netlify.app' : '';
-    
-    // Use registerPlayer with same playerId - it will update last_checked_at
-    await fetch(`${baseUrl}/.netlify/functions/registerPlayer`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        playerId: currentPlayerId,
-        platform: 'ios',
-      }),
-    });
-    
-    console.log('[PushV2] Heartbeat updated');
-  } catch (e) {
-    console.warn('[PushV2] Heartbeat update failed:', e);
+  const userId = options.userId || session.user?.id;
+  
+  // CRITICAL: Re-set external_user_id on every heartbeat
+  // This ensures the device stays linked even if OneSignal clears it
+  if (userId) {
+    const externalIdSet = setOneSignalExternalUserId(userId);
+    if (externalIdSet) {
+      console.log('[PushV2] Heartbeat: External user ID re-linked');
+    }
+  }
+  
+  // If we have a Player ID, update backend heartbeat
+  if (currentPlayerId) {
+    try {
+      const isDev = import.meta.env.DEV || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
+      const baseUrl = isDev ? 'https://totl-staging.netlify.app' : '';
+      
+      // Use registerPlayer with same playerId - it will update last_checked_at
+      await fetch(`${baseUrl}/.netlify/functions/registerPlayer`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          playerId: currentPlayerId,
+          platform: 'ios',
+        }),
+      });
+      
+      console.log('[PushV2] Heartbeat updated');
+    } catch (e) {
+      console.warn('[PushV2] Heartbeat update failed:', e);
+    }
   }
 }
 

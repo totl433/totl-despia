@@ -187,18 +187,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Initial registration (delayed to let app load)
     const initialTimeout = setTimeout(register, 500);
 
-    // Heartbeat on app foreground (updates last_seen_at without re-registering)
+    // Heartbeat on app foreground (updates last_seen_at and re-links external_user_id)
     const handleVisibilityChange = () => {
-      if (!document.hidden && !cancelled) {
+      if (!document.hidden && !cancelled && user) {
         console.log('[PushV2] App visible, sending heartbeat...');
-        updateHeartbeat(currentSession);
+        updateHeartbeat(currentSession, { userId: user.id });
       }
     };
 
-    // Periodic heartbeat (every 5 minutes)
+    // Periodic heartbeat (every 5 minutes) - re-links external_user_id to prevent it from being cleared
     const heartbeatInterval = setInterval(() => {
-      if (!cancelled) {
-        updateHeartbeat(currentSession);
+      if (!cancelled && user) {
+        updateHeartbeat(currentSession, { userId: user.id });
       }
     }, 5 * 60 * 1000);
 
