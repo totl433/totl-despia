@@ -80,9 +80,6 @@ export const TrophyCabinet = React.memo(function TrophyCabinet({
             <div className="text-xs font-medium text-slate-600 text-center">
               {trophy.label}
             </div>
-            <div className="text-lg font-bold text-slate-800 mt-1">
-              {trophy.count}
-            </div>
           </div>
         ))}
       </div>
