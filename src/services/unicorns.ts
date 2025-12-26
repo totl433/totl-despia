@@ -110,6 +110,11 @@ export async function fetchUserUnicorns(userId: string): Promise<UnicornCard[]> 
 
     console.log('[Unicorns] Starting calculation for user:', userId);
     console.log('[Unicorns] User leagues:', leagues.map(l => ({ name: l.name, id: l.id, members: membersByLeague.get(l.id)?.length || 0 })));
+    console.log('[Unicorns] Total results available:', resultsMap.size);
+    console.log('[Unicorns] Total picks available:', picksData?.length || 0);
+    console.log('[Unicorns] User picks count:', picksData?.filter((p: any) => p.user_id === userId).length || 0);
+    console.log('[Unicorns] Total fixtures available:', fixturesMap.size);
+    console.log('[Unicorns] Current GW:', currentGw);
 
     for (const league of leagues) {
       // Skip API Test league - it's for testing only
@@ -146,21 +151,52 @@ export async function fetchUserUnicorns(userId: string): Promise<UnicornCard[]> 
       });
 
       // Check each fixture for unicorns
+      let leagueUnicornCount = 0;
       picksByFixture.forEach((picks, key) => {
         const [gw, fixtureIndex] = key.split(':').map(Number);
         
         // Skip fixtures before league started
-        if (gw < leagueStartGw) return;
+        if (gw < leagueStartGw) {
+          if (userId === 'f8a1669e-2512-4edf-9c21-b9f87b3efbe2') { // Carl's user ID for debugging
+            console.log(`[Unicorns] [DEBUG] ${league.name} GW${gw} fixture ${fixtureIndex}: Skipped (before league start GW ${leagueStartGw})`);
+          }
+          return;
+        }
         
         const result = resultsMap.get(key);
-        if (!result) return; // No result yet, can't be a unicorn
+        if (!result) {
+          if (userId === 'f8a1669e-2512-4edf-9c21-b9f87b3efbe2') {
+            console.log(`[Unicorns] [DEBUG] ${league.name} GW${gw} fixture ${fixtureIndex}: Skipped (no result)`);
+          }
+          return; // No result yet, can't be a unicorn
+        }
 
         // Check if user made a pick for this fixture
         const userPick = picks.find(p => p.user_id === userId);
-        if (!userPick) return; // User didn't make a pick, can't be a unicorn
+        if (!userPick) {
+          if (userId === 'f8a1669e-2512-4edf-9c21-b9f87b3efbe2') {
+            console.log(`[Unicorns] [DEBUG] ${league.name} GW${gw} fixture ${fixtureIndex}: Skipped (user didn't make pick)`);
+          }
+          return; // User didn't make a pick, can't be a unicorn
+        }
 
         // Find who got it correct (same logic as League.tsx)
         const correctUsers = picks.filter(p => p.pick === result).map(p => p.user_id);
+        
+        if (userId === 'f8a1669e-2512-4edf-9c21-b9f87b3efbe2') {
+          const fixture = fixturesMap.get(key);
+          const fixtureName = fixture ? `${fixture.home_team} vs ${fixture.away_team}` : 'unknown';
+          console.log(`[Unicorns] [DEBUG] ${league.name} GW${gw} fixture ${fixtureIndex} (${fixtureName}):`, {
+            result,
+            userPick: userPick.pick,
+            correctUsers: correctUsers.length,
+            correctUserIds: correctUsers,
+            isUserCorrect: correctUsers.includes(userId),
+            picksCount: picks.length,
+            membersCount: members.length,
+            wouldBeUnicorn: correctUsers.length === 1 && correctUsers[0] === userId && members.length >= 3
+          });
+        }
         
         // Unicorn: only one person correct AND it's the current user AND league has 3+ members
         // Note: We check members.length >= 3 (league members), NOT picks.length >= 3
@@ -168,6 +204,7 @@ export async function fetchUserUnicorns(userId: string): Promise<UnicornCard[]> 
           const fixture = fixturesMap.get(key);
           
           if (fixture) {
+            leagueUnicornCount++;
             unicorns.push({
               fixture_index: fixtureIndex,
               gw,
@@ -182,9 +219,17 @@ export async function fetchUserUnicorns(userId: string): Promise<UnicornCard[]> 
               league_id: league.id,
               league_name: league.name,
             } as any); // Temporary type cast until we group
+          } else {
+            if (userId === 'f8a1669e-2512-4edf-9c21-b9f87b3efbe2') {
+              console.log(`[Unicorns] [DEBUG] ${league.name} GW${gw} fixture ${fixtureIndex}: Would be unicorn but fixture not found in fixturesMap`);
+            }
           }
         }
       });
+      
+      if (leagueUnicornCount > 0) {
+        console.log(`[Unicorns] "${league.name}" found ${leagueUnicornCount} unicorns`);
+      }
     }
 
     console.log(`[Unicorns] Found ${unicorns.length} total unicorns before grouping`);
