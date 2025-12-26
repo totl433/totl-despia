@@ -9,6 +9,7 @@ import { ParChart } from '../components/profile/ParChart';
 import { TrophyCabinet } from '../components/profile/TrophyCabinet';
 import { fetchUserStats, type UserStatsData } from '../services/userStats';
 import LiveGamesToggle from '../components/LiveGamesToggle';
+import UnicornCollection from '../components/profile/UnicornCollection';
 
 export default function Stats() {
   const { user } = useAuth();
@@ -198,6 +199,11 @@ export default function Stats() {
                 overall={stats.trophyCabinet.overall}
                 loading={loading}
               />
+            )}
+
+            {/* Unicorn Collection */}
+            {user && (
+              <UnicornCollection userId={user.id} loading={loading} />
             )}
 
             {/* 6. Chaos Index */}
