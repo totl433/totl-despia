@@ -53,6 +53,9 @@ export function GamesSection({
   userName,
   globalRank,
 }: GamesSectionProps) {
+  // Use a fallback userName if not provided
+  const displayUserName = userName || 'User';
+  
   // Calculate title with GW number: "Gameweek (XX)" format
   const title = useMemo(() => {
     if (fixtures.length === 0) return "Games";
@@ -235,7 +238,7 @@ export function GamesSection({
   return (
     <>
       {/* Temporary modal for capture - invisible but in viewport for html-to-image */}
-      {showCaptureModal && userName && (
+      {showCaptureModal && displayUserName && (
         <div
           style={{
             position: 'fixed',
@@ -282,7 +285,7 @@ export function GamesSection({
               fixtures={shareableFixtures}
               picks={userPicks}
               liveScores={liveScoresMap}
-              userName={userName}
+              userName={displayUserName}
               globalRank={globalRank}
               onCardRefReady={(ref) => {
                 captureRef.current = ref.current;
@@ -312,7 +315,7 @@ export function GamesSection({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleShare}
-                    disabled={isSharing || !userName}
+                    disabled={isSharing}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] rounded-full bg-[#1C8376] text-white text-xs sm:text-sm font-medium hover:bg-[#156b60] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     aria-label="Share gameweek predictions"
                   >
@@ -341,14 +344,14 @@ export function GamesSection({
       </Section>
 
       {/* Share Sheet */}
-      {showShareSheet && shareImageUrl && userName && (
+      {showShareSheet && shareImageUrl && displayUserName && (
         <ShareSheet
           isOpen={showShareSheet}
           onClose={handleCloseShareSheet}
           imageUrl={shareImageUrl}
-          fileName={`totl-gw${currentGwValue}-${userName.replace(/\s+/g, '-')}.png`}
+          fileName={`totl-gw${currentGwValue}-${displayUserName.replace(/\s+/g, '-')}.png`}
           gw={currentGwValue}
-          userName={userName}
+          userName={displayUserName}
         />
       )}
     </>
