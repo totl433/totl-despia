@@ -166,7 +166,10 @@ export default function GameweekFixturesCardListForCapture({
             }}
             onError={(e) => {
               // If image fails to load, hide it but keep logo visible
-              (e.target as HTMLImageElement).style.display = 'none';
+              const target = e.target as HTMLImageElement;
+              if (target) {
+                target.style.display = 'none';
+              }
             }}
           />
           <img 
