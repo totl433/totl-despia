@@ -285,7 +285,7 @@ export function GamesSection({
         console.warn('Capture element may not be visible');
       }
       
-      // Wait for all images in the element to load
+      // Wait for all images in the element to load, and hide any that fail
       const images = element.querySelectorAll('img');
       console.log('[Share] Found images to load:', images.length, Array.from(images).map(img => img.src));
       await Promise.all(Array.from(images).map((img: HTMLImageElement) => {
@@ -295,19 +295,25 @@ export function GamesSection({
         }
         return new Promise((resolve) => {
           const timeout = setTimeout(() => {
-            console.warn('[Share] Image load timeout:', img.src);
+            console.warn('[Share] Image load timeout, hiding:', img.src);
+            // Hide image if it fails to load to prevent capture errors
+            img.style.display = 'none';
+            img.style.visibility = 'hidden';
+            img.style.opacity = '0';
             resolve(null); // Continue even if image fails
-          }, 5000); // Increased timeout
+          }, 3000); // Reduced timeout
           img.onload = () => {
             clearTimeout(timeout);
             console.log('[Share] Image loaded successfully:', img.src);
             resolve(null);
           };
-          img.onerror = (e) => {
+          img.onerror = () => {
             clearTimeout(timeout);
-            console.error('[Share] Image load error:', img.src, e);
-            // Try to set a placeholder or remove the image to prevent capture failure
+            console.error('[Share] Image load error, hiding:', img.src);
+            // Hide image if it fails to load to prevent capture errors
             img.style.display = 'none';
+            img.style.visibility = 'hidden';
+            img.style.opacity = '0';
             resolve(null); // Continue even if image fails
           };
         });
@@ -315,6 +321,16 @@ export function GamesSection({
       
       // Additional wait to ensure everything is settled
       await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Hide any images that failed to load before capture
+      Array.from(images).forEach((img: HTMLImageElement) => {
+        if (!img.complete || img.naturalWidth === 0) {
+          console.warn('[Share] Hiding incomplete image before capture:', img.src);
+          img.style.display = 'none';
+          img.style.visibility = 'hidden';
+          img.style.opacity = '0';
+        }
+      });
       
       // Use html-to-image which handles flexbox much better
       console.log('[Share] Starting toPng capture', { elementWidth: element.offsetWidth, elementHeight: element.offsetHeight });
@@ -325,11 +341,24 @@ export function GamesSection({
           pixelRatio: 2,
           quality: 0.95,
           cacheBust: true,
+          filter: (node) => {
+            // Skip any images that are hidden or failed to load
+            if (node instanceof HTMLImageElement) {
+              const style = window.getComputedStyle(node);
+              if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+                return false;
+              }
+              // Skip images that haven't loaded
+              if (!node.complete || node.naturalWidth === 0) {
+                return false;
+              }
+            }
+            return true;
+          },
         });
         console.log('[Share] toPng capture successful', { dataUrlLength: dataUrl?.length });
       } catch (pngError: any) {
         console.error('[Share] toPng error:', pngError);
-        console.error('toPng error:', pngError);
         // Handle Event objects and other error types
         let errorMsg = 'Unknown html-to-image error';
         if (pngError instanceof Error) {
