@@ -392,10 +392,15 @@ export function GamesSection({
               console.log('[Share] Rendering capture component with:', logData);
               console.log('[Share] First fixture:', shareableFixtures[0]);
               console.log('[Share] All fixtures:', shareableFixtures);
-              console.log('[Share] First pick:', Object.entries(userPicks)[0]);
-              console.log('[Share] All picks:', userPicks);
-              console.log('[Share] First live score:', Array.from(liveScoresMap.entries())[0]);
-              console.log('[Share] All live scores:', Array.from(liveScoresMap.entries()));
+              console.log('[Share] userPicks keys:', Object.keys(userPicks));
+              console.log('[Share] userPicks entries:', Object.entries(userPicks));
+              console.log('[Share] userPicks object:', JSON.stringify(userPicks));
+              console.log('[Share] liveScoresMap size:', liveScoresMap.size);
+              console.log('[Share] liveScoresMap keys:', Array.from(liveScoresMap.keys()));
+              console.log('[Share] liveScoresMap entries:', Array.from(liveScoresMap.entries()));
+              console.log('[Share] liveScores prop (raw):', liveScores);
+              console.log('[Share] liveScores prop keys:', Object.keys(liveScores || {}));
+              console.log('[Share] liveScores prop entries:', Object.entries(liveScores || {}));
               return null;
             })()}
             <GameweekFixturesCardListForCapture
