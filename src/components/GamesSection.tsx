@@ -56,8 +56,8 @@ export function GamesSection({
   globalRank,
 }: GamesSectionProps) {
   const { user } = useAuth();
-  // Use a fallback userName if not provided
-  const displayUserName = userName || 'User';
+  // Use userName from props, or get it directly from user, or fallback to 'User'
+  const displayUserName = userName || user?.user_metadata?.display_name || user?.email || 'User';
   
   // Calculate title with GW number: "Gameweek (XX)" format
   const title = useMemo(() => {
