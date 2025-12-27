@@ -41,13 +41,42 @@ export default function ShareSheet({
     }
   };
 
-  // Handle WhatsApp share - use direct WhatsApp link (works in Despia)
+  // Handle WhatsApp share - try Web Share API with image first, then fallback to deep link
   const handleWhatsAppShare = async () => {
     try {
+      // First try Web Share API with image file (works in Despia if supported)
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const file = new File([blob], fileName, { type: 'image/png' });
+      
+      const nav = navigator as Navigator & { 
+        share?: (data: ShareData) => Promise<void>;
+        canShare?: (data: { files?: File[] }) => boolean;
+      };
+      
+      // Try sharing with image file if supported
+      if (nav.share && nav.canShare?.({ files: [file] })) {
+        try {
+          await nav.share({
+            title: `TOTL Gameweek ${gw} - ${userName}`,
+            text: `Check out my Gameweek ${gw} predictions!`,
+            files: [file],
+          });
+          onClose();
+          return;
+        } catch (shareError: any) {
+          if (shareError.name === 'AbortError') {
+            return; // User cancelled
+          }
+          // Fall through to deep link if file sharing fails
+          console.log('[Share] Web Share API with file failed, trying WhatsApp deep link');
+        }
+      }
+      
+      // Fallback: Use WhatsApp deep link with text (image will download for manual attach)
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
-      // Use WhatsApp deep link (works in Despia and regular browsers)
       openWhatsApp(shareText);
-      // Also download the image so user can attach it manually
+      // Download image so user can attach it manually
       setTimeout(() => {
         handleDownload();
       }, 500);
