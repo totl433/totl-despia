@@ -160,34 +160,12 @@ export function GamesSection({
       return;
     }
     
-    // Wait for userPicks and liveScores to be available
-    // They might be empty initially but should populate after data loads
-    console.log('[Share] Checking data availability:', {
+    // Note: userPicks and liveScores might be empty if data hasn't loaded yet
+    // This is OK - the share image will still work, just without picks/scores
+    console.log('[Share] Data availability:', {
       fixturesCount: fixtures.length,
       userPicksCount: Object.keys(userPicks || {}).length,
       liveScoresCount: Object.keys(liveScores || {}).length,
-    });
-    
-    // Give a moment for data to populate (props might update after render)
-    let dataWaitCount = 0;
-    while (
-      (Object.keys(userPicks || {}).length === 0 || Object.keys(liveScores || {}).length === 0) &&
-      dataWaitCount < 30 // Wait up to 3 seconds
-    ) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      dataWaitCount++;
-      // Re-check props (they might have updated)
-      if (Object.keys(userPicks || {}).length > 0 && Object.keys(liveScores || {}).length > 0) {
-        console.log('[Share] Data became available after wait');
-        break;
-      }
-    }
-    
-    console.log('[Share] Final data check:', {
-      fixturesCount: fixtures.length,
-      userPicksCount: Object.keys(userPicks || {}).length,
-      liveScoresCount: Object.keys(liveScores || {}).length,
-      waited: dataWaitCount,
     });
     
     console.log('[Share] Starting share process', {
