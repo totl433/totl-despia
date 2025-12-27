@@ -87,12 +87,40 @@ export default function ShareSheet({
     }
   };
 
-  // Handle share via Web Share API (for Messages, Instagram, More) - same as League page
+  // Handle share via Web Share API (for Messages, Instagram, More) - try with image file first
   const handleWebShare = async () => {
     try {
-      // Use Web Share API with text only (same as League page shareLeague function)
-      const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
-      if (typeof nav.share === "function") {
+      // First try Web Share API with image file (works in Despia if supported)
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const file = new File([blob], fileName, { type: 'image/png' });
+      
+      const nav = navigator as Navigator & { 
+        share?: (data: ShareData) => Promise<void>;
+        canShare?: (data: { files?: File[] }) => boolean;
+      };
+      
+      // Try sharing with image file if supported
+      if (nav.share && nav.canShare?.({ files: [file] })) {
+        try {
+          await nav.share({
+            title: `TOTL Gameweek ${gw} - ${userName}`,
+            text: `Check out my Gameweek ${gw} predictions!`,
+            files: [file],
+          });
+          onClose();
+          return;
+        } catch (shareError: any) {
+          if (shareError.name === 'AbortError') {
+            return; // User cancelled
+          }
+          // Fall through to text-only share if file sharing fails
+          console.log('[Share] Web Share API with file failed, trying text-only');
+        }
+      }
+      
+      // Fallback: Try Web Share API with text only
+      if (nav.share) {
         try {
           await nav.share({ 
             title: `TOTL Gameweek ${gw} - ${userName}`, 
@@ -110,7 +138,7 @@ export default function ShareSheet({
         }
       }
       
-      // Fallback: download
+      // Final fallback: download
       handleDownload();
     } catch (error: any) {
       console.error('Share failed:', error);
