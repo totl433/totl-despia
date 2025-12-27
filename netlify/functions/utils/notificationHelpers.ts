@@ -185,3 +185,108 @@ export async function filterEligiblePlayerIds(
 
   return eligiblePlayerIds;
 }
+
+/**
+ * Set external_user_id for a player in OneSignal
+ * This is critical for user-based targeting via include_external_user_ids
+ * 
+ * @param playerId - The OneSignal Player ID
+ * @param userId - The Supabase user ID to set as external_user_id
+ * @param appId - OneSignal App ID
+ * @param restKey - OneSignal REST API Key
+ * @returns Object with success boolean and error if failed
+ */
+export async function setExternalUserId(
+  playerId: string,
+  userId: string,
+  appId: string,
+  restKey: string
+): Promise<{ success: boolean; error?: any }> {
+  const OS_BASE = 'https://onesignal.com/api/v1';
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Basic ${restKey}`,
+  };
+
+  try {
+    const url = `${OS_BASE}/players/${playerId}`;
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        app_id: appId,
+        external_user_id: userId,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      let errorData: any;
+      try {
+        errorData = JSON.parse(errorBody);
+      } catch {
+        errorData = { message: errorBody };
+      }
+      return { success: false, error: { status: response.status, body: errorData } };
+    }
+
+    return { success: true };
+  } catch (e) {
+    console.error(`[notificationHelpers] Error setting external_user_id for ${playerId}:`, e);
+    return { success: false, error: e };
+  }
+}
+
+/**
+ * Verify that external_user_id is set correctly for a player in OneSignal
+ * 
+ * @param playerId - The OneSignal Player ID
+ * @param expectedUserId - The expected Supabase user ID
+ * @param appId - OneSignal App ID
+ * @param restKey - OneSignal REST API Key
+ * @returns Object with verified boolean and actual external_user_id if different
+ */
+export async function verifyExternalUserId(
+  playerId: string,
+  expectedUserId: string,
+  appId: string,
+  restKey: string
+): Promise<{ verified: boolean; actualExternalUserId?: string; error?: any }> {
+  const OS_BASE = 'https://onesignal.com/api/v1';
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Basic ${restKey}`,
+  };
+
+  try {
+    const url = `${OS_BASE}/players/${playerId}?app_id=${appId}`;
+    const response = await fetch(url, { headers });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      let errorData: any;
+      try {
+        errorData = JSON.parse(errorBody);
+      } catch {
+        errorData = { message: errorBody };
+      }
+      return { verified: false, error: { status: response.status, body: errorData } };
+    }
+
+    const player = await response.json();
+    const actualExternalUserId = player.external_user_id;
+
+    if (!actualExternalUserId) {
+      return { verified: false, actualExternalUserId: undefined };
+    }
+
+    if (actualExternalUserId !== expectedUserId) {
+      return { verified: false, actualExternalUserId };
+    }
+
+    return { verified: true };
+  } catch (e) {
+    console.error(`[notificationHelpers] Error verifying external_user_id for ${playerId}:`, e);
+    return { verified: false, error: e };
+  }
+}

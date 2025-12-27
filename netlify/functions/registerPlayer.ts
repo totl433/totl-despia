@@ -1,6 +1,6 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
-import { isSubscribed } from './utils/notificationHelpers';
+import { isSubscribed, setExternalUserId, verifyExternalUserId } from './utils/notificationHelpers';
 
 function json(statusCode: number, body: unknown) {
   return {
@@ -144,30 +144,82 @@ export const handler: Handler = async (event) => {
   }
 
   // 4) Set external_user_id in OneSignal (for user-based targeting)
+  // This is CRITICAL - without this, notifications sent via include_external_user_ids will fail
+  let externalUserIdSet = false;
+  let externalUserIdError: any = null;
+  
   if (ONESIGNAL_APP_ID && ONESIGNAL_REST_API_KEY) {
-    try {
-      await fetch(`https://onesignal.com/api/v1/players/${playerId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
-        },
-        body: JSON.stringify({
-          app_id: ONESIGNAL_APP_ID,
-          external_user_id: userId,
-        }),
-      }).then(() => {}, (err) => console.warn(`[registerPlayer] Failed to set external_user_id:`, err));
-    } catch (e) {
-      console.warn(`[registerPlayer] Error setting external_user_id:`, e);
+    // Try to set external_user_id with retry logic
+    const maxRetries = 3;
+    let lastError: any = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      console.log(`[registerPlayer] Setting external_user_id (attempt ${attempt}/${maxRetries}) for ${playerId.slice(0, 8)}…`);
+      
+      const setResult = await setExternalUserId(playerId, userId, ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY);
+      
+      if (setResult.success) {
+        // Verify it was actually set
+        const verifyResult = await verifyExternalUserId(playerId, userId, ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY);
+        
+        if (verifyResult.verified) {
+          externalUserIdSet = true;
+          console.log(`[registerPlayer] ✅ external_user_id set and verified for ${playerId.slice(0, 8)}…`);
+          break;
+        } else {
+          lastError = verifyResult.error || { message: `Verification failed: expected ${userId}, got ${verifyResult.actualExternalUserId || 'none'}` };
+          console.warn(`[registerPlayer] external_user_id set but verification failed (attempt ${attempt}):`, lastError);
+          
+          // If verification failed but we're not on the last attempt, retry
+          if (attempt < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+            continue;
+          }
+        }
+      } else {
+        lastError = setResult.error;
+        console.warn(`[registerPlayer] Failed to set external_user_id (attempt ${attempt}):`, lastError);
+        
+        // If it's a 404 (player not found), don't retry
+        if (lastError?.status === 404) {
+          console.error(`[registerPlayer] Player ${playerId.slice(0, 8)}… not found in OneSignal - cannot set external_user_id`);
+          break;
+        }
+        
+        // Retry with exponential backoff
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          continue;
+        }
+      }
     }
+    
+    if (!externalUserIdSet) {
+      externalUserIdError = lastError;
+      console.error(`[registerPlayer] ❌ CRITICAL: Failed to set external_user_id after ${maxRetries} attempts:`, externalUserIdError);
+      // Don't fail the registration, but log it as a warning
+    }
+  } else {
+    console.warn('[registerPlayer] OneSignal credentials not configured - cannot set external_user_id');
   }
 
-  console.log(`[registerPlayer] Successfully registered playerId ${playerId.slice(0, 8)}… for user ${userId} (subscribed: ${subscriptionStatus.subscribed})`);
+  console.log(`[registerPlayer] Successfully registered playerId ${playerId.slice(0, 8)}… for user ${userId} (subscribed: ${subscriptionStatus.subscribed}, external_user_id: ${externalUserIdSet ? 'SET' : 'FAILED'})`);
+  
+  const warnings: string[] = [];
+  if (!subscriptionStatus.subscribed) {
+    warnings.push('Device registered but not subscribed in OneSignal. Please enable notifications in OS Settings.');
+  }
+  if (!externalUserIdSet) {
+    warnings.push('CRITICAL: Failed to set external_user_id in OneSignal. Notifications may not work. Please try again or contact support.');
+  }
+  
   return json(200, {
     ok: true,
     userId,
     playerId: playerId.slice(0, 8) + '…', // mask for privacy
     subscribed: subscriptionStatus.subscribed,
-    warning: !subscriptionStatus.subscribed ? 'Device registered but not subscribed in OneSignal. Please enable notifications in OS Settings.' : undefined,
+    external_user_id_set: externalUserIdSet,
+    warning: warnings.length > 0 ? warnings.join(' ') : undefined,
+    error: externalUserIdError ? `Failed to set external_user_id: ${JSON.stringify(externalUserIdError)}` : undefined,
   });
 };
