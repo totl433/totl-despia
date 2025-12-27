@@ -181,7 +181,7 @@ export default function GameweekFixturesCardListForCapture({
               filter: 'brightness(0) invert(1)',
               display: 'block'
             }}
-            onError={(e) => {
+            onError={() => {
               // If SVG fails, try to show a fallback or ensure it's visible
               console.error('[Capture] TOTL logo failed to load');
             }}
