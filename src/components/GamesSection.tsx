@@ -124,42 +124,63 @@ export function GamesSection({
     setShowCaptureModal(true);
     
     // Wait longer for modal to fully render and layout to settle
-    await new Promise(resolve => setTimeout(resolve, 800));
+    // Multiple animation frames and delays to ensure everything is ready
+    await new Promise(resolve => setTimeout(resolve, 1000));
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await new Promise(resolve => setTimeout(resolve, 200));
     
     // Wait for ref to be set (with timeout)
     let retries = 0;
-    while (!captureRef.current && retries < 10) {
+    while (!captureRef.current && retries < 15) {
       await new Promise(resolve => setTimeout(resolve, 100));
       retries++;
     }
     
-    // Force a reflow to ensure layout is calculated
+    // Force multiple reflows to ensure layout is calculated
     if (captureRef.current) {
+      void captureRef.current.offsetHeight;
+      void captureRef.current.offsetWidth;
+      // Force another reflow
+      await new Promise(resolve => requestAnimationFrame(resolve));
       void captureRef.current.offsetHeight;
     }
     
     try {
       if (!captureRef.current) {
-        throw new Error('Capture element not found - ref was not set');
+        throw new Error('Capture element not found - ref was not set after retries');
       }
       
       const element = captureRef.current;
       
+      // Check if element is actually in the DOM and visible
+      if (!element.offsetParent && element.style.display !== 'none') {
+        console.warn('Capture element may not be visible');
+      }
+      
       // Use html-to-image which handles flexbox much better
-      const dataUrl = await toPng(element, {
-        backgroundColor: '#ffffff',
-        pixelRatio: 2,
-        quality: 0.95,
-        cacheBust: true,
-      });
+      let dataUrl: string;
+      try {
+        dataUrl = await toPng(element, {
+          backgroundColor: '#ffffff',
+          pixelRatio: 2,
+          quality: 0.95,
+          cacheBust: true,
+        });
+      } catch (pngError: any) {
+        console.error('toPng error:', pngError);
+        throw new Error(`Failed to capture image: ${pngError?.message || pngError?.toString() || 'Unknown html-to-image error'}`);
+      }
+      
+      if (!dataUrl || dataUrl.length === 0) {
+        throw new Error('Image capture returned empty data');
+      }
       
       // Load the image to get dimensions
       const img = new Image();
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
-          reject(new Error('Image load timeout'));
+          reject(new Error('Image load timeout after 5 seconds'));
         }, 5000);
         
         img.onload = () => {
@@ -167,17 +188,18 @@ export function GamesSection({
           resolve(null);
         };
         
-        img.onerror = () => {
+        img.onerror = (e) => {
           clearTimeout(timeout);
-          reject(new Error('Failed to load image'));
+          console.error('Image load error:', e);
+          reject(new Error('Failed to load captured image data'));
         };
         
         img.src = dataUrl;
       });
       
-          // Target dimensions (2:3 aspect ratio - taller card)
-          const targetWidth = 1500;
-          const targetHeight = 2250;
+      // Target dimensions (2:3 aspect ratio - taller card)
+      const targetWidth = 1500;
+      const targetHeight = 2250;
       
       // Create final canvas
       const finalCanvas = document.createElement('canvas');
@@ -185,34 +207,48 @@ export function GamesSection({
       finalCanvas.height = targetHeight;
       const ctx = finalCanvas.getContext('2d');
       
-      if (ctx) {
-        // White background
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, targetWidth, targetHeight);
-        
-        // Scale image to fit within canvas dimensions (maintain aspect ratio)
-        const scaleX = targetWidth / img.width;
-        const scaleY = targetHeight / img.height;
-        const imageScale = Math.min(scaleX, scaleY); // Use smaller scale to ensure it fits
-        
-        const scaledWidth = img.width * imageScale;
-        const scaledHeight = img.height * imageScale;
-        
-        // Center the image vertically and horizontally
-        const imageX = (targetWidth - scaledWidth) / 2;
-        const imageY = (targetHeight - scaledHeight) / 2;
-        
-        ctx.drawImage(img, imageX, imageY, scaledWidth, scaledHeight);
+      if (!ctx) {
+        throw new Error('Failed to get canvas 2D context');
       }
+      
+      // White background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, targetWidth, targetHeight);
+      
+      // Scale image to fit within canvas dimensions (maintain aspect ratio)
+      const scaleX = targetWidth / img.width;
+      const scaleY = targetHeight / img.height;
+      const imageScale = Math.min(scaleX, scaleY); // Use smaller scale to ensure it fits
+      
+      const scaledWidth = img.width * imageScale;
+      const scaledHeight = img.height * imageScale;
+      
+      // Center the image vertically and horizontally
+      const imageX = (targetWidth - scaledWidth) / 2;
+      const imageY = (targetHeight - scaledHeight) / 2;
+      
+      ctx.drawImage(img, imageX, imageY, scaledWidth, scaledHeight);
 
       setShowCaptureModal(false);
       const imageUrl = finalCanvas.toDataURL('image/png', 0.95);
+      
+      if (!imageUrl || imageUrl.length === 0) {
+        throw new Error('Failed to generate final image data URL');
+      }
+      
       setShareImageUrl(imageUrl);
       setShowShareSheet(true);
       setIsSharing(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating share image:', error);
-      alert(`Failed to generate image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = error?.message || error?.toString() || String(error) || 'Unknown error';
+      console.error('Error details:', {
+        message: errorMessage,
+        stack: error?.stack,
+        name: error?.name,
+        error
+      });
+      alert(`Failed to generate image: ${errorMessage}`);
       setShowCaptureModal(false);
       setIsSharing(false);
     } finally {
