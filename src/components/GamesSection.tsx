@@ -118,8 +118,13 @@ export function GamesSection({
   const [showCaptureModal, setShowCaptureModal] = useState(false);
 
   const handleShare = async () => {
-    if (isSharing) return;
+    console.log('[Share] handleShare called', { isSharing, displayUserName, fixturesCount: fixtures.length });
+    if (isSharing) {
+      console.log('[Share] Already sharing, returning');
+      return;
+    }
     
+    console.log('[Share] Starting share process');
     setIsSharing(true);
     setShowCaptureModal(true);
     
@@ -136,6 +141,7 @@ export function GamesSection({
       await new Promise(resolve => setTimeout(resolve, 100));
       retries++;
     }
+    console.log('[Share] Ref check complete', { hasRef: !!captureRef.current, retries });
     
     // Force multiple reflows to ensure layout is calculated
     if (captureRef.current) {
@@ -183,6 +189,7 @@ export function GamesSection({
       await new Promise(resolve => setTimeout(resolve, 200));
       
       // Use html-to-image which handles flexbox much better
+      console.log('[Share] Starting toPng capture', { elementWidth: element.offsetWidth, elementHeight: element.offsetHeight });
       let dataUrl: string;
       try {
         dataUrl = await toPng(element, {
@@ -191,7 +198,9 @@ export function GamesSection({
           quality: 0.95,
           cacheBust: true,
         });
+        console.log('[Share] toPng capture successful', { dataUrlLength: dataUrl?.length });
       } catch (pngError: any) {
+        console.error('[Share] toPng error:', pngError);
         console.error('toPng error:', pngError);
         // Handle Event objects and other error types
         let errorMsg = 'Unknown html-to-image error';
@@ -280,9 +289,11 @@ export function GamesSection({
         throw new Error('Failed to generate final image data URL');
       }
       
+      console.log('[Share] Setting share image URL and showing sheet', { imageUrlLength: imageUrl?.length });
       setShareImageUrl(imageUrl);
       setShowShareSheet(true);
       setIsSharing(false);
+      console.log('[Share] Share process completed successfully');
     } catch (error: any) {
       console.error('Error generating share image:', error);
       const errorMessage = error?.message || error?.toString() || String(error) || 'Unknown error';
