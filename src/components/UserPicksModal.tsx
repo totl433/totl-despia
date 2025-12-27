@@ -1,0 +1,254 @@
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { supabase } from '../lib/supabase';
+import GameweekFixturesCardList from './GameweekFixturesCardList';
+import type { Fixture, LiveScore } from './FixtureCard';
+import { useLiveScores } from '../hooks/useLiveScores';
+
+export interface UserPicksModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  userId: string;
+  userName: string | null;
+  gw: number;
+  globalRank?: number;
+}
+
+export default function UserPicksModal({
+  isOpen,
+  onClose,
+  userId,
+  userName,
+  gw,
+  globalRank,
+}: UserPicksModalProps) {
+  const [fixtures, setFixtures] = useState<Fixture[]>([]);
+  const [picks, setPicks] = useState<Record<number, "H" | "D" | "A">>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [liveScoresByFixtureIndex, setLiveScoresByFixtureIndex] = useState<Map<number, LiveScore>>(new Map());
+
+  // Get live scores for this gameweek
+  const { liveScores: liveScoresMap } = useLiveScores(gw, undefined);
+
+  // Fetch fixtures and picks when modal opens
+  useEffect(() => {
+    if (!isOpen || !userId || !gw) {
+      setLoading(false);
+      return;
+    }
+
+    let alive = true;
+
+    async function fetchData() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Fetch fixtures for this gameweek
+        const { data: fxData, error: fxError } = await supabase
+          .from('app_fixtures')
+          .select('id, gw, fixture_index, home_name, away_name, home_team, away_team, home_code, away_code, kickoff_time, api_match_id')
+          .eq('gw', gw)
+          .order('fixture_index', { ascending: true });
+
+        if (fxError) {
+          throw new Error(`Failed to load fixtures: ${fxError.message}`);
+        }
+
+        if (!alive) return;
+
+        const fixturesList = (fxData as Fixture[]) ?? [];
+        setFixtures(fixturesList);
+
+        // Fetch picks for this user and gameweek
+        const { data: picksData, error: picksError } = await supabase
+          .from('app_picks')
+          .select('fixture_index, pick')
+          .eq('gw', gw)
+          .eq('user_id', userId);
+
+        if (picksError) {
+          throw new Error(`Failed to load picks: ${picksError.message}`);
+        }
+
+        if (!alive) return;
+
+        // Convert picks array to Record<fixture_index, pick>
+        const picksMap: Record<number, "H" | "D" | "A"> = {};
+        (picksData ?? []).forEach((p: any) => {
+          picksMap[p.fixture_index] = p.pick;
+        });
+        setPicks(picksMap);
+
+        setLoading(false);
+      } catch (err: any) {
+        console.error('[UserPicksModal] Error fetching data:', err);
+        if (alive) {
+          setError(err?.message || 'Failed to load data');
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchData();
+
+    return () => {
+      alive = false;
+    };
+  }, [isOpen, userId, gw]);
+
+  // Update live scores map when fixtures or live scores change
+  useEffect(() => {
+    if (fixtures.length === 0) {
+      setLiveScoresByFixtureIndex(new Map());
+      return;
+    }
+
+    const updatedMap = new Map<number, LiveScore>();
+    liveScoresMap.forEach((score) => {
+      if (score.gw === gw) {
+        const fixture = fixtures.find(f => f.api_match_id === score.api_match_id);
+        if (fixture) {
+          updatedMap.set(fixture.fixture_index, {
+            status: score.status || 'SCHEDULED',
+            minute: score.minute ?? null,
+            homeScore: score.home_score ?? 0,
+            awayScore: score.away_score ?? 0,
+            home_team: score.home_team ?? null,
+            away_team: score.away_team ?? null,
+            goals: score.goals?.map(g => ({
+              team: g.team || '',
+              scorer: g.scorer || '',
+              minute: g.minute ?? null,
+            })) ?? undefined,
+            red_cards: score.red_cards?.map(r => ({
+              team: r.team || '',
+              player: r.player || '',
+              minute: r.minute ?? null,
+            })) ?? undefined,
+          });
+        }
+      }
+    });
+    setLiveScoresByFixtureIndex(updatedMap);
+  }, [fixtures, liveScoresMap, gw]);
+
+  // Close on escape key
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
+
+  // Prevent body scroll when open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const content = (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+        style={{
+          animation: 'fadeIn 200ms ease-out',
+          zIndex: 999999,
+        }}
+      />
+
+      {/* Modal */}
+      <div
+        className="fixed inset-0 flex items-center justify-center p-4 z-[1000000]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="user-picks-modal-title"
+        onClick={(e) => {
+          // Close if clicking on backdrop
+          if (e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
+      >
+        <div
+          className="relative max-w-2xl w-full max-h-[90vh] flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="max-h-[90vh] overflow-y-auto">
+            {loading ? (
+              <div className="bg-white rounded-3xl shadow-2xl p-12 flex items-center justify-center">
+                <div className="text-slate-500">Loading picks...</div>
+              </div>
+            ) : error ? (
+              <div className="bg-white rounded-3xl shadow-2xl p-12 flex items-center justify-center">
+                <div className="text-red-500">{error}</div>
+              </div>
+            ) : fixtures.length === 0 ? (
+              <div className="bg-white rounded-3xl shadow-2xl p-12 flex items-center justify-center">
+                <div className="text-slate-500">No fixtures available for this gameweek</div>
+              </div>
+            ) : (
+              <GameweekFixturesCardList
+                gw={gw}
+                fixtures={fixtures}
+                picks={picks}
+                liveScores={liveScoresByFixtureIndex}
+                userName={userName || 'User'}
+                globalRank={globalRank}
+              />
+            )}
+          </div>
+          
+          {/* Close button - underneath the card, bottom right */}
+          <div className="flex justify-end mt-4">
+            <button
+              onClick={onClose}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+              aria-label="Close"
+            >
+              <svg
+                className="w-6 h-6 text-white font-bold"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={3}
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  // Render to document.body using portal to ensure it's above everything
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(content, document.body);
+  }
+
+  return content;
+}
+
