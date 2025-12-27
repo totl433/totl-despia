@@ -46,12 +46,12 @@ export function buildPayload(
     contents: { en: body },
   };
   
-  // Prefer external_user_ids targeting (uses Supabase user ID)
-  // This avoids the player_id vs subscription_id confusion
-  if (externalUserIds && externalUserIds.length > 0) {
-    payload.include_external_user_ids = externalUserIds;
-  } else if (playerIds && playerIds.length > 0) {
+  // Use player_ids directly (simpler, more reliable)
+  // This avoids the external_user_id mapping layer that can break
+  if (playerIds && playerIds.length > 0) {
     payload.include_player_ids = playerIds;
+  } else if (externalUserIds && externalUserIds.length > 0) {
+    payload.include_external_user_ids = externalUserIds;
   }
   
   // Add grouping fields (CRITICAL for preventing duplicate display)

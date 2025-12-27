@@ -22,11 +22,13 @@ import {
   updateSendLog,
   getEnvironment,
 } from './idempotency';
+import { getSupabase } from './targeting';
 import {
   loadUserPreferences,
   runAllPolicyChecks,
 } from './policy';
 import {
+  loadPushSubscriptions,
   resolveTargets,
   verifyAndFilterSubscriptions,
   getSinglePlayerIdPerUser,
@@ -112,8 +114,7 @@ export async function dispatchNotification(
   const userPrefsMap = await loadUserPreferences(user_ids);
   
   // 4. Process each user
-  // Note: We now use external_user_id targeting instead of player_id lookup
-  // This avoids the player_id vs subscription_id confusion with newer OneSignal SDKs
+  // Use direct player_id targeting - simpler and more reliable
   const environment = getEnvironment();
   
   for (const userId of user_ids) {
@@ -167,15 +168,32 @@ export async function dispatchNotification(
         continue;
       }
       
-      // 4c. Build notification payload using external_user_id
-      // OneSignal will look up the correct subscription internally
+      // 4c. Load player_id for this user
+      const subscriptions = await loadPushSubscriptions([userId]);
+      const activeSubscriptions = subscriptions.filter(
+        sub => sub.is_active && sub.subscribed && sub.player_id
+      );
+      
+      if (activeSubscriptions.length === 0) {
+        userResult.result = 'suppressed_unsubscribed';
+        userResult.reason = 'No active subscribed devices';
+        result.results.suppressed_unsubscribed++;
+        await updateSendLog(logId, { result: 'suppressed_unsubscribed' });
+        result.user_results.push(userResult);
+        continue;
+      }
+      
+      // Use the most recent device (first one from DB query ordered by updated_at)
+      const playerId = activeSubscriptions[0].player_id!;
+      
+      // 4d. Build notification payload using player_id
       const notificationTitle = title || buildDefaultTitle(catalogEntry, data);
       const notificationBody = body || buildDefaultBody(catalogEntry, data);
       
       const payload = buildPayload(catalogEntry, {
         title: notificationTitle,
         body: notificationBody,
-        externalUserIds: [userId], // Use Supabase user ID directly
+        playerIds: [playerId], // Direct player_id targeting
         data: {
           type: notification_key,
           ...data,
@@ -185,7 +203,7 @@ export async function dispatchNotification(
         badgeCount: badge_count,
       });
       
-      // 4d. Send notification
+      // 4e. Send notification
       const sendResult = await sendNotification(payload);
       
       if (sendResult.success) {
@@ -196,8 +214,8 @@ export async function dispatchNotification(
         await updateSendLog(logId, {
           result: 'accepted',
           onesignal_notification_id: sendResult.notification_id || null,
-          target_type: 'external_user_ids',
-          targeting_summary: { external_user_id: userId },
+          target_type: 'player_ids',
+          targeting_summary: { player_id: playerId },
           payload_summary: createPayloadSummary(payload),
         });
       } else {
@@ -207,15 +225,22 @@ export async function dispatchNotification(
           sendResult.error?.body?.errors?.includes('All included players are not subscribed');
         
         if (isUnsubscribedError) {
+          // Update DB to mark as unsubscribed
+          const supabase = getSupabase();
+          await supabase
+            .from('push_subscriptions')
+            .update({ subscribed: false, last_checked_at: new Date().toISOString() })
+            .eq('player_id', playerId);
+          
           userResult.result = 'suppressed_unsubscribed';
-          userResult.reason = 'User has no subscribed devices in OneSignal';
+          userResult.reason = 'Device not subscribed in OneSignal';
           result.results.suppressed_unsubscribed++;
           
           await updateSendLog(logId, {
             result: 'suppressed_unsubscribed',
             error: sendResult.error,
-            target_type: 'external_user_ids',
-            targeting_summary: { external_user_id: userId },
+            target_type: 'player_ids',
+            targeting_summary: { player_id: playerId },
             payload_summary: createPayloadSummary(payload),
           });
         } else {
@@ -227,8 +252,8 @@ export async function dispatchNotification(
           await updateSendLog(logId, {
             result: 'failed',
             error: sendResult.error,
-            target_type: 'external_user_ids',
-            targeting_summary: { external_user_id: userId },
+            target_type: 'player_ids',
+            targeting_summary: { player_id: playerId },
             payload_summary: createPayloadSummary(payload),
           });
         }

@@ -10,7 +10,7 @@ import type { PushSubscription } from './types';
 
 let supabaseClient: SupabaseClient | null = null;
 
-function getSupabase(): SupabaseClient {
+export function getSupabase(): SupabaseClient {
   if (!supabaseClient) {
     const url = process.env.SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -58,7 +58,8 @@ export async function loadPushSubscriptions(
     .from('push_subscriptions')
     .select('user_id, player_id, is_active, subscribed, platform')
     .in('user_id', userIds)
-    .eq('is_active', true);
+    .eq('is_active', true)
+    .order('updated_at', { ascending: false });
   
   if (error) {
     console.error('[targeting] Error loading push subscriptions:', error);
