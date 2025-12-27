@@ -187,9 +187,12 @@ export default function ShareSheet({
         <div className="px-4 flex-1 min-h-0 flex items-center justify-center overflow-visible" style={{ position: 'relative' }}>
           {!imageUrl ? (
             <div className="flex flex-col items-center justify-center gap-4 py-12">
-              <svg className="w-12 h-12 text-[#1C8376] animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
+              <img 
+                src="/assets/Animation/Volley-Keepy-Uppies.gif" 
+                alt="Volley loading animation"
+                className="w-24 h-24"
+                style={{ width: '96px', height: '96px' }}
+              />
               <p className="text-slate-600 text-sm">Generating share image...</p>
             </div>
           ) : (
