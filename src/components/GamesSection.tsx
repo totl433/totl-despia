@@ -381,19 +381,21 @@ export function GamesSection({
               }
             `}</style>
             {(() => {
-              console.log('[Share] Rendering capture component with:', {
+              const logData = {
                 gw: currentGwValue,
                 fixturesCount: shareableFixtures.length,
                 picksCount: Object.keys(userPicks).length,
                 liveScoresCount: liveScoresMap.size,
                 userName: displayUserName,
                 globalRank,
-                firstFixture: shareableFixtures[0] ? JSON.stringify(shareableFixtures[0]) : 'none',
-                firstPick: Object.entries(userPicks)[0] ? JSON.stringify(Object.entries(userPicks)[0]) : 'none',
-                firstLiveScore: Array.from(liveScoresMap.entries())[0] ? JSON.stringify(Array.from(liveScoresMap.entries())[0]) : 'none',
-                allFixtures: shareableFixtures.map(f => ({ id: f.id, fixture_index: f.fixture_index, home_code: f.home_code, away_code: f.away_code })),
-                allPicks: Object.entries(userPicks).map(([k, v]) => ({ fixture_index: k, pick: v })),
-              });
+              };
+              console.log('[Share] Rendering capture component with:', logData);
+              console.log('[Share] First fixture:', shareableFixtures[0]);
+              console.log('[Share] All fixtures:', shareableFixtures);
+              console.log('[Share] First pick:', Object.entries(userPicks)[0]);
+              console.log('[Share] All picks:', userPicks);
+              console.log('[Share] First live score:', Array.from(liveScoresMap.entries())[0]);
+              console.log('[Share] All live scores:', Array.from(liveScoresMap.entries()));
               return null;
             })()}
             <GameweekFixturesCardListForCapture
