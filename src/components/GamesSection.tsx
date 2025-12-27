@@ -130,10 +130,12 @@ export function GamesSection({
     
     // Wait longer for modal to fully render and layout to settle
     // Multiple animation frames and delays to ensure everything is ready
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Also wait for React to update the component with latest props
+    await new Promise(resolve => setTimeout(resolve, 1500)); // Increased initial wait
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); // Extra frame
+    await new Promise(resolve => setTimeout(resolve, 300)); // Increased final wait
     
     // Wait for ref to be set (with timeout)
     let retries = 0;
