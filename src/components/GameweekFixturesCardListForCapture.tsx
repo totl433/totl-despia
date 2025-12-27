@@ -118,7 +118,10 @@ export default function GameweekFixturesCardListForCapture({
           100% { transform: translateX(100%); }
         }
         .team-name-small-mobile {
-          display: inline;
+          display: block;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
         .username-responsive {
           font-size: 0.875rem;
@@ -366,10 +369,19 @@ export default function GameweekFixturesCardListForCapture({
                   </div>
 
                   {/* Home team - right aligned */}
-                  <div className="flex-1 flex items-center justify-end gap-1.5 pr-0.5" style={{ height: '32px', minWidth: 0, flexShrink: 1, paddingLeft: '4px', gap: '6px' }}>
+                  <div className="flex-1 flex items-center justify-end gap-1.5 pr-0.5" style={{ height: '32px', minWidth: 0, maxWidth: '50%', flexShrink: 1, paddingLeft: '4px', gap: '6px', overflow: 'hidden' }}>
                     <span 
                       className={`team-name-small-mobile text-xs text-slate-700 ${homeIsWinning ? 'font-bold' : 'font-medium'}`}
-                      style={{ fontSize: '14px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '120px' }}
+                      style={{ 
+                        fontSize: '14px', 
+                        textOverflow: 'ellipsis', 
+                        overflow: 'hidden', 
+                        whiteSpace: 'nowrap', 
+                        maxWidth: '100%',
+                        minWidth: 0,
+                        flexShrink: 1,
+                        display: 'block'
+                      }}
                     >
                       {getMediumName(fixture.home_code || fixture.home_team || fixture.home_name || '')}
                     </span>
@@ -396,13 +408,22 @@ export default function GameweekFixturesCardListForCapture({
                   </div>
 
                   {/* Away team - left aligned */}
-                  <div className="flex-1 flex items-center justify-start gap-1.5 pl-0.5" style={{ height: '32px', gap: '6px' }}>
+                  <div className="flex-1 flex items-center justify-start gap-1.5 pl-0.5" style={{ height: '32px', minWidth: 0, maxWidth: '50%', flexShrink: 1, gap: '6px', overflow: 'hidden' }}>
                     <div className="flex items-center justify-center flex-shrink-0" style={{ width: `${badgeSize}px`, height: `${badgeSize}px` }}>
                       <TeamBadge code={fixture.away_code} size={badgeSize} />
                     </div>
                     <span 
                       className={`team-name-small-mobile text-xs text-slate-700 ${awayIsWinning ? 'font-bold' : 'font-medium'}`}
-                      style={{ fontSize: '14px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '120px' }}
+                      style={{ 
+                        fontSize: '14px', 
+                        textOverflow: 'ellipsis', 
+                        overflow: 'hidden', 
+                        whiteSpace: 'nowrap', 
+                        maxWidth: '100%',
+                        minWidth: 0,
+                        flexShrink: 1,
+                        display: 'block'
+                      }}
                     >
                       {getMediumName(fixture.away_code || fixture.away_team || fixture.away_name || '')}
                     </span>
