@@ -209,8 +209,11 @@ export async function dispatchNotification(
             const notificationTypes = player.notification_types;
             
             // OneSignal subscription logic: subscribed if has token, not invalid, and not explicitly unsubscribed
-            const isSubscribed = hasToken && notInvalid && 
-              (notificationTypes === 1 || (notificationTypes !== -2 && notificationTypes !== 0 && notificationTypes !== null && notificationTypes !== undefined));
+            // notification_types: 1 = subscribed, -2 = unsubscribed, 0 = disabled, null/undefined = still initializing (legacy SDK)
+            const explicitlySubscribed = notificationTypes === 1;
+            const explicitlyUnsubscribed = notificationTypes === -2 || notificationTypes === 0;
+            const stillInitializing = (notificationTypes === null || notificationTypes === undefined) && hasToken && notInvalid;
+            const isSubscribed = explicitlySubscribed || (stillInitializing && !explicitlyUnsubscribed);
             
             if (!isSubscribed) {
               // Update DB to reflect actual OneSignal status
