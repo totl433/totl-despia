@@ -67,6 +67,9 @@ export function GamesSection({
 
   // Convert fixtures to GameweekFixturesCardList format
   const shareableFixtures = useMemo<Fixture[]>(() => {
+    if (!fixtures || fixtures.length === 0) {
+      return [];
+    }
     return fixtures.map(f => ({
       id: f.id,
       gw: f.gw,
@@ -81,6 +84,11 @@ export function GamesSection({
       api_match_id: f.api_match_id ?? undefined,
     }));
   }, [fixtures]);
+  
+  // Ensure we have the latest userPicks and liveScores
+  // Use the props directly, not stale closures
+  const latestUserPicks = userPicks || {};
+  const latestLiveScores = liveScores || {};
 
   // Convert liveScores Record to Map for GameweekFixturesCardList
   const liveScoresMap = useMemo<Map<number, LiveScore>>(() => {
