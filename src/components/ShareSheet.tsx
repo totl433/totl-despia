@@ -87,10 +87,41 @@ export default function ShareSheet({
     }
   };
 
-  // Handle share via Web Share API (for Messages, Instagram, More) - try with image file first
+  // Check if Despia is available
+  const isDespiaAvailable = () => {
+    return typeof window !== 'undefined' && 
+           ((window as any)?.despia !== undefined || 
+            (globalThis as any)?.despia !== undefined);
+  };
+
+  // Handle share via Despia Social Share or Web Share API (for Messages, Instagram, More)
   const handleWebShare = async () => {
     try {
-      // First try Web Share API with image file (works in Despia if supported)
+      const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
+      const isDespia = isDespiaAvailable();
+      
+      // In Despia, use native Social Share SDK
+      if (isDespia && typeof window !== 'undefined' && (window as any).despia !== undefined) {
+        try {
+          // Despia Social Share format: shareapp://message?text=...&url=...
+          // Note: Despia may not support images directly, so we'll share text + URL to image
+          // The image will be downloaded so user can attach manually
+          const shareUrl = imageUrl; // Use the data URL as the share URL
+          (window as any).despia = `shareapp://message?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
+          
+          // Download image so user can attach it manually
+          setTimeout(() => {
+            handleDownload();
+          }, 500);
+          onClose();
+          return;
+        } catch (error) {
+          console.error('[Share] Despia Social Share failed:', error);
+          // Fall through to Web Share API
+        }
+      }
+      
+      // Fallback: Try Web Share API with image file first
       const response = await fetch(imageUrl);
       const blob = await response.blob();
       const file = new File([blob], fileName, { type: 'image/png' });
@@ -105,7 +136,7 @@ export default function ShareSheet({
         try {
           await nav.share({
             title: `TOTL Gameweek ${gw} - ${userName}`,
-            text: `Check out my Gameweek ${gw} predictions!`,
+            text: shareText,
             files: [file],
           });
           onClose();
@@ -124,7 +155,7 @@ export default function ShareSheet({
         try {
           await nav.share({ 
             title: `TOTL Gameweek ${gw} - ${userName}`, 
-            text: `Check out my Gameweek ${gw} predictions!` 
+            text: shareText
           });
           // Download image so user can attach manually
           handleDownload();
