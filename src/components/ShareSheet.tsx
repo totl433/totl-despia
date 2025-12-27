@@ -48,7 +48,32 @@ export default function ShareSheet({
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // Try Web Share API with image file (Despia supports this)
+      // First, try Despia direct image sharing (most reliable in Despia)
+      const despiaObj = (window as any)?.despia || (globalThis as any)?.despia;
+      
+      // Try calling despia as a function with the image URL
+      if (typeof despiaObj === 'function') {
+        try {
+          despiaObj(imageUrl);
+          onClose();
+          return;
+        } catch (error) {
+          console.log('[Share] Despia function call failed, trying assignment');
+        }
+      }
+      
+      // Try setting window.despia to the image URL
+      if (typeof window !== 'undefined') {
+        try {
+          (window as any).despia = imageUrl;
+          onClose();
+          return;
+        } catch (error) {
+          console.log('[Share] Despia assignment failed, trying Web Share API');
+        }
+      }
+      
+      // Fallback: Try Web Share API with image file
       const response = await fetch(imageUrl);
       const blob = await response.blob();
       const file = new File([blob], fileName, { type: 'image/png' });
@@ -75,7 +100,7 @@ export default function ShareSheet({
         }
       }
       
-      // Fallback: WhatsApp deep link (Despia native)
+      // Final fallback: WhatsApp deep link with text (user can attach image manually)
       openWhatsApp(shareText);
       setTimeout(() => {
         handleDownload();
@@ -94,7 +119,32 @@ export default function ShareSheet({
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // First, try Web Share API with image file (Despia supports this)
+      // First, try Despia direct image sharing (most reliable in Despia)
+      const despiaObj = (window as any)?.despia || (globalThis as any)?.despia;
+      
+      // Try calling despia as a function with the image URL
+      if (typeof despiaObj === 'function') {
+        try {
+          despiaObj(imageUrl);
+          onClose();
+          return;
+        } catch (error) {
+          console.log('[Share] Despia function call failed, trying assignment');
+        }
+      }
+      
+      // Try setting window.despia to the image URL
+      if (typeof window !== 'undefined') {
+        try {
+          (window as any).despia = imageUrl;
+          onClose();
+          return;
+        } catch (error) {
+          console.log('[Share] Despia assignment failed, trying Web Share API');
+        }
+      }
+      
+      // Fallback: Try Web Share API with image file
       const response = await fetch(imageUrl);
       const blob = await response.blob();
       const file = new File([blob], fileName, { type: 'image/png' });
@@ -117,30 +167,7 @@ export default function ShareSheet({
           if (shareError.name === 'AbortError') {
             return; // User cancelled
           }
-          // Fall through to Despia native methods
-        }
-      }
-      
-      // Try Despia direct image sharing: despia(imageUrl)
-      const despiaObj = (window as any)?.despia || (globalThis as any)?.despia;
-      if (typeof despiaObj === 'function') {
-        try {
-          despiaObj(imageUrl);
-          onClose();
-          return;
-        } catch (error) {
-          console.log('[Share] Despia function call failed, trying assignment');
-        }
-      }
-      
-      // Try Despia assignment: window.despia = imageUrl
-      if (typeof window !== 'undefined') {
-        try {
-          (window as any).despia = imageUrl;
-          onClose();
-          return;
-        } catch (error) {
-          console.log('[Share] Despia assignment failed, trying Social Share SDK');
+          // Fall through to Social Share SDK
         }
       }
       
