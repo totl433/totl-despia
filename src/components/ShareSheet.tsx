@@ -42,7 +42,9 @@ export default function ShareSheet({
   };
 
   // Handle WhatsApp share - try Web Share API with image first, then fallback to deep link
-  const handleWhatsAppShare = async () => {
+  const handleWhatsAppShare = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     try {
       // First try Web Share API with image file (works in Despia if supported)
       const response = await fetch(imageUrl);
@@ -95,7 +97,9 @@ export default function ShareSheet({
   };
 
   // Handle share via Web Share API or Despia Social Share (for Messages, Instagram, More)
-  const handleWebShare = async () => {
+  const handleWebShare = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
@@ -193,7 +197,9 @@ export default function ShareSheet({
   };
 
   // Handle copy image
-  const handleCopyImage = async () => {
+  const handleCopyImage = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     try {
       const response = await fetch(imageUrl);
       const blob = await response.blob();
