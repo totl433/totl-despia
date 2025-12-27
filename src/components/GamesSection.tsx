@@ -118,13 +118,44 @@ export function GamesSection({
   const [showCaptureModal, setShowCaptureModal] = useState(false);
 
   const handleShare = async () => {
-    console.log('[Share] handleShare called', { isSharing, displayUserName, fixturesCount: fixtures.length });
+    console.log('[Share] handleShare called', { 
+      isSharing, 
+      displayUserName, 
+      fixturesCount: fixtures.length,
+      userPicksCount: Object.keys(userPicks || {}).length,
+      liveScoresCount: Object.keys(liveScores || {}).length,
+      fixturesLoading
+    });
     if (isSharing) {
       console.log('[Share] Already sharing, returning');
       return;
     }
     
-    console.log('[Share] Starting share process');
+    // Wait for data to be loaded if it's still loading
+    if (fixturesLoading) {
+      console.log('[Share] Fixtures still loading, waiting...');
+      let waitCount = 0;
+      while (fixturesLoading && waitCount < 50) { // Wait up to 5 seconds
+        await new Promise(resolve => setTimeout(resolve, 100));
+        waitCount++;
+      }
+      if (fixturesLoading) {
+        console.warn('[Share] Fixtures still loading after wait, proceeding anyway');
+      }
+    }
+    
+    // Ensure we have fixtures before proceeding
+    if (!fixtures || fixtures.length === 0) {
+      console.error('[Share] No fixtures available');
+      alert('Fixtures are still loading. Please try again in a moment.');
+      return;
+    }
+    
+    console.log('[Share] Starting share process', {
+      fixturesCount: fixtures.length,
+      userPicksCount: Object.keys(userPicks || {}).length,
+      liveScoresCount: Object.keys(liveScores || {}).length,
+    });
     setIsSharing(true);
     setShowCaptureModal(true);
     
@@ -384,29 +415,33 @@ export function GamesSection({
               const logData = {
                 gw: currentGwValue,
                 fixturesCount: shareableFixtures.length,
-                picksCount: Object.keys(userPicks).length,
+                picksCount: Object.keys(latestUserPicks).length,
                 liveScoresCount: liveScoresMap.size,
                 userName: displayUserName,
                 globalRank,
+                fixturesLoading,
               };
               console.log('[Share] Rendering capture component with:', logData);
               console.log('[Share] First fixture:', shareableFixtures[0]);
               console.log('[Share] All fixtures:', shareableFixtures);
-              console.log('[Share] userPicks keys:', Object.keys(userPicks));
-              console.log('[Share] userPicks entries:', Object.entries(userPicks));
-              console.log('[Share] userPicks object:', JSON.stringify(userPicks));
+              console.log('[Share] userPicks prop:', userPicks);
+              console.log('[Share] latestUserPicks:', latestUserPicks);
+              console.log('[Share] userPicks keys:', Object.keys(latestUserPicks));
+              console.log('[Share] userPicks entries:', Object.entries(latestUserPicks));
+              console.log('[Share] userPicks object:', JSON.stringify(latestUserPicks));
+              console.log('[Share] liveScores prop (raw):', liveScores);
+              console.log('[Share] latestLiveScores:', latestLiveScores);
+              console.log('[Share] liveScores prop keys:', Object.keys(latestLiveScores));
+              console.log('[Share] liveScores prop entries:', Object.entries(latestLiveScores));
               console.log('[Share] liveScoresMap size:', liveScoresMap.size);
               console.log('[Share] liveScoresMap keys:', Array.from(liveScoresMap.keys()));
               console.log('[Share] liveScoresMap entries:', Array.from(liveScoresMap.entries()));
-              console.log('[Share] liveScores prop (raw):', liveScores);
-              console.log('[Share] liveScores prop keys:', Object.keys(liveScores || {}));
-              console.log('[Share] liveScores prop entries:', Object.entries(liveScores || {}));
               return null;
             })()}
             <GameweekFixturesCardListForCapture
               gw={currentGwValue}
               fixtures={shareableFixtures}
-              picks={userPicks}
+              picks={latestUserPicks}
               liveScores={liveScoresMap}
               userName={displayUserName}
               globalRank={globalRank}
