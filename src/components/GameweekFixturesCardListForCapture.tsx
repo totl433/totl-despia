@@ -188,11 +188,7 @@ export default function GameweekFixturesCardListForCapture({
             onLoad={() => console.log('[Capture] Volley image loaded in DOM')}
             onError={(e) => {
               console.error('[Capture] Volley image failed to load in DOM');
-              (e.currentTarget as HTMLImageElement).style.display = 'none';
-            }}
-            onError={(e) => {
-              // If image fails to load, hide it but keep logo visible
-              const target = e.target as HTMLImageElement;
+              const target = e.currentTarget as HTMLImageElement;
               if (target) {
                 target.style.display = 'none';
               }

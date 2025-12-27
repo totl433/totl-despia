@@ -784,7 +784,7 @@ export default function HomePage() {
           supabase.from("league_message_reads").select("league_id, last_read_at").eq("user_id", user.id).in("league_id", leagueIds),
           supabase.from("app_gw_submissions").select("user_id").eq("gw", gw),
           supabase.from("app_gw_results").select("gw, fixture_index, result"),
-          supabase.from("app_fixtures").select("gw, kickoff_time").in("gw", Array.from({ length: Math.min(20, latestGw || 20) }, (_, i) => i + 1)),
+          supabase.from("app_fixtures").select("gw, fixture_index, home_team, away_team, home_name, away_name, kickoff_time").in("gw", Array.from({ length: Math.min(20, latestGw || 20) }, (_, i) => i + 1)),
           // Check which users have picks in Web table (these are Web users with mirrored picks)
           // Check for ANY GW (not just current GW) because the blue outline indicates a user who
           // has made picks via Web interface at some point, not just for the current GW
@@ -916,6 +916,7 @@ export default function HomePage() {
         picksResults.forEach(({ leagueId, picks }) => {
           picksByLeague.set(leagueId, picks);
         });
+        
         
         // Calculate GW deadlines
         const gwDeadlines = new Map<number, Date>();
@@ -1743,7 +1744,11 @@ export default function HomePage() {
         red_cards: liveScoreData.red_cards ?? undefined,
       } : null;
       
-      return { fixture: fixtureCardFixture, liveScore: fixtureCardLiveScore, pick: userPicks[f.fixture_index] };
+      return { 
+        fixture: fixtureCardFixture, 
+        liveScore: fixtureCardLiveScore, 
+        pick: userPicks[f.fixture_index]
+      };
     });
   }, [fixturesToShow, liveScores, userPicks]);
 
@@ -1797,6 +1802,10 @@ export default function HomePage() {
             hasCheckedCache={hasCheckedCacheRef.current}
             currentGw={gw}
             showPickButtons={hasSubmittedCurrentGw}
+            userPicks={userPicks}
+            liveScores={liveScores}
+            userName={user?.user_metadata?.display_name || user?.email || 'User'}
+            globalRank={seasonRank?.rank}
           />
 
           {/* Bottom padding */}

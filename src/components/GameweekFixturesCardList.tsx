@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import TeamBadge from './TeamBadge';
 import type { Fixture, LiveScore } from './FixtureCard';
-import { getMediumName } from '../lib/teamNames';
+import { getTruncatedName, getFullName } from '../lib/teamNames';
+import html2canvas from 'html2canvas';
+import ShareSheet from './ShareSheet';
 
 export interface GameweekFixturesCardListProps {
   gw: number;
@@ -11,6 +13,9 @@ export interface GameweekFixturesCardListProps {
   className?: string;
   userName?: string;
   globalRank?: number; // User's global ranking
+  showShareButton?: boolean; // Show share button at top (legacy)
+  onCardRefReady?: (ref: React.RefObject<HTMLDivElement>) => void; // Callback to get the card ref for external share button
+  imageCaptureMode?: boolean; // Simplified layout for image capture
 }
 
 /**
@@ -25,7 +30,23 @@ export default function GameweekFixturesCardList({
   className = '',
   userName = 'Phil Bolton',
   globalRank,
+  showShareButton = false,
+  onCardRefReady,
+  imageCaptureMode = false,
 }: GameweekFixturesCardListProps) {
+  // Ref for the card container to capture as image
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareImageUrl, setShareImageUrl] = useState<string | null>(null);
+  const [showShareSheet, setShowShareSheet] = useState(false);
+
+  // Expose card ref to parent if callback provided
+  useEffect(() => {
+    if (onCardRefReady && cardRef.current) {
+      onCardRefReady(cardRef);
+    }
+  }, [onCardRefReady, fixtures, picks, liveScores, userName, globalRank]); // Include dependencies to ensure ref is updated when data changes
+  
   // Detect screen size for badge sizing
   const [badgeSize, setBadgeSize] = useState(24);
   
@@ -107,6 +128,43 @@ export default function GameweekFixturesCardList({
   // Truncate username if longer than 18 characters
   const displayUserName = userName.length > 18 ? userName.substring(0, 18) + '...' : userName;
 
+  // Share functionality
+  const handleShare = async () => {
+    if (!cardRef.current || isSharing) return;
+    
+    setIsSharing(true);
+    try {
+      // Capture the card as an image
+      const canvas = await html2canvas(cardRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2, // Higher quality
+        useCORS: true,
+        logging: false,
+      });
+
+      // Convert canvas to data URL
+      const imageUrl = canvas.toDataURL('image/png', 0.95);
+      setShareImageUrl(imageUrl);
+      setShowShareSheet(true);
+      setIsSharing(false);
+    } catch (error) {
+      console.error('Error generating share image:', error);
+      setIsSharing(false);
+    }
+  };
+
+  const handleCloseShareSheet = () => {
+    setShowShareSheet(false);
+    // Clean up the image URL after a delay to allow animations
+    setTimeout(() => {
+      if (shareImageUrl) {
+        URL.revokeObjectURL(shareImageUrl);
+        setShareImageUrl(null);
+      }
+    }, 300);
+  };
+
+
   return (
     <>
       <style>{`
@@ -144,7 +202,12 @@ export default function GameweekFixturesCardList({
           }
         }
       `}</style>
-      <div className={`bg-white rounded-3xl shadow-xl p-2 sm:p-4 w-full max-w-[600px] mx-auto flex flex-col ${className}`}>
+      {/* Card for image generation - positioning handled by parent when onCardRefReady is provided */}
+      <div 
+        ref={cardRef} 
+        className={`bg-white rounded-3xl shadow-xl p-2 sm:p-4 w-full max-w-[600px] mx-auto flex flex-col ${!onCardRefReady && showShareButton ? 'fixed -left-[9999px]' : ''} ${className}`}
+        aria-hidden={onCardRefReady ? 'true' : showShareButton ? 'true' : undefined}
+      >
       {/* Header */}
       <div className="mb-2 sm:mb-3 flex items-center justify-between flex-shrink-0 py-2 sm:py-3 px-1 sm:px-0">
         {/* Score pill - left */}
@@ -247,8 +310,14 @@ export default function GameweekFixturesCardList({
 
                 {/* Home team - right aligned */}
                 <div className="flex-1 flex items-center justify-end gap-0.5 pr-0.5" style={{ height: '32px' }}>
-                  <span className={`team-name-small-mobile text-xs text-slate-700 truncate ${homeIsWinning ? 'font-bold' : 'font-medium'}`}>
-                    {getMediumName(fixture.home_code || fixture.home_team || fixture.home_name || '')}
+                  <span 
+                    className={`team-name-small-mobile text-xs text-slate-700 ${homeIsWinning ? 'font-bold' : 'font-medium'} ${imageCaptureMode ? '' : 'truncate'}`}
+                    style={imageCaptureMode ? { textOverflow: 'clip', overflow: 'visible', whiteSpace: 'normal', maxWidth: 'none' } : {}}
+                  >
+                    {imageCaptureMode 
+                      ? getFullName(fixture.home_code || fixture.home_team || fixture.home_name || '')
+                      : getTruncatedName(fixture.home_code || fixture.home_team || fixture.home_name || '')
+                    }
                   </span>
                   <div className="flex items-center justify-center flex-shrink-0" style={{ width: `${badgeSize}px`, height: `${badgeSize}px` }}>
                     <TeamBadge code={fixture.home_code} size={badgeSize} />
@@ -277,8 +346,14 @@ export default function GameweekFixturesCardList({
                   <div className="flex items-center justify-center flex-shrink-0" style={{ width: `${badgeSize}px`, height: `${badgeSize}px` }}>
                     <TeamBadge code={fixture.away_code} size={badgeSize} />
                   </div>
-                  <span className={`team-name-small-mobile text-xs text-slate-700 truncate ${awayIsWinning ? 'font-bold' : 'font-medium'}`}>
-                    {getMediumName(fixture.away_code || fixture.away_team || fixture.away_name || '')}
+                  <span 
+                    className={`team-name-small-mobile text-xs text-slate-700 ${awayIsWinning ? 'font-bold' : 'font-medium'} ${imageCaptureMode ? '' : 'truncate'}`}
+                    style={imageCaptureMode ? { textOverflow: 'clip', overflow: 'visible', whiteSpace: 'normal', maxWidth: 'none' } : {}}
+                  >
+                    {imageCaptureMode 
+                      ? getFullName(fixture.away_code || fixture.away_team || fixture.away_name || '')
+                      : getTruncatedName(fixture.away_code || fixture.away_team || fixture.away_name || '')
+                    }
                   </span>
                 </div>
 
@@ -316,6 +391,46 @@ export default function GameweekFixturesCardList({
         </div>
       )}
     </div>
+    
+    {/* Share button - visible when showShareButton is true (legacy) */}
+    {showShareButton && !onCardRefReady && (
+      <div className="flex justify-end mb-2 px-1 sm:px-0">
+        <button
+          onClick={handleShare}
+          disabled={isSharing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#1C8376] text-white text-xs sm:text-sm font-medium hover:bg-[#156b60] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label="Share gameweek predictions"
+        >
+          {isSharing ? (
+            <>
+              <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>Generating...</span>
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+              </svg>
+              <span>Share</span>
+            </>
+          )}
+        </button>
+      </div>
+    )}
+
+    {/* Share Sheet */}
+    {showShareSheet && shareImageUrl && (
+      <ShareSheet
+        isOpen={showShareSheet}
+        onClose={handleCloseShareSheet}
+        imageUrl={shareImageUrl}
+        fileName={`totl-gw${gw}-${userName.replace(/\s+/g, '-')}.png`}
+        gw={gw}
+        userName={userName}
+      />
+    )}
     </>
   );
 }

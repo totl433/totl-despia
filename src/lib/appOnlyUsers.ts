@@ -14,6 +14,7 @@ export const APP_ONLY_USER_IDS: string[] = [
   '36f31625-6d6c-4aa4-815a-1493a812841b', // ThomasJamesBird
   'c94f9804-ba11-4cd2-8892-49657aa6412c', // Sim
   '42b48136-040e-42a3-9b0a-dc9550dd1cae', // Will Middleton
-  'd2cbeca9-7dae-4be1-88fb-706911d67256'  // David Bird
+  'd2cbeca9-7dae-4be1-88fb-706911d67256', // David Bird
+  '027502c5-1cd7-4922-abd5-f9bcc569bb4d'  // cakehurst
 ];
 

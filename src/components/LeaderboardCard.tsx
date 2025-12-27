@@ -19,8 +19,6 @@ type LeaderboardCardProps = {
   subtitle?: string;
   variant?: 'default' | 'lastGw'; // Special variant for Last GW card
   isActiveLive?: boolean; // Show live score indicator when live scores are being used to calculate points
-  liveScore?: number; // Live score for current GW (for SEASON RANK card)
-  liveTotalFixtures?: number; // Total fixtures for current GW (for SEASON RANK card)
 };
 
 export const LeaderboardCard = React.memo(function LeaderboardCard({
@@ -36,8 +34,6 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
   subtitle,
   variant = 'default',
   isActiveLive = false,
-  liveScore,
-  liveTotalFixtures,
 }: LeaderboardCardProps) {
   const displayText = rank && total && total > 0 
     ? `TOP ${Math.round((rank / total) * 100)}%`
@@ -50,7 +46,7 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
     const [shareImageUrl, setShareImageUrl] = useState<string | null>(null);
     const [isSharing, setIsSharing] = useState(false);
     const [showCaptureModal, setShowCaptureModal] = useState(false);
-    const captureRef = useRef<HTMLDivElement>(null);
+    const captureRef = useRef<HTMLDivElement | null>(null);
     const [shareFixtures, setShareFixtures] = useState<any[]>([]);
     const [sharePicks, setSharePicks] = useState<Record<number, "H" | "D" | "A">>({});
     const [shareLiveScores, setShareLiveScores] = useState<Map<number, any>>(new Map());
@@ -433,6 +429,7 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
                 userName={userName}
                 globalRank={rank ?? undefined}
                 onCardRefReady={(ref) => {
+                  // Store the ref element directly
                   if (ref?.current) {
                     captureRef.current = ref.current;
                   }

@@ -509,6 +509,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
         </div>
       )}
 
+
       {/* Header: Home score/kickoff Away */}
       <div className={`flex flex-col px-2 pb-3 ${isOngoing ? 'pt-4' : 'pt-1'}`}>
         <div className="flex items-start justify-between">

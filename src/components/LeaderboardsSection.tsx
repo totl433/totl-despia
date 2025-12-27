@@ -227,8 +227,6 @@ How To Play →`}
           linkTo="/global?tab=overall"
           rank={seasonRank?.rank ?? null}
           total={seasonRank?.total ?? null}
-          liveScore={currentGwLiveScore?.score}
-          liveTotalFixtures={currentGwLiveScore?.totalFixtures}
           isActiveLive={isCurrentGwLive && currentGwLiveScore !== null}
         />
         {userStreakData && (

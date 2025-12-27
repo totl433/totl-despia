@@ -188,10 +188,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const initialTimeout = setTimeout(register, 500);
 
     // Heartbeat on app foreground (updates last_seen_at and re-links external_user_id)
+    // Also force re-registration to ensure device stays subscribed in OneSignal
     const handleVisibilityChange = () => {
       if (!document.hidden && !cancelled && user) {
-        console.log('[PushV2] App visible, sending heartbeat...');
+        console.log('[PushV2] App visible, sending heartbeat and re-registering...');
         updateHeartbeat(currentSession, { userId: user.id });
+        // Force re-registration to ensure device stays subscribed in OneSignal
+        // This is important because OneSignal can unsubscribe devices when app is backgrounded
+        registerPushSubscription(currentSession, { force: true, userId: user.id }).catch(err => {
+          console.warn('[PushV2] Re-registration on visibility change failed:', err);
+        });
       }
     };
 
