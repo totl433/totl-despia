@@ -40,42 +40,40 @@ export default function ShareSheet({
     }
   };
 
-  // Handle WhatsApp share with deep link
+  // Handle WhatsApp share - try Web Share API first (works in Despia), then deep link
   const handleWhatsAppShare = async () => {
     try {
+      // First try Web Share API with image (works in Despia)
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const file = new File([blob], fileName, { type: 'image/png' });
+      
+      if ((navigator as any).share && (navigator as any).canShare?.({ files: [file] })) {
+        try {
+          await (navigator as any).share({
+            title: `TOTL Gameweek ${gw} - ${userName}`,
+            text: `Check out my Gameweek ${gw} predictions!`,
+            files: [file],
+          });
+          onClose();
+          return;
+        } catch (shareError: any) {
+          if (shareError.name === 'AbortError') {
+            return; // User cancelled
+          }
+          // Fall through to deep link
+        }
+      }
+      
+      // Fallback: Try WhatsApp deep link with text (like mini league share)
       const text = encodeURIComponent(`Check out my Gameweek ${gw} predictions! ${userName}`);
       const whatsappUrl = `whatsapp://send?text=${text}`;
-      
-      // Try WhatsApp deep link first
       window.location.href = whatsappUrl;
       
-      // Fallback: Try Web Share API
-      setTimeout(async () => {
-        try {
-          const response = await fetch(imageUrl);
-          const blob = await response.blob();
-          const file = new File([blob], fileName, { type: 'image/png' });
-          
-          if ((navigator as any).share && (navigator as any).canShare?.({ files: [file] })) {
-            await (navigator as any).share({
-              title: `TOTL Gameweek ${gw} - ${userName}`,
-              text: `Check out my Gameweek ${gw} predictions!`,
-              files: [file],
-            });
-            onClose();
-          } else if ((navigator as any).share) {
-            await (navigator as any).share({
-              title: `TOTL Gameweek ${gw} - ${userName}`,
-              text: `Check out my Gameweek ${gw} predictions!`,
-            });
-            handleDownload();
-          } else {
-            handleDownload();
-          }
-        } catch (error) {
-          handleDownload();
-        }
-      }, 500);
+      // Also download the image so user can manually attach it
+      setTimeout(() => {
+        handleDownload();
+      }, 1000);
     } catch (error) {
       console.error('WhatsApp share failed:', error);
       handleDownload();
