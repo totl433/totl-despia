@@ -274,17 +274,44 @@ export async function dispatchNotification(
       const sendResult = await sendNotification(payload);
       
       if (sendResult.success) {
-        userResult.result = 'accepted';
-        userResult.onesignal_notification_id = sendResult.notification_id;
-        result.results.accepted++;
+        // Check if OneSignal actually delivered to any recipients
+        // OneSignal can return "accepted" with recipients: 0 if device isn't subscribed
+        const recipients = sendResult.recipients || 0;
         
-        await updateSendLog(logId, {
-          result: 'accepted',
-          onesignal_notification_id: sendResult.notification_id || null,
-          target_type: 'player_ids',
-          targeting_summary: { player_id: playerId },
-          payload_summary: createPayloadSummary(payload),
-        });
+        if (recipients === 0) {
+          // OneSignal accepted but didn't deliver - device likely not subscribed
+          const supabase = getSupabase();
+          await supabase
+            .from('push_subscriptions')
+            .update({ subscribed: false, last_checked_at: new Date().toISOString() })
+            .eq('player_id', playerId);
+          
+          userResult.result = 'suppressed_unsubscribed';
+          userResult.reason = 'OneSignal accepted but recipients: 0 (device not subscribed)';
+          result.results.suppressed_unsubscribed++;
+          
+          await updateSendLog(logId, {
+            result: 'suppressed_unsubscribed',
+            onesignal_notification_id: sendResult.notification_id || null,
+            target_type: 'player_ids',
+            targeting_summary: { player_id: playerId, recipients: 0 },
+            payload_summary: createPayloadSummary(payload),
+            error: { message: 'OneSignal returned recipients: 0' },
+          });
+        } else {
+          // Successfully delivered
+          userResult.result = 'accepted';
+          userResult.onesignal_notification_id = sendResult.notification_id;
+          result.results.accepted++;
+          
+          await updateSendLog(logId, {
+            result: 'accepted',
+            onesignal_notification_id: sendResult.notification_id || null,
+            target_type: 'player_ids',
+            targeting_summary: { player_id: playerId, recipients },
+            payload_summary: createPayloadSummary(payload),
+          });
+        }
       } else {
         // Check if the error is "All included players are not subscribed"
         const isUnsubscribedError = 
