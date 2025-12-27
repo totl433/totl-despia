@@ -41,24 +41,69 @@ export default function ShareSheet({
     }
   };
 
-  // Handle WhatsApp share - Despia only
+  // Handle WhatsApp share - Despia only (direct deep link)
   const handleWhatsAppShare = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // Convert data URL to file for Web Share API with proper metadata
+      // Use WhatsApp deep link directly (opens WhatsApp app)
+      openWhatsApp(shareText);
+      
+      // Download image after a short delay so WhatsApp opens first
+      setTimeout(() => {
+        handleDownload();
+      }, 500);
+      
+      onClose();
+    } catch (error) {
+      console.error('WhatsApp share failed:', error);
+      handleDownload();
+    }
+  };
+
+  // Handle Messages share - Despia only (direct deep link)
+  const handleMessagesShare = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
+      
+      // Use SMS deep link to open Messages app directly
+      const smsUrl = `sms:?body=${encodeURIComponent(shareText)}`;
+      
+      // Try to open Messages app
+      window.location.href = smsUrl;
+      
+      // Download image after a short delay so Messages opens first
+      setTimeout(() => {
+        handleDownload();
+      }, 500);
+      
+      onClose();
+    } catch (error: any) {
+      console.error('Messages share failed:', error);
+      handleDownload();
+    }
+  };
+
+  // Handle Instagram share - Despia only (direct deep link)
+  const handleInstagramShare = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      // Instagram doesn't support direct image sharing via deep links
+      // Use Web Share API with image file as fallback
+      const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
+      
       const response = await fetch(imageUrl);
       const blob = await response.blob();
-      
-      // Create File with proper name and type for thumbnail generation
       const file = new File([blob], fileName, { 
         type: 'image/png',
         lastModified: Date.now()
       });
       
-      // Use Web Share API with image file - WhatsApp will appear in share sheet
       const nav = navigator as Navigator & { 
         share?: (data: ShareData) => Promise<void>;
         canShare?: (data: { files?: File[] }) => boolean;
@@ -77,23 +122,19 @@ export default function ShareSheet({
           if (shareError.name === 'AbortError') {
             return; // User cancelled
           }
-          // Fall through to WhatsApp deep link
+          // Fall through to download
         }
       }
       
-      // Fallback: WhatsApp deep link with text (user can attach image manually)
-      openWhatsApp(shareText);
-      setTimeout(() => {
-        handleDownload();
-      }, 500);
-      onClose();
-    } catch (error) {
-      console.error('WhatsApp share failed:', error);
+      // Fallback: download image
+      handleDownload();
+    } catch (error: any) {
+      console.error('Instagram share failed:', error);
       handleDownload();
     }
   };
 
-  // Handle share via Web Share API (for Messages, Instagram, More) - Despia only
+  // Handle share via Web Share API (for More button) - Despia only
   const handleWebShare = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -110,7 +151,7 @@ export default function ShareSheet({
         lastModified: Date.now()
       });
       
-      // Use Web Share API with image file - Messages/Instagram will appear in share sheet
+      // Use Web Share API with image file - will show share sheet
       const nav = navigator as Navigator & { 
         share?: (data: ShareData) => Promise<void>;
         canShare?: (data: { files?: File[] }) => boolean;
@@ -270,7 +311,7 @@ export default function ShareSheet({
 
             {/* Messages */}
             <button
-              onClick={handleWebShare}
+              onClick={handleMessagesShare}
               className="flex flex-col items-center justify-start gap-1 rounded-xl hover:bg-slate-50 active:bg-slate-100 transition-colors touch-manipulation"
               style={{ 
                 WebkitTapHighlightColor: 'transparent',
@@ -289,7 +330,7 @@ export default function ShareSheet({
 
             {/* Instagram */}
             <button
-              onClick={handleWebShare}
+              onClick={handleInstagramShare}
               className="flex flex-col items-center justify-start gap-1 rounded-xl hover:bg-slate-50 active:bg-slate-100 transition-colors touch-manipulation"
               style={{ 
                 WebkitTapHighlightColor: 'transparent',
