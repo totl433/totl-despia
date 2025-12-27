@@ -50,6 +50,10 @@ interface LiveScoreRecord {
   minute: number | null;
   goals: any[];
   red_cards: any[];
+  home_team?: string;
+  away_team?: string;
+  home_team_id?: number;
+  away_team_id?: number;
 }
 
 /**
@@ -112,25 +116,65 @@ async function fetchUserIdsWithPicks(
 
 /**
  * Determine which team scored from goal object
+ * Uses teamId if available (more reliable), otherwise falls back to name matching
  */
 function determineScoringTeam(
   goal: any,
   homeTeam: string,
-  awayTeam: string
+  awayTeam: string,
+  homeTeamId?: number,
+  awayTeamId?: number
 ): { isHomeTeam: boolean; teamName: string } {
+  // First try to match by teamId if available (most reliable)
+  if (goal.teamId !== undefined && goal.teamId !== null) {
+    if (homeTeamId !== undefined && goal.teamId === homeTeamId) {
+      return { isHomeTeam: true, teamName: homeTeam };
+    }
+    if (awayTeamId !== undefined && goal.teamId === awayTeamId) {
+      return { isHomeTeam: false, teamName: awayTeam };
+    }
+  }
+
+  // Fall back to name matching (handle abbreviations and variations)
   const scoringTeam = (goal.team || '').toLowerCase().trim();
   const normalizedHome = homeTeam.toLowerCase().trim();
   const normalizedAway = awayTeam.toLowerCase().trim();
 
-  const isHomeTeam = 
-    scoringTeam === normalizedHome ||
+  // Check exact match first
+  if (scoringTeam === normalizedHome || scoringTeam === normalizedAway) {
+    const isHomeTeam = scoringTeam === normalizedHome;
+    return { isHomeTeam, teamName: isHomeTeam ? homeTeam : awayTeam };
+  }
+
+  // Check if scoring team is contained in home/away team name or vice versa
+  // This handles cases like "Forest" matching "Nottingham" (Nottingham Forest)
+  const homeMatch = 
     scoringTeam.includes(normalizedHome) ||
     normalizedHome.includes(scoringTeam);
+  const awayMatch = 
+    scoringTeam.includes(normalizedAway) ||
+    normalizedAway.includes(scoringTeam);
 
-  return {
-    isHomeTeam,
-    teamName: isHomeTeam ? homeTeam : awayTeam,
-  };
+  // If both match, prefer the longer/more specific match
+  if (homeMatch && awayMatch) {
+    const homeScore = scoringTeam.length + normalizedHome.length;
+    const awayScore = scoringTeam.length + normalizedAway.length;
+    const isHomeTeam = homeScore >= awayScore;
+    return { isHomeTeam, teamName: isHomeTeam ? homeTeam : awayTeam };
+  }
+
+  // If only one matches, use that
+  if (homeMatch) {
+    return { isHomeTeam: true, teamName: homeTeam };
+  }
+  if (awayMatch) {
+    return { isHomeTeam: false, teamName: awayTeam };
+  }
+
+  // Default fallback: assume away team (less common, safer default)
+  // This should rarely happen if data is correct
+  console.warn(`[determineScoringTeam] Could not match goal team "${goal.team}" to "${homeTeam}" or "${awayTeam}"`);
+  return { isHomeTeam: false, teamName: awayTeam };
 }
 
 /**
@@ -203,6 +247,13 @@ export const handler: Handler = async (event, context) => {
 
     const { fixture_index, gw, home_team, away_team, isAppFixture, isTestFixture, testGwForPicks } = fixture;
 
+    // Use team names from live_scores record if available (more accurate, matches goal data)
+    // Fall back to fixture team names if not available
+    const liveHomeTeam = record.home_team || home_team;
+    const liveAwayTeam = record.away_team || away_team;
+    const homeTeamId = record.home_team_id;
+    const awayTeamId = record.away_team_id;
+
     // Detect changes
     const scoreWentDown = homeScore < oldHomeScore || awayScore < oldAwayScore;
     const isHalfTime = oldStatus === 'IN_PLAY' && status === 'PAUSED';
@@ -239,12 +290,12 @@ export const handler: Handler = async (event, context) => {
           const disallowedGoal = disallowedGoals.sort((a: any, b: any) => (b.minute ?? 0) - (a.minute ?? 0))[0];
           const scorer = disallowedGoal.scorer || 'Unknown';
           const goalMinute = disallowedGoal.minute ?? 0;
-          const { isHomeTeam, teamName } = determineScoringTeam(disallowedGoal, home_team, away_team);
+          const { isHomeTeam, teamName } = determineScoringTeam(disallowedGoal, liveHomeTeam, liveAwayTeam, homeTeamId, awayTeamId);
 
           const result = await sendGoalDisallowedNotification(userIds, {
             apiMatchId, fixtureIndex: fixture_index, gw,
             scorer, minute: goalMinute, teamName,
-            homeTeam: home_team, awayTeam: away_team,
+            homeTeam: liveHomeTeam, awayTeam: liveAwayTeam,  // Use team names from live_scores
             homeScore, awayScore,
           });
           totalSent += result.results.accepted;
@@ -288,21 +339,37 @@ export const handler: Handler = async (event, context) => {
           // Sort by minute (oldest first) to maintain chronological order
           const sortedNewGoals = newGoals.sort((a: any, b: any) => (a.minute ?? 0) - (b.minute ?? 0));
           
-          // Calculate actual score from goals array (excluding own goals)
+          // Calculate actual score from goals array
+          // For own goals: flip the team (own goal by home player counts for away team, and vice versa)
           const actualHomeScore = goals.filter((g: any) => {
-            const { isHomeTeam } = determineScoringTeam(g, home_team, away_team);
-            return isHomeTeam && !g.isOwnGoal;
+            const { isHomeTeam } = determineScoringTeam(g, liveHomeTeam, liveAwayTeam, homeTeamId, awayTeamId);
+            if (g.isOwnGoal) {
+              // Own goal: flip the team (home player's own goal counts for away team)
+              return !isHomeTeam;
+            }
+            return isHomeTeam;
           }).length;
           
           const actualAwayScore = goals.filter((g: any) => {
-            const { isHomeTeam } = determineScoringTeam(g, home_team, away_team);
-            return !isHomeTeam && !g.isOwnGoal;
+            const { isHomeTeam } = determineScoringTeam(g, liveHomeTeam, liveAwayTeam, homeTeamId, awayTeamId);
+            if (g.isOwnGoal) {
+              // Own goal: flip the team (away player's own goal counts for home team)
+              return isHomeTeam;
+            }
+            return !isHomeTeam;
           }).length;
           
           for (const goal of sortedNewGoals) {
             const scorer = goal.scorer || 'Unknown';
             const goalMinute = goal.minute ?? 0;
-            const { isHomeTeam, teamName } = determineScoringTeam(goal, home_team, away_team);
+            const isOwnGoal = goal.isOwnGoal === true;
+            const { isHomeTeam: goalPlayerTeamIsHome, teamName: goalPlayerTeamName } = determineScoringTeam(goal, liveHomeTeam, liveAwayTeam, homeTeamId, awayTeamId);
+            
+            // For own goals: flip the team (the goal counts for the opposite team)
+            const isHomeTeam = isOwnGoal ? !goalPlayerTeamIsHome : goalPlayerTeamIsHome;
+            const teamName = isOwnGoal 
+              ? (isHomeTeam ? liveHomeTeam : liveAwayTeam)
+              : goalPlayerTeamName;
             
             // Check if we've already sent a notification for this match/minute (scorer-only change suppression)
             const usersWithExisting = await hasGoalNotificationForMinute(apiMatchId, goalMinute, userIds);
@@ -312,11 +379,11 @@ export const handler: Handler = async (event, context) => {
               const result = await sendGoalNotification(usersToNotify, {
                 apiMatchId, fixtureIndex: fixture_index, gw,
                 scorer, minute: goalMinute, teamName,
-                homeTeam: home_team, awayTeam: away_team,
+                homeTeam: liveHomeTeam, awayTeam: liveAwayTeam,  // Use team names from live_scores
                 homeScore: actualHomeScore,  // Use calculated score from goals array
                 awayScore: actualAwayScore,   // Use calculated score from goals array
                 isHomeTeam,
-                isOwnGoal: goal.isOwnGoal === true,
+                isOwnGoal,
               });
               totalSent += result.results.accepted;
               console.log(`[scoreWebhookV2] [${requestId}] Goal ${goalMinute}' (${scorer}): ${result.results.accepted} sent (${usersWithExisting.size} suppressed - scorer-only change)`);
