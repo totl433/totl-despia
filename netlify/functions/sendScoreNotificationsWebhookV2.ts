@@ -339,25 +339,9 @@ export const handler: Handler = async (event, context) => {
           // Sort by minute (oldest first) to maintain chronological order
           const sortedNewGoals = newGoals.sort((a: any, b: any) => (a.minute ?? 0) - (b.minute ?? 0));
           
-          // Calculate actual score from goals array
-          // For own goals: flip the team (own goal by home player counts for away team, and vice versa)
-          const actualHomeScore = goals.filter((g: any) => {
-            const { isHomeTeam } = determineScoringTeam(g, liveHomeTeam, liveAwayTeam, homeTeamId, awayTeamId);
-            if (g.isOwnGoal) {
-              // Own goal: flip the team (home player's own goal counts for away team)
-              return !isHomeTeam;
-            }
-            return isHomeTeam;
-          }).length;
-          
-          const actualAwayScore = goals.filter((g: any) => {
-            const { isHomeTeam } = determineScoringTeam(g, liveHomeTeam, liveAwayTeam, homeTeamId, awayTeamId);
-            if (g.isOwnGoal) {
-              // Own goal: flip the team (away player's own goal counts for home team)
-              return isHomeTeam;
-            }
-            return !isHomeTeam;
-          }).length;
+          // Use scores directly from database (same as app does - it works perfectly)
+          const homeScore = record.home_score || 0;
+          const awayScore = record.away_score || 0;
           
           for (const goal of sortedNewGoals) {
             const scorer = goal.scorer || 'Unknown';
@@ -380,8 +364,8 @@ export const handler: Handler = async (event, context) => {
                 apiMatchId, fixtureIndex: fixture_index, gw,
                 scorer, minute: goalMinute, teamName,
                 homeTeam: liveHomeTeam, awayTeam: liveAwayTeam,  // Use team names from live_scores
-                homeScore: actualHomeScore,  // Use calculated score from goals array
-                awayScore: actualAwayScore,   // Use calculated score from goals array
+                homeScore,  // Use score directly from database (same as app)
+                awayScore,  // Use score directly from database (same as app)
                 isHomeTeam,
                 isOwnGoal,
               });
