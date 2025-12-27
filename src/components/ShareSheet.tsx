@@ -48,36 +48,54 @@ export default function ShareSheet({
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // First, try Despia direct image sharing (most reliable in Despia)
+      // Convert data URL to blob URL for Despia
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const file = new File([blob], fileName, { type: 'image/png' });
+      
+      // First, try Despia direct image sharing with blob URL
       const despiaObj = (window as any)?.despia || (globalThis as any)?.despia;
       
-      // Try calling despia as a function with the image URL
+      // Try calling despia as a function with the blob URL
       if (typeof despiaObj === 'function') {
         try {
-          despiaObj(imageUrl);
+          despiaObj(blobUrl);
           onClose();
           return;
         } catch (error) {
-          console.log('[Share] Despia function call failed, trying assignment');
+          console.log('[Share] Despia function call with blob URL failed, trying data URL');
+          // Try with data URL as fallback
+          try {
+            despiaObj(imageUrl);
+            onClose();
+            return;
+          } catch (error2) {
+            console.log('[Share] Despia function call with data URL failed, trying assignment');
+          }
         }
       }
       
-      // Try setting window.despia to the image URL
+      // Try setting window.despia to the blob URL
       if (typeof window !== 'undefined') {
         try {
-          (window as any).despia = imageUrl;
+          (window as any).despia = blobUrl;
           onClose();
           return;
         } catch (error) {
-          console.log('[Share] Despia assignment failed, trying Web Share API');
+          console.log('[Share] Despia assignment with blob URL failed, trying data URL');
+          // Try with data URL as fallback
+          try {
+            (window as any).despia = imageUrl;
+            onClose();
+            return;
+          } catch (error2) {
+            console.log('[Share] Despia assignment with data URL failed, trying Web Share API');
+          }
         }
       }
       
       // Fallback: Try Web Share API with image file
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const file = new File([blob], fileName, { type: 'image/png' });
-      
       const nav = navigator as Navigator & { 
         share?: (data: ShareData) => Promise<void>;
         canShare?: (data: { files?: File[] }) => boolean;
@@ -119,36 +137,54 @@ export default function ShareSheet({
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // First, try Despia direct image sharing (most reliable in Despia)
+      // Convert data URL to blob URL for Despia
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const file = new File([blob], fileName, { type: 'image/png' });
+      
+      // First, try Despia direct image sharing with blob URL
       const despiaObj = (window as any)?.despia || (globalThis as any)?.despia;
       
-      // Try calling despia as a function with the image URL
+      // Try calling despia as a function with the blob URL
       if (typeof despiaObj === 'function') {
         try {
-          despiaObj(imageUrl);
+          despiaObj(blobUrl);
           onClose();
           return;
         } catch (error) {
-          console.log('[Share] Despia function call failed, trying assignment');
+          console.log('[Share] Despia function call with blob URL failed, trying data URL');
+          // Try with data URL as fallback
+          try {
+            despiaObj(imageUrl);
+            onClose();
+            return;
+          } catch (error2) {
+            console.log('[Share] Despia function call with data URL failed, trying assignment');
+          }
         }
       }
       
-      // Try setting window.despia to the image URL
+      // Try setting window.despia to the blob URL
       if (typeof window !== 'undefined') {
         try {
-          (window as any).despia = imageUrl;
+          (window as any).despia = blobUrl;
           onClose();
           return;
         } catch (error) {
-          console.log('[Share] Despia assignment failed, trying Web Share API');
+          console.log('[Share] Despia assignment with blob URL failed, trying data URL');
+          // Try with data URL as fallback
+          try {
+            (window as any).despia = imageUrl;
+            onClose();
+            return;
+          } catch (error2) {
+            console.log('[Share] Despia assignment with data URL failed, trying Web Share API');
+          }
         }
       }
       
       // Fallback: Try Web Share API with image file
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const file = new File([blob], fileName, { type: 'image/png' });
-      
       const nav = navigator as Navigator & { 
         share?: (data: ShareData) => Promise<void>;
         canShare?: (data: { files?: File[] }) => boolean;
@@ -174,14 +210,26 @@ export default function ShareSheet({
       // Try Despia Social Share SDK: shareapp://message?text=...&url=...
       if (typeof despiaObj === 'function') {
         try {
-          despiaObj(`shareapp://message?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(imageUrl)}`);
+          // Try with blob URL first
+          despiaObj(`shareapp://message?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(blobUrl)}`);
           setTimeout(() => {
             handleDownload();
           }, 500);
           onClose();
           return;
         } catch (error) {
-          console.log('[Share] Despia Social Share SDK failed');
+          console.log('[Share] Despia Social Share SDK with blob URL failed, trying data URL');
+          // Try with data URL as fallback
+          try {
+            despiaObj(`shareapp://message?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(imageUrl)}`);
+            setTimeout(() => {
+              handleDownload();
+            }, 500);
+            onClose();
+            return;
+          } catch (error2) {
+            console.log('[Share] Despia Social Share SDK failed');
+          }
         }
       }
       
