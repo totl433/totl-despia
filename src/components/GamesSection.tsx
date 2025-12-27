@@ -158,6 +158,30 @@ export function GamesSection({
         console.warn('Capture element may not be visible');
       }
       
+      // Wait for all images in the element to load
+      const images = element.querySelectorAll('img');
+      await Promise.all(Array.from(images).map((img: HTMLImageElement) => {
+        if (img.complete) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            console.warn('Image load timeout:', img.src);
+            resolve(null); // Continue even if image fails
+          }, 3000);
+          img.onload = () => {
+            clearTimeout(timeout);
+            resolve(null);
+          };
+          img.onerror = () => {
+            clearTimeout(timeout);
+            console.warn('Image load error:', img.src);
+            resolve(null); // Continue even if image fails
+          };
+        });
+      }));
+      
+      // Additional wait to ensure everything is settled
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
       // Use html-to-image which handles flexbox much better
       let dataUrl: string;
       try {
@@ -166,10 +190,31 @@ export function GamesSection({
           pixelRatio: 2,
           quality: 0.95,
           cacheBust: true,
+          useCORS: true, // Enable CORS for images
         });
       } catch (pngError: any) {
         console.error('toPng error:', pngError);
-        throw new Error(`Failed to capture image: ${pngError?.message || pngError?.toString() || 'Unknown html-to-image error'}`);
+        // Handle Event objects and other error types
+        let errorMsg = 'Unknown html-to-image error';
+        if (pngError instanceof Error) {
+          errorMsg = pngError.message;
+        } else if (pngError?.message) {
+          errorMsg = pngError.message;
+        } else if (pngError?.type) {
+          // Event object - extract type and other info
+          const eventInfo = [pngError.type];
+          if (pngError.target) eventInfo.push(`target: ${pngError.target.constructor?.name || 'unknown'}`);
+          if (pngError.currentTarget) eventInfo.push(`currentTarget: ${pngError.currentTarget.constructor?.name || 'unknown'}`);
+          errorMsg = `html-to-image error: ${eventInfo.join(', ')}`;
+        } else if (typeof pngError === 'string') {
+          errorMsg = pngError;
+        } else if (pngError?.toString && pngError.toString() !== '[object Object]' && pngError.toString() !== '[object Event]') {
+          errorMsg = pngError.toString();
+        } else if (pngError?.toString && pngError.toString() === '[object Event]') {
+          // It's an Event object - try to get more info
+          errorMsg = `html-to-image failed (likely CORS or security restriction)`;
+        }
+        throw new Error(`Failed to capture image: ${errorMsg}`);
       }
       
       if (!dataUrl || dataUrl.length === 0) {
