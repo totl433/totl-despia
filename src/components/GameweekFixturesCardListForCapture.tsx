@@ -38,9 +38,12 @@ export default function GameweekFixturesCardListForCapture({
       liveScoresCount: liveScores.size,
       userName,
       globalRank,
-      firstFixture: fixtures[0],
-      firstPick: Object.entries(picks)[0],
-      firstLiveScore: Array.from(liveScores.entries())[0],
+      firstFixture: fixtures[0] ? JSON.stringify(fixtures[0]) : 'none',
+      firstPick: Object.entries(picks)[0] ? JSON.stringify(Object.entries(picks)[0]) : 'none',
+      firstLiveScore: Array.from(liveScores.entries())[0] ? JSON.stringify(Array.from(liveScores.entries())[0]) : 'none',
+      allFixtures: fixtures.map(f => ({ id: f.id, fixture_index: f.fixture_index, home_code: f.home_code, away_code: f.away_code })),
+      allPicks: Object.entries(picks).map(([k, v]) => ({ fixture_index: k, pick: v })),
+      sortedFixtures: [...fixtures].sort((a, b) => a.fixture_index - b.fixture_index).map(f => ({ fixture_index: f.fixture_index, home_code: f.home_code, away_code: f.away_code })),
     });
   }, [gw, fixtures, picks, liveScores, userName, globalRank]);
 

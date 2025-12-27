@@ -388,9 +388,11 @@ export function GamesSection({
                 liveScoresCount: liveScoresMap.size,
                 userName: displayUserName,
                 globalRank,
-                firstFixture: shareableFixtures[0],
-                firstPick: Object.entries(userPicks)[0],
-                firstLiveScore: Array.from(liveScoresMap.entries())[0],
+                firstFixture: shareableFixtures[0] ? JSON.stringify(shareableFixtures[0]) : 'none',
+                firstPick: Object.entries(userPicks)[0] ? JSON.stringify(Object.entries(userPicks)[0]) : 'none',
+                firstLiveScore: Array.from(liveScoresMap.entries())[0] ? JSON.stringify(Array.from(liveScoresMap.entries())[0]) : 'none',
+                allFixtures: shareableFixtures.map(f => ({ id: f.id, fixture_index: f.fixture_index, home_code: f.home_code, away_code: f.away_code })),
+                allPicks: Object.entries(userPicks).map(([k, v]) => ({ fixture_index: k, pick: v })),
               });
               return null;
             })()}
