@@ -47,46 +47,52 @@ export default function ShareSheet({
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // Fetch the image as blob directly - this ensures proper format for iOS thumbnail
-      const response = await fetch(imageUrl);
-      if (!response.ok) {
-        throw new Error('Failed to fetch image');
-      }
-      const blob = await response.blob();
+      // Always convert through canvas to ensure proper PNG format for iOS thumbnail
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
       
-      // Ensure it's a PNG blob
-      let imageBlob = blob;
-      if (!blob.type.includes('image')) {
-        // If not already an image blob, convert through canvas
-        const img = new Image();
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve();
-          img.onerror = () => reject(new Error('Failed to load image'));
-          img.src = imageUrl;
-        });
+      // Wait for image to load
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Image load timeout'));
+        }, 5000);
         
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          throw new Error('Failed to get canvas context');
-        }
-        ctx.drawImage(img, 0, 0);
-        
-        imageBlob = await new Promise<Blob>((resolve, reject) => {
-          canvas.toBlob((blob) => {
-            if (blob) {
-              resolve(blob);
-            } else {
-              reject(new Error('Failed to convert canvas to blob'));
-            }
-          }, 'image/png', 1.0);
-        });
+        img.onload = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        img.onerror = () => {
+          clearTimeout(timeout);
+          reject(new Error('Failed to load image'));
+        };
+        img.src = imageUrl;
+      });
+      
+      // Create canvas with exact image dimensions
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Failed to get canvas context');
       }
       
-      // Create File with proper metadata and ensure PNG type
-      const file = new File([imageBlob], fileName, { 
+      // Draw image to canvas - this ensures proper PNG format
+      ctx.drawImage(img, 0, 0);
+      
+      // Convert canvas to blob with maximum quality
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('Failed to convert canvas to blob'));
+          }
+        }, 'image/png', 1.0); // Maximum quality
+      });
+      
+      // Create File with proper metadata - iOS needs proper file type and name
+      const file = new File([blob], fileName, { 
         type: 'image/png',
         lastModified: Date.now()
       });
