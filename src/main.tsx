@@ -76,6 +76,29 @@ function AppContent() {
   const [isSwipeMode, setIsSwipeMode] = useState(false);
   const [hasSubmittedPredictions, setHasSubmittedPredictions] = useState<boolean | null>(null);
   
+  // Preload Volley images for Despia - ensure they're available when needed
+  useEffect(() => {
+    const volleyImages = [
+      '/assets/Volley/volley-with-ball.png',
+      '/assets/Animation/Volley-Keepy-Uppies.gif',
+      '/assets/Animation/Volley-Pointing.gif',
+      '/assets/Volley/Volley-Tool-Tip.png',
+      '/assets/Volley/Volley-Coach.png',
+    ];
+    
+    console.log('[App] Preloading Volley images for Despia...');
+    volleyImages.forEach((src) => {
+      const img = new Image();
+      img.src = src;
+      img.onload = () => {
+        console.log(`[App] Preloaded Volley image: ${src}`);
+      };
+      img.onerror = (error) => {
+        console.warn(`[App] Failed to preload Volley image: ${src}`, error);
+      };
+    });
+  }, []);
+  
   // Pre-loading is enabled by default (can be disabled via localStorage)
   const [loadEverythingFirst, setLoadEverythingFirst] = useState(() => {
     // Default to true, but check localStorage to see if user disabled it

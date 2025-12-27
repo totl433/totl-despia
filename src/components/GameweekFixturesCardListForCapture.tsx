@@ -54,6 +54,23 @@ export default function GameweekFixturesCardListForCapture({
     }
   }, [onCardRefReady, fixtures, picks, liveScores, userName, globalRank]);
 
+  // Preload Volley image for Despia - ensure it's loaded before capture
+  useEffect(() => {
+    const volleyImageSrc = '/assets/Volley/volley-with-ball.png';
+    const img = new Image();
+    img.src = volleyImageSrc;
+    console.log('[Capture] Preloading Volley image for Despia:', volleyImageSrc);
+    
+    // Wait for image to load before proceeding
+    img.onload = () => {
+      console.log('[Capture] Volley image preloaded successfully');
+    };
+    
+    img.onerror = (error) => {
+      console.error('[Capture] Failed to preload Volley image:', error);
+    };
+  }, []);
+
   const sortedFixtures = [...fixtures].sort((a, b) => a.fixture_index - b.fixture_index);
 
   const calculateScore = () => {
@@ -160,12 +177,18 @@ export default function GameweekFixturesCardListForCapture({
           <img 
             src="/assets/Volley/volley-with-ball.png" 
             alt="Volley" 
+            loading="eager"
             style={{ 
               width: '50px', 
               height: 'auto',
               position: 'absolute',
               left: '16px',
               display: 'block'
+            }}
+            onLoad={() => console.log('[Capture] Volley image loaded in DOM')}
+            onError={(e) => {
+              console.error('[Capture] Volley image failed to load in DOM');
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
             }}
             onError={(e) => {
               // If image fails to load, hide it but keep logo visible

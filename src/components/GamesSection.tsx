@@ -245,6 +245,9 @@ export function GamesSection({
       liveScoresCount: Object.keys(finalLiveScores).length,
     });
     setIsSharing(true);
+    // Open ShareSheet immediately with loading state
+    setShowShareSheet(true);
+    setShareImageUrl(null); // Ensure it starts as null to show loading
     setShowCaptureModal(true);
     
     // Wait longer for modal to fully render and layout to settle
@@ -286,30 +289,49 @@ export function GamesSection({
       }
       
       // Wait for all images in the element to load, and hide any that fail
+      // Special handling for Volley image - ensure it loads in Despia
       const images = element.querySelectorAll('img');
       console.log('[Share] Found images to load:', images.length, Array.from(images).map(img => img.src));
       await Promise.all(Array.from(images).map((img: HTMLImageElement) => {
+        // Volley image needs extra time in Despia
+        const isVolleyImage = img.src.includes('Volley') || img.src.includes('volley');
+        const timeout = isVolleyImage ? 5000 : 3000; // Give Volley images more time
+        
         if (img.complete && img.naturalWidth > 0) {
-          console.log('[Share] Image already loaded:', img.src);
+          if (isVolleyImage) {
+            console.log('[Share] Volley image already loaded:', img.src);
+          }
           return Promise.resolve();
         }
         return new Promise((resolve) => {
-          const timeout = setTimeout(() => {
-            console.warn('[Share] Image load timeout, hiding:', img.src);
+          const timeoutId = setTimeout(() => {
+            if (isVolleyImage) {
+              console.warn('[Share] Volley image load timeout, hiding:', img.src);
+            } else {
+              console.warn('[Share] Image load timeout, hiding:', img.src);
+            }
             // Hide image if it fails to load to prevent capture errors
             img.style.display = 'none';
             img.style.visibility = 'hidden';
             img.style.opacity = '0';
             resolve(null); // Continue even if image fails
-          }, 3000); // Reduced timeout
+          }, timeout);
           img.onload = () => {
-            clearTimeout(timeout);
-            console.log('[Share] Image loaded successfully:', img.src);
+            clearTimeout(timeoutId);
+            if (isVolleyImage) {
+              console.log('[Share] Volley image loaded successfully:', img.src);
+            } else {
+              console.log('[Share] Image loaded successfully:', img.src);
+            }
             resolve(null);
           };
           img.onerror = () => {
-            clearTimeout(timeout);
-            console.error('[Share] Image load error, hiding:', img.src);
+            clearTimeout(timeoutId);
+            if (isVolleyImage) {
+              console.error('[Share] Volley image load error, hiding:', img.src);
+            } else {
+              console.error('[Share] Image load error, hiding:', img.src);
+            }
             // Hide image if it fails to load to prevent capture errors
             img.style.display = 'none';
             img.style.visibility = 'hidden';
@@ -446,9 +468,8 @@ export function GamesSection({
         throw new Error('Failed to generate final image data URL');
       }
       
-      console.log('[Share] Setting share image URL and showing sheet', { imageUrlLength: imageUrl?.length });
+      console.log('[Share] Setting share image URL', { imageUrlLength: imageUrl?.length });
       setShareImageUrl(imageUrl);
-      setShowShareSheet(true);
       setIsSharing(false);
       console.log('[Share] Share process completed successfully');
     } catch (error: any) {
@@ -623,21 +644,10 @@ export function GamesSection({
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] rounded-full bg-[#1C8376] text-white text-xs sm:text-sm font-medium hover:bg-[#156b60] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     aria-label="Share gameweek predictions"
                   >
-                    {isSharing ? (
-                      <>
-                        <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                        <span>Generating...</span>
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                        </svg>
-                        <span>Share</span>
-                      </>
-                    )}
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                    </svg>
+                    <span>Share</span>
                   </button>
                   {scoreComponent}
                 </div>
@@ -647,12 +657,12 @@ export function GamesSection({
         ) : null}
       </Section>
 
-      {/* Share Sheet */}
-      {showShareSheet && shareImageUrl && displayUserName && (
+      {/* Share Sheet - show immediately with loading state */}
+      {showShareSheet && displayUserName && (
         <ShareSheet
           isOpen={showShareSheet}
           onClose={handleCloseShareSheet}
-          imageUrl={shareImageUrl}
+          imageUrl={shareImageUrl || ''}
           fileName={`${displayUserName}'s Predictions Totl Gameweek ${currentGwValue}.png`}
           gw={currentGwValue}
           userName={displayUserName}

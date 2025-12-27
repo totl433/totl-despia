@@ -185,38 +185,49 @@ export default function ShareSheet({
 
         {/* Generated image preview - flex to fill available space */}
         <div className="px-4 flex-1 min-h-0 flex items-center justify-center overflow-visible" style={{ position: 'relative' }}>
-          <img
-            src={imageUrl}
-            alt={`Gameweek ${gw} predictions`}
-            className="rounded-2xl"
-            style={{ 
-              maxHeight: 'calc(90vh - 250px)',
-              maxWidth: '100%',
-              height: 'auto',
-              width: 'auto',
-              objectFit: 'contain',
-              display: 'block',
-              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
-            }}
-          />
+          {!imageUrl ? (
+            <div className="flex flex-col items-center justify-center gap-4 py-12">
+              <svg className="w-12 h-12 text-[#1C8376] animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <p className="text-slate-600 text-sm">Generating share image...</p>
+            </div>
+          ) : (
+            <img
+              src={imageUrl}
+              alt={`Gameweek ${gw} predictions`}
+              className="rounded-2xl"
+              style={{ 
+                maxHeight: 'calc(90vh - 250px)',
+                maxWidth: '100%',
+                height: 'auto',
+                width: 'auto',
+                objectFit: 'contain',
+                display: 'block',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+              }}
+            />
+          )}
         </div>
 
         {/* Share button - always at bottom */}
-        <div className="px-4 flex-shrink-0" style={{ paddingTop: '1rem', paddingBottom: 'max(2rem, calc(env(safe-area-inset-bottom, 0px) + 1rem))' }}>
-          <button
-            onClick={handleShare}
-            className="w-full bg-[#1C8376] text-white font-semibold py-3 px-6 rounded-xl hover:bg-emerald-700 active:bg-emerald-800 transition-colors touch-manipulation flex items-center justify-center gap-2"
-            style={{ 
-              WebkitTapHighlightColor: 'transparent',
-            }}
-            aria-label="Share"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-            </svg>
-            <span>Share</span>
-          </button>
-        </div>
+        {imageUrl && (
+          <div className="px-4 flex-shrink-0" style={{ paddingTop: '1rem', paddingBottom: 'max(2rem, calc(env(safe-area-inset-bottom, 0px) + 1rem))' }}>
+            <button
+              onClick={handleShare}
+              className="w-full bg-[#1C8376] text-white font-semibold py-3 px-6 rounded-xl hover:bg-emerald-700 active:bg-emerald-800 transition-colors touch-manipulation flex items-center justify-center gap-2"
+              style={{ 
+                WebkitTapHighlightColor: 'transparent',
+              }}
+              aria-label="Share"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+              </svg>
+              <span>Share</span>
+            </button>
+          </div>
+        )}
       </div>
 
       <style>{`
