@@ -339,9 +339,35 @@ export const handler: Handler = async (event, context) => {
           // Sort by minute (oldest first) to maintain chronological order
           const sortedNewGoals = newGoals.sort((a: any, b: any) => (a.minute ?? 0) - (b.minute ?? 0));
           
-          // Use scores directly from database (same as app does - it works perfectly)
-          const homeScore = record.home_score || 0;
-          const awayScore = record.away_score || 0;
+          // Calculate score from goals array (database score can be stale)
+          // For own goals: the goal counts for the OPPOSITE team
+          let calculatedHomeScore = 0;
+          let calculatedAwayScore = 0;
+          
+          for (const goal of goals) {
+            const { isHomeTeam } = determineScoringTeam(goal, liveHomeTeam, liveAwayTeam, homeTeamId, awayTeamId);
+            const isOwnGoal = goal.isOwnGoal === true;
+            
+            if (isOwnGoal) {
+              // Own goal: flip the team (home player's own goal counts for away team)
+              if (isHomeTeam) {
+                calculatedAwayScore++;
+              } else {
+                calculatedHomeScore++;
+              }
+            } else {
+              // Regular goal: count for the scoring team
+              if (isHomeTeam) {
+                calculatedHomeScore++;
+              } else {
+                calculatedAwayScore++;
+              }
+            }
+          }
+          
+          // Use calculated score (more reliable than database score which can be stale)
+          const homeScore = calculatedHomeScore;
+          const awayScore = calculatedAwayScore;
           
           for (const goal of sortedNewGoals) {
             const scorer = goal.scorer || 'Unknown';
