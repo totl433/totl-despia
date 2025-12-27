@@ -47,15 +47,17 @@ export default function ShareSheet({
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // Convert data URL to file for Web Share API
+      // Convert data URL to file for Web Share API with proper metadata for thumbnail
       const response = await fetch(imageUrl);
       const blob = await response.blob();
+      
+      // Create File with proper metadata - iOS will generate thumbnail automatically
       const file = new File([blob], fileName, { 
         type: 'image/png',
         lastModified: Date.now()
       });
       
-      // Use Web Share API with image file - opens share sheet with image included
+      // Use Web Share API with image file - opens share sheet with image included and thumbnail
       const nav = navigator as Navigator & { 
         share?: (data: ShareData) => Promise<void>;
         canShare?: (data: { files?: File[] }) => boolean;
@@ -64,7 +66,7 @@ export default function ShareSheet({
       if (nav.share && nav.canShare?.({ files: [file] })) {
         try {
           await nav.share({
-            title: `TOTL Gameweek ${gw} - ${userName}`,
+            title: `${userName}'s Predictions - TOTL Gameweek ${gw}`,
             text: shareText,
             files: [file],
           });

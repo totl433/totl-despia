@@ -624,7 +624,7 @@ export function GamesSection({
           isOpen={showShareSheet}
           onClose={handleCloseShareSheet}
           imageUrl={shareImageUrl}
-          fileName={`totl-gw${currentGwValue}-${displayUserName.replace(/\s+/g, '-')}.png`}
+          fileName={`${displayUserName}'s Predictions Totl Gameweek ${currentGwValue}.png`}
           gw={currentGwValue}
           userName={displayUserName}
         />
