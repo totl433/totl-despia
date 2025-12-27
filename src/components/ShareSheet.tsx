@@ -187,8 +187,8 @@ export default function ShareSheet({
         </div>
 
         {/* Generated image preview - flex to fill available space */}
-        <div className="px-4 flex-1 min-h-0 flex items-center justify-center overflow-hidden">
-          <div className="relative rounded-2xl overflow-hidden bg-white flex items-center justify-center" style={{ maxWidth: '100%', maxHeight: '100%' }}>
+        <div className="px-4 flex-1 min-h-0 flex items-center justify-center overflow-hidden py-2">
+          <div className="relative rounded-2xl overflow-hidden bg-white flex items-center justify-center" style={{ width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%' }}>
             <img
               src={imageUrl}
               alt={`Gameweek ${gw} predictions`}
