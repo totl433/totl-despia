@@ -100,24 +100,47 @@ export default function ShareSheet({
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       const isDespia = isDespiaAvailable();
       
-      // In Despia, use native Social Share SDK
-      if (isDespia && typeof window !== 'undefined' && (window as any).despia !== undefined) {
-        try {
-          // Despia Social Share format: shareapp://message?text=...&url=...
-          // Note: Despia may not support images directly, so we'll share text + URL to image
-          // The image will be downloaded so user can attach manually
-          const shareUrl = imageUrl; // Use the data URL as the share URL
-          (window as any).despia = `shareapp://message?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
-          
-          // Download image so user can attach it manually
-          setTimeout(() => {
-            handleDownload();
-          }, 500);
-          onClose();
-          return;
-        } catch (error) {
-          console.error('[Share] Despia Social Share failed:', error);
-          // Fall through to Web Share API
+      // In Despia, try multiple methods to share the image
+      if (isDespia) {
+        const despiaObj = (window as any)?.despia || (globalThis as any)?.despia;
+        
+        // Method 1: Try calling despia as a function with the image URL (for file sharing)
+        if (typeof despiaObj === 'function') {
+          try {
+            despiaObj(imageUrl);
+            onClose();
+            return;
+          } catch (error) {
+            console.log('[Share] Despia function call failed, trying protocol format');
+          }
+        }
+        
+        // Method 2: Try shareapp protocol with image URL
+        if (typeof window !== 'undefined') {
+          try {
+            // Try sharing image directly via URL
+            (window as any).despia = imageUrl;
+            onClose();
+            return;
+          } catch (error) {
+            console.log('[Share] Direct image URL failed, trying shareapp protocol');
+          }
+        }
+        
+        // Method 3: Try shareapp protocol with text and URL
+        if (typeof window !== 'undefined') {
+          try {
+            (window as any).despia = `shareapp://message?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(imageUrl)}`;
+            // Download image so user can attach it manually
+            setTimeout(() => {
+              handleDownload();
+            }, 500);
+            onClose();
+            return;
+          } catch (error) {
+            console.error('[Share] Despia Social Share failed:', error);
+            // Fall through to Web Share API
+          }
         }
       }
       
