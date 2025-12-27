@@ -5,8 +5,11 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { getCached, setCached, removeCached, CACHE_TTL } from "../lib/cache";
 import { useLiveScores } from "../hooks/useLiveScores";
+import { useGameweekState } from "../hooks/useGameweekState";
 import { PageHeader } from "../components/PageHeader";
 import SegmentedToggle from "../components/SegmentedToggle";
+import UserPicksModal from "../components/UserPicksModal";
+import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
 
 type OverallRow = {
   user_id: string;
@@ -80,8 +83,13 @@ export default function GlobalLeaderboardPage() {
   const [showMiniLeagueFriendsOnly, setShowMiniLeagueFriendsOnly] = useState(false);
   const [miniLeagueFriendIds, setMiniLeagueFriendIds] = useState<Set<string>>(new Set());
   
-  // Get current GW from app_meta for LIVE functionality (only used for lastgw tab)
+  // Get current GW from app_meta for LIVE functionality
   const [currentGwFromMeta, setCurrentGwFromMeta] = useState<number | null>(null);
+
+  // Modal state for user picks
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedUserName, setSelectedUserName] = useState<string | null>(null);
+  const [selectedUserRank, setSelectedUserRank] = useState<number | undefined>(undefined);
   
   useEffect(() => {
     let alive = true;
@@ -93,6 +101,12 @@ export default function GlobalLeaderboardPage() {
     })();
     return () => { alive = false; };
   }, []);
+
+  // Use centralized gameweek state logic
+  const { state: currentGwState } = useGameweekState(currentGwFromMeta ?? null);
+  const { state: lastGwState } = useGameweekState(latestGw ?? null);
+  const isCurrentGwLive = currentGwState === 'LIVE';
+  const isLastGwLive = lastGwState === 'LIVE';
 
   // Fetch all mini league friends (users in leagues with the current user)
   useEffect(() => {
@@ -140,32 +154,15 @@ export default function GlobalLeaderboardPage() {
     return () => { alive = false; };
   }, [user?.id]);
   
-  // For LIVE functionality, use current_gw from meta if it's greater than latestGw (meaning it's not finished yet)
-  // Single source of truth: GW is live if current_gw > latestGw (current GW hasn't been completed)
-  const liveGw = (currentGwFromMeta && latestGw && currentGwFromMeta > latestGw) ? currentGwFromMeta : null;
+  // For LIVE functionality, use current_gw from meta if it's LIVE state
+  // Use current GW if it's LIVE, otherwise use latest GW (for lastgw tab)
+  const liveGw = isCurrentGwLive && currentGwFromMeta ? currentGwFromMeta : null;
   
   // Subscribe to live scores for the live GW (only used for lastgw tab)
   const { liveScores: liveScoresMap } = useLiveScores(
     liveGw || undefined,
     undefined // Fetch all live scores for the GW
   );
-  
-  // Check if current GW is live - single source of truth: current_gw > latestGw means GW is still active
-  // Also check if there are actual live scores for this GW
-  const isCurrentGwLive = useMemo(() => {
-    if (!liveGw || !currentGwFromMeta || !latestGw) return false;
-    // Single source of truth: GW is live if current_gw from meta is greater than latest completed GW
-    const gwIsActive = currentGwFromMeta > latestGw;
-    if (!gwIsActive) return false;
-    // Also check if there are actual live scores for this GW
-    if (liveScoresMap.size === 0) return false;
-    for (const score of liveScoresMap.values()) {
-      if (score.gw === liveGw) {
-        return true;
-      }
-    }
-    return false;
-  }, [liveGw, currentGwFromMeta, latestGw, liveScoresMap]);
   
   // Fetch picks and calculate live scores for current GW
   const [liveCurrentGwPoints, setLiveCurrentGwPoints] = useState<GwPointsRow[]>([]);
@@ -631,6 +628,33 @@ export default function GlobalLeaderboardPage() {
   // Filter rows for Overall tab
   const rowsFiltered = useMemo(() => filterByMiniLeagueFriends(rows), [rows, filterByMiniLeagueFriends]);
 
+  // Determine which gameweek to show in the modal based on active tab
+  const modalGw = useMemo(() => {
+    if (activeTab === "lastgw" || activeTab === "overall") {
+      return liveGw || latestGw || null;
+    }
+    // For form tabs, show the latest gameweek
+    return latestGw || null;
+  }, [activeTab, liveGw, latestGw]);
+
+  // Handle user click to open modal
+  const handleUserClick = (userId: string, userName: string | null) => {
+    // Always get rank from the overall leaderboard (global ranking)
+    const userRow = rowsFiltered.find(r => r.user_id === userId);
+    const userRank = userRow && 'rank' in userRow ? userRow.rank : undefined;
+    
+    setSelectedUserId(userId);
+    setSelectedUserName(userName);
+    setSelectedUserRank(userRank);
+  };
+
+  // Close modal
+  const handleCloseModal = () => {
+    setSelectedUserId(null);
+    setSelectedUserName(null);
+    setSelectedUserRank(undefined);
+  };
+
   // Prevent body scrolling - lock the page
   useEffect(() => {
     // Lock body scroll when component mounts
@@ -773,16 +797,34 @@ export default function GlobalLeaderboardPage() {
           <div className="py-4">
             <div className="flex items-center gap-3">
               <PageHeader title="Leaderboard" as="h2" />
-              {(activeTab === "lastgw" || activeTab === "overall") && isCurrentGwLive && liveGw && (
+              {activeTab === "lastgw" && isLastGwLive && latestGw && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 animate-pulse">
                   <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
                   </span>
-                  LIVE GW{liveGw}
+                  LIVE GW{latestGw}
+                </span>
+              )}
+              {activeTab === "overall" && isCurrentGwLive && currentGwFromMeta && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 animate-pulse">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                  </span>
+                  LIVE GW{currentGwFromMeta}
                 </span>
               )}
             </div>
+          </div>
+
+          {/* First Visit Info Banner */}
+          <div className="px-4 pb-4">
+            <FirstVisitInfoBanner
+              storageKey="leaderboardFirstVisit"
+              message="After the deadline, you can tap a player to view their predictions."
+              icon="💡"
+            />
           </div>
 
           {/* Tabs */}
@@ -881,7 +923,7 @@ export default function GlobalLeaderboardPage() {
             </div>
           )}
           
-          {activeTab === "lastgw" && !isCurrentGwLive && (
+          {activeTab === "lastgw" && !isLastGwLive && (
             <div className="text-center pb-3">
               <div className="text-sm text-slate-600">
                 Players who completed GW{latestGw}
@@ -947,8 +989,8 @@ export default function GlobalLeaderboardPage() {
                       <th className="px-4 py-3 text-center font-semibold bg-slate-50" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
                       <th className="px-1 py-3 text-center font-normal bg-slate-50 text-slate-500" style={{ width: '55px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
                         <div className="flex items-center justify-center gap-1">
-                          GW{isCurrentGwLive && liveGw ? liveGw : latestGw || '?'}
-                          {isCurrentGwLive && liveGw && (
+                          GW{isCurrentGwLive && currentGwFromMeta ? currentGwFromMeta : latestGw || '?'}
+                          {isCurrentGwLive && currentGwFromMeta && (
                             <span className="relative flex h-1.5 w-1.5">
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
@@ -959,7 +1001,7 @@ export default function GlobalLeaderboardPage() {
                       <th className="py-3 text-center font-normal bg-slate-50 text-slate-500" style={{ width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
                         <div className="flex items-center justify-center gap-1">
                           OCP
-                          {isCurrentGwLive && liveGw && (
+                          {isCurrentGwLive && currentGwFromMeta && (
                             <span className="relative flex h-1.5 w-1.5">
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
@@ -980,8 +1022,8 @@ export default function GlobalLeaderboardPage() {
                       <th className="px-4 py-3 text-center font-semibold bg-slate-50" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
                       <th className="py-3 text-center font-normal bg-slate-50 text-slate-500" style={{ width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
                         <div className="flex items-center justify-center gap-1">
-                          GW{liveGw || latestGw || '?'}
-                          {isCurrentGwLive && liveGw && (
+                          GW{latestGw || '?'}
+                          {isLastGwLive && latestGw && (
                             <span className="relative flex h-1.5 w-1.5">
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
@@ -1038,7 +1080,8 @@ export default function GlobalLeaderboardPage() {
                     <tr 
                       key={r.user_id}
                       ref={isMe ? userRowRef : null}
-                      className=""
+                      onClick={() => handleUserClick(r.user_id, r.name)}
+                      className="hover:bg-slate-100 transition-colors cursor-pointer"
                       style={{
                         ...(i > 0 ? { 
                           borderTop: '1px solid #e2e8f0',
@@ -1145,6 +1188,18 @@ export default function GlobalLeaderboardPage() {
         </div>
         
       </div>
+
+      {/* User Picks Modal */}
+      {selectedUserId && modalGw && (
+        <UserPicksModal
+          isOpen={!!selectedUserId}
+          onClose={handleCloseModal}
+          userId={selectedUserId}
+          userName={selectedUserName}
+          gw={modalGw}
+          globalRank={selectedUserRank}
+        />
+      )}
     </div>
   );
 }
