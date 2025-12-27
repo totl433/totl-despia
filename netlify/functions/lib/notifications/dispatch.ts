@@ -186,6 +186,68 @@ export async function dispatchNotification(
       // Use the most recent device (first one from DB query ordered by updated_at)
       const playerId = activeSubscriptions[0].player_id!;
       
+      // 4c.1. Verify device is actually subscribed in OneSignal before sending
+      // Don't trust DB flag - verify with OneSignal API
+      const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID;
+      const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY;
+      
+      if (ONESIGNAL_APP_ID && ONESIGNAL_REST_API_KEY) {
+        try {
+          const verifyResponse = await fetch(
+            `https://onesignal.com/api/v1/players/${playerId}?app_id=${ONESIGNAL_APP_ID}`,
+            {
+              headers: {
+                'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
+              },
+            }
+          );
+          
+          if (verifyResponse.ok) {
+            const player = await verifyResponse.json();
+            const hasToken = !!player.identifier;
+            const notInvalid = !player.invalid_identifier;
+            const notificationTypes = player.notification_types;
+            
+            // OneSignal subscription logic: subscribed if has token, not invalid, and not explicitly unsubscribed
+            const isSubscribed = hasToken && notInvalid && 
+              (notificationTypes === 1 || (notificationTypes !== -2 && notificationTypes !== 0 && notificationTypes !== null && notificationTypes !== undefined));
+            
+            if (!isSubscribed) {
+              // Update DB to reflect actual OneSignal status
+              const supabase = getSupabase();
+              await supabase
+                .from('push_subscriptions')
+                .update({ subscribed: false, last_checked_at: new Date().toISOString() })
+                .eq('player_id', playerId);
+              
+              userResult.result = 'suppressed_unsubscribed';
+              userResult.reason = 'Device not subscribed in OneSignal (verified before send)';
+              result.results.suppressed_unsubscribed++;
+              await updateSendLog(logId, { result: 'suppressed_unsubscribed' });
+              result.user_results.push(userResult);
+              continue;
+            }
+          } else {
+            // Device not found in OneSignal - mark as unsubscribed
+            const supabase = getSupabase();
+            await supabase
+              .from('push_subscriptions')
+              .update({ subscribed: false, last_checked_at: new Date().toISOString() })
+              .eq('player_id', playerId);
+            
+            userResult.result = 'suppressed_unsubscribed';
+            userResult.reason = 'Device not found in OneSignal';
+            result.results.suppressed_unsubscribed++;
+            await updateSendLog(logId, { result: 'suppressed_unsubscribed' });
+            result.user_results.push(userResult);
+            continue;
+          }
+        } catch (verifyErr) {
+          console.warn(`[dispatch] Could not verify subscription for ${playerId.slice(0, 8)}…:`, verifyErr);
+          // Continue anyway - OneSignal will reject if not subscribed, but at least we tried
+        }
+      }
+      
       // 4d. Build notification payload using player_id
       const notificationTitle = title || buildDefaultTitle(catalogEntry, data);
       const notificationBody = body || buildDefaultBody(catalogEntry, data);
