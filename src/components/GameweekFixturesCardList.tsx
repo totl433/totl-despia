@@ -248,7 +248,7 @@ export default function GameweekFixturesCardList({
                 {/* Home team - right aligned */}
                 <div className="flex-1 flex items-center justify-end gap-0.5 pr-0.5" style={{ height: '32px' }}>
                   <span className={`team-name-small-mobile text-xs text-slate-700 truncate ${homeIsWinning ? 'font-bold' : 'font-medium'}`}>
-                    {getMediumName(fixture.home_code || fixture.home_team || fixture.home_name || '') || fixture.home_name || fixture.home_team}
+                    {getMediumName(fixture.home_code || fixture.home_team || fixture.home_name || '')}
                   </span>
                   <div className="flex items-center justify-center flex-shrink-0" style={{ width: `${badgeSize}px`, height: `${badgeSize}px` }}>
                     <TeamBadge code={fixture.home_code} size={badgeSize} />
@@ -278,7 +278,7 @@ export default function GameweekFixturesCardList({
                     <TeamBadge code={fixture.away_code} size={badgeSize} />
                   </div>
                   <span className={`team-name-small-mobile text-xs text-slate-700 truncate ${awayIsWinning ? 'font-bold' : 'font-medium'}`}>
-                    {getMediumName(fixture.away_code || fixture.away_team || fixture.away_name || '') || fixture.away_name || fixture.away_team}
+                    {getMediumName(fixture.away_code || fixture.away_team || fixture.away_name || '')}
                   </span>
                 </div>
 

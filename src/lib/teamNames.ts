@@ -55,7 +55,7 @@ const CLUBS: Record<
     aliases: ['aston villa', 'aston villa fc', 'villa', 'avl'],
   },
   'bournemouth': {
-    medium: 'Bournemouth',
+    medium: "B'mouth",
     slug: 'bournemouth',
     aliases: ['bournemouth', 'afc bournemouth', 'bournemouth fc', 'bou'],
   },
@@ -123,12 +123,12 @@ const CLUBS: Record<
     aliases: ['manchester city', 'manchester city fc', 'man city', 'mci', 'city'],
   },
   'man-united': {
-    medium: 'Man United',
+    medium: 'Man Utd',
     slug: 'man-united',
     aliases: ['manchester united', 'manchester united fc', 'man united', 'man utd', 'mun', 'united'],
   },
   'newcastle': {
-    medium: 'Newcastle',
+    medium: 'Newc',
     slug: 'newcastle',
     aliases: ['newcastle', 'newcastle united', 'newcastle united fc', 'new'],
   },
@@ -158,7 +158,7 @@ const CLUBS: Record<
     aliases: ['wolves', 'wolverhampton wanderers', 'wolverhampton wanderers fc', 'wolverhampton', 'wol'],
   },
   'sunderland': {
-    medium: 'Sunderland',
+    medium: 'Sunder',
     slug: 'sunderland',
     aliases: ['sunderland', 'sunderland fc', 'sun'],
   },
