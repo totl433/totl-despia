@@ -154,24 +154,33 @@ export default function GameweekFixturesCardListForCapture({
           alignItems: 'center',
           position: 'relative'
         }}>
-          {/* Volley image temporarily removed - file not found in deployed build */}
-          {/* <img 
+          <img 
             src="/assets/Volley/volley-with-ball.png" 
             alt="Volley" 
             style={{ 
               width: '50px', 
               height: 'auto',
               position: 'absolute',
-              left: '16px'
+              left: '16px',
+              display: 'block'
             }}
-          /> */}
+            onError={(e) => {
+              // If image fails to load, hide it but keep logo visible
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
           <img 
             src="/assets/badges/totl-logo1.svg" 
             alt="TOTL" 
             style={{ 
               width: '75px', 
               height: '75px',
-              filter: 'brightness(0) invert(1)'
+              filter: 'brightness(0) invert(1)',
+              display: 'block'
+            }}
+            onError={(e) => {
+              // If SVG fails, try to show a fallback or ensure it's visible
+              console.error('[Capture] TOTL logo failed to load');
             }}
           />
         </div>
@@ -357,7 +366,7 @@ export default function GameweekFixturesCardListForCapture({
                   <div className="flex-1 flex items-center justify-end gap-1.5 pr-0.5" style={{ height: '32px', minWidth: 0, flexShrink: 1, paddingLeft: '4px', gap: '6px' }}>
                     <span 
                       className={`team-name-small-mobile text-xs text-slate-700 ${homeIsWinning ? 'font-bold' : 'font-medium'}`}
-                      style={{ fontSize: '14px', textOverflow: 'clip', overflow: 'visible', whiteSpace: 'normal', maxWidth: 'none' }}
+                      style={{ fontSize: '14px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '120px' }}
                     >
                       {getMediumName(fixture.home_code || fixture.home_team || fixture.home_name || '')}
                     </span>
@@ -390,7 +399,7 @@ export default function GameweekFixturesCardListForCapture({
                     </div>
                     <span 
                       className={`team-name-small-mobile text-xs text-slate-700 ${awayIsWinning ? 'font-bold' : 'font-medium'}`}
-                      style={{ fontSize: '14px', textOverflow: 'clip', overflow: 'visible', whiteSpace: 'normal', maxWidth: 'none' }}
+                      style={{ fontSize: '14px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '120px' }}
                     >
                       {getMediumName(fixture.away_code || fixture.away_team || fixture.away_name || '')}
                     </span>
