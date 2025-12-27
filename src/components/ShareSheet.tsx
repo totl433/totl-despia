@@ -166,35 +166,6 @@ export default function ShareSheet({
       }
       
       // Fallback: Try Web Share API with text only
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const file = new File([blob], fileName, { type: 'image/png' });
-      
-      const nav = navigator as Navigator & { 
-        share?: (data: ShareData) => Promise<void>;
-        canShare?: (data: { files?: File[] }) => boolean;
-      };
-      
-      // Try sharing with image file if supported
-      if (nav.share && nav.canShare?.({ files: [file] })) {
-        try {
-          await nav.share({
-            title: `TOTL Gameweek ${gw} - ${userName}`,
-            text: shareText,
-            files: [file],
-          });
-          onClose();
-          return;
-        } catch (shareError: any) {
-          if (shareError.name === 'AbortError') {
-            return; // User cancelled
-          }
-          // Fall through to text-only share if file sharing fails
-          console.log('[Share] Web Share API with file failed, trying text-only');
-        }
-      }
-      
-      // Fallback: Try Web Share API with text only
       if (nav.share) {
         try {
           await nav.share({ 
