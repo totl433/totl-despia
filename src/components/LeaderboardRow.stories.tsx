@@ -38,7 +38,6 @@ export const OverallTab: Story = {
     isCurrentUser: false,
     prevRanks: {},
     currRanks: { 'user-1': 1 },
-    latestGw: 12,
   },
   render: (args) => (
     <table className="w-full">
@@ -58,7 +57,6 @@ export const Form5Tab: Story = {
     isCurrentUser: false,
     prevRanks: {},
     currRanks: {},
-    latestGw: 12,
   },
   render: (args) => (
     <table className="w-full">
@@ -78,7 +76,6 @@ export const Form10Tab: Story = {
     isCurrentUser: false,
     prevRanks: {},
     currRanks: {},
-    latestGw: 12,
   },
   render: (args) => (
     <table className="w-full">
@@ -98,7 +95,6 @@ export const LastGwTab: Story = {
     isCurrentUser: false,
     prevRanks: {},
     currRanks: {},
-    latestGw: 12,
   },
   render: (args) => (
     <table className="w-full">
@@ -118,7 +114,6 @@ export const CurrentUser: Story = {
     isCurrentUser: true,
     prevRanks: { 'current-user': 3 },
     currRanks: { 'current-user': 2 },
-    latestGw: 12,
   },
   render: (args) => (
     <table className="w-full">
@@ -138,7 +133,6 @@ export const TopRank: Story = {
     isCurrentUser: false,
     prevRanks: {},
     currRanks: { 'user-1': 1 },
-    latestGw: 12,
   },
   render: (args) => (
     <table className="w-full">
@@ -158,7 +152,6 @@ export const RankMovementUp: Story = {
     isCurrentUser: false,
     prevRanks: { 'user-1': 5 },
     currRanks: { 'user-1': 2 },
-    latestGw: 12,
   },
   render: (args) => (
     <table className="w-full">
@@ -178,7 +171,6 @@ export const RankMovementDown: Story = {
     isCurrentUser: false,
     prevRanks: { 'user-1': 2 },
     currRanks: { 'user-1': 5 },
-    latestGw: 12,
   },
   render: (args) => (
     <table className="w-full">
@@ -201,7 +193,6 @@ export const TiedRank: Story = {
     isCurrentUser: false,
     prevRanks: {},
     currRanks: { 'user-1': 3 },
-    latestGw: 12,
   },
   render: (args) => (
     <table className="w-full">
@@ -211,6 +202,7 @@ export const TiedRank: Story = {
     </table>
   ),
 };
+
 
 
 
