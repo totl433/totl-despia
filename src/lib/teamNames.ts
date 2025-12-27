@@ -128,7 +128,7 @@ const CLUBS: Record<
     aliases: ['manchester united', 'manchester united fc', 'man united', 'man utd', 'mun', 'united'],
   },
   'newcastle': {
-    medium: 'Newc',
+    medium: 'Newcastle',
     slug: 'newcastle',
     aliases: ['newcastle', 'newcastle united', 'newcastle united fc', 'new'],
   },
@@ -158,7 +158,7 @@ const CLUBS: Record<
     aliases: ['wolves', 'wolverhampton wanderers', 'wolverhampton wanderers fc', 'wolverhampton', 'wol'],
   },
   'sunderland': {
-    medium: 'Sunder',
+    medium: 'Sunderland',
     slug: 'sunderland',
     aliases: ['sunderland', 'sunderland fc', 'sun'],
   },
@@ -193,6 +193,28 @@ function resolveKey(input: string): TeamKey | null {
 export function getMediumName(input: string): string {
   const k = resolveKey(input);
   return k ? CLUBS[k].medium : input;
+}
+
+/** Truncated display name for compact spaces like "Newc", "Sunder". Used in GameweekFixturesCardList. */
+export function getTruncatedName(input: string): string {
+  const k = resolveKey(input);
+  if (!k) return input;
+  
+  // Map of teams that need truncation for compact display
+  const truncatedMap: Partial<Record<TeamKey, string>> = {
+    'newcastle': 'Newcastle',
+    'sunderland': 'Sunderland',
+    'bournemouth': "B'mouth",
+    'man-united': 'Man Utd',
+    'man-city': 'Man City',
+    'crystal-palace': 'Palace',
+    'aston-villa': 'Villa',
+    'nottingham-forest': 'Forest',
+    'spurs': 'Spurs',
+    'wolves': 'Wolves',
+  };
+  
+  return truncatedMap[k] || CLUBS[k].medium;
 }
 
 /** Full team name like "Tottenham Hotspur", "Manchester City". Falls back to the original input. */
