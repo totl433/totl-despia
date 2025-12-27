@@ -1,6 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react';
+import { useState, useRef } from 'react';
 import GameweekFixturesCardList from './GameweekFixturesCardList';
+import GameweekFixturesCardListForCapture from './GameweekFixturesCardListForCapture';
 import type { Fixture, LiveScore } from './FixtureCard';
+import html2canvas from 'html2canvas';
 
 const meta: Meta<typeof GameweekFixturesCardList> = {
   title: 'Components/GameweekFixturesCardList',
@@ -229,6 +232,105 @@ export const Empty: Story = {
     fixtures: [],
     picks: {},
     liveScores: new Map(),
+  },
+};
+
+export const Html2CanvasCapture: Story = {
+  render: (args) => {
+    const [capturedImage, setCapturedImage] = useState<string | null>(null);
+    const [isCapturing, setIsCapturing] = useState(false);
+    const captureRef = useRef<HTMLDivElement>(null);
+
+    const handleCapture = async () => {
+      if (!captureRef.current || isCapturing) return;
+      
+      setIsCapturing(true);
+      try {
+        // Render in exact same structure as leaderboard modal
+        const canvas = await html2canvas(captureRef.current, {
+          backgroundColor: '#ffffff',
+          scale: 2,
+          useCORS: true,
+          logging: false,
+        });
+
+        const imageUrl = canvas.toDataURL('image/png', 0.95);
+        setCapturedImage(imageUrl);
+      } catch (error) {
+        console.error('Capture error:', error);
+      } finally {
+        setIsCapturing(false);
+      }
+    };
+
+    return (
+      <div style={{ padding: '20px' }}>
+        <button
+          onClick={handleCapture}
+          disabled={isCapturing}
+          style={{
+            marginBottom: '20px',
+            padding: '10px 20px',
+            backgroundColor: '#1C8376',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: isCapturing ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {isCapturing ? 'Capturing...' : 'Capture with html2canvas'}
+        </button>
+
+        {/* Render in EXACT same structure as leaderboard modal */}
+        <div
+          ref={captureRef}
+          style={{
+            maxWidth: '672px',
+            width: '100%',
+            margin: '0 auto',
+          }}
+        >
+          <div className="relative max-w-2xl w-full max-h-[90vh] flex flex-col">
+            <div className="max-h-[90vh] overflow-y-auto">
+              <GameweekFixturesCardListForCapture
+                {...args}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Show captured image - scaled for easier comparison */}
+        {capturedImage && (
+          <div style={{ marginTop: '40px', padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+            <h3 style={{ marginBottom: '20px' }}>Captured Image (what html2canvas sees):</h3>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <img
+                src={capturedImage}
+                alt="Captured"
+                style={{
+                  maxWidth: '672px',
+                  width: '100%',
+                  height: 'auto',
+                  border: '2px solid #ccc',
+                  borderRadius: '8px',
+                }}
+              />
+            </div>
+            <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
+              This is what html2canvas captured. Compare it to the component above.
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  },
+  args: {
+    gw: 14,
+    fixtures: sampleFixtures,
+    picks: samplePicks,
+    liveScores: sampleLiveScores,
+    userName: 'Phil Bolton',
+    globalRank: 42,
   },
 };
 
