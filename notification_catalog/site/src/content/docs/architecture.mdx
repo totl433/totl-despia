@@ -23,6 +23,7 @@ head: []
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │   REACT WEB APP (WebView)                                           │    │
 │  │   - Registers player_id with backend                                │    │
+│  │   - Calls: despia('setonesignalplayerid://?user_id=${userId}')     │    │
 │  │   - Manages user preferences                                        │    │
 │  │   - Handles notification deep links                                 │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
@@ -31,6 +32,14 @@ head: []
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         NETLIFY FUNCTIONS                                   │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                    registerPlayer                                    │    │
+│  │  - Stores (user_id, player_id) in push_subscriptions                 │    │
+│  │  - Sets external_user_id in OneSignal API                           │    │
+│  │    (PUT /players/{player_id} with external_user_id)                │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                               │                                             │
+│                               ▼                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │                    UNIFIED DISPATCHER                                │    │
 │  │  - Receives notification intents                                     │    │
@@ -45,6 +54,7 @@ head: []
 │                    ┌─────────────────────┐                                  │
 │                    │  OneSignal REST API │                                  │
 │                    │  POST /notifications│                                  │
+│                    │  (resolves external_user_id → player_id)              │
 │                    └─────────────────────┘                                  │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │

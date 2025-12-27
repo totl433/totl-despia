@@ -1771,6 +1771,7 @@ export default function HomePage() {
             seasonRank={seasonRank}
             userStreakData={userStreakData}
             latestGw={latestGw}
+            currentGw={gw}
           />
 
           {/* Mini Leagues */}

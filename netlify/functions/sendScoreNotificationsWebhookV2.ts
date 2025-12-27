@@ -288,6 +288,17 @@ export const handler: Handler = async (event, context) => {
           // Sort by minute (oldest first) to maintain chronological order
           const sortedNewGoals = newGoals.sort((a: any, b: any) => (a.minute ?? 0) - (b.minute ?? 0));
           
+          // Calculate actual score from goals array (excluding own goals)
+          const actualHomeScore = goals.filter((g: any) => {
+            const { isHomeTeam } = determineScoringTeam(g, home_team, away_team);
+            return isHomeTeam && !g.isOwnGoal;
+          }).length;
+          
+          const actualAwayScore = goals.filter((g: any) => {
+            const { isHomeTeam } = determineScoringTeam(g, home_team, away_team);
+            return !isHomeTeam && !g.isOwnGoal;
+          }).length;
+          
           for (const goal of sortedNewGoals) {
             const scorer = goal.scorer || 'Unknown';
             const goalMinute = goal.minute ?? 0;
@@ -302,7 +313,9 @@ export const handler: Handler = async (event, context) => {
                 apiMatchId, fixtureIndex: fixture_index, gw,
                 scorer, minute: goalMinute, teamName,
                 homeTeam: home_team, awayTeam: away_team,
-                homeScore, awayScore, isHomeTeam,
+                homeScore: actualHomeScore,  // Use calculated score from goals array
+                awayScore: actualAwayScore,   // Use calculated score from goals array
+                isHomeTeam,
                 isOwnGoal: goal.isOwnGoal === true,
               });
               totalSent += result.results.accepted;

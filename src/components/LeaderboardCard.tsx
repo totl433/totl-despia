@@ -13,6 +13,7 @@ type LeaderboardCardProps = {
   totalFixtures?: number;
   subtitle?: string;
   variant?: 'default' | 'lastGw'; // Special variant for Last GW card
+  isLive?: boolean; // Show live indicator for Last GW card
 };
 
 export const LeaderboardCard = React.memo(function LeaderboardCard({
@@ -27,6 +28,7 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
   totalFixtures,
   subtitle,
   variant = 'default',
+  isLive = false,
 }: LeaderboardCardProps) {
   const displayText = rank && total && total > 0 
     ? `TOP ${Math.round((rank / total) * 100)}%`
@@ -56,7 +58,12 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
             </svg>
           </div>
           <div className="mt-auto">
-            <div className="text-xs text-slate-500 mb-2">Gameweek {gw ?? '—'}</div>
+            <div className="text-xs text-slate-500 mb-2 flex items-center gap-1.5">
+              Gameweek {gw ?? '—'}
+              {isLive && (
+                <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></div>
+              )}
+            </div>
             <div className="flex items-center gap-1">
               <span className="text-xs font-semibold text-slate-900">
                 {displayText}
@@ -79,7 +86,12 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
           </svg>
         </div>
         <div className="mt-auto">
-          <div className="text-xs text-slate-500 mb-2">{subtitle || title}</div>
+          <div className="text-xs text-slate-500 mb-2 flex items-center gap-1.5">
+            {subtitle || title}
+            {isLive && (
+              <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></div>
+            )}
+          </div>
           <div className="flex items-center gap-1">
             <span className="text-xs font-semibold text-slate-900">
               {displayText}

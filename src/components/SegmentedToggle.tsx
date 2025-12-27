@@ -31,3 +31,4 @@ export default function SegmentedToggle({ value, onToggle, labels }: SegmentedTo
   );
 }
 
+

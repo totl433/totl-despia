@@ -2,6 +2,7 @@ import { LeaderboardCard } from './LeaderboardCard';
 import { StreakCard } from './StreakCard';
 import Section from './Section';
 import { HorizontalScrollContainer } from './HorizontalScrollContainer';
+import { useGameweekState } from '../hooks/useGameweekState';
 
 interface LeaderboardsSectionProps {
   lastGwRank: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null;
@@ -10,6 +11,7 @@ interface LeaderboardsSectionProps {
   seasonRank: { rank: number; total: number; isTied: boolean } | null;
   userStreakData: { streak: number; last10GwScores: Array<{ gw: number; score: number | null }> } | null;
   latestGw: number | null;
+  currentGw: number | null; // Current active gameweek
 }
 
 export function LeaderboardsSection({
@@ -18,8 +20,18 @@ export function LeaderboardsSection({
   tenGwRank,
   seasonRank,
   userStreakData,
-  latestGw
+  latestGw,
+  currentGw
 }: LeaderboardsSectionProps) {
+  // Check if the current GW is LIVE (first game kicked off, last game hasn't ended)
+  // All leaderboards (form, season) include the current GW, so if current GW is LIVE, all are live
+  const { state: currentGwState } = useGameweekState(currentGw ?? null);
+  const isCurrentGwLive = currentGwState === 'LIVE';
+  
+  // Check if the Last GW is currently LIVE (for the Last GW card specifically)
+  const { state: lastGwState } = useGameweekState(lastGwRank?.gw ?? null);
+  const isLastGwLive = lastGwState === 'LIVE';
+
   return (
     <Section 
       title="Leaderboards" 
@@ -41,6 +53,7 @@ How To Play →`}
           gw={lastGwRank?.gw}
           totalFixtures={lastGwRank?.totalFixtures}
           variant="lastGw"
+          isLive={isLastGwLive}
         />
         <LeaderboardCard
           title="5-WEEK FORM"
@@ -49,6 +62,7 @@ How To Play →`}
           linkTo="/global?tab=form5"
           rank={fiveGwRank?.rank ?? null}
           total={fiveGwRank?.total ?? null}
+          isLive={isCurrentGwLive}
         />
         <LeaderboardCard
           title="10-WEEK FORM"
@@ -57,6 +71,7 @@ How To Play →`}
           linkTo="/global?tab=form10"
           rank={tenGwRank?.rank ?? null}
           total={tenGwRank?.total ?? null}
+          isLive={isCurrentGwLive}
         />
         <LeaderboardCard
           title="SEASON RANK"
@@ -65,6 +80,7 @@ How To Play →`}
           linkTo="/global?tab=overall"
           rank={seasonRank?.rank ?? null}
           total={seasonRank?.total ?? null}
+          isLive={isCurrentGwLive}
         />
         {userStreakData && (
           <StreakCard

@@ -24,6 +24,7 @@ export default function UserPicksModal({
 }: UserPicksModalProps) {
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [picks, setPicks] = useState<Record<number, "H" | "D" | "A">>({});
+  const [hasSubmitted, setHasSubmitted] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [liveScoresByFixtureIndex, setLiveScoresByFixtureIndex] = useState<Map<number, LiveScore>>(new Map());
@@ -80,6 +81,24 @@ export default function UserPicksModal({
           picksMap[p.fixture_index] = p.pick;
         });
         setPicks(picksMap);
+
+        // Check if user has submitted for this gameweek
+        const { data: submissionData, error: submissionError } = await supabase
+          .from('app_gw_submissions')
+          .select('submitted_at')
+          .eq('gw', gw)
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (submissionError) {
+          console.error('[UserPicksModal] Error checking submission:', submissionError);
+        }
+
+        if (!alive) return;
+
+        // User has submitted if there's a submission record with a non-null submitted_at
+        const submitted = Boolean(submissionData?.submitted_at);
+        setHasSubmitted(submitted);
 
         setLoading(false);
       } catch (err: any) {
@@ -204,6 +223,11 @@ export default function UserPicksModal({
             ) : fixtures.length === 0 ? (
               <div className="bg-white rounded-3xl shadow-2xl p-12 flex items-center justify-center">
                 <div className="text-slate-500">No fixtures available for this gameweek</div>
+              </div>
+            ) : hasSubmitted === false || (hasSubmitted === null && Object.keys(picks).length === 0) ? (
+              <div className="bg-white rounded-3xl shadow-2xl p-12 flex flex-col items-center justify-center">
+                <div className="text-slate-500 text-lg font-medium mb-2">Hasn't submitted</div>
+                <div className="text-slate-400 text-sm">{userName || 'User'} hasn't submitted picks for GW {gw}</div>
               </div>
             ) : (
               <GameweekFixturesCardList
