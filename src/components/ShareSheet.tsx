@@ -41,12 +41,14 @@ export default function ShareSheet({
     }
   };
 
-  // Handle WhatsApp share - try Web Share API with image first, then fallback to deep link
+  // Handle WhatsApp share - Despia only
   const handleWhatsAppShare = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     try {
-      // First try Web Share API with image file (works in Despia if supported)
+      const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
+      
+      // Try Web Share API with image file (Despia supports this)
       const response = await fetch(imageUrl);
       const blob = await response.blob();
       const file = new File([blob], fileName, { type: 'image/png' });
@@ -56,64 +58,6 @@ export default function ShareSheet({
         canShare?: (data: { files?: File[] }) => boolean;
       };
       
-      // Try sharing with image file if supported
-      if (nav.share && nav.canShare?.({ files: [file] })) {
-        try {
-          await nav.share({
-            title: `TOTL Gameweek ${gw} - ${userName}`,
-            text: `Check out my Gameweek ${gw} predictions!`,
-            files: [file],
-          });
-          onClose();
-          return;
-        } catch (shareError: any) {
-          if (shareError.name === 'AbortError') {
-            return; // User cancelled
-          }
-          // Fall through to deep link if file sharing fails
-          console.log('[Share] Web Share API with file failed, trying WhatsApp deep link');
-        }
-      }
-      
-      // Fallback: Use WhatsApp deep link with text (image will download for manual attach)
-      const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
-      openWhatsApp(shareText);
-      // Download image so user can attach it manually
-      setTimeout(() => {
-        handleDownload();
-      }, 500);
-      onClose();
-    } catch (error) {
-      console.error('WhatsApp share failed:', error);
-      handleDownload();
-    }
-  };
-
-  // Check if Despia is available
-  const isDespiaAvailable = () => {
-    return typeof window !== 'undefined' && 
-           ((window as any)?.despia !== undefined || 
-            (globalThis as any)?.despia !== undefined);
-  };
-
-  // Handle share via Web Share API or Despia Social Share (for Messages, Instagram, More)
-  const handleWebShare = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    try {
-      const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
-      
-      // First, try Web Share API with image file (works in Despia if supported)
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const file = new File([blob], fileName, { type: 'image/png' });
-      
-      const nav = navigator as Navigator & { 
-        share?: (data: ShareData) => Promise<void>;
-        canShare?: (data: { files?: File[] }) => boolean;
-      };
-      
-      // Try sharing with image file if supported
       if (nav.share && nav.canShare?.({ files: [file] })) {
         try {
           await nav.share({
@@ -127,64 +71,90 @@ export default function ShareSheet({
           if (shareError.name === 'AbortError') {
             return; // User cancelled
           }
-          // Fall through to Despia or text-only share
-          console.log('[Share] Web Share API with file failed, trying Despia or text-only');
+          // Fall through to WhatsApp deep link
         }
       }
       
-      // In Despia, try Social Share SDK as fallback
-      const isDespia = isDespiaAvailable();
-      if (isDespia) {
-        const despiaObj = (window as any)?.despia || (globalThis as any)?.despia;
-        
-        // Try calling despia as a function with shareapp protocol
-        if (typeof despiaObj === 'function') {
-          try {
-            despiaObj(`shareapp://message?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(imageUrl)}`);
-            // Download image so user can attach manually
-            setTimeout(() => {
-              handleDownload();
-            }, 500);
-            onClose();
-            return;
-          } catch (error) {
-            console.log('[Share] Despia function call failed, trying assignment');
-          }
-        }
-        
-        // Try setting window.despia to shareapp protocol
-        if (typeof window !== 'undefined') {
-          try {
-            (window as any).despia = `shareapp://message?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(imageUrl)}`;
-            // Download image so user can attach manually
-            setTimeout(() => {
-              handleDownload();
-            }, 500);
-            onClose();
-            return;
-          } catch (error) {
-            console.error('[Share] Despia Social Share failed:', error);
-            // Fall through to text-only Web Share API
-          }
-        }
-      }
+      // Fallback: WhatsApp deep link (Despia native)
+      openWhatsApp(shareText);
+      setTimeout(() => {
+        handleDownload();
+      }, 500);
+      onClose();
+    } catch (error) {
+      console.error('WhatsApp share failed:', error);
+      handleDownload();
+    }
+  };
+
+  // Handle share via Despia native methods (for Messages, Instagram, More)
+  const handleWebShare = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // Fallback: Try Web Share API with text only
-      if (nav.share) {
+      // First, try Web Share API with image file (Despia supports this)
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const file = new File([blob], fileName, { type: 'image/png' });
+      
+      const nav = navigator as Navigator & { 
+        share?: (data: ShareData) => Promise<void>;
+        canShare?: (data: { files?: File[] }) => boolean;
+      };
+      
+      if (nav.share && nav.canShare?.({ files: [file] })) {
         try {
-          await nav.share({ 
-            title: `TOTL Gameweek ${gw} - ${userName}`, 
-            text: shareText
+          await nav.share({
+            title: `TOTL Gameweek ${gw} - ${userName}`,
+            text: shareText,
+            files: [file],
           });
-          // Download image so user can attach manually
-          handleDownload();
           onClose();
           return;
         } catch (shareError: any) {
           if (shareError.name === 'AbortError') {
             return; // User cancelled
           }
-          // Fall through to download
+          // Fall through to Despia native methods
+        }
+      }
+      
+      // Try Despia direct image sharing: despia(imageUrl)
+      const despiaObj = (window as any)?.despia || (globalThis as any)?.despia;
+      if (typeof despiaObj === 'function') {
+        try {
+          despiaObj(imageUrl);
+          onClose();
+          return;
+        } catch (error) {
+          console.log('[Share] Despia function call failed, trying assignment');
+        }
+      }
+      
+      // Try Despia assignment: window.despia = imageUrl
+      if (typeof window !== 'undefined') {
+        try {
+          (window as any).despia = imageUrl;
+          onClose();
+          return;
+        } catch (error) {
+          console.log('[Share] Despia assignment failed, trying Social Share SDK');
+        }
+      }
+      
+      // Try Despia Social Share SDK: shareapp://message?text=...&url=...
+      if (typeof despiaObj === 'function') {
+        try {
+          despiaObj(`shareapp://message?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(imageUrl)}`);
+          setTimeout(() => {
+            handleDownload();
+          }, 500);
+          onClose();
+          return;
+        } catch (error) {
+          console.log('[Share] Despia Social Share SDK failed');
         }
       }
       
