@@ -100,41 +100,36 @@ export default function ShareSheet({
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       const isDespia = isDespiaAvailable();
       
-      // In Despia, try multiple methods to share the image
+      // In Despia, use Social Share SDK
       if (isDespia) {
         const despiaObj = (window as any)?.despia || (globalThis as any)?.despia;
         
-        // Method 1: Try calling despia as a function with the image URL (for file sharing)
+        // Method 1: Try calling despia as a function with shareapp protocol (recommended format)
+        if (typeof despiaObj === 'function') {
+          try {
+            despiaObj(`shareapp://message?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(imageUrl)}`);
+            onClose();
+            return;
+          } catch (error) {
+            console.log('[Share] Despia function call with shareapp failed, trying direct URL');
+          }
+        }
+        
+        // Method 2: Try calling despia as a function with just the image URL
         if (typeof despiaObj === 'function') {
           try {
             despiaObj(imageUrl);
             onClose();
             return;
           } catch (error) {
-            console.log('[Share] Despia function call failed, trying protocol format');
+            console.log('[Share] Despia function call with image URL failed, trying assignment');
           }
         }
         
-        // Method 2: Try shareapp protocol with image URL
-        if (typeof window !== 'undefined') {
-          try {
-            // Try sharing image directly via URL
-            (window as any).despia = imageUrl;
-            onClose();
-            return;
-          } catch (error) {
-            console.log('[Share] Direct image URL failed, trying shareapp protocol');
-          }
-        }
-        
-        // Method 3: Try shareapp protocol with text and URL
+        // Method 3: Try setting window.despia to shareapp protocol
         if (typeof window !== 'undefined') {
           try {
             (window as any).despia = `shareapp://message?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(imageUrl)}`;
-            // Download image so user can attach it manually
-            setTimeout(() => {
-              handleDownload();
-            }, 500);
             onClose();
             return;
           } catch (error) {
