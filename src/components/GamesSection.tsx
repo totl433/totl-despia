@@ -162,7 +162,7 @@ export function GamesSection({
       const images = element.querySelectorAll('img');
       await Promise.all(Array.from(images).map((img: HTMLImageElement) => {
         if (img.complete) return Promise.resolve();
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
           const timeout = setTimeout(() => {
             console.warn('Image load timeout:', img.src);
             resolve(null); // Continue even if image fails
@@ -190,7 +190,6 @@ export function GamesSection({
           pixelRatio: 2,
           quality: 0.95,
           cacheBust: true,
-          useCORS: true, // Enable CORS for images
         });
       } catch (pngError: any) {
         console.error('toPng error:', pngError);
