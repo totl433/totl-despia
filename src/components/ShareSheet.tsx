@@ -88,17 +88,43 @@ export default function ShareSheet({
     }
   };
 
-  // Handle Instagram share - Despia only (direct deep link)
+  // Handle Instagram share - Despia only (direct deep link to Stories)
   const handleInstagramShare = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     try {
-      // Instagram doesn't support direct image sharing via deep links
-      // Use Web Share API with image file as fallback
-      const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
-      
+      // Convert data URL to blob URL for Instagram deep link
       const response = await fetch(imageUrl);
       const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      
+      // Try Instagram Stories deep link first
+      // Format: instagram-stories://share?media=IMAGE_URL
+      try {
+        const instagramStoriesUrl = `instagram-stories://share?media=${encodeURIComponent(blobUrl)}`;
+        window.location.href = instagramStoriesUrl;
+        
+        // Clean up blob URL after a delay
+        setTimeout(() => {
+          URL.revokeObjectURL(blobUrl);
+        }, 1000);
+        
+        onClose();
+        return;
+      } catch (error) {
+        console.log('[Share] Instagram Stories deep link failed, trying data URL');
+        // Try with data URL
+        try {
+          const instagramStoriesUrl = `instagram-stories://share?media=${encodeURIComponent(imageUrl)}`;
+          window.location.href = instagramStoriesUrl;
+          onClose();
+          return;
+        } catch (error2) {
+          console.log('[Share] Instagram Stories with data URL failed, trying Web Share API');
+        }
+      }
+      
+      // Fallback: Use Web Share API with image file
       const file = new File([blob], fileName, { 
         type: 'image/png',
         lastModified: Date.now()
@@ -113,7 +139,7 @@ export default function ShareSheet({
         try {
           await nav.share({
             title: `TOTL Gameweek ${gw} - ${userName}`,
-            text: shareText,
+            text: `Check out my Gameweek ${gw} predictions! ${userName}`,
             files: [file],
           });
           onClose();
@@ -126,7 +152,7 @@ export default function ShareSheet({
         }
       }
       
-      // Fallback: download image
+      // Final fallback: download image
       handleDownload();
     } catch (error: any) {
       console.error('Instagram share failed:', error);
