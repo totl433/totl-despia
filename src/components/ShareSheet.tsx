@@ -52,9 +52,9 @@ export default function ShareSheet({
       img.crossOrigin = 'anonymous';
       
       // Wait for image to load
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Failed to load image'));
         img.src = imageUrl;
       });
       
