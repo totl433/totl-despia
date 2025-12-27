@@ -62,7 +62,6 @@ How To Play →`}
           linkTo="/global?tab=form5"
           rank={fiveGwRank?.rank ?? null}
           total={fiveGwRank?.total ?? null}
-          isLive={isCurrentGwLive}
         />
         <LeaderboardCard
           title="10-WEEK FORM"
@@ -71,7 +70,6 @@ How To Play →`}
           linkTo="/global?tab=form10"
           rank={tenGwRank?.rank ?? null}
           total={tenGwRank?.total ?? null}
-          isLive={isCurrentGwLive}
         />
         <LeaderboardCard
           title="SEASON RANK"
