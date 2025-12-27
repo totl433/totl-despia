@@ -229,6 +229,10 @@ export function GamesSection({
     const finalUserPicks = Object.keys(fetchedPicks).length > 0 ? fetchedPicks : (userPicks || {});
     const finalLiveScores = Object.keys(fetchedLiveScores).length > 0 ? fetchedLiveScores : (liveScores || {});
     
+    // Store the fetched data in state so the capture component can use it
+    setShareUserPicks(finalUserPicks);
+    setShareLiveScores(finalLiveScores);
+    
     console.log('[Share] Final data to use:', {
       fixturesCount: fixtures.length,
       userPicksCount: Object.keys(finalUserPicks).length,
@@ -237,8 +241,8 @@ export function GamesSection({
     
     console.log('[Share] Starting share process', {
       fixturesCount: fixtures.length,
-      userPicksCount: Object.keys(userPicks || {}).length,
-      liveScoresCount: Object.keys(liveScores || {}).length,
+      userPicksCount: Object.keys(finalUserPicks).length,
+      liveScoresCount: Object.keys(finalLiveScores).length,
     });
     setIsSharing(true);
     setShowCaptureModal(true);
