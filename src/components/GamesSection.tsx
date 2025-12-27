@@ -525,8 +525,37 @@ export function GamesSection({
             <GameweekFixturesCardListForCapture
               gw={currentGwValue}
               fixtures={shareableFixtures}
-              picks={latestUserPicks}
-              liveScores={liveScoresMap}
+              picks={Object.keys(shareUserPicks).length > 0 ? shareUserPicks : latestUserPicks}
+              liveScores={(() => {
+                // Convert shareLiveScores to Map if available, otherwise use liveScoresMap
+                if (Object.keys(shareLiveScores).length > 0) {
+                  const map = new Map<number, LiveScore>();
+                  Object.entries(shareLiveScores).forEach(([fixtureIndexStr, score]) => {
+                    const fixtureIndex = parseInt(fixtureIndexStr, 10);
+                    map.set(fixtureIndex, {
+                      status: score.status as any,
+                      minute: score.minute ?? null,
+                      homeScore: score.homeScore,
+                      awayScore: score.awayScore,
+                      home_team: score.home_team ?? null,
+                      away_team: score.away_team ?? null,
+                      goals: score.goals?.map((g: any) => ({
+                        team: g.team || '',
+                        scorer: g.scorer || '',
+                        minute: g.minute ?? null,
+                      })) ?? undefined,
+                      red_cards: score.red_cards?.map((r: any) => ({
+                        team: r.team || '',
+                        player: r.player || '',
+                        minute: r.minute ?? null,
+                      })) ?? undefined,
+                      result: score.result ?? undefined,
+                    } as LiveScore);
+                  });
+                  return map;
+                }
+                return liveScoresMap;
+              })()}
               userName={displayUserName}
               globalRank={globalRank}
               onCardRefReady={(ref) => {
