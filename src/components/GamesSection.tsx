@@ -166,20 +166,27 @@ export function GamesSection({
       
       // Wait for all images in the element to load
       const images = element.querySelectorAll('img');
+      console.log('[Share] Found images to load:', images.length, Array.from(images).map(img => img.src));
       await Promise.all(Array.from(images).map((img: HTMLImageElement) => {
-        if (img.complete) return Promise.resolve();
+        if (img.complete && img.naturalWidth > 0) {
+          console.log('[Share] Image already loaded:', img.src);
+          return Promise.resolve();
+        }
         return new Promise((resolve) => {
           const timeout = setTimeout(() => {
-            console.warn('Image load timeout:', img.src);
+            console.warn('[Share] Image load timeout:', img.src);
             resolve(null); // Continue even if image fails
-          }, 3000);
+          }, 5000); // Increased timeout
           img.onload = () => {
             clearTimeout(timeout);
+            console.log('[Share] Image loaded successfully:', img.src);
             resolve(null);
           };
-          img.onerror = () => {
+          img.onerror = (e) => {
             clearTimeout(timeout);
-            console.warn('Image load error:', img.src);
+            console.error('[Share] Image load error:', img.src, e);
+            // Try to set a placeholder or remove the image to prevent capture failure
+            img.style.display = 'none';
             resolve(null); // Continue even if image fails
           };
         });
