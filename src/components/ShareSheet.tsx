@@ -47,11 +47,41 @@ export default function ShareSheet({
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // Convert data URL to file for Web Share API with proper metadata for thumbnail
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
+      // Load image into Image element to ensure proper format for iOS thumbnail
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
       
-      // Create File with proper metadata - iOS will generate thumbnail automatically
+      // Wait for image to load
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = imageUrl;
+      });
+      
+      // Create canvas and draw image to ensure proper format
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Failed to get canvas context');
+      }
+      
+      // Draw image to canvas
+      ctx.drawImage(img, 0, 0);
+      
+      // Convert canvas to blob with proper PNG format
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('Failed to convert canvas to blob'));
+          }
+        }, 'image/png', 1.0);
+      });
+      
+      // Create File with proper metadata - iOS will generate thumbnail from properly formatted PNG
       const file = new File([blob], fileName, { 
         type: 'image/png',
         lastModified: Date.now()
