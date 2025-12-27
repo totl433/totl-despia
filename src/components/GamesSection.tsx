@@ -378,6 +378,20 @@ export function GamesSection({
                 min-width: 0 !important;
               }
             `}</style>
+            {(() => {
+              console.log('[Share] Rendering capture component with:', {
+                gw: currentGwValue,
+                fixturesCount: shareableFixtures.length,
+                picksCount: Object.keys(userPicks).length,
+                liveScoresCount: liveScoresMap.size,
+                userName: displayUserName,
+                globalRank,
+                firstFixture: shareableFixtures[0],
+                firstPick: Object.entries(userPicks)[0],
+                firstLiveScore: Array.from(liveScoresMap.entries())[0],
+              });
+              return null;
+            })()}
             <GameweekFixturesCardListForCapture
               gw={currentGwValue}
               fixtures={shareableFixtures}

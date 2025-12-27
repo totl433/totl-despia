@@ -29,6 +29,21 @@ export default function GameweekFixturesCardListForCapture({
   const cardRef = useRef<HTMLDivElement>(null);
   const badgeSize = 24;
 
+  // Debug logging
+  useEffect(() => {
+    console.log('[Capture] Component received props:', {
+      gw,
+      fixturesCount: fixtures.length,
+      picksCount: Object.keys(picks).length,
+      liveScoresCount: liveScores.size,
+      userName,
+      globalRank,
+      firstFixture: fixtures[0],
+      firstPick: Object.entries(picks)[0],
+      firstLiveScore: Array.from(liveScores.entries())[0],
+    });
+  }, [gw, fixtures, picks, liveScores, userName, globalRank]);
+
   useEffect(() => {
     if (onCardRefReady && cardRef.current) {
       onCardRefReady(cardRef);
