@@ -135,7 +135,8 @@ export default function GameweekFixturesCardListForCapture({
           alignItems: 'center',
           position: 'relative'
         }}>
-          <img 
+          {/* Volley image temporarily removed - file not found in deployed build */}
+          {/* <img 
             src="/assets/Volley/volley-with-ball.png" 
             alt="Volley" 
             style={{ 
@@ -144,7 +145,7 @@ export default function GameweekFixturesCardListForCapture({
               position: 'absolute',
               left: '16px'
             }}
-          />
+          /> */}
           <img 
             src="/assets/badges/totl-logo1.svg" 
             alt="TOTL" 
