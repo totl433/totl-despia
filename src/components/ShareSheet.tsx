@@ -165,13 +165,13 @@ export default function ShareSheet({
           backgroundColor: '#f5f7f6',
           animation: 'slideUp 300ms cubic-bezier(0.4, 0, 0.2, 1)',
           maxHeight: '90vh',
-          paddingBottom: 'max(3rem, calc(env(safe-area-inset-bottom, 0px) + 1.5rem))',
-          overflowY: 'auto',
-          WebkitOverflowScrolling: 'touch',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
         }}
       >
         {/* Handle bar with close button */}
-        <div className="flex items-center justify-between pt-3 pb-2 px-4">
+        <div className="flex items-center justify-between pt-3 pb-2 px-4 flex-shrink-0">
           <div className="flex-1 flex justify-center">
             <div className="w-12 h-1 bg-slate-300 rounded-full" />
           </div>
@@ -186,9 +186,9 @@ export default function ShareSheet({
           </button>
         </div>
 
-        {/* Generated image preview */}
-        <div className="px-4 pb-4">
-          <div className="relative rounded-2xl overflow-hidden bg-white" style={{ aspectRatio: '2/3', width: '100%' }}>
+        {/* Generated image preview - flex to fill available space */}
+        <div className="px-4 flex-1 min-h-0 flex items-center justify-center overflow-hidden">
+          <div className="relative rounded-2xl overflow-hidden bg-white w-full max-w-full" style={{ maxHeight: '100%', aspectRatio: '2/3' }}>
             <img
               src={imageUrl}
               alt={`Gameweek ${gw} predictions`}
@@ -206,8 +206,8 @@ export default function ShareSheet({
           </div>
         </div>
 
-        {/* Share options */}
-        <div className="px-4" style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }}>
+        {/* Share options - always at bottom */}
+        <div className="px-4 flex-shrink-0" style={{ paddingTop: '1rem', paddingBottom: 'max(2rem, calc(env(safe-area-inset-bottom, 0px) + 1rem))' }}>
           <div className="text-sm font-semibold text-slate-700 mb-3">Share to</div>
           <div className="grid grid-cols-5 gap-2">
             {/* WhatsApp */}
