@@ -48,39 +48,16 @@ export default function ShareSheet({
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // Convert data URL to file for Web Share API
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const file = new File([blob], fileName, { type: 'image/png' });
-      
-      // Use Web Share API with image file (works in Despia)
-      const nav = navigator as Navigator & { 
-        share?: (data: ShareData) => Promise<void>;
-        canShare?: (data: { files?: File[] }) => boolean;
-      };
-      
-      if (nav.share && nav.canShare?.({ files: [file] })) {
-        try {
-          await nav.share({
-            title: `TOTL Gameweek ${gw} - ${userName}`,
-            text: shareText,
-            files: [file],
-          });
-          onClose();
-          return;
-        } catch (shareError: any) {
-          if (shareError.name === 'AbortError') {
-            return; // User cancelled
-          }
-          // Fall through to WhatsApp deep link
-        }
-      }
-      
-      // Fallback: WhatsApp deep link with text (user can attach image manually)
+      // Use WhatsApp deep link directly (Despia native)
+      // Note: WhatsApp deep links don't support images, so we'll open WhatsApp with text
+      // and download the image so user can attach it manually
       openWhatsApp(shareText);
+      
+      // Download image after a short delay so WhatsApp opens first
       setTimeout(() => {
         handleDownload();
       }, 500);
+      
       onClose();
     } catch (error) {
       console.error('WhatsApp share failed:', error);
@@ -88,19 +65,36 @@ export default function ShareSheet({
     }
   };
 
-  // Handle share via Web Share API (for Messages, Instagram, More) - Despia only
+  // Handle share via Despia Social Share SDK (for Messages, Instagram, More) - Despia only
   const handleWebShare = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // Convert data URL to file for Web Share API
+      // Try Despia Social Share SDK: shareapp://message?text=...&url=...
+      const despiaObj = (window as any)?.despia || (globalThis as any)?.despia;
+      
+      if (typeof despiaObj === 'function') {
+        try {
+          // Use the image data URL in the shareapp protocol
+          despiaObj(`shareapp://message?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(imageUrl)}`);
+          // Download image so user can attach it manually if needed
+          setTimeout(() => {
+            handleDownload();
+          }, 500);
+          onClose();
+          return;
+        } catch (error) {
+          console.log('[Share] Despia Social Share SDK failed, trying Web Share API');
+        }
+      }
+      
+      // Fallback: Try Web Share API with image file
       const response = await fetch(imageUrl);
       const blob = await response.blob();
       const file = new File([blob], fileName, { type: 'image/png' });
       
-      // Use Web Share API with image file (works in Despia)
       const nav = navigator as Navigator & { 
         share?: (data: ShareData) => Promise<void>;
         canShare?: (data: { files?: File[] }) => boolean;
@@ -123,7 +117,7 @@ export default function ShareSheet({
         }
       }
       
-      // Fallback: download image
+      // Final fallback: download image
       handleDownload();
     } catch (error: any) {
       console.error('Share failed:', error);
