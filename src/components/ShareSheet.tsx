@@ -40,7 +40,49 @@ export default function ShareSheet({
     }
   };
 
-  // Handle share via Web Share API
+  // Handle WhatsApp share with deep link
+  const handleWhatsAppShare = async () => {
+    try {
+      const text = encodeURIComponent(`Check out my Gameweek ${gw} predictions! ${userName}`);
+      const whatsappUrl = `whatsapp://send?text=${text}`;
+      
+      // Try WhatsApp deep link first
+      window.location.href = whatsappUrl;
+      
+      // Fallback: Try Web Share API
+      setTimeout(async () => {
+        try {
+          const response = await fetch(imageUrl);
+          const blob = await response.blob();
+          const file = new File([blob], fileName, { type: 'image/png' });
+          
+          if ((navigator as any).share && (navigator as any).canShare?.({ files: [file] })) {
+            await (navigator as any).share({
+              title: `TOTL Gameweek ${gw} - ${userName}`,
+              text: `Check out my Gameweek ${gw} predictions!`,
+              files: [file],
+            });
+            onClose();
+          } else if ((navigator as any).share) {
+            await (navigator as any).share({
+              title: `TOTL Gameweek ${gw} - ${userName}`,
+              text: `Check out my Gameweek ${gw} predictions!`,
+            });
+            handleDownload();
+          } else {
+            handleDownload();
+          }
+        } catch (error) {
+          handleDownload();
+        }
+      }, 500);
+    } catch (error) {
+      console.error('WhatsApp share failed:', error);
+      handleDownload();
+    }
+  };
+
+  // Handle share via Web Share API (for Messages, Instagram, More)
   const handleWebShare = async () => {
     try {
       const response = await fetch(imageUrl);
@@ -150,12 +192,12 @@ export default function ShareSheet({
       {/* Bottom Sheet */}
       <div
         ref={sheetRef}
-        className="fixed bottom-0 left-0 right-0 z-[999999] rounded-t-3xl shadow-2xl"
+        className="fixed bottom-0 left-0 right-0 z-[999999] rounded-t-3xl shadow-2xl overflow-y-auto"
         style={{
           backgroundColor: '#f5f7f6',
           animation: 'slideUp 300ms cubic-bezier(0.4, 0, 0.2, 1)',
           maxHeight: '90vh',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))',
         }}
       >
         {/* Handle bar with close button */}
@@ -195,12 +237,12 @@ export default function ShareSheet({
         </div>
 
         {/* Share options */}
-        <div className="px-4 pb-6">
+        <div className="px-4 pb-8" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}>
           <div className="text-sm font-semibold text-slate-700 mb-3">Share to</div>
           <div className="grid grid-cols-5 gap-4">
             {/* WhatsApp */}
             <button
-              onClick={handleWebShare}
+              onClick={handleWhatsAppShare}
               className="flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-slate-50 active:bg-slate-100 transition-colors"
               aria-label="Share via WhatsApp"
             >
