@@ -47,47 +47,51 @@ export default function ShareSheet({
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // Load image into Image element to ensure proper format for iOS thumbnail
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
+      // Fetch the image as blob directly - this ensures proper format for iOS thumbnail
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error('Failed to fetch image');
+      }
+      const blob = await response.blob();
       
-      // Wait for image to load
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error('Failed to load image'));
-        img.src = imageUrl;
-      });
-      
-      // Create canvas and draw image to ensure proper format
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        throw new Error('Failed to get canvas context');
+      // Ensure it's a PNG blob
+      let imageBlob = blob;
+      if (!blob.type.includes('image')) {
+        // If not already an image blob, convert through canvas
+        const img = new Image();
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error('Failed to load image'));
+          img.src = imageUrl;
+        });
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          throw new Error('Failed to get canvas context');
+        }
+        ctx.drawImage(img, 0, 0);
+        
+        imageBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('Failed to convert canvas to blob'));
+            }
+          }, 'image/png', 1.0);
+        });
       }
       
-      // Draw image to canvas
-      ctx.drawImage(img, 0, 0);
-      
-      // Convert canvas to blob with proper PNG format
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((blob) => {
-          if (blob) {
-            resolve(blob);
-          } else {
-            reject(new Error('Failed to convert canvas to blob'));
-          }
-        }, 'image/png', 1.0);
-      });
-      
-      // Create File with proper metadata - iOS will generate thumbnail from properly formatted PNG
-      const file = new File([blob], fileName, { 
+      // Create File with proper metadata and ensure PNG type
+      const file = new File([imageBlob], fileName, { 
         type: 'image/png',
         lastModified: Date.now()
       });
       
-      // Use Web Share API with image file - opens share sheet with image included and thumbnail
+      // Use Web Share API with image file - iOS will show thumbnail automatically
       const nav = navigator as Navigator & { 
         share?: (data: ShareData) => Promise<void>;
         canShare?: (data: { files?: File[] }) => boolean;
