@@ -823,7 +823,6 @@ export default function GlobalLeaderboardPage() {
             <FirstVisitInfoBanner
               storageKey="leaderboardFirstVisit"
               message="After the deadline, you can tap a player to view their predictions."
-              icon="💡"
             />
           </div>
 

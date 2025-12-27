@@ -6,8 +6,6 @@ export type FirstVisitInfoBannerProps = {
   storageKey: string;
   /** Main message text */
   message: string;
-  /** Optional icon/emoji to display */
-  icon?: string;
   /** Callback when banner is dismissed (either temporarily or permanently) */
   onDismiss?: () => void;
   /** Custom className for styling */
@@ -27,7 +25,6 @@ export type FirstVisitInfoBannerProps = {
 export default function FirstVisitInfoBanner({
   storageKey,
   message,
-  icon = '💡',
   onDismiss,
   className = '',
 }: FirstVisitInfoBannerProps) {

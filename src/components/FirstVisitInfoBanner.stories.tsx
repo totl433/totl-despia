@@ -24,7 +24,6 @@ export const LeaderboardFirstVisit: Story = {
     storageKey: 'leaderboardFirstVisit',
     message:
       'After the deadline, you can tap a player to view their predictions.',
-    icon: '💡',
   },
   parameters: {
     docs: {
@@ -40,8 +39,7 @@ export const CustomMessage: Story = {
   args: {
     storageKey: 'customFeatureFirstVisit',
     message:
-      'This is a custom message explaining a new feature. The overlay appears centered on the screen with a backdrop. Click anywhere outside the popup, press Escape, or click the close button to dismiss for this session.',
-    icon: '✨',
+      'This is a custom message explaining a new feature. The overlay appears centered on the screen with a backdrop. Click anywhere outside the popup, press Escape, or click "Got it" to dismiss for this session.',
   },
 };
 
@@ -49,16 +47,7 @@ export const LongMessage: Story = {
   args: {
     storageKey: 'longMessageFirstVisit',
     message:
-      'This banner supports longer messages that wrap nicely. You can include multiple sentences and the text will flow naturally within the banner container. The close button stays in the top right corner, and the "Don\'t show again" link appears below the message.',
-    icon: '📝',
-  },
-};
-
-export const DifferentIcon: Story = {
-  args: {
-    storageKey: 'differentIconFirstVisit',
-    message: 'You can use any emoji or icon as the visual indicator.',
-    icon: '🎯',
+      'This banner supports longer messages that wrap nicely. You can include multiple sentences and the text will flow naturally within the banner container. The "Got it" button and "Don\'t show again" link appear below the message.',
   },
 };
 
@@ -67,8 +56,7 @@ export const TestBehavior: Story = {
   args: {
     storageKey: 'testBehavior',
     message:
-      'Test the behavior: Click X to dismiss for this session (will reappear on page refresh). Click "Don\'t show again" to permanently dismiss. To reset, clear localStorage: localStorage.removeItem("testBehavior")',
-    icon: '🧪',
+      'Test the behavior: Click "Got it" to dismiss for this session (will reappear on page refresh). Click "Don\'t show again" to permanently dismiss. To reset, clear localStorage: localStorage.removeItem("testBehavior")',
   },
 };
 
