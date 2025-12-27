@@ -18,7 +18,6 @@ type LeaderboardRowProps = {
   isCurrentUser: boolean;
   prevRanks: Record<string, number>;
   currRanks: Record<string, number>;
-  latestGw: number | null;
   onUserClick?: (userId: string, userName: string | null) => void;
 };
 

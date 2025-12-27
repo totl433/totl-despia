@@ -19,10 +19,11 @@ type LeaderboardTableProps = {
   currRanks: Record<string, number>;
   latestGw: number | null;
   userRowRef: React.RefObject<HTMLTableRowElement>;
+  onUserClick?: (userId: string, userName: string | null) => void;
 };
 
 export const LeaderboardTable = forwardRef<HTMLDivElement, LeaderboardTableProps>(
-  ({ rows, activeTab, currentUserId, prevRanks, currRanks, latestGw, userRowRef }, ref) => {
+  ({ rows, activeTab, currentUserId, prevRanks, currRanks, latestGw, userRowRef, onUserClick }, ref) => {
     return (
       <div 
         ref={ref}
@@ -84,7 +85,7 @@ export const LeaderboardTable = forwardRef<HTMLDivElement, LeaderboardTableProps
                   isCurrentUser={isCurrentUser}
                   prevRanks={prevRanks}
                   currRanks={currRanks}
-                  latestGw={latestGw}
+                  onUserClick={onUserClick}
                 />
               );
             })}
