@@ -53,6 +53,7 @@ export function GamesSection({
   userName,
   globalRank,
 }: GamesSectionProps) {
+  const { user } = useAuth();
   // Use a fallback userName if not provided
   const displayUserName = userName || 'User';
   
@@ -124,6 +125,8 @@ export function GamesSection({
   const [shareImageUrl, setShareImageUrl] = useState<string | null>(null);
   const [showShareSheet, setShowShareSheet] = useState(false);
   const [showCaptureModal, setShowCaptureModal] = useState(false);
+  const [shareUserPicks, setShareUserPicks] = useState<Record<number, "H" | "D" | "A">>({});
+  const [shareLiveScores, setShareLiveScores] = useState<Record<number, any>>({});
 
   const handleShare = async () => {
     console.log('[Share] handleShare called', { 
@@ -139,18 +142,7 @@ export function GamesSection({
       return;
     }
     
-    // Wait for data to be loaded if it's still loading
-    if (fixturesLoading) {
-      console.log('[Share] Fixtures still loading, waiting...');
-      let waitCount = 0;
-      while (fixturesLoading && waitCount < 50) { // Wait up to 5 seconds
-        await new Promise(resolve => setTimeout(resolve, 100));
-        waitCount++;
-      }
-      if (fixturesLoading) {
-        console.warn('[Share] Fixtures still loading after wait, proceeding anyway');
-      }
-    }
+    setIsSharing(true);
     
     // Ensure we have fixtures before proceeding
     if (!fixtures || fixtures.length === 0) {
@@ -160,12 +152,85 @@ export function GamesSection({
       return;
     }
     
-    // Note: userPicks and liveScores might be empty if data hasn't loaded yet
-    // This is OK - the share image will still work, just without picks/scores
-    console.log('[Share] Data availability:', {
+    const currentGwValue = currentGw ?? fixtures[0]?.gw ?? 1;
+    const userId = user?.id;
+    
+    // Fetch data directly from Supabase (like UserPicksModal does) to ensure we have the latest data
+    let fetchedPicks: Record<number, "H" | "D" | "A"> = {};
+    let fetchedLiveScores: Record<number, any> = {};
+    
+    try {
+      // Fetch picks for current user and gameweek
+      if (userId) {
+        const { data: picksData, error: picksError } = await supabase
+          .from('app_picks')
+          .select('fixture_index, pick')
+          .eq('gw', currentGwValue)
+          .eq('user_id', userId);
+        
+        if (picksError) {
+          console.error('[Share] Error fetching picks:', picksError);
+        } else {
+          (picksData ?? []).forEach((p: any) => {
+            fetchedPicks[p.fixture_index] = p.pick;
+          });
+          console.log('[Share] Fetched picks:', fetchedPicks);
+        }
+      }
+      
+      // Fetch live scores - use the existing liveScores prop if available, otherwise fetch
+      if (Object.keys(liveScores || {}).length === 0) {
+        // Get api_match_ids from fixtures
+        const apiMatchIds = fixtures
+          .map(f => f.api_match_id)
+          .filter((id): id is number => id !== null && id !== undefined);
+        
+        if (apiMatchIds.length > 0) {
+          const { data: liveScoresData, error: liveScoresError } = await supabase
+            .from('live_scores')
+            .select('*')
+            .in('api_match_id', apiMatchIds);
+          
+          if (liveScoresError) {
+            console.error('[Share] Error fetching live scores:', liveScoresError);
+          } else {
+            // Convert to Record<fixture_index, score> format
+            (liveScoresData ?? []).forEach((score: any) => {
+              const fixture = fixtures.find(f => f.api_match_id === score.api_match_id);
+              if (fixture) {
+                fetchedLiveScores[fixture.fixture_index] = {
+                  homeScore: score.home_score ?? 0,
+                  awayScore: score.away_score ?? 0,
+                  status: score.status || 'SCHEDULED',
+                  minute: score.minute ?? null,
+                  goals: score.goals ?? null,
+                  red_cards: score.red_cards ?? null,
+                  home_team: score.home_team ?? null,
+                  away_team: score.away_team ?? null,
+                };
+              }
+            });
+            console.log('[Share] Fetched live scores:', fetchedLiveScores);
+          }
+        }
+      } else {
+        fetchedLiveScores = liveScores || {};
+      }
+    } catch (error) {
+      console.error('[Share] Error fetching data:', error);
+      // Continue anyway with existing props
+      fetchedPicks = userPicks || {};
+      fetchedLiveScores = liveScores || {};
+    }
+    
+    // Use fetched data or fall back to props
+    const finalUserPicks = Object.keys(fetchedPicks).length > 0 ? fetchedPicks : (userPicks || {});
+    const finalLiveScores = Object.keys(fetchedLiveScores).length > 0 ? fetchedLiveScores : (liveScores || {});
+    
+    console.log('[Share] Final data to use:', {
       fixturesCount: fixtures.length,
-      userPicksCount: Object.keys(userPicks || {}).length,
-      liveScoresCount: Object.keys(liveScores || {}).length,
+      userPicksCount: Object.keys(finalUserPicks).length,
+      liveScoresCount: Object.keys(finalLiveScores).length,
     });
     
     console.log('[Share] Starting share process', {
