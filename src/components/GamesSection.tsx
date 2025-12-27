@@ -7,6 +7,8 @@ import GameweekFixturesCardListForCapture from './GameweekFixturesCardListForCap
 import ShareSheet from './ShareSheet';
 import type { Fixture, LiveScore } from './FixtureCard';
 import { toPng } from 'html-to-image';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 
 interface GamesSectionProps {
   isInApiTestLeague: boolean;
