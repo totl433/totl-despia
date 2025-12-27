@@ -41,49 +41,21 @@ export default function ShareSheet({
     }
   };
 
-  // Handle WhatsApp share - Despia only (Web Share API with image)
+  // Handle WhatsApp share - Despia only (direct deep link)
   const handleWhatsAppShare = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // Convert data URL to file for Web Share API
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const file = new File([blob], fileName, { 
-        type: 'image/png',
-        lastModified: Date.now()
-      });
-      
-      // Use Web Share API with image file - WhatsApp will appear in share sheet
-      const nav = navigator as Navigator & { 
-        share?: (data: ShareData) => Promise<void>;
-        canShare?: (data: { files?: File[] }) => boolean;
-      };
-      
-      if (nav.share && nav.canShare?.({ files: [file] })) {
-        try {
-          await nav.share({
-            title: `TOTL Gameweek ${gw} - ${userName}`,
-            text: shareText,
-            files: [file],
-          });
-          onClose();
-          return;
-        } catch (shareError: any) {
-          if (shareError.name === 'AbortError') {
-            return; // User cancelled
-          }
-          // Fall through to WhatsApp deep link
-        }
-      }
-      
-      // Fallback: WhatsApp deep link with text (user can attach image manually)
+      // Use WhatsApp deep link directly (opens WhatsApp app)
       openWhatsApp(shareText);
+      
+      // Download image after a short delay so WhatsApp opens first
       setTimeout(() => {
         handleDownload();
       }, 500);
+      
       onClose();
     } catch (error) {
       console.error('WhatsApp share failed:', error);
@@ -91,50 +63,24 @@ export default function ShareSheet({
     }
   };
 
-  // Handle Messages share - Despia only (Web Share API with image)
+  // Handle Messages share - Despia only (direct deep link)
   const handleMessagesShare = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // Convert data URL to file for Web Share API
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const file = new File([blob], fileName, { 
-        type: 'image/png',
-        lastModified: Date.now()
-      });
-      
-      // Use Web Share API with image file - Messages will appear in share sheet
-      const nav = navigator as Navigator & { 
-        share?: (data: ShareData) => Promise<void>;
-        canShare?: (data: { files?: File[] }) => boolean;
-      };
-      
-      if (nav.share && nav.canShare?.({ files: [file] })) {
-        try {
-          await nav.share({
-            title: `TOTL Gameweek ${gw} - ${userName}`,
-            text: shareText,
-            files: [file],
-          });
-          onClose();
-          return;
-        } catch (shareError: any) {
-          if (shareError.name === 'AbortError') {
-            return; // User cancelled
-          }
-          // Fall through to SMS deep link
-        }
-      }
-      
-      // Fallback: SMS deep link with text (user can attach image manually)
+      // Use SMS deep link to open Messages app directly
       const smsUrl = `sms:?body=${encodeURIComponent(shareText)}`;
+      
+      // Try to open Messages app
       window.location.href = smsUrl;
+      
+      // Download image after a short delay so Messages opens first
       setTimeout(() => {
         handleDownload();
       }, 500);
+      
       onClose();
     } catch (error: any) {
       console.error('Messages share failed:', error);
