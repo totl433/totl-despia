@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { openWhatsApp } from '../lib/whatsappShare';
 
 interface ShareSheetProps {
   isOpen: boolean;
@@ -40,31 +41,17 @@ export default function ShareSheet({
     }
   };
 
-  // Handle WhatsApp share - use Web Share API exactly like League page share (works in Despia)
+  // Handle WhatsApp share - use direct WhatsApp link (works in Despia)
   const handleWhatsAppShare = async () => {
     try {
-      // Use Web Share API with text/url only (same as League page shareLeague function)
-      const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
-      if (typeof nav.share === "function") {
-        try {
-          await nav.share({ 
-            title: `TOTL Gameweek ${gw} - ${userName}`, 
-            text: `Check out my Gameweek ${gw} predictions!` 
-          });
-          // Download image so user can attach manually
-          handleDownload();
-          onClose();
-          return;
-        } catch (shareError: any) {
-          if (shareError.name === 'AbortError') {
-            return; // User cancelled
-          }
-          // Fall through to download
-        }
-      }
-      
-      // Fallback: download
-      handleDownload();
+      const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
+      // Use WhatsApp deep link (works in Despia and regular browsers)
+      openWhatsApp(shareText);
+      // Also download the image so user can attach it manually
+      setTimeout(() => {
+        handleDownload();
+      }, 500);
+      onClose();
     } catch (error) {
       console.error('WhatsApp share failed:', error);
       handleDownload();
