@@ -166,7 +166,6 @@ const sampleLiveScores = new Map<number, LiveScore>([
     goals: [
       { team: 'Arsenal', scorer: 'Saka', minute: 15 },
     ],
-    result: 'H',
   }],
   [1, {
     status: 'FINISHED',
@@ -179,7 +178,6 @@ const sampleLiveScores = new Map<number, LiveScore>([
       { team: 'Man City', scorer: 'Haaland', minute: 12 },
       { team: 'Liverpool', scorer: 'Salah', minute: 28 },
     ],
-    result: 'H',
   }],
   [2, {
     status: 'IN_PLAY',

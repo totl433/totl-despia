@@ -19,10 +19,11 @@ type LeaderboardRowProps = {
   prevRanks: Record<string, number>;
   currRanks: Record<string, number>;
   latestGw: number | null;
+  onUserClick?: (userId: string, userName: string | null) => void;
 };
 
 export const LeaderboardRow = forwardRef<HTMLTableRowElement, LeaderboardRowProps>(
-  ({ row, index, array, activeTab, isCurrentUser, prevRanks, currRanks }, ref) => {
+  ({ row, index, array, activeTab, isCurrentUser, prevRanks, currRanks, onUserClick }, ref) => {
     // Calculate rank
     const currentRank = 'rank' in row ? row.rank : index + 1;
     const rankCount = array.filter((item, idx) => {
@@ -60,13 +61,20 @@ export const LeaderboardRow = forwardRef<HTMLTableRowElement, LeaderboardRowProp
     return (
       <tr 
         ref={ref}
+        onClick={() => onUserClick?.(row.user_id, row.name)}
         style={{
           ...(index > 0 ? { 
             borderTop: '1px solid #e2e8f0',
             position: 'relative',
-            backgroundColor: '#f8fafc'
-          } : { position: 'relative', backgroundColor: '#f8fafc' })
+            backgroundColor: '#f8fafc',
+            cursor: onUserClick ? 'pointer' : 'default',
+          } : { 
+            position: 'relative', 
+            backgroundColor: '#f8fafc',
+            cursor: onUserClick ? 'pointer' : 'default',
+          })
         }}
+        className={onUserClick ? 'hover:bg-slate-100 transition-colors' : ''}
       >
         {/* Rank number */}
         <td className="py-3 text-left tabular-nums whitespace-nowrap relative" style={{ 
