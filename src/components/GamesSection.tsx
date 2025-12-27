@@ -7,7 +7,6 @@ import GameweekFixturesCardListForCapture from './GameweekFixturesCardListForCap
 import ShareSheet from './ShareSheet';
 import type { Fixture, LiveScore } from './FixtureCard';
 import { toPng } from 'html-to-image';
-import { getFullName } from '../lib/teamNames';
 
 interface GamesSectionProps {
   isInApiTestLeague: boolean;
@@ -41,9 +40,9 @@ export function GamesSection({
   isInApiTestLeague,
   fixtures,
   fixtureCards,
-  hasLiveGames,
-  showLiveOnly,
-  onToggleLiveOnly,
+  hasLiveGames: _hasLiveGames,
+  showLiveOnly: _showLiveOnly,
+  onToggleLiveOnly: _onToggleLiveOnly,
   scoreComponent,
   fixturesLoading,
   hasCheckedCache,
