@@ -187,31 +187,20 @@ export default function ShareSheet({
         </div>
 
         {/* Generated image preview - flex to fill available space */}
-        <div className="px-4 flex-1 min-h-0 flex items-center justify-center overflow-hidden">
-          <div className="relative rounded-2xl overflow-hidden bg-white" style={{ 
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            maxHeight: '100%',
-            maxWidth: '100%'
-          }}>
-            <img
-              src={imageUrl}
-              alt={`Gameweek ${gw} predictions`}
-              style={{ 
-                maxHeight: '100%',
-                maxWidth: '100%',
-                height: 'auto',
-                width: 'auto',
-                objectFit: 'contain',
-                display: 'block'
-              }}
-            />
-            {/* Page indicators */}
-            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-white/80" />
-            </div>
-          </div>
+        <div className="px-4 flex-1 min-h-0 flex items-center justify-center overflow-hidden" style={{ position: 'relative' }}>
+          <img
+            src={imageUrl}
+            alt={`Gameweek ${gw} predictions`}
+            className="rounded-2xl"
+            style={{ 
+              maxHeight: 'calc(90vh - 250px)',
+              maxWidth: '100%',
+              height: 'auto',
+              width: 'auto',
+              objectFit: 'contain',
+              display: 'block'
+            }}
+          />
         </div>
 
         {/* Share options - always at bottom */}
