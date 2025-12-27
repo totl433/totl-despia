@@ -48,12 +48,17 @@ export default function ShareSheet({
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // Convert data URL to file for Web Share API
+      // Convert data URL to file for Web Share API with proper metadata
       const response = await fetch(imageUrl);
       const blob = await response.blob();
-      const file = new File([blob], fileName, { type: 'image/png' });
       
-      // Use Web Share API with image file - will show share sheet with image attached
+      // Create File with proper name and type for thumbnail generation
+      const file = new File([blob], fileName, { 
+        type: 'image/png',
+        lastModified: Date.now()
+      });
+      
+      // Use Web Share API with image file - WhatsApp will appear in share sheet
       const nav = navigator as Navigator & { 
         share?: (data: ShareData) => Promise<void>;
         canShare?: (data: { files?: File[] }) => boolean;
@@ -95,12 +100,17 @@ export default function ShareSheet({
     try {
       const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
       
-      // Convert data URL to file for Web Share API
+      // Convert data URL to file for Web Share API with proper metadata
       const response = await fetch(imageUrl);
       const blob = await response.blob();
-      const file = new File([blob], fileName, { type: 'image/png' });
       
-      // Use Web Share API with image file - will show share sheet with image attached
+      // Create File with proper name and type for thumbnail generation
+      const file = new File([blob], fileName, { 
+        type: 'image/png',
+        lastModified: Date.now()
+      });
+      
+      // Use Web Share API with image file - Messages/Instagram will appear in share sheet
       const nav = navigator as Navigator & { 
         share?: (data: ShareData) => Promise<void>;
         canShare?: (data: { files?: File[] }) => boolean;
