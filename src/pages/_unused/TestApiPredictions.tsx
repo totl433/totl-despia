@@ -10,6 +10,7 @@ import ScoreIndicator from "../components/predictions/ScoreIndicator";
 import ConfirmationModal from "../components/predictions/ConfirmationModal";
 import DateHeader from "../components/DateHeader";
 import { useLiveScores } from "../hooks/useLiveScores";
+import { useGameweekState } from "../hooks/useGameweekState";
 import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import Confetti from "react-confetti";
 
@@ -164,6 +165,10 @@ export default function TestApiPredictions() {
   
   // Initialize fixtures, picks, and results from cache
   const [fixtures, setFixtures] = useState<Fixture[]>(initialState.fixtures);
+  
+  // Use centralized game state system (PR.md rule 10)
+  // LIVE state means: first kickoff happened AND last game hasn't finished (FT)
+  const { state: gameState, loading: gameStateLoading } = useGameweekState(currentTestGw);
   const [picks, setPicks] = useState<Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>>(initialState.picks);
   const [results, setResults] = useState<Map<number, "H" | "D" | "A">>(initialState.results);
   const [teamForms, setTeamForms] = useState<Map<string, string>>(new Map()); // Map<teamCode, formString>
@@ -1591,17 +1596,33 @@ export default function TestApiPredictions() {
                 return hasNotStarted && kickoffTime > now;
               });
               
-              // Determine state
+              // Determine state using centralized game state system (PR.md rule 10)
+              // GW is LIVE when: first kickoff happened AND last game hasn't finished (FT)
               let state: 'starting-soon' | 'live' | 'finished' = 'finished';
-              if (hasLiveGames) {
-                state = 'live';
-              } else if (hasStartingSoon && !hasAnyLiveOrFinished) {
-                state = 'starting-soon';
-              } else if (allFinished) {
-                state = 'finished';
-              } else if (hasAnyLiveOrFinished) {
-                // Some games finished but not all - still consider it live if any are live
-                state = hasLiveGames ? 'live' : 'finished';
+              
+              // Primary: use centralized game state system
+              if (!gameStateLoading) {
+                if (gameState === 'LIVE') {
+                  state = 'live';
+                } else if (gameState === 'RESULTS_PRE_GW') {
+                  state = 'finished';
+                } else if (gameState === 'GW_OPEN' || gameState === 'GW_PREDICTED') {
+                  // Before first kickoff - check if starting soon
+                  if (hasStartingSoon && !hasAnyLiveOrFinished) {
+                    state = 'starting-soon';
+                  } else {
+                    state = 'finished'; // Default for pre-kickoff
+                  }
+                }
+              } else {
+                // Fallback while loading: use local checks
+                if (hasLiveGames) {
+                  state = 'live';
+                } else if (hasStartingSoon && !hasAnyLiveOrFinished) {
+                  state = 'starting-soon';
+                } else if (allFinished) {
+                  state = 'finished';
+                }
               }
               
               // Calculate current score
@@ -1643,6 +1664,8 @@ export default function TestApiPredictions() {
                     total={fixtures.length}
                     topPercent={topPercent}
                     state={state}
+                    gameweek={currentTestGw}
+                    gameStateLoading={gameStateLoading}
                   />
                 );
               }

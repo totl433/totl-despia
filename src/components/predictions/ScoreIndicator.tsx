@@ -295,13 +295,29 @@ export default function ScoreIndicator({
     }, 300);
   };
 
+  // Determine if share button should be shown - more explicit check
+  const shouldShowShare = gameweek != null && gameweek > 0 && user?.id != null;
+  
+  // Debug logging to help diagnose live site issues (always log in dev, conditionally in prod for debugging)
+  if (typeof window !== 'undefined') {
+    const isDev = import.meta.env.DEV;
+    if (isDev || (!shouldShowShare && gameweek != null)) {
+      console.log('[ScoreIndicator] Share button visibility:', {
+        shouldShowShare,
+        gameweek,
+        userId: user?.id,
+        hasUser: !!user,
+      });
+    }
+  }
+
   return (
     <>
       <div className="mb-4 rounded-xl border bg-gradient-to-br from-[#1C8376]/5 to-blue-50/50 shadow-sm px-6 py-5">
         <div className="text-center">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
-              {gameweek && user?.id && (
+              {shouldShowShare && (
                 <button
                   onClick={handleShare}
                   disabled={isSharing}
