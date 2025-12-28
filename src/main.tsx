@@ -28,6 +28,7 @@ const NotificationCentrePage = lazy(() => import("./pages/NotificationCentre"));
 const EmailPreferencesPage = lazy(() => import("./pages/EmailPreferences"));
 const StatsPage = lazy(() => import("./pages/Stats"));
 const SwipeCardPreview = lazy(() => import("./pages/SwipeCardPreview"));
+const CookiePolicyPage = lazy(() => import("./pages/CookiePolicy"));
 
 // New onboarding + auth flow
 import { AuthGate } from "./features/auth";
@@ -466,6 +467,7 @@ function AppContent() {
             <Route path="/profile/stats" element={<RequireAuth><StatsPage /></RequireAuth>} />
             <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
             <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
+            <Route path="/cookie-policy" element={<RequireAuth><CookiePolicyPage /></RequireAuth>} />
             <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
             <Route path="/admin-data" element={<RequireAuth><AdminDataPage /></RequireAuth>} />
             <Route path="*" element={<Navigate to="/" replace />} />
