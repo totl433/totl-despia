@@ -213,9 +213,6 @@ export function GamesSection({
         }
       }
       
-      // Set the calculated value in state (this will be used when the component re-renders)
-      setShareGwRankPercent(calculatedGwRankPercent);
-      
       // Fetch live scores - use the existing liveScores prop if available, otherwise fetch
       if (Object.keys(liveScores || {}).length === 0) {
         // Get api_match_ids from fixtures
@@ -265,10 +262,6 @@ export function GamesSection({
     const finalUserPicks = Object.keys(fetchedPicks).length > 0 ? fetchedPicks : (userPicks || {});
     const finalLiveScores = Object.keys(fetchedLiveScores).length > 0 ? fetchedLiveScores : (liveScores || {});
     
-    // Store the fetched data in state so the capture component can use it
-    setShareUserPicks(finalUserPicks);
-    setShareLiveScores(finalLiveScores);
-    
     console.log('[Share] Final data to use:', {
       fixturesCount: fixtures.length,
       userPicksCount: Object.keys(finalUserPicks).length,
@@ -282,7 +275,9 @@ export function GamesSection({
       gwRankPercent: calculatedGwRankPercent,
     });
     
-    // Set state before showing modal to ensure values are available
+    // Store the fetched data in state so the capture component can use it
+    setShareUserPicks(finalUserPicks);
+    setShareLiveScores(finalLiveScores);
     setShareGwRankPercent(calculatedGwRankPercent);
     
     setIsSharing(true);
