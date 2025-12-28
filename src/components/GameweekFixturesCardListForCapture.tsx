@@ -408,20 +408,51 @@ export default function GameweekFixturesCardListForCapture({
                           </span>
                         </div>
                       ) : (
-                        <span 
-                          className="font-black" 
-                          style={{ 
-                            fontSize: isFinished && pick && pickCorrect !== null ? '24px' : '10px',
-                            fontWeight: '900',
-                            whiteSpace: 'nowrap',
-                            lineHeight: '1',
-                            color: isFinished && pick && pickCorrect !== null ? (pickCorrect ? '#16a34a' : '#dc2626') : (isOngoing ? '#dc2626' : '#64748b'),
-                            WebkitTextStroke: isFinished && pick && pickCorrect !== null ? (pickCorrect ? '1.5px' : '0.5px') : '0px',
-                            WebkitTextStrokeColor: isFinished && pick && pickCorrect !== null ? (pickCorrect ? '#15803d' : '#991b1b') : 'transparent',
-                          } as React.CSSProperties}
-                        >
-                          {formatMinute()}
-                        </span>
+                        isFinished && pick && pickCorrect !== null ? (
+                          // Use SVG for tick/X to ensure bold rendering in html2canvas (text-stroke doesn't work)
+                          <div style={{ 
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '24px',
+                            height: '24px',
+                          }}>
+                            {pickCorrect ? (
+                              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                                <path 
+                                  d="M20 6L9 17l-5-5" 
+                                  stroke="#16a34a" 
+                                  strokeWidth="3.5" 
+                                  strokeLinecap="round" 
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            ) : (
+                              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                                <path 
+                                  d="M18 6L6 18M6 6l12 12" 
+                                  stroke="#dc2626" 
+                                  strokeWidth="2.5" 
+                                  strokeLinecap="round" 
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            )}
+                          </div>
+                        ) : (
+                          <span 
+                            className="font-black" 
+                            style={{ 
+                              fontSize: '10px',
+                              fontWeight: '900',
+                              whiteSpace: 'nowrap',
+                              lineHeight: '1',
+                              color: isOngoing ? '#dc2626' : '#64748b',
+                            } as React.CSSProperties}
+                          >
+                            {formatMinute()}
+                          </span>
+                        )
                       )
                     ) : (
                       <span></span>
