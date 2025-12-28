@@ -238,12 +238,21 @@ export default function GameweekFixturesCardList({
           <div className="username-responsive font-bold text-slate-700 truncate leading-tight">{displayUserName}</div>
         </div>
         {/* GW Rank pill - right */}
-        {gwRankPercent !== undefined && (
-          <div className="inline-flex items-center gap-0.5 sm:gap-1 px-2.5 py-1 sm:px-2 sm:py-1 rounded-full bg-slate-600 text-white flex-shrink-0 pr-2 sm:pr-0">
-            <span className="text-xs sm:text-sm font-medium opacity-90">top</span>
-            <span className="text-sm sm:text-base font-extrabold">{gwRankPercent}%</span>
-          </div>
-        )}
+        {gwRankPercent !== undefined && (() => {
+          // Use formatPercentage utility to ensure consistent formatting
+          const formatted = formatPercentage(gwRankPercent);
+          if (!formatted) return null;
+          // Split the formatted text (e.g., "Bottom 39%" or "Top 5%") into label and percentage
+          const parts = formatted.text.split(' ');
+          const label = parts[0]; // "Bottom" or "Top"
+          const percent = parts[1]; // "39%" or "5%"
+          return (
+            <div className="inline-flex items-center gap-0.5 sm:gap-1 px-2.5 py-1 sm:px-2 sm:py-1 rounded-full bg-slate-600 text-white flex-shrink-0 pr-2 sm:pr-0">
+              <span className="text-xs sm:text-sm font-medium opacity-90">{label}</span>
+              <span className="text-sm sm:text-base font-extrabold">{percent}</span>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Fixtures list */}
