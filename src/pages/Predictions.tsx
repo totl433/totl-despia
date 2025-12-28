@@ -1038,60 +1038,52 @@ export default function PredictionsPage() {
   }, [liveScores, fixtures]);
 
   // Calculate top percentage when we have results and picks
+  // Use app_v_gw_points view for consistency with other components (UserPicksModal, LeaderboardCard)
   useEffect(() => {
     if (!currentTestGw || !user?.id || results.size === 0 || fixtures.length === 0) {
       setTopPercent(null);
       return;
     }
 
-    // Calculate current user's score
-    let myScore = 0;
-    fixtures.forEach(f => {
-      const r = results.get(f.fixture_index);
-      const p = picks.get(f.fixture_index);
-      if (r && p && r === p.pick) {
-        myScore++;
-      }
-    });
-
-    // Only calculate if user has a score
-    if (myScore === 0) {
-      setTopPercent(null);
-      return;
-    }
-
-    // Calculate top percentage
+    // Calculate top percentage using app_v_gw_points view (same as UserPicksModal)
     (async () => {
       try {
-        // Get all users' picks for this GW
-        const { data: allPicks } = await supabase
-          .from("app_picks")
-          .select("user_id, fixture_index, pick")
-          .eq("gw", currentTestGw);
-        
-        if (allPicks) {
-          // Group picks by user and calculate each user's score
-          const userScores = new Map<string, number>();
-          allPicks.forEach((p) => {
-            const result = results.get(p.fixture_index);
-            const userScore = userScores.get(p.user_id) || 0;
-            if (result && result === p.pick) {
-              userScores.set(p.user_id, userScore + 1);
-            } else {
-              userScores.set(p.user_id, userScore);
-            }
-          });
-          
-          // Convert to array and sort descending
-          const scores = Array.from(userScores.values()).sort((a, b) => b - a);
-          
-          // Calculate what percentage of users scored the same or less
-          const betterOrEqual = scores.filter(s => s >= myScore).length;
-          const totalUsers = scores.length;
-          const percent = totalUsers > 0 ? Math.round((betterOrEqual / totalUsers) * 100) : null;
-          
-          setTopPercent(percent);
+        // Use app_v_gw_points view for consistency - this is the authoritative source
+        const { data: gwPointsData, error: gwPointsError } = await supabase
+          .from('app_v_gw_points')
+          .select('user_id, points')
+          .eq('gw', currentTestGw);
+
+        if (gwPointsError) {
+          console.error('[Predictions] Error fetching GW points:', gwPointsError);
+          setTopPercent(null);
+          return;
         }
+
+        if (!gwPointsData || gwPointsData.length === 0) {
+          setTopPercent(null);
+          return;
+        }
+
+        // Sort by points descending
+        const sorted = [...gwPointsData].sort((a, b) => (b.points || 0) - (a.points || 0));
+        
+        // Find user's rank (handling ties - same rank for same points)
+        let userRank = 1;
+        for (let i = 0; i < sorted.length; i++) {
+          if (i > 0 && sorted[i - 1].points !== sorted[i].points) {
+            userRank = i + 1;
+          }
+          if (sorted[i].user_id === user.id) {
+            break;
+          }
+        }
+
+        // Calculate rank percentage: (rank / total_users) * 100
+        const totalUsers = sorted.length;
+        const rankPercent = Math.round((userRank / totalUsers) * 100);
+        
+        setTopPercent(rankPercent);
       } catch (error) {
         console.error('[Predictions] Error calculating top percent:', error);
         setTopPercent(null);
