@@ -14,6 +14,7 @@ import { useLeagues } from "../hooks/useLeagues";
 import { calculateFormRank, calculateLastGwRank, calculateSeasonRank } from "../lib/helpers";
 import { fireConfettiCannon } from "../lib/confettiCannon";
 import { APP_ONLY_USER_IDS } from "../lib/appOnlyUsers";
+import { useGameweekState } from "../hooks/useGameweekState";
 
 // Types (League type is now from useLeagues hook)
 type LeagueMember = { id: string; name: string };
@@ -90,26 +91,6 @@ export default function HomePage() {
     }
     
     try {
-      if (!userId) {
-        return {
-          gw: 1,
-          latestGw: null,
-          gwPoints: [],
-          allGwPoints: [],
-          overall: [],
-          lastGwRank: null,
-          fiveGwRank: null,
-          tenGwRank: null,
-          seasonRank: null,
-          fixtures: [],
-          userPicks: {},
-          fixturesLoading: true,
-          loading: true,
-          leagueDataLoading: true,
-          leaderboardDataLoading: true,
-        };
-      }
-      
       // NOTE: Leagues are now handled by useLeagues hook - not cached here
       const cacheKey = `home:basic:${userId}`;
       const cached = getCached<{
@@ -208,6 +189,9 @@ export default function HomePage() {
   const [latestGw, setLatestGw] = useState<number | null>(initialState.latestGw);
   const logoContainerRef = useRef<HTMLDivElement>(null);
   
+  // Use centralized game state system (PR.md rule 10)
+  const { state: gameState, loading: gameStateLoading } = useGameweekState(gw);
+  
   // Validate cached GW immediately on mount - check if it's stale
   useEffect(() => {
     if (!user?.id) return;
@@ -231,7 +215,6 @@ export default function HomePage() {
         const dbCurrentGw = meta?.current_gw ?? 1;
         
         if (cachedGw !== dbCurrentGw) {
-          console.log('[Home] ⚠️ Cached GW is stale on mount! Cached:', cachedGw, 'DB:', dbCurrentGw, '- clearing cache and updating');
           // Clear all caches
           removeCached(cacheKey);
           if (cachedGw) {
@@ -240,8 +223,6 @@ export default function HomePage() {
           }
           // Update GW immediately
           setGw(dbCurrentGw);
-        } else {
-          console.log('[Home] ✅ Cached GW is valid:', cachedGw);
         }
       } catch (error) {
         console.error('[Home] Error validating cached GW:', error);
@@ -295,9 +276,6 @@ export default function HomePage() {
   const [tenGwRank, setTenGwRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(initialState.tenGwRank ?? null);
   const [seasonRank, setSeasonRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(initialState.seasonRank ?? null);
   
-  // Additional data for form calculations (set by refetch effect, kept for potential future use)
-  const [_allGwPoints, setAllGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>(initialState.allGwPoints);
-  const [_overall, setOverall] = useState<Array<{user_id: string, name: string | null, ocp: number | null}>>(initialState.overall);
   
   const [leagueData, setLeagueData] = useState<Record<string, LeagueDataInternal>>({});
   const [fixtures, setFixtures] = useState<Fixture[]>(initialState.fixtures);
@@ -314,7 +292,6 @@ export default function HomePage() {
     for (const f of fixtures) {
       if (f.api_match_id) ids.push(f.api_match_id);
     }
-    // Removed console.logs for production performance
     return ids;
   }, [fixtures]);
 
@@ -502,9 +479,7 @@ export default function HomePage() {
   // Fetch basic data (leagues, current GW, leaderboard data) - stale-while-revalidate pattern
   // State is already initialized from cache synchronously, so this only refreshes in background
   useEffect(() => {
-    console.log('[Home] Data loading effect triggered, user:', user?.id);
     if (!user?.id) {
-      console.log('[Home] No user ID, skipping data load');
       setLoading(false);
       setLeaderboardDataLoading(false);
       setLeagueDataLoading(false);
@@ -517,10 +492,7 @@ export default function HomePage() {
     // Check if we already loaded from cache (state was initialized from cache)
     const alreadyLoadedFromCache = leagues.length > 0 && !loading;
     
-    if (alreadyLoadedFromCache) {
-      console.log('[Home] Already loaded from cache, refreshing in background');
-    } else {
-      console.log('[Home] No cache found, fetching fresh data');
+    if (!alreadyLoadedFromCache) {
       // No cache found on init, fetching fresh data
       // Only set loading if we didn't load from cache
       setLoading(true);
@@ -531,17 +503,6 @@ export default function HomePage() {
     // 2. Fetch fresh data in background
     (async () => {
       try {
-        console.log('[Home] Starting data fetch for user:', user.id);
-        console.log('[Home] Supabase client:', supabase ? 'exists' : 'missing');
-        
-        // Test Supabase connection first
-        try {
-          const testResult = await supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle();
-          console.log('[Home] Test query result:', testResult.error ? 'ERROR: ' + testResult.error.message : 'OK', testResult.data);
-        } catch (testError: any) {
-          console.error('[Home] Test query failed:', testError);
-        }
-        
         // Add timeout to prevent infinite hanging (15 seconds max)
         const fetchTimeout = new Promise((_, reject) => {
           setTimeout(() => reject(new Error('Data fetch timed out after 15 seconds')), 15000);
@@ -550,7 +511,6 @@ export default function HomePage() {
         // Parallel fetch: leagues, GW data, points, and overall in one batch
         // App reads from app_* tables (includes both App and mirrored Web users)
         // NOTE: Leagues are now handled by useLeagues hook - no need to fetch here
-        console.log('[Home] Making Supabase requests (non-league data)...');
         const fetchPromise = Promise.all([
           supabase.from("app_gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
           supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle(),
@@ -558,32 +518,24 @@ export default function HomePage() {
           supabase.from("app_v_ocp_overall").select("user_id, name, ocp")
         ]);
         
-        console.log('[Home] Waiting for requests to complete...');
         const [latestGwResult, metaResult, allGwPointsResult, overallResult] = await Promise.race([
           fetchPromise,
           fetchTimeout
         ]) as any;
-        console.log('[Home] Requests completed!');
         
         if (!alive) return;
-        
-        console.log('[Home] Data fetch completed, processing results');
-        console.log('[Home] Meta result:', metaResult.error ? 'ERROR: ' + metaResult.error.message : 'OK');
         
         // Process GW data (always use current GW, ignore test GWs)
         const lastCompletedGw = latestGwResult.data?.gw ?? metaResult.data?.current_gw ?? 1;
         const currentGw = metaResult.data?.current_gw ?? 1;
-        console.log('[Home] 📊 Fetched current_gw from app_meta:', currentGw, 'metaResult.data:', metaResult.data);
         
         // Update GW state (realtime subscription and mount validation handle stale cache)
         setGw(currentGw);
         // Set latestGw to the latest GW with results (not just current GW)
         const newLatestGw = latestGwResult.data?.gw ?? currentGw;
-        console.log('[Home] 📊 Fetched latestGw:', newLatestGw, 'previous latestGw:', latestGw);
         
         // If the new latestGw is different from what we have, trigger a refetch
         if (newLatestGw !== latestGw && latestGw !== null) {
-          console.log('[Home] 🔄 Detected GW change:', latestGw, '->', newLatestGw, '- triggering refetch');
           setGwResultsVersion(prev => prev + 1);
         }
         
@@ -593,11 +545,9 @@ export default function HomePage() {
         let allPoints: Array<{user_id: string, gw: number, points: number}> = [];
         let lastGwRankData: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null = null;
         if (allGwPointsResult.error) {
-          setAllGwPoints([]);
           setGwPoints([]);
         } else {
           allPoints = (allGwPointsResult.data as Array<{user_id: string, gw: number, points: number}>) ?? [];
-          setAllGwPoints(allPoints);
           setGwPoints(allPoints.filter(gp => gp.user_id === user.id));
           
           // Calculate Last GW ranking using shared helper (single source of truth)
@@ -610,10 +560,9 @@ export default function HomePage() {
         // Process overall rankings
         let overallData: Array<{user_id: string, name: string | null, ocp: number | null}> = [];
         if (overallResult.error) {
-          setOverall([]);
+          // Error fetching overall data
         } else {
           overallData = (overallResult.data as Array<{user_id: string, name: string | null, ocp: number | null}>) ?? [];
-          setOverall(overallData);
         }
         
         // Calculate form ranks using shared helpers (single source of truth)
@@ -670,8 +619,6 @@ export default function HomePage() {
   // Subscribe to app_meta changes to detect when current_gw changes
   useEffect(() => {
     if (!user?.id) return;
-
-    console.log('[Home] Setting up realtime subscription for app_meta.current_gw changes');
     
     const channel = supabase
       .channel('app_meta_changes')
@@ -684,10 +631,8 @@ export default function HomePage() {
           filter: 'id=eq.1'
         },
         (payload) => {
-          console.log('[Home] 🔔 app_meta.current_gw changed:', payload.new);
           const newCurrentGw = (payload.new as any)?.current_gw;
           if (newCurrentGw && typeof newCurrentGw === 'number') {
-            console.log('[Home] 🔄 Detected current_gw change, updating GW to:', newCurrentGw);
             const oldGw = gw;
             setGw(newCurrentGw);
             // Clear all caches to force fresh data fetch
@@ -703,14 +648,12 @@ export default function HomePage() {
             removeCached(newFixturesCacheKey);
             // Trigger refetch by incrementing version
             setGwResultsVersion(prev => prev + 1);
-            console.log('[Home] ✅ Cleared caches and triggered refetch for GW', newCurrentGw);
           }
         }
       )
       .subscribe();
 
     return () => {
-      console.log('[Home] Cleaning up app_meta realtime subscription');
       supabase.removeChannel(channel);
     };
   }, [user?.id, gw]);
@@ -757,7 +700,6 @@ export default function HomePage() {
           loadedFromCache = true;
         } else {
           // Cache is stale (missing webUserIds) - invalidate it and fetch fresh data
-          console.log('[Home] Cache is stale (missing webUserIds), invalidating and fetching fresh data');
           removeCached(leagueDataCacheKey);
         }
       }
@@ -830,15 +772,6 @@ export default function HomePage() {
             (id: string) => allMemberIdsSet.has(id) && !appTestUserIds.has(id)
           )
         );
-        
-        console.log('[Home] Web users identification for GW', gw, ':', {
-          totalWebPicksUsers: webPicksUserIds.size,
-          appTestUsersExcluded: Array.from(webPicksUserIds).filter(id => appTestUserIds.has(id)).length,
-          finalWebUserIds: webUserIds.size,
-          sampleWebUserIds: Array.from(webUserIds).slice(0, 5),
-          webPicksDataCount: webPicksResult.data?.length || 0,
-          allMemberIdsCount: allMemberIdsSet.size
-        });
         
         if (webPicksResult.error) {
           console.error('[Home] Error fetching web picks:', webPicksResult.error);
@@ -1174,36 +1107,27 @@ export default function HomePage() {
     
     (async () => {
       try {
-        console.log('[Home] 🔄 Refetching data due to app_gw_results change (gwResultsVersion:', gwResultsVersion, ')');
-        
         // Refetch latest GW and leaderboard data when results change
-        const [latestGwResult, allGwPointsResult, overallResult] = await Promise.all([
+        const [latestGwResult, allGwPointsResult] = await Promise.all([
           supabase.from("app_gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
           supabase.from("app_v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
-          supabase.from("app_v_ocp_overall").select("user_id, name, ocp")
         ]);
         
         if (!alive) return;
         
         const newLatestGw = latestGwResult.data?.gw ?? null;
         const allPoints = (allGwPointsResult.data as Array<{user_id: string, gw: number, points: number}>) ?? [];
-        const overallData = (overallResult.data as Array<{user_id: string, name: string | null, ocp: number | null}>) ?? [];
-        
-        console.log('[Home] ✅ Refetched data - newLatestGw:', newLatestGw, 'previous latestGw:', latestGw, 'changed:', newLatestGw !== latestGw);
         
         // Update state - this will trigger rank recalculation in the existing effect (line 694)
         // The rank calculation effect will recalculate lastGwRank, fiveGwRank, tenGwRank, and seasonRank
         if (newLatestGw !== null && newLatestGw !== latestGw) {
-          console.log('[Home] 📊 Updating latestGw:', latestGw, '->', newLatestGw);
           setLatestGw(newLatestGw);
         }
-        setAllGwPoints(allPoints);
-        setOverall(overallData);
         setGwPoints(allPoints.filter(gp => gp.user_id === user.id));
         
         // Note: Don't update cache here - let the rank calculation effect update cache after ranks are recalculated
       } catch (e) {
-        console.error('[Home] ❌ Error refetching data after results change:', e);
+        console.error('[Home] Error refetching data after results change:', e);
       }
     })();
     
@@ -1213,8 +1137,6 @@ export default function HomePage() {
   /* ---------- Subscribe to app_gw_results changes for real-time leaderboard updates ---------- */
   useEffect(() => {
     if (!user?.id) return;
-    
-    console.log('[Home] Setting up subscription to app_gw_results changes');
     
     // Subscribe to changes in app_gw_results table to trigger leaderboard recalculation
     const channel = supabase
@@ -1226,45 +1148,28 @@ export default function HomePage() {
           schema: 'public',
           table: 'app_gw_results',
         },
-        (payload) => {
-          const newRecord = payload.new as { gw?: number; fixture_index?: number } | null;
-          const oldRecord = payload.old as { gw?: number; fixture_index?: number } | null;
-          console.log('[Home] 🔔 app_gw_results change detected!', {
-            event: payload.eventType,
-            gw: newRecord?.gw || oldRecord?.gw,
-            fixture_index: newRecord?.fixture_index || oldRecord?.fixture_index
-          });
-          
+        (_payload) => {
           // Clear cache to force fresh fetch
           const cacheKey = `home:basic:${user.id}`;
           try {
             removeCached(cacheKey);
             removeCached(`home:fixtures:${user.id}:${gw}`);
-            console.log('[Home] ✅ Cache cleared, incrementing gwResultsVersion');
           } catch (e) {
-            console.error('[Home] ❌ Cache clear failed:', e);
+            console.error('[Home] Cache clear failed:', e);
           }
           // Increment version to trigger recalculation
-          setGwResultsVersion(prev => {
-            const newVersion = prev + 1;
-            console.log('[Home] 📊 gwResultsVersion:', prev, '->', newVersion);
-            return newVersion;
-          });
+          setGwResultsVersion(prev => prev + 1);
         }
       )
       .subscribe((status) => {
-        console.log('[Home] Subscription status:', status);
-        if (status === 'SUBSCRIBED') {
-          console.log('[Home] ✅ Successfully subscribed to app_gw_results changes');
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('[Home] ❌ Subscription error - realtime may not be enabled for app_gw_results');
+        if (status === 'CHANNEL_ERROR') {
+          console.error('[Home] Subscription error - realtime may not be enabled for app_gw_results');
         }
       });
 
     // Fallback: Check for updates when page becomes visible (in case subscription doesn't fire)
     const handleVisibilityChange = async () => {
       if (!document.hidden && user?.id) {
-        console.log('[Home] 👁️ Page became visible, checking for GW updates...');
         try {
           const { data: latestGwResult } = await supabase
             .from("app_gw_results")
@@ -1275,7 +1180,6 @@ export default function HomePage() {
           
           const newLatestGw = latestGwResult?.gw ?? null;
           if (newLatestGw !== null && newLatestGw !== latestGw) {
-            console.log('[Home] 🔍 Visibility change detected GW update:', latestGw, '->', newLatestGw);
             // Clear cache and trigger refetch
             try {
               removeCached(`home:basic:${user.id}`);
@@ -1295,7 +1199,6 @@ export default function HomePage() {
     window.addEventListener('focus', handleVisibilityChange);
 
     return () => {
-      console.log('[Home] 🧹 Cleaning up subscription and visibility listeners');
       supabase.removeChannel(channel);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleVisibilityChange);
@@ -1517,6 +1420,10 @@ export default function HomePage() {
     let hasStartingSoonFixtures = false;
     const now = new Date();
     
+    // Use centralized game state system (PR.md rule 10)
+    // LIVE state means: first kickoff has happened AND last game hasn't finished
+    const isInLiveWindow = gameState === 'LIVE';
+    
     for (const f of fixtures) {
       const liveScore = liveScores[f.fixture_index];
       const pick = userPicks[f.fixture_index];
@@ -1556,7 +1463,10 @@ export default function HomePage() {
       }
     }
     
-    if (!hasAnyActive && !hasSubmittedPicks && !hasStartingSoonFixtures) return null;
+    // Wait for game state to load before rendering
+    if (gameStateLoading) return null;
+    
+    if (!hasAnyActive && !hasSubmittedPicks && !hasStartingSoonFixtures && !isInLiveWindow) return null;
     
     const ScoreBadge = ({ score: s, label, bgColor, icon }: { score: number | string; label: string; bgColor: string; icon?: JSX.Element }) => (
       <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white ${bgColor}`}>
@@ -1603,17 +1513,33 @@ export default function HomePage() {
     
     // Show "Make Your Predictions" CTA if no active games, fixtures are scheduled, and user hasn't submitted
     // Show "Starting soon" if user has already submitted
-    if (!hasAnyActive && hasStartingSoonFixtures) {
+    // But don't show if we're in the live window (between first kickoff and last game ending)
+    if (!hasAnyActive && hasStartingSoonFixtures && !isInLiveWindow) {
       // Check if user has submitted for current GW
       const hasSubmitted = hasSubmittedCurrentGw;
       return hasSubmitted ? <StartingSoonBadge /> : <MakePredictionsCTA />;
     }
     
-    if (!hasAnyActive && hasSubmittedPicks) {
+    // If we're in the live window, show "Live" badge even if no games are currently active
+    if (isInLiveWindow && !hasAnyActive) {
+      const displayScore = hasSubmittedPicks ? score : "--";
+      return (
+        <div className="flex flex-col items-center gap-2">
+          <ScoreBadge
+            score={displayScore}
+            label="Live"
+            bgColor="bg-red-600"
+            icon={<div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>}
+          />
+        </div>
+      );
+    }
+    
+    if (!hasAnyActive && hasSubmittedPicks && !isInLiveWindow) {
       return <ScoreBadge score="--" label="Score" bgColor="bg-amber-500 shadow-lg shadow-amber-500/30" />;
     }
     
-    if (liveCount === 0 && finishedCount > 0 && !allFinished) {
+    if (liveCount === 0 && finishedCount > 0 && !allFinished && !isInLiveWindow) {
       return (
         <div className="flex flex-col items-center gap-2">
           <ScoreBadge 
@@ -1626,25 +1552,29 @@ export default function HomePage() {
       );
     }
     
+    // Show "Live" (red) if we're in the live window (between first kickoff and last game ending)
+    // Show pulsing dot icon if games are actively in play
     return (
       <div className="flex flex-col items-center gap-2">
         <ScoreBadge
           score={score}
-          label={allFinished ? 'Score' : 'Live'}
-          bgColor={allFinished ? 'bg-slate-600' : 'bg-red-600'}
+          label={isInLiveWindow ? 'Live' : 'Score'}
+          bgColor={isInLiveWindow ? 'bg-red-600' : 'bg-slate-600'}
           icon={
-            allFinished ? (
+            isInLiveWindow ? (
+              liveCount > 0 ? (
+                <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              ) : undefined
+            ) : (
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
               </svg>
-            ) : liveCount > 0 ? (
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-            ) : undefined
+            )
           }
         />
       </div>
     );
-  }, [isInApiTestLeague, fixtures, liveScores, userPicks, hasSubmittedCurrentGw]);
+  }, [isInApiTestLeague, fixtures, liveScores, userPicks, hasSubmittedCurrentGw, gameState, gameStateLoading]);
 
   // Check if there are any live games - optimized
   const hasLiveGames = useMemo(() => {
@@ -1704,7 +1634,6 @@ export default function HomePage() {
 
   // Leagues from useLeagues hook are already sorted (by unread desc, then name asc)
   // and filtered (no API Test league) - just use them directly
-  const sortedLeagues = leagues;
 
   // Memoize filtered fixtures
   const fixturesToShow = useMemo(() => {
@@ -1781,7 +1710,7 @@ export default function HomePage() {
 
           {/* Mini Leagues */}
           <MiniLeaguesSection
-            leagues={sortedLeagues}
+            leagues={leagues}
             leagueData={leagueData}
             leagueSubmissions={leagueSubmissions}
             unreadByLeague={unreadByLeague}
@@ -1812,6 +1741,7 @@ export default function HomePage() {
           <div className="h-20"></div>
         </>
       )}
+
     </div>
   );
 }

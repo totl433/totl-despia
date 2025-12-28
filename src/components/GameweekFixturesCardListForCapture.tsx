@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import TeamBadge from './TeamBadge';
 import type { Fixture, LiveScore } from './FixtureCard';
 import { getMediumName } from '../lib/teamNames';
@@ -10,6 +10,7 @@ export interface GameweekFixturesCardListForCaptureProps {
   liveScores?: Map<number, LiveScore>;
   userName?: string;
   globalRank?: number;
+  gwRankPercent?: number; // User's gameweek ranking as a percentage (e.g., 24 means top 24%)
   onCardRefReady?: (ref: React.RefObject<HTMLDivElement>) => void;
 }
 
@@ -24,6 +25,7 @@ export default function GameweekFixturesCardListForCapture({
   liveScores = new Map(),
   userName = 'Phil Bolton',
   globalRank,
+  gwRankPercent,
   onCardRefReady,
 }: GameweekFixturesCardListForCaptureProps) {
   const cardRef = useRef<HTMLDivElement>(null);
@@ -151,11 +153,11 @@ export default function GameweekFixturesCardListForCapture({
       `}</style>
       <div 
         ref={cardRef} 
-        className="bg-white rounded-3xl w-full max-w-[600px] mx-auto overflow-hidden"
+        className="bg-white w-full max-w-[600px] mx-auto overflow-hidden"
         style={{ 
           width: '450px', 
           backgroundColor: 'white', 
-          borderRadius: '24px', 
+          borderRadius: '0px', 
           boxShadow: 'none',
           aspectRatio: '2/3',
           display: 'flex',
@@ -175,11 +177,11 @@ export default function GameweekFixturesCardListForCapture({
           position: 'relative'
         }}>
           <img 
-            src="/assets/Volley/volley-with-ball.png" 
+            src="/assets/Volley/Volley-chilling.png" 
             alt="Volley" 
             loading="eager"
             style={{ 
-              width: '50px', 
+              width: '55px', 
               height: 'auto',
               position: 'absolute',
               left: '16px',
@@ -233,15 +235,15 @@ export default function GameweekFixturesCardListForCapture({
           {/* Score pill - left */}
           {hasAnyActive && (
             <div 
-              className={`inline-flex items-center gap-0.5 sm:gap-1 px-2.5 py-1 sm:px-2 sm:py-1 rounded-full text-white flex-shrink-0 ${allFinished ? 'bg-slate-600' : 'bg-red-600'}`}
+              className={`inline-flex items-center rounded-full text-white flex-shrink-0 ${allFinished ? 'bg-slate-600' : 'bg-red-600'}`}
               style={{ 
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px',
-                paddingLeft: '14px',
-                paddingRight: '12px',
-                paddingTop: '6px',
-                paddingBottom: '6px',
+                gap: '6.27px',
+                paddingLeft: '14.63px',
+                paddingRight: '12.54px',
+                paddingTop: '6.27px',
+                paddingBottom: '6.27px',
                 borderRadius: '9999px',
                 color: 'white',
                 flexShrink: 0,
@@ -250,10 +252,10 @@ export default function GameweekFixturesCardListForCapture({
             >
               {!allFinished && liveCount > 0 && (
                 <div 
-                  className="w-1.5 h-1.5 sm:w-1.5 sm:h-1.5 bg-white rounded-full animate-pulse"
+                  className="bg-white rounded-full animate-pulse"
                   style={{ 
-                    width: '8px', 
-                    height: '8px', 
+                    width: '8.36px', 
+                    height: '8.36px', 
                     backgroundColor: 'white', 
                     borderRadius: '9999px',
                     opacity: 1
@@ -261,25 +263,14 @@ export default function GameweekFixturesCardListForCapture({
                 ></div>
               )}
               {allFinished && (
-                <svg className="w-3 h-3 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '14px', height: '14px' }}>
+                <svg className="fill-none stroke-current" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '14.63px', height: '14.63px' }}>
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                 </svg>
               )}
-              <span 
-                className="hidden sm:inline text-[9px] sm:text-xs font-medium opacity-90"
-                style={{ 
-                  fontSize: '14px', 
-                  fontWeight: '500', 
-                  opacity: 0.9,
-                  display: 'inline'
-                }}
-              >
-                {allFinished ? 'Score' : 'Live'}
-              </span>
-              <span className="flex items-baseline gap-0.5" style={{ display: 'flex', alignItems: 'baseline', gap: '2px' }}>
-                <span className="text-sm sm:text-base font-extrabold" style={{ fontSize: '18px', fontWeight: '800' }}>{score}</span>
-                <span className="text-[10px] sm:text-xs font-medium opacity-90" style={{ fontSize: '14px', fontWeight: '500', opacity: 0.9 }}>/</span>
-                <span className="text-xs sm:text-sm font-semibold opacity-80" style={{ fontSize: '16px', fontWeight: '600', opacity: 0.8 }}>{totalFixturesWithPicks}</span>
+              <span className="flex items-baseline" style={{ display: 'flex', alignItems: 'baseline', gap: '2.09px' }}>
+                <span className="font-extrabold" style={{ fontSize: '18.81px', fontWeight: '800' }}>{score}</span>
+                <span className="font-medium opacity-90" style={{ fontSize: '14.63px', fontWeight: '500', opacity: 0.9 }}>/</span>
+                <span className="font-semibold opacity-80" style={{ fontSize: '16.72px', fontWeight: '600', opacity: 0.8 }}>{totalFixturesWithPicks}</span>
               </span>
             </div>
           )}
@@ -296,27 +287,31 @@ export default function GameweekFixturesCardListForCapture({
               alignItems: 'center'
             }}
           >
+            <div style={{ fontSize: '14px', fontWeight: '500', color: '#1C8376', whiteSpace: 'nowrap', marginBottom: '2px' }}>Gameweek {gw}</div>
             <div className="username-responsive font-bold text-slate-700 truncate leading-tight" style={{ fontSize: '18px', fontWeight: '700', color: '#334155', lineHeight: '1.25', display: 'block' }}>{displayUserName}</div>
-            {globalRank !== undefined && (
-              <div className="text-[10px] sm:text-xs font-bold text-slate-500 -mt-1" style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', marginTop: '-4px' }}>
-                #{globalRank}
-              </div>
-            )}
           </div>
-          {/* Gameweek - right */}
-          <div 
-            className="text-xs sm:text-sm font-medium text-[#1C8376] whitespace-nowrap flex-shrink-0 pr-2 sm:pr-0"
-            style={{ 
-              fontSize: '14px', 
-              fontWeight: '500', 
-              color: '#1C8376', 
-              whiteSpace: 'nowrap', 
-              flexShrink: 0,
-              paddingRight: '0'
-            }}
-          >
-            GW {gw}
-          </div>
+          {/* GW Rank pill - right */}
+          {gwRankPercent !== undefined && (
+            <div 
+              className="inline-flex items-center rounded-full bg-slate-600 text-white flex-shrink-0"
+              style={{ 
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6.27px',
+                paddingLeft: '14.63px',
+                paddingRight: '12.54px',
+                paddingTop: '6.27px',
+                paddingBottom: '6.27px',
+                borderRadius: '9999px',
+                color: 'white',
+                flexShrink: 0,
+                backgroundColor: '#475569'
+              }}
+            >
+              <span style={{ fontSize: '14.63px', fontWeight: '500', opacity: 0.9 }}>top</span>
+              <span className="font-extrabold" style={{ fontSize: '18.81px', fontWeight: '800' }}>{gwRankPercent}%</span>
+            </div>
+          )}
         </div>
 
         {/* Fixtures list - EXACT same structure as original (html-to-image handles flexbox perfectly) */}
@@ -348,12 +343,16 @@ export default function GameweekFixturesCardListForCapture({
             }
 
             const formatMinute = () => {
+              if (isFinished && pick && pickCorrect !== null) {
+                // For finished games with a pick, show tick or X
+                return pickCorrect ? '✓' : '✗';
+              }
               if (isFinished) return 'FT';
               if (isHalfTime) return 'HT';
               if (isLive && liveScore?.minute !== null && liveScore?.minute !== undefined) {
                 return `${liveScore.minute}'`;
               }
-              return 'LIVE';
+              return '';
             };
 
             return (
@@ -378,7 +377,18 @@ export default function GameweekFixturesCardListForCapture({
                           </span>
                         </div>
                       ) : (
-                        <span className={`text-[10px] font-semibold ${isOngoing ? 'text-red-600' : 'text-slate-500'}`} style={{ whiteSpace: 'nowrap' }}>
+                        <span 
+                          className="font-black" 
+                          style={{ 
+                            fontSize: isFinished && pick && pickCorrect !== null ? '24px' : '10px',
+                            fontWeight: '900',
+                            whiteSpace: 'nowrap',
+                            lineHeight: '1',
+                            color: isFinished && pick && pickCorrect !== null ? (pickCorrect ? '#16a34a' : '#dc2626') : (isOngoing ? '#dc2626' : '#64748b'),
+                            WebkitTextStroke: isFinished && pick && pickCorrect !== null ? (pickCorrect ? '1.5px' : '0.5px') : '0px',
+                            WebkitTextStrokeColor: isFinished && pick && pickCorrect !== null ? (pickCorrect ? '#15803d' : '#991b1b') : 'transparent',
+                          } as React.CSSProperties}
+                        >
                           {formatMinute()}
                         </span>
                       )

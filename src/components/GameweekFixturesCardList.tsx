@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import TeamBadge from './TeamBadge';
 import type { Fixture, LiveScore } from './FixtureCard';
 import { getTruncatedName, getFullName } from '../lib/teamNames';
@@ -13,6 +13,7 @@ export interface GameweekFixturesCardListProps {
   className?: string;
   userName?: string;
   globalRank?: number; // User's global ranking
+  gwRankPercent?: number; // User's gameweek ranking as a percentage (e.g., 24 means top 24%)
   showShareButton?: boolean; // Show share button at top (legacy)
   onCardRefReady?: (ref: React.RefObject<HTMLDivElement>) => void; // Callback to get the card ref for external share button
   imageCaptureMode?: boolean; // Simplified layout for image capture
@@ -30,6 +31,7 @@ export default function GameweekFixturesCardList({
   className = '',
   userName = 'Phil Bolton',
   globalRank,
+  gwRankPercent,
   showShareButton = false,
   onCardRefReady,
   imageCaptureMode = false,
@@ -232,15 +234,16 @@ export default function GameweekFixturesCardList({
         {!hasAnyActive && <div></div>}
         {/* Name - centered */}
         <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center">
+          <div className="text-xs sm:text-sm font-medium text-[#1C8376] whitespace-nowrap mb-0.5">Gameweek {gw}</div>
           <div className="username-responsive font-bold text-slate-700 truncate leading-tight">{displayUserName}</div>
-          {globalRank !== undefined && (
-            <div className="text-[10px] sm:text-xs font-bold text-slate-500 -mt-1">
-              #{globalRank}
-            </div>
-          )}
         </div>
-        {/* Gameweek - right */}
-        <div className="text-xs sm:text-sm font-medium text-[#1C8376] whitespace-nowrap flex-shrink-0 pr-2 sm:pr-0">GW {gw}</div>
+        {/* GW Rank pill - right */}
+        {gwRankPercent !== undefined && (
+          <div className="inline-flex items-center gap-0.5 sm:gap-1 px-2.5 py-1 sm:px-2 sm:py-1 rounded-full bg-slate-600 text-white flex-shrink-0 pr-2 sm:pr-0">
+            <span className="text-xs sm:text-sm font-medium opacity-90">top</span>
+            <span className="text-sm sm:text-base font-extrabold">{gwRankPercent}%</span>
+          </div>
+        )}
       </div>
 
       {/* Fixtures list */}
@@ -274,6 +277,10 @@ export default function GameweekFixturesCardList({
           }
 
           const formatMinute = () => {
+            if (isFinished && pick && pickCorrect !== null) {
+              // For finished games with a pick, show tick or X
+              return pickCorrect ? '✓' : '✗';
+            }
             if (isFinished) return 'FT';
             if (isHalfTime) return 'HT';
             if (isLive && liveScore?.minute !== null && liveScore?.minute !== undefined) {
@@ -299,7 +306,15 @@ export default function GameweekFixturesCardList({
                         </span>
                       </div>
                     ) : (
-                      <span className={`text-[10px] font-semibold ${isOngoing ? 'text-red-600' : 'text-slate-500'}`}>
+                      <span 
+                        className={`font-black ${isFinished && pick && pickCorrect !== null ? (pickCorrect ? 'text-green-600' : 'text-red-600') : isOngoing ? 'text-red-600' : 'text-slate-500'}`}
+                        style={{ 
+                          fontSize: isFinished && pick && pickCorrect !== null ? '24px' : '10px', 
+                          lineHeight: '1',
+                          WebkitTextStroke: isFinished && pick && pickCorrect !== null ? (pickCorrect ? '1.5px' : '0.5px') : '0px',
+                          WebkitTextStrokeColor: isFinished && pick && pickCorrect !== null ? (pickCorrect ? '#15803d' : '#991b1b') : 'transparent',
+                        } as React.CSSProperties}
+                      >
                         {formatMinute()}
                       </span>
                     )
