@@ -88,7 +88,7 @@ export default function CookiePolicy() {
         {/* Termly embed - this div will be populated by Termly's script */}
         <div 
           ref={embedRef}
-          name="termly-embed" 
+          {...({ name: 'termly-embed' } as any)}
           data-id="006d16a3-069f-425a-9e1d-2faa395510ac"
           className="bg-white rounded-xl p-6 shadow-sm min-h-[200px]"
         />
