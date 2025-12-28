@@ -203,6 +203,7 @@ export const Default: Story = {
     liveScores: sampleLiveScores,
     userName: 'Phil Bolton',
     globalRank: 42,
+    gwRankPercent: 24,
   },
 };
 
@@ -223,6 +224,7 @@ export const WithLiveScores: Story = {
     picks: samplePicks,
     liveScores: sampleLiveScores,
     userName: 'Phil Bolton',
+    gwRankPercent: 24,
   },
 };
 
@@ -264,19 +266,11 @@ export const Html2CanvasCapture: Story = {
     };
 
     return (
-      <div style={{ padding: '20px' }}>
+      <div className="p-5">
         <button
           onClick={handleCapture}
           disabled={isCapturing}
-          style={{
-            marginBottom: '20px',
-            padding: '10px 20px',
-            backgroundColor: '#1C8376',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: isCapturing ? 'not-allowed' : 'pointer',
-          }}
+          className="mb-5 px-5 py-2.5 bg-[#1C8376] text-white border-none rounded-lg disabled:cursor-not-allowed cursor-pointer"
         >
           {isCapturing ? 'Capturing...' : 'Capture with html2canvas'}
         </button>
@@ -284,11 +278,7 @@ export const Html2CanvasCapture: Story = {
         {/* Render in EXACT same structure as leaderboard modal */}
         <div
           ref={captureRef}
-          style={{
-            maxWidth: '672px',
-            width: '100%',
-            margin: '0 auto',
-          }}
+          className="max-w-[672px] w-full mx-auto"
         >
           <div className="relative max-w-2xl w-full max-h-[90vh] flex flex-col">
             <div className="max-h-[90vh] overflow-y-auto">
@@ -301,22 +291,16 @@ export const Html2CanvasCapture: Story = {
 
         {/* Show captured image - scaled for easier comparison */}
         {capturedImage && (
-          <div style={{ marginTop: '40px', padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
-            <h3 style={{ marginBottom: '20px' }}>Captured Image (what html2canvas sees):</h3>
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div className="mt-10 p-5 bg-slate-100 rounded-lg">
+            <h3 className="mb-5">Captured Image (what html2canvas sees):</h3>
+            <div className="flex justify-center items-center">
               <img
                 src={capturedImage}
                 alt="Captured"
-                style={{
-                  maxWidth: '672px',
-                  width: '100%',
-                  height: 'auto',
-                  border: '2px solid #ccc',
-                  borderRadius: '8px',
-                }}
+                className="max-w-[672px] w-full h-auto border-2 border-slate-300 rounded-lg"
               />
             </div>
-            <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
+            <div className="mt-2.5 text-xs text-slate-600">
               This is what html2canvas captured. Compare it to the component above.
             </div>
           </div>
@@ -331,6 +315,7 @@ export const Html2CanvasCapture: Story = {
     liveScores: sampleLiveScores,
     userName: 'Phil Bolton',
     globalRank: 42,
+    gwRankPercent: 24,
   },
 };
 
