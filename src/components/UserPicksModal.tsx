@@ -131,15 +131,15 @@ export default function UserPicksModal({
             const rankPercent = Math.round((userRank / totalUsers) * 100);
             
             // Debug logging to help identify discrepancies
-            console.log('[UserPicksModal] Percentage calculation:', {
-              gw,
-              userId,
-              userRank,
-              totalUsers,
-              userPoints,
-              rankPercent,
-              topUsers: sorted.slice(0, 5).map(u => ({ userId: u.user_id, points: u.points }))
-            });
+            console.log('[UserPicksModal] Percentage calculation:',
+              'GW:', gw,
+              'UserId:', userId,
+              'UserRank:', userRank,
+              'TotalUsers:', totalUsers,
+              'UserPoints:', userPoints,
+              'RankPercent:', rankPercent,
+              'Top5:', sorted.slice(0, 5).map(u => ({ userId: u.user_id, points: u.points }))
+            );
             
             if (alive) {
               setGwRankPercent(rankPercent);

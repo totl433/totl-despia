@@ -1087,15 +1087,15 @@ export default function PredictionsPage() {
         const rankPercent = Math.round((userRank / totalUsers) * 100);
         
         // Debug logging to help identify discrepancies
-        console.log('[Predictions] Percentage calculation:', {
-          gw: currentTestGw,
-          userId: user.id,
-          userRank,
-          totalUsers,
-          userPoints,
-          rankPercent,
-          topUsers: sorted.slice(0, 5).map(u => ({ userId: u.user_id, points: u.points }))
-        });
+        console.log('[Predictions] Percentage calculation:', 
+          'GW:', currentTestGw,
+          'UserId:', user.id,
+          'UserRank:', userRank,
+          'TotalUsers:', totalUsers,
+          'UserPoints:', userPoints,
+          'RankPercent:', rankPercent,
+          'Top5:', sorted.slice(0, 5).map(u => ({ userId: u.user_id, points: u.points }))
+        );
         
         setTopPercent(rankPercent);
       } catch (error) {
