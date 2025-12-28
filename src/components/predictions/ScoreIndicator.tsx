@@ -299,6 +299,7 @@ export default function ScoreIndicator({
     <>
       <div className="mb-4 rounded-xl border bg-gradient-to-br from-[#1C8376]/5 to-blue-50/50 shadow-sm px-6 py-5">
         <div className="text-center">
+          <div className="text-lg font-bold text-red-600 mb-2">🎯 DEPLOY TEST - If you see this, deployment works!</div>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               {gameweek && user?.id && (
