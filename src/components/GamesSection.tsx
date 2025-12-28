@@ -182,6 +182,7 @@ export function GamesSection({
       }
       
       // Calculate GW rank percentage using app_v_gw_points view (same as UserPicksModal and ScoreIndicator)
+      let calculatedGwRankPercent: number | undefined = undefined;
       if (userId) {
         const { data: gwPointsData, error: gwPointsError } = await supabase
           .from('app_v_gw_points')
@@ -206,13 +207,14 @@ export function GamesSection({
           // Calculate rank percentage: (rank / total_users) * 100
           const totalUsers = sorted.length;
           const rankPercent = Math.round((userRank / totalUsers) * 100);
-          setShareGwRankPercent(rankPercent);
+          calculatedGwRankPercent = rankPercent;
           
           console.log('[Share] Calculated GW rank percent:', rankPercent, 'userRank:', userRank, 'totalUsers:', totalUsers);
-        } else {
-          setShareGwRankPercent(undefined);
         }
       }
+      
+      // Set the calculated value in state (this will be used when the component re-renders)
+      setShareGwRankPercent(calculatedGwRankPercent);
       
       // Fetch live scores - use the existing liveScores prop if available, otherwise fetch
       if (Object.keys(liveScores || {}).length === 0) {
@@ -277,11 +279,19 @@ export function GamesSection({
       fixturesCount: fixtures.length,
       userPicksCount: Object.keys(finalUserPicks).length,
       liveScoresCount: Object.keys(finalLiveScores).length,
+      gwRankPercent: calculatedGwRankPercent,
     });
+    
+    // Set state before showing modal to ensure values are available
+    setShareGwRankPercent(calculatedGwRankPercent);
+    
     setIsSharing(true);
     // Open ShareSheet immediately with loading state
     setShowShareSheet(true);
     setShareImageUrl(null); // Ensure it starts as null to show loading
+    
+    // Small delay to ensure state is updated before rendering capture component
+    await new Promise(resolve => setTimeout(resolve, 100));
     setShowCaptureModal(true);
     
     // Wait longer for modal to fully render and layout to settle
