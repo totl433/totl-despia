@@ -5,6 +5,7 @@ import GameweekFixturesCardListForCapture from "./GameweekFixturesCardListForCap
 import { toPng } from 'html-to-image';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { formatPercentage } from '../lib/formatPercentage';
 
 type LeaderboardCardProps = {
   title: string;
@@ -35,9 +36,24 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
   variant = 'default',
   isActiveLive = false,
 }: LeaderboardCardProps) {
-  const displayText = rank && total && total > 0 
-    ? `TOP ${Math.round((rank / total) * 100)}%`
-    : "—";
+  // Calculate rank percentage: (rank / total) * 100
+  // This is already the percentile, so we can use it directly
+  const rankPercent = rank && total && total > 0 
+    ? Math.round((rank / total) * 100)
+    : null;
+  const formattedPercent = formatPercentage(rankPercent);
+  const displayText = formattedPercent?.text || "—";
+  
+  // Debug logging
+  if (rankPercent !== null && rankPercent !== undefined) {
+    console.log('[LeaderboardCard] Percentage calculation:',
+      'Rank:', rank,
+      'Total:', total,
+      'RankPercent:', rankPercent,
+      'Formatted:', formattedPercent?.text,
+      'DisplayText:', displayText
+    );
+  }
 
   // Special variant for Last GW card (shows score prominently)
   if (variant === 'lastGw') {
@@ -135,8 +151,10 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
             }
 
             if (userGwRank !== undefined) {
-              const percentage = Math.round((userGwRank / totalUsers) * 100);
-              setGwRankPercent(percentage);
+              // Calculate rank percentage: (rank / total) * 100
+              // This is already the percentile, so we can use it directly
+              const rankPercent = Math.round((userGwRank / totalUsers) * 100);
+              setGwRankPercent(rankPercent);
             } else {
               setGwRankPercent(undefined);
             }
