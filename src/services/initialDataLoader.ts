@@ -557,7 +557,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   }, CACHE_TTL.GLOBAL);
   console.log('[Pre-loading] Global page data cached:', { latestGw: globalLatestGw, gwPointsCount: (gwPointsResult.data || []).length });
 
-  // Preload TestApiPredictions page data (non-blocking - let it complete in background)
+  // Preload Predictions page data (non-blocking - let it complete in background)
   (async () => {
     try {
       // Load test fixtures for current GW
@@ -584,7 +584,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
           .maybeSingle();
 
         if (!testPicksError && !testSubmissionError) {
-          // Convert fixtures to the format TestApiPredictions expects
+          // Convert fixtures to the format Predictions expects
           const fixturesData = testFixtures.map((f: any) => ({
             id: f.id || String(f.api_match_id || f.fixture_index),
             gw: currentGw,
@@ -608,7 +608,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
             matchday: currentGw,
           }));
 
-          // Cache TestApiPredictions data
+          // Cache Predictions data
           const testPredictionsCacheKey = `predictions:${userId}:${currentGw}`;
           setCached(testPredictionsCacheKey, {
             fixtures: fixturesData,
@@ -617,7 +617,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
             results: [], // Results loaded separately via useLiveScores
           }, CACHE_TTL.HOME);
 
-          console.log('[Pre-loading] TestApiPredictions page data cached:', { 
+          console.log('[Pre-loading] Predictions page data cached:', { 
             fixturesCount: fixturesData.length, 
             picksCount: picksArray.length,
             submitted: !!testSubmission?.submitted_at 
@@ -625,8 +625,8 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
         }
       }
     } catch (error) {
-      // Silent fail for TestApiPredictions preload - non-critical
-      console.warn('[Pre-loading] Failed to preload TestApiPredictions data:', error);
+      // Silent fail for Predictions preload - non-critical
+      console.warn('[Pre-loading] Failed to preload Predictions data:', error);
     }
   })(); // Don't await - let it run in background
 
