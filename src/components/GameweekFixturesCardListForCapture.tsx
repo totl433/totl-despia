@@ -316,11 +316,16 @@ export default function GameweekFixturesCardListForCapture({
             // gwRankPercent is rank percentage: (rank / total) * 100
             // formatPercentage handles the conversion: >50 shows "Bottom X%", <=50 shows "Top X%"
             const formatted = formatPercentage(gwRankPercent);
-            if (!formatted) return null;
+            console.log('[Capture] Formatting percentage:', 'gwRankPercent:', gwRankPercent, 'formatted:', formatted);
+            if (!formatted) {
+              console.warn('[Capture] formatPercentage returned null for gwRankPercent:', gwRankPercent);
+              return null;
+            }
             // Split the formatted text (e.g., "Bottom 39%" or "Top 5%") into label and percentage
             const parts = formatted.text.split(' ');
             const label = parts[0]; // "Bottom" or "Top"
             const percent = parts[1]; // "39%" or "5%"
+            console.log('[Capture] Rendering pill:', 'label:', label, 'percent:', percent, 'full text:', formatted.text);
             return (
               <div 
                 className="inline-flex items-center rounded-full bg-slate-600 text-white flex-shrink-0"
