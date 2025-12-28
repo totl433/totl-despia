@@ -161,6 +161,7 @@ export function GamesSection({
     // Fetch data directly from Supabase (like UserPicksModal does) to ensure we have the latest data
     let fetchedPicks: Record<number, "H" | "D" | "A"> = {};
     let fetchedLiveScores: Record<number, any> = {};
+    let calculatedGwRankPercent: number | undefined = undefined;
     
     try {
       // Fetch picks for current user and gameweek
@@ -182,7 +183,6 @@ export function GamesSection({
       }
       
       // Calculate GW rank percentage using app_v_gw_points view (same as UserPicksModal and ScoreIndicator)
-      let calculatedGwRankPercent: number | undefined = undefined;
       if (userId) {
         const { data: gwPointsData, error: gwPointsError } = await supabase
           .from('app_v_gw_points')
