@@ -53,7 +53,7 @@ export default function GameweekFixturesCardListForCapture({
   // Preload Volley image to ensure it's available for capture
   useEffect(() => {
     const volleyImg = new Image();
-    volleyImg.src = '/assets/Volley/Volley-chilling.png';
+    volleyImg.src = '/assets/Volley/Volley-Leaning-With-Ball.png';
     volleyImg.onload = () => {
       console.log('[Capture] Volley image preloaded successfully');
     };
@@ -190,7 +190,7 @@ export default function GameweekFixturesCardListForCapture({
             }}
           />
           <img 
-            src="/assets/Volley/Volley-chilling.png" 
+            src="/assets/Volley/Volley-Leaning-With-Ball.png" 
             alt="Volley" 
             loading="eager"
             style={{ 
