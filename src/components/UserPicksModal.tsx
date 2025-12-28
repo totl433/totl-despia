@@ -28,6 +28,7 @@ export default function UserPicksModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [liveScoresByFixtureIndex, setLiveScoresByFixtureIndex] = useState<Map<number, LiveScore>>(new Map());
+  const [gwRankPercent, setGwRankPercent] = useState<number | undefined>(undefined);
 
   // Get live scores for this gameweek
   const { liveScores: liveScoresMap } = useLiveScores(gw, undefined);
@@ -99,6 +100,56 @@ export default function UserPicksModal({
         // User has submitted if there's a submission record with a non-null submitted_at
         const submitted = Boolean(submissionData?.submitted_at);
         setHasSubmitted(submitted);
+
+        // Calculate gameweek ranking percentage
+        if (submitted) {
+          const { data: gwPointsData, error: gwPointsError } = await supabase
+            .from('app_v_gw_points')
+            .select('user_id, points')
+            .eq('gw', gw);
+
+          if (!gwPointsError && gwPointsData && gwPointsData.length > 0) {
+            // Sort by points descending
+            const sorted = [...gwPointsData].sort((a, b) => (b.points || 0) - (a.points || 0));
+            
+            // Find user's rank (handling ties - same rank for same points)
+            let userRank = 1;
+            let userPoints: number | null = null;
+            for (let i = 0; i < sorted.length; i++) {
+              if (i > 0 && sorted[i - 1].points !== sorted[i].points) {
+                userRank = i + 1;
+              }
+              if (sorted[i].user_id === userId) {
+                userPoints = sorted[i].points || 0;
+                break;
+              }
+            }
+
+            // Calculate rank percentage: (rank / total_users) * 100
+            // This is already the percentile, so we can use it directly
+            const totalUsers = sorted.length;
+            const rankPercent = Math.round((userRank / totalUsers) * 100);
+            
+            // Debug logging to help identify discrepancies
+            console.log('[UserPicksModal] Percentage calculation:', {
+              gw,
+              userId,
+              userRank,
+              totalUsers,
+              userPoints,
+              rankPercent,
+              topUsers: sorted.slice(0, 5).map(u => ({ userId: u.user_id, points: u.points }))
+            });
+            
+            if (alive) {
+              setGwRankPercent(rankPercent);
+            }
+          }
+        } else {
+          if (alive) {
+            setGwRankPercent(undefined);
+          }
+        }
 
         setLoading(false);
       } catch (err: any) {
@@ -237,6 +288,7 @@ export default function UserPicksModal({
                 liveScores={liveScoresByFixtureIndex}
                 userName={userName || 'User'}
                 globalRank={globalRank}
+                gwRankPercent={gwRankPercent}
               />
             )}
           </div>
