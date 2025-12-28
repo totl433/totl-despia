@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import ShareSheet from '../ShareSheet';
 import GameweekFixturesCardListForCapture from '../GameweekFixturesCardListForCapture';
+import { formatPercentage } from '../../lib/formatPercentage';
 
 export interface ScoreIndicatorProps {
   score: number;
@@ -187,15 +188,24 @@ export default function ScoreIndicator({
       
       if (unloadedImages.length > 0) {
         console.log('[Share] Waiting for', unloadedImages.length, 'images to load');
-        // Only wait for images that aren't already loaded - use short timeout (90KB should load instantly)
+        // Wait for images to load - give Volley images extra time since they're critical
         await Promise.all(unloadedImages.map((img: HTMLImageElement) => {
-          const isVolley = img.src.includes('Volley-chilling');
-          console.log('[Share] Waiting for image:', img.src);
+          const isVolley = img.src.includes('Volley');
+          const timeout = isVolley ? 5000 : 2000; // Give Volley 5 seconds, others 2 seconds
+          console.log('[Share] Waiting for image:', img.src, 'timeout:', timeout + 'ms');
           return new Promise((resolve) => {
-            const timeoutId = setTimeout(() => {
-              console.warn('[Share] Image load timeout:', img.src);
+            // If already loaded, resolve immediately
+            if (img.complete && img.naturalWidth > 0) {
+              if (isVolley) {
+                console.log('[Share] Volley image already loaded:', img.naturalWidth, 'x', img.naturalHeight);
+              }
               resolve(null);
-            }, 1000); // Short timeout - images should be cached/preloaded
+              return;
+            }
+            const timeoutId = setTimeout(() => {
+              console.warn('[Share] Image load timeout after', timeout + 'ms:', img.src);
+              resolve(null);
+            }, timeout);
             img.onload = () => { 
               clearTimeout(timeoutId); 
               if (isVolley) {
@@ -208,6 +218,10 @@ export default function ScoreIndicator({
               console.error('[Share] Image load error:', img.src);
               resolve(null); 
             };
+            // Force reload if it failed
+            if (img.src) {
+              img.src = img.src + (img.src.includes('?') ? '&' : '?') + '_t=' + Date.now();
+            }
           });
         }));
       } else {
@@ -333,11 +347,14 @@ export default function ScoreIndicator({
               <div className="text-4xl font-extrabold text-[#1C8376]">{score}/{total}</div>
             </div>
             <div className="flex items-center gap-3">
-              {topPercent !== null && topPercent !== undefined && (
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-yellow-100 to-orange-100 border border-yellow-300">
-                  <span className="text-sm font-bold text-orange-700">Top {topPercent}%</span>
-                </div>
-              )}
+              {topPercent !== null && topPercent !== undefined && (() => {
+                const formatted = formatPercentage(topPercent);
+                return (
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-yellow-100 to-orange-100 border border-yellow-300">
+                    <span className="text-sm font-bold text-orange-700">{formatted?.text || `Top ${topPercent}%`}</span>
+                  </div>
+                );
+              })()}
               {showLiveIndicator && (
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-red-600 rounded-full animate-pulse"></div>
@@ -415,12 +432,15 @@ export default function ScoreIndicator({
                 if (ref?.current) {
                   captureRef.current = ref.current;
                   console.log('[ScoreIndicator] Capture ref ready, topPercent:', topPercent, 'gwRankPercent:', topPercent !== null && topPercent !== undefined ? topPercent : undefined);
-                  // Force image to load before capture
-                  const volleyImg = ref.current.querySelector('img[src*="Volley-chilling"]') as HTMLImageElement;
+                  // Force Volley image to load before capture
+                  const volleyImg = ref.current.querySelector('img[src*="Volley"]') as HTMLImageElement;
                   if (volleyImg) {
                     console.log('[ScoreIndicator] Found Volley image in DOM:', volleyImg.src, 'complete:', volleyImg.complete, 'naturalWidth:', volleyImg.naturalWidth);
                     if (!volleyImg.complete || volleyImg.naturalWidth === 0) {
-                      volleyImg.src = volleyImg.src; // Force reload
+                      // Force reload with cache bust
+                      const currentSrc = volleyImg.src.split('?')[0];
+                      volleyImg.src = currentSrc + '?_t=' + Date.now();
+                      console.log('[ScoreIndicator] Forcing Volley image reload:', volleyImg.src);
                     }
                   }
                 }

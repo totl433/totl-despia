@@ -193,6 +193,7 @@ export default function GameweekFixturesCardListForCapture({
             src="/assets/Volley/Volley-Leaning-With-Ball.png" 
             alt="Volley" 
             loading="eager"
+            crossOrigin="anonymous"
             style={{ 
               width: '55px', 
               height: 'auto',
@@ -206,11 +207,14 @@ export default function GameweekFixturesCardListForCapture({
             }}
             onLoad={(e) => {
               const img = e.currentTarget as HTMLImageElement;
-              console.log('[Capture] Volley image loaded in DOM:', img.src, 'naturalWidth:', img.naturalWidth, 'naturalHeight:', img.naturalHeight);
+              console.log('[Capture] Volley image loaded in DOM:', img.src, 'naturalWidth:', img.naturalWidth, 'naturalHeight:', img.naturalHeight, 'complete:', img.complete);
             }}
             onError={(e) => {
               const target = e.currentTarget as HTMLImageElement;
               console.error('[Capture] Volley image failed to load in DOM:', target.src);
+              // Try reloading once
+              const currentSrc = target.src.split('?')[0];
+              target.src = currentSrc + '?_retry=' + Date.now();
             }}
           />
         </div>
@@ -294,27 +298,34 @@ export default function GameweekFixturesCardListForCapture({
             <div className="username-responsive font-bold text-slate-700 truncate leading-tight" style={{ fontSize: '18px', fontWeight: '700', color: '#334155', lineHeight: '1.25', display: 'block' }}>{displayUserName}</div>
           </div>
           {/* GW Rank pill - right */}
-          {gwRankPercent !== undefined && (
-            <div 
-              className="inline-flex items-center rounded-full bg-slate-600 text-white flex-shrink-0"
-              style={{ 
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6.27px',
-                paddingLeft: '14.63px',
-                paddingRight: '12.54px',
-                paddingTop: '6.27px',
-                paddingBottom: '6.27px',
-                borderRadius: '9999px',
-                color: 'white',
-                flexShrink: 0,
-                backgroundColor: '#475569'
-              }}
-            >
-              <span style={{ fontSize: '14.63px', fontWeight: '500', opacity: 0.9 }}>top</span>
-              <span className="font-extrabold" style={{ fontSize: '18.81px', fontWeight: '800' }}>{gwRankPercent}%</span>
-            </div>
-          )}
+          {gwRankPercent !== undefined && (() => {
+            // gwRankPercent is rank percentage: (rank / total) * 100
+            // If >50, show "bottom X%" where X = 100 - rankPercent (opposite)
+            // If <=50, show "top X%" where X = rankPercent
+            const label = gwRankPercent > 50 ? 'bottom' : 'top';
+            const displayPercent = gwRankPercent > 50 ? Math.round(100 - gwRankPercent) : Math.round(gwRankPercent);
+            return (
+              <div 
+                className="inline-flex items-center rounded-full bg-slate-600 text-white flex-shrink-0"
+                style={{ 
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6.27px',
+                  paddingLeft: '14.63px',
+                  paddingRight: '12.54px',
+                  paddingTop: '6.27px',
+                  paddingBottom: '6.27px',
+                  borderRadius: '9999px',
+                  color: 'white',
+                  flexShrink: 0,
+                  backgroundColor: '#475569'
+                }}
+              >
+                <span style={{ fontSize: '14.63px', fontWeight: '500', opacity: 0.9 }}>{label}</span>
+                <span className="font-extrabold" style={{ fontSize: '18.81px', fontWeight: '800' }}>{displayPercent}%</span>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Fixtures list - EXACT same structure as original (html-to-image handles flexbox perfectly) */}
