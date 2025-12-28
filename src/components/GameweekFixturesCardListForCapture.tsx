@@ -40,6 +40,7 @@ export default function GameweekFixturesCardListForCapture({
       liveScoresCount: liveScores.size,
       userName,
       globalRank,
+      gwRankPercent,
     });
     console.log('[Capture] First fixture:', fixtures[0]);
     console.log('[Capture] All fixtures:', fixtures);
@@ -48,7 +49,19 @@ export default function GameweekFixturesCardListForCapture({
     console.log('[Capture] First live score:', Array.from(liveScores.entries())[0]);
     console.log('[Capture] All live scores:', Array.from(liveScores.entries()));
     console.log('[Capture] Sorted fixtures:', [...fixtures].sort((a, b) => a.fixture_index - b.fixture_index));
-  }, [gw, fixtures, picks, liveScores, userName, globalRank]);
+  }, [gw, fixtures, picks, liveScores, userName, globalRank, gwRankPercent]);
+
+  // Preload Volley image to ensure it's available for capture
+  useEffect(() => {
+    const volleyImg = new Image();
+    volleyImg.src = '/assets/Volley/Volley-chilling.png';
+    volleyImg.onload = () => {
+      console.log('[Capture] Volley image preloaded successfully');
+    };
+    volleyImg.onerror = () => {
+      console.error('[Capture] Failed to preload Volley image');
+    };
+  }, []);
 
   useEffect(() => {
     if (onCardRefReady && cardRef.current) {
@@ -174,28 +187,9 @@ export default function GameweekFixturesCardListForCapture({
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          position: 'relative'
+          position: 'relative',
+          minHeight: '95px'
         }}>
-          <img 
-            src="/assets/Volley/Volley-chilling.png" 
-            alt="Volley" 
-            loading="eager"
-            style={{ 
-              width: '55px', 
-              height: 'auto',
-              position: 'absolute',
-              left: '16px',
-              display: 'block'
-            }}
-            onLoad={() => console.log('[Capture] Volley image loaded in DOM')}
-            onError={(e) => {
-              console.error('[Capture] Volley image failed to load in DOM');
-              const target = e.currentTarget as HTMLImageElement;
-              if (target) {
-                target.style.display = 'none';
-              }
-            }}
-          />
           <img 
             src="/assets/badges/totl-logo1.svg" 
             alt="TOTL" 
@@ -203,11 +197,38 @@ export default function GameweekFixturesCardListForCapture({
               width: '75px', 
               height: '75px',
               filter: 'brightness(0) invert(1)',
-              display: 'block'
+              display: 'block',
+              position: 'absolute',
+              left: '50%',
+              transform: 'translateX(-50%)'
             }}
             onError={() => {
               // If SVG fails, try to show a fallback or ensure it's visible
               console.error('[Capture] TOTL logo failed to load');
+            }}
+          />
+          <img 
+            src="/assets/Volley/Volley-chilling.png" 
+            alt="Volley" 
+            loading="eager"
+            style={{ 
+              width: '55px', 
+              height: 'auto',
+              display: 'block',
+              transform: 'scaleX(-1)',
+              position: 'absolute',
+              left: '50%',
+              marginLeft: '-80px'
+            }}
+            onLoad={() => {
+              console.log('[Capture] Volley image loaded in DOM');
+            }}
+            onError={(e) => {
+              console.error('[Capture] Volley image failed to load in DOM');
+              const target = e.currentTarget as HTMLImageElement;
+              if (target) {
+                target.style.display = 'none';
+              }
             }}
           />
         </div>
@@ -291,7 +312,7 @@ export default function GameweekFixturesCardListForCapture({
             <div className="username-responsive font-bold text-slate-700 truncate leading-tight" style={{ fontSize: '18px', fontWeight: '700', color: '#334155', lineHeight: '1.25', display: 'block' }}>{displayUserName}</div>
           </div>
           {/* GW Rank pill - right */}
-          {gwRankPercent !== undefined && (
+          {gwRankPercent !== undefined && gwRankPercent !== null && (
             <div 
               className="inline-flex items-center rounded-full bg-slate-600 text-white flex-shrink-0"
               style={{ 
