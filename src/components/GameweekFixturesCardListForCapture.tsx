@@ -205,6 +205,7 @@ export default function GameweekFixturesCardListForCapture({
             alt="Volley" 
             loading="eager"
             crossOrigin="anonymous"
+            decoding="sync"
             style={{ 
               width: '55px', 
               height: 'auto',
@@ -214,7 +215,8 @@ export default function GameweekFixturesCardListForCapture({
               left: '50%',
               marginLeft: '-80px',
               visibility: 'visible',
-              opacity: 1
+              opacity: 1,
+              imageRendering: 'auto'
             }}
             onLoad={(e) => {
               const img = e.currentTarget as HTMLImageElement;
@@ -223,9 +225,9 @@ export default function GameweekFixturesCardListForCapture({
             onError={(e) => {
               const target = e.currentTarget as HTMLImageElement;
               console.error('[Capture] Volley image failed to load in DOM:', target.src);
-              // Try reloading once
-              const currentSrc = target.src.split('?')[0];
-              target.src = currentSrc + '?_retry=' + Date.now();
+              // Try reloading once with cache bust
+              const baseSrc = target.src.split('?')[0];
+              target.src = baseSrc + '?_retry=' + Date.now();
             }}
           />
         </div>
