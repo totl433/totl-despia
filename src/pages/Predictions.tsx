@@ -168,7 +168,8 @@ export default function PredictionsPage() {
   
   // Use centralized game state system (PR.md rule 10)
   // LIVE state means: first kickoff happened AND last game hasn't finished (FT)
-  const { state: gameState, loading: gameStateLoading } = useGameweekState(currentTestGw);
+  // Pass userId to get user-specific state (includes GW_PREDICTED)
+  const { state: gameState, loading: gameStateLoading } = useGameweekState(currentTestGw, user?.id);
   const [picks, setPicks] = useState<Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>>(initialState.picks);
   const [results, setResults] = useState<Map<number, "H" | "D" | "A">>(initialState.results);
   const [teamForms, setTeamForms] = useState<Map<string, string>>(new Map()); // Map<teamCode, formString>
@@ -267,6 +268,17 @@ export default function PredictionsPage() {
   const [picksChecked, setPicksChecked] = useState(initialState.picksChecked);
   const [submissionChecked, setSubmissionChecked] = useState(initialState.submissionChecked);
   
+  // Ensure checked flags are set when fixtures are loaded
+  useEffect(() => {
+    if (fixtures.length > 0 && (!picksChecked || !submissionChecked)) {
+      console.log('[Predictions] Setting checked flags because fixtures are loaded, fixtures.length:', fixtures.length);
+      setPicksChecked(true);
+      setSubmissionChecked(true);
+      setLoading(false);
+      dataLoadedRef.current = true;
+    }
+  }, [fixtures.length, picksChecked, submissionChecked]);
+  
   // Helper function to check sessionStorage for submission (defined early to avoid hoisting issues)
   const getHasEverBeenSubmitted = () => {
     if (typeof window === 'undefined' || !currentTestGw || !user?.id) return false;
@@ -284,6 +296,7 @@ export default function PredictionsPage() {
   };
   // Define ref before it's used in state initializers
   const hasEverBeenSubmittedRef = useRef<boolean>(getHasEverBeenSubmitted());
+  const dataLoadedRef = useRef<boolean>(false); // Track if data has been successfully loaded
   
   const [submitted, setSubmitted] = useState(() => {
     // CRITICAL: Initialize from cache first (fastest), then fall back to sessionStorage
@@ -350,6 +363,7 @@ export default function PredictionsPage() {
   const [submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new Set());
   const [apiTestLeagueId, setApiTestLeagueId] = useState<string | null>(null);
   const [apiMatchIds, setApiMatchIds] = useState<number[]>([]);
+  const [deadlineTime, setDeadlineTime] = useState<Date | null>(null);
   
   // Subscribe to real-time live scores using the hook
   const { liveScores: liveScoresMap } = useLiveScores(currentTestGw || undefined, apiMatchIds.length > 0 ? apiMatchIds : undefined);
@@ -579,11 +593,13 @@ export default function PredictionsPage() {
   // Load fixtures and picks from database
   useEffect(() => {
     let alive = true;
+    console.log('[Predictions] useEffect started, user?.id:', user?.id);
     (async () => {
       try {
         // Get current GW from app_meta first (needed for cache key)
         let currentGw: number | null = null;
         
+        console.log('[Predictions] Fetching current GW from app_meta...');
         const { data: meta } = await supabase
           .from("app_meta")
           .select("current_gw")
@@ -591,12 +607,15 @@ export default function PredictionsPage() {
           .maybeSingle();
         
         currentGw = meta?.current_gw ?? 14;
+        console.log('[Predictions] Current GW:', currentGw);
         
         if (!currentGw) {
-          if (alive) {
-            setFixtures([]);
-            setLoading(false);
-          }
+          // Always set state, even if component appears to be unmounting
+          setFixtures([]);
+          setLoading(false);
+          // Always set checked flags to prevent infinite loading
+          setPicksChecked(true);
+          setSubmissionChecked(true);
           return;
         }
         
@@ -654,12 +673,17 @@ export default function PredictionsPage() {
         }
         
         // Only set loading if we didn't load from cache
-        if (!loadedFromCache) {
-          if (fixtures.length === 0) {
-            setLoading(true);
+        // Don't reset checked flags unnecessarily - this causes infinite loading
+        // The flags will be set to true when data is loaded, so only reset if we're truly starting fresh
+        if (!loadedFromCache && fixtures.length === 0) {
+          setLoading(true);
+          // Only reset if both flags are already true (meaning we had data before)
+          // If they're false, we're already in a loading state, so don't reset
+          if (picksChecked && submissionChecked) {
+            // We had data before but lost it (e.g., GW changed) - reset flags
+            setPicksChecked(false);
+            setSubmissionChecked(false);
           }
-          setPicksChecked(false); // Reset picks checked state
-          setSubmissionChecked(false); // Reset submission checked state
         }
 
         // Fetch fixtures from app_fixtures table
@@ -674,10 +698,12 @@ export default function PredictionsPage() {
         }
 
         if (!savedFixtures || savedFixtures.length === 0) {
-          if (alive) {
-            setFixtures([]);
-            setLoading(false);
-          }
+          // Always set state, even if component appears to be unmounting
+          setFixtures([]);
+          setLoading(false);
+          // Always set checked flags to prevent infinite loading
+          setPicksChecked(true);
+          setSubmissionChecked(true);
           return;
         }
 
@@ -698,14 +724,38 @@ export default function PredictionsPage() {
           api_match_id: f.api_match_id || null,
         }));
         
-        if (alive) {
-          setFixtures(fixturesData);
-          // Set loading to false as soon as fixtures are loaded - show page immediately
-          setLoading(false);
+        // Calculate deadline (75 minutes before first kickoff)
+        if (fixturesData.length > 0) {
+          const kickoffTimes = fixturesData
+            .map(f => f.kickoff_time)
+            .filter((time): time is string => time !== null && time !== undefined)
+            .map(time => new Date(time))
+            .filter(date => !isNaN(date.getTime()))
+            .sort((a, b) => a.getTime() - b.getTime());
           
-          // Initialize empty results map
-          setResults(new Map());
+          if (kickoffTimes.length > 0) {
+            const earliestKickoff = kickoffTimes[0];
+            const deadline = new Date(earliestKickoff.getTime() - (75 * 60 * 1000)); // 75 minutes before
+            setDeadlineTime(deadline);
+          }
         }
+        
+        console.log('[Predictions] Setting fixtures, count:', fixturesData.length, 'alive:', alive);
+        // Always set fixtures and loading state, even if component appears to be unmounting
+        // React will safely handle state updates even if component unmounts
+        // This prevents infinite loading when useEffect restarts
+        setFixtures(fixturesData);
+        // Set loading to false as soon as fixtures are loaded - show page immediately
+        setLoading(false);
+        // Mark that data has been loaded - do this BEFORE async operations
+        dataLoadedRef.current = true;
+        // Set checked flags immediately when fixtures are loaded
+        // This prevents the page from staying in loading state
+        setPicksChecked(true);
+        setSubmissionChecked(true);
+        
+        // Initialize empty results map
+        setResults(new Map());
         
         
         // Get api_match_ids for live score subscription
@@ -729,7 +779,8 @@ export default function PredictionsPage() {
             .eq("user_id", user.id)
             .maybeSingle();
           
-          if (alive && submission?.submitted_at) {
+          // Always set submission state, even if component appears to be unmounting
+          if (submission?.submitted_at) {
             // Submission exists - set submitted immediately to prevent swipe view
             // We'll validate picks match later, but for now, assume submitted
             isSubmitted = true;
@@ -804,13 +855,12 @@ export default function PredictionsPage() {
                 });
               });
               
-              if (alive) {
-                setPicks(picksMap);
-                hasPicks = true;
-              }
+              // Always set picks, even if component appears to be unmounting
+              setPicks(picksMap);
+              hasPicks = true;
             } else {
               // Picks don't match current fixtures - clear them
-              if (alive && pk.length > 0) {
+              if (pk.length > 0) {
                 // Clear invalid picks from database
                 await supabase
                   .from("app_picks")
@@ -844,15 +894,14 @@ export default function PredictionsPage() {
                 });
               });
               
-              if (alive) {
-                setPicks(picksMap);
-                hasPicks = true;
-              }
+              // Always set picks, even if component appears to be unmounting
+              setPicks(picksMap);
+              hasPicks = true;
             }
           }
           
           // Validate submission is still valid (picks match)
-          if (alive && !hasPicks) {
+          if (!hasPicks) {
               // Submission exists but picks don't match - clear the submission
               setSubmitted(false);
               await supabase
@@ -944,14 +993,10 @@ export default function PredictionsPage() {
           }
         }
         
-        // Mark that we've checked for picks
-        if (alive) {
-          setPicksChecked(true);
-          // Ensure submissionChecked is set (in case it wasn't set above)
-          if (!submissionChecked) {
-            setSubmissionChecked(true);
-          }
-        }
+        // Mark that we've checked for picks - ALWAYS set this, even if there was an error or component unmounting
+        setPicksChecked(true);
+        // Ensure submissionChecked is set (in case it wasn't set above)
+        setSubmissionChecked(true);
         
         // If user has picks for ALL current fixtures but not submitted, show review mode
         // If no picks or incomplete picks, show swipe mode (currentIndex = 0)
@@ -998,16 +1043,28 @@ export default function PredictionsPage() {
       } catch (error) {
         console.error('[Predictions] Error loading data:', error);
         if (alive) {
-          setPicksChecked(true); // Mark as checked even on error
+          // Always mark as checked even on error to prevent infinite loading
+          console.log('[Predictions] Setting flags in catch block');
+          setPicksChecked(true);
+          setSubmissionChecked(true);
+          setLoading(false);
         }
       } finally {
-        if (alive) {
-          setLoading(false);
+        // Always set loading to false, even if component unmounted
+        // This prevents infinite loading states
+        console.log('[Predictions] Setting loading=false in finally block, alive:', alive);
+        setLoading(false);
+        // Also ensure checked flags are set to prevent blocking
+        if (!alive) {
+          console.log('[Predictions] Component unmounted, but setting checked flags anyway');
+          setPicksChecked(true);
+          setSubmissionChecked(true);
         }
       }
     })();
 
     return () => {
+      console.log('[Predictions] useEffect cleanup, setting alive=false');
       alive = false;
     };
   }, [user?.id]);
@@ -1317,7 +1374,43 @@ export default function PredictionsPage() {
   // Never show swipe view until we know for sure the user hasn't submitted
   // Don't render until we know submission status and have fixtures
   // This prevents blank screens and swipe card flashes
-  const needsMoreData = loading || fixtures.length === 0 || !submissionChecked || !picksChecked;
+  // Game state is used to determine if we should show swipe, but we don't block on it loading
+  // If game state is still loading or null, default to not showing swipe (safer default)
+  const canShowSwipePredictions = !gameStateLoading && gameState !== null && (gameState === 'GW_OPEN' || gameState === 'GW_PREDICTED');
+  // If data has been loaded before (even if component remounted), be more lenient with loading check
+  // This prevents infinite loading when useEffect restarts due to dependency changes
+  const hasLoadedBefore = dataLoadedRef.current;
+  // Also check cache to see if we have fixtures available - this allows rendering even if state hasn't updated
+  let hasCachedFixtures = false;
+  if (typeof window !== 'undefined' && user?.id) {
+    try {
+      const metaCache = getCached<{ current_gw: number }>('app_meta');
+      const currentGw = metaCache?.current_gw || 14;
+      const cacheKey = `predictions:${user.id}:${currentGw}`;
+      const cached = getCached<{ fixtures: Fixture[] }>(cacheKey);
+      hasCachedFixtures = !!(cached?.fixtures && cached.fixtures.length > 0);
+    } catch {
+      // Ignore cache errors
+    }
+  }
+  
+  // Be more lenient - if we have fixtures (either in state or cache) OR data has been loaded, allow rendering
+  // Only block if we truly have no data at all
+  const hasFixtures = fixtures.length > 0 || hasCachedFixtures;
+  // CRITICAL FIX: Only block if we're still loading AND truly have no data
+  // If loading is false, we're good to render (data fetch completed, even if state hasn't updated yet)
+  // If we have fixtures (state or cache) OR data has been loaded, we're good to render
+  // The key insight: once loading becomes false, the data fetch is complete, so we can render
+  // Also check initial state from cache - if fixtures were loaded from cache initially, we have data
+  // Access initialState from the closure - it's defined at the top of the component
+  const hasInitialFixtures = typeof initialState !== 'undefined' && initialState.fixtures && initialState.fixtures.length > 0;
+  // SIMPLIFIED: If deadline has passed (RESULTS_PRE_GW or LIVE), skip loading checks and show the page
+  // This allows users to see the predictions list even if they haven't predicted
+  const deadlinePassed = gameState === 'RESULTS_PRE_GW' || gameState === 'LIVE';
+  
+  // Only block loading if deadline hasn't passed AND we're still loading AND have no fixtures
+  // If deadline has passed, always show the page (even with empty fixtures - we'll show a message)
+  const needsMoreData = !deadlinePassed && loading && !hasFixtures && !hasCachedFixtures && !hasInitialFixtures;
   
   if (needsMoreData) {
     // Show loading spinner - don't render any content until ready
@@ -1328,8 +1421,8 @@ export default function PredictionsPage() {
     );
   }
   
-  // Additional loading check
-  if (loading && fixtures.length === 0) {
+  // Additional loading check - but skip if deadline has passed
+  if (!deadlinePassed && loading && fixtures.length === 0) {
     return (
       <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col overflow-hidden">
         <div className="sticky top-0 z-40 px-4 pt-4 pb-2 bg-gradient-to-br from-slate-50 to-slate-100">
@@ -1377,11 +1470,12 @@ export default function PredictionsPage() {
     );
   }
 
-  // Confirmed Predictions View (after submission)
+  // Confirmed Predictions View (after submission OR when deadline has passed)
   // Check both state and sessionStorage for maximum safety
   const sessionStorageCheck = getHasEverBeenSubmitted();
   const isUserSubmitted = submitted || (!submissionChecked && sessionStorageCheck);
-  if (isUserSubmitted) {
+  // If deadline has passed, show the same view as submitted users (but with empty predictions)
+  if (isUserSubmitted || deadlinePassed) {
     // If not all members have submitted, show "Who's submitted" view (similar to League page)
     if (!allMembersSubmitted && leagueMembers.length > 0) {
       const remaining = leagueMembers.filter(m => !submittedMemberIds.has(m.id)).length;
@@ -1478,6 +1572,35 @@ export default function PredictionsPage() {
         </div>
         <div className="flex-1 overflow-y-auto p-4 pb-4">
           <div className="max-w-2xl mx-auto">
+            {/* Show deadline banner if deadline has passed and user hasn't submitted */}
+            {deadlinePassed && !isUserSubmitted && (
+              <div className="mb-4">
+                <div className="rounded-xl border bg-slate-200 border-slate-300 px-6 py-4 text-center">
+                  <div className="flex items-center justify-center mb-3 relative">
+                    <img 
+                      src="/assets/Volley/Volley-sad.png" 
+                      alt="Volley" 
+                      className="w-16 h-16 flex-shrink-0 object-contain absolute -left-8 -top-2"
+                      style={{ imageRendering: 'pixelated' }}
+                    />
+                    <div className="text-slate-900 font-semibold text-base text-center">
+                      {gameState === 'RESULTS_PRE_GW' ? 'THE DEADLINE HAS PASSED' : 'Games In Progress'}
+                    </div>
+                  </div>
+                  <div className="text-slate-900 text-sm">
+                    Predictions are no longer available.
+                    {deadlineTime && (
+                      <div className="text-xs opacity-80">
+                        The deadline was {deadlineTime.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} at {deadlineTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.
+                      </div>
+                    )}
+                    <div className="text-xs opacity-80">
+                      Make sure you submit before the next deadline.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* Score indicator at the top - full width with progress bar */}
             {(() => {
               // Check if any games have started (live or finished)
@@ -1513,7 +1636,7 @@ export default function PredictionsPage() {
               let state: 'starting-soon' | 'live' | 'finished' = 'finished';
               
               // Primary: use centralized game state system
-              if (!gameStateLoading) {
+              if (!gameStateLoading && gameState !== null) {
                 if (gameState === 'LIVE') {
                   state = 'live';
                 } else if (gameState === 'RESULTS_PRE_GW') {
@@ -1566,8 +1689,9 @@ export default function PredictionsPage() {
                 });
               }
               
-              // Show score indicator if games have started/finished or user has submitted
-              if (hasAnyLiveOrFinished || (submitted && fixtures.length > 0) || hasStartingSoon) {
+              // Only show score indicator if user has actually submitted picks
+              const hasPicks = picks.size > 0;
+              if (hasPicks && (hasAnyLiveOrFinished || fixtures.length > 0 || hasStartingSoon || deadlinePassed)) {
                 const displayScore = hasAnyLiveOrFinished ? currentScore : (submitted ? myScore : 0);
                 
                 return (
@@ -1905,17 +2029,38 @@ export default function PredictionsPage() {
     (sessionStorageSubmitted && hasEverBeenSubmittedRef.current) ||
     anySessionStorageSubmitted;
   
-  // CRITICAL: If submitted, force viewMode to "list" and never show cards
+  // CRITICAL: Don't show swipe predictions if:
+  // 1. User has submitted (checkSubmittedBeforeSwipe)
+  // 2. Gameweek is finished (RESULTS_PRE_GW) - deadline passed and games finished
+  // 3. Gameweek is live (LIVE) - games have started
+  // 4. Game state is null (not loaded yet) - default to blocking
+  // Only show swipe predictions if gameState is GW_OPEN or GW_PREDICTED
+  const shouldBlockSwipePredictions = checkSubmittedBeforeSwipe || 
+    gameState === 'RESULTS_PRE_GW' || 
+    gameState === 'LIVE' ||
+    gameState === null ||
+    !canShowSwipePredictions;
+  
+  // CRITICAL: If submitted or GW finished/live, force viewMode to "list" and never show cards
   // Use a computed value instead of state to avoid render-time state updates
   // This MUST be computed synchronously before any conditional rendering
-  const effectiveViewMode = checkSubmittedBeforeSwipe ? "list" : viewMode;
+  const effectiveViewMode = shouldBlockSwipePredictions ? "list" : viewMode;
   
-  // CRITICAL: Early return to prevent ANY cards rendering if submitted
+  // CRITICAL: Early return to prevent ANY cards rendering if submitted or GW finished/live
   // This must happen BEFORE any cards-related rendering
-  // If submitted is detected (via any method), NEVER show cards
-  if (checkSubmittedBeforeSwipe) {
-    // If viewMode is still "cards", show loading until it updates
-    if (viewMode === "cards") {
+  // If submitted is detected (via any method) OR GW is finished/live, NEVER show cards
+  // But if deadline has passed, force list view and continue rendering (don't block)
+  if (shouldBlockSwipePredictions) {
+    // If deadline has passed, force list view and continue (don't block)
+    if (deadlinePassed) {
+      // Force list view if still in cards mode
+      if (viewMode === "cards") {
+        setViewMode("list");
+        setCurrentIndex(0);
+      }
+      // Continue to render list view below - don't block
+    } else if (viewMode === "cards") {
+      // Only block if deadline hasn't passed and we're in cards mode
       return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
@@ -1963,17 +2108,17 @@ export default function PredictionsPage() {
         }
       `}</style>
     <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col overflow-hidden">
-      {/* CRITICAL: Only render cards if NOT submitted - use ref for immediate check */}
-      {/* Also add inline style to hide immediately if submitted (CSS failsafe) */}
-      {shouldShowCardsRef.current && !checkSubmittedBeforeSwipe && !submitted && effectiveViewMode === "cards" && viewMode === "cards" && (
+      {/* CRITICAL: Only render cards if NOT submitted AND GW is open/predicted - use ref for immediate check */}
+      {/* Also add inline style to hide immediately if submitted or GW finished/live (CSS failsafe) */}
+      {shouldShowCardsRef.current && !shouldBlockSwipePredictions && !submitted && effectiveViewMode === "cards" && viewMode === "cards" && canShowSwipePredictions && (
         <div 
           className="sticky top-0 z-40 px-4 pt-4 pb-2 bg-gradient-to-br from-slate-50 to-slate-100"
-          style={{ display: checkSubmittedBeforeSwipe ? 'none' : 'block' }}
+          style={{ display: shouldBlockSwipePredictions ? 'none' : 'block' }}
         >
           <div className="max-w-md mx-auto">
             <div className="relative flex items-center justify-center mb-4">
               <span className="text-lg font-extrabold text-slate-700">Gameweek {currentTestGw}</span>
-              {!checkSubmittedBeforeSwipe && effectiveViewMode === "cards" && (
+              {!shouldBlockSwipePredictions && effectiveViewMode === "cards" && canShowSwipePredictions && (
                 <button
                   onClick={() => setCurrentIndex(fixtures.length)}
                   className="absolute right-0 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 px-3 py-1.5 text-xs font-semibold text-white shadow-md transition hover:shadow-lg hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800"
@@ -1985,7 +2130,7 @@ export default function PredictionsPage() {
                 </button>
               )}
             </div>
-            {!checkSubmittedBeforeSwipe && effectiveViewMode === "cards" && (
+            {!shouldBlockSwipePredictions && effectiveViewMode === "cards" && canShowSwipePredictions && (
               <div className="mt-4 flex justify-center mb-0">
                 <div className="inline-flex items-center gap-2 rounded-full bg-[#e6f3f0] px-3 py-2">
                   {fixtures.map((fixture, idx) => {
@@ -2020,15 +2165,15 @@ export default function PredictionsPage() {
           </div>
         </div>
       )}
-      {/* CRITICAL: If submitted, ONLY render list view - cards section is completely separate and never evaluated */}
-      {(checkSubmittedBeforeSwipe || effectiveViewMode === "list") && (
+      {/* CRITICAL: If submitted or GW finished/live, ONLY render list view - cards section is completely separate and never evaluated */}
+      {/* But if deadline has passed, we show the submitted view instead (handled above) */}
+      {(shouldBlockSwipePredictions || effectiveViewMode === "list") && !deadlinePassed && (
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-2xl mx-auto px-4 py-4">
             <div className="flex items-center justify-center">
               <div className="text-center"><h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Test API Predictions</h1><div className="mt-0 mb-4 text-base text-slate-500">Call every game, lock in your results.<br />This is a TEST game.</div></div>
             </div>
-            <div className="mt-2 mb-4"><div className="rounded-xl border bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 px-6 py-4"><div className="flex items-center justify-between"><div><div className="text-purple-900 font-semibold text-lg">Test GW {currentTestGw} Complete</div><div className="text-purple-900 text-sm font-bold mt-1">Your Score</div></div><div className="text-purple-900 text-5xl font-extrabold">{myScore}</div></div></div></div>
-            {!checkSubmittedBeforeSwipe && (
+            {!shouldBlockSwipePredictions && canShowSwipePredictions && (
               <div className="flex justify-center mt-4">
                 <button 
                   onClick={() => {
@@ -2047,9 +2192,9 @@ export default function PredictionsPage() {
           </div>
         </div>
       )}
-      {/* CRITICAL: Cards section - ONLY render if NOT submitted and viewMode is cards */}
+      {/* CRITICAL: Cards section - ONLY render if NOT submitted, GW is open/predicted, and viewMode is cards */}
       {/* Use ref check first for immediate synchronous evaluation */}
-      {shouldShowCardsRef.current && !checkSubmittedBeforeSwipe && !submitted && effectiveViewMode === "cards" && viewMode === "cards" && (
+      {shouldShowCardsRef.current && !shouldBlockSwipePredictions && !submitted && effectiveViewMode === "cards" && viewMode === "cards" && canShowSwipePredictions && (
         <div className="flex flex-col min-h-0 overflow-hidden flex-1" style={{ height: '100%', paddingBottom: '0' }}>
           <div className="swipe-cards-container flex items-start justify-center px-4 relative overflow-hidden flex-1" style={{ minHeight: 0, width: '100%' }}>
             <div className={`absolute left-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 transition-opacity z-50 ${showFeedback === "home" ? "opacity-100" : "opacity-0"}`}><div className="text-6xl font-bold text-slate-700">←</div><div className="text-lg font-bold text-slate-700 bg-white px-4 py-2 rounded-full shadow-lg whitespace-nowrap">Home Win</div></div>
@@ -2059,7 +2204,7 @@ export default function PredictionsPage() {
               className="max-w-md w-full relative" 
               style={{ 
                 aspectRatio: '0.75',
-                display: checkSubmittedBeforeSwipe ? 'none' : 'block' // CRITICAL: CSS failsafe to hide immediately
+                  display: shouldBlockSwipePredictions ? 'none' : 'block' // CRITICAL: CSS failsafe to hide immediately
               }}
             >
               {currentIndex < fixtures.length - 1 && (() => {
@@ -2085,7 +2230,7 @@ export default function PredictionsPage() {
                   opacity: cardState.opacity, 
                   transition: (isDragging || isResettingRef.current) ? "none" : "all 0.3s ease-out",
                   pointerEvents: 'none',
-                  display: checkSubmittedBeforeSwipe ? 'none' : 'block' // CRITICAL: CSS failsafe
+                  display: shouldBlockSwipePredictions ? 'none' : 'block' // CRITICAL: CSS failsafe
                 }}
               >
                 <SwipeCard

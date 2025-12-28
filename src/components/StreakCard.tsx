@@ -82,11 +82,6 @@ export const StreakCard = React.memo(function StreakCard({
         
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
-            <svg className="w-3 h-3 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" strokeWidth={2} />
-              <circle cx="12" cy="12" r="6" strokeWidth={2} />
-              <circle cx="12" cy="12" r="2" fill="currentColor" />
-            </svg>
             <span className="text-sm font-semibold text-slate-900">
               Your Streak{' '}
               <span className="font-bold text-orange-500">
