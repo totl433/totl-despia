@@ -1376,10 +1376,11 @@ export default function PredictionsPage() {
   // This prevents blank screens and swipe card flashes
   // Game state is used to determine if we should show swipe, but we don't block on it loading
   // If game state is still loading or null, default to not showing swipe (safer default)
+  // Check finished/live states first to avoid TypeScript narrowing issues
+  const isFinishedOrLive = gameState === 'RESULTS_PRE_GW' || gameState === 'LIVE';
   const canShowSwipePredictions = !gameStateLoading && gameState !== null && (gameState === 'GW_OPEN' || gameState === 'GW_PREDICTED');
   // If data has been loaded before (even if component remounted), be more lenient with loading check
   // This prevents infinite loading when useEffect restarts due to dependency changes
-  const hasLoadedBefore = dataLoadedRef.current;
   // Also check cache to see if we have fixtures available - this allows rendering even if state hasn't updated
   let hasCachedFixtures = false;
   if (typeof window !== 'undefined' && user?.id) {
@@ -2035,9 +2036,9 @@ export default function PredictionsPage() {
   // 3. Gameweek is live (LIVE) - games have started
   // 4. Game state is null (not loaded yet) - default to blocking
   // Only show swipe predictions if gameState is GW_OPEN or GW_PREDICTED
+  // isFinishedOrLive is already defined above to avoid TypeScript narrowing issues
   const shouldBlockSwipePredictions = checkSubmittedBeforeSwipe || 
-    gameState === 'RESULTS_PRE_GW' || 
-    gameState === 'LIVE' ||
+    isFinishedOrLive ||
     gameState === null ||
     !canShowSwipePredictions;
   
