@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import { formatPercentage } from '../../lib/formatPercentage';
 import TeamBadge from './TeamBadge';
 import type { Fixture, LiveScore } from './FixtureCard';
 import { getMediumName } from '../lib/teamNames';
@@ -50,15 +51,25 @@ export default function GameweekFixturesCardListForCapture({
     console.log('[Capture] Sorted fixtures:', [...fixtures].sort((a, b) => a.fixture_index - b.fixture_index));
   }, [gw, fixtures, picks, liveScores, userName, globalRank, gwRankPercent]);
 
-  // Preload Volley image to ensure it's available for capture
+  // Preload Volley image to ensure it's available for capture - CRITICAL for reliable loading
   useEffect(() => {
     const volleyImg = new Image();
     volleyImg.src = '/assets/Volley/Volley-Leaning-With-Ball.png';
+    // Set crossOrigin to allow CORS if needed
+    volleyImg.crossOrigin = 'anonymous';
     volleyImg.onload = () => {
-      console.log('[Capture] Volley image preloaded successfully');
+      console.log('[Capture] Volley image preloaded successfully, dimensions:', volleyImg.naturalWidth, 'x', volleyImg.naturalHeight);
     };
-    volleyImg.onerror = () => {
-      console.error('[Capture] Failed to preload Volley image');
+    volleyImg.onerror = (e) => {
+      console.error('[Capture] Failed to preload Volley image:', volleyImg.src, e);
+      // Retry once after a short delay
+      setTimeout(() => {
+        const retryImg = new Image();
+        retryImg.src = volleyImg.src + '?_retry=' + Date.now();
+        retryImg.onload = () => {
+          console.log('[Capture] Volley image preloaded on retry');
+        };
+      }, 500);
     };
   }, []);
 
@@ -299,11 +310,15 @@ export default function GameweekFixturesCardListForCapture({
           </div>
           {/* GW Rank pill - right */}
           {gwRankPercent !== undefined && (() => {
+            // Use formatPercentage utility to ensure consistent formatting
             // gwRankPercent is rank percentage: (rank / total) * 100
-            // If >50, show "bottom X%" where X = 100 - rankPercent (opposite)
-            // If <=50, show "top X%" where X = rankPercent
-            const label = gwRankPercent > 50 ? 'bottom' : 'top';
-            const displayPercent = gwRankPercent > 50 ? Math.round(100 - gwRankPercent) : Math.round(gwRankPercent);
+            // formatPercentage handles the conversion: >50 shows "Bottom X%", <=50 shows "Top X%"
+            const formatted = formatPercentage(gwRankPercent);
+            if (!formatted) return null;
+            // Split the formatted text (e.g., "Bottom 39%" or "Top 5%") into label and percentage
+            const parts = formatted.text.split(' ');
+            const label = parts[0]; // "Bottom" or "Top"
+            const percent = parts[1]; // "39%" or "5%"
             return (
               <div 
                 className="inline-flex items-center rounded-full bg-slate-600 text-white flex-shrink-0"
@@ -322,7 +337,7 @@ export default function GameweekFixturesCardListForCapture({
                 }}
               >
                 <span style={{ fontSize: '14.63px', fontWeight: '500', opacity: 0.9 }}>{label}</span>
-                <span className="font-extrabold" style={{ fontSize: '18.81px', fontWeight: '800' }}>{displayPercent}%</span>
+                <span className="font-extrabold" style={{ fontSize: '18.81px', fontWeight: '800' }}>{percent}</span>
               </div>
             );
           })()}
