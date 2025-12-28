@@ -1,8 +1,8 @@
 import React, { useRef, useEffect } from 'react';
-import { formatPercentage } from '../../lib/formatPercentage';
 import TeamBadge from './TeamBadge';
 import type { Fixture, LiveScore } from './FixtureCard';
 import { getMediumName } from '../lib/teamNames';
+import { formatPercentage } from '../lib/formatPercentage';
 
 export interface GameweekFixturesCardListForCaptureProps {
   gw: number;
