@@ -179,58 +179,43 @@ export default function ScoreIndicator({
       await new Promise(resolve => requestAnimationFrame(resolve));
       void element.offsetHeight;
       
-      // Wait for images to load - especially Volley image
+      // Check if images are already loaded (they should be since we preload)
       const images = element.querySelectorAll('img');
-      const imagePromises = Array.from(images).map((img: HTMLImageElement) => {
-        const isVolley = img.src.includes('Volley-chilling');
-        console.log('[Share] Waiting for image:', img.src, 'complete:', img.complete, 'naturalWidth:', img.naturalWidth);
-        
-        // If image is already loaded, resolve immediately
-        if (img.complete && img.naturalWidth > 0) {
-          if (isVolley) {
-            console.log('[Share] Volley image already loaded');
-          }
-          return Promise.resolve();
-        }
-        
-        // Use longer timeout for Volley image, shorter for others
-        const timeout = isVolley ? 5000 : 2000;
-        
-        return new Promise((resolve) => {
-          const timeoutId = setTimeout(() => {
-            if (isVolley) {
-              console.warn('[Share] Volley image load timeout after', timeout, 'ms:', img.src);
-            } else {
+      const unloadedImages = Array.from(images).filter((img: HTMLImageElement) => 
+        !img.complete || img.naturalWidth === 0
+      );
+      
+      if (unloadedImages.length > 0) {
+        console.log('[Share] Waiting for', unloadedImages.length, 'images to load');
+        // Only wait for images that aren't already loaded - use short timeout (90KB should load instantly)
+        await Promise.all(unloadedImages.map((img: HTMLImageElement) => {
+          const isVolley = img.src.includes('Volley-chilling');
+          console.log('[Share] Waiting for image:', img.src);
+          return new Promise((resolve) => {
+            const timeoutId = setTimeout(() => {
               console.warn('[Share] Image load timeout:', img.src);
-            }
-            resolve(null);
-          }, timeout);
-          img.onload = () => { 
-            clearTimeout(timeoutId); 
-            if (isVolley) {
-              console.log('[Share] Volley image loaded successfully:', img.naturalWidth, 'x', img.naturalHeight);
-            }
-            resolve(null); 
-          };
-          img.onerror = () => { 
-            clearTimeout(timeoutId); 
-            console.error('[Share] Image load error:', img.src);
-            resolve(null); 
-          };
-        });
-      });
-      
-      await Promise.all(imagePromises);
-      
-      // Double-check Volley image is loaded
-      const volleyImg = element.querySelector('img[src*="Volley-chilling"]') as HTMLImageElement;
-      if (volleyImg) {
-        const computedStyle = window.getComputedStyle(volleyImg);
-        console.log('[Share] Volley image final check - complete:', volleyImg.complete, 'naturalWidth:', volleyImg.naturalWidth, 'display:', computedStyle.display, 'visibility:', computedStyle.visibility, 'opacity:', computedStyle.opacity);
+              resolve(null);
+            }, 1000); // Short timeout - images should be cached/preloaded
+            img.onload = () => { 
+              clearTimeout(timeoutId); 
+              if (isVolley) {
+                console.log('[Share] Volley image loaded:', img.naturalWidth, 'x', img.naturalHeight);
+              }
+              resolve(null); 
+            };
+            img.onerror = () => { 
+              clearTimeout(timeoutId); 
+              console.error('[Share] Image load error:', img.src);
+              resolve(null); 
+            };
+          });
+        }));
+      } else {
+        console.log('[Share] All images already loaded, proceeding immediately');
       }
       
-      // Small delay to ensure all images are rendered
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Small delay to ensure DOM is fully rendered
+      await new Promise(resolve => setTimeout(resolve, 50));
       
       // Capture image - exactly like GamesSection
       const dataUrl = await toPng(element, {
