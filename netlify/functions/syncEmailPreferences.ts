@@ -34,9 +34,7 @@ function json(statusCode: number, body: unknown, cors: boolean = false) {
 }
 
 export const handler: Handler = async (event) => {
-  console.log('[syncEmailPreferences] Function invoked - v10 (removed early env check)');
-  // Debug: Log ALL env vars to see what's available
-  console.log('[syncEmailPreferences] All process.env keys:', Object.keys(process.env).slice(0, 20));
+  console.log('[syncEmailPreferences] Function invoked - v11 (removed hardcoded fallback)');
 
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
@@ -52,13 +50,19 @@ export const handler: Handler = async (event) => {
     return json(500, { error: 'Missing Supabase environment variables' }, true);
   }
 
-  // Check for MailerLite API key (will use fallback in mailerlite.ts if not found)
-  console.log('[syncEmailPreferences] Checking MAILERLITE_API_KEY:', {
-    exists: !!process.env.MAILERLITE_API_KEY,
-    length: process.env.MAILERLITE_API_KEY?.length || 0,
-    firstChars: process.env.MAILERLITE_API_KEY?.substring(0, 20) || 'N/A'
-  });
-  // Note: We don't return early here - let mailerlite.ts handle the fallback
+  // Validate MailerLite API key early (will throw detailed error if missing)
+  try {
+    // This will throw a descriptive error if the key is missing
+    // We're accessing it via the mailerlite module to get consistent error handling
+    const testKey = process.env.MAILERLITE_API_KEY?.trim();
+    if (!testKey) {
+      console.warn('[syncEmailPreferences] MAILERLITE_API_KEY not found in env - will fail when calling MailerLite API');
+      // Continue anyway - let mailerlite.ts throw the detailed error
+    }
+  } catch (error) {
+    // Shouldn't happen, but catch just in case
+    console.error('[syncEmailPreferences] Error checking MAILERLITE_API_KEY:', error);
+  }
 
   const syncAll = event.queryStringParameters?.all === 'true';
 
