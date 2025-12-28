@@ -18,12 +18,11 @@ const AdminDataPage = lazy(() => import("./pages/AdminData"));
 const TempGlobalPage = lazy(() => import("./pages/TempGlobal"));
 const CreateLeaguePage = lazy(() => import("./pages/CreateLeague"));
 const HowToPlayPage = lazy(() => import("./pages/HowToPlay"));
-const NewPredictionsCentre = lazy(() => import("./pages/NewPredictionsCentre"));
-const Predictions = lazy(() => import("./pages/TestApiPredictions"));
 const TestAdminApi = lazy(() => import("./pages/TestAdminApi"));
 const ApiAdmin = lazy(() => import("./pages/ApiAdmin"));
 const TestFixtures = lazy(() => import("./pages/TestFixtures"));
 const TestDespia = lazy(() => import("./pages/TestDespia"));
+const TestGwTransition = lazy(() => import("./pages/TestGwTransition"));
 const ProfilePage = lazy(() => import("./pages/Profile"));
 const NotificationCentrePage = lazy(() => import("./pages/NotificationCentre"));
 const EmailPreferencesPage = lazy(() => import("./pages/EmailPreferences"));
@@ -40,6 +39,7 @@ import FloatingProfile from "./components/FloatingProfile";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useAppLifecycle } from "./hooks/useAppLifecycle";
 import LoadingScreen from "./components/LoadingScreen";
+import ScrollToTop from "./components/ScrollToTop";
 // import { isLoadEverythingFirstEnabled } from "./lib/featureFlags"; // Unused - feature flag checked inline
 import { loadInitialData } from "./services/initialDataLoader";
 import { bootLog } from "./lib/logEvent";
@@ -243,6 +243,42 @@ function AppContent() {
     };
   }, [location.pathname]);
 
+  // Listen for GW transition event and trigger shimmer animation
+  useEffect(() => {
+    const handleGwTransition = (_event: CustomEvent<{ newGw: number }>) => {
+      console.log('[App] GW transition event received, triggering shimmer animation');
+      
+      // Find all main content elements (cards, sections, etc.)
+      const contentElements = document.querySelectorAll(
+        'section, .rounded-xl, .bg-white, [class*="card"], [class*="Card"]'
+      );
+      
+      // Add shimmer class to each element with staggered delay
+      contentElements.forEach((el, index) => {
+        if (el instanceof HTMLElement) {
+          el.classList.add('shimmer-box');
+          el.style.animationDelay = `${index * 100}ms`;
+        }
+      });
+      
+      // Remove shimmer class after animation completes
+      setTimeout(() => {
+        contentElements.forEach((el) => {
+          if (el instanceof HTMLElement) {
+            el.classList.remove('shimmer-box');
+            el.style.animationDelay = '';
+          }
+        });
+      }, 1200);
+    };
+    
+    window.addEventListener('gwTransition', handleGwTransition as EventListener);
+    
+    return () => {
+      window.removeEventListener('gwTransition', handleGwTransition as EventListener);
+    };
+  }, []);
+  
   // Check if user has submitted predictions for current GW
   useEffect(() => {
     let alive = true;
@@ -373,13 +409,20 @@ function AppContent() {
   
   return (
     <>
+      {/* Scroll to top on route change - must be inside Router */}
+      <ScrollToTop />
+      
       {/* Logo is now rendered in Home.tsx component */}
       
       {/* Floating Profile Icon - only on Home Page */}
       {location.pathname === '/' && <FloatingProfile />}
 
       {/* Global Predictions Banner - hide on auth page and full-screen pages */}
-            {!isFullScreenPage && location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions' && location.pathname !== '/global' && <PredictionsBanner />}
+      {!isFullScreenPage && location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions' && location.pathname !== '/global' && (
+        <ErrorBoundary fallback={null}>
+          <PredictionsBanner />
+        </ErrorBoundary>
+      )}
 
       {/* Welcome Message */}
       {showWelcome && (
@@ -405,12 +448,11 @@ function AppContent() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/auth" element={<AuthGate />} />
-            <Route path="/new-predictions" element={<RequireAuth><NewPredictionsCentre /></RequireAuth>} />
-                  <Route path="/predictions" element={<RequireAuth><Predictions /></RequireAuth>} />
             <Route path="/test-admin-api" element={<RequireAuth><TestAdminApi /></RequireAuth>} />
             <Route path="/api-admin" element={<RequireAuth><ApiAdmin /></RequireAuth>} />
             <Route path="/test-fixtures" element={<RequireAuth><TestFixtures /></RequireAuth>} />
             <Route path="/test-despia" element={<RequireAuth><TestDespia /></RequireAuth>} />
+            <Route path="/test-gw-transition" element={<RequireAuth><TestGwTransition /></RequireAuth>} />
             <Route path="/swipe-card-preview" element={<RequireAuth><SwipeCardPreview /></RequireAuth>} />
             <Route path="/" element={<RequireAuth><ErrorBoundary><HomePage /></ErrorBoundary></RequireAuth>} />
             <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
