@@ -51,6 +51,7 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
     const [sharePicks, setSharePicks] = useState<Record<number, "H" | "D" | "A">>({});
     const [shareLiveScores, setShareLiveScores] = useState<Map<number, any>>(new Map());
     const [userName, setUserName] = useState<string>('');
+    const [gwRankPercent, setGwRankPercent] = useState<number | undefined>(undefined);
     
     const handleShare = async (e: React.MouseEvent) => {
       e.preventDefault();
@@ -109,6 +110,42 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
           picksMap[p.fixture_index] = p.pick;
         });
         setSharePicks(picksMap);
+        
+        // Fetch all GW points to calculate GW rank percentage
+        const { data: allGwPointsData, error: gwPointsError } = await supabase
+          .from('app_v_gw_points')
+          .select('user_id, points')
+          .eq('gw', gw);
+
+        if (!gwPointsError && allGwPointsData) {
+          const sortedGwPoints = [...allGwPointsData].sort((a, b) => b.points - a.points);
+          const totalUsers = sortedGwPoints.length;
+
+          if (totalUsers > 0) {
+            let userGwRank: number | undefined;
+            let currentRank = 1;
+            for (let i = 0; i < sortedGwPoints.length; i++) {
+              if (i > 0 && sortedGwPoints[i - 1].points !== sortedGwPoints[i].points) {
+                currentRank = i + 1;
+              }
+              if (sortedGwPoints[i].user_id === user.id) {
+                userGwRank = currentRank;
+                break;
+              }
+            }
+
+            if (userGwRank !== undefined) {
+              const percentage = Math.round((userGwRank / totalUsers) * 100);
+              setGwRankPercent(percentage);
+            } else {
+              setGwRankPercent(undefined);
+            }
+          } else {
+            setGwRankPercent(undefined);
+          }
+        } else {
+          setGwRankPercent(undefined);
+        }
         
         // Fetch live scores and convert to Record format first (like GamesSection)
         const apiMatchIds = shareableFixtures
@@ -343,21 +380,9 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
                   <span className="leading-none text-slate-900">—</span>
                 )}
               </div>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={handleShare}
-                  className="p-1 hover:bg-slate-100 rounded transition-colors"
-                  aria-label="Share gameweek score"
-                  title="Share"
-                >
-                  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                  </svg>
-                </button>
-                <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
+              <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
             </div>
             {isActiveLive && (
               <div className="absolute bottom-3 right-3 flex items-center gap-1.5">
@@ -366,8 +391,18 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
               </div>
             )}
             <div className="mt-auto">
-              <div className="text-xs text-slate-500 mb-2 flex items-center gap-1.5">
-                Gameweek {gw ?? '—'}
+              <div className="text-xs text-slate-500 mb-2 flex items-baseline justify-between">
+                <span>Gameweek {gw ?? '—'}</span>
+                <button
+                  onClick={handleShare}
+                  className="p-0.5 hover:bg-slate-100 rounded transition-colors inline-flex items-center justify-center mt-0.5"
+                  aria-label="Share gameweek score"
+                  title="Share"
+                >
+                  <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                  </svg>
+                </button>
               </div>
               <div className="flex items-center gap-1">
                 <span className="text-xs font-semibold text-slate-900">
@@ -428,6 +463,7 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
                 liveScores={shareLiveScores}
                 userName={userName}
                 globalRank={rank ?? undefined}
+                gwRankPercent={gwRankPercent}
                 onCardRefReady={(ref) => {
                   // Store the ref element directly
                   if (ref?.current) {
