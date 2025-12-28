@@ -173,8 +173,12 @@ export default function ScoreIndicator({
         throw new Error('Capture element not found');
       }
       
-      // Force reflows
       const element = captureRef.current;
+      
+      // Give extra time for Volley image to render in DOM
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Force reflows to ensure all styles are applied
       void element.offsetHeight;
       void element.offsetWidth;
       await new Promise(resolve => requestAnimationFrame(resolve));
