@@ -202,17 +202,17 @@ export default function GameweekFixturesCardListForCapture({
               transform: 'scaleX(-1)',
               position: 'absolute',
               left: '50%',
-              marginLeft: '-80px'
+              marginLeft: '-80px',
+              visibility: 'visible',
+              opacity: 1
             }}
-            onLoad={() => {
-              console.log('[Capture] Volley image loaded in DOM');
+            onLoad={(e) => {
+              const img = e.currentTarget as HTMLImageElement;
+              console.log('[Capture] Volley image loaded in DOM:', img.src, 'naturalWidth:', img.naturalWidth, 'naturalHeight:', img.naturalHeight);
             }}
             onError={(e) => {
-              console.error('[Capture] Volley image failed to load in DOM');
               const target = e.currentTarget as HTMLImageElement;
-              if (target) {
-                target.style.display = 'none';
-              }
+              console.error('[Capture] Volley image failed to load in DOM:', target.src);
             }}
           />
         </div>

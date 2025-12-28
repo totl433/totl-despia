@@ -45,6 +45,8 @@ export default function ScoreIndicator({
     if (isSharing) return;
     if (!gameweek || !user?.id) return;
     
+    console.log('[ScoreIndicator] handleShare called, topPercent:', topPercent);
+    
     // Get user name immediately
     const displayUserName = user?.user_metadata?.display_name || user?.email || 'User';
     setUserName(displayUserName);
@@ -177,24 +179,37 @@ export default function ScoreIndicator({
       await new Promise(resolve => requestAnimationFrame(resolve));
       void element.offsetHeight;
       
-      // Wait for images to load - optimized timeout
+      // Wait for images to load - especially Volley image
       const images = element.querySelectorAll('img');
-      await Promise.all(Array.from(images).map((img: HTMLImageElement) => {
+      const imagePromises = Array.from(images).map((img: HTMLImageElement) => {
+        const isVolley = img.src.includes('Volley-chilling');
+        console.log('[Share] Waiting for image:', img.src, 'complete:', img.complete, 'naturalWidth:', img.naturalWidth);
+        
         // If image is already loaded, resolve immediately
         if (img.complete && img.naturalWidth > 0) {
+          if (isVolley) {
+            console.log('[Share] Volley image already loaded');
+          }
           return Promise.resolve();
         }
         
-        // Use shorter timeout - images should be preloaded
-        const timeout = 2000;
+        // Use longer timeout for Volley image, shorter for others
+        const timeout = isVolley ? 5000 : 2000;
         
         return new Promise((resolve) => {
           const timeoutId = setTimeout(() => {
-            console.warn('[Share] Image load timeout:', img.src);
+            if (isVolley) {
+              console.warn('[Share] Volley image load timeout after', timeout, 'ms:', img.src);
+            } else {
+              console.warn('[Share] Image load timeout:', img.src);
+            }
             resolve(null);
           }, timeout);
           img.onload = () => { 
             clearTimeout(timeoutId); 
+            if (isVolley) {
+              console.log('[Share] Volley image loaded successfully:', img.naturalWidth, 'x', img.naturalHeight);
+            }
             resolve(null); 
           };
           img.onerror = () => { 
@@ -203,18 +218,18 @@ export default function ScoreIndicator({
             resolve(null); 
           };
         });
-      }));
-      
-      // Hide incomplete images
-      Array.from(images).forEach((img: HTMLImageElement) => {
-        if (!img.complete || img.naturalWidth === 0) {
-          img.style.display = 'none';
-          img.style.visibility = 'hidden';
-          img.style.opacity = '0';
-        }
       });
       
-      // Reduced delay for faster capture
+      await Promise.all(imagePromises);
+      
+      // Double-check Volley image is loaded
+      const volleyImg = element.querySelector('img[src*="Volley-chilling"]') as HTMLImageElement;
+      if (volleyImg) {
+        const computedStyle = window.getComputedStyle(volleyImg);
+        console.log('[Share] Volley image final check - complete:', volleyImg.complete, 'naturalWidth:', volleyImg.naturalWidth, 'display:', computedStyle.display, 'visibility:', computedStyle.visibility, 'opacity:', computedStyle.opacity);
+      }
+      
+      // Small delay to ensure all images are rendered
       await new Promise(resolve => setTimeout(resolve, 100));
       
       // Capture image - exactly like GamesSection
@@ -395,6 +410,14 @@ export default function ScoreIndicator({
                 if (ref?.current) {
                   captureRef.current = ref.current;
                   console.log('[ScoreIndicator] Capture ref ready, topPercent:', topPercent, 'gwRankPercent:', topPercent !== null && topPercent !== undefined ? topPercent : undefined);
+                  // Force image to load before capture
+                  const volleyImg = ref.current.querySelector('img[src*="Volley-chilling"]') as HTMLImageElement;
+                  if (volleyImg) {
+                    console.log('[ScoreIndicator] Found Volley image in DOM:', volleyImg.src, 'complete:', volleyImg.complete, 'naturalWidth:', volleyImg.naturalWidth);
+                    if (!volleyImg.complete || volleyImg.naturalWidth === 0) {
+                      volleyImg.src = volleyImg.src; // Force reload
+                    }
+                  }
                 }
               }}
             />
