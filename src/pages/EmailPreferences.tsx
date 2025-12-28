@@ -60,10 +60,10 @@ export default function EmailPreferences() {
         return;
       }
 
-      // Determine function URL - use production URL in dev, or relative path in production
+      // Determine function URL - use staging URL in dev, or relative path in production
       const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       const functionUrl = isDevelopment 
-        ? 'https://playtotl.com/.netlify/functions/syncEmailPreferences'
+        ? 'https://totl-staging.netlify.app/.netlify/functions/syncEmailPreferences'
         : '/.netlify/functions/syncEmailPreferences';
 
       // Call Netlify function to sync preferences
