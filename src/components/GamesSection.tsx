@@ -129,6 +129,7 @@ export function GamesSection({
   const [showCaptureModal, setShowCaptureModal] = useState(false);
   const [shareUserPicks, setShareUserPicks] = useState<Record<number, "H" | "D" | "A">>({});
   const [shareLiveScores, setShareLiveScores] = useState<Record<number, any>>({});
+  const [shareGwRankPercent, setShareGwRankPercent] = useState<number | undefined>(undefined);
 
   const handleShare = async () => {
     console.log('[Share] handleShare called', { 
@@ -177,6 +178,39 @@ export function GamesSection({
             fetchedPicks[p.fixture_index] = p.pick;
           });
           console.log('[Share] Fetched picks:', fetchedPicks);
+        }
+      }
+      
+      // Calculate GW rank percentage using app_v_gw_points view (same as UserPicksModal and ScoreIndicator)
+      if (userId) {
+        const { data: gwPointsData, error: gwPointsError } = await supabase
+          .from('app_v_gw_points')
+          .select('user_id, points')
+          .eq('gw', currentGwValue);
+
+        if (!gwPointsError && gwPointsData && gwPointsData.length > 0) {
+          // Sort by points descending
+          const sorted = [...gwPointsData].sort((a, b) => (b.points || 0) - (a.points || 0));
+          
+          // Find user's rank (handling ties - same rank for same points)
+          let userRank = 1;
+          for (let i = 0; i < sorted.length; i++) {
+            if (i > 0 && sorted[i - 1].points !== sorted[i].points) {
+              userRank = i + 1;
+            }
+            if (sorted[i].user_id === userId) {
+              break;
+            }
+          }
+
+          // Calculate rank percentage: (rank / total_users) * 100
+          const totalUsers = sorted.length;
+          const rankPercent = Math.round((userRank / totalUsers) * 100);
+          setShareGwRankPercent(rankPercent);
+          
+          console.log('[Share] Calculated GW rank percent:', rankPercent, 'userRank:', userRank, 'totalUsers:', totalUsers);
+        } else {
+          setShareGwRankPercent(undefined);
         }
       }
       
@@ -612,6 +646,7 @@ export function GamesSection({
               })()}
               userName={displayUserName}
               globalRank={globalRank}
+              gwRankPercent={shareGwRankPercent}
               onCardRefReady={(ref) => {
                 captureRef.current = ref.current;
               }}
