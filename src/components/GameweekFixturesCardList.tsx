@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import TeamBadge from './TeamBadge';
 import type { Fixture, LiveScore } from './FixtureCard';
 import { getTruncatedName, getFullName } from '../lib/teamNames';
+import { formatPercentage } from '../lib/formatPercentage';
 import html2canvas from 'html2canvas';
 import ShareSheet from './ShareSheet';
 
