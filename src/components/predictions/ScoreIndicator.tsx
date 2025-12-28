@@ -177,46 +177,29 @@ export default function ScoreIndicator({
       await new Promise(resolve => requestAnimationFrame(resolve));
       void element.offsetHeight;
       
-      // Wait for images to load - exactly like GamesSection
-      // Special handling for Volley image - ensure it loads in Despia
+      // Wait for images to load - optimized timeout
       const images = element.querySelectorAll('img');
       await Promise.all(Array.from(images).map((img: HTMLImageElement) => {
-        // Volley image needs extra time in Despia
-        const isVolleyImage = img.src.includes('Volley') || img.src.includes('volley');
-        const timeout = isVolleyImage ? 5000 : 3000; // Give Volley images more time
-        
+        // If image is already loaded, resolve immediately
         if (img.complete && img.naturalWidth > 0) {
-          if (isVolleyImage) {
-            console.log('[Share] Volley image already loaded:', img.src);
-          }
           return Promise.resolve();
         }
         
+        // Use shorter timeout - images should be preloaded
+        const timeout = 2000;
+        
         return new Promise((resolve) => {
           const timeoutId = setTimeout(() => {
-            if (isVolleyImage) {
-              console.warn('[Share] Volley image load timeout:', img.src);
-            }
-            img.style.display = 'none';
-            img.style.visibility = 'hidden';
-            img.style.opacity = '0';
+            console.warn('[Share] Image load timeout:', img.src);
             resolve(null);
           }, timeout);
           img.onload = () => { 
             clearTimeout(timeoutId); 
-            if (isVolleyImage) {
-              console.log('[Share] Volley image loaded successfully:', img.src);
-            }
             resolve(null); 
           };
           img.onerror = () => { 
             clearTimeout(timeoutId); 
-            if (isVolleyImage) {
-              console.error('[Share] Volley image load error:', img.src);
-            }
-            img.style.display = 'none';
-            img.style.visibility = 'hidden';
-            img.style.opacity = '0';
+            console.error('[Share] Image load error:', img.src);
             resolve(null); 
           };
         });
@@ -231,7 +214,8 @@ export default function ScoreIndicator({
         }
       });
       
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Reduced delay for faster capture
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Capture image - exactly like GamesSection
       const dataUrl = await toPng(element, {
@@ -410,6 +394,7 @@ export default function ScoreIndicator({
                 // Store the ref element directly
                 if (ref?.current) {
                   captureRef.current = ref.current;
+                  console.log('[ScoreIndicator] Capture ref ready, topPercent:', topPercent, 'gwRankPercent:', topPercent !== null && topPercent !== undefined ? topPercent : undefined);
                 }
               }}
             />
