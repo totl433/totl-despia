@@ -389,7 +389,11 @@ export default function ScoreIndicator({
               liveScores={shareLiveScores}
               userName={userName}
               globalRank={topPercent ? Math.round((topPercent / 100) * total) : undefined}
-              gwRankPercent={topPercent !== null && topPercent !== undefined ? topPercent : undefined}
+              gwRankPercent={(() => {
+                const value = topPercent !== null && topPercent !== undefined ? topPercent : undefined;
+                console.log('[ScoreIndicator] Passing gwRankPercent to capture component:', value, 'topPercent was:', topPercent);
+                return value;
+              })()}
               onCardRefReady={(ref) => {
                 // Store the ref element directly
                 if (ref?.current) {

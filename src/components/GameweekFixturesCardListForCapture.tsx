@@ -34,8 +34,13 @@ export default function GameweekFixturesCardListForCapture({
   // Debug logging
   useEffect(() => {
     console.log('[Capture] Component received props - gw:', gw, 'fixturesCount:', fixtures.length, 'picksCount:', Object.keys(picks).length);
-    console.log('[Capture] gwRankPercent:', gwRankPercent, 'globalRank:', globalRank, 'userName:', userName);
-    console.log('[Capture] willShowPercentPill:', gwRankPercent !== undefined);
+    console.log('[Capture] gwRankPercent:', gwRankPercent, 'typeof:', typeof gwRankPercent, 'globalRank:', globalRank, 'userName:', userName);
+    console.log('[Capture] willShowPercentPill:', gwRankPercent !== undefined, 'check:', gwRankPercent !== undefined);
+    if (gwRankPercent === undefined) {
+      console.warn('[Capture] WARNING: gwRankPercent is undefined - pill will NOT render');
+    } else {
+      console.log('[Capture] gwRankPercent has value - pill SHOULD render:', gwRankPercent);
+    }
     console.log('[Capture] First fixture:', fixtures[0]);
     console.log('[Capture] All fixtures:', fixtures);
     console.log('[Capture] First pick:', Object.entries(picks)[0]);
