@@ -12,11 +12,17 @@ export default function NotificationCentre() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pushState, setPushState] = useState<EffectivePushState | null>(null);
-  const [chatNotifications, setChatNotifications] = useState<NotificationOption[]>([
+  const [miniLeagueNotifications, setMiniLeagueNotifications] = useState<NotificationOption[]>([
     {
       id: 'chat-messages',
       label: 'Chat Messages',
       description: 'Get notified when someone sends a message in your mini-leagues',
+      enabled: true,
+    },
+    {
+      id: 'mini-league-updates',
+      label: 'Mini League Updates',
+      description: 'Get notified about new members and when everyone has submitted',
       enabled: true,
     },
   ]);
@@ -27,12 +33,18 @@ export default function NotificationCentre() {
       description: 'Get notified when a new gameweek is published and ready for predictions',
       enabled: true,
     },
-          {
-            id: 'score-updates',
-            label: 'Match Updates',
-            description: 'Get notified about match updates including kickoffs, goals, and scorers',
-            enabled: true,
-          },
+    {
+      id: 'prediction-reminder',
+      label: 'Prediction Reminders',
+      description: 'Get a reminder 5 hours before the deadline to make your predictions',
+      enabled: true,
+    },
+    {
+      id: 'score-updates',
+      label: 'Match Updates',
+      description: 'Get notified about match updates including kickoffs, goals, and scorers',
+      enabled: true,
+    },
     {
       id: 'final-whistle',
       label: 'Final Whistle',
@@ -104,12 +116,33 @@ export default function NotificationCentre() {
         // Update preferences from database
         const prefs = data.preferences || {};
         
-        setChatNotifications([
+        // Migration: Check old preference keys and migrate to new unified key for mini-league-updates
+        let miniLeagueUpdatesEnabled = prefs['mini-league-updates'];
+        if (miniLeagueUpdatesEnabled === undefined) {
+          // Migrate from old keys - if any were explicitly disabled, disable the new one
+          const oldMemberJoins = prefs['member-joins'];
+          const oldAllMembersSubmitted = prefs['all-members-submitted'];
+          
+          if (oldMemberJoins === false || oldAllMembersSubmitted === false) {
+            miniLeagueUpdatesEnabled = false;
+          } else {
+            // Default to true if no old preferences were explicitly disabled
+            miniLeagueUpdatesEnabled = true;
+          }
+        }
+        
+        setMiniLeagueNotifications([
           {
             id: 'chat-messages',
             label: 'Chat Messages',
             description: 'Get notified when someone sends a message in your mini-leagues',
             enabled: prefs['chat-messages'] !== false,
+          },
+          {
+            id: 'mini-league-updates',
+            label: 'Mini League Updates',
+            description: 'Get notified about new members and when everyone has submitted',
+            enabled: miniLeagueUpdatesEnabled !== false,
           },
         ]);
 
@@ -119,6 +152,12 @@ export default function NotificationCentre() {
             label: 'New Gameweek Published',
             description: 'Get notified when a new gameweek is published and ready for predictions',
             enabled: prefs['new-gameweek'] !== false,
+          },
+          {
+            id: 'prediction-reminder',
+            label: 'Prediction Reminders',
+            description: 'Get a reminder 5 hours before the deadline to make your predictions',
+            enabled: prefs['prediction-reminder'] !== false,
           },
           {
             id: 'score-updates',
@@ -147,15 +186,15 @@ export default function NotificationCentre() {
     }
   }
 
-  async function handleToggle(section: 'chat' | 'game' | 'system', id: string, enabled: boolean) {
+  async function handleToggle(section: 'miniLeague' | 'game' | 'system', id: string, enabled: boolean) {
     if (!user) return;
 
     setSaving(true);
 
     try {
       // Update local state immediately for better UX
-      if (section === 'chat') {
-        setChatNotifications((prev) =>
+      if (section === 'miniLeague') {
+        setMiniLeagueNotifications((prev) =>
           prev.map((opt) => (opt.id === id ? { ...opt, enabled } : opt))
         );
       } else if (section === 'game') {
@@ -165,7 +204,7 @@ export default function NotificationCentre() {
       }
 
       // Save to database
-      const allOptions = [...chatNotifications, ...gameNotifications, ...systemNotifications];
+      const allOptions = [...miniLeagueNotifications, ...gameNotifications, ...systemNotifications];
       const preferences: Record<string, boolean> = {};
       allOptions.forEach((opt) => {
         if (opt.id === id) {
@@ -188,8 +227,8 @@ export default function NotificationCentre() {
       if (error) {
         console.error('Error saving preferences:', error);
         // Revert local state on error
-        if (section === 'chat') {
-          setChatNotifications((prev) =>
+        if (section === 'miniLeague') {
+          setMiniLeagueNotifications((prev) =>
             prev.map((opt) => (opt.id === id ? { ...opt, enabled: !enabled } : opt))
           );
         } else if (section === 'game') {
@@ -311,10 +350,10 @@ export default function NotificationCentre() {
 
         <div className="space-y-6">
           <NotificationSection
-            title="Chat Notifications"
-            description="Control when you receive notifications for mini-league messages"
-            options={chatNotifications}
-            onToggle={(id, enabled) => handleToggle('chat', id, enabled)}
+            title="Mini League Notifications"
+            description="Get notified about updates in your mini-leagues"
+            options={miniLeagueNotifications}
+            onToggle={(id, enabled) => handleToggle('miniLeague', id, enabled)}
           />
 
           <NotificationSection

@@ -53,47 +53,18 @@ async function checkAndNotifyFinalSubmission(
     const memberIds = members.map((m: any) => m.user_id);
     console.log(`[notifyFinalSubmission] Checking ${memberIds.length} members for league ${leagueId}, GW ${gw}`);
 
-    // Check submissions across all pick tables
-    // Try app_gw_submissions first (for app tables), then gw_submissions, then test_api_submissions
-    let submissions: any[] = [];
-    
-    // 1. Try app_gw_submissions (for app tables)
-    const { data: appSubmissions } = await supabase
+    // Check submissions in app_gw_submissions
+    // This table contains submissions from both app users and mirrored web users
+    const { data: submissions, error: submissionsError } = await supabase
       .from('app_gw_submissions')
       .select('user_id')
       .eq('gw', gw)
       .in('user_id', memberIds)
       .not('submitted_at', 'is', null);
-    
-    if (appSubmissions && appSubmissions.length > 0) {
-      submissions = appSubmissions;
-      console.log(`[notifyFinalSubmission] Using app_gw_submissions: ${submissions.length} submissions found`);
-    } else {
-      // 2. Try gw_submissions (for web tables)
-      const { data: webSubmissions } = await supabase
-        .from('gw_submissions')
-        .select('user_id')
-        .eq('gw', gw)
-        .in('user_id', memberIds)
-        .not('submitted_at', 'is', null);
-      
-      if (webSubmissions && webSubmissions.length > 0) {
-        submissions = webSubmissions;
-        console.log(`[notifyFinalSubmission] Using gw_submissions: ${submissions.length} submissions found`);
-      } else {
-        // 3. Try test_api_submissions (for test API)
-        const { data: testSubmissions } = await supabase
-          .from('test_api_submissions')
-          .select('user_id')
-          .eq('matchday', gw)
-          .in('user_id', memberIds)
-          .not('submitted_at', 'is', null);
-        
-        if (testSubmissions && testSubmissions.length > 0) {
-          submissions = testSubmissions;
-          console.log(`[notifyFinalSubmission] Using test_api_submissions: ${submissions.length} submissions found`);
-        }
-      }
+
+    if (submissionsError) {
+      console.error('[notifyFinalSubmission] Error fetching submissions:', submissionsError);
+      return { success: false, error: 'Failed to fetch submissions' };
     }
 
     const submittedUserIds = new Set((submissions || []).map((s: any) => s.user_id));
@@ -101,7 +72,7 @@ async function checkAndNotifyFinalSubmission(
 
     if (!allSubmitted) {
       const remaining = memberIds.length - submittedUserIds.size;
-      console.log(`[notifyFinalSubmission] Not all submitted yet: ${remaining} remaining in league ${leagueId}`);
+      console.log(`[notifyFinalSubmission] Not all submitted yet: ${remaining} remaining in league ${leagueId} (found ${submittedUserIds.size} of ${memberIds.length})`);
       return { success: true, message: 'Not all members have submitted yet', remaining };
     }
 
@@ -138,10 +109,6 @@ async function checkAndNotifyFinalSubmission(
         gw,
       },
       url: leagueCode ? `/league/${leagueCode}` : undefined,
-      grouping_params: {
-        league_id: leagueId,
-        gw,
-      },
       league_id: leagueId,
     });
 

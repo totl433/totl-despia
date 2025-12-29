@@ -23,7 +23,23 @@ const catalogData = {
     "cooldown": { "per_user_seconds": 30 },
     "quiet_hours": { "start": "23:00", "end": "07:00" },
     "preferences": { "preference_key": "chat-messages", "default": true },
-    "onesignal": { "collapse_id_format": "chat:{league_id}", "thread_id_format": "league:{league_id}", "android_group_format": "totl_chat" },
+    "onesignal": { "collapse_id_format": "ml_updates:{league_id}", "thread_id_format": "league:{league_id}", "android_group_format": "totl_leagues" },
+    "deep_links": { "url_format": "/league/{leagueCode}" },
+    "rollout": { "enabled": true, "percentage": 100 }
+  },
+  "member-join": {
+    "notification_key": "member-join",
+    "owner": "client-triggered",
+    "status": "active",
+    "channels": ["push"],
+    "audience": "league_members_except_joiner",
+    "source": "client_post",
+    "trigger": { "name": "league_member_joined", "event_id_format": "member_join:{league_id}:{user_id}" },
+    "dedupe": { "scope": "per_user_per_event", "ttl_seconds": 300 },
+    "cooldown": { "per_user_seconds": 0 },
+    "quiet_hours": { "start": null, "end": null },
+    "preferences": { "preference_key": "mini-league-updates", "default": true },
+    "onesignal": { "collapse_id_format": "ml_updates:{league_id}", "thread_id_format": "league:{league_id}", "android_group_format": "totl_leagues" },
     "deep_links": { "url_format": "/league/{leagueCode}" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
@@ -38,9 +54,9 @@ const catalogData = {
     "dedupe": { "scope": "per_league_per_gw", "ttl_seconds": 86400 },
     "cooldown": { "per_user_seconds": 0 },
     "quiet_hours": { "start": null, "end": null },
-    "preferences": { "preference_key": null, "default": true },
-    "onesignal": { "collapse_id_format": "final_sub:{league_id}:{gw}", "thread_id_format": "league:{league_id}", "android_group_format": "totl_leagues" },
-    "deep_links": { "url_format": null },
+    "preferences": { "preference_key": "mini-league-updates", "default": true },
+    "onesignal": { "collapse_id_format": "ml_updates:{league_id}", "thread_id_format": "league:{league_id}", "android_group_format": "totl_leagues" },
+    "deep_links": { "url_format": "/league/{leagueCode}" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
   "final-whistle": {
