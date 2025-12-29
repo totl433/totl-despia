@@ -172,11 +172,14 @@ export async function dispatchNotification(
       // Don't filter by subscribed flag - check OneSignal directly for all active devices
       // The DB flag can be stale/wrong, so we verify with OneSignal API instead
       const subscriptions = await loadPushSubscriptions([userId]);
+      console.log(`[dispatch] User ${userId.slice(0, 8)}...: loadPushSubscriptions returned ${subscriptions.length} subscriptions`);
       const activeSubscriptions = subscriptions.filter(
         sub => sub.is_active && sub.player_id
       );
+      console.log(`[dispatch] User ${userId.slice(0, 8)}...: ${activeSubscriptions.length} active subscriptions after filtering`);
       
       if (activeSubscriptions.length === 0) {
+        console.log(`[dispatch] User ${userId.slice(0, 8)}...: No active devices found. Total subscriptions: ${subscriptions.length}, Details:`, subscriptions.map(s => ({ is_active: s.is_active, has_player_id: !!s.player_id })));
         userResult.result = 'suppressed_unsubscribed';
         userResult.reason = 'No active devices';
         result.results.suppressed_unsubscribed++;
