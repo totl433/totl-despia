@@ -1137,7 +1137,12 @@ export default function TablesPage() {
         if (!response.ok) {
           console.error('[Tables] Notification function returned error:', response.status, result);
         } else {
-          console.log('[Tables] Join notification sent:', result);
+          console.log('[Tables] Join notification sent:', {
+            sent: result.sent,
+            recipients: result.recipients,
+            ok: result.ok,
+            result: result.result
+          });
         }
       } catch (notifError) {
         // Non-critical - log but don't fail the join
