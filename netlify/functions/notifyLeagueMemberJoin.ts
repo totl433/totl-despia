@@ -97,7 +97,7 @@ export const handler: Handler = async (event) => {
       notification_key: 'member-join',
       event_id: eventId,
       user_ids: Array.from(recipients),
-      title: 'New Member Joined',
+      title: userName,
       body: notificationText,
       data: {
         type: 'member-join',
