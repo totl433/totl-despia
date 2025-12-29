@@ -257,7 +257,8 @@ export default function TablesPage() {
         // Determine which GW to display
         // If user hasn't transitioned to new GW, show their viewing GW (previous GW)
         // Otherwise show the current GW
-        const gwToDisplay = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+        // userViewingGw is guaranteed to be a number (set above), but TypeScript needs explicit check
+        const gwToDisplay = userViewingGw !== null && userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
         
         setCurrentGw(gwToDisplay);
 

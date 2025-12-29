@@ -606,39 +606,41 @@ export default function PredictionsPage() {
           .eq("id", 1)
           .maybeSingle();
         
+        // dbCurrentGw is guaranteed to be a number after this block
+        let dbCurrentGwNum: number;
         if (metaError || !meta) {
           console.error('[Predictions] Error fetching app_meta:', metaError);
-          dbCurrentGw = 14; // Fallback
+          dbCurrentGwNum = 14; // Fallback
         } else {
-          dbCurrentGw = meta?.current_gw ?? 14;
+          dbCurrentGwNum = meta?.current_gw ?? 14;
         }
         
         // Get user's current_viewing_gw (which GW they're actually viewing)
-        let userViewingGw: number | null = null;
+        let userViewingGw: number;
         if (user?.id) {
-          const { data: prefs, error: prefsError } = await supabase
+          const { data: prefs } = await supabase
             .from("user_notification_preferences")
             .select("current_viewing_gw")
             .eq("user_id", user.id)
             .maybeSingle();
           
-          if (!prefsError && prefs) {
+          if (prefs) {
             // Use current_viewing_gw if set, otherwise default to currentGw - 1 (previous GW)
             // This ensures users stay on previous GW results when a new GW is published
-            userViewingGw = prefs?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
+            userViewingGw = prefs?.current_viewing_gw ?? (dbCurrentGwNum > 1 ? dbCurrentGwNum - 1 : dbCurrentGwNum);
           } else {
             // If no prefs found, default to previous GW
-            userViewingGw = dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw;
+            userViewingGw = dbCurrentGwNum > 1 ? dbCurrentGwNum - 1 : dbCurrentGwNum;
           }
         } else {
           // No user, use published GW
-          userViewingGw = dbCurrentGw;
+          userViewingGw = dbCurrentGwNum;
         }
         
         // Determine which GW to display
         // If user hasn't transitioned to new GW, show their viewing GW (previous GW)
         // Otherwise show the current GW
-        const currentGw = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+        const currentGw = userViewingGw < dbCurrentGwNum ? userViewingGw : dbCurrentGwNum;
         
         console.log('[Predictions] Published GW:', dbCurrentGw, 'User viewing GW:', userViewingGw, 'Displaying GW:', currentGw);
         

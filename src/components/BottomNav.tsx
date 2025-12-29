@@ -140,7 +140,7 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
         const dbCurrentGw = meta?.current_gw ?? 1;
 
         // Get user's current_viewing_gw (which GW they're actually viewing)
-        const { data: prefs, error: prefsError } = await supabase
+        const { data: prefs } = await supabase
           .from("user_notification_preferences")
           .select("current_viewing_gw")
           .eq("user_id", user.id)
