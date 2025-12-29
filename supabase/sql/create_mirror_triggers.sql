@@ -135,12 +135,11 @@ CREATE TRIGGER trigger_mirror_submissions_to_app
 CREATE OR REPLACE FUNCTION mirror_fixtures_to_app()
 RETURNS TRIGGER AS $$
 DECLARE
-  existing_app_fixture_index INTEGER;
+  matching_app_fixture_index INTEGER;
   web_home_code_norm TEXT;
   web_away_code_norm TEXT;
 BEGIN
   -- Normalize team codes (handle aliases like NFO -> NOT for Nottingham Forest)
-  -- Web uses NFO, App uses NOT
   web_home_code_norm := CASE 
     WHEN NEW.home_code = 'NFO' THEN 'NOT'
     ELSE NEW.home_code
@@ -150,14 +149,13 @@ BEGIN
     ELSE NEW.away_code
   END;
   
-  -- Find existing app fixture with matching teams (handles different orders)
-  -- Both Web Admin and API Admin populate codes, so code matching should always work
-  SELECT fixture_index INTO existing_app_fixture_index
+  -- Find the app fixture that matches this web fixture by team codes
+  -- This ensures picks (which are keyed by app fixture_index) stay with the correct teams
+  SELECT fixture_index INTO matching_app_fixture_index
   FROM app_fixtures
   WHERE gw = NEW.gw
     AND (
-      -- Match by codes (both admins populate these)
-      -- Normalize codes to handle aliases (NFO -> NOT)
+      -- Match by codes (preferred method)
       (home_code IS NOT NULL AND away_code IS NOT NULL 
        AND web_home_code_norm IS NOT NULL AND web_away_code_norm IS NOT NULL
        AND (
@@ -177,9 +175,9 @@ BEGIN
     )
   LIMIT 1;
   
-  -- If matching fixture exists, update it; otherwise insert with same fixture_index
-  IF existing_app_fixture_index IS NOT NULL THEN
-    -- Update existing fixture at its current index
+  -- If we found a matching fixture in app, update it at its existing index
+  -- This preserves picks which are keyed by app fixture_index
+  IF matching_app_fixture_index IS NOT NULL THEN
     UPDATE app_fixtures
     SET
       home_team = NEW.home_team,
@@ -189,9 +187,10 @@ BEGIN
       home_name = NEW.home_name,
       away_name = NEW.away_name,
       kickoff_time = NEW.kickoff_time
-    WHERE gw = NEW.gw AND fixture_index = existing_app_fixture_index;
+    WHERE gw = NEW.gw AND fixture_index = matching_app_fixture_index;
   ELSE
-    -- Insert new fixture with same fixture_index (backward compatibility)
+    -- No matching fixture found - insert at web's fixture_index
+    -- This handles new fixtures that don't exist in app yet
     INSERT INTO app_fixtures (
       gw,
       fixture_index,
@@ -214,7 +213,7 @@ BEGIN
       NEW.home_name,
       NEW.away_name,
       NEW.kickoff_time,
-      NULL  -- fixtures table doesn't have api_match_id column, set to NULL
+      NULL
     )
     ON CONFLICT (gw, fixture_index)
     DO UPDATE SET
@@ -239,47 +238,25 @@ CREATE TRIGGER trigger_mirror_fixtures_to_app
   EXECUTE FUNCTION mirror_fixtures_to_app();
 
 -- ============================================================================
--- REVERSE MIRRORING: Mirror App → Web (for app-only users)
+-- REVERSE MIRRORING: Mirror App → Web (for all users)
 -- ============================================================================
--- The app-only users (Jof, Carl, SP, ThomasJamesBird, Sim, Will Middleton, David Bird) submit on App
--- but need to appear on Web too, so we mirror their App submissions to Web
+-- All users can pick on App, and their picks should mirror to Web
+-- This ensures picks are available in both tables regardless of where they were made
 -- ============================================================================
 
--- App-only user IDs (7 users who submit on App)
--- Jof: 4542c037-5b38-40d0-b189-847b8f17c222
--- Carl: f8a1669e-2512-4edf-9c21-b9f87b3efbe2
--- SP: 9c0bcf50-370d-412d-8826-95371a72b4fe
--- ThomasJamesBird: 36f31625-6d6c-4aa4-815a-1493a812841b
--- Sim: c94f9804-ba11-4cd2-8892-49657aa6412c
--- Will Middleton: 42b48136-040e-42a3-9b0a-dc9550dd1cae
--- David Bird: d2cbeca9-7dae-4be1-88fb-706911d67256
-
 -- ============================================================================
--- TRIGGER 4: Mirror picks from App (app_picks) to Web (picks) - App-only users
+-- TRIGGER 4: Mirror picks from App (app_picks) to Web (picks) - All users
 -- ============================================================================
 CREATE OR REPLACE FUNCTION mirror_picks_to_web()
 RETURNS TRIGGER AS $$
 DECLARE
-  is_test_user BOOLEAN;
   existing_pick TEXT;
   web_fixture_index INTEGER;
   app_fixture RECORD;
   app_home_code_norm TEXT;
   app_away_code_norm TEXT;
 BEGIN
-  -- Check if this is one of the app-only users
-  is_test_user := NEW.user_id IN (
-    '4542c037-5b38-40d0-b189-847b8f17c222', -- Jof
-    'f8a1669e-2512-4edf-9c21-b9f87b3efbe2', -- Carl
-    '9c0bcf50-370d-412d-8826-95371a72b4fe', -- SP
-    '36f31625-6d6c-4aa4-815a-1493a812841b', -- ThomasJamesBird
-    'c94f9804-ba11-4cd2-8892-49657aa6412c', -- Sim
-    '42b48136-040e-42a3-9b0a-dc9550dd1cae', -- Will Middleton
-    'd2cbeca9-7dae-4be1-88fb-706911d67256'  -- David Bird
-  );
-  
-  -- Only mirror if this is a test user
-  IF is_test_user THEN
+  -- Mirror picks for all users (not just app-only users)
     -- Get the app fixture details to find matching web fixture by team codes
     SELECT home_code, away_code, home_name, away_name INTO app_fixture
     FROM app_fixtures
@@ -344,7 +321,6 @@ BEGIN
       DO UPDATE SET
         pick = EXCLUDED.pick;
     END IF;
-  END IF;
   
   RETURN NEW;
 END;
@@ -358,42 +334,28 @@ CREATE TRIGGER trigger_mirror_picks_to_web
   EXECUTE FUNCTION mirror_picks_to_web();
 
 -- ============================================================================
--- TRIGGER 5: Mirror submissions from App (app_gw_submissions) to Web (gw_submissions) - App-only users
+-- TRIGGER 5: Mirror submissions from App (app_gw_submissions) to Web (gw_submissions) - All users
 -- ============================================================================
 CREATE OR REPLACE FUNCTION mirror_submissions_to_web()
 RETURNS TRIGGER AS $$
 DECLARE
-  is_test_user BOOLEAN;
   existing_submitted_at TIMESTAMPTZ;
 BEGIN
-  -- Check if this is one of the app-only users
-  is_test_user := NEW.user_id IN (
-    '4542c037-5b38-40d0-b189-847b8f17c222', -- Jof
-    'f8a1669e-2512-4edf-9c21-b9f87b3efbe2', -- Carl
-    '9c0bcf50-370d-412d-8826-95371a72b4fe', -- SP
-    '36f31625-6d6c-4aa4-815a-1493a812841b', -- ThomasJamesBird
-    'c94f9804-ba11-4cd2-8892-49657aa6412c', -- Sim
-    '42b48136-040e-42a3-9b0a-dc9550dd1cae', -- Will Middleton
-    'd2cbeca9-7dae-4be1-88fb-706911d67256'  -- David Bird
-  );
+  -- Mirror submissions for all users (not just app-only users)
+  -- Check if the submission already exists with the same value (prevent unnecessary updates)
+  SELECT submitted_at INTO existing_submitted_at
+  FROM gw_submissions
+  WHERE user_id = NEW.user_id 
+    AND gw = NEW.gw;
   
-  -- Only mirror if this is a test user
-  IF is_test_user THEN
-    -- Check if the submission already exists with the same value (prevent unnecessary updates)
-    SELECT submitted_at INTO existing_submitted_at
-    FROM gw_submissions
-    WHERE user_id = NEW.user_id 
-      AND gw = NEW.gw;
-    
-    -- Only insert/update if the value is different or doesn't exist
-    IF existing_submitted_at IS NULL OR existing_submitted_at != NEW.submitted_at THEN
-      -- Insert or update the corresponding row in gw_submissions
-      INSERT INTO gw_submissions (user_id, gw, submitted_at)
-      VALUES (NEW.user_id, NEW.gw, NEW.submitted_at)
-      ON CONFLICT (user_id, gw)
-      DO UPDATE SET
-        submitted_at = EXCLUDED.submitted_at;
-    END IF;
+  -- Only insert/update if the value is different or doesn't exist
+  IF existing_submitted_at IS NULL OR existing_submitted_at != NEW.submitted_at THEN
+    -- Insert or update the corresponding row in gw_submissions
+    INSERT INTO gw_submissions (user_id, gw, submitted_at)
+    VALUES (NEW.user_id, NEW.gw, NEW.submitted_at)
+    ON CONFLICT (user_id, gw)
+    DO UPDATE SET
+      submitted_at = EXCLUDED.submitted_at;
   END IF;
   
   RETURN NEW;
@@ -427,8 +389,8 @@ CREATE TRIGGER trigger_mirror_submissions_to_web
 -- 6. All picks in app_picks (App users + mirrored Web users) are scored by the API
 -- 7. The API writes results directly to app_gw_results (not mirrored from Web)
 -- 8. Circular updates are prevented by checking if data already exists with same values
--- 9. App → Web mirroring only applies to app-only users (Jof, Carl, SP, ThomasJamesBird, Sim, Will Middleton, David Bird)
--- 10. Web → App mirroring applies to all Web users
+-- 9. App → Web mirroring applies to all App users (picks and submissions mirror both ways)
+-- 10. Web → App mirroring applies to all Web users (picks and submissions mirror both ways)
 -- 11. Fixture matching: Triggers match fixtures by team codes/names, not just fixture_index
 --     This allows fixtures to be in different orders between web and app tables
 --     Falls back to fixture_index matching if team codes/names are missing (backward compatibility)

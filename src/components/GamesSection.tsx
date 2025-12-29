@@ -36,6 +36,7 @@ interface GamesSectionProps {
   }>;
   userName?: string;
   globalRank?: number;
+  hasSubmitted?: boolean; // Whether user has submitted predictions for this GW
 }
 
 export function GamesSection({
@@ -54,6 +55,7 @@ export function GamesSection({
   liveScores = {},
   userName,
   globalRank,
+  hasSubmitted = false,
 }: GamesSectionProps) {
   const { user } = useAuth();
   // Use userName from props, or get it directly from user, or fallback to 'User'
@@ -678,17 +680,19 @@ export function GamesSection({
               showPickButtons={showPickButtons}
               headerRightElement={
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleShare}
-                    disabled={isSharing}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] rounded-full bg-[#1C8376] text-white text-xs sm:text-sm font-medium hover:bg-[#156b60] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    aria-label="Share gameweek predictions"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                    </svg>
-                    <span>Share</span>
-                  </button>
+                  {hasSubmitted && (
+                    <button
+                      onClick={handleShare}
+                      disabled={isSharing}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] rounded-full bg-[#1C8376] text-white text-xs sm:text-sm font-medium hover:bg-[#156b60] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      aria-label="Share gameweek predictions"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                      </svg>
+                      <span>Share</span>
+                    </button>
+                  )}
                   {scoreComponent}
                 </div>
               }

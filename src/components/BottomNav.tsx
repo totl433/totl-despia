@@ -2,6 +2,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useRef, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { useGameweekState } from '../hooks/useGameweekState';
 
   const navItems = [
     {
@@ -114,59 +115,87 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
     };
   }, [location.pathname]);
 
-  // Check if user has predictions to do
+  const [viewingGw, setViewingGw] = useState<number | null>(null);
+
+  // Get user's viewing GW (respects current_viewing_gw from GAME_STATE.md)
   useEffect(() => {
     let alive = true;
 
-    const checkPredictions = async () => {
+    const loadViewingGw = async () => {
       if (!user?.id) {
-        setHasPredictionsToDo(false);
+        setViewingGw(null);
         return;
       }
 
       try {
-        // Get current GW
-        const { data: meta } = await supabase
+        // Get app_meta.current_gw (published GW)
+        const { data: meta, error: metaError } = await supabase
           .from("app_meta")
           .select("current_gw")
           .eq("id", 1)
           .maybeSingle();
         
-        const gw: number | null = (meta as any)?.current_gw ?? null;
-        if (!gw || !alive) {
-          setHasPredictionsToDo(false);
-          return;
-        }
-
-        // Check if fixtures exist for current GW
-        const { count: fxCount } = await supabase
-          .from("app_fixtures")
-          .select("id", { count: "exact", head: true })
-          .eq("gw", gw);
+        if (!alive || metaError) return;
         
-        if (!fxCount || !alive) {
-          setHasPredictionsToDo(false);
-          return;
-        }
+        const dbCurrentGw = meta?.current_gw ?? 1;
 
-        // Check if results are already published
-        const { count: rsCount } = await supabase
-          .from("app_gw_results")
-          .select("gw", { count: "exact", head: true })
-          .eq("gw", gw);
+        // Get user's current_viewing_gw (which GW they're actually viewing)
+        const { data: prefs, error: prefsError } = await supabase
+          .from("user_notification_preferences")
+          .select("current_viewing_gw")
+          .eq("user_id", user.id)
+          .maybeSingle();
         
-        const resultsPublished = (rsCount ?? 0) > 0;
-        if (resultsPublished || !alive) {
-          setHasPredictionsToDo(false);
-          return;
+        if (!alive) return;
+        
+        // Use current_viewing_gw if set, otherwise default to currentGw - 1 (previous GW)
+        // This ensures users stay on previous GW results when a new GW is published
+        const userViewingGw = prefs?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
+        
+        // Determine which GW to display
+        // If user hasn't transitioned to new GW, show their viewing GW (previous GW)
+        // Otherwise show the current GW
+        const gwToDisplay = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+        
+        if (alive) {
+          setViewingGw(gwToDisplay);
         }
+      } catch (error) {
+        console.error('[BottomNav] Error loading viewing GW:', error);
+      }
+    };
 
-        // Check if user has submitted predictions
+    loadViewingGw();
+    
+    return () => { alive = false; };
+  }, [user?.id]);
+
+  // Get game state for the viewing GW
+  const { state: viewingGwState } = useGameweekState(viewingGw, user?.id);
+
+  // Check if user has predictions to do (only for GW_OPEN state)
+  useEffect(() => {
+    let alive = true;
+
+    const checkPredictions = async () => {
+      if (!user?.id || !viewingGw) {
+        setHasPredictionsToDo(false);
+        return;
+      }
+
+      // Only show shiny icon if viewing GW is in GW_OPEN state
+      if (viewingGwState !== 'GW_OPEN') {
+        if (alive) setHasPredictionsToDo(false);
+        return;
+      }
+
+      try {
+        // Check if user has submitted predictions for the viewing GW
         const { data: submission } = await supabase
           .from("app_gw_submissions")
           .select("submitted_at")
           .eq("user_id", user.id)
-          .eq("gw", gw)
+          .eq("gw", viewingGw)
           .maybeSingle();
         
         if (!alive) return;
@@ -192,7 +221,7 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
       alive = false;
       window.removeEventListener('predictionsSubmitted', handleSubmission);
     };
-  }, [user?.id]);
+  }, [user?.id, viewingGw, viewingGwState]);
 
   return (
     <>

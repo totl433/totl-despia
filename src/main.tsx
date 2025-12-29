@@ -18,11 +18,7 @@ const AdminDataPage = lazy(() => import("./pages/AdminData"));
 const TempGlobalPage = lazy(() => import("./pages/TempGlobal"));
 const CreateLeaguePage = lazy(() => import("./pages/CreateLeague"));
 const HowToPlayPage = lazy(() => import("./pages/HowToPlay"));
-const TestAdminApi = lazy(() => import("./pages/TestAdminApi"));
 const ApiAdmin = lazy(() => import("./pages/ApiAdmin"));
-const TestFixtures = lazy(() => import("./pages/TestFixtures"));
-const TestDespia = lazy(() => import("./pages/TestDespia"));
-const TestGwTransition = lazy(() => import("./pages/TestGwTransition"));
 const ProfilePage = lazy(() => import("./pages/Profile"));
 const NotificationCentrePage = lazy(() => import("./pages/NotificationCentre"));
 const EmailPreferencesPage = lazy(() => import("./pages/EmailPreferences"));
@@ -280,7 +276,8 @@ function AppContent() {
     };
   }, []);
   
-  // Check if user has submitted predictions for current GW
+  // Check if user has submitted predictions for viewing GW (respects current_viewing_gw)
+  // Only hide nav when in GW_OPEN state and user hasn't submitted
   useEffect(() => {
     let alive = true;
 
@@ -291,25 +288,61 @@ function AppContent() {
       }
 
       try {
-        // Get current GW
-        const { data: meta } = await supabase
+        // Get app_meta.current_gw (published GW)
+        const { data: meta, error: metaError } = await supabase
           .from("app_meta")
           .select("current_gw")
           .eq("id", 1)
           .maybeSingle();
         
-        const gw: number | null = (meta as any)?.current_gw ?? null;
-        if (!gw || !alive) {
+        if (!alive || metaError) {
+          setHasSubmittedPredictions(null);
+          return;
+        }
+        
+        const dbCurrentGw = meta?.current_gw ?? null;
+        if (!dbCurrentGw) {
           setHasSubmittedPredictions(null);
           return;
         }
 
-        // Check if user has submitted predictions
+        // Get user's current_viewing_gw (which GW they're actually viewing)
+        const { data: prefs } = await supabase
+          .from("user_notification_preferences")
+          .select("current_viewing_gw")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        
+        if (!alive) return;
+        
+        // Use current_viewing_gw if set, otherwise default to currentGw - 1 (previous GW)
+        const userViewingGw = prefs?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
+        
+        // Determine which GW to check
+        const gwToCheck = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+
+        // Check game state for the viewing GW - only hide nav if in GW_OPEN state
+        // Import useGameweekState hook result would require restructuring, so we'll check state via query
+        // For now, check if results exist - if results exist, we're in RESULTS state, so show nav
+        const { count: resultsCount } = await supabase
+          .from("app_gw_results")
+          .select("gw", { count: "exact", head: true })
+          .eq("gw", gwToCheck);
+        
+        const hasResults = (resultsCount ?? 0) > 0;
+        
+        // If we're viewing results, always show nav (don't hide)
+        if (hasResults) {
+          if (alive) setHasSubmittedPredictions(true); // Set to true so nav shows
+          return;
+        }
+
+        // No results yet - check if user has submitted predictions for the viewing GW
         const { data: submission } = await supabase
-          .from("gw_submissions")
+          .from("app_gw_submissions")
           .select("submitted_at")
           .eq("user_id", user.id)
-          .eq("gw", gw)
+          .eq("gw", gwToCheck)
           .maybeSingle();
         
         if (!alive) return;
@@ -449,11 +482,7 @@ function AppContent() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/auth" element={<AuthGate />} />
-            <Route path="/test-admin-api" element={<RequireAuth><TestAdminApi /></RequireAuth>} />
             <Route path="/api-admin" element={<RequireAuth><ApiAdmin /></RequireAuth>} />
-            <Route path="/test-fixtures" element={<RequireAuth><TestFixtures /></RequireAuth>} />
-            <Route path="/test-despia" element={<RequireAuth><TestDespia /></RequireAuth>} />
-            <Route path="/test-gw-transition" element={<RequireAuth><TestGwTransition /></RequireAuth>} />
             <Route path="/swipe-card-preview" element={<RequireAuth><SwipeCardPreview /></RequireAuth>} />
             <Route path="/" element={<RequireAuth><ErrorBoundary><HomePage /></ErrorBoundary></RequireAuth>} />
             <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
@@ -476,11 +505,12 @@ function AppContent() {
       </ErrorBoundary>
 
       {/* Bottom Navigation - hide on auth page, swipe predictions, and when making predictions or viewing league pages */}
+      {/* Only hide completely on specific swipe routes, otherwise use shouldHide prop */}
       {location.pathname !== '/auth' && 
        location.pathname !== '/predictions/swipe' && 
        location.pathname !== '/swipe-card-preview' &&
-       !(location.pathname === '/predictions' && isSwipeMode) && 
        <BottomNav shouldHide={
+         (location.pathname === '/predictions' && isSwipeMode) ||
          (location.pathname === '/predictions' && hasSubmittedPredictions === false) ||
          location.pathname.startsWith('/league/')
        } />}

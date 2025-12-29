@@ -596,18 +596,51 @@ export default function PredictionsPage() {
     console.log('[Predictions] useEffect started, user?.id:', user?.id);
     (async () => {
       try {
-        // Get current GW from app_meta first (needed for cache key)
-        let currentGw: number | null = null;
+        // Get app_meta.current_gw (published GW)
+        let dbCurrentGw: number | null = null;
         
         console.log('[Predictions] Fetching current GW from app_meta...');
-        const { data: meta } = await supabase
+        const { data: meta, error: metaError } = await supabase
           .from("app_meta")
           .select("current_gw")
           .eq("id", 1)
           .maybeSingle();
         
-        currentGw = meta?.current_gw ?? 14;
-        console.log('[Predictions] Current GW:', currentGw);
+        if (metaError || !meta) {
+          console.error('[Predictions] Error fetching app_meta:', metaError);
+          dbCurrentGw = 14; // Fallback
+        } else {
+          dbCurrentGw = meta?.current_gw ?? 14;
+        }
+        
+        // Get user's current_viewing_gw (which GW they're actually viewing)
+        let userViewingGw: number | null = null;
+        if (user?.id) {
+          const { data: prefs, error: prefsError } = await supabase
+            .from("user_notification_preferences")
+            .select("current_viewing_gw")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          
+          if (!prefsError && prefs) {
+            // Use current_viewing_gw if set, otherwise default to currentGw - 1 (previous GW)
+            // This ensures users stay on previous GW results when a new GW is published
+            userViewingGw = prefs?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
+          } else {
+            // If no prefs found, default to previous GW
+            userViewingGw = dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw;
+          }
+        } else {
+          // No user, use published GW
+          userViewingGw = dbCurrentGw;
+        }
+        
+        // Determine which GW to display
+        // If user hasn't transitioned to new GW, show their viewing GW (previous GW)
+        // Otherwise show the current GW
+        const currentGw = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+        
+        console.log('[Predictions] Published GW:', dbCurrentGw, 'User viewing GW:', userViewingGw, 'Displaying GW:', currentGw);
         
         if (!currentGw) {
           // Always set state, even if component appears to be unmounting

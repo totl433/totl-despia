@@ -193,6 +193,8 @@ export default function HomePage() {
   const { state: gameState, loading: gameStateLoading } = useGameweekState(gw);
   
   // Validate cached GW immediately on mount - check if it's stale
+  // CRITICAL: Respect user's current_viewing_gw (GAME_STATE.md rule)
+  // Users stay on previous GW results until they click the "GW ready" banner
   useEffect(() => {
     if (!user?.id) return;
     
@@ -204,25 +206,44 @@ export default function HomePage() {
         const cached = getCached<{ currentGw?: number }>(cacheKey);
         const cachedGw = cached?.currentGw ?? initialState.gw;
         
-        const { data: meta, error } = await supabase
+        // Get app_meta.current_gw (the published GW)
+        const { data: meta, error: metaError } = await supabase
           .from("app_meta")
           .select("current_gw")
           .eq("id", 1)
           .maybeSingle();
         
-        if (!alive || error) return;
+        if (!alive || metaError) return;
         
         const dbCurrentGw = meta?.current_gw ?? 1;
         
-        if (cachedGw !== dbCurrentGw) {
+        // Get user's current_viewing_gw (which GW they're actually viewing)
+        const { data: prefs, error: prefsError } = await supabase
+          .from("user_notification_preferences")
+          .select("current_viewing_gw")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        
+        if (!alive) return;
+        
+        // Use current_viewing_gw if set, otherwise default to currentGw - 1 (previous GW)
+        // This ensures users stay on previous GW results when a new GW is published
+        const userViewingGw = prefs?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
+        
+        // Determine which GW to display
+        // If user hasn't transitioned to new GW, show their viewing GW (previous GW)
+        // Otherwise show the current GW
+        const gwToDisplay = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+        
+        if (cachedGw !== gwToDisplay) {
           // Clear all caches
           removeCached(cacheKey);
           if (cachedGw) {
             const oldFixturesCacheKey = `home:fixtures:${user.id}:${cachedGw}`;
             removeCached(oldFixturesCacheKey);
           }
-          // Update GW immediately
-          setGw(dbCurrentGw);
+          // Update GW to user's viewing GW (not necessarily the published GW)
+          setGw(gwToDisplay);
         }
       } catch (error) {
         console.error('[Home] Error validating cached GW:', error);
@@ -1731,6 +1752,7 @@ export default function HomePage() {
             liveScores={liveScores}
             userName={user?.user_metadata?.display_name || user?.email || 'User'}
             globalRank={seasonRank?.rank}
+            hasSubmitted={hasSubmittedCurrentGw}
           />
 
           {/* Bottom padding */}

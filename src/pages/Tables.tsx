@@ -225,7 +225,7 @@ export default function TablesPage() {
     // Fetch member data and other Tables-specific data in background
     (async () => {
       try {
-        // Step 1: Get current GW
+        // Step 1: Get current GW (respects user's current_viewing_gw from GAME_STATE.md)
         const [fixturesResult, metaResult] = await Promise.all([
           supabase.from("app_fixtures").select("gw").order("gw", { ascending: false }).limit(1),
           supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle()
@@ -235,8 +235,31 @@ export default function TablesPage() {
 
         const fixturesList = (fixturesResult.data as Array<{ gw: number }>) ?? [];
         const fetchedCurrentGw = fixturesList.length ? Math.max(...fixturesList.map((f) => f.gw)) : 1;
-        const metaGw = (metaResult.data as any)?.current_gw ?? fetchedCurrentGw;
-        setCurrentGw(fetchedCurrentGw);
+        const dbCurrentGw = (metaResult.data as any)?.current_gw ?? fetchedCurrentGw;
+        
+        // Get user's current_viewing_gw (which GW they're actually viewing)
+        let userViewingGw: number | null = null;
+        if (user?.id) {
+          const { data: prefs } = await supabase
+            .from("user_notification_preferences")
+            .select("current_viewing_gw")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          
+          // Use current_viewing_gw if set, otherwise default to currentGw - 1 (previous GW)
+          // This ensures users stay on previous GW results when a new GW is published
+          userViewingGw = prefs?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
+        } else {
+          // No user, use published GW
+          userViewingGw = dbCurrentGw;
+        }
+        
+        // Determine which GW to display
+        // If user hasn't transitioned to new GW, show their viewing GW (previous GW)
+        // Otherwise show the current GW
+        const gwToDisplay = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+        
+        setCurrentGw(gwToDisplay);
 
         // Step 2: Fetch member data, results, fixtures, submissions
         // NOTE: We don't fetch leagues here - they come from useLeagues hook
@@ -275,10 +298,11 @@ export default function TablesPage() {
         // Optimize: use Set for faster lookups
         const allMemberIds = Array.from(new Set(Array.from(membersByLeague.values()).flat()));
         
-        // Step 3: Fetch submissions
+        // Step 3: Fetch submissions for the VIEWING GW (not the published GW)
+        // CRITICAL: Use gwToDisplay so chips show green for users who submitted for the GW they're viewing
         const [submissionsResult] = await Promise.all([
           allMemberIds.length > 0
-            ? supabase.from("app_gw_submissions").select("user_id").eq("gw", fetchedCurrentGw).in("user_id", allMemberIds).limit(10000)
+            ? supabase.from("app_gw_submissions").select("user_id").eq("gw", gwToDisplay).in("user_id", allMemberIds).limit(10000)
             : Promise.resolve({ data: [], error: null }),
         ]);
         
@@ -345,7 +369,7 @@ export default function TablesPage() {
         // Use resolveLeagueStartGw which queries fixtures table (same as League page)
         const leagueStartGwMap = new Map<string, number>();
         const leagueStartGwPromises = leagues.map(async (league) => {
-          const leagueStartGw = await resolveLeagueStartGw(league, metaGw);
+          const leagueStartGw = await resolveLeagueStartGw(league, dbCurrentGw);
           return { leagueId: league.id, leagueStartGw };
         });
         const leagueStartGwResults = await Promise.all(leagueStartGwPromises);
@@ -359,7 +383,7 @@ export default function TablesPage() {
           const memberIds = membersByLeagueIdMap.get(league.id) ?? [];
           if (memberIds.length === 0) return { data: [], error: null };
           
-          const leagueStartGw = leagueStartGwMap.get(league.id) ?? metaGw;
+          const leagueStartGw = leagueStartGwMap.get(league.id) ?? dbCurrentGw;
           const relevantGws = leagueStartGw === 0 
             ? gwsWithResults 
             : gwsWithResults.filter(gw => gw >= leagueStartGw);
@@ -405,7 +429,7 @@ export default function TablesPage() {
           }
           const picksCount = (result.data ?? []).length;
           const memberIds = membersByLeagueIdMap.get(league.id) ?? [];
-          const leagueStartGw = leagueStartGwMap.get(league.id) ?? metaGw;
+          const leagueStartGw = leagueStartGwMap.get(league.id) ?? dbCurrentGw;
           const relevantGws = leagueStartGw === 0 
             ? gwsWithResults 
             : gwsWithResults.filter(gw => gw >= leagueStartGw);
@@ -443,7 +467,7 @@ export default function TablesPage() {
           
           if (memberIds.length === 0) continue;
           
-          const leagueStartGw = leagueStartGwMap.get(league.id) ?? metaGw;
+          const leagueStartGw = leagueStartGwMap.get(league.id) ?? dbCurrentGw;
           const relevantGws = leagueStartGw === 0 
             ? gwsWithResults 
             : gwsWithResults.filter(gw => gw >= leagueStartGw);
@@ -662,7 +686,7 @@ export default function TablesPage() {
           const positionChange: 'up' | 'down' | 'same' | null = prevPosition === null ? null : 
             userPosition! < prevPosition ? 'up' : userPosition! > prevPosition ? 'down' : 'same';
           
-          const latestRelevantGw = relevantGws.length > 0 ? Math.max(...relevantGws) : metaGw;
+          const latestRelevantGw = relevantGws.length > 0 ? Math.max(...relevantGws) : dbCurrentGw;
           const latestGwWinnersSet = latestRelevantGw !== null ? (gwWinners.get(latestRelevantGw) ?? new Set<string>()) : new Set<string>();
           const latestGwWinners = Array.from(latestGwWinnersSet);
           
@@ -708,7 +732,7 @@ export default function TablesPage() {
             
             setCached(cacheKey, {
               rows: rows, // Save current rows for member counts
-              currentGw: fetchedCurrentGw,
+              currentGw: gwToDisplay, // Use viewing GW, not published GW
               leagueSubmissions: submissionStatus,
               leagueData: cacheableLeagueData,
               memberCounts: newMemberCounts,
