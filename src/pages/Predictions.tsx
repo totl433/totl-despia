@@ -1386,6 +1386,7 @@ export default function PredictionsPage() {
       }, 1000);
 
       // Check if all members have submitted and notify (fire-and-forget)
+      // Check for API Test league (if applicable)
       if (apiTestLeagueId && currentTestGw) {
         fetch('/.netlify/functions/notifyFinalSubmission', {
           method: 'POST',
@@ -1395,9 +1396,42 @@ export default function PredictionsPage() {
             matchday: currentTestGw,
             isTestApi: true,
           }),
-                          }).catch(err => {
-                            console.error('[Predictions] Failed to check final submission:', err);
-                          });
+        }).catch(err => {
+          console.error('[Predictions] Failed to check final submission:', err);
+        });
+      }
+      
+      // Also check all regular mini-leagues
+      if (user?.id && currentTestGw) {
+        (async () => {
+          try {
+            const { data: userLeagues } = await supabase
+              .from('league_members')
+              .select('league_id')
+              .eq('user_id', user.id);
+            
+            if (userLeagues && userLeagues.length > 0) {
+              // Call notifyFinalSubmission for each league (fire-and-forget)
+              userLeagues.forEach(({ league_id }) => {
+                // Skip API Test league if we already handled it above
+                if (apiTestLeagueId && league_id === apiTestLeagueId) return;
+                
+                fetch('/.netlify/functions/notifyFinalSubmission', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    leagueId: league_id,
+                    gw: currentTestGw,
+                  }),
+                }).catch((err: any) => {
+                  console.error('[Predictions] Failed to check final submission:', err);
+                });
+              });
+            }
+          } catch (err: any) {
+            console.error('[Predictions] Failed to fetch user leagues:', err);
+          }
+        })();
       }
     } catch (error) {
       console.error('[Predictions] Error confirming picks:', error);
