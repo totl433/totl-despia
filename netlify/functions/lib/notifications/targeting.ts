@@ -63,7 +63,18 @@ export async function loadPushSubscriptions(
   
   if (error) {
     console.error('[targeting] Error loading push subscriptions:', error);
+    console.error('[targeting] User IDs queried:', userIds);
     return [];
+  }
+  
+  console.log(`[targeting] loadPushSubscriptions: queried ${userIds.length} user(s), found ${(data || []).length} subscription(s)`);
+  if (userIds.length > 0 && (data || []).length === 0) {
+    // Check if subscriptions exist but are inactive
+    const { data: allSubs } = await supabase
+      .from('push_subscriptions')
+      .select('user_id, player_id, is_active, subscribed, platform')
+      .in('user_id', userIds);
+    console.log(`[targeting] Total subscriptions (including inactive): ${(allSubs || []).length}`, allSubs?.map(s => ({ user_id: s.user_id?.slice(0, 8), is_active: s.is_active, subscribed: s.subscribed })));
   }
   
   return data || [];
