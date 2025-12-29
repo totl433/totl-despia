@@ -732,12 +732,12 @@ ${shareUrl}`;
         if (!response.ok) {
           console.error('[League] Notification function returned error:', response.status, result);
         } else {
-          console.log('[League] Join notification sent:', {
+          console.log('[League] Join notification sent:', JSON.stringify({
             sent: result.sent,
             recipients: result.recipients,
             ok: result.ok,
-            result: result.result
-          });
+            breakdown: result.breakdown,
+          }, null, 2));
         }
       } catch (notifError) {
         // Non-critical - log but don't fail the join
