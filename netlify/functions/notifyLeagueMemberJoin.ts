@@ -68,7 +68,9 @@ export const handler: Handler = async (event) => {
     }
 
     const recipients = new Set<string>((members || []).map((r: any) => r.user_id).filter(Boolean));
+    const totalMembers = recipients.size;
     recipients.delete(userId); // Exclude the person who joined
+    console.log(`[notifyLeagueMemberJoin] Found ${totalMembers} total members, ${recipients.size} recipients (after excluding joiner ${userId.slice(0, 8)}...)`);
 
     if (recipients.size === 0) {
       console.log('[notifyLeagueMemberJoin] No recipients (only the joiner in league)');
@@ -90,6 +92,7 @@ export const handler: Handler = async (event) => {
 
     // Send notifications using the unified dispatcher
     // Note: dispatchNotification handles preference filtering automatically using the catalog's preference_key
+    console.log(`[notifyLeagueMemberJoin] Calling dispatchNotification for ${recipients.size} recipients`);
     const result = await dispatchNotification({
       notification_key: 'member-join',
       event_id: eventId,
@@ -106,6 +109,14 @@ export const handler: Handler = async (event) => {
       },
       url: `/league/${leagueCode}`, // Deep link to specific league page
       league_id: leagueId, // For mute checking
+    });
+
+    console.log(`[notifyLeagueMemberJoin] dispatchNotification result:`, {
+      accepted: result.results.accepted,
+      failed: result.results.failed,
+      suppressed_preference: result.results.suppressed_preference,
+      suppressed_unsubscribed: result.results.suppressed_unsubscribed,
+      total_users: result.total_users,
     });
 
     return json(200, {
