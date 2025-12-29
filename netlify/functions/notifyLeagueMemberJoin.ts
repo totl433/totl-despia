@@ -119,10 +119,21 @@ export const handler: Handler = async (event) => {
       total_users: result.total_users,
     });
 
+    // Return detailed result for debugging
     return json(200, {
       ok: true,
       sent: result.results.accepted || 0,
       recipients: recipients.size,
+      breakdown: {
+        accepted: result.results.accepted || 0,
+        failed: result.results.failed || 0,
+        suppressed_preference: result.results.suppressed_preference || 0,
+        suppressed_unsubscribed: result.results.suppressed_unsubscribed || 0,
+        suppressed_duplicate: result.results.suppressed_duplicate || 0,
+        suppressed_cooldown: result.results.suppressed_cooldown || 0,
+        suppressed_muted: result.results.suppressed_muted || 0,
+        total_users: result.total_users || 0,
+      },
       result,
     });
   } catch (error: any) {
