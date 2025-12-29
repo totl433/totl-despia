@@ -475,11 +475,22 @@ export default function TablesPage() {
           
           const picks = (allPicksResults[i].data ?? []) as PickRow[];
           
-          // Skip MLT calculation if no relevant GWs (picks can be empty for new leagues)
+          // If no relevant GWs, create minimal leagueData entry (for new leagues with no picks yet)
           if (relevantGws.length === 0) {
             if (league.name?.toLowerCase().includes('forget')) {
-              console.log(`[Tables Initial] ${league.name} SKIPPING - relevantGws: ${relevantGws.length}, picks: ${picks.length}`);
+              console.log(`[Tables Initial] ${league.name} SKIPPING calculation - relevantGws: ${relevantGws.length}, picks: ${picks.length}`);
             }
+            // Still create leagueData entry with empty sortedMemberIds to prevent loading hang
+            leagueDataMap[league.id] = {
+              id: league.id,
+              members: memberIds,
+              userPosition: null,
+              positionChange: null,
+              submittedMembers: submittedUserIdsSet,
+              sortedMemberIds: memberIds.map(m => m.id), // Use member order as fallback
+              latestGwWinners: [],
+              latestRelevantGw: null
+            };
             continue;
           }
           
@@ -812,11 +823,22 @@ export default function TablesPage() {
       
       const picks = picksData.get(league.id) ?? [];
       
-      // Skip if no relevant GWs (picks can be empty for new leagues)
+      // If no relevant GWs, create minimal leagueData entry (for new leagues with no picks yet)
       if (relevantGws.length === 0) {
         if (league.name?.toLowerCase().includes('forget')) {
-          console.log(`[Tables Reactive] ${league.name} SKIPPING - relevantGws: ${relevantGws.length}, leagueStartGw: ${leagueStartGw}, updatedGwsWithResults: [${updatedGwsWithResults.join(',')}]`);
+          console.log(`[Tables Reactive] ${league.name} SKIPPING calculation - relevantGws: ${relevantGws.length}, leagueStartGw: ${leagueStartGw}, updatedGwsWithResults: [${updatedGwsWithResults.join(',')}]`);
         }
+        // Still create leagueData entry with empty sortedMemberIds to prevent loading hang
+        leagueDataMap[league.id] = {
+          id: league.id,
+          members: memberIds,
+          userPosition: null,
+          positionChange: null,
+          submittedMembers: new Set(memberIds.filter(m => submittedUserIdsSet.has(m.id)).map(m => m.id)),
+          sortedMemberIds: memberIds.map(m => m.id), // Use member order as fallback
+          latestGwWinners: [],
+          latestRelevantGw: null
+        };
         continue;
       }
       
