@@ -114,11 +114,11 @@ export const handler: Handler = async (event) => {
 
     // Send notifications using the unified dispatcher
     const result = await dispatchNotification({
-      notificationKey: 'member-join',
-      eventId,
-      recipients: Array.from(recipients),
+      notification_key: 'member-join',
+      event_id: eventId,
+      user_ids: Array.from(recipients),
       title: 'New Member Joined',
-      message: notificationText,
+      body: notificationText,
       data: {
         type: 'member-join',
         leagueId,
@@ -128,11 +128,12 @@ export const handler: Handler = async (event) => {
         leagueName,
       },
       url: `/league/${leagueCode}`, // Deep link to specific league page
+      league_id: leagueId, // For mute checking
     });
 
     return json(200, {
       ok: true,
-      sent: result.sent || 0,
+      sent: result.results.accepted || 0,
       recipients: recipients.size,
       result,
     });
