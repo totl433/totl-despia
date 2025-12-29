@@ -124,18 +124,13 @@ export default function GameweekBanner({
                   !
                 </div>
                 <div className={`font-bold ${textColor} text-base`}>
-                  Gameweek {gameweek} is now live!
+                  Gameweek {gameweek} Predictions
                 </div>
               </div>
               <div className={`text-sm ${subtextColor} ml-[32px]`}>
-                Make your predictions{' '}
-                {countdown ? (
-                  <>
-                    before the window closes in{' '}
-                    <span className="text-[#1C8376] font-bold">{countdown}</span>
-                  </>
-                ) : (
-                  <span>now</span>
+                Deadline{' '}
+                {countdown && (
+                  <span className="text-[#1C8376] font-bold">{countdown}</span>
                 )}
               </div>
             </>

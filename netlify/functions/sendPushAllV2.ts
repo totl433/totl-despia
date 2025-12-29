@@ -94,6 +94,7 @@ export const handler: Handler = async (event) => {
     data,
     grouping_params: data?.gw ? { gw: data.gw } : {},
     badge_count: notificationKey === 'new-gameweek' ? 1 : undefined,
+    skip_preference_check: true, // Admin-triggered notifications should always send
   });
 
   console.log('[sendPushAllV2] Dispatch result:', {
