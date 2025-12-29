@@ -75,30 +75,6 @@ export const handler: Handler = async (event) => {
       return json(200, { ok: true, message: 'No recipients', sent: 0 });
     }
 
-    // Load user notification preferences
-    const { data: prefsData } = await admin
-      .from('user_notification_preferences')
-      .select('user_id, preferences')
-      .in('user_id', Array.from(recipients));
-
-    const prefsMap = new Map<string, Record<string, boolean>>();
-    (prefsData || []).forEach((p: any) => {
-      prefsMap.set(p.user_id, p.preferences || {});
-    });
-
-    // Filter out users who have disabled member-joins notifications
-    for (const userId of Array.from(recipients)) {
-      const prefs = prefsMap.get(userId);
-      if (prefs && prefs['member-joins'] === false) {
-        recipients.delete(userId);
-      }
-    }
-
-    if (recipients.size === 0) {
-      console.log('[notifyLeagueMemberJoin] No recipients after preference filtering');
-      return json(200, { ok: true, message: 'No eligible recipients', sent: 0 });
-    }
-
     // Format notification text: "Carl joined Jof and Carl"
     const notificationText = `${userName} joined ${leagueName}`;
 
@@ -113,6 +89,7 @@ export const handler: Handler = async (event) => {
     }
 
     // Send notifications using the unified dispatcher
+    // Note: dispatchNotification handles preference filtering automatically using the catalog's preference_key
     const result = await dispatchNotification({
       notification_key: 'member-join',
       event_id: eventId,
