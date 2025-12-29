@@ -9,23 +9,20 @@ export function openWhatsApp(message: string): void {
   const isDespia = isDespiaAvailable();
   const encodedMessage = encodeURIComponent(message);
   
-  // Temporary debug mode - set to true to see alerts instead of console logs
-  const DEBUG_MODE = false; // Set to true to enable visual debugging
+  // Debug mode only in development
+  const DEBUG_MODE = import.meta.env.DEV;
   
   if (DEBUG_MODE) {
-    alert(`[DEBUG] Opening WhatsApp\nisDespia: ${isDespia}\nMessage length: ${message.length}`);
+    console.log('[WhatsApp] Opening WhatsApp, isDespia:', isDespia, 'Message length:', message.length);
   }
-  
-  console.log('[WhatsApp] Opening WhatsApp, isDespia:', isDespia);
   
   if (isDespia) {
     // In Despia native app, use native deep links
     // Both iOS and Android support whatsapp://send?text=
     const whatsappUrl = `whatsapp://send?text=${encodedMessage}`;
-    console.log('[WhatsApp] Attempting to open deep link:', whatsappUrl);
     
     if (DEBUG_MODE) {
-      alert(`[DEBUG] Deep link URL:\n${whatsappUrl.substring(0, 100)}...`);
+      console.log('[WhatsApp] Attempting to open deep link:', whatsappUrl);
     }
     
     // Try multiple methods - different webviews prefer different approaches
@@ -34,7 +31,6 @@ export function openWhatsApp(message: string): void {
     
     try {
       // Method 1: Create anchor and click (most reliable in webviews)
-      if (DEBUG_MODE) alert('[DEBUG] Trying Method 1: Anchor element');
       const link = document.createElement('a');
       link.href = whatsappUrl;
       link.style.display = 'none';
@@ -46,34 +42,32 @@ export function openWhatsApp(message: string): void {
           document.body.removeChild(link);
         }
       }, 100);
-      if (DEBUG_MODE) alert('[DEBUG] Method 1: Anchor clicked');
     } catch (e) {
-      console.log('[WhatsApp] Anchor method failed:', e);
-      if (DEBUG_MODE) alert(`[DEBUG] Method 1 failed: ${e}`);
+      if (DEBUG_MODE) {
+        console.log('[WhatsApp] Anchor method failed:', e);
+      }
     }
     
     // Method 2: Try window.open without _blank (some webviews prefer this for deep links)
     if (!method1Success) {
       try {
-        if (DEBUG_MODE) alert('[DEBUG] Trying Method 2: window.open');
         window.open(whatsappUrl);
         method2Success = true;
-        if (DEBUG_MODE) alert('[DEBUG] Method 2: window.open called');
       } catch (e) {
-        console.log('[WhatsApp] window.open failed:', e);
-        if (DEBUG_MODE) alert(`[DEBUG] Method 2 failed: ${e}`);
+        if (DEBUG_MODE) {
+          console.log('[WhatsApp] window.open failed:', e);
+        }
       }
     }
     
     // Method 3: Try window.location.href as last resort
     if (!method1Success && !method2Success) {
       try {
-        if (DEBUG_MODE) alert('[DEBUG] Trying Method 3: window.location.href');
         window.location.href = whatsappUrl;
-        if (DEBUG_MODE) alert('[DEBUG] Method 3: location.href set');
       } catch (e) {
-        console.log('[WhatsApp] window.location.href failed:', e);
-        if (DEBUG_MODE) alert(`[DEBUG] Method 3 failed: ${e}\nFalling back to web version`);
+        if (DEBUG_MODE) {
+          console.log('[WhatsApp] window.location.href failed:', e);
+        }
         // If all deep link methods fail, fallback to web version
         window.open(`https://wa.me/?text=${encodedMessage}`, '_blank');
       }

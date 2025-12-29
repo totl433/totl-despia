@@ -1,0 +1,346 @@
+# TOTL Web - Project Context
+
+## Context Loading Protocol
+When starting any task or conversation:
+1. First, read PROJECT_CONTEXT.md to understand current state
+2. Read PR.md for execution rules
+3. Read GAME_STATE.md if working on gameweek-related features
+4. Then proceed with the specific task
+
+## Project Overview
+TOTL (Top of the League) is a Premier League predictions game built with React + TypeScript + Vite. Users make predictions before each gameweek, compete in mini-leagues, and track their performance.
+
+## Tech Stack
+- **Frontend**: React 18.3, TypeScript, Vite, TailwindCSS
+- **Backend**: Supabase (database + auth), Netlify Functions
+- **Deployment**: Netlify (primary), Vercel (secondary)
+- **Push Notifications**: OneSignal via Despia
+- **Data Source**: Football Data API for live scores
+
+## Core Execution Rules (from PR.md)
+
+### Critical Rules
+1. **Single Source of Truth**: Always use authoritative data sources:
+   - Live data: `live_scores` table
+   - Historical data: `app_gw_results`, `app_v_gw_points`, `app_v_ocp_overall` views
+   - Never mix live and final data sources incorrectly
+
+2. **Test Locally First**: Always test changes in local dev (`npm run dev`) before pushing
+
+3. **Never Push Without Asking**: Never commit or push changes without explicitly asking the user first
+
+4. **Debug Yourself**: When debugging UI issues, investigate the code, add logging, and analyze the logic yourself. Never ask the user to check the console - you can add console.log statements and analyze the code flow yourself
+
+5. **Always Build for Despia**: Users will only ever see this via Despia, so always build for Despia native app
+
+6. **Ask for Clarification**: If a request is ambiguous or could have multiple interpretations, ask for clarification before implementing
+
+7. **Preserve Existing Patterns**: Follow existing code patterns and conventions in the codebase
+
+8. **Verify Data Consistency**: When calculating derived values (like OCP), ensure consistency with the single source of truth
+
+9. **Always Use Storybook**: Always try to use Storybook. Ask if this should be a component in Storybook or look for a relevant component
+
+### Game State Rules (CRITICAL)
+10. **Always Consider Game State**: When working on any component that displays gameweek data, predictions, scores, or leaderboards, you MUST:
+    - Use the `useGameweekState` hook to determine the current state
+    - Check the `GAME_STATE.md` document for component behavior rules
+    - Ensure the component behaves correctly in all 4 states: `GW_OPEN`, `GW_PREDICTED`, `LIVE`, `RESULTS_PRE_GW`
+    - Pass `userId` to `useGameweekState` when user-specific behavior is needed (e.g., prediction banners, shiny icons)
+    - Never create custom state logic - always use the centralized game state system
+    - Test component behavior in all states before considering work complete
+
+11. **Game State Data Sources**: When displaying data, use the correct source based on game state:
+    - For live scores/updates: `live_scores` table
+    - For final results: `app_gw_results` table
+    - For fixture details: `app_fixtures` table
+    - For points/leaderboards: `app_v_gw_points`, `app_v_ocp_overall` views
+
+12. **GW Transition Awareness**: Be aware of the GW transition system:
+    - Users can stay in `RESULTS_PRE_GW` even when a new GW is published
+    - Check `user_notification_preferences.current_viewing_gw` to know which GW the user is viewing
+    - The transition happens when user clicks the "GW ready" banner
+    - See `GAME_STATE.md` for full details on the transition system
+
+## Key Architecture Decisions
+- **Routing**: React Router v7, lazy loading for non-critical pages
+- **State**: React Context (AuthContext), Supabase real-time subscriptions
+- **Game State**: Centralized `useGameweekState` hook - NEVER create custom state logic
+- **Data Flow**: 
+  - Live scores: Football Data API → pollLiveScores function → Supabase live_scores table → Frontend
+  - Notifications: Supabase webhook → sendScoreNotificationsWebhook → OneSignal
+- **Auth**: Supabase Auth with AuthGate component protecting routes
+
+## Main Pages & Routes
+- `/` - HomePage (eagerly loaded, shows live scores, predictions, mini-leagues)
+- `/tables` - TablesPage (eagerly loaded, league tables)
+- `/global` - GlobalPage (eagerly loaded, global leaderboard)
+- `/predictions` - PredictionsPage (eagerly loaded, predictions center)
+- `/league/:id` - LeaguePage (lazy loaded, mini-league details)
+- `/admin` - AdminPage (lazy loaded, admin tools)
+- `/api-admin` - ApiAdmin (full-screen, no header/banner)
+- `/new-predictions` - NewPredictionsCentre (full-screen)
+- `/profile` - ProfilePage (lazy loaded)
+
+## Core Features
+1. **Predictions**: Users predict Home/Draw/Away before gameweek deadline
+2. **Live Scores**: Real-time score updates from Football Data API (polled every 5min)
+3. **Mini-Leagues**: Private leagues with up to 8 members, join codes
+4. **Notifications**: Push notifications for goals, game finishes, GW completion
+5. **Leaderboards**: Global and mini-league specific rankings
+6. **Onboarding**: Auth flow with welcome screens
+
+## Important File Locations
+- **Entry**: `src/main.tsx` (main app router)
+- **Auth**: `src/features/auth/` (AuthGate, auth components)
+- **Context**: `src/context/AuthContext.tsx`
+- **Game State**: `src/hooks/useGameweekState.ts` (ALWAYS use this for gameweek state)
+- **Game State Logic**: `src/lib/gameweekState.ts` (utility functions)
+- **Services**: `src/services/` (Supabase clients, data loaders)
+- **Components**: `src/components/` (131 components)
+- **Pages**: `src/pages/` (33 pages)
+- **Netlify Functions**: `netlify/functions/` (48 functions)
+- **SQL**: `supabase/sql/` (34 SQL files)
+
+## Code Patterns
+- Use TypeScript strictly
+- Components in `src/components/`, pages in `src/pages/`
+- Supabase client: `src/lib/supabase.ts`
+- TailwindCSS for styling (config: `tailwind.config.cjs`)
+- Error boundaries: `src/components/ErrorBoundary.tsx`
+- Loading states: `LoadingScreen` component, `PageLoader` for lazy routes
+- **Game State**: Always use `useGameweekState` hook, never custom logic
+
+## Documentation Files
+- `PR.md` - Execution rules (MUST READ)
+- `GAME_STATE.md` - Game state system (MUST READ for gameweek features)
+- `API_SYSTEM_EXPLAINER.md` - Live scores system architecture
+- `NOTIFICATIONS_V2_MIGRATION_COMPLETE.md` - Notification system details
+- `JOF_SIMPLE_GUIDE.md` - Simple guides for common tasks
+- Many other markdown files in root for specific features/issues
+
+## Code Style & Conventions
+
+### TypeScript
+- **Strict mode**: Always use TypeScript strictly - no `any` types unless absolutely necessary
+- **Type definitions**: Define explicit types/interfaces for all props, function parameters, and return values
+- **Props interfaces**: Use inline type definitions for simple props, separate interfaces for complex ones
+- **Example pattern**:
+  ```typescript
+  // Simple props - inline
+  export default function Component({ name, code }: { name: string; code: string }) {}
+  
+  // Complex props - separate interface
+  interface Props {
+    name: string;
+    code: string;
+    optional?: boolean;
+  }
+  export default function Component({ name, code, optional = false }: Props) {}
+  ```
+
+### React Components
+- **Functional components**: Always use functional components with hooks (no class components except ErrorBoundary)
+- **Default exports**: Use default exports for components: `export default function ComponentName() {}`
+- **Component naming**: PascalCase for component names, match filename
+- **Props destructuring**: Destructure props in function signature
+- **Default values**: Use default parameters for optional props: `compact = false`
+- **JSDoc comments**: Add JSDoc comments for reusable components explaining usage
+
+### Hooks
+- **Custom hooks**: Create custom hooks in `src/hooks/` for reusable logic
+- **Hook naming**: Start with `use` prefix: `useGameweekState`, `useAuth`
+- **Dependencies**: Always include correct dependency arrays in `useEffect`, `useMemo`, `useCallback`
+- **Cleanup**: Always return cleanup functions from `useEffect` when needed (timeouts, subscriptions, etc.)
+
+### Styling
+- **TailwindCSS**: Use Tailwind utility classes exclusively (no inline styles except for dynamic values)
+- **Class names**: Use template literals for conditional classes: ``className={`base-class ${condition ? 'conditional' : ''}`}``
+- **Responsive**: Use Tailwind responsive prefixes (`sm:`, `md:`, `lg:`) for responsive design
+- **Custom styles**: Only use `<style>` tags for animations/keyframes that can't be done with Tailwind
+
+### File Organization
+- **Components**: `src/components/ComponentName.tsx` - reusable UI components
+- **Pages**: `src/pages/PageName.tsx` - route-level page components
+- **Hooks**: `src/hooks/useHookName.ts` - custom React hooks
+- **Services**: `src/services/serviceName.ts` - data fetching, API clients
+- **Lib**: `src/lib/utilityName.ts` - pure utility functions, helpers
+- **Types**: Shared types in `src/types.ts` or co-located with components
+
+## Component Patterns
+
+### Component Structure
+```typescript
+// 1. Imports (React, then third-party, then local)
+import { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+
+// 2. Type definitions (if complex)
+interface Props {
+  // ...
+}
+
+// 3. JSDoc comment (for reusable components)
+/**
+ * Component description
+ * Usage: <ComponentName prop="value" />
+ */
+
+// 4. Component function
+export default function ComponentName({ prop }: Props) {
+  // 5. Hooks (useState, useEffect, custom hooks)
+  const [state, setState] = useState();
+  
+  // 6. Effects
+  useEffect(() => {
+    // ...
+    return () => { /* cleanup */ };
+  }, [deps]);
+  
+  // 7. Event handlers
+  const handleClick = () => { /* ... */ };
+  
+  // 8. Early returns
+  if (condition) return null;
+  
+  // 9. Render
+  return (
+    <div>
+      {/* JSX */}
+    </div>
+  );
+}
+```
+
+### State Management
+- **Local state**: Use `useState` for component-local state
+- **Global state**: Use `AuthContext` for auth state, Supabase real-time for data
+- **Derived state**: Use `useMemo` for expensive calculations, avoid storing derived values in state
+- **Form state**: Use controlled components with `useState` for form inputs
+
+### Data Fetching
+- **Supabase**: Always use Supabase client from `src/lib/supabase.ts`
+- **Real-time**: Use Supabase subscriptions for live data updates
+- **Loading states**: Always show loading states while fetching data
+- **Error handling**: Handle errors gracefully with user-friendly messages
+- **Caching**: Use Supabase caching or local state to avoid unnecessary refetches
+
+### Event Handlers
+- **Naming**: Use `handle` prefix: `handleClick`, `handleSubmit`, `handleChange`
+- **Async handlers**: Mark async handlers as `async`: `const handleSubmit = async () => {}`
+- **Error handling**: Wrap async operations in try/catch blocks
+- **Prevent defaults**: Use `e.preventDefault()` in form handlers when needed
+
+## Error Handling
+
+### Component Errors
+- **Error boundaries**: Wrap app in `ErrorBoundary` from `src/components/ErrorBoundary.tsx`
+- **Try/catch**: Use try/catch for async operations (API calls, Supabase queries)
+- **User feedback**: Show user-friendly error messages, never expose technical errors
+- **Console logging**: Log errors to console for debugging: `console.error('[ComponentName] Error:', error)`
+- **Fallback UI**: Provide fallback UI for error states (e.g., "Something went wrong, please try again")
+
+### Supabase Errors
+- **Check errors**: Always check `error` property from Supabase responses
+- **Error messages**: Extract user-friendly messages from Supabase errors
+- **Network errors**: Handle network failures gracefully (show retry option)
+
+### Async/Await Pattern
+```typescript
+try {
+  const { data, error } = await supabase.from('table').select();
+  if (error) throw error;
+  // Use data
+} catch (error) {
+  console.error('[ComponentName] Error:', error);
+  // Show user-friendly error
+}
+```
+
+## Performance Guidelines
+
+### Lazy Loading
+- **Pages**: Lazy load non-critical pages (League, Admin, Profile)
+- **Components**: Lazy load heavy components that aren't immediately visible
+- **Suspense**: Use `Suspense` with `PageLoader` fallback for lazy routes
+
+### Optimization
+- **Images**: Use `loading="lazy"` for images below the fold
+- **Memoization**: Use `useMemo` for expensive calculations, `useCallback` for stable function references
+- **Re-renders**: Avoid unnecessary re-renders by properly managing dependencies
+- **Subscriptions**: Clean up Supabase subscriptions in `useEffect` cleanup
+
+### Bundle Size
+- **Imports**: Import only what you need (no `import * from`)
+- **Tree shaking**: Use named imports to enable tree shaking
+- **Code splitting**: Leverage React Router lazy loading for route-based code splitting
+
+## Testing Requirements
+
+### Before Considering Work Complete
+- **Local testing**: Always test in `npm run dev` before pushing
+- **Game state**: Test components in all 4 game states (GW_OPEN, GW_PREDICTED, LIVE, RESULTS_PRE_GW)
+- **Error states**: Test error handling (network failures, invalid data)
+- **Edge cases**: Test with empty data, null values, missing props
+- **Responsive**: Test on mobile and desktop viewports
+
+### Storybook
+- **Component stories**: Create Storybook stories for reusable components
+- **Variants**: Show different states/variants in stories
+- **Documentation**: Use Storybook to document component usage
+
+## Git Workflow
+
+### Before Committing
+- **Test locally**: Run `npm run dev` and test the changes
+- **Build check**: Run `npm run check` to ensure TypeScript compiles
+- **Ask permission**: Never commit or push without explicitly asking the user first
+
+### Commit Messages
+- Use clear, descriptive commit messages
+- Prefix with type: `feat:`, `fix:`, `refactor:`, `docs:`, etc.
+- Example: `fix: use correct data source for live scores in HomePage`
+
+### Branch Strategy
+- Work on `staging` branch (primary development branch)
+- Create feature branches for larger changes if needed
+
+## Security Considerations
+
+### Data Access
+- **RLS policies**: Supabase Row Level Security handles data access - don't bypass it
+- **User data**: Never expose other users' data without proper authorization
+- **API keys**: Never commit API keys or secrets - use environment variables
+
+### Input Validation
+- **User input**: Validate and sanitize all user input
+- **SQL injection**: Use Supabase client (parameterized queries) - never raw SQL from frontend
+- **XSS**: React automatically escapes, but be careful with `dangerouslySetInnerHTML` (avoid if possible)
+
+## Documentation Requirements
+
+### Code Comments
+- **JSDoc**: Add JSDoc comments for exported functions/components explaining usage
+- **Complex logic**: Comment complex algorithms or business logic
+- **Why, not what**: Comment why something is done, not what (code should be self-explanatory)
+
+### Component Documentation
+- **Usage examples**: Include usage examples in JSDoc comments
+- **Props documentation**: Document all props, especially optional ones with defaults
+- **Storybook**: Use Storybook to document component variants and usage
+
+### Update Documentation
+- **PROJECT_CONTEXT.md**: Update when making architectural changes
+- **Feature docs**: Create/update feature-specific docs when adding new features
+- **Changelog**: Consider updating changelog for significant changes
+
+## When Making Changes
+- Always check existing patterns in similar components
+- Use Supabase for data, not direct API calls from frontend
+- Follow lazy loading pattern for non-critical pages
+- Test notifications using scripts in `scripts/` folder
+- Check `netlify.toml` for function configurations
+- **For gameweek features**: Read GAME_STATE.md first, use useGameweekState hook
+- **Before pushing**: Test locally, ask user before committing
+- **After changes**: Update PROJECT_CONTEXT.md if architecture changes
+

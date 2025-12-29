@@ -5,8 +5,8 @@ export type GameweekState = 'GW_OPEN' | 'GW_PREDICTED' | 'LIVE' | 'RESULTS_PRE_G
 /**
  * Determines the global state of a gameweek (not user-specific):
  * - GW_OPEN: New GW published, players can make predictions (before first kickoff)
- * - LIVE: First kickoff happened AND last game hasn't finished
- * - RESULTS_PRE_GW: GW has finished (all fixtures have results in app_gw_results AND no active games)
+ * - LIVE: First kickoff happened AND last game hasn't finished (FT)
+ * - RESULTS_PRE_GW: GW has finished (last game has reached FT AND no active games)
  */
 export async function getGameweekState(gw: number): Promise<GameweekState> {
   // Get all fixtures for this GW
@@ -31,7 +31,7 @@ export async function getGameweekState(gw: number): Promise<GameweekState> {
     return 'GW_OPEN';
   }
   
-  // Check if GW has finished: all fixtures have results in app_gw_results AND no active games
+  // Check if GW has finished: last game has reached FT AND no active games
   const isFinished = await isGameweekFinished(gw);
   
   if (isFinished) {
@@ -45,8 +45,8 @@ export async function getGameweekState(gw: number): Promise<GameweekState> {
  * Determines the user-specific state of a gameweek:
  * - GW_OPEN: New GW published, user hasn't submitted predictions yet (before first kickoff)
  * - GW_PREDICTED: User has submitted predictions but first kickoff hasn't happened yet
- * - LIVE: First kickoff happened AND last game hasn't finished
- * - RESULTS_PRE_GW: GW has finished (all fixtures have results in app_gw_results AND no active games)
+ * - LIVE: First kickoff happened AND last game hasn't finished (FT)
+ * - RESULTS_PRE_GW: GW has finished (last game has reached FT AND no active games)
  */
 export async function getUserGameweekState(gw: number, userId: string | null | undefined): Promise<GameweekState> {
   // Get all fixtures for this GW
@@ -86,7 +86,7 @@ export async function getUserGameweekState(gw: number, userId: string | null | u
     return 'GW_OPEN';
   }
   
-  // Check if GW has finished: all fixtures have results in app_gw_results AND no active games
+  // Check if GW has finished: last game has reached FT AND no active games
   const isFinished = await isGameweekFinished(gw);
   
   if (isFinished) {
@@ -98,39 +98,46 @@ export async function getUserGameweekState(gw: number, userId: string | null | u
 
 /**
  * Check if a gameweek has finished (moved to RESULTS_PRE_GW state)
- * GW is finished when: all fixtures have entries in app_gw_results AND no active games in live_scores
+ * GW is finished when: last game (by kickoff time) has reached FT AND no active games in live_scores
+ * 
+ * Key principle: A GW is LIVE between first kickoff and last FT.
+ * A game is LIVE between kickoff and FT (status IN_PLAY or PAUSED).
  */
 export async function isGameweekFinished(gw: number): Promise<boolean> {
-  // Get all fixtures for this GW
+  // Get all fixtures for this GW, ordered by kickoff time
   const { data: fixtures, error: fixturesError } = await supabase
     .from("app_fixtures")
-    .select("fixture_index")
-    .eq("gw", gw);
+    .select("fixture_index, kickoff_time")
+    .eq("gw", gw)
+    .order("kickoff_time", { ascending: true });
   
   if (fixturesError || !fixtures || fixtures.length === 0) {
     return false;
   }
   
-  const fixtureCount = fixtures.length;
-  
-  // Check if all fixtures have results in app_gw_results
-  const { data: results, error: resultsError } = await supabase
-    .from("app_gw_results")
-    .select("fixture_index")
-    .eq("gw", gw);
-  
-  if (resultsError) {
+  // Get the last fixture by kickoff time
+  const lastFixture = fixtures[fixtures.length - 1];
+  if (!lastFixture) {
     return false;
   }
   
-  const resultsCount = results?.length || 0;
-  const allFixturesHaveResults = resultsCount === fixtureCount;
+  // Check if the last game has finished (status === 'FINISHED' in live_scores)
+  // This is the key check: GW is only finished when the LAST game has reached FT
+  const { data: lastGameLiveScore } = await supabase
+    .from("live_scores")
+    .select("status")
+    .eq("gw", gw)
+    .eq("fixture_index", lastFixture.fixture_index)
+    .maybeSingle();
   
-  if (!allFixturesHaveResults) {
+  const lastGameFinished = lastGameLiveScore?.status === 'FINISHED';
+  
+  // If last game hasn't finished, GW is still LIVE
+  if (!lastGameFinished) {
     return false;
   }
   
-  // Safety check: ensure no active games in live_scores
+  // Safety check: ensure no active games in live_scores (IN_PLAY or PAUSED)
   const { data: activeGames } = await supabase
     .from("live_scores")
     .select("status")
@@ -139,7 +146,7 @@ export async function isGameweekFinished(gw: number): Promise<boolean> {
   
   const hasActiveGames = activeGames && activeGames.length > 0;
   
-  // GW is finished if all fixtures have results AND no active games
+  // GW is finished if last game has finished AND no active games
   return !hasActiveGames;
 }
 

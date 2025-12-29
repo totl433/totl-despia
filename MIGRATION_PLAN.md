@@ -110,7 +110,7 @@ Migrate all Web users to App/Despia while maintaining Web game functionality. Ap
   - ✅ Mirrored 130 results (GWs 1-13)
   - ✅ Updated app_meta.current_gw to 13
   - ✅ Mirrored test_api_fixtures to app_fixtures (with api_match_id)
-- [x] **Update NewPredictionsCentre to write directly to `app_picks`** ✅
+- [x] **Update Predictions page to write directly to `app_picks`** ✅ (merged NewPredictionsCentre into Predictions.tsx)
 - [x] **App users write directly to `app_picks`** (not `test_api_picks`) ✅
 - [x] **Real-time mirroring: Database triggers implemented** ✅
   - ✅ Created PostgreSQL triggers for automatic mirroring
@@ -144,7 +144,7 @@ Migrate all Web users to App/Despia while maintaining Web game functionality. Ap
 - [x] Update Tables page to use App tables ✅
 - [x] Update Global page to use App views ✅
 - [x] Update League page to use App data ✅
-- [x] Update NewPredictionsCentre to write directly to `app_picks` (replace `test_api_picks` writes) ✅
+- [x] Update Predictions page to write directly to `app_picks` (replace `test_api_picks` writes) ✅ (merged NewPredictionsCentre into Predictions.tsx)
 - [x] Ensure App users (4) and mirrored Web users coexist ✅
 - [x] Remove test GW logic - all users see current GW (GW13) ✅
 - [x] Add support for reading `app_gw_results` for non-API fixtures ✅
@@ -157,7 +157,7 @@ Migrate all Web users to App/Despia while maintaining Web game functionality. Ap
 - `src/pages/Tables.tsx`
 - `src/pages/Global.tsx`
 - `src/pages/League.tsx`
-- `src/pages/NewPredictionsCentre.tsx`
+- `src/pages/Predictions.tsx` (merged from NewPredictionsCentre)
 
 ---
 
@@ -249,7 +249,7 @@ Migrate all Web users to App/Despia while maintaining Web game functionality. Ap
   - App tables now have all historical data
   - Mirrored test_api_fixtures to app_fixtures (with api_match_id)
 - ✅ Stage 4: App Integration - COMPLETE
-  - Updated all pages (Home, Tables, Global, League, NewPredictionsCentre) to use app_* tables ✅
+  - Updated all pages (Home, Tables, Global, League, Predictions) to use app_* tables ✅
   - Removed test GW logic - all users see current GW (GW13) ✅
   - Added support for reading app_gw_results for non-API fixtures ✅
   - Score calculation works with both API and non-API fixtures ✅

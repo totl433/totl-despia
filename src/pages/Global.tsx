@@ -639,9 +639,22 @@ export default function GlobalLeaderboardPage() {
 
   // Handle user click to open modal
   const handleUserClick = (userId: string, userName: string | null) => {
-    // Always get rank from the overall leaderboard (global ranking)
-    const userRow = rowsFiltered.find(r => r.user_id === userId);
-    const userRank = userRow && 'rank' in userRow ? userRow.rank : undefined;
+    // Get rank from non-live global ranking (overall array from app_v_ocp_overall)
+    // Sort overall by OCP to calculate rank (same logic as rows calculation)
+    const sortedOverall = [...overall].sort((a, b) => (b.ocp - a.ocp) || (a.name ?? '').localeCompare(b.name ?? ''));
+    
+    // Find user's position and calculate rank (handling ties)
+    let userRank: number | undefined;
+    let currentRank = 1;
+    for (let i = 0; i < sortedOverall.length; i++) {
+      if (i > 0 && sortedOverall[i - 1].ocp !== sortedOverall[i].ocp) {
+        currentRank = i + 1;
+      }
+      if (sortedOverall[i].user_id === userId) {
+        userRank = currentRank;
+        break;
+      }
+    }
     
     setSelectedUserId(userId);
     setSelectedUserName(userName);

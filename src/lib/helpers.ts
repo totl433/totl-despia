@@ -125,7 +125,8 @@ export function calculateLastGwRank(
     total: ranked.length,
     score: userEntry.points,
     gw: lastCompletedGw,
-    totalFixtures: 10, // TODO: get actual fixture count
+    totalFixtures: 10, // Hardcoded: Premier League gameweeks typically have 10 fixtures. 
+                       // To get actual count, would need to query fixtures table or pass as parameter.
     isTied: rankCount > 1
   };
 }
@@ -160,6 +161,9 @@ export function calculateSeasonRank(
     isTied: rankCount > 1
   };
 }
+
+
+
 
 
 

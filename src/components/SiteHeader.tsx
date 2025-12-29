@@ -38,7 +38,7 @@ export default function SiteHeader() {
           {/* Desktop nav */}
           <nav className="hidden sm:flex items-center gap-1 flex-1 justify-center">
             <Item to="/leagues">Mini Leagues</Item>
-            <Item to="/new-predictions">Predictions</Item>
+            <Item to="/predictions">Predictions</Item>
             <Item to="/global">Global</Item>
             {isAdmin && <Item to="/admin">Admin</Item>}
           </nav>
@@ -97,7 +97,7 @@ export default function SiteHeader() {
               Join WhatsApp Community
             </a>
             <Item to="/leagues">Mini Leagues</Item>
-            <Item to="/new-predictions">Predictions</Item>
+            <Item to="/predictions">Predictions</Item>
             <Item to="/global">Global</Item>
             {isAdmin && <Item to="/admin">Admin</Item>}
             

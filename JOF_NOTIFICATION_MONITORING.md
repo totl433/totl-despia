@@ -86,3 +86,6 @@ node scripts/monitor-jof-notifications.mjs | grep "goal-scored"
 3. **Check the result** - should be `accepted` if fix worked
 4. **Report back** what you see!
 
+
+
+

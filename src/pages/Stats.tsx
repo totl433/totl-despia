@@ -1,5 +1,5 @@
 import { useAuth } from '../context/AuthContext';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { StatCard } from '../components/profile/StatCard';
@@ -10,21 +10,17 @@ import { TrophyCabinet } from '../components/profile/TrophyCabinet';
 import { fetchUserStats, type UserStatsData } from '../services/userStats';
 import LiveGamesToggle from '../components/LiveGamesToggle';
 import UnicornCollection from '../components/profile/UnicornCollection';
+import { useGameweekState } from '../hooks/useGameweekState';
+import { supabase } from '../lib/supabase';
 
 export default function Stats() {
   const { user } = useAuth();
   const [stats, setStats] = useState<UserStatsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showParChartInfo, setShowParChartInfo] = useState(false);
-
-  useEffect(() => {
-    if (user) {
-      loadStats();
-    } else {
-      setLoading(false);
-    }
-  }, [user]);
-
+  const [currentGw, setCurrentGw] = useState<number | null>(null);
+  const lastUpdatedGwRef = useRef<number | null>(null); // Track which GW we last updated stats for
+  
   async function loadStats() {
     if (!user) return;
 
@@ -41,6 +37,109 @@ export default function Stats() {
       setLoading(false);
     }
   }
+  
+  // Get current GW from app_meta
+  useEffect(() => {
+    let alive = true;
+    
+    const fetchCurrentGw = async () => {
+      const { data: meta } = await supabase
+        .from("app_meta")
+        .select("current_gw")
+        .eq("id", 1)
+        .maybeSingle();
+      
+      if (alive && meta) {
+        const gw: number | null = (meta as any)?.current_gw ?? null;
+        setCurrentGw(gw);
+      }
+    };
+    
+    fetchCurrentGw();
+    
+    // Subscribe to app_meta changes
+    const channel = supabase
+      .channel('stats-app-meta')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'app_meta',
+        },
+        () => {
+          fetchCurrentGw();
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      alive = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+  
+  // Get game state for current GW
+  const { state: currentGwState } = useGameweekState(currentGw, user?.id);
+  
+  // Initial load
+  useEffect(() => {
+    if (user) {
+      loadStats();
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
+  
+  // Determine which GW to show stats for based on game state (duplicate removed)
+  // GW_OPEN/GW_PREDICTED: Show previous GW (lastCompletedGw) - already handled by fetchUserStats
+  // LIVE: Show static stats (don't update)
+  // RESULTS_PRE_GW: Show updated stats for completed GW (update once when it finishes)
+  useEffect(() => {
+    if (!user || !currentGw || currentGwState === null) {
+      return;
+    }
+    
+    let alive = true;
+    
+    const shouldRefreshStats = async () => {
+      // In LIVE state, don't refresh (show static stats)
+      if (currentGwState === 'LIVE') {
+        // Stats should already be loaded from initial load
+        return;
+      }
+      
+      // In RESULTS_PRE_GW, check if we need to update stats for the completed GW
+      if (currentGwState === 'RESULTS_PRE_GW') {
+        // Get the last completed GW
+        const { data: lastGwData } = await supabase
+          .from('app_gw_results')
+          .select('gw')
+          .order('gw', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        const lastCompletedGw = lastGwData?.gw || null;
+        
+        // Only refresh if this is a new completed GW we haven't updated for yet
+        if (lastCompletedGw && lastCompletedGw !== lastUpdatedGwRef.current) {
+          lastUpdatedGwRef.current = lastCompletedGw;
+          if (alive) {
+            loadStats();
+          }
+        }
+        return;
+      }
+      
+      // In GW_OPEN or GW_PREDICTED, show previous GW stats
+      // Stats should already be loaded from initial load
+      // No need to refresh unless we haven't loaded yet
+    };
+    
+    shouldRefreshStats();
+    
+    return () => { alive = false; };
+  }, [user, currentGw, currentGwState]);
 
   if (!user) {
     return (

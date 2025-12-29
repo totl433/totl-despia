@@ -191,7 +191,7 @@ Each route corresponds to a full page component
 Suspense wraps all routes with PageLoader fallback
 Lazy-loaded pages show spinner while chunk downloads
 Lazy Loading and Dynamic Imports:
-Lazy-loaded pages include: League, Profile, Admin, CreateLeague, HowToPlay, NewPredictionsCentre, TestApiPredictions, TestAdminApi, ApiAdmin, TestFixtures, TestDespia, SignIn
+Lazy-loaded pages include: League, Profile, Admin, CreateLeague, HowToPlay, TestApiPredictions, TestAdminApi, ApiAdmin, TestFixtures, TestDespia, SignIn
 When navigating to a lazy-loaded route:
 Suspense boundary shows PageLoader (spinner)
 Chunk downloads from CDN/Netlify

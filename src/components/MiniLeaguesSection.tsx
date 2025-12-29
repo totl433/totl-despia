@@ -11,6 +11,7 @@ interface MiniLeaguesSectionProps {
   unreadByLeague: Record<string, number>;
   leagueDataLoading: boolean;
   currentGw: number | null;
+  onTableClick?: (leagueId: string) => void;
 }
 
 export function MiniLeaguesSection({
@@ -19,7 +20,8 @@ export function MiniLeaguesSection({
   leagueSubmissions,
   unreadByLeague,
   leagueDataLoading,
-  currentGw
+  currentGw,
+  onTableClick,
 }: MiniLeaguesSectionProps) {
   // Memoize card data transformations to prevent unnecessary re-renders
   const memoizedCardData = useMemo(() => {
@@ -151,6 +153,7 @@ How To Play →`}
                           leagueDataLoading={leagueDataLoading}
                           currentGw={currentGw}
                           showRanking={false}
+                          onTableClick={onTableClick}
                         />
                       </div>
                     </div>

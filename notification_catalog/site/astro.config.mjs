@@ -32,6 +32,7 @@ export default defineConfig({
             { label: 'Chat Message', link: '/notifications/chat-message/' },
             { label: 'Final Submission', link: '/notifications/final-submission/' },
             { label: 'New Gameweek', link: '/notifications/new-gameweek/' },
+            { label: 'Prediction Reminder', link: '/notifications/prediction-reminder/' },
           ],
         },
         {

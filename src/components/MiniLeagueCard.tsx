@@ -40,6 +40,7 @@ export type MiniLeagueCardProps = {
   leagueDataLoading: boolean;
   currentGw: number | null;
   showRanking?: boolean; // If false, hide member count and user position (default: true)
+  onTableClick?: (leagueId: string) => void; // Callback when table icon is clicked
 };
 
 /**
@@ -54,6 +55,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
   leagueDataLoading,
   currentGw,
   showRanking = true,
+  onTableClick,
 }: MiniLeagueCardProps) {
   const members = data?.members ?? [];
   const userPosition = data?.userPosition;
@@ -162,7 +164,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
   }, [data]);
 
   return (
-    <div className="rounded-xl border bg-white overflow-hidden shadow-sm w-full">
+    <div className="rounded-xl border bg-white overflow-hidden shadow-sm w-full relative">
       <Link
         to={`/league/${row.code}`}
         className="block p-6 !bg-white no-underline hover:text-inherit relative z-20"
@@ -199,9 +201,37 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
             />
           </div>
 
-          <div className="flex-1 min-w-0 flex flex-col gap-1">
+          <div className="flex-1 min-w-0 flex flex-col gap-1 relative">
+            {/* Table Button - Positioned at top right */}
+            {onTableClick && (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onTableClick(row.id);
+                }}
+                className="absolute top-0 right-0 px-3 py-1.5 flex items-center justify-center rounded-full bg-[#1C8376] hover:bg-[#1C8376]/90 text-white transition-colors flex-shrink-0 shadow-sm z-10"
+                title="View GW table"
+                aria-label="View gameweek table"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  {/* List/ranking icon */}
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                  />
+                </svg>
+              </button>
+            )}
             {/* Line 1: League Name */}
-            <div className="text-base font-semibold text-slate-900 truncate">{row.name}</div>
+            <div className="text-base font-semibold text-slate-900 truncate pr-12">{row.name}</div>
 
             {/* Line 2: All Submitted Status - only show when showRanking is true */}
             {showRanking && submissions?.allSubmitted && (
@@ -331,7 +361,8 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
     prevProps.data?.members?.length === nextProps.data?.members?.length &&
     prevSortedIds === nextSortedIds && // CRITICAL: Re-render when sortedMemberIds changes
     prevProps.submissions?.allSubmitted === nextProps.submissions?.allSubmitted &&
-    prevProps.submissions?.submittedCount === nextProps.submissions?.submittedCount
+    prevProps.submissions?.submittedCount === nextProps.submissions?.submittedCount &&
+    prevProps.onTableClick === nextProps.onTableClick
   );
 });
 

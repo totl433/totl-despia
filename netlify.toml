@@ -17,6 +17,11 @@
 [functions."pollLiveScores"]
   schedule = "* * * * *"  # Every minute (5 fields: minute hour day month weekday)
 
+# Scheduled function to check for prediction reminders every 15 minutes
+# Checks if it's time to send reminders (5 hours before deadline)
+[functions."sendPredictionReminder"]
+  schedule = "*/15 * * * *"  # Every 15 minutes
+
 # REMOVED: sendScoreNotifications scheduled function
 # Notifications are now handled by sendScoreNotificationsWebhook (triggered by database webhook)
 # The scheduled version was removed as it was redundant and less reliable than webhook-triggered notifications
