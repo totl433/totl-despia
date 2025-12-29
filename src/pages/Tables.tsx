@@ -1086,7 +1086,7 @@ export default function TablesPage() {
     try {
       const { data, error } = await supabase
         .from("leagues")
-        .select("id")
+        .select("id, name")
         .eq("code", code)
         .maybeSingle();
       if (error) throw error;
@@ -1110,6 +1110,40 @@ export default function TablesPage() {
         { league_id: data.id, user_id: user.id },
         { onConflict: "league_id,user_id" }
       );
+      
+      // Send notification to other members
+      const userName = user.user_metadata?.display_name || user.email || 'Someone';
+      try {
+        const response = await fetch('/.netlify/functions/notifyLeagueMemberJoin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            leagueId: data.id,
+            userId: user.id,
+            userName: userName,
+          }),
+        });
+        
+        // Check if response has content before trying to parse JSON
+        const text = await response.text();
+        let result: any;
+        try {
+          result = text ? JSON.parse(text) : { error: 'Empty response body' };
+        } catch (parseError) {
+          console.error('[Tables] Failed to parse notification response. Status:', response.status, 'Text:', text, 'Error:', parseError);
+          result = { error: 'Invalid JSON response', status: response.status, raw: text.substring(0, 200) };
+        }
+        
+        if (!response.ok) {
+          console.error('[Tables] Notification function returned error:', response.status, result);
+        } else {
+          console.log('[Tables] Join notification sent:', result);
+        }
+      } catch (notifError) {
+        // Non-critical - log but don't fail the join
+        console.error('[Tables] Error sending join notification:', notifError);
+      }
+      
       setJoinCode("");
       // Invalidate cache and refresh leagues
       if (user?.id) {
