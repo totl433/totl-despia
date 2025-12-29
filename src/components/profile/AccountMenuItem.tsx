@@ -14,13 +14,14 @@ export const AccountMenuItem = React.memo(function AccountMenuItem({
   label,
   isLast = false,
 }: AccountMenuItemProps) {
-  return (
-    <Link
-      to={to}
-      className={`flex items-center justify-between py-3 hover:bg-slate-50 -mx-6 px-6 transition-colors ${
-        !isLast ? 'border-b border-slate-200' : ''
-      }`}
-    >
+  const isExternal = to.startsWith('mailto:') || to.startsWith('http://') || to.startsWith('https://');
+  
+  const className = `flex items-center justify-between py-3 hover:bg-slate-50 -mx-6 px-6 transition-colors ${
+    !isLast ? 'border-b border-slate-200' : ''
+  }`;
+
+  const content = (
+    <>
       <div className="flex items-center gap-3">
         <div className="w-6 h-6 flex items-center justify-center">
           {icon}
@@ -30,6 +31,26 @@ export const AccountMenuItem = React.memo(function AccountMenuItem({
       <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
       </svg>
+    </>
+  );
+
+  if (isExternal) {
+    return (
+      <a
+        href={to}
+        className={className}
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <Link
+      to={to}
+      className={className}
+    >
+      {content}
     </Link>
   );
 });

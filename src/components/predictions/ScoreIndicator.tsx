@@ -36,8 +36,9 @@ export default function ScoreIndicator({
 
   const percentage = total > 0 ? (score / total) * 100 : 0;
 
-  // Determine live indicator based on state
+  // Determine indicators based on state
   const showLiveIndicator = !gameStateLoading && state === 'live';
+  const showStartingSoonIndicator = !gameStateLoading && state === 'starting-soon';
 
   const handleShare = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -359,6 +360,14 @@ export default function ScoreIndicator({
                   </div>
                 );
               })()}
+              {showStartingSoonIndicator && (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500 text-white shadow-md shadow-amber-500/30">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-sm font-medium">Starting soon</span>
+                </div>
+              )}
               {showLiveIndicator && (
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-red-600 rounded-full animate-pulse"></div>

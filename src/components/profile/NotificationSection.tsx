@@ -28,7 +28,7 @@ export const NotificationSection = React.memo(function NotificationSection({
       {description && (
         <p className="text-sm text-slate-600 mb-4">{description}</p>
       )}
-      <div className="space-y-0">
+      <div className="space-y-0 border-t border-slate-200">
         {options.map((option) => (
           <NotificationToggle
             key={option.id}
