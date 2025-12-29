@@ -742,17 +742,16 @@ export default function HomePage() {
         
         // Parallel fetch all league data
         // App reads from app_* tables (includes both App and mirrored Web users)
-        const [membersResult, readsResult, submissionsResult, resultsResult, fixturesResult, webPicksResult] = await Promise.all([
+        const [membersResult, readsResult, submissionsResult, resultsResult, fixturesResult, webPicksResult, appPicksResult] = await Promise.all([
           supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds),
           supabase.from("league_message_reads").select("league_id, last_read_at").eq("user_id", user.id).in("league_id", leagueIds),
           supabase.from("app_gw_submissions").select("user_id").eq("gw", gw),
           supabase.from("app_gw_results").select("gw, fixture_index, result"),
           supabase.from("app_fixtures").select("gw, fixture_index, home_team, away_team, home_name, away_name, kickoff_time").in("gw", Array.from({ length: Math.min(20, latestGw || 20) }, (_, i) => i + 1)),
-          // Check which users have picks in Web table (these are Web users with mirrored picks)
-          // Check for ANY GW (not just current GW) because the blue outline indicates a user who
-          // has made picks via Web interface at some point, not just for the current GW
-          supabase.from("picks").select("user_id").limit(10000),
-          // Note: app_picks query removed - not used in this function
+          // Fetch picks from Web table with timestamps to determine origin
+          supabase.from("picks").select("user_id, gw, created_at").limit(10000),
+          // Fetch picks from App table with timestamps to compare
+          supabase.from("app_picks").select("user_id, gw, created_at").limit(10000),
         ]);
         
         if (!alive) return;
@@ -773,29 +772,79 @@ export default function HomePage() {
         const allMemberIdsSet = new Set(Object.values(membersByLeague).flat().map(m => m.id));
         const submittedUserIds = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id).filter((id: string) => allMemberIdsSet.has(id)));
         
-        // Identify Web users: users who have picks in the Web `picks` table (for ANY GW)
-        // Note: Web users' picks are automatically mirrored to app_picks via database triggers,
-        // so Web users will have picks in BOTH tables. App users only have picks in app_picks.
-        // The 4 App test users (Jof, Carl, SP, ThomasJamesBird) have their picks mirrored from
-        // app_picks to picks (reverse mirroring), so we need to exclude them from Web users.
-        // We check for ANY GW (not just current GW) because the blue outline indicates a user
-        // who has made picks via Web interface at some point.
-        const webPicksUserIds = new Set((webPicksResult.data ?? []).map((p: any) => p.user_id));
+        // Identify Web users by comparing timestamps:
+        // If picks in `picks` table were created BEFORE (or within 1 second of) picks in `app_picks`,
+        // the user made picks on Web first (Web origin)
+        // Build maps of earliest pick time per user+gw for each table
+        const webPicksEarliest = new Map<string, Date>();
+        (webPicksResult.data || []).forEach((p: any) => {
+          if (!p.created_at) return;
+          const key = `${p.user_id}:${p.gw}`;
+          const pickTime = new Date(p.created_at);
+          const existing = webPicksEarliest.get(key);
+          if (!existing || pickTime < existing) {
+            webPicksEarliest.set(key, pickTime);
+          }
+        });
         
-        // App-only user IDs (from shared constants)
-        // These users have picks mirrored FROM app_picks TO picks, so they shouldn't get blue outlines
+        const appPicksEarliest = new Map<string, Date>();
+        (appPicksResult.data || []).forEach((p: any) => {
+          if (!p.created_at) return;
+          const key = `${p.user_id}:${p.gw}`;
+          const pickTime = new Date(p.created_at);
+          const existing = appPicksEarliest.get(key);
+          if (!existing || pickTime < existing) {
+            appPicksEarliest.set(key, pickTime);
+          }
+        });
+        
+        // App-only user IDs (from shared constants) - keep this list for now as requested
         const appTestUserIds = new Set(APP_ONLY_USER_IDS);
         
-        // Web users = have picks in Web table (for ANY GW) AND are NOT one of the 4 App test users
-        // App test users have picks in both tables (mirrored from app_picks), so we exclude them
-        const webUserIds = new Set(
-          Array.from(webPicksUserIds).filter(
-            (id: string) => allMemberIdsSet.has(id) && !appTestUserIds.has(id)
-          )
-        );
+        // Identify Web users: those whose picks in `picks` table were created 
+        // BEFORE picks in `app_picks` table (Web origin)
+        // If picks originated from App, app_picks will have earlier timestamps due to mirroring
+        // IMPORTANT: Only check the CURRENT gameweek to avoid false positives from old migrated data
+        // Historical gameweeks may have been migrated, making timestamp comparison unreliable
+        const webUserIds = new Set<string>();
+        
+        // Use the current GW to determine origin (only check latest picks, not historical)
+        // This avoids false positives from old migrated data where web picks predate app picks
+        let gwToCheck = gw;
+        if (!gwToCheck) {
+          // Fallback: fetch current GW from database if state variable is not set
+          const { data: meta } = await supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle();
+          gwToCheck = meta?.current_gw ?? 1;
+        }
+        
+        // Only check the current gameweek for reliable origin detection
+        webPicksEarliest.forEach((webTime, key) => {
+          const [userId, gwStr] = key.split(':');
+          const gwNum = parseInt(gwStr, 10);
+          
+          // Skip if not the current gameweek
+          if (gwNum !== gwToCheck) return;
+          
+          const appTime = appPicksEarliest.get(key);
+          
+          // Only mark as Web user if web picks were created significantly BEFORE app picks
+          // Require both timestamps to exist for reliable determination
+          // Use a threshold of 500ms to account for trigger timing - web must be clearly earlier
+          if (appTime && (webTime.getTime() - appTime.getTime()) < -500) {
+            // Also check they're league members and not app-only test users
+            if (allMemberIdsSet.has(userId) && !appTestUserIds.has(userId)) {
+              webUserIds.add(userId);
+            }
+          }
+          // If no appTime exists, we can't reliably determine origin (could be data migration, etc.)
+          // So we don't mark as web user to be safe
+        });
         
         if (webPicksResult.error) {
           console.error('[Home] Error fetching web picks:', webPicksResult.error);
+        }
+        if (appPicksResult.error) {
+          console.error('[Home] Error fetching app picks:', appPicksResult.error);
         }
         
         // Process unread counts

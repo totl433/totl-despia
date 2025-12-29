@@ -145,6 +145,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     leagueMembersResult,
     latestGwResult,
     webPicksResult,
+    appPicksResult,
     // Additional data for Tables page (placeholders - populated later)
     _allLeaguesResult, // Placeholder - populated later
     _leagueMembersWithUsersResult, // Placeholder - populated later
@@ -194,10 +195,16 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
       .limit(1)
       .maybeSingle(),
     
-    // 8. Get Web user IDs (users with picks in Web table)
+    // 8. Get Web picks with timestamps (to determine origin)
     supabase
       .from('picks')
-      .select('user_id')
+      .select('user_id, gw, created_at')
+      .limit(10000),
+    
+    // 8b. Get App picks with timestamps (to compare with Web picks)
+    supabase
+      .from('app_picks')
+      .select('user_id, gw, created_at')
       .limit(10000),
     
     // 9. Get all leagues (for Tables page)
@@ -229,6 +236,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   if (leagueMembersResult.error) throw new Error(`Failed to load league members: ${leagueMembersResult.error.message}`);
   if (latestGwResult.error) throw new Error(`Failed to load latest GW: ${latestGwResult.error.message}`);
   if (webPicksResult.error) throw new Error(`Failed to load Web picks: ${webPicksResult.error.message}`);
+  if (appPicksResult.error) throw new Error(`Failed to load App picks: ${appPicksResult.error.message}`);
   // Note: _allResultsResult, _allFixturesResult errors are non-critical
 
   const currentGw = metaResult.data?.current_gw ?? 1;
@@ -380,10 +388,55 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     userPicks[pick.fixture_index] = pick.pick;
   });
 
-  // Process Web user IDs
+  // Process Web user IDs by comparing timestamps:
+  // If picks in `picks` table were created BEFORE (or within 1 second of) picks in `app_picks`,
+  // the user made picks on Web first (Web origin)
+  const webPicksEarliest = new Map<string, Date>();
+  (webPicksResult.data || []).forEach((p: any) => {
+    if (!p.created_at) return;
+    const key = `${p.user_id}:${p.gw}`;
+    const pickTime = new Date(p.created_at);
+    const existing = webPicksEarliest.get(key);
+    if (!existing || pickTime < existing) {
+      webPicksEarliest.set(key, pickTime);
+    }
+  });
+  
+  const appPicksEarliest = new Map<string, Date>();
+  (appPicksResult.data || []).forEach((p: any) => {
+    if (!p.created_at) return;
+    const key = `${p.user_id}:${p.gw}`;
+    const pickTime = new Date(p.created_at);
+    const existing = appPicksEarliest.get(key);
+    if (!existing || pickTime < existing) {
+      appPicksEarliest.set(key, pickTime);
+    }
+  });
+  
+  // Identify Web users: those whose picks in `picks` table were created 
+  // BEFORE picks in `app_picks` table (Web origin)
+  // If picks originated from App, app_picks will have earlier timestamps due to mirroring
+  // IMPORTANT: Only check the CURRENT gameweek to avoid false positives from old migrated data
+  // Historical gameweeks may have been migrated, making timestamp comparison unreliable
   const webUserIds = new Set<string>();
-  (webPicksResult.data || []).forEach((pick: any) => {
-    if (pick.user_id) webUserIds.add(pick.user_id);
+  const gwToCheck = currentGw; // Only check current GW for reliable origin detection
+  webPicksEarliest.forEach((webTime, key) => {
+    const [userId, gwStr] = key.split(':');
+    const gwNum = parseInt(gwStr, 10);
+    
+    // Skip if not the current gameweek
+    if (gwNum !== gwToCheck) return;
+    
+    const appTime = appPicksEarliest.get(key);
+    
+    // Only mark as Web user if web picks were created significantly BEFORE app picks
+    // Require both timestamps to exist for reliable determination
+    // Use a threshold of 500ms to account for trigger timing - web must be clearly earlier
+    if (appTime && (webTime.getTime() - appTime.getTime()) < -500) {
+      webUserIds.add(userId);
+    }
+    // If no appTime exists, we can't reliably determine origin (could be data migration, etc.)
+    // So we don't mark as web user to be safe
   });
 
   // Calculate last GW rank
