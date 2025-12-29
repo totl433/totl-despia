@@ -40,7 +40,7 @@ export const AccountMenu = React.memo(function AccountMenu({
       {/* Sign Out Button */}
       <button
         onClick={onLogout}
-        className="w-full mt-6 py-3 text-red-600 hover:text-red-700 font-semibold transition-colors underline"
+        className="w-full mt-6 py-3 text-red-600 font-semibold underline"
       >
         Log out
       </button>

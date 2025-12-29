@@ -187,7 +187,7 @@ export default function Profile() {
           <div className="bg-white rounded-xl shadow-md p-6 mt-6">
                 <Link
               to="/admin-data"
-                  className="block w-full py-3 bg-[#1C8376] hover:bg-[#1C8376]/90 text-white font-semibold rounded-xl transition-colors text-center"
+                  className="block w-full py-3 bg-[#1C8376] text-white font-semibold rounded-xl text-center"
                 >
               Admin Data
                 </Link>

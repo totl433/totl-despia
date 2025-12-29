@@ -16,7 +16,7 @@ export const AccountMenuItem = React.memo(function AccountMenuItem({
 }: AccountMenuItemProps) {
   const isExternal = to.startsWith('mailto:') || to.startsWith('http://') || to.startsWith('https://');
   
-  const className = `flex items-center justify-between py-3 hover:bg-slate-50 -mx-6 px-6 transition-colors ${
+  const className = `flex items-center justify-between py-3 -mx-6 px-6 ${
     !isLast ? 'border-b border-slate-200' : ''
   }`;
 
