@@ -5,6 +5,8 @@ import GameweekFixturesCardList from './GameweekFixturesCardList';
 import type { Fixture, LiveScore } from './FixtureCard';
 import { useLiveScores } from '../hooks/useLiveScores';
 
+const DEADLINE_BUFFER_MINUTES = 75;
+
 export interface UserPicksModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -29,6 +31,7 @@ export default function UserPicksModal({
   const [error, setError] = useState<string | null>(null);
   const [liveScoresByFixtureIndex, setLiveScoresByFixtureIndex] = useState<Map<number, LiveScore>>(new Map());
   const [gwRankPercent, setGwRankPercent] = useState<number | undefined>(undefined);
+  const [deadlinePassed, setDeadlinePassed] = useState<boolean>(false);
 
   // Get live scores for this gameweek
   const { liveScores: liveScoresMap } = useLiveScores(gw, undefined);
@@ -47,6 +50,41 @@ export default function UserPicksModal({
       setError(null);
 
       try {
+        // CRITICAL: Check if gameweek deadline has passed
+        // Deadline is first kickoff time minus 75 minutes
+        // Picks should only be visible AFTER the deadline to prevent users from seeing other players' picks
+        const { data: firstFixture, error: fixtureError } = await supabase
+          .from('app_fixtures')
+          .select('kickoff_time')
+          .eq('gw', gw)
+          .order('kickoff_time', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        let deadlineHasPassed = false;
+        if (!fixtureError && firstFixture?.kickoff_time) {
+          const firstKickoff = new Date(firstFixture.kickoff_time);
+          const deadlineTime = new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000);
+          const now = new Date();
+          deadlineHasPassed = now >= deadlineTime;
+        } else {
+          // If we can't determine the deadline, assume it hasn't passed (safer to hide picks)
+          deadlineHasPassed = false;
+        }
+        
+        if (!alive) return;
+        
+        setDeadlinePassed(deadlineHasPassed);
+        
+        // If deadline hasn't passed, don't fetch picks - show message instead
+        if (!deadlineHasPassed) {
+          setLoading(false);
+          setHasSubmitted(null);
+          setPicks({});
+          setFixtures([]);
+          return;
+        }
+
         // Fetch fixtures for this gameweek
         const { data: fxData, error: fxError } = await supabase
           .from('app_fixtures')
@@ -270,6 +308,11 @@ export default function UserPicksModal({
             ) : error ? (
               <div className="bg-white rounded-3xl shadow-2xl p-12 flex items-center justify-center">
                 <div className="text-red-500">{error}</div>
+              </div>
+            ) : !deadlinePassed ? (
+              <div className="bg-white rounded-3xl shadow-2xl p-12 flex flex-col items-center justify-center">
+                <div className="text-slate-500 text-lg font-medium mb-2">Predictions hidden</div>
+                <div className="text-slate-400 text-sm">Predictions for GW {gw} will be visible after the deadline</div>
               </div>
             ) : fixtures.length === 0 ? (
               <div className="bg-white rounded-3xl shadow-2xl p-12 flex items-center justify-center">
