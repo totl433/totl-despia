@@ -85,6 +85,7 @@ export default function GlobalLeaderboardPage() {
   
   // Get current GW from app_meta for LIVE functionality
   const [currentGwFromMeta, setCurrentGwFromMeta] = useState<number | null>(null);
+  const [currentGwDeadlinePassed, setCurrentGwDeadlinePassed] = useState<boolean>(false);
 
   // Modal state for user picks
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -96,7 +97,32 @@ export default function GlobalLeaderboardPage() {
     (async () => {
       const { data } = await supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle();
       if (alive && data) {
-        setCurrentGwFromMeta((data as any)?.current_gw ?? null);
+        const currentGw = (data as any)?.current_gw ?? null;
+        setCurrentGwFromMeta(currentGw);
+        
+        // Check if deadline has passed for current GW
+        if (currentGw) {
+          const { data: firstFixture } = await supabase
+            .from('app_fixtures')
+            .select('kickoff_time')
+            .eq('gw', currentGw)
+            .order('kickoff_time', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          
+          if (firstFixture?.kickoff_time) {
+            const firstKickoff = new Date(firstFixture.kickoff_time);
+            const deadlineTime = new Date(firstKickoff.getTime() - 75 * 60 * 1000); // 75 minutes before
+            const now = new Date();
+            if (alive) {
+              setCurrentGwDeadlinePassed(now >= deadlineTime);
+            }
+          } else if (alive) {
+            setCurrentGwDeadlinePassed(false);
+          }
+        } else if (alive) {
+          setCurrentGwDeadlinePassed(false);
+        }
       }
     })();
     return () => { alive = false; };
@@ -632,16 +658,16 @@ export default function GlobalLeaderboardPage() {
   // After deadline has passed, show current GW picks (not latest GW)
   const modalGw = useMemo(() => {
     if (activeTab === "lastgw" || activeTab === "overall") {
-      // If current GW exists and deadline has passed (not GW_OPEN), use current GW
+      // If current GW exists and deadline has passed, use current GW
       // Otherwise, use liveGw (if LIVE) or latestGw
-      if (currentGwFromMeta && currentGwState !== 'GW_OPEN') {
+      if (currentGwFromMeta && currentGwDeadlinePassed) {
         return currentGwFromMeta;
       }
       return liveGw || latestGw || null;
     }
     // For form tabs, show the latest gameweek
     return latestGw || null;
-  }, [activeTab, liveGw, latestGw, currentGwFromMeta, currentGwState]);
+  }, [activeTab, liveGw, latestGw, currentGwFromMeta, currentGwDeadlinePassed]);
 
   // Handle user click to open modal
   const handleUserClick = (userId: string, userName: string | null) => {
