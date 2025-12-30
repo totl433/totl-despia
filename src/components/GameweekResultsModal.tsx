@@ -68,6 +68,9 @@ export default function GameweekResultsModal({
       return;
     }
 
+    // TypeScript: user is guaranteed to be non-null after the check above
+    const userId = user.id;
+
     let alive = true;
 
     async function fetchData() {
@@ -90,11 +93,11 @@ export default function GameweekResultsModal({
           points: p.points || 0,
         }));
 
-        const userGwPoints = allGwPoints.find((p) => p.user_id === user.id);
+        const userGwPoints = allGwPoints.find((p) => p.user_id === userId);
         const score = userGwPoints?.points || 0;
 
         // Calculate GW rank
-        const gwRankData = calculateLastGwRank(user.id, gw, allGwPoints);
+        const gwRankData = calculateLastGwRank(userId, gw, allGwPoints);
         const gwRank = gwRankData?.rank || null;
         const gwRankTotal = gwRankData?.total || null;
 
@@ -134,7 +137,7 @@ export default function GameweekResultsModal({
 
           if (allPointsForForm && overallData) {
             const form5Rank = calculateFormRank(
-              user.id,
+              userId,
               gw - 4,
               gw,
               allPointsForForm.map((p: any) => ({
@@ -168,7 +171,7 @@ export default function GameweekResultsModal({
 
           if (allPointsForForm && overallData) {
             const form10Rank = calculateFormRank(
-              user.id,
+              userId,
               gw - 9,
               gw,
               allPointsForForm.map((p: any) => ({
@@ -195,7 +198,7 @@ export default function GameweekResultsModal({
 
         if (overallData) {
           const overallRank = calculateSeasonRank(
-            user.id,
+            userId,
             overallData.map((o: any) => ({
               user_id: o.user_id,
               name: o.name,
@@ -216,7 +219,7 @@ export default function GameweekResultsModal({
         const { data: userLeagues } = await supabase
           .from('league_members')
           .select('league_id')
-          .eq('user_id', user.id);
+          .eq('user_id', userId);
 
         if (userLeagues && userLeagues.length > 0) {
           const leagueIds = userLeagues.map((l: any) => l.league_id);
@@ -297,7 +300,7 @@ export default function GameweekResultsModal({
               });
 
             // Check if user is first (and not a draw)
-            if (sorted.length > 0 && sorted[0].user_id === user.id) {
+            if (sorted.length > 0 && sorted[0].user_id === userId) {
               const isDraw =
                 sorted.length > 1 &&
                 sorted[0].points === sorted[1].points &&
@@ -326,7 +329,7 @@ export default function GameweekResultsModal({
         if (overallDataForChanges) {
           // After: current overall rank
           const afterOverall = calculateSeasonRank(
-            user.id,
+            userId,
             overallDataForChanges.map((o: any) => ({
               user_id: o.user_id,
               name: o.name,
@@ -356,7 +359,7 @@ export default function GameweekResultsModal({
                 };
               });
 
-              const beforeOverall = calculateSeasonRank(user.id, overallBefore);
+              const beforeOverall = calculateSeasonRank(userId, overallBefore);
               leaderboardChanges.overall.before = beforeOverall?.rank || null;
             }
           }
@@ -377,7 +380,7 @@ export default function GameweekResultsModal({
           if (allPointsForForm && overallDataForForm) {
             // After: 5-form rank including this GW
             const afterForm5 = calculateFormRank(
-              user.id,
+              userId,
               gw - 4,
               gw,
               allPointsForForm.map((p: any) => ({
@@ -396,7 +399,7 @@ export default function GameweekResultsModal({
             // Before: 5-form rank up to GW-1
             if (gw > 5) {
               const beforeForm5 = calculateFormRank(
-                user.id,
+                userId,
                 gw - 5,
                 gw - 1,
                 allPointsForForm
@@ -431,7 +434,7 @@ export default function GameweekResultsModal({
           if (allPointsForForm && overallDataForForm) {
             // After: 10-form rank including this GW
             const afterForm10 = calculateFormRank(
-              user.id,
+              userId,
               gw - 9,
               gw,
               allPointsForForm.map((p: any) => ({
@@ -450,7 +453,7 @@ export default function GameweekResultsModal({
             // Before: 10-form rank up to GW-1
             if (gw > 10) {
               const beforeForm10 = calculateFormRank(
-                user.id,
+                userId,
                 gw - 10,
                 gw - 1,
                 allPointsForForm
@@ -509,7 +512,7 @@ export default function GameweekResultsModal({
     return () => {
       alive = false;
     };
-  }, [isOpen, user?.id, gw]);
+  }, [isOpen, user?.id, gw, mockResults]);
 
   // Share functionality
   const handleShare = async () => {
@@ -538,6 +541,7 @@ export default function GameweekResultsModal({
   const handleContinue = async () => {
     if (!nextGw || isTransitioning || !user?.id) return;
 
+    const userId = user.id;
     setIsTransitioning(true);
     try {
       const { error } = await supabase
@@ -545,14 +549,14 @@ export default function GameweekResultsModal({
         .update({
           current_viewing_gw: nextGw,
         })
-        .eq('user_id', user.id);
+        .eq('user_id', userId);
 
       if (error) {
         // Try upsert if no row exists
         await supabase
           .from('user_notification_preferences')
           .upsert({
-            user_id: user.id,
+            user_id: userId,
             current_viewing_gw: nextGw,
             preferences: {},
           }, {

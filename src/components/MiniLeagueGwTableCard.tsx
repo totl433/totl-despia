@@ -68,7 +68,7 @@ export default function MiniLeagueGwTableCard({
   members,
   currentUserId,
   currentGw,
-  maxMemberCount,
+  maxMemberCount: _maxMemberCount,
   avatar,
   mockData,
 }: MiniLeagueGwTableCardProps) {
@@ -348,6 +348,8 @@ export default function MiniLeagueGwTableCard({
     ? rows.length // Use actual submitted count for this league
     : (members.length); // Fallback to total members if rows not calculated yet
   const cardHeight = calculateCardHeight(memberCountForHeight);
+  
+  // maxMemberCount is passed but not used - we use actual rows.length instead for accurate height
 
   const cardContent = (
     <>
