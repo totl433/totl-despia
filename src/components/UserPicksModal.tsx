@@ -328,7 +328,7 @@ export default function UserPicksModal({
           className="relative max-w-2xl w-full max-h-[90vh] flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="max-h-[90vh] overflow-y-auto">
+          <div className="max-h-[90vh] overflow-y-auto pt-4 pb-4">
             {loading ? (
               <div className="bg-white rounded-3xl shadow-2xl p-12 flex items-center justify-center">
                 <div className="text-slate-500">Loading picks...</div>
