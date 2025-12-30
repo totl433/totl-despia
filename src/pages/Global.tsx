@@ -629,13 +629,19 @@ export default function GlobalLeaderboardPage() {
   const rowsFiltered = useMemo(() => filterByMiniLeagueFriends(rows), [rows, filterByMiniLeagueFriends]);
 
   // Determine which gameweek to show in the modal based on active tab
+  // After deadline has passed, show current GW picks (not latest GW)
   const modalGw = useMemo(() => {
     if (activeTab === "lastgw" || activeTab === "overall") {
+      // If current GW exists and deadline has passed (not GW_OPEN), use current GW
+      // Otherwise, use liveGw (if LIVE) or latestGw
+      if (currentGwFromMeta && currentGwState !== 'GW_OPEN') {
+        return currentGwFromMeta;
+      }
       return liveGw || latestGw || null;
     }
     // For form tabs, show the latest gameweek
     return latestGw || null;
-  }, [activeTab, liveGw, latestGw]);
+  }, [activeTab, liveGw, latestGw, currentGwFromMeta, currentGwState]);
 
   // Handle user click to open modal
   const handleUserClick = (userId: string, userName: string | null) => {
