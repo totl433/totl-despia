@@ -4,6 +4,7 @@ import { MiniLeagueCard, type LeagueRow, type LeagueData } from './MiniLeagueCar
 import { HorizontalScrollContainer } from './HorizontalScrollContainer';
 import Section from './Section';
 import MiniLeagueGwTableCard from './MiniLeagueGwTableCard';
+import type { GameweekState } from '../lib/gameweekState';
 
 interface MiniLeaguesSectionProps {
   leagues: LeagueRow[];
@@ -14,7 +15,7 @@ interface MiniLeaguesSectionProps {
   currentGw: number | null;
   onTableClick?: (leagueId: string) => void;
   currentUserId?: string;
-  gameState?: string;
+  gameState?: GameweekState | null;
 }
 
 export function MiniLeaguesSection({
