@@ -208,7 +208,7 @@ export default function GameweekFixturesCardList({
       {/* Card for image generation - positioning handled by parent when onCardRefReady is provided */}
       <div 
         ref={cardRef} 
-        className={`bg-white rounded-3xl shadow-xl p-2 sm:p-4 w-full max-w-[600px] mx-auto flex flex-col ${!onCardRefReady && showShareButton ? 'fixed -left-[9999px]' : ''} ${className}`}
+        className={`bg-white rounded-3xl shadow-xl px-2 pb-2 pt-2 sm:px-4 sm:pb-4 sm:pt-4 w-full max-w-[600px] mx-auto flex flex-col ${!onCardRefReady && showShareButton ? 'fixed -left-[9999px]' : ''} ${className}`}
         aria-hidden={onCardRefReady ? 'true' : showShareButton ? 'true' : undefined}
       >
       {/* Header */}
