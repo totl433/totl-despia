@@ -212,7 +212,7 @@ export default function GameweekFixturesCardList({
         aria-hidden={onCardRefReady ? 'true' : showShareButton ? 'true' : undefined}
       >
       {/* Header */}
-      <div className="mb-2 sm:mb-3 flex items-center justify-between flex-shrink-0 py-2 sm:py-3 px-1 sm:px-0">
+      <div className="mb-2 sm:mb-3 flex items-center justify-between flex-shrink-0 pt-3 pb-2 sm:pt-3 sm:pb-3 px-1 sm:px-0">
         {/* Score pill - left */}
         {hasAnyActive && (
           <div className={`inline-flex items-center gap-0.5 sm:gap-1 px-2.5 py-1 sm:px-2 sm:py-1 rounded-full text-white flex-shrink-0 ${allFinished ? 'bg-slate-600' : 'bg-red-600'}`} style={{ transform: 'scale(1)', transformOrigin: 'left center' }}>
