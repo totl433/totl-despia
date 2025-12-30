@@ -14,6 +14,7 @@ export interface UserPicksModalProps {
   userName: string | null;
   gw: number;
   globalRank?: number;
+  fallbackGw?: number | null; // Previous GW to show if current GW deadline hasn't passed
 }
 
 export default function UserPicksModal({
@@ -23,6 +24,7 @@ export default function UserPicksModal({
   userName,
   gw,
   globalRank,
+  fallbackGw,
 }: UserPicksModalProps) {
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [picks, setPicks] = useState<Record<number, "H" | "D" | "A">>({});
@@ -32,9 +34,10 @@ export default function UserPicksModal({
   const [liveScoresByFixtureIndex, setLiveScoresByFixtureIndex] = useState<Map<number, LiveScore>>(new Map());
   const [gwRankPercent, setGwRankPercent] = useState<number | undefined>(undefined);
   const [deadlinePassed, setDeadlinePassed] = useState<boolean>(false);
+  const [displayGw, setDisplayGw] = useState<number>(gw); // The GW we're actually displaying
 
-  // Get live scores for this gameweek
-  const { liveScores: liveScoresMap } = useLiveScores(gw, undefined);
+  // Get live scores for the displayed gameweek
+  const { liveScores: liveScoresMap } = useLiveScores(displayGw, undefined);
 
   // Fetch fixtures and picks when modal opens
   useEffect(() => {
@@ -76,8 +79,33 @@ export default function UserPicksModal({
         
         setDeadlinePassed(deadlineHasPassed);
         
-        // If deadline hasn't passed, don't fetch picks - show message instead
-        if (!deadlineHasPassed) {
+        // Determine which GW to display
+        let gwToDisplay = gw;
+        let shouldShowFallback = false;
+        
+        // If deadline hasn't passed and we have a fallback GW, try showing that instead
+        if (!deadlineHasPassed && fallbackGw) {
+          // Check if user has picks for fallback GW
+          const { data: fallbackSubmission } = await supabase
+            .from('app_gw_submissions')
+            .select('submitted_at')
+            .eq('gw', fallbackGw)
+            .eq('user_id', userId)
+            .maybeSingle();
+          
+          if (fallbackSubmission?.submitted_at) {
+            // User submitted for fallback GW, show that instead
+            gwToDisplay = fallbackGw;
+            shouldShowFallback = true;
+          }
+        }
+        
+        if (!alive) return;
+        
+        setDisplayGw(gwToDisplay);
+        
+        // If deadline hasn't passed and no fallback to show, don't fetch picks
+        if (!deadlineHasPassed && !shouldShowFallback) {
           setLoading(false);
           setHasSubmitted(null);
           setPicks({});
@@ -85,11 +113,11 @@ export default function UserPicksModal({
           return;
         }
 
-        // Fetch fixtures for this gameweek
+        // Fetch fixtures for the gameweek we're displaying
         const { data: fxData, error: fxError } = await supabase
           .from('app_fixtures')
           .select('id, gw, fixture_index, home_name, away_name, home_team, away_team, home_code, away_code, kickoff_time, api_match_id')
-          .eq('gw', gw)
+          .eq('gw', gwToDisplay)
           .order('fixture_index', { ascending: true });
 
         if (fxError) {
@@ -105,7 +133,7 @@ export default function UserPicksModal({
         const { data: picksData, error: picksError } = await supabase
           .from('app_picks')
           .select('fixture_index, pick')
-          .eq('gw', gw)
+          .eq('gw', gwToDisplay)
           .eq('user_id', userId);
 
         if (picksError) {
@@ -125,7 +153,7 @@ export default function UserPicksModal({
         const { data: submissionData, error: submissionError } = await supabase
           .from('app_gw_submissions')
           .select('submitted_at')
-          .eq('gw', gw)
+          .eq('gw', gwToDisplay)
           .eq('user_id', userId)
           .maybeSingle();
 
@@ -144,7 +172,7 @@ export default function UserPicksModal({
           const { data: gwPointsData, error: gwPointsError } = await supabase
             .from('app_v_gw_points')
             .select('user_id, points')
-            .eq('gw', gw);
+            .eq('gw', gwToDisplay);
 
           if (!gwPointsError && gwPointsData && gwPointsData.length > 0) {
             // Sort by points descending
@@ -170,7 +198,7 @@ export default function UserPicksModal({
             
             // Debug logging to help identify discrepancies
             console.log('[UserPicksModal] Percentage calculation:',
-              'GW:', gw,
+              'GW:', gwToDisplay,
               'UserId:', userId,
               'UserRank:', userRank,
               'TotalUsers:', totalUsers,
@@ -204,7 +232,7 @@ export default function UserPicksModal({
     return () => {
       alive = false;
     };
-  }, [isOpen, userId, gw]);
+  }, [isOpen, userId, gw, fallbackGw]);
 
   // Update live scores map when fixtures or live scores change
   useEffect(() => {
@@ -309,7 +337,7 @@ export default function UserPicksModal({
               <div className="bg-white rounded-3xl shadow-2xl p-12 flex items-center justify-center">
                 <div className="text-red-500">{error}</div>
               </div>
-            ) : !deadlinePassed ? (
+            ) : !deadlinePassed && displayGw === gw ? (
               <div className="bg-white rounded-3xl shadow-2xl p-12 flex flex-col items-center justify-center">
                 <div className="text-slate-500 text-lg font-medium mb-2">Predictions hidden</div>
                 <div className="text-slate-400 text-sm">Predictions for GW {gw} will be visible after the deadline</div>
@@ -321,11 +349,11 @@ export default function UserPicksModal({
             ) : hasSubmitted === false || (hasSubmitted === null && Object.keys(picks).length === 0) ? (
               <div className="bg-white rounded-3xl shadow-2xl p-12 flex flex-col items-center justify-center">
                 <div className="text-slate-500 text-lg font-medium mb-2">Hasn't submitted</div>
-                <div className="text-slate-400 text-sm">{userName || 'User'} hasn't submitted picks for GW {gw}</div>
+                <div className="text-slate-400 text-sm">{userName || 'User'} hasn't submitted picks for GW {displayGw}</div>
               </div>
             ) : (
               <GameweekFixturesCardList
-                gw={gw}
+                gw={displayGw}
                 fixtures={fixtures}
                 picks={picks}
                 liveScores={liveScoresByFixtureIndex}

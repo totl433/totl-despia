@@ -1242,6 +1242,7 @@ export default function GlobalLeaderboardPage() {
           userName={selectedUserName}
           gw={modalGw}
           globalRank={selectedUserRank}
+          fallbackGw={latestGw}
         />
       )}
     </div>
