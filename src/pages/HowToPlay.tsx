@@ -15,13 +15,13 @@ export default function HowToPlayPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-6xl px-4 py-4 pb-16">
+      <div className="mx-auto max-w-6xl lg:max-w-[1024px] px-4 lg:px-6 py-4 pb-16">
         {/* Header */}
         <PageHeader title="How To Play" as="h2" />
-        <p className="mt-2 mb-2 text-sm text-slate-600 w-full">
+        <p className="mt-2 mb-2 lg:mb-6 text-sm text-slate-600 w-full">
             Welcome to TOTL (Top of the League) — the game of quick Predictions and friendly rivalries. Here's how it all works.
           </p>
-        <div className="flex justify-center mb-2">
+        <div className="flex justify-center mb-2 lg:hidden">
           <img 
             src="/assets/Volley/Volley-Coach.png" 
             alt="" 
@@ -32,11 +32,11 @@ export default function HowToPlayPage() {
 
         {/* Sections */}
         <div className="space-y-4">
-          <Section id="predictions" title="Predictions Centre" icon="🎯" collapsible defaultOpen={openSections.predictions} onToggle={(isOpen: boolean) => setOpenSections(prev => ({ ...prev, predictions: isOpen }))}>
+          <Section id="predictions" title="Predictions" icon="🎯" collapsible defaultOpen={openSections.predictions} onToggle={(isOpen: boolean) => setOpenSections(prev => ({ ...prev, predictions: isOpen }))}>
             <div className="space-y-4">
               <p className="text-base leading-relaxed">
-                Before each Premier League Gameweek, head to the <strong>Predictions Centre</strong> and make your
-                picks for every match — <strong>Home Win</strong>, <strong>Draw</strong>, or <strong>Away Win</strong>.
+                Before each Premier League Gameweek, head to <strong>Predictions</strong> and make your
+                predictions for every match — <strong>Home Win</strong>, <strong>Draw</strong>, or <strong>Away Win</strong>.
               </p>
               
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">

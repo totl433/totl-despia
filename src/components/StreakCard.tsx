@@ -19,7 +19,7 @@ export const StreakCard = React.memo(function StreakCard({
   const graphHeight = 60;
 
   return (
-    <div className="flex-shrink-0 w-[340px] sm:w-[400px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden hover:shadow-md transition-shadow relative">
+    <div className="flex-shrink-0 w-[340px] sm:w-[400px] lg:w-[352px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden hover:shadow-md transition-shadow relative">
       <div className="p-3 h-full flex flex-col">
         <div className="flex-1"></div>
         
@@ -63,7 +63,7 @@ export const StreakCard = React.memo(function StreakCard({
                     />
                     
                     <div
-                      className={`text-[10px] font-medium leading-tight ${
+                      className={`text-[10px] lg:text-[9px] font-medium leading-tight ${
                         isPlayed
                           ? isLatest
                             ? 'text-[#1C8376] font-bold'

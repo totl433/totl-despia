@@ -183,7 +183,7 @@ export default function UnicornCollection({ userId, loading: externalLoading }: 
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-xl p-6" style={{ marginRight: '-100vw', paddingRight: '100vw' }}>
+      <div className="bg-white rounded-xl p-6 desktop-constrained-unicorn" style={{ marginRight: '-100vw', paddingRight: '100vw' }}>
         <div className="text-sm font-medium text-slate-600 mb-4 flex items-center gap-2">
           <h2 className="text-lg font-bold text-slate-800">Your Unicorns</h2>
         </div>
@@ -206,7 +206,7 @@ export default function UnicornCollection({ userId, loading: externalLoading }: 
   }
 
   return (
-    <div className="bg-white rounded-xl p-6" style={{ marginRight: '-100vw', paddingRight: '100vw' }}>
+    <div className="bg-white rounded-xl p-6 desktop-constrained-unicorn" style={{ marginRight: '-100vw', paddingRight: '100vw' }}>
       <div className="text-sm font-medium text-slate-600 mb-4 flex items-center gap-2" style={{ paddingLeft: '1.5rem', marginLeft: '-1.5rem' }}>
         <h2 className="text-lg font-bold text-slate-800">Your Unicorns</h2>
         <div 
@@ -221,7 +221,7 @@ export default function UnicornCollection({ userId, loading: externalLoading }: 
       
       <div 
         ref={containerRef}
-        className="flex gap-0 overflow-x-auto pb-2 scrollbar-hide"
+        className="flex gap-0 overflow-x-auto pb-2 scrollbar-hide unicorn-scroll-container"
         style={{
           scrollbarWidth: 'none',
           msOverflowStyle: 'none',

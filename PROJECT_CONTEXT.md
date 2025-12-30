@@ -25,9 +25,10 @@ TOTL is a Premier League predictions game where users:
   - **Key principle**: GW is LIVE between first kickoff and last FT. A game is LIVE between kickoff and FT (status IN_PLAY or PAUSED)
 - **Key Libraries**: 
   - `@supabase/supabase-js` - Database & auth
-  - `despia-native` - OneSignal push notifications
+  - `despia-native` - OneSignal push notifications (native app only)
   - `react-chat-elements` - Chat UI
   - `react-router-dom` - Routing
+  - Platform detection utilities in `src/lib/platform.ts` (planned)
 
 ### Backend
 - **Database**: Supabase (PostgreSQL)
@@ -49,6 +50,52 @@ sendScoreNotificationsWebhook (Netlify Function)
   ↓ (sends)
 OneSignal → User devices
 ```
+
+## 🌐 Platform Differentiation (Web vs Native App)
+
+TOTL is served on two platforms:
+- **Web Browser**: playtotl.com (public-facing website) - *planned for post-migration*
+- **Native App**: Despia wrapper (iOS/Android via Despia platform)
+
+### Platform Detection
+- **Utility**: `src/lib/platform.ts` (planned)
+  - `isNativeApp()` - Returns `true` if running in Despia native app
+  - `isWebBrowser()` - Returns `true` if running in web browser
+- **Detection Method**: Checks for `despia` object or `onesignalplayerid` global property
+- **Current**: Uses `isDespiaAvailable()` from `src/lib/pushNotificationsV2.ts` (will be centralized)
+
+### Platform-Specific Features
+
+#### Web-Only Features (Planned)
+- **Cookie Consent Banner**: Required for GDPR/CCPA compliance (Termly integration)
+- **App Promotion Modal**: Shows on first visit/login to encourage app download
+
+#### Native App-Only Features  
+- **Push Notifications**: OneSignal integration via Despia (not available in web)
+- **Notification Centre**: Full notification preferences UI (will be hidden on web)
+- **WhatsApp Deep Links**: Uses `whatsapp://` protocol (web uses `https://wa.me/`)
+
+#### Shared Features
+- All game functionality (predictions, leaderboards, mini-leagues)
+- Authentication and user profiles
+- Live scores and results
+- Legal pages (Privacy Policy, Terms, Cookie Policy)
+
+### Implementation Pattern (Planned)
+```typescript
+import { isNativeApp, isWebBrowser } from '../lib/platform';
+
+// Conditional rendering
+{isNativeApp() && <NotificationCentreButton />}
+{isWebBrowser() && <CookieConsent />}
+```
+
+### Implementation Status
+- ⏳ **Planned**: See `PLATFORM_DIFFERENTIATION_PLAN.md` for full implementation plan
+- **Ready for execution**: After migration to playtotl.com
+
+### Related Documentation
+- `PLATFORM_DIFFERENTIATION_PLAN.md` - Full implementation plan (planned for post-migration)
 
 ## 📁 Project Structure
 
@@ -189,6 +236,7 @@ npm run check            # Type check + build
 - `API_SYSTEM_EXPLAINER.md` - Live scores system
 - `NOTIFICATIONS_V2_MIGRATION_COMPLETE.md` - Notification architecture
 - `DESPIA_DOCUMENTATION.md` - Despia/OneSignal setup
+- `PLATFORM_DIFFERENTIATION_PLAN.md` - Platform differentiation implementation plan (web vs native app)
 
 ### Guides
 - `JOF_SIMPLE_GUIDE.md` - Simple task guides

@@ -1162,7 +1162,7 @@ export default function TablesPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="max-w-6xl mx-auto px-4 py-4 pb-16">
+      <div className="max-w-6xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 py-4 pb-16">
         <div className="flex items-center justify-between">
           <PageHeader title="Mini Leagues" as="h2" />
           {rows.length > 4 && (
@@ -1202,7 +1202,7 @@ export default function TablesPage() {
               {rows.length === 0 ? (
                 <div className="px-4 py-4 text-sm">No leagues yet.</div>
               ) : (
-                <div className="space-y-3">
+                <div className={rows.length >= 2 ? "grid grid-cols-1 lg:grid-cols-2 gap-3" : "space-y-3"}>
                   {rows.map((r) => {
                     const leagueDataForCard = leagueData[r.id];
                     // Debug logging for "forget it" league

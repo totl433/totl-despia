@@ -35,6 +35,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import PredictionsBanner from "./components/PredictionsBanner";
 import BottomNav from "./components/BottomNav";
 import FloatingProfile from "./components/FloatingProfile";
+import DesktopNav from "./components/DesktopNav";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useAppLifecycle } from "./hooks/useAppLifecycle";
 import LoadingScreen from "./components/LoadingScreen";
@@ -443,81 +444,104 @@ function AppContent() {
     return <LoadingScreen />;
   }
   
+  const showDesktopNav = location.pathname !== '/auth' && 
+    location.pathname !== '/api-admin' && 
+    location.pathname !== '/swipe-card-preview';
+
   return (
     <>
-      {/* Scroll to top on route change - must be inside Router */}
-      <ScrollToTop />
-      
-      {/* Logo is now rendered in Home.tsx component */}
-      
-      {/* Floating Profile Icon - only on Home Page */}
-      {location.pathname === '/' && <FloatingProfile />}
-
-      {/* Global Predictions Banner - hide on auth page and full-screen pages */}
-      {!isFullScreenPage && location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions' && location.pathname !== '/global' && (
+      {/* Desktop Navigation Sidebar - only on desktop (1024px+) */}
+      {showDesktopNav && (
         <ErrorBoundary fallback={null}>
-          <PredictionsBanner />
+          <div className="hidden lg:block">
+            <DesktopNav />
+          </div>
         </ErrorBoundary>
       )}
 
-      {/* Welcome Message */}
-      {showWelcome && (
-        <div className="fixed top-40 left-1/2 transform -translate-x-1/2 z-50 bg-[#1C8376] text-white px-8 py-5 rounded-lg shadow-lg w-11/12 max-w-4xl">
-          <div className="relative">
-            <div className="text-center pr-10">
-              <div className="font-bold text-xl">Welcome to TOTL!</div>
-              <div className="text-sm text-[#1C8376]/80 mt-1">Your account is now active. Start making predictions!</div>
-            </div>
-            <button
-              onClick={dismissWelcome}
-              className="absolute top-0 right-0 text-[#1C8376]/60 hover:text-white text-2xl font-bold"
-              aria-label="Dismiss"
-            >
-              ×
-            </button>
+      {/* Main Content Area */}
+      <div>
+        {/* Scroll to top on route change - must be inside Router */}
+        <ScrollToTop />
+        
+        {/* Logo is now rendered in Home.tsx component */}
+        
+        {/* Floating Profile Icon - only on Home Page and mobile */}
+        {location.pathname === '/' && (
+          <div className="lg:hidden">
+            <FloatingProfile />
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Routes */}
-      <ErrorBoundary>
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
-            <Route path="/auth" element={<AuthGate />} />
-            <Route path="/api-admin" element={<RequireAuth><ApiAdmin /></RequireAuth>} />
-            <Route path="/swipe-card-preview" element={<RequireAuth><SwipeCardPreview /></RequireAuth>} />
-            <Route path="/" element={<RequireAuth><ErrorBoundary><HomePage /></ErrorBoundary></RequireAuth>} />
-            <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
-            <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
-            <Route path="/predictions" element={<RequireAuth><PredictionsPage /></RequireAuth>} />
-            <Route path="/global" element={<RequireAuth><GlobalPage /></RequireAuth>} />
-            <Route path="/temp-global" element={<RequireAuth><TempGlobalPage /></RequireAuth>} />
-            <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
-            <Route path="/profile/notifications" element={<RequireAuth><NotificationCentrePage /></RequireAuth>} />
-            <Route path="/profile/email-preferences" element={<RequireAuth><EmailPreferencesPage /></RequireAuth>} />
-            <Route path="/profile/stats" element={<RequireAuth><StatsPage /></RequireAuth>} />
-            <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
-            <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
-            <Route path="/cookie-policy" element={<RequireAuth><CookiePolicyPage /></RequireAuth>} />
-            <Route path="/privacy-policy" element={<RequireAuth><PrivacyPolicyPage /></RequireAuth>} />
-            <Route path="/terms-and-conditions" element={<RequireAuth><TermsAndConditionsPage /></RequireAuth>} />
-            <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
-            <Route path="/admin-data" element={<RequireAuth><AdminDataPage /></RequireAuth>} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
-      </ErrorBoundary>
+        {/* Global Predictions Banner - hide on auth page and full-screen pages */}
+        {!isFullScreenPage && location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions' && location.pathname !== '/global' && (
+          <ErrorBoundary fallback={null}>
+            <PredictionsBanner />
+          </ErrorBoundary>
+        )}
 
-      {/* Bottom Navigation - hide on auth page, swipe predictions, and when making predictions or viewing league pages */}
-      {/* Only hide completely on specific swipe routes, otherwise use shouldHide prop */}
-      {location.pathname !== '/auth' && 
-       location.pathname !== '/predictions/swipe' && 
-       location.pathname !== '/swipe-card-preview' &&
-       <BottomNav shouldHide={
-         (location.pathname === '/predictions' && isSwipeMode) ||
-         (location.pathname === '/predictions' && hasSubmittedPredictions === false) ||
-         location.pathname.startsWith('/league/')
-       } />}
+        {/* Welcome Message */}
+        {showWelcome && (
+          <div className="fixed top-40 left-1/2 transform -translate-x-1/2 z-50 bg-[#1C8376] text-white px-8 py-5 rounded-lg shadow-lg w-11/12 max-w-4xl">
+            <div className="relative">
+              <div className="text-center pr-10">
+                <div className="font-bold text-xl">Welcome to TOTL!</div>
+                <div className="text-sm text-[#1C8376]/80 mt-1">Your account is now active. Start making predictions!</div>
+              </div>
+              <button
+                onClick={dismissWelcome}
+                className="absolute top-0 right-0 text-[#1C8376]/60 hover:text-white text-2xl font-bold"
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Routes */}
+        <ErrorBoundary>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/auth" element={<AuthGate />} />
+              <Route path="/api-admin" element={<RequireAuth><ApiAdmin /></RequireAuth>} />
+              <Route path="/swipe-card-preview" element={<RequireAuth><SwipeCardPreview /></RequireAuth>} />
+              <Route path="/" element={<RequireAuth><ErrorBoundary><HomePage /></ErrorBoundary></RequireAuth>} />
+              <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
+              <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
+              <Route path="/predictions" element={<RequireAuth><PredictionsPage /></RequireAuth>} />
+              <Route path="/global" element={<RequireAuth><GlobalPage /></RequireAuth>} />
+              <Route path="/temp-global" element={<RequireAuth><TempGlobalPage /></RequireAuth>} />
+              <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+              <Route path="/profile/notifications" element={<RequireAuth><NotificationCentrePage /></RequireAuth>} />
+              <Route path="/profile/email-preferences" element={<RequireAuth><EmailPreferencesPage /></RequireAuth>} />
+              <Route path="/profile/stats" element={<RequireAuth><StatsPage /></RequireAuth>} />
+              <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
+              <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
+              <Route path="/cookie-policy" element={<RequireAuth><CookiePolicyPage /></RequireAuth>} />
+              <Route path="/privacy-policy" element={<RequireAuth><PrivacyPolicyPage /></RequireAuth>} />
+              <Route path="/terms-and-conditions" element={<RequireAuth><TermsAndConditionsPage /></RequireAuth>} />
+              <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
+              <Route path="/admin-data" element={<RequireAuth><AdminDataPage /></RequireAuth>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
+
+        {/* Bottom Navigation - hide on auth page, swipe predictions, and when making predictions or viewing league pages */}
+        {/* Only hide completely on specific swipe routes, otherwise use shouldHide prop */}
+        {/* Also hide on desktop (lg+) */}
+        {location.pathname !== '/auth' && 
+         location.pathname !== '/predictions/swipe' && 
+         location.pathname !== '/swipe-card-preview' &&
+         <div className="lg:hidden">
+           <BottomNav shouldHide={
+             (location.pathname === '/predictions' && isSwipeMode) ||
+             (location.pathname === '/predictions' && hasSubmittedPredictions === false) ||
+             location.pathname.startsWith('/league/')
+           } />
+         </div>}
+      </div>
     </>
   );
 }

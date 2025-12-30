@@ -192,7 +192,57 @@ Joined late? No stress — after 5 and 10 weeks you'll show up in the Form leade
 
 How To Play →`}
     >
-      <HorizontalScrollContainer>
+      {/* Mobile: Horizontal scroll */}
+      <div className="lg:hidden">
+        <HorizontalScrollContainer>
+          <LeaderboardCard
+            title="Last GW"
+            linkTo="/global?tab=lastgw"
+            rank={lastGwRank?.rank ?? null}
+            total={lastGwRank?.total ?? null}
+            score={lastGwLiveScore?.score ?? lastGwRank?.score}
+            gw={lastGwRank?.gw}
+            totalFixtures={lastGwRank?.totalFixtures}
+            variant="lastGw"
+            isActiveLive={isLastGwLive && lastGwLiveScore !== null}
+          />
+          <LeaderboardCard
+            title="5-WEEK FORM"
+            badgeSrc="/assets/5-week-form-badge.png"
+            badgeAlt="5-Week Form Badge"
+            linkTo="/global?tab=form5"
+            rank={fiveGwRank?.rank ?? null}
+            total={fiveGwRank?.total ?? null}
+          />
+          <LeaderboardCard
+            title="10-WEEK FORM"
+            badgeSrc="/assets/10-week-form-badge.png"
+            badgeAlt="10-Week Form Badge"
+            linkTo="/global?tab=form10"
+            rank={tenGwRank?.rank ?? null}
+            total={tenGwRank?.total ?? null}
+          />
+          <LeaderboardCard
+            title="SEASON RANK"
+            badgeSrc="/assets/season-rank-badge.png"
+            badgeAlt="Season Rank Badge"
+            linkTo="/global?tab=overall"
+            rank={seasonRank?.rank ?? null}
+            total={seasonRank?.total ?? null}
+            isActiveLive={isCurrentGwLive && currentGwLiveScore !== null}
+          />
+          {userStreakData && (
+            <StreakCard
+              streak={userStreakData.streak}
+              last10GwScores={userStreakData.last10GwScores}
+              latestGw={latestGw ?? 1}
+            />
+          )}
+        </HorizontalScrollContainer>
+      </div>
+
+      {/* Desktop: Single row with flex */}
+      <div className="hidden lg:flex lg:flex-row lg:gap-2">
         <LeaderboardCard
           title="Last GW"
           linkTo="/global?tab=lastgw"
@@ -236,7 +286,7 @@ How To Play →`}
             latestGw={latestGw ?? 1}
           />
         )}
-      </HorizontalScrollContainer>
+      </div>
     </Section>
   );
 }

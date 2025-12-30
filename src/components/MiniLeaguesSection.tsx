@@ -128,7 +128,9 @@ Start a Mini League →
 
 How To Play →`}
     >
-      <HorizontalScrollContainer>
+      {/* Mobile: Horizontal scroll with batches */}
+      <div className="lg:hidden">
+        <HorizontalScrollContainer>
           {Array.from({ length: Math.ceil(leagues.length / 3) }).map((_, batchIdx) => {
             const startIdx = batchIdx * 3;
             const batchLeagues = leagues.slice(startIdx, startIdx + 3);
@@ -162,7 +164,29 @@ How To Play →`}
               </div>
             );
           })}
-      </HorizontalScrollContainer>
+        </HorizontalScrollContainer>
+      </div>
+
+      {/* Desktop: Single column with individual cards */}
+      <div className="hidden lg:flex lg:flex-col lg:gap-4">
+        {leagues.map((l) => {
+          const unread = unreadByLeague?.[l.id] ?? 0;
+          const cardData = memoizedCardData[l.id];
+          
+          return (
+            <MiniLeagueCard
+              key={l.id}
+              row={l as LeagueRow}
+              data={cardData}
+              unread={unread}
+              submissions={leagueSubmissions[l.id]}
+              leagueDataLoading={leagueDataLoading}
+              currentGw={currentGw}
+              onTableClick={onTableClick}
+            />
+          );
+        })}
+      </div>
     </Section>
   );
 }

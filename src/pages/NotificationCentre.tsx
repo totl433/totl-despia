@@ -247,7 +247,7 @@ export default function NotificationCentre() {
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6">
           <div className="bg-white rounded-xl shadow-md p-6 text-center">
             <p className="text-slate-600">Please sign in to view your notification preferences.</p>
           </div>
@@ -259,7 +259,7 @@ export default function NotificationCentre() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6">
           <div className="bg-white rounded-xl shadow-md p-6 text-center">
             <p className="text-slate-600">Loading notification preferences...</p>
           </div>
@@ -270,7 +270,7 @@ export default function NotificationCentre() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 py-6">
         <Link
           to="/profile"
           className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-800 mb-4 transition-colors"

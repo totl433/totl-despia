@@ -1751,9 +1751,9 @@ export default function HomePage() {
   // NOTE: Unread counts refresh on focus is now handled by useLeagues hook
 
   return (
-    <div className="max-w-6xl mx-auto px-4 pt-2 pb-4 min-h-screen relative">
-      {/* Logo header */}
-      <div ref={logoContainerRef} className="relative mb-4">
+    <div className="max-w-6xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 pt-2 pb-4 min-h-screen relative">
+      {/* Logo header - hidden on desktop (logo is in DesktopNav) */}
+      <div ref={logoContainerRef} className="relative mb-4 lg:hidden">
         <ScrollLogo />
       </div>
       
@@ -1774,35 +1774,42 @@ export default function HomePage() {
             currentGw={gw}
           />
 
-          {/* Mini Leagues */}
-          <MiniLeaguesSection
-            leagues={leagues}
-            leagueData={leagueData}
-            leagueSubmissions={leagueSubmissions}
-            unreadByLeague={unreadByLeague}
-            leagueDataLoading={leagueDataLoading}
-            currentGw={gw}
-          />
+          {/* Mini Leagues and Games - Side by side on desktop */}
+          <div className="flex flex-col lg:flex-row lg:gap-6 lg:items-start">
+            {/* Mini Leagues - 30% on desktop */}
+            <div className="lg:w-[30%] lg:flex-shrink-0">
+              <MiniLeaguesSection
+                leagues={leagues}
+                leagueData={leagueData}
+                leagueSubmissions={leagueSubmissions}
+                unreadByLeague={unreadByLeague}
+                leagueDataLoading={leagueDataLoading}
+                currentGw={gw}
+              />
+            </div>
 
-          {/* Games */}
-          <GamesSection
-            isInApiTestLeague={isInApiTestLeague}
-            fixtures={fixtures}
-            fixtureCards={fixtureCards}
-            hasLiveGames={hasLiveGames}
-            showLiveOnly={showLiveOnly}
-            onToggleLiveOnly={setShowLiveOnly}
-            scoreComponent={scoreComponent}
-            fixturesLoading={fixturesLoading}
-            hasCheckedCache={hasCheckedCacheRef.current}
-            currentGw={gw}
-            showPickButtons={hasSubmittedCurrentGw}
-            userPicks={userPicks}
-            liveScores={liveScores}
-            userName={user?.user_metadata?.display_name || user?.email || 'User'}
-            globalRank={seasonRank?.rank}
-            hasSubmitted={hasSubmittedCurrentGw}
-          />
+            {/* Games - 70% on desktop */}
+            <div className="lg:w-[70%] lg:flex-shrink-0">
+              <GamesSection
+                isInApiTestLeague={isInApiTestLeague}
+                fixtures={fixtures}
+                fixtureCards={fixtureCards}
+                hasLiveGames={hasLiveGames}
+                showLiveOnly={showLiveOnly}
+                onToggleLiveOnly={setShowLiveOnly}
+                scoreComponent={scoreComponent}
+                fixturesLoading={fixturesLoading}
+                hasCheckedCache={hasCheckedCacheRef.current}
+                currentGw={gw}
+                showPickButtons={hasSubmittedCurrentGw}
+                userPicks={userPicks}
+                liveScores={liveScores}
+                userName={user?.user_metadata?.display_name || user?.email || 'User'}
+                globalRank={seasonRank?.rank}
+                hasSubmitted={hasSubmittedCurrentGw}
+              />
+            </div>
+          </div>
 
           {/* Bottom padding */}
           <div className="h-20"></div>

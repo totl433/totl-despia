@@ -803,7 +803,7 @@ export default function GlobalLeaderboardPage() {
           z-index: 1;
         }
       `}</style>
-      <div className="max-w-6xl mx-auto px-4 pb-0 flex-1 flex flex-col overflow-hidden">
+      <div className="max-w-6xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 pb-0 flex-1 flex flex-col overflow-hidden">
         {/* Fixed Header Section */}
         <div className="flex-shrink-0 bg-slate-50 border-b border-slate-200">
           {/* Title Row */}
@@ -840,7 +840,7 @@ export default function GlobalLeaderboardPage() {
           </div>
 
           {/* Tabs */}
-          <div className="flex justify-center pb-4">
+          <div className="flex justify-center pb-4 lg:pt-4">
             <div className="flex rounded-full bg-slate-100 p-1.5 border border-slate-200 shadow-sm w-full max-w-md">
               <button
                 onClick={() => handleTabChange("lastgw")}

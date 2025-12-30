@@ -144,7 +144,7 @@ export default function Stats() {
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6">
           <div className="bg-white rounded-xl shadow-md p-6 text-center">
             <p className="text-slate-600">Please sign in to view your stats.</p>
           </div>
@@ -181,8 +181,25 @@ export default function Stats() {
           animation: sparkle 2s ease-in-out infinite;
           filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6));
         }
+        @media (min-width: 1024px) {
+          .desktop-constrained-section {
+            margin-right: 0 !important;
+            padding-right: 1.5rem !important;
+          }
+          .desktop-constrained-unicorn {
+            margin-right: 0 !important;
+            padding-right: 1.5rem !important;
+          }
+          .unicorn-scroll-container {
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            width: 100% !important;
+          }
+        }
       `}</style>
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 py-6">
         <Link
           to="/profile"
           className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-800 mb-4 transition-colors"
@@ -215,7 +232,7 @@ export default function Stats() {
             </p>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-6 lg:grid lg:grid-cols-2 lg:gap-6 lg:space-y-0">
             {/* 1. Last completed Gameweek percentile */}
             {stats && stats.lastCompletedGw !== null && stats.lastCompletedGwPercentile !== null && (() => {
               const percentile = stats.lastCompletedGwPercentile;
@@ -291,18 +308,22 @@ export default function Stats() {
 
             {/* Trophy Cabinet */}
             {stats && stats.trophyCabinet !== null && (
-              <TrophyCabinet
+              <div className="lg:col-span-2">
+                <TrophyCabinet
                 lastGw={stats.trophyCabinet.lastGw}
                 form5={stats.trophyCabinet.form5}
                 form10={stats.trophyCabinet.form10}
                 overall={stats.trophyCabinet.overall}
                 loading={loading}
               />
+              </div>
             )}
 
             {/* Unicorn Collection */}
             {user && (
-              <UnicornCollection userId={user.id} loading={loading} />
+              <div className="lg:col-span-2 lg:overflow-hidden lg:rounded-xl">
+                <UnicornCollection userId={user.id} loading={loading} />
+              </div>
             )}
 
             {/* 6. Chaos Index */}
@@ -331,7 +352,7 @@ export default function Stats() {
               const aboveAveragePercent = ((aboveAverageCount / stats.weeklyParData.length) * 100).toFixed(0);
               
               return (
-              <div className="bg-white rounded-l-xl shadow-md" style={{ marginRight: '-100vw', paddingRight: '100vw', paddingTop: '1.5rem', paddingBottom: '1.5rem', paddingLeft: '1.5rem' }}>
+              <div className="lg:col-span-2 desktop-constrained-section bg-white rounded-l-xl lg:rounded-xl shadow-md lg:overflow-hidden" style={{ marginRight: '-100vw', paddingRight: '100vw', paddingTop: '1.5rem', paddingBottom: '1.5rem', paddingLeft: '1.5rem' }}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-sm font-medium text-slate-600">
                     Weekly Performance vs Average

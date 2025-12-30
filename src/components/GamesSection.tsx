@@ -667,6 +667,7 @@ export function GamesSection({
         className="mt-8"
         showInfoIcon={false}
       >
+        <div className="lg:-mt-2">
         {(!hasCheckedCache || fixturesLoading) ? (
           <div className="p-4 text-slate-500">Loading fixtures...</div>
         ) : fixtures.length === 0 ? (
@@ -699,6 +700,7 @@ export function GamesSection({
             />
           </>
         ) : null}
+        </div>
       </Section>
 
       {/* Share Sheet - show immediately with loading state */}

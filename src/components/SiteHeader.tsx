@@ -35,9 +35,9 @@ export default function SiteHeader() {
           {/* Brand */}
           <Link to="/" className="font-bold tracking-wide text-lg sm:text-xl select-none flex-shrink-0">TOTL</Link>
 
-          {/* Desktop nav */}
-          <nav className="hidden sm:flex items-center gap-1 flex-1 justify-center">
-            <Item to="/leagues">Mini Leagues</Item>
+          {/* Desktop nav - shows on sm to lg (640px to 1023px) */}
+          <nav className="hidden sm:flex lg:hidden items-center gap-1 flex-1 justify-center">
+            <Item to="/tables">Mini Leagues</Item>
             <Item to="/predictions">Predictions</Item>
             <Item to="/global">Global</Item>
             {isAdmin && <Item to="/admin">Admin</Item>}
