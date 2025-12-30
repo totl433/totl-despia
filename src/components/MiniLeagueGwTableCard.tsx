@@ -78,6 +78,7 @@ export default function MiniLeagueGwTableCard({
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [picks, setPicks] = useState<PickRow[]>([]);
   const [results, setResults] = useState<Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>>([]);
+  const [submittedUserIds, setSubmittedUserIds] = useState<Set<string>>(new Set());
   const [rows, setRows] = useState<ResultRow[]>([]);
 
   // Determine which GW to display based on game state
@@ -195,6 +196,44 @@ export default function MiniLeagueGwTableCard({
 
         setPicks((picksData ?? []) as PickRow[]);
 
+        // Fetch submissions to filter out members who didn't submit
+        const { data: submissionsData, error: submissionsError } = await supabase
+          .from('app_gw_submissions')
+          .select('user_id')
+          .eq('gw', displayGw)
+          .in('user_id', memberIds)
+          .not('submitted_at', 'is', null);
+
+        if (submissionsError) {
+          console.error('[MiniLeagueGwTableCard] Error fetching submissions:', submissionsError);
+        }
+        if (!alive) return;
+
+        // Create Set of user IDs who submitted
+        const submitted = new Set<string>();
+        if (submissionsData) {
+          submissionsData.forEach((s: any) => {
+            submitted.add(s.user_id);
+          });
+        }
+        
+        // Debug logging for "Prem Predictions" league
+        if (leagueName?.toLowerCase().includes('prem')) {
+          console.log('[MiniLeagueGwTableCard] Prem Predictions debug:', {
+            leagueName,
+            displayGw,
+            totalMembers: members.length,
+            memberIds: memberIds,
+            memberNames: members.map(m => m.name),
+            submissionsCount: submissionsData?.length || 0,
+            submittedUserIds: Array.from(submitted),
+            submittedNames: members.filter(m => submitted.has(m.id)).map(m => m.name),
+            notSubmittedNames: members.filter(m => !submitted.has(m.id)).map(m => m.name),
+          });
+        }
+        
+        setSubmittedUserIds(submitted);
+
         const { data: resultsData, error: resultsError } = await supabase
           .from('app_gw_results')
           .select('gw, fixture_index, result')
@@ -224,7 +263,7 @@ export default function MiniLeagueGwTableCard({
 
   // Calculate rows from picks and results/live scores
   useEffect(() => {
-    if (!displayGw || fixtures.length === 0 || picks.length === 0) {
+    if (!displayGw || fixtures.length === 0) {
       setRows([]);
       return;
     }
@@ -258,16 +297,22 @@ export default function MiniLeagueGwTableCard({
       });
     }
 
-    const calculatedRows: ResultRow[] = members.map((m) => ({
-      user_id: m.id,
-      name: m.name,
-      score: 0,
-      unicorns: 0,
-    }));
+    // CRITICAL: Only include members who have submitted for this GW
+    // Filter out members who didn't submit (like Steve in the user's example)
+    const calculatedRows: ResultRow[] = members
+      .filter((m) => submittedUserIds.has(m.id))
+      .map((m) => ({
+        user_id: m.id,
+        name: m.name,
+        score: 0,
+        unicorns: 0,
+      }));
 
     const picksByFixture = new Map<number, Array<{ user_id: string; pick: "H" | "D" | "A" }>>();
     picks.forEach((p) => {
       if (p.gw !== displayGw) return;
+      // Also filter picks to only include from users who submitted
+      if (!submittedUserIds.has(p.user_id)) return;
       const arr = picksByFixture.get(p.fixture_index) ?? [];
       arr.push({ user_id: p.user_id, pick: p.pick });
       picksByFixture.set(p.fixture_index, arr);
@@ -282,7 +327,8 @@ export default function MiniLeagueGwTableCard({
         if (r) r.score += 1;
       });
 
-      if (correctIds.length === 1 && members.length >= 3) {
+      // Unicorns: only one person got it right AND at least 3 members submitted
+      if (correctIds.length === 1 && submittedUserIds.size >= 3) {
         const r = calculatedRows.find((x) => x.user_id === correctIds[0]);
         if (r) r.unicorns += 1;
       }
@@ -290,13 +336,17 @@ export default function MiniLeagueGwTableCard({
 
     calculatedRows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name));
     setRows(calculatedRows);
-  }, [displayGw, fixtures, picks, results, members, liveScores, currentGw]);
+  }, [displayGw, fixtures, picks, results, members, liveScores, currentGw, submittedUserIds]);
 
   // Force isLive to true for testing - remove this later
   const isLive = true; // mockData?.isLive ?? (hasLiveFixtures && displayGw === currentGw);
   
-  // Calculate fixed height based on max member count (use current members count as fallback)
-  const memberCountForHeight = maxMemberCount ?? members.length;
+  // Calculate fixed height based on actual submitted members for this league
+  // CRITICAL: Use actual rows.length (submitted members) to ensure all rows are visible
+  // Don't use maxMemberCount as it might be from a different league and could make this card too small
+  const memberCountForHeight = rows.length > 0 
+    ? rows.length // Use actual submitted count for this league
+    : (members.length); // Fallback to total members if rows not calculated yet
   const cardHeight = calculateCardHeight(memberCountForHeight);
 
   const cardContent = (
@@ -380,8 +430,8 @@ export default function MiniLeagueGwTableCard({
           <>
             {/* Table */}
             {rows.length > 0 ? (
-              <div className="overflow-hidden flex-1 -mx-4">
-                <div className="overflow-y-auto overflow-x-hidden bg-white">
+              <div className="overflow-visible flex-1 -mx-4">
+                <div className="overflow-visible bg-white">
                   <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: '#ffffff', width: '100%' }}>
                     <thead className="sticky top-0" style={{ 
                       position: 'sticky', 
@@ -456,10 +506,10 @@ export default function MiniLeagueGwTableCard({
   return (
     <Link
       to={`/league/${leagueCode}`}
-      className="w-[320px] flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow block no-underline"
+      className="w-[320px] flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-visible hover:shadow-md transition-shadow block no-underline"
       style={{ 
         minHeight: `${cardHeight}px`,
-        height: `${cardHeight}px`,
+        height: 'auto', // Use auto to allow card to grow to fit all rows
         display: 'flex',
         flexDirection: 'column'
       }}

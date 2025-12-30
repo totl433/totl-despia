@@ -2568,11 +2568,17 @@ ${shareUrl}`;
     }
 
     type Row = { user_id: string; name: string; score: number; unicorns: number };
-    const rows: Row[] = members.map((m) => ({ user_id: m.id, name: m.name, score: 0, unicorns: 0 }));
+    // CRITICAL: Only include members who have submitted for this GW
+    // Filter out members who didn't submit (like Dan Gray in the user's example)
+    const rows: Row[] = members
+      .filter((m) => submittedMap.get(`${m.id}:${resGw}`))
+      .map((m) => ({ user_id: m.id, name: m.name, score: 0, unicorns: 0 }));
 
     const picksByFixture = new Map<number, PickRow[]>();
     picks.forEach((p) => {
       if (p.gw !== resGw) return;
+      // Also filter picks to only include from users who submitted
+      if (!submittedMap.get(`${p.user_id}:${resGw}`)) return;
       const arr = picksByFixture.get(p.fixture_index) ?? [];
       arr.push(p);
       picksByFixture.set(p.fixture_index, arr);
