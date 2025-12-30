@@ -2235,16 +2235,14 @@ ${shareUrl}`;
       picks.forEach((p) => {
         if (p.gw !== picksGw) return;
         
-        // CRITICAL: For API Test league ONLY, only include picks from users who have submitted (confirmed) their predictions
-        // For regular leagues, show ALL picks regardless of submission status
-        if (isApiTestLeague) {
-          const hasSubmitted = submittedMap.get(`${p.user_id}:${picksGw}`);
-          if (!hasSubmitted) {
-            if (picksGw === 1) {
-              console.log('[League] API Test: Filtering out unsubmitted pick:', { user_id: p.user_id, fixture_index: p.fixture_index, userName: members.find(m => m.id === p.user_id)?.name });
-            }
-            return;
+        // CRITICAL: Only include picks from users who have submitted (confirmed) their predictions
+        // This applies to ALL leagues - if someone didn't submit, don't show their picks
+        const hasSubmitted = submittedMap.get(`${p.user_id}:${picksGw}`);
+        if (!hasSubmitted) {
+          if (isApiTestLeague && picksGw === 1) {
+            console.log('[League] API Test: Filtering out unsubmitted pick:', { user_id: p.user_id, fixture_index: p.fixture_index, userName: members.find(m => m.id === p.user_id)?.name });
           }
+          return;
         }
         
         // CRITICAL: Only include picks for current fixtures (filter out old picks like Brazil)

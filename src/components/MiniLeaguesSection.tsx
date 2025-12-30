@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { MiniLeagueCard, type LeagueRow, type LeagueData } from './MiniLeagueCard';
 import { HorizontalScrollContainer } from './HorizontalScrollContainer';
 import Section from './Section';
+import MiniLeagueGwTableCard from './MiniLeagueGwTableCard';
 
 interface MiniLeaguesSectionProps {
   leagues: LeagueRow[];
@@ -12,6 +13,8 @@ interface MiniLeaguesSectionProps {
   leagueDataLoading: boolean;
   currentGw: number | null;
   onTableClick?: (leagueId: string) => void;
+  currentUserId?: string;
+  gameState?: string;
 }
 
 export function MiniLeaguesSection({
@@ -22,7 +25,20 @@ export function MiniLeaguesSection({
   leagueDataLoading,
   currentGw,
   onTableClick,
+  currentUserId,
+  gameState,
 }: MiniLeaguesSectionProps) {
+  // State for toggle between cards and live tables
+  const [showLiveTables, setShowLiveTables] = useState(false);
+  
+  // Reset to overview when game state is no longer LIVE
+  const isLive = gameState === 'LIVE';
+  useEffect(() => {
+    if (!isLive && showLiveTables) {
+      setShowLiveTables(false);
+    }
+  }, [isLive, showLiveTables]);
+  
   // Memoize card data transformations to prevent unnecessary re-renders
   const memoizedCardData = useMemo(() => {
     const result: Record<string, LeagueData | undefined> = {};
@@ -43,11 +59,44 @@ export function MiniLeaguesSection({
     return result;
   }, [leagueData]);
 
+  // Calculate max member count across all leagues for consistent card heights
+  const maxMemberCount = useMemo(() => {
+    if (!leagueData || Object.keys(leagueData).length === 0) return 0;
+    return Math.max(
+      ...Object.values(leagueData)
+        .filter(data => data?.members)
+        .map(data => data.members.length),
+      0
+    );
+  }, [leagueData]);
+
+  // Toggle component for mobile header - alternates between buttons, only show when LIVE
+  const toggleComponent = isLive ? (
+    <div className="lg:hidden flex items-center gap-2">
+      {showLiveTables ? (
+        <button
+          onClick={() => setShowLiveTables(false)}
+          className="px-3 py-1.5 text-xs font-medium rounded-full transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200"
+        >
+          Default View
+        </button>
+      ) : (
+        <button
+          onClick={() => setShowLiveTables(true)}
+          className="px-3 py-1.5 text-xs font-medium rounded-full transition-colors bg-[#1C8376] text-white"
+        >
+          View Live Tables
+        </button>
+      )}
+    </div>
+  ) : null;
+
   if (!leagueDataLoading && leagues.length === 0) {
     return (
       <Section 
         title="Mini Leagues" 
         className="mt-8"
+        headerRight={toggleComponent}
         infoTitle="Mini Leagues"
         infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
 
@@ -83,6 +132,7 @@ How To Play →`}
       <Section 
         title="Mini Leagues" 
         className="mt-8"
+        headerRight={toggleComponent}
         infoTitle="Mini Leagues"
         infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
 
@@ -111,6 +161,7 @@ How To Play →`}
     <Section 
       title="Mini Leagues" 
       className="mt-8"
+      headerRight={toggleComponent}
       infoTitle="Mini Leagues"
       infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
 
@@ -128,6 +179,33 @@ Start a Mini League →
 
 How To Play →`}
     >
+      {showLiveTables ? (
+        // Live Tables View - Horizontal scroll of table cards
+        <div className="lg:hidden">
+          <HorizontalScrollContainer>
+            {leagues.map((league) => {
+              const cardData = memoizedCardData[league.id];
+              const members = cardData?.members || [];
+              
+              return (
+                <MiniLeagueGwTableCard
+                  key={league.id}
+                  leagueId={league.id}
+                  leagueCode={league.code}
+                  leagueName={league.name}
+                  members={members}
+                  currentUserId={currentUserId}
+                  currentGw={currentGw}
+                  maxMemberCount={maxMemberCount}
+                  avatar={league.avatar}
+                />
+              );
+            })}
+          </HorizontalScrollContainer>
+        </div>
+      ) : (
+        // Normal Overview View - Existing card layout
+        <>
       {/* Mobile: Horizontal scroll with batches */}
       <div className="lg:hidden">
         <HorizontalScrollContainer>
@@ -187,6 +265,8 @@ How To Play →`}
           );
         })}
       </div>
+      </>
+      )}
     </Section>
   );
 }

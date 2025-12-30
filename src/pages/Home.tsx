@@ -1785,6 +1785,8 @@ export default function HomePage() {
                 unreadByLeague={unreadByLeague}
                 leagueDataLoading={leagueDataLoading}
                 currentGw={gw}
+                currentUserId={user?.id}
+                gameState={gameState}
               />
             </div>
 

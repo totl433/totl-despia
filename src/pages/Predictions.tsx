@@ -2186,12 +2186,18 @@ export default function PredictionsPage() {
           style={{ display: shouldBlockSwipePredictions ? 'none' : 'block' }}
         >
           <div className="max-w-md mx-auto">
-            <div className="relative flex items-center justify-center mb-4">
-              <span className="text-lg font-extrabold text-slate-700">Gameweek {currentTestGw}</span>
+            <div className="relative flex items-center justify-between mb-4">
+              <button 
+                onClick={() => navigate("/")} 
+                className="text-slate-600 hover:text-slate-800 text-3xl font-bold w-10 h-10 flex items-center justify-center"
+              >
+                ✕
+              </button>
+              <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">Gameweek {currentTestGw}</span>
               {!shouldBlockSwipePredictions && effectiveViewMode === "cards" && canShowSwipePredictions && (
                 <button
                   onClick={() => setCurrentIndex(fixtures.length)}
-                  className="absolute right-0 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 px-3 py-1.5 text-xs font-semibold text-white shadow-md transition hover:shadow-lg hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-700 px-3 py-1.5 text-xs font-semibold text-white shadow-md transition hover:shadow-lg hover:from-emerald-600 hover:via-emerald-700 hover:to-emerald-800"
                 >
                   <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
