@@ -1,7 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import ResultsTable from './league/ResultsTable';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
@@ -80,10 +79,6 @@ export default function MiniLeagueGwTableCard({
   const [picks, setPicks] = useState<PickRow[]>([]);
   const [results, setResults] = useState<Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>>([]);
   const [rows, setRows] = useState<ResultRow[]>([]);
-  const [allFixturesFinished, setAllFixturesFinished] = useState(false);
-  const [hasLiveFixtures, setHasLiveFixtures] = useState(false);
-  const [hasStartingSoonFixtures, setHasStartingSoonFixtures] = useState(false);
-  const [hasStartedFixtures, setHasStartedFixtures] = useState(false);
 
   // Determine which GW to display based on game state
   const { state: currentGwState } = useGameweekState(currentGw);
@@ -295,39 +290,6 @@ export default function MiniLeagueGwTableCard({
 
     calculatedRows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name));
     setRows(calculatedRows);
-
-    const allFinished = fixturesForGw.every((f) => {
-      if (hasLiveScores && displayGw === currentGw) {
-        const liveScore = liveScores[f.fixture_index];
-        return liveScore?.status === 'FINISHED';
-      }
-      return outcomes.has(f.fixture_index);
-    });
-
-    const hasLive = fixturesForGw.some((f) => {
-      const liveScore = liveScores[f.fixture_index];
-      return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
-    });
-
-    const now = new Date();
-    const hasStartingSoon = fixturesForGw.some((f) => {
-      if (!f.kickoff_time) return false;
-      const kickoffTime = new Date(f.kickoff_time);
-      const timeUntilKickoff = kickoffTime.getTime() - now.getTime();
-      const liveScore = liveScores[f.fixture_index];
-      const hasNotStarted = !liveScore || (liveScore.status !== 'IN_PLAY' && liveScore.status !== 'PAUSED' && liveScore.status !== 'FINISHED');
-      return hasNotStarted && timeUntilKickoff > 0 && timeUntilKickoff <= 24 * 60 * 60 * 1000;
-    });
-
-    const hasStarted = fixturesForGw.some((f) => {
-      const liveScore = liveScores[f.fixture_index];
-      return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
-    });
-
-    setAllFixturesFinished(allFinished);
-    setHasLiveFixtures(hasLive);
-    setHasStartingSoonFixtures(hasStartingSoon);
-    setHasStartedFixtures(hasStarted);
   }, [displayGw, fixtures, picks, results, members, liveScores, currentGw]);
 
   // Force isLive to true for testing - remove this later
