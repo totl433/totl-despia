@@ -28,7 +28,10 @@ const initials = (text?: string) => {
 
 const resolveName = (id: string, memberNames?: MemberNames) => {
   if (!memberNames) return "";
-  if (memberNames instanceof Map) return memberNames.get(id) ?? "";
+  if (memberNames instanceof Map) {
+    const name = memberNames.get(id);
+    return name ?? "";
+  }
   return memberNames[id] ?? "";
 };
 
@@ -52,6 +55,9 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
   const [sending, setSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reactions, setReactions] = useState<Record<string, Array<{ emoji: string; count: number; hasUserReacted: boolean }>>>({});
+  const [replyingTo, setReplyingTo] = useState<{ id: string; content: string; authorName?: string } | null>(null);
+  // Force re-render when memberNames loads by tracking a version
+  const [memberNamesVersion, setMemberNamesVersion] = useState(0);
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputAreaRef = useRef<HTMLDivElement | null>(null);
@@ -303,7 +309,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
 
       resizeTimeout = setTimeout(() => {
         const keyboardHeight = detectKeyboardHeight();
-        
+
         // Only update if keyboard height changed significantly (avoid jitter)
         // On desktop, keyboardHeight will be 0, which is fine
         if (Math.abs(keyboardHeight - lastKeyboardHeight) < 10 && keyboardHeight > 0 && !isInputFocused) {
@@ -317,10 +323,10 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
 
     // Use visualViewport if available (mobile/Despia)
     if (visualViewport) {
-      visualViewport.addEventListener("resize", updateLayout);
-      visualViewport.addEventListener("scroll", updateLayout);
+    visualViewport.addEventListener("resize", updateLayout);
+    visualViewport.addEventListener("scroll", updateLayout);
     }
-    
+
     // Also listen to window resize as fallback (works everywhere)
     window.addEventListener("resize", updateLayout);
 
@@ -353,8 +359,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       if (resizeTimeout) clearTimeout(resizeTimeout);
       clearTimeout(focusTimeout);
       if (visualViewport) {
-        visualViewport.removeEventListener("resize", updateLayout);
-        visualViewport.removeEventListener("scroll", updateLayout);
+      visualViewport.removeEventListener("resize", updateLayout);
+      visualViewport.removeEventListener("scroll", updateLayout);
       }
       window.removeEventListener("resize", updateLayout);
       if (inputRef.current) {
@@ -401,10 +407,10 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     
     // Trigger layout update to detect keyboard (works on both desktop and mobile)
     const detectAndApply = () => {
-      const visualViewport = (window as any).visualViewport;
+    const visualViewport = (window as any).visualViewport;
       let keyboardHeight = 0;
       
-      if (visualViewport) {
+    if (visualViewport) {
         const windowHeight = window.innerHeight;
         const viewportHeight = visualViewport.height;
         const viewportBottom = visualViewport.offsetTop + viewportHeight;
@@ -446,14 +452,48 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
 
   const chatGroups = useMemo<ChatThreadProps["groups"]>(() => {
     if (!messages.length) return [];
-    const groups: ChatThreadProps["groups"] = [];
+    
+    // CRITICAL FIX: Don't compute groups until memberNames is available
+    // This ensures groups are always created with correct author names from the start
+    const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
+    if (!hasMemberNames) {
+      console.warn('[chatGroups] memberNames not available yet, returning empty array to prevent "Unknown" authors');
+      return [];
+    }
+    
+    // Debug: log memberNames state
+    console.log('[chatGroups] Computing with memberNames:', memberNames instanceof Map ? `Map(${memberNames.size})` : memberNames ? `Record(${Object.keys(memberNames).length})` : 'null/undefined');
+    if (memberNames instanceof Map) {
+      const memberKeys = Array.from(memberNames.keys());
+      console.log('[chatGroups] memberNames keys:', memberKeys);
+      // Log the actual name values
+      memberKeys.forEach(key => {
+        const name = memberNames.get(key);
+        console.log(`[chatGroups] memberNames[${key}] = "${name}"`);
+      });
+    }
+    
+    // Build groups immutably using reduce to avoid mutation issues
     let lastDayKey: string | null = null;
-
-    messages.forEach((msg) => {
+    const groups = messages.reduce<ChatThreadProps["groups"]>((acc, msg) => {
       const isOwnMessage = msg.user_id === user?.id;
       const resolvedName = resolveName(msg.user_id, memberNames);
       const authorName = resolvedName || (isOwnMessage ? currentUserDisplayName : "");
       const fallbackName = authorName || (isOwnMessage ? "You" : "Unknown");
+      
+      // Debug: log name resolution for first few messages
+      if (messages.indexOf(msg) < 5) {
+        const hasKey = memberNames instanceof Map ? memberNames.has(msg.user_id) : memberNames ? msg.user_id in memberNames : false;
+        const mapValue = memberNames instanceof Map ? memberNames.get(msg.user_id) : memberNames ? memberNames[msg.user_id] : undefined;
+        console.log(`[chatGroups] Message ${messages.indexOf(msg)}: user_id=${msg.user_id}, hasKey=${hasKey}, mapValue="${mapValue}", resolvedName="${resolvedName}", fallbackName="${fallbackName}"`);
+      }
+      
+      // Debug: log if we can't resolve a name
+      if (!resolvedName && !isOwnMessage && memberNames) {
+        const hasKey = memberNames instanceof Map ? memberNames.has(msg.user_id) : msg.user_id in memberNames;
+        console.warn('[chatGroups] Could not resolve name for user_id:', msg.user_id, 'memberNames has this key?', hasKey, 'resolvedName:', resolvedName, 'authorName:', authorName, 'fallbackName:', fallbackName);
+      }
+      
       const avatarInitials = !isOwnMessage ? initials(fallbackName) : undefined;
 
       const createdDate = new Date(msg.created_at);
@@ -463,37 +503,254 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         lastDayKey = dayKey;
       }
 
+      // Debug: log ALL messages with reply_to to see their structure
+      if (msg.reply_to) {
+        console.log('[chatGroups] Message', msg.id, 'has reply_to:', {
+          id: msg.reply_to.id,
+          content: msg.reply_to.content,
+          user_id: msg.reply_to.user_id,
+          author_name: msg.reply_to.author_name,
+          full_reply_to: msg.reply_to,
+        });
+      }
+      
+      // Resolve reply author name
+      const replyAuthorName = msg.reply_to 
+        ? (resolveName(msg.reply_to.user_id, memberNames) || "Unknown")
+        : null;
+      
+      // Debug: log if reply author is "Unknown" but memberNames is available
+      if (msg.reply_to && replyAuthorName === "Unknown") {
+        const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
+        const hasKey = memberNames instanceof Map 
+          ? memberNames.has(msg.reply_to.user_id)
+          : memberNames 
+            ? msg.reply_to.user_id in memberNames 
+            : false;
+        console.warn('[chatGroups] Reply author is "Unknown" for message', msg.id, 'reply_to.user_id:', msg.reply_to.user_id, 'hasMemberNames:', hasMemberNames, 'hasKey:', hasKey, 'reply_to object:', msg.reply_to);
+        if (hasKey && memberNames) {
+          const resolved = resolveName(msg.reply_to.user_id, memberNames);
+          console.warn('[chatGroups] Resolved name should be:', resolved, 'but got "Unknown"');
+        }
+      }
+
       const messagePayload = {
         id: msg.id,
         text: msg.content,
         time: formatTime(msg.created_at),
         status: msg.status && msg.status !== "sent" ? msg.status : undefined,
         messageId: msg.id,
+        replyTo: msg.reply_to ? {
+          id: msg.reply_to.id,
+          content: msg.reply_to.content,
+          authorName: replyAuthorName,
+        } : null,
       };
 
-      const lastGroup = groups[groups.length - 1];
+      const lastGroup = acc[acc.length - 1];
+      // Check if we can append to the last group
+      // Compare by user_id, not author name, to handle case where name resolved from "Unknown"
+      const lastGroupUserId = lastGroup?.messages.length > 0 
+        ? messages.find(m => m.id === lastGroup.messages[0].messageId)?.user_id 
+        : null;
       const canAppendToLast =
         lastGroup &&
         !shouldLabelDay &&
         lastGroup.isOwnMessage === isOwnMessage &&
-        lastGroup.author === fallbackName;
+        lastGroupUserId === msg.user_id; // Compare by user_id, not author name
 
       if (canAppendToLast) {
-        lastGroup.messages.push(messagePayload);
+        // Always update author name to ensure it's current (e.g., from "Unknown" to actual name)
+        // Extract the base message ID from the group ID (handle both formats: "msg-id" and "msg-id-Unknown")
+        const baseId = lastGroup.id.includes('-') ? lastGroup.id.split('-')[0] : lastGroup.id;
+        
+        // Update all existing messages in the group to refresh their replyTo.authorName
+        const updatedMessages = lastGroup.messages.map(existingMsg => {
+          // Find the original message to get reply_to data
+          const originalMsg = messages.find(m => m.id === existingMsg.messageId);
+          if (originalMsg?.reply_to) {
+            const updatedReplyAuthorName = resolveName(originalMsg.reply_to.user_id, memberNames) || "Unknown";
+            return {
+              ...existingMsg,
+              replyTo: existingMsg.replyTo ? {
+                ...existingMsg.replyTo,
+                authorName: updatedReplyAuthorName,
+              } : null,
+            };
+          }
+          return existingMsg;
+        });
+        
+        const updatedGroup = {
+          ...lastGroup,
+          id: `${baseId}-${fallbackName}`, // Update ID to include current author name
+          author: fallbackName, // Always use the current resolved name
+          avatarInitials,
+          messages: [...updatedMessages, messagePayload], // Create new array with updated messages
+        };
+        // Replace the last group with the updated one - create new array immutably
+        return [...acc.slice(0, -1), updatedGroup];
       } else {
-        groups.push({
-          id: msg.id,
+        return [...acc, {
+          id: `${msg.id}-${fallbackName}`, // Include author name in ID to force re-render when name changes
           author: fallbackName,
           avatarInitials,
           isOwnMessage,
           dayLabel: shouldLabelDay ? formatDayLabel(msg.created_at) : undefined,
           messages: [messagePayload],
-        });
+        }];
       }
-    });
+    }, []);
 
-    return groups;
-  }, [currentUserDisplayName, memberNames, messages, user?.id]);
+    // Return a new array reference to ensure React detects changes
+    // Also ensure all groups have the correct author name (in case memberNames loaded after groups were created)
+    // Create a completely new array to ensure React detects changes
+    const finalGroups = groups.map((group, idx) => {
+      // Always create a new object to ensure React detects changes
+      const baseGroup = { ...group };
+      
+      // Update all messages in the group to refresh their replyTo.authorName
+      const updatedMessages = baseGroup.messages.map(msg => {
+        const originalMsg = messages.find(m => m.id === msg.messageId);
+        if (originalMsg?.reply_to && msg.replyTo) {
+          const updatedReplyAuthorName = resolveName(originalMsg.reply_to.user_id, memberNames) || "Unknown";
+          if (updatedReplyAuthorName !== msg.replyTo.authorName) {
+            console.log('[chatGroups] POST-PROCESSING: Updating replyTo.authorName for message', msg.messageId, 'from', msg.replyTo.authorName, 'to', updatedReplyAuthorName);
+            return {
+              ...msg,
+              replyTo: {
+                ...msg.replyTo,
+                authorName: updatedReplyAuthorName,
+              },
+            };
+          }
+        }
+        return msg;
+      });
+      
+      // If group author is "Unknown", try to resolve it from the first message
+      if (baseGroup.author === "Unknown" && baseGroup.messages.length > 0) {
+        const firstMessage = messages.find(m => m.id === baseGroup.messages[0].messageId);
+        if (firstMessage) {
+          const resolvedName = resolveName(firstMessage.user_id, memberNames);
+          if (resolvedName && resolvedName !== "Unknown") {
+            console.log('[chatGroups] POST-PROCESSING: Resolving "Unknown" to:', resolvedName, 'for user_id:', firstMessage.user_id, 'group.id:', baseGroup.id, 'group index:', idx);
+            // Extract the base message ID from the group ID (handle both formats: "msg-id" and "msg-id-Unknown")
+            const baseId = baseGroup.id.includes('-') ? baseGroup.id.split('-')[0] : baseGroup.id;
+            return {
+              ...baseGroup,
+              id: `${baseId}-${resolvedName}`, // Update ID to include resolved name
+              author: resolvedName,
+              avatarInitials: initials(resolvedName),
+              messages: updatedMessages, // Use updated messages with refreshed replyTo.authorName
+            };
+          } else {
+            console.log('[chatGroups] POST-PROCESSING: Could not resolve "Unknown" for group', idx, 'user_id:', firstMessage.user_id, 'resolvedName:', resolvedName);
+          }
+        } else {
+          console.log('[chatGroups] POST-PROCESSING: Could not find first message for group', idx, 'messageId:', baseGroup.messages[0]?.messageId);
+        }
+      } else if (baseGroup.author === "Unknown") {
+        console.log('[chatGroups] POST-PROCESSING: Group', idx, 'has "Unknown" author but no messages');
+      }
+      
+      // Always return a new object with updated messages to ensure React detects changes
+      return {
+        ...baseGroup,
+        messages: updatedMessages,
+      };
+    });
+    
+    // Log if we resolved any names
+    const resolvedCount = finalGroups.filter(g => g.author !== "Unknown" && groups.find(og => {
+      const ogBaseId = og.id.includes('-') ? og.id.split('-')[0] : og.id;
+      const gBaseId = g.id.includes('-') ? g.id.split('-')[0] : g.id;
+      return ogBaseId === gBaseId && og.author === "Unknown";
+    })).length;
+    if (resolvedCount > 0) {
+      console.log('[chatGroups] Resolved', resolvedCount, 'groups from "Unknown" to actual names');
+    }
+    
+    // Debug: log final groups to see what we're returning
+    const unknownCount = finalGroups.filter(g => g.author === "Unknown").length;
+    if (unknownCount > 0) {
+      console.warn('[chatGroups] FINAL GROUPS: Found', unknownCount, 'groups with "Unknown" author out of', finalGroups.length, 'total groups');
+      finalGroups.forEach((g, idx) => {
+        if (g.author === "Unknown") {
+          console.warn(`[chatGroups] Group ${idx}: id="${g.id}", author="${g.author}", messages=${g.messages.length}, firstMessageId=${g.messages[0]?.messageId}`);
+        }
+      });
+    } else {
+      console.log('[chatGroups] FINAL GROUPS: All', finalGroups.length, 'groups have resolved author names');
+    }
+    
+    return finalGroups;
+  }, [currentUserDisplayName, memberNames, messages, user?.id, memberNamesVersion]);
+
+  // Track when memberNames loads and increment version to force re-render
+  useEffect(() => {
+    const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
+    if (hasMemberNames && memberNamesVersion === 0) {
+      console.log('[MiniLeagueChatBeta] memberNames loaded, incrementing version to force re-render');
+      setMemberNamesVersion(1);
+    }
+  }, [memberNames, memberNamesVersion]);
+
+  // Force re-render when we detect Unknown groups but memberNames is available
+  useEffect(() => {
+    const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
+    const hasUnknownGroups = chatGroups.some(g => g.author === "Unknown");
+    
+    if (hasMemberNames && hasUnknownGroups && chatGroups.length > 0) {
+      console.warn('[MiniLeagueChatBeta] DETECTED: memberNames available but groups have "Unknown" authors - forcing re-render');
+      // Use setTimeout to avoid infinite loops, and increment multiple times to force multiple re-renders
+      setTimeout(() => {
+        setMemberNamesVersion(prev => {
+          const newVersion = prev + 1;
+          console.warn('[MiniLeagueChatBeta] Incrementing memberNamesVersion to', newVersion);
+          return newVersion;
+        });
+      }, 50);
+      // Also try again after a longer delay
+      setTimeout(() => {
+        setMemberNamesVersion(prev => {
+          const newVersion = prev + 1;
+          console.warn('[MiniLeagueChatBeta] Second increment of memberNamesVersion to', newVersion);
+          return newVersion;
+        });
+      }, 200);
+    }
+  }, [chatGroups, memberNames]);
+
+  // Debug: log when chatGroups changes
+  useEffect(() => {
+    const unknownGroups = chatGroups.filter(g => g.author === "Unknown");
+    if (unknownGroups.length > 0) {
+      console.error('[MiniLeagueChatBeta] chatGroups changed:', unknownGroups.length, 'groups with "Unknown" author out of', chatGroups.length, 'total groups');
+      unknownGroups.forEach((g, idx) => {
+        console.error(`[MiniLeagueChatBeta] Group ${idx}: id="${g.id}", author="${g.author}", messages=${g.messages.length}, firstMessageId=${g.messages[0]?.id}`);
+      });
+      // CRITICAL: If we have Unknown groups but memberNames is available, something is wrong
+      const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
+      if (hasMemberNames) {
+        console.error('[MiniLeagueChatBeta] ERROR: memberNames is available but groups still have "Unknown" authors! This should not happen!');
+      }
+    } else {
+      console.log('[MiniLeagueChatBeta] chatGroups changed: All', chatGroups.length, 'groups have resolved author names');
+    }
+    // Log first few groups to verify author names
+    chatGroups.slice(0, 5).forEach((g, idx) => {
+      console.log(`[MiniLeagueChatBeta] Group ${idx}: id="${g.id}", author="${g.author}", messages=${g.messages.length}`);
+    });
+  }, [chatGroups, memberNames]);
+  
+  // Force re-render when groups change by creating a key based on group authors and memberNamesVersion
+  // This ensures React re-renders when any author name changes from "Unknown" to actual name
+  const chatThreadKey = useMemo(() => {
+    const authorNames = chatGroups.map(g => g.author).join(',');
+    const hasUnknown = chatGroups.some(g => g.author === "Unknown");
+    return `chat-${chatGroups.length}-${hasUnknown ? 'unknown' : 'resolved'}-${memberNamesVersion}-${authorNames.slice(0, 50)}`;
+  }, [chatGroups, memberNamesVersion]);
 
   const notifyRecipients = useCallback(
     async (text: string) => {
@@ -533,16 +790,17 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     if (!miniLeagueId || !text || sending) return;
     try {
       setSending(true);
-      await sendMessage(text);
+      await sendMessage(text, replyingTo?.id || null);
       await notifyRecipients(text);
       setDraft("");
+      setReplyingTo(null);
       scrollToBottomWithRetries([0, 150, 300]);
     } catch (err) {
       console.error("[MiniLeagueChatBeta] Failed to send message", err);
     } finally {
       setSending(false);
     }
-  }, [draft, miniLeagueId, notifyRecipients, scrollToBottomWithRetries, sendMessage, sending]);
+  }, [draft, miniLeagueId, notifyRecipients, scrollToBottomWithRetries, sendMessage, sending, replyingTo]);
 
 
   return (
@@ -573,9 +831,37 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           </div>
         ) : (
           <ChatThread 
+            key={chatThreadKey}
             groups={chatGroups}
             reactions={reactions}
             onReactionClick={handleReactionClick}
+            onMessageClick={(messageId, content, authorName) => {
+              // Find the message to get full reply data
+              const message = messages.find(m => m.id === messageId);
+              if (message) {
+                // Extract text content - handle both string and ReactNode
+                let messageContent = '';
+                if (typeof content === 'string') {
+                  messageContent = content;
+                } else if (typeof content === 'object' && content !== null) {
+                  // Try to extract text from ReactNode
+                  const textContent = (content as any)?.props?.children || String(content);
+                  messageContent = typeof textContent === 'string' ? textContent : String(textContent);
+                } else {
+                  messageContent = String(content);
+                }
+                
+                setReplyingTo({
+                  id: messageId,
+                  content: messageContent || message.content,
+                  authorName: authorName,
+                });
+                // Focus input after a short delay
+                setTimeout(() => {
+                  inputRef.current?.focus();
+                }, 100);
+              }
+            }}
           />
         )}
       </div>
@@ -599,6 +885,28 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           pointerEvents: "auto",
         }}
       >
+        {/* Reply preview */}
+        {replyingTo && (
+          <div className="mb-2 px-3 py-2 bg-slate-50 border-l-2 border-[#1C8376] rounded-lg flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-[#1C8376] mb-0.5">
+                Replying to {replyingTo.authorName || "Unknown"}
+              </div>
+              <div className="text-xs text-slate-600 line-clamp-2 truncate">
+                {replyingTo.content}
+              </div>
+            </div>
+            <button
+              onClick={() => setReplyingTo(null)}
+              className="flex-shrink-0 w-5 h-5 rounded-full hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors"
+              title="Cancel reply"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-3 bg-slate-100 rounded-2xl px-3 py-2 relative">
           <textarea
             ref={inputRef}
@@ -615,6 +923,13 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
             spellCheck={true}
             inputMode="text"
             data-1p-ignore="true"
+            onKeyDown={(e) => {
+              // Cancel reply on Escape
+              if (e.key === 'Escape' && replyingTo) {
+                setReplyingTo(null);
+                e.preventDefault();
+              }
+            }}
             onChange={(event) => {
               setDraft(event.target.value);
               if (inputRef.current) {

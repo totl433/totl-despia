@@ -6,6 +6,11 @@ type Message = {
   text: ReactNode;
   time: string;
   status?: "sending" | "error";
+  replyTo?: {
+    id: string;
+    content: string;
+    authorName?: string;
+  } | null;
 };
 
 export type MessageStackProps = {
@@ -15,6 +20,7 @@ export type MessageStackProps = {
   avatarInitials?: string;
   reactions?: Record<string, Array<{ emoji: string; count: number; hasUserReacted: boolean }>>;
   onReactionClick?: (messageId: string, emoji: string) => void;
+  onMessageClick?: (messageId: string, content: string, authorName?: string) => void;
 };
 
 export function MessageStack({
@@ -24,7 +30,12 @@ export function MessageStack({
   avatarInitials,
   reactions,
   onReactionClick,
+  onMessageClick,
 }: MessageStackProps) {
+  // CRITICAL DEBUG: Log what author we're receiving
+  if (author === "Unknown") {
+    console.error('[MessageStack] Received "Unknown" as author prop!', 'isOwnMessage:', isOwnMessage, 'messages:', messages.length);
+  }
   const alignment = isOwnMessage ? "justify-end" : "justify-start";
 
   return (
@@ -49,6 +60,16 @@ export function MessageStack({
               : "middle";
 
           const messageId = (message as any).messageId || message.id;
+          // Extract text content for reply - handle ReactNode
+          let messageContent = '';
+          if (typeof message.text === 'string') {
+            messageContent = message.text;
+          } else if (typeof message.text === 'object' && message.text !== null) {
+            const textContent = (message.text as any)?.props?.children || String(message.text);
+            messageContent = typeof textContent === 'string' ? textContent : String(textContent);
+          } else {
+            messageContent = String(message.text);
+          }
           return (
             <div key={message.id} className={`flex flex-col w-full ${isOwnMessage ? "items-end" : "items-start"}`}>
               <div className={`flex w-full ${isOwnMessage ? "justify-end" : "justify-start"}`}>
@@ -61,6 +82,8 @@ export function MessageStack({
                   messageId={messageId}
                   reactions={reactions?.[messageId] || []}
                   onReactionClick={onReactionClick}
+                  replyTo={message.replyTo}
+                  onMessageClick={onMessageClick ? () => onMessageClick(messageId, messageContent, !isOwnMessage && index === 0 ? author : undefined) : undefined}
                 />
                 {message.status && (
                   <div

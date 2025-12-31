@@ -789,6 +789,19 @@ select option {
   }
 }
 
+@keyframes slideUpFromBottom {
+  0% {
+    transform: translateY(100%);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUpFromBottom 0.3s ease-out;
+}
+
 @keyframes slideUp {
   from {
     transform: translateY(100%);
