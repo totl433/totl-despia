@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
 type BubbleShape = "single" | "top" | "middle" | "bottom";
 
@@ -76,6 +76,28 @@ export function MessageBubble({
   const maxWidth = "max-w-[70%]";
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const reactionPickerRef = useRef<HTMLDivElement>(null);
+
+  // Close reaction picker when clicking outside
+  useEffect(() => {
+    if (!showReactionPicker) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (reactionPickerRef.current && !reactionPickerRef.current.contains(event.target as Node)) {
+        setShowReactionPicker(false);
+      }
+    };
+
+    // Add a small delay to avoid closing immediately when opening
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showReactionPicker]);
 
   const handleReactionClick = (emoji: string) => {
     if (messageId && onReactionClick) {
@@ -130,7 +152,7 @@ export function MessageBubble({
         <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 flex items-center gap-1">
           {/* Quick reaction buttons - appear when SVG is clicked */}
           {showReactionPicker && (
-            <div className="flex items-center gap-1 bg-white rounded-full px-1 py-1 shadow-lg border border-slate-200">
+            <div ref={reactionPickerRef} className="flex items-center gap-1 bg-white rounded-full px-1 py-1 shadow-lg border border-slate-200 z-50">
               {QUICK_REACTIONS.map((emoji) => (
                 <button
                   key={emoji}
@@ -190,8 +212,8 @@ export function MessageBubble({
             onClick={() => setShowEmojiPicker(false)}
           />
           {/* Bottom sheet */}
-          <div className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-2xl border-t border-slate-200" style={{ animation: 'slideUp 0.3s ease-out' }}>
-            <div className="px-4 pt-3 pb-4">
+          <div className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-2xl border-t border-slate-200 overflow-x-hidden" style={{ animation: 'slideUp 0.3s ease-out' }}>
+            <div className="px-4 pt-3 pb-4 overflow-x-hidden">
               {/* Header with handle bar and close button */}
               <div className="flex items-center justify-between mb-3">
                 <div className="w-12 h-1 bg-slate-300 rounded-full" />
@@ -204,7 +226,7 @@ export function MessageBubble({
                 <div className="w-12" />
               </div>
               {/* Emoji grid */}
-              <div className="grid grid-cols-8 gap-2 max-h-64 overflow-y-auto">
+              <div className="grid grid-cols-8 gap-2 max-h-64 overflow-y-auto overflow-x-hidden">
                 {EMOJI_TRAY.map((emoji) => (
                   <button
                     key={emoji}

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
-import EmojiPicker from 'emoji-picker-react';
 import { resolveLeagueStartGw as getLeagueStartGw, shouldIncludeGwForLeague } from "../lib/leagueStart";
 import imageCompression from "browser-image-compression";
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
@@ -121,7 +120,6 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputAreaRef = useRef<HTMLDivElement | null>(null);
   const [inputBottom, setInputBottom] = useState<number>(0);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reactions, setReactions] = useState<Record<string, ReactionData[]>>({});
 
   // Simple scroll to bottom
@@ -601,7 +599,6 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
               onSubmit={(e) => {
                 e.preventDefault();
                 onSend();
-                setShowEmojiPicker(false);
               }}
               className="flex items-center gap-2 relative"
             >
@@ -654,13 +651,6 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                 }}
               />
               <button
-                type="button"
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="flex-shrink-0 w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200 transition-colors"
-              >
-                <span className="text-xl">😊</span>
-              </button>
-              <button
                 type="submit"
                 className="flex-shrink-0 w-10 h-10 rounded-full bg-[#1C8376] text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={!newMsg.trim()}
@@ -672,18 +662,6 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
                 </svg>
               </button>
-              {showEmojiPicker && (
-                <div className="absolute bottom-full right-0 mb-2 z-50">
-                  <EmojiPicker
-                    onEmojiClick={(emojiData: any) => {
-                      setNewMsg(newMsg + emojiData.emoji);
-                      setShowEmojiPicker(false);
-                    }}
-                    width={350}
-                    height={400}
-                  />
-                </div>
-              )}
             </form>
           </>
         ) : (

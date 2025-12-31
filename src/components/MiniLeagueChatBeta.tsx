@@ -3,7 +3,6 @@ import type { MouseEvent } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useMiniLeagueChat } from "../hooks/useMiniLeagueChat";
 import ChatThread, { type ChatThreadProps } from "./chat/ChatThread";
-import EmojiPicker from 'emoji-picker-react';
 import { supabase } from "../lib/supabase";
 
 type MemberNames = Map<string, string> | Record<string, string> | undefined;
@@ -53,7 +52,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reactions, setReactions] = useState<Record<string, Array<{ emoji: string; count: number; hasUserReacted: boolean }>>>({});
   const [replyingTo, setReplyingTo] = useState<{ id: string; content: string; authorName?: string } | null>(null);
   // Force re-render when memberNames loads by tracking a version
@@ -963,17 +961,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           />
           <button
             type="button"
-            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            className="flex-shrink-0 w-10 h-10 rounded-full bg-white text-slate-600 flex items-center justify-center hover:bg-slate-50 transition-colors"
-          >
-            <span className="text-xl">😊</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              handleSend();
-              setShowEmojiPicker(false);
-            }}
+            onClick={handleSend}
             disabled={!miniLeagueId || sending || !draft.trim()}
             className="w-10 h-10 rounded-full bg-[#1C8376] text-white flex items-center justify-center disabled:opacity-40"
           >
@@ -987,18 +975,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
             </svg>
           </button>
-          {showEmojiPicker && (
-            <div className="absolute bottom-full right-0 mb-2 z-50">
-              <EmojiPicker
-            onEmojiClick={(emojiData: any) => {
-              setDraft(draft + emojiData.emoji);
-              setShowEmojiPicker(false);
-            }}
-                width={350}
-                height={400}
-              />
-            </div>
-          )}
         </div>
         {error && (
           <div className="text-xs text-red-500 mt-2 text-center">
