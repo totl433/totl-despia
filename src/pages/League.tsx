@@ -5,8 +5,10 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { resolveLeagueStartGw as getLeagueStartGw, shouldIncludeGwForLeague } from "../lib/leagueStart";
 import imageCompression from "browser-image-compression";
-import { getLeagueAvatarUrl } from "../lib/leagueAvatars";
+import { getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
 import { useLiveScores } from "../hooks/useLiveScores";
+import Cropper from 'react-easy-crop';
+import type { Area } from 'react-easy-crop';
 import MiniLeagueChatBeta from "../components/MiniLeagueChatBeta";
 import MessageBubble from "../components/chat/MessageBubble";
 import InfoSheet from "../components/InfoSheet";
@@ -131,19 +133,31 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
 
   const applyKeyboardLayout = useCallback(
     (keyboardHeight: number, scrollDelays: number[] = [0, 100, 300, 500, 700]) => {
+      // Always calculate input area height dynamically
+      const inputAreaHeight = inputAreaRef.current?.offsetHeight || 72;
+      
+      // Detect iOS - the input accessory view adds extra space
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      
+      // iOS input accessory view is typically 44px, but it's already included in keyboardHeight
+      // We just need to ensure proper spacing
+      
       if (keyboardHeight > 0) {
+        // Calculate the total height needed for input area (including safe area)
+        const totalBottomSpace = keyboardHeight + inputAreaHeight;
+        
         setInputBottom(keyboardHeight);
         if (listRef.current) {
-          const padding = Math.max(
-            keyboardHeight + (inputRef.current?.offsetHeight || 0) + 16,
-            80
-          );
-          listRef.current.style.paddingBottom = `${padding}px`;
+          // Set padding to account for input area height, ensuring messages are never hidden
+          // The accessory view space is already included in keyboardHeight from visualViewport
+          listRef.current.style.paddingBottom = `${totalBottomSpace + 8}px`;
         }
       } else {
         setInputBottom(0);
         if (listRef.current) {
-          listRef.current.style.paddingBottom = '';
+          // When keyboard is hidden, use normal padding for input area
+          listRef.current.style.paddingBottom = `${inputAreaHeight + 8}px`;
         }
       }
 
@@ -167,13 +181,43 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
     }
   }, [newMsg]);
 
-  // Reliable keyboard detection - fix input above keyboard
+  // Set initial padding for messages container
+  useEffect(() => {
+    if (listRef.current && inputAreaRef.current) {
+      const inputAreaHeight = inputAreaRef.current.offsetHeight || 72;
+      listRef.current.style.paddingBottom = `${inputAreaHeight + 8}px`;
+    }
+  }, []);
+
+  // Reliable keyboard detection - works on both desktop and mobile
   useEffect(() => {
     const visualViewport = (window as any).visualViewport;
-    if (!visualViewport) return;
-
     let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
     let lastKeyboardHeight = 0;
+    let isInputFocused = false;
+
+    const detectKeyboardHeight = (): number => {
+      if (visualViewport) {
+        // Use visualViewport API (best for mobile)
+        const windowHeight = window.innerHeight;
+        const viewportHeight = visualViewport.height;
+        const viewportBottom = visualViewport.offsetTop + viewportHeight;
+        let keyboardHeight = Math.max(0, windowHeight - viewportBottom);
+        
+        // On iOS, the input accessory view (suggestion bar) adds extra height
+        // Try to detect iOS and account for it if needed
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        
+        // If keyboard is visible and we're on iOS, the accessory view is already included
+        // in the viewport calculation, but we might need to adjust
+        return keyboardHeight;
+      } else {
+        // Fallback: detect via window resize (works on desktop too)
+        // On desktop, this will be 0, which is correct
+        return 0;
+      }
+    };
 
     const updateLayout = () => {
       // Clear any pending updates
@@ -184,13 +228,11 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
 
       // Debounce updates to avoid flickering
       resizeTimeout = setTimeout(() => {
-        const windowHeight = window.innerHeight;
-        const viewportHeight = visualViewport.height;
-        const viewportBottom = visualViewport.offsetTop + viewportHeight;
-        const keyboardHeight = windowHeight - viewportBottom;
+        const keyboardHeight = detectKeyboardHeight();
         
         // Only update if keyboard height changed significantly (avoid jitter)
-        if (Math.abs(keyboardHeight - lastKeyboardHeight) < 10 && keyboardHeight > 0) {
+        // On desktop, keyboardHeight will be 0, which is fine
+        if (Math.abs(keyboardHeight - lastKeyboardHeight) < 10 && keyboardHeight > 0 && !isInputFocused) {
           return;
         }
         lastKeyboardHeight = keyboardHeight;
@@ -199,61 +241,105 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
       }, 50); // Small debounce delay
     };
 
-    visualViewport.addEventListener('resize', updateLayout);
-    visualViewport.addEventListener('scroll', updateLayout);
+    // Use visualViewport if available (mobile/Despia)
+    if (visualViewport) {
+      visualViewport.addEventListener('resize', updateLayout);
+      visualViewport.addEventListener('scroll', updateLayout);
+    }
     
-    // Also listen to input focus for immediate response
+    // Also listen to window resize as fallback (works everywhere)
+    window.addEventListener('resize', updateLayout);
+    
+    // Listen to input focus/blur for immediate response
     const handleFocus = () => {
-      setTimeout(updateLayout, 100);
+      isInputFocused = true;
+      // Multiple attempts to catch keyboard appearance
+      setTimeout(updateLayout, 50);
+      setTimeout(updateLayout, 150);
       setTimeout(updateLayout, 300);
+      setTimeout(updateLayout, 500);
     };
     
-    // Set up focus listener after a delay to ensure input is rendered
+    const handleBlur = () => {
+      isInputFocused = false;
+      setTimeout(updateLayout, 100);
+    };
+    
+    // Set up focus/blur listeners
     const focusTimeout = setTimeout(() => {
       if (inputRef.current) {
         inputRef.current.addEventListener('focus', handleFocus);
+        inputRef.current.addEventListener('blur', handleBlur);
       }
     }, 100);
     
+    // Initial layout update
     updateLayout();
 
     return () => {
       if (resizeTimeout) clearTimeout(resizeTimeout);
       clearTimeout(focusTimeout);
-      visualViewport.removeEventListener('resize', updateLayout);
-      visualViewport.removeEventListener('scroll', updateLayout);
+      if (visualViewport) {
+        visualViewport.removeEventListener('resize', updateLayout);
+        visualViewport.removeEventListener('scroll', updateLayout);
+      }
+      window.removeEventListener('resize', updateLayout);
       if (inputRef.current) {
         inputRef.current.removeEventListener('focus', handleFocus);
+        inputRef.current.removeEventListener('blur', handleBlur);
       }
     };
   }, [applyKeyboardLayout]);
 
   // Scroll on input focus and trigger layout update
   const handleInputFocus = () => {
-    // Trigger layout update to detect keyboard
-    const visualViewport = (window as any).visualViewport;
-    if (visualViewport) {
-      setTimeout(() => {
+    // Try to remove readonly attribute if it exists (workaround for iOS accessory view)
+    if (inputRef.current) {
+      inputRef.current.removeAttribute('readonly');
+    }
+    
+    // Trigger layout update to detect keyboard (works on both desktop and mobile)
+    const detectAndApply = () => {
+      const visualViewport = (window as any).visualViewport;
+      let keyboardHeight = 0;
+      
+      if (visualViewport) {
         const windowHeight = window.innerHeight;
         const viewportHeight = visualViewport.height;
         const viewportBottom = visualViewport.offsetTop + viewportHeight;
-        const keyboardHeight = windowHeight - viewportBottom;
-        
-        applyKeyboardLayout(keyboardHeight, [0, 200, 400, 600, 800]);
-      }, 100);
-    }
+        keyboardHeight = Math.max(0, windowHeight - viewportBottom);
+      }
+      
+      applyKeyboardLayout(keyboardHeight, [0, 100, 200, 400, 600, 800]);
+    };
+    
+    // Multiple attempts to catch keyboard appearance (especially on mobile)
+    setTimeout(detectAndApply, 50);
+    setTimeout(detectAndApply, 150);
+    setTimeout(detectAndApply, 300);
+    setTimeout(detectAndApply, 500);
     
     // Multiple scroll attempts for reliability
-    scrollToBottomWithRetries([200, 400, 600]);
+    scrollToBottomWithRetries([100, 200, 400, 600]);
   };
 
+  // Additional resize handler as backup (handles window resizing on desktop)
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const baseHeight = window.innerHeight;
     const handleResize = () => {
-      const diff = baseHeight - window.innerHeight;
-      applyKeyboardLayout(diff > 0 ? diff : 0);
+      const visualViewport = (window as any).visualViewport;
+      let keyboardHeight = 0;
+      
+      if (visualViewport) {
+        const windowHeight = window.innerHeight;
+        const viewportHeight = visualViewport.height;
+        const viewportBottom = visualViewport.offsetTop + viewportHeight;
+        keyboardHeight = Math.max(0, windowHeight - viewportBottom);
+      }
+      
+      applyKeyboardLayout(keyboardHeight);
     };
+    
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [applyKeyboardLayout]);
@@ -271,16 +357,15 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
   };
 
   return (
-    <div className="flex flex-col chat-container" style={{ height: '100%' }}>
+    <div className="flex flex-col chat-container" style={{ height: '100%', position: 'relative' }}>
       {/* Messages list */}
       <div 
         ref={listRef} 
-        className="flex-1 overflow-y-auto px-3 pt-3 pb-4 min-h-0 messages-container" 
+        className="flex-1 overflow-y-auto px-3 pt-3 min-h-0 messages-container" 
         onClick={handleMessagesClick}
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
-          marginBottom: inputBottom > 0 ? '0' : 'auto',
           cursor: 'pointer',
         }}
       >
@@ -338,18 +423,21 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         <div ref={bottomRef} style={{ height: '1px', width: '100%' }} />
       </div>
 
-      {/* Input area - fixed above keyboard when visible */}
+      {/* Input area - fixed above keyboard when visible, relative when keyboard hidden */}
       <div 
         ref={inputAreaRef}
         className="flex-shrink-0 bg-white border-t border-slate-200 px-4 py-3" 
         style={{
           paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px))`,
           position: inputBottom > 0 ? 'fixed' : 'relative',
-          bottom: inputBottom > 0 ? `${inputBottom}px` : 'auto',
+          bottom: inputBottom > 0 ? `${inputBottom}px` : '0',
           left: inputBottom > 0 ? '0' : 'auto',
           right: inputBottom > 0 ? '0' : 'auto',
-          width: inputBottom > 0 ? '100%' : 'auto',
-          zIndex: inputBottom > 0 ? 1000 : 'auto',
+          width: '100%',
+          zIndex: inputBottom > 0 ? 100 : 'auto',
+          boxShadow: inputBottom > 0 ? '0 -2px 8px rgba(0, 0, 0, 0.1)' : 'none',
+          // Ensure input is always accessible and clickable
+          pointerEvents: 'auto',
         }}
       >
         {isMember ? (
@@ -370,6 +458,17 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                   inputRef.current.style.height = 'auto';
                   inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
                 }
+                // Update layout when textarea height changes
+                requestAnimationFrame(() => {
+                  const visualViewport = (window as any).visualViewport;
+                  if (visualViewport) {
+                    const windowHeight = window.innerHeight;
+                    const viewportHeight = visualViewport.height;
+                    const viewportBottom = visualViewport.offsetTop + viewportHeight;
+                    const keyboardHeight = windowHeight - viewportBottom;
+                    applyKeyboardLayout(keyboardHeight, [0, 100]);
+                  }
+                });
               }}
               onFocus={handleInputFocus}
               onKeyDown={(e) => {
@@ -384,6 +483,25 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
               placeholder="Start typing..."
               maxLength={2000}
               rows={1}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              inputMode="text"
+              data-1p-ignore="true"
+              enterKeyHint="send"
+              readOnly={false}
+              // iOS workaround: remove readonly on interaction to avoid accessory view
+              onMouseDown={(e) => {
+                if (inputRef.current) {
+                  inputRef.current.removeAttribute('readonly');
+                }
+              }}
+              onTouchStart={(e) => {
+                if (inputRef.current) {
+                  inputRef.current.removeAttribute('readonly');
+                }
+              }}
               className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-transparent resize-none overflow-hidden"
               style={{
                 minHeight: '42px',
@@ -601,10 +719,15 @@ export default function LeaguePage() {
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
   const [showTableModal, setShowTableModal] = useState(false);
   const [showScoringModal, setShowScoringModal] = useState(false);
-  const [showAvatarUpload, setShowAvatarUpload] = useState(false);
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null);
-  const [avatarUploadSuccess, setAvatarUploadSuccess] = useState(false);
+  const [showBadgeUpload, setShowBadgeUpload] = useState(false);
+  const [uploadingBadge, setUploadingBadge] = useState(false);
+  const [badgeUploadError, setBadgeUploadError] = useState<string | null>(null);
+  const [badgeUploadSuccess, setBadgeUploadSuccess] = useState(false);
+  const [cropImage, setCropImage] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const [showInvite, setShowInvite] = useState(false);
   const [showJoinConfirm, setShowJoinConfirm] = useState(false);
@@ -812,98 +935,175 @@ ${shareUrl}`;
     }
   }, [league?.id, user?.id]);
 
-  const handleAvatarUpload = useCallback(
-    async (file: File) => {
-      if (!league?.id || !isAdmin) {
-        setAvatarUploadError("Only league admins can upload avatars.");
-        return;
-      }
+  const createImage = (url: string): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.addEventListener('load', () => resolve(image));
+      image.addEventListener('error', (error) => reject(error));
+      image.src = url;
+    });
+  };
 
-      const allowedTypes = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
-      if (!allowedTypes.has(file.type)) {
-        setAvatarUploadError("Please upload a PNG, JPG, or WebP image.");
-        return;
-      }
+  const getCroppedImg = async (imageSrc: string, pixelCrop: Area): Promise<Blob> => {
+    const image = await createImage(imageSrc);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
 
-      if (file.size > 2 * 1024 * 1024) {
-        setAvatarUploadError("Please choose an image smaller than 2MB.");
-        return;
-      }
+    if (!ctx) throw new Error('No 2d context');
 
-      setAvatarUploadError(null);
-      setAvatarUploadSuccess(false);
-      setUploadingAvatar(true);
+    canvas.width = pixelCrop.width;
+    canvas.height = pixelCrop.height;
+
+    ctx.drawImage(
+      image,
+      pixelCrop.x,
+      pixelCrop.y,
+      pixelCrop.width,
+      pixelCrop.height,
+      0,
+      0,
+      pixelCrop.width,
+      pixelCrop.height
+    );
+
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error('Canvas is empty'));
+          return;
+        }
+        resolve(blob);
+      }, 'image/jpeg', 0.9);
+    });
+  };
+
+  const handleFileSelect = useCallback((file: File) => {
+    if (!league?.id || !isAdmin) {
+      setBadgeUploadError("Only league admins can upload badges.");
+      return;
+    }
+
+    const allowedTypes = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
+    if (!allowedTypes.has(file.type)) {
+      setBadgeUploadError("Please upload a PNG, JPG, or WebP image.");
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setBadgeUploadError("Please choose an image smaller than 2MB.");
+      return;
+    }
+
+    setBadgeUploadError(null);
+    setBadgeUploadSuccess(false);
+    
+    // Create preview URL for cropping
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  }, [isAdmin, league?.id]);
+
+  const onCropComplete = useCallback(async (_croppedArea: Area, croppedAreaPixels: Area) => {
+    setCroppedAreaPixels(croppedAreaPixels);
+    
+    // Create preview image
+    if (cropImage) {
       try {
-        const compressed = await imageCompression(file, {
-          maxSizeMB: 0.02,
-          maxWidthOrHeight: 256,
-          useWebWorker: true,
-          initialQuality: 0.8,
-        });
-
-        if (compressed.size > 20 * 1024) {
-          throw new Error("Compressed image is still larger than 20KB. Try a smaller image.");
-        }
-
-        const mimeToExtension: Record<string, string> = {
-          "image/png": "png",
-          "image/jpeg": "jpg",
-          "image/jpg": "jpg",
-          "image/webp": "webp",
-        };
-        const extension = mimeToExtension[compressed.type] ?? "jpg";
-        const fileName = `${league.id}-${Date.now()}.${extension}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("league-avatars")
-          .upload(fileName, compressed, {
-            cacheControl: "3600",
-            upsert: true,
-            contentType: compressed.type,
-          });
-        if (uploadError) throw uploadError;
-
-        const { data: publicUrlData } = supabase.storage
-          .from("league-avatars")
-          .getPublicUrl(fileName);
-        const publicUrl = publicUrlData?.publicUrl;
-        if (!publicUrl) {
-          throw new Error("Unable to get public URL for avatar.");
-        }
-
-        const { error: updateError } = await supabase
-          .from("leagues")
-          .update({ avatar: publicUrl })
-          .eq("id", league.id);
-        if (updateError) throw updateError;
-
-        setLeague((prev) => (prev ? { ...prev, avatar: publicUrl } : prev));
-        setAvatarUploadSuccess(true);
-      } catch (error: any) {
-        console.error("[League] Error uploading avatar:", error);
-        setAvatarUploadError(error?.message ?? "Failed to upload avatar. Please try again.");
-      } finally {
-        setUploadingAvatar(false);
+        const croppedBlob = await getCroppedImg(cropImage, croppedAreaPixels);
+        const preview = URL.createObjectURL(croppedBlob);
+        setPreviewUrl(preview);
+      } catch (error) {
+        console.error('[League] Error creating preview:', error);
       }
-    },
-    [isAdmin, league?.id]
-  );
+    }
+  }, [cropImage]);
 
-  const handleRemoveAvatar = useCallback(async () => {
+  const handleCropAndUpload = useCallback(async () => {
+    if (!cropImage || !croppedAreaPixels || !league?.id || !isAdmin) {
+      return;
+    }
+
+    setBadgeUploadError(null);
+    setBadgeUploadSuccess(false);
+    setUploadingBadge(true);
+
+    try {
+      // Get cropped image as blob
+      const croppedBlob = await getCroppedImg(cropImage, croppedAreaPixels);
+      
+      // Convert blob to file
+      const croppedFile = new File([croppedBlob], 'badge.jpg', { type: 'image/jpeg' });
+
+      // Compress the cropped image
+      const compressed = await imageCompression(croppedFile, {
+        maxSizeMB: 0.02,
+        maxWidthOrHeight: 256,
+        useWebWorker: true,
+        initialQuality: 0.8,
+      });
+
+      if (compressed.size > 20 * 1024) {
+        throw new Error("Compressed image is still larger than 20KB. Try a smaller image.");
+      }
+
+      const fileName = `${league.id}-${Date.now()}.jpg`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("league-avatars")
+        .upload(fileName, compressed, {
+          cacheControl: "3600",
+          upsert: true,
+          contentType: compressed.type,
+        });
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from("league-avatars")
+        .getPublicUrl(fileName);
+      const publicUrl = publicUrlData?.publicUrl;
+      if (!publicUrl) {
+        throw new Error("Unable to get public URL for badge.");
+      }
+
+      const { error: updateError } = await supabase
+        .from("leagues")
+        .update({ avatar: publicUrl })
+        .eq("id", league.id);
+      if (updateError) throw updateError;
+
+      setLeague((prev) => (prev ? { ...prev, avatar: publicUrl } : prev));
+      setBadgeUploadSuccess(true);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+      setCropImage(null);
+      setPreviewUrl(null);
+      setShowBadgeUpload(false);
+    } catch (error: any) {
+      console.error("[League] Error uploading badge:", error);
+      setBadgeUploadError(error?.message ?? "Failed to upload badge. Please try again.");
+    } finally {
+      setUploadingBadge(false);
+    }
+  }, [cropImage, croppedAreaPixels, isAdmin, league?.id]);
+
+  const handleRemoveBadge = useCallback(async () => {
     if (!league?.id || !isAdmin) return;
-    setAvatarUploadError(null);
-    setAvatarUploadSuccess(false);
-    setUploadingAvatar(true);
+    setBadgeUploadError(null);
+    setBadgeUploadSuccess(false);
+    setUploadingBadge(true);
     try {
       const { error } = await supabase.from("leagues").update({ avatar: null }).eq("id", league.id);
       if (error) throw error;
       setLeague((prev) => (prev ? { ...prev, avatar: null } : prev));
-      setAvatarUploadSuccess(true);
+      setBadgeUploadSuccess(true);
     } catch (error: any) {
-      console.error("[League] Error removing avatar:", error);
-      setAvatarUploadError(error?.message ?? "Failed to remove avatar. Please try again.");
+      console.error("[League] Error removing badge:", error);
+      setBadgeUploadError(error?.message ?? "Failed to remove badge. Please try again.");
     } finally {
-      setUploadingAvatar(false);
+      setUploadingBadge(false);
     }
   }, [isAdmin, league?.id]);
 
@@ -1134,7 +1334,7 @@ ${shareUrl}`;
 
       const { data: lg } = await supabase
         .from("leagues")
-        .select("id,name,code,created_at")
+        .select("id,name,code,created_at,avatar")
         .eq("code", code)
         .maybeSingle();
 
@@ -2934,9 +3134,16 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           padding-bottom: 2rem;
           padding-left: 1rem;
           padding-right: 1rem;
+          transition: top 0.3s ease-in-out;
         }
         .league-content-wrapper.has-banner {
           top: calc(3.5rem + 3rem + 3.5rem + env(safe-area-inset-top, 0px) + 0.5rem);
+        }
+        .league-content-wrapper.menu-open {
+          top: calc(3.5rem + 3rem + 12rem + env(safe-area-inset-top, 0px) + 0.5rem);
+        }
+        .league-content-wrapper.menu-open.has-banner {
+          top: calc(3.5rem + 3rem + 3.5rem + 12rem + env(safe-area-inset-top, 0px) + 0.5rem);
         }
         @media (max-width: 768px) {
           .league-content-wrapper {
@@ -2947,6 +3154,12 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           }
           .league-content-wrapper.has-banner {
             top: calc(3.5rem + 3rem + 3.5rem + env(safe-area-inset-top, 0px) + 0.5rem);
+          }
+          .league-content-wrapper.menu-open {
+            top: calc(3.5rem + 3rem + 12rem + env(safe-area-inset-top, 0px) + 0.5rem);
+          }
+          .league-content-wrapper.menu-open.has-banner {
+            top: calc(3.5rem + 3rem + 3.5rem + 12rem + env(safe-area-inset-top, 0px) + 0.5rem);
           }
         }
         /* Chat tab - full height layout */
@@ -2985,7 +3198,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
       <div ref={headerRef} className="league-header-fixed bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4">
           {/* Compact header bar */}
-          <div className="flex items-center justify-between h-14">
+          <div className="flex items-center justify-between h-16">
             {/* Back button */}
             <Link 
               to="/leagues" 
@@ -2996,10 +3209,35 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
               </svg>
             </Link>
 
-            {/* Title */}
-            <h1 className="text-lg font-normal text-slate-900 truncate flex-1 text-left px-2">
-              {league.name}
-            </h1>
+            {/* Title with badge */}
+            <div className="flex items-center gap-3 flex-1 min-w-0 px-2">
+              <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 border border-slate-200 flex-shrink-0 relative">
+                {league ? (
+                  <img
+                    src={getLeagueAvatarUrl(league)}
+                    alt="League badge"
+                    className="absolute inset-0 w-full h-full object-cover"
+                    loading="eager"
+                    decoding="async"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      console.error('[League] Badge image failed to load:', target.src, 'League:', league);
+                      // Fallback to default ML avatar
+                      const defaultAvatar = getDefaultMlAvatar(league.id);
+                      const fallbackSrc = `/assets/league-avatars/${defaultAvatar}`;
+                      if (target.src !== fallbackSrc) {
+                        target.src = fallbackSrc;
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full bg-slate-200" />
+                )}
+              </div>
+              <h1 className="text-lg font-normal text-slate-900 truncate">
+                {league.name}
+              </h1>
+            </div>
             
             {/* Menu button */}
             <div className="relative" style={{ zIndex: 100 }}>
@@ -3015,8 +3253,94 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
             </div>
           </div>
 
+          {/* Slide-down menu panel */}
+          <div 
+            className={`bg-white border-b border-slate-200 transition-all duration-300 ease-in-out overflow-hidden ${
+              showHeaderMenu ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+            }`}
+          >
+            <div className="px-4 py-3">
+              {isAdmin && (
+                <>
+                  <div className="mb-3 pb-3 border-b border-slate-200 px-0">
+                    <div className="text-xs text-slate-500 mb-1">Admin</div>
+                    <div className="text-sm font-semibold text-slate-800">{adminName}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => {
+                        setShowAdminMenu(true);
+                        setShowHeaderMenu(false);
+                      }}
+                      className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-colors flex items-center gap-2 touch-manipulation"
+                    >
+                      <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span>Manage</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowBadgeUpload(true);
+                        setShowHeaderMenu(false);
+                      }}
+                      className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-colors flex items-center gap-2 touch-manipulation"
+                    >
+                      <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span>Upload League Badge</span>
+                    </button>
+                  </div>
+                  <div className="my-3 border-b border-slate-200"></div>
+                </>
+              )}
+              <div className="space-y-1">
+                <button
+                  onClick={() => {
+                    setShowInvite(true);
+                    setShowHeaderMenu(false);
+                  }}
+                  className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-colors flex items-center gap-2 touch-manipulation"
+                >
+                  <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span>Invite players</span>
+                </button>
+                <button
+                  onClick={() => {
+                    shareLeague();
+                    setShowHeaderMenu(false);
+                  }}
+                  className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-colors flex items-center gap-2 touch-manipulation"
+                >
+                  <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                  <span>Share league code</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowLeaveConfirm(true);
+                    setShowHeaderMenu(false);
+                  }}
+                  className="w-full text-left px-0 py-2.5 text-base font-bold text-red-600 hover:bg-red-50 active:bg-red-100 rounded-lg transition-colors flex items-center gap-2 touch-manipulation"
+                >
+                  <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  <span>Leave</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Tabs */}
-          <div className="flex border-b border-slate-200 bg-white gap-2">
+          <div className={`flex border-b border-slate-200 bg-white gap-2 transition-all duration-300 ease-in-out ${
+            showHeaderMenu ? 'max-h-0 opacity-0 overflow-hidden' : 'max-h-20 opacity-100'
+          }`}>
             <button
               onClick={() => {
                 manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
@@ -3125,84 +3449,8 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
               )}
             </button>
           </div>
-        </div>
       </div>
-
-      {/* Menu Portal - render at body level to ensure it's always on top */}
-      {showHeaderMenu && typeof document !== 'undefined' && document.body && createPortal(
-        <>
-          {/* Backdrop - transparent overlay to close menu on outside click */}
-          <div 
-            className="fixed inset-0" 
-            onClick={() => setShowHeaderMenu(false)}
-            style={{ backgroundColor: 'transparent', zIndex: 99998 }}
-          />
-          {/* Menu - positioned fixed to appear above everything */}
-          <div 
-            className="fixed w-56 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden" 
-            style={{ 
-              zIndex: 99999, 
-              top: 'calc(3.5rem + 0.5rem + env(safe-area-inset-top, 0px))',
-              right: '1rem',
-            }}
-          >
-            {isAdmin && (
-              <>
-                <div className="px-4 py-3 border-b border-slate-100">
-                  <div className="text-xs text-slate-600 mb-1">Admin:</div>
-                  <div className="text-sm font-semibold text-slate-800">{adminName}</div>
-        </div>
-                <button
-                  onClick={() => {
-                    setShowAdminMenu(true);
-                    setShowHeaderMenu(false);
-                  }}
-                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100"
-                >
-                  ⚙️ Manage
-                </button>
-                <button
-                  onClick={() => {
-                    setShowAvatarUpload(true);
-                    setShowHeaderMenu(false);
-                  }}
-                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100"
-                >
-                  🖼️ Upload avatar
-                </button>
-              </>
-            )}
-                      <button
-              onClick={() => {
-                setShowInvite(true);
-                setShowHeaderMenu(false);
-              }}
-              className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100"
-            >
-              ➕ Invite players
-                      </button>
-            <button
-              onClick={() => {
-                shareLeague();
-                setShowHeaderMenu(false);
-              }}
-              className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100"
-            >
-              Share league code
-            </button>
-                <button
-              onClick={() => {
-                setShowLeaveConfirm(true);
-                setShowHeaderMenu(false);
-              }}
-              className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors"
-            >
-              Leave
-                </button>
-              </div>
-        </>,
-        document.body
-      )}
+      </div>
 
       {tab === "chat" ? (
         <div className="chat-tab-wrapper">
@@ -3229,7 +3477,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           />
         </div>
       ) : (
-        <div className="league-content-wrapper">
+        <div className={`league-content-wrapper ${showHeaderMenu ? 'menu-open' : ''}`}>
           <div className="px-1 sm:px-2">
             {tab === "mlt" && <MltTab />}
             {tab === "gw" && <GwPicksTab />}
@@ -3302,18 +3550,32 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
         </div>
       )}
 
-      {/* Avatar Upload Modal */}
-      {isAdmin && showAvatarUpload && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowAvatarUpload(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 relative" onClick={(e) => e.stopPropagation()}>
+      {/* League Badge Upload Modal */}
+      {isAdmin && showBadgeUpload && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => {
+          setShowBadgeUpload(false);
+          if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+          }
+          setCropImage(null);
+          setBadgeUploadError(null);
+          setBadgeUploadSuccess(false);
+          setPreviewUrl(null);
+        }}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 relative" onClick={(e) => e.stopPropagation()}>
             {/* Close button */}
             <button
               onClick={() => {
-                setShowAvatarUpload(false);
-                setAvatarUploadError(null);
-                setAvatarUploadSuccess(false);
+                setShowBadgeUpload(false);
+                if (previewUrl) {
+                  URL.revokeObjectURL(previewUrl);
+                }
+                setCropImage(null);
+                setBadgeUploadError(null);
+                setBadgeUploadSuccess(false);
+                setPreviewUrl(null);
               }}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 hover:text-gray-800 transition-colors"
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 hover:text-gray-800 transition-colors z-10"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -3321,81 +3583,205 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
             </button>
 
             {/* Modal content */}
-            <div className="p-6 pt-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Upload League Avatar</h2>
+            <div className="p-4 pt-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-1">League Badge</h2>
+              <p className="text-xs text-gray-600 mb-4">Upload and customize your mini-league badge</p>
               
-              {/* Current avatar preview */}
-              <div className="mb-6">
-                <div className="text-sm text-slate-600 mb-2 font-medium">Current Avatar:</div>
-                <div className="flex items-center gap-4">
-                  <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center">
-                    <img
-                      src={league ? getLeagueAvatarUrl(league) : '/assets/league-avatars/ML-avatar-1.png'}
-                      alt="League avatar"
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.src = '/assets/league-avatars/ML-avatar-1.png';
-                      }}
-                    />
+              {!cropImage ? (
+                <>
+                  {/* Current badge preview */}
+                  <div className="mb-4">
+                    <div className="text-xs text-slate-600 mb-2 font-medium">Current Badge:</div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center border-2 border-slate-200">
+                        <img
+                          src={league ? getLeagueAvatarUrl(league) : '/assets/league-avatars/ML-avatar-1.png'}
+                          alt="League badge"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = '/assets/league-avatars/ML-avatar-1.png';
+                          }}
+                        />
+                      </div>
+                      {league?.avatar && (
+                        <button
+                          onClick={handleRemoveBadge}
+                          disabled={uploadingBadge}
+                          className="px-4 py-2 text-xs bg-red-100 text-red-700 active:bg-red-200 rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation min-h-[36px]"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  {league?.avatar && (
-                    <button
-                      onClick={handleRemoveAvatar}
-                      disabled={uploadingAvatar}
-                      className="px-3 py-1.5 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded-md transition-colors font-medium disabled:opacity-50"
-                    >
-                      Remove Avatar
-                    </button>
-                  )}
-                </div>
-              </div>
 
-              {/* Upload section */}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Upload New Avatar
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/jpg,image/webp"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        handleAvatarUpload(file);
-                      }
-                    }}
-                    disabled={uploadingAvatar}
-                    className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#1C8376] file:text-white hover:file:bg-emerald-700 file:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  />
-                  <p className="mt-2 text-xs text-slate-500">
-                    Images will be automatically compressed to ~60KB and resized to 256x256px. Max file size: 2MB before compression.
-                  </p>
-                </div>
+                  {/* Upload section */}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-2">
+                        Choose Image
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,image/webp"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            handleFileSelect(file);
+                          }
+                        }}
+                        disabled={uploadingBadge}
+                        className="hidden"
+                        id="badge-upload-input"
+                      />
+                      <label
+                        htmlFor="badge-upload-input"
+                        className="block w-full border-2 border-dashed border-slate-300 rounded-lg p-6 text-center active:bg-slate-50 active:border-[#1C8376] transition-colors touch-manipulation"
+                      >
+                        <div className="flex flex-col items-center gap-2">
+                          <svg className="w-10 h-10 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <div className="text-sm">
+                            <span className="text-[#1C8376] font-semibold">Tap to choose image</span>
+                          </div>
+                          <p className="text-xs text-slate-500">
+                            PNG, JPG, or WebP (max 2MB)
+                          </p>
+                        </div>
+                      </label>
+                    </div>
 
-                {/* Upload progress */}
-                {uploadingAvatar && (
-                  <div className="flex items-center gap-2 text-sm text-slate-600">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#1C8376]"></div>
-                    <span>Processing and uploading...</span>
+                    {/* Upload progress */}
+                    {uploadingBadge && (
+                      <div className="flex items-center gap-2 text-xs text-slate-600">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-[#1C8376]"></div>
+                        <span>Processing and uploading...</span>
+                      </div>
+                    )}
+
+                    {/* Success message */}
+                    {badgeUploadSuccess && (
+                      <div className="p-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800">
+                        ✓ Badge uploaded successfully!
+                      </div>
+                    )}
+
+                    {/* Error message */}
+                    {badgeUploadError && (
+                      <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800">
+                        {badgeUploadError}
+                      </div>
+                    )}
                   </div>
-                )}
+                </>
+              ) : (
+                <>
+                  {/* Crop view */}
+                  <div className="space-y-3">
+                    <div className="text-xs text-slate-600">
+                      <p className="font-medium">Position your image</p>
+                      <p className="text-xs text-slate-500">Drag to position, use slider to zoom</p>
+                    </div>
+                    
+                    <div className="relative w-full" style={{ height: '280px' }}>
+                      <Cropper
+                        image={cropImage}
+                        crop={crop}
+                        zoom={zoom}
+                        aspect={1}
+                        cropShape="round"
+                        showGrid={false}
+                        onCropChange={setCrop}
+                        onZoomChange={setZoom}
+                        onCropComplete={onCropComplete}
+                        style={{
+                          containerStyle: {
+                            width: '100%',
+                            height: '100%',
+                            position: 'relative',
+                          },
+                        }}
+                      />
+                    </div>
 
-                {/* Success message */}
-                {avatarUploadSuccess && (
-                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
-                    ✓ Avatar uploaded successfully!
-                  </div>
-                )}
+                    {/* Zoom control and Preview in one row */}
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1 space-y-1">
+                        <label className="block text-xs font-medium text-slate-700">
+                          Zoom: {Math.round(zoom * 100)}%
+                        </label>
+                      <input
+                        type="range"
+                        min={1}
+                        max={3}
+                        step={0.1}
+                        value={zoom}
+                        onChange={(e) => setZoom(Number(e.target.value))}
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#1C8376] touch-manipulation"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}
+                      />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs font-medium text-slate-700">Preview:</div>
+                        <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 border-2 border-slate-300 flex items-center justify-center flex-shrink-0">
+                          {previewUrl ? (
+                            <img
+                              src={previewUrl}
+                              alt="Preview"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-slate-200" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
 
-                {/* Error message */}
-                {avatarUploadError && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
-                    {avatarUploadError}
+                    {/* Error message */}
+                    {badgeUploadError && (
+                      <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800">
+                        {badgeUploadError}
+                      </div>
+                    )}
+
+                    {/* Action buttons */}
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        onClick={() => {
+                          if (previewUrl) {
+                            URL.revokeObjectURL(previewUrl);
+                          }
+                          setCropImage(null);
+                          setCrop({ x: 0, y: 0 });
+                          setZoom(1);
+                          setCroppedAreaPixels(null);
+                          setPreviewUrl(null);
+                        }}
+                        disabled={uploadingBadge}
+                        className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-lg active:bg-slate-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation min-h-[44px]"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleCropAndUpload}
+                        disabled={uploadingBadge || !croppedAreaPixels}
+                        className="flex-1 px-4 py-3 bg-[#1C8376] text-white rounded-lg active:bg-emerald-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation min-h-[44px]"
+                      >
+                        {uploadingBadge ? (
+                          <span className="flex items-center justify-center gap-2">
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                            Uploading...
+                          </span>
+                        ) : (
+                          'Upload Badge'
+                        )}
+                      </button>
+                    </div>
                   </div>
-                )}
-              </div>
+                </>
+              )}
             </div>
           </div>
         </div>

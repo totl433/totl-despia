@@ -95,6 +95,36 @@ input, textarea, select {
     font-size: 16px !important;
   }
 }
+
+/* Hide iOS input accessory view (suggestion bar with arrows) */
+@supports (-webkit-touch-callout: none) {
+  /* iOS Safari specific - try to minimize input accessory view */
+  textarea {
+    -webkit-user-select: text;
+    -webkit-user-modify: read-write-plaintext-only;
+  }
+}
+
+/* Additional attempt to minimize iOS input accessory view */
+textarea[inputmode="text"],
+textarea[autocomplete="off"] {
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Try to hide iOS input accessory view using CSS */
+textarea {
+  /* Prevent iOS from showing input accessory view */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* More aggressive attempt - hide any overlay elements */
+.chat-container textarea,
+.chat-tab-wrapper textarea {
+  /* Force no input accessory view */
+  -webkit-user-modify: read-write-plaintext-only;
+}
 body {
   @apply text-slate-800 antialiased font-sans;
   background-color: #f5f7f6;
