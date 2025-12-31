@@ -88,13 +88,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       // Always calculate input area height dynamically
       const inputAreaHeight = inputAreaRef.current?.offsetHeight || 72;
       
-      // Detect iOS - the input accessory view adds extra space
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-                   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      
-      // iOS input accessory view is typically 44px, but it's already included in keyboardHeight
-      // We just need to ensure proper spacing
-      
       if (keyboardHeight > 0) {
         // Calculate the total height needed for input area (including safe area)
         const totalBottomSpace = keyboardHeight + inputAreaHeight;
@@ -455,15 +448,14 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
             spellCheck={false}
             inputMode="text"
             data-1p-ignore="true"
-            enterKeyHint="send"
             readOnly={false}
             // iOS workaround: set readonly initially, removed on focus
-            onMouseDown={(e) => {
+            onMouseDown={() => {
               if (inputRef.current) {
                 inputRef.current.removeAttribute('readonly');
               }
             }}
-            onTouchStart={(e) => {
+            onTouchStart={() => {
               if (inputRef.current) {
                 inputRef.current.removeAttribute('readonly');
               }

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -136,13 +135,6 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
       // Always calculate input area height dynamically
       const inputAreaHeight = inputAreaRef.current?.offsetHeight || 72;
       
-      // Detect iOS - the input accessory view adds extra space
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-                   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      
-      // iOS input accessory view is typically 44px, but it's already included in keyboardHeight
-      // We just need to ensure proper spacing
-      
       if (keyboardHeight > 0) {
         // Calculate the total height needed for input area (including safe area)
         const totalBottomSpace = keyboardHeight + inputAreaHeight;
@@ -203,14 +195,6 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         const viewportHeight = visualViewport.height;
         const viewportBottom = visualViewport.offsetTop + viewportHeight;
         let keyboardHeight = Math.max(0, windowHeight - viewportBottom);
-        
-        // On iOS, the input accessory view (suggestion bar) adds extra height
-        // Try to detect iOS and account for it if needed
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-                     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        
-        // If keyboard is visible and we're on iOS, the accessory view is already included
-        // in the viewport calculation, but we might need to adjust
         return keyboardHeight;
       } else {
         // Fallback: detect via window resize (works on desktop too)
@@ -489,15 +473,14 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
               spellCheck={false}
               inputMode="text"
               data-1p-ignore="true"
-              enterKeyHint="send"
               readOnly={false}
               // iOS workaround: remove readonly on interaction to avoid accessory view
-              onMouseDown={(e) => {
+              onMouseDown={() => {
                 if (inputRef.current) {
                   inputRef.current.removeAttribute('readonly');
                 }
               }}
-              onTouchStart={(e) => {
+              onTouchStart={() => {
                 if (inputRef.current) {
                   inputRef.current.removeAttribute('readonly');
                 }
