@@ -8,6 +8,7 @@ import { getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
 import { useLiveScores } from "../hooks/useLiveScores";
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
+import { invalidateLeagueCache } from "../api/leagues";
 import MiniLeagueChatBeta from "../components/MiniLeagueChatBeta";
 import MessageBubble from "../components/chat/MessageBubble";
 import InfoSheet from "../components/InfoSheet";
@@ -1092,13 +1093,20 @@ ${shareUrl}`;
       setCropImage(null);
       setPreviewUrl(null);
       setShowBadgeUpload(false);
+      
+      // Invalidate league cache so home page shows updated badge immediately
+      if (user?.id) {
+        invalidateLeagueCache(user.id);
+        // Dispatch event to trigger refresh on home page if it's open
+        window.dispatchEvent(new CustomEvent('leagueBadgeUpdated', { detail: { leagueId: league.id, avatar: publicUrl } }));
+      }
     } catch (error: any) {
       console.error("[League] Error uploading badge:", error);
       setBadgeUploadError(error?.message ?? "Failed to upload badge. Please try again.");
     } finally {
       setUploadingBadge(false);
     }
-  }, [cropImage, croppedAreaPixels, isMember, league?.id]);
+  }, [cropImage, croppedAreaPixels, isMember, league?.id, user?.id]);
 
   const handleRemoveBadge = useCallback(async () => {
     if (!league?.id || !isMember) return;
@@ -1110,6 +1118,13 @@ ${shareUrl}`;
       if (error) throw error;
       setLeague((prev) => (prev ? { ...prev, avatar: null } : prev));
       setBadgeUploadSuccess(true);
+      
+      // Invalidate league cache so home page shows updated badge immediately
+      if (user?.id) {
+        invalidateLeagueCache(user.id);
+        // Dispatch event to trigger refresh on home page if it's open
+        window.dispatchEvent(new CustomEvent('leagueBadgeUpdated', { detail: { leagueId: league.id, avatar: null } }));
+      }
     } catch (error: any) {
       console.error("[League] Error removing badge:", error);
       setBadgeUploadError(error?.message ?? "Failed to remove badge. Please try again.");

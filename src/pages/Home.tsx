@@ -176,8 +176,21 @@ export default function HomePage() {
   // This hook reads from cache pre-warmed by initialDataLoader and handles refresh
   const { 
     leagues, 
-    unreadByLeague, 
+    unreadByLeague,
+    refresh: refreshLeagues,
   } = useLeagues({ pageName: 'home' });
+  
+  // Listen for badge updates and refresh leagues immediately
+  useEffect(() => {
+    const handleBadgeUpdate = () => {
+      refreshLeagues();
+    };
+    
+    window.addEventListener('leagueBadgeUpdated', handleBadgeUpdate);
+    return () => {
+      window.removeEventListener('leagueBadgeUpdated', handleBadgeUpdate);
+    };
+  }, [refreshLeagues]);
   
   // Check if user is in API Test league
   const isInApiTestLeague = useMemo(() => {
