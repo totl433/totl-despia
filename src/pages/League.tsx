@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
+import EmojiPicker from 'emoji-picker-react';
 import { resolveLeagueStartGw as getLeagueStartGw, shouldIncludeGwForLeague } from "../lib/leagueStart";
 import imageCompression from "browser-image-compression";
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
@@ -108,12 +109,20 @@ type ChatTabProps = {
   maxMembers?: number;
 };
 
+type ReactionData = {
+  emoji: string;
+  count: number;
+  hasUserReacted: boolean;
+};
+
 function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, leagueCode: _leagueCode, memberCount: _memberCount, maxMembers: _maxMembers, notificationStatus }: ChatTabProps & { notificationStatus?: { message: string; type: 'success' | 'warning' | 'error' | null } | null }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputAreaRef = useRef<HTMLDivElement | null>(null);
   const [inputBottom, setInputBottom] = useState<number>(0);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [reactions, setReactions] = useState<Record<string, ReactionData[]>>({});
 
   // Simple scroll to bottom
   const scrollToBottom = () => {
@@ -158,6 +167,164 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
     },
     [scrollToBottomWithRetries]
   );
+
+  // Load reactions for all messages
+  useEffect(() => {
+    if (chat.length === 0 || !userId) return;
+    
+    const messageIds = chat.map(m => m.id);
+    if (messageIds.length === 0) return;
+    
+    const loadReactions = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('league_message_reactions')
+          .select('message_id, emoji, user_id')
+          .in('message_id', messageIds);
+        
+        if (error) {
+          console.error('[ChatTab] Error loading reactions:', error);
+          return;
+        }
+      
+      // Group reactions by message_id and emoji
+      const reactionsByMessage: Record<string, Record<string, { count: number; hasUserReacted: boolean }>> = {};
+      
+      (data || []).forEach((reaction: any) => {
+        if (!reactionsByMessage[reaction.message_id]) {
+          reactionsByMessage[reaction.message_id] = {};
+        }
+        if (!reactionsByMessage[reaction.message_id][reaction.emoji]) {
+          reactionsByMessage[reaction.message_id][reaction.emoji] = { count: 0, hasUserReacted: false };
+        }
+        reactionsByMessage[reaction.message_id][reaction.emoji].count++;
+        if (reaction.user_id === userId) {
+          reactionsByMessage[reaction.message_id][reaction.emoji].hasUserReacted = true;
+        }
+      });
+      
+      // Convert to array format
+      const formattedReactions: Record<string, ReactionData[]> = {};
+      Object.keys(reactionsByMessage).forEach(messageId => {
+        formattedReactions[messageId] = Object.entries(reactionsByMessage[messageId]).map(([emoji, data]) => ({
+          emoji,
+          count: data.count,
+          hasUserReacted: data.hasUserReacted,
+        }));
+      });
+      
+      setReactions(formattedReactions);
+      } catch (err) {
+        console.error('[ChatTab] Error in loadReactions:', err);
+      }
+    };
+    
+    loadReactions();
+  }, [chat, userId]);
+
+  // Subscribe to reaction changes
+  useEffect(() => {
+    if (chat.length === 0 || !userId) return;
+    
+    const messageIds = chat.map(m => m.id);
+    if (messageIds.length === 0) return;
+    
+    // Subscribe to all reaction changes and reload when any change occurs
+    const channel = supabase
+      .channel('message-reactions')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'league_message_reactions',
+        },
+        () => {
+          // Reload reactions when they change
+          const loadReactions = async () => {
+            try {
+              const { data, error } = await supabase
+                .from('league_message_reactions')
+                .select('message_id, emoji, user_id')
+                .in('message_id', messageIds);
+              
+              if (error) return;
+              
+              const reactionsByMessage: Record<string, Record<string, { count: number; hasUserReacted: boolean }>> = {};
+              
+              (data || []).forEach((reaction: any) => {
+                if (!reactionsByMessage[reaction.message_id]) {
+                  reactionsByMessage[reaction.message_id] = {};
+                }
+                if (!reactionsByMessage[reaction.message_id][reaction.emoji]) {
+                  reactionsByMessage[reaction.message_id][reaction.emoji] = { count: 0, hasUserReacted: false };
+                }
+                reactionsByMessage[reaction.message_id][reaction.emoji].count++;
+                if (reaction.user_id === userId) {
+                  reactionsByMessage[reaction.message_id][reaction.emoji].hasUserReacted = true;
+                }
+              });
+              
+              const formattedReactions: Record<string, ReactionData[]> = {};
+              Object.keys(reactionsByMessage).forEach(messageId => {
+                formattedReactions[messageId] = Object.entries(reactionsByMessage[messageId]).map(([emoji, data]) => ({
+                  emoji,
+                  count: data.count,
+                  hasUserReacted: data.hasUserReacted,
+                }));
+              });
+              
+              setReactions(formattedReactions);
+            } catch (err) {
+              console.error('[ChatTab] Error reloading reactions:', err);
+            }
+          };
+          
+          loadReactions();
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [chat, userId]);
+
+  // Handle reaction click
+  const handleReactionClick = useCallback(async (messageId: string, emoji: string) => {
+    if (!userId) return;
+    
+    // Check if user already reacted with this emoji
+    const messageReactions = reactions[messageId] || [];
+    const existingReaction = messageReactions.find(r => r.emoji === emoji && r.hasUserReacted);
+    
+    if (existingReaction) {
+      // Remove reaction
+      const { error } = await supabase
+        .from('league_message_reactions')
+        .delete()
+        .eq('message_id', messageId)
+        .eq('user_id', userId)
+        .eq('emoji', emoji);
+      
+      if (error) {
+        console.error('[ChatTab] Error removing reaction:', error);
+      }
+    } else {
+      // Add reaction
+      const { error } = await supabase
+        .from('league_message_reactions')
+        .upsert({
+          message_id: messageId,
+          user_id: userId,
+          emoji,
+        });
+      
+      if (error) {
+        console.error('[ChatTab] Error adding reaction:', error);
+      }
+    }
+  }, [userId, reactions]);
 
   // Scroll when messages change
   useEffect(() => {
@@ -400,6 +567,10 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                   time={time}
                   isOwnMessage={mine}
                   shape={shape}
+                  messageId={m.id}
+                  reactions={reactions[m.id] || []}
+                  onReactionClick={handleReactionClick}
+                  userId={userId}
                 />
               </div>
             </div>
@@ -426,86 +597,96 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
         }}
       >
         {isMember ? (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              onSend();
-            }}
-            className="flex items-center gap-2"
-          >
-            <textarea
-              ref={inputRef}
-              value={newMsg}
-              onChange={(e) => {
-                setNewMsg(e.target.value);
-                // Auto-resize textarea
-                if (inputRef.current) {
-                  inputRef.current.style.height = 'auto';
-                  inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
-                }
-                // Update layout when textarea height changes
-                requestAnimationFrame(() => {
-                  const visualViewport = (window as any).visualViewport;
-                  if (visualViewport) {
-                    const windowHeight = window.innerHeight;
-                    const viewportHeight = visualViewport.height;
-                    const viewportBottom = visualViewport.offsetTop + viewportHeight;
-                    const keyboardHeight = windowHeight - viewportBottom;
-                    applyKeyboardLayout(keyboardHeight, [0, 100]);
-                  }
-                });
+          <>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                onSend();
+                setShowEmojiPicker(false);
               }}
-              onFocus={handleInputFocus}
-              onKeyDown={(e) => {
-                // Submit on Enter (but allow Shift+Enter for new line)
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  if (newMsg.trim()) {
-                    onSend();
-                  }
-                }
-              }}
-              placeholder="Start typing..."
-              maxLength={2000}
-              rows={1}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              inputMode="text"
-              data-1p-ignore="true"
-              readOnly={false}
-              // iOS workaround: remove readonly on interaction to avoid accessory view
-              onMouseDown={() => {
-                if (inputRef.current) {
-                  inputRef.current.removeAttribute('readonly');
-                }
-              }}
-              onTouchStart={() => {
-                if (inputRef.current) {
-                  inputRef.current.removeAttribute('readonly');
-                }
-              }}
-              className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-transparent resize-none overflow-hidden"
-              style={{
-                minHeight: '42px',
-                maxHeight: '120px',
-                lineHeight: '1.5',
-              }}
-            />
-            <button
-              type="submit"
-              className="flex-shrink-0 w-10 h-10 rounded-full bg-[#1C8376] text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={!newMsg.trim()}
-              style={{
-                backgroundColor: !newMsg.trim() ? '#94a3b8' : '#1C8376',
-              }}
+              className="flex items-center gap-2 relative"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-              </svg>
-            </button>
-          </form>
+              <textarea
+                ref={inputRef}
+                value={newMsg}
+                onChange={(e) => {
+                  setNewMsg(e.target.value);
+                  // Auto-resize textarea
+                  if (inputRef.current) {
+                    inputRef.current.style.height = 'auto';
+                    inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
+                  }
+                  // Update layout when textarea height changes
+                  requestAnimationFrame(() => {
+                    const visualViewport = (window as any).visualViewport;
+                    if (visualViewport) {
+                      const windowHeight = window.innerHeight;
+                      const viewportHeight = visualViewport.height;
+                      const viewportBottom = visualViewport.offsetTop + viewportHeight;
+                      const keyboardHeight = windowHeight - viewportBottom;
+                      applyKeyboardLayout(keyboardHeight, [0, 100]);
+                    }
+                  });
+                }}
+                onFocus={handleInputFocus}
+                onKeyDown={(e) => {
+                  // Submit on Enter (but allow Shift+Enter for new line)
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (newMsg.trim()) {
+                      onSend();
+                    }
+                  }
+                }}
+                placeholder="Start typing..."
+                maxLength={2000}
+                rows={1}
+                autoComplete="off"
+                autoCorrect="on"
+                autoCapitalize="sentences"
+                spellCheck={true}
+                inputMode="text"
+                data-1p-ignore="true"
+                className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-transparent resize-none overflow-hidden"
+                style={{
+                  minHeight: '42px',
+                  maxHeight: '120px',
+                  lineHeight: '1.5',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                className="flex-shrink-0 w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200 transition-colors"
+              >
+                <span className="text-xl">😊</span>
+              </button>
+              <button
+                type="submit"
+                className="flex-shrink-0 w-10 h-10 rounded-full bg-[#1C8376] text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!newMsg.trim()}
+                style={{
+                  backgroundColor: !newMsg.trim() ? '#94a3b8' : '#1C8376',
+                }}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                </svg>
+              </button>
+              {showEmojiPicker && (
+                <div className="absolute bottom-full right-0 mb-2 z-50">
+                  <EmojiPicker
+                    onEmojiClick={(emojiData: any) => {
+                      setNewMsg(prev => prev + emojiData.emoji);
+                      setShowEmojiPicker(false);
+                    }}
+                    width={350}
+                    height={400}
+                  />
+                </div>
+              )}
+            </form>
+          </>
         ) : (
           <div className="rounded-md border border-amber-200 bg-amber-50 text-amber-800 p-3 text-sm">
             Join this league to chat with other members.
