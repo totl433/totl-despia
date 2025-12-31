@@ -570,7 +570,6 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                   messageId={m.id}
                   reactions={reactions[m.id] || []}
                   onReactionClick={handleReactionClick}
-                  userId={userId}
                 />
               </div>
             </div>
@@ -677,7 +676,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
                 <div className="absolute bottom-full right-0 mb-2 z-50">
                   <EmojiPicker
                     onEmojiClick={(emojiData: any) => {
-                      setNewMsg(prev => prev + emojiData.emoji);
+                      setNewMsg(newMsg + emojiData.emoji);
                       setShowEmojiPicker(false);
                     }}
                     width={350}

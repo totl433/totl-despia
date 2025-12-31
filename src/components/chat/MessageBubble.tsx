@@ -32,7 +32,6 @@ type MessageBubbleProps = {
   messageId?: string;
   reactions?: Reaction[];
   onReactionClick?: (messageId: string, emoji: string) => void;
-  userId?: string;
 };
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉'];
@@ -46,7 +45,6 @@ export function MessageBubble({
   messageId,
   reactions = [],
   onReactionClick,
-  userId,
 }: MessageBubbleProps) {
   const textAlignment = isOwnMessage ? "text-right" : "text-left";
   const bubbleClasses = isOwnMessage ? "bg-[#1C8376] text-white" : "bg-white text-slate-900";
