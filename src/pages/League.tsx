@@ -3217,9 +3217,16 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                   <div className="w-full h-full bg-slate-200" />
                 )}
               </div>
-              <h1 className="text-lg font-normal text-slate-900 truncate">
-                {league.name}
-              </h1>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-lg font-normal text-slate-900 truncate">
+                  {league.name}
+                </h1>
+                {selectedGw && (
+                  <p className="text-sm text-slate-500 truncate">
+                    Gameweek {selectedGw}
+                  </p>
+                )}
+              </div>
             </div>
             
             {/* Menu button */}
@@ -3330,14 +3337,13 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                         setTab("chat-beta");
               }}
               className={
-                "flex-1 min-w-0 px-2 sm:px-4 py-3 text-[12px] font-semibold transition-colors relative leading-tight whitespace-normal " +
+                "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight " +
                 (tab === "chat-beta" ? "text-[#1C8376]" : "text-slate-400")
               }
             >
-              <span className="hidden sm:inline">Chat (beta)</span>
+              <span className="hidden sm:inline">Chat</span>
               <span className="sm:hidden whitespace-pre-line text-center">
-                {`Chat
-(beta)`}
+                Chat
               </span>
               {tab === "chat-beta" && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
@@ -3382,11 +3388,8 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                       {isGwLive && (
                         <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse flex-shrink-0"></div>
                       )}
-                      <span className="hidden sm:inline">
-                        {displayGw ? `GW ${displayGw} ${label}` : `GW ${label}`}
-                      </span>
-                      <span className="sm:hidden whitespace-pre-line text-center">
-                        {displayGw ? `GW${displayGw}\n${label.replace(' ', '\u00A0')}` : `GW\n${label.replace(' ', '\u00A0')}`}
+                      <span className="whitespace-nowrap">
+                        GW Table
                       </span>
                     </>
                   );
@@ -3409,8 +3412,8 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                   (tab === "gw" ? "text-[#1C8376]" : "text-slate-400")
                 }
               >
-                <span className="hidden sm:inline">{league?.name === 'API Test' ? `GW T${currentTestGw ?? 1} Predictions` : (currentGw ? `GW ${currentGw} Predictions` : "GW Predictions")}</span>
-                <span className="sm:hidden whitespace-pre-line">{league?.name === 'API Test' ? `GWT${currentTestGw ?? 1}\nPredictions` : (currentGw ? `GW${currentGw}\nPredictions` : "GW\nPredictions")}</span>
+                <span className="hidden sm:inline">Predictions</span>
+                <span className="sm:hidden whitespace-pre-line">Predictions</span>
                 {tab === "gw" && (
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
                 )}
@@ -3422,11 +3425,11 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                         setTab("mlt");
               }}
               className={
-                "flex-1 min-w-0 px-2 sm:px-4 py-3 text-sm font-semibold transition-colors relative " +
+                "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight " +
                 (tab === "mlt" ? "text-[#1C8376]" : "text-slate-400")
               }
             >
-              Table
+              Season
               {tab === "mlt" && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
               )}
