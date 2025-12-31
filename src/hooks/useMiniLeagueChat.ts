@@ -263,9 +263,9 @@ export function useMiniLeagueChat(
                 .eq("id", fullMessage.reply_to_message_id)
                 .single();
               
-              if (replyMessage) {
-                fullMessage.reply_to = replyMessage;
-              }
+          if (replyMessage) {
+            (fullMessage as any).reply_to = replyMessage;
+          }
             }
             
             const incoming = normalizeMessage(fullMessage);
@@ -360,7 +360,7 @@ export function useMiniLeagueChat(
           .single();
         
         if (replyMessage) {
-          data.reply_to = replyMessage;
+          (data as any).reply_to = replyMessage;
         }
       }
 

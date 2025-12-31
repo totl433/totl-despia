@@ -543,14 +543,14 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         replyTo: msg.reply_to ? {
           id: msg.reply_to.id,
           content: msg.reply_to.content,
-          authorName: replyAuthorName,
+          authorName: replyAuthorName || undefined,
         } : null,
       };
 
       const lastGroup = acc[acc.length - 1];
       // Check if we can append to the last group
       // Compare by user_id, not author name, to handle case where name resolved from "Unknown"
-      const lastGroupUserId = lastGroup?.messages.length > 0 
+      const lastGroupUserId = lastGroup?.messages.length > 0 && lastGroup.messages[0].messageId
         ? messages.find(m => m.id === lastGroup.messages[0].messageId)?.user_id 
         : null;
       const canAppendToLast =
@@ -567,14 +567,14 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         // Update all existing messages in the group to refresh their replyTo.authorName
         const updatedMessages = lastGroup.messages.map(existingMsg => {
           // Find the original message to get reply_to data
-          const originalMsg = messages.find(m => m.id === existingMsg.messageId);
+          const originalMsg = existingMsg.messageId ? messages.find(m => m.id === existingMsg.messageId) : null;
           if (originalMsg?.reply_to) {
             const updatedReplyAuthorName = resolveName(originalMsg.reply_to.user_id, memberNames) || "Unknown";
             return {
               ...existingMsg,
               replyTo: existingMsg.replyTo ? {
                 ...existingMsg.replyTo,
-                authorName: updatedReplyAuthorName,
+                authorName: updatedReplyAuthorName || undefined,
               } : null,
             };
           }
@@ -605,13 +605,13 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     // Return a new array reference to ensure React detects changes
     // Also ensure all groups have the correct author name (in case memberNames loaded after groups were created)
     // Create a completely new array to ensure React detects changes
-    const finalGroups = groups.map((group, idx) => {
+    const finalGroups: ChatThreadProps["groups"] = groups.map((group, idx) => {
       // Always create a new object to ensure React detects changes
       const baseGroup = { ...group };
       
       // Update all messages in the group to refresh their replyTo.authorName
       const updatedMessages = baseGroup.messages.map(msg => {
-        const originalMsg = messages.find(m => m.id === msg.messageId);
+        const originalMsg = msg.messageId ? messages.find(m => m.id === msg.messageId) : null;
         if (originalMsg?.reply_to && msg.replyTo) {
           const updatedReplyAuthorName = resolveName(originalMsg.reply_to.user_id, memberNames) || "Unknown";
           if (updatedReplyAuthorName !== msg.replyTo.authorName) {
@@ -620,7 +620,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
               ...msg,
               replyTo: {
                 ...msg.replyTo,
-                authorName: updatedReplyAuthorName,
+                authorName: updatedReplyAuthorName || undefined,
               },
             };
           }
@@ -629,7 +629,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       });
       
       // If group author is "Unknown", try to resolve it from the first message
-      if (baseGroup.author === "Unknown" && baseGroup.messages.length > 0) {
+      if (baseGroup.author === "Unknown" && baseGroup.messages.length > 0 && baseGroup.messages[0].messageId) {
         const firstMessage = messages.find(m => m.id === baseGroup.messages[0].messageId);
         if (firstMessage) {
           const resolvedName = resolveName(firstMessage.user_id, memberNames);
@@ -662,7 +662,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     });
     
     // Log if we resolved any names
-    const resolvedCount = finalGroups.filter(g => g.author !== "Unknown" && groups.find(og => {
+    const resolvedCount = finalGroups.filter(g => g.author !== "Unknown" && groups.find((og: ChatThreadProps["groups"][number]) => {
       const ogBaseId = og.id.includes('-') ? og.id.split('-')[0] : og.id;
       const gBaseId = g.id.includes('-') ? g.id.split('-')[0] : g.id;
       return ogBaseId === gBaseId && og.author === "Unknown";
@@ -672,10 +672,10 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     }
     
     // Debug: log final groups to see what we're returning
-    const unknownCount = finalGroups.filter(g => g.author === "Unknown").length;
+    const unknownCount = finalGroups.filter((g: ChatThreadProps["groups"][number]) => g.author === "Unknown").length;
     if (unknownCount > 0) {
       console.warn('[chatGroups] FINAL GROUPS: Found', unknownCount, 'groups with "Unknown" author out of', finalGroups.length, 'total groups');
-      finalGroups.forEach((g, idx) => {
+      finalGroups.forEach((g: ChatThreadProps["groups"][number], idx: number) => {
         if (g.author === "Unknown") {
           console.warn(`[chatGroups] Group ${idx}: id="${g.id}", author="${g.author}", messages=${g.messages.length}, firstMessageId=${g.messages[0]?.messageId}`);
         }
@@ -928,6 +928,12 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
               if (e.key === 'Escape' && replyingTo) {
                 setReplyingTo(null);
                 e.preventDefault();
+                return;
+              }
+              // Send on Enter (without Shift)
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
               }
             }}
             onChange={(event) => {
@@ -949,12 +955,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
               });
             }}
             onFocus={handleInputFocus}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                handleSend();
-              }
-            }}
             style={{
               minHeight: "42px",
               maxHeight: "120px",

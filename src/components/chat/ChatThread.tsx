@@ -6,6 +6,7 @@ type ChatThreadMessage = {
   text: ReactNode;
   time: string;
   status?: "sending" | "error";
+  messageId?: string;
   replyTo?: {
     id: string;
     content: string;
