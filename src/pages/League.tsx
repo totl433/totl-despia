@@ -961,8 +961,8 @@ ${shareUrl}`;
   };
 
   const handleFileSelect = useCallback((file: File) => {
-    if (!league?.id || !isAdmin) {
-      setBadgeUploadError("Only league admins can upload badges.");
+    if (!league?.id || !isMember) {
+      setBadgeUploadError("You must be a member of the league to upload badges.");
       return;
     }
 
@@ -972,21 +972,49 @@ ${shareUrl}`;
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      setBadgeUploadError("Please choose an image smaller than 2MB.");
+    // Allow larger files - we'll compress them client-side
+    // Set a reasonable upper limit (e.g., 20MB) to prevent abuse
+    const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+    if (file.size > MAX_FILE_SIZE) {
+      setBadgeUploadError("Please choose an image smaller than 20MB.");
       return;
+    }
+
+    // Optional: Show a warning for large files but still process them
+    if (file.size > 5 * 1024 * 1024) {
+      console.log(`[League] Processing large image (${(file.size / 1024 / 1024).toFixed(1)}MB) - will be optimized automatically`);
     }
 
     setBadgeUploadError(null);
     setBadgeUploadSuccess(false);
     
-    // Create preview URL for cropping
-    const reader = new FileReader();
-    reader.onload = () => {
-      setCropImage(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-  }, [isAdmin, league?.id]);
+    // For very large files, pre-compress before showing crop UI for better performance
+    if (file.size > 5 * 1024 * 1024) {
+      // Pre-compress large images before cropping for better performance
+      imageCompression(file, {
+        maxSizeMB: 2, // Compress to max 2MB for crop UI
+        maxWidthOrHeight: 1024, // Limit dimensions for crop UI
+        useWebWorker: true,
+        initialQuality: 0.7,
+      }).then((compressed) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setCropImage(reader.result as string);
+        };
+        reader.readAsDataURL(compressed);
+      }).catch((error) => {
+        console.error('[League] Error pre-compressing image:', error);
+        setBadgeUploadError("Failed to process image. Please try a smaller file.");
+      });
+    } else {
+      // For smaller files, use directly
+      const reader = new FileReader();
+      reader.onload = () => {
+        setCropImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  }, [isMember, league?.id]);
 
   const onCropComplete = useCallback(async (_croppedArea: Area, croppedAreaPixels: Area) => {
     setCroppedAreaPixels(croppedAreaPixels);
@@ -1004,7 +1032,7 @@ ${shareUrl}`;
   }, [cropImage]);
 
   const handleCropAndUpload = useCallback(async () => {
-    if (!cropImage || !croppedAreaPixels || !league?.id || !isAdmin) {
+    if (!cropImage || !croppedAreaPixels || !league?.id || !isMember) {
       return;
     }
 
@@ -1070,10 +1098,10 @@ ${shareUrl}`;
     } finally {
       setUploadingBadge(false);
     }
-  }, [cropImage, croppedAreaPixels, isAdmin, league?.id]);
+  }, [cropImage, croppedAreaPixels, isMember, league?.id]);
 
   const handleRemoveBadge = useCallback(async () => {
-    if (!league?.id || !isAdmin) return;
+    if (!league?.id || !isMember) return;
     setBadgeUploadError(null);
     setBadgeUploadSuccess(false);
     setUploadingBadge(true);
@@ -1088,7 +1116,7 @@ ${shareUrl}`;
     } finally {
       setUploadingBadge(false);
     }
-  }, [isAdmin, league?.id]);
+  }, [isMember, league?.id]);
 
   // Store GW deadlines for synchronous access
   const [gwDeadlines, setGwDeadlines] = useState<Map<number, Date>>(new Map());
@@ -3270,23 +3298,25 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                       </svg>
                       <span>Manage</span>
                     </button>
-                    <button
-                      onClick={() => {
-                        setShowBadgeUpload(true);
-                        setShowHeaderMenu(false);
-                      }}
-                      className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-colors flex items-center gap-2 touch-manipulation"
-                    >
-                      <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <span>Upload League Badge</span>
-                    </button>
                   </div>
                   <div className="my-3 border-b border-slate-200"></div>
                 </>
               )}
               <div className="space-y-1">
+                {isMember && (
+                  <button
+                    onClick={() => {
+                      setShowBadgeUpload(true);
+                      setShowHeaderMenu(false);
+                    }}
+                    className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-colors flex items-center gap-2 touch-manipulation"
+                  >
+                    <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span>Edit League Badge</span>
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setShowInvite(true);
@@ -3529,7 +3559,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
       )}
 
       {/* League Badge Upload Modal */}
-      {isAdmin && showBadgeUpload && (
+      {isMember && showBadgeUpload && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => {
           setShowBadgeUpload(false);
           if (previewUrl) {
@@ -3625,7 +3655,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                             <span className="text-[#1C8376] font-semibold">Tap to choose image</span>
                           </div>
                           <p className="text-xs text-slate-500">
-                            PNG, JPG, or WebP (max 2MB)
+                            PNG, JPG, or WebP (up to 20MB - will be optimized automatically)
                           </p>
                         </div>
                       </label>
