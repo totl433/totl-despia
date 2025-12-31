@@ -65,6 +65,7 @@ export interface FixtureCardProps {
   liveScore?: LiveScore | null;
   isTestApi?: boolean;
   showPickButtons?: boolean;
+  pickPercentages?: { H: number; D: number; A: number } | null;
 }
 
 export const FixtureCard: React.FC<FixtureCardProps> = ({
@@ -73,6 +74,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
   liveScore,
   isTestApi = false,
   showPickButtons = true,
+  pickPercentages = null,
 }) => {
   // Always use medium names from teamNames.ts for consistency
   const homeKey = f.home_team || f.home_name || f.home_code || "";
@@ -138,7 +140,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
 
   // Button styling helper
   const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }) => {
-    const base = "h-16 rounded-xl border text-sm font-medium transition-all flex items-center justify-center select-none";
+    const base = "h-16 rounded-xl border text-sm font-medium transition-all select-none";
     if (isLive || isOngoing) {
       // Game is live or ongoing
       if (state.isCorrect) {
@@ -592,20 +594,29 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
       {/* Pick buttons */}
       {showPickButtonsSection && (
         <div className="grid grid-cols-3 gap-3 relative">
-          <div className={`${getButtonClass(homeState)} flex items-center justify-center`}>
+          <div className={`${getButtonClass(homeState)} flex flex-col items-center justify-center`}>
             <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>
               Home Win
             </span>
+            {pickPercentages !== null && (
+              <span className="text-[11px] font-bold opacity-80 mt-0.5">{pickPercentages.H}%</span>
+            )}
           </div>
-          <div className={`${getButtonClass(drawState)} flex items-center justify-center`}>
+          <div className={`${getButtonClass(drawState)} flex flex-col items-center justify-center`}>
             <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>
               Draw
             </span>
+            {pickPercentages !== null && (
+              <span className="text-[11px] font-bold opacity-80 mt-0.5">{pickPercentages.D}%</span>
+            )}
           </div>
-          <div className={`${getButtonClass(awayState)} flex items-center justify-center`}>
+          <div className={`${getButtonClass(awayState)} flex flex-col items-center justify-center`}>
             <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>
               Away Win
             </span>
+            {pickPercentages !== null && (
+              <span className="text-[11px] font-bold opacity-80 mt-0.5">{pickPercentages.A}%</span>
+            )}
           </div>
         </div>
       )}

@@ -364,6 +364,7 @@ export default function PredictionsPage() {
   const [apiTestLeagueId, setApiTestLeagueId] = useState<string | null>(null);
   const [apiMatchIds, setApiMatchIds] = useState<number[]>([]);
   const [deadlineTime, setDeadlineTime] = useState<Date | null>(null);
+  const [pickPercentages, setPickPercentages] = useState<Map<number, { H: number; D: number; A: number }>>(new Map());
   
   // Subscribe to real-time live scores using the hook
   const { liveScores: liveScoresMap } = useLiveScores(currentTestGw || undefined, apiMatchIds.length > 0 ? apiMatchIds : undefined);
@@ -1129,6 +1130,63 @@ export default function PredictionsPage() {
     setResults(newResults);
   }, [liveScores, fixtures]);
 
+  // Fetch pick percentages for all fixtures after deadline has passed
+  useEffect(() => {
+    const deadlineHasPassed = gameState === 'RESULTS_PRE_GW' || gameState === 'LIVE';
+    if (!currentTestGw || !deadlineHasPassed || fixtures.length === 0) {
+      setPickPercentages(new Map());
+      return;
+    }
+
+    (async () => {
+      try {
+        // Fetch all picks for the current gameweek
+        const { data: allPicks, error: picksError } = await supabase
+          .from("app_picks")
+          .select("fixture_index, pick")
+          .eq("gw", currentTestGw);
+
+        if (picksError) {
+          console.error('[Predictions] Error fetching pick percentages:', picksError);
+          return;
+        }
+
+        if (!allPicks || allPicks.length === 0) {
+          setPickPercentages(new Map());
+          return;
+        }
+
+        // Calculate percentages for each fixture
+        const percentagesMap = new Map<number, { H: number; D: number; A: number }>();
+        
+        fixtures.forEach(fixture => {
+          const fixturePicks = allPicks.filter(p => p.fixture_index === fixture.fixture_index);
+          const total = fixturePicks.length;
+          
+          if (total === 0) {
+            percentagesMap.set(fixture.fixture_index, { H: 0, D: 0, A: 0 });
+            return;
+          }
+
+          const hCount = fixturePicks.filter(p => p.pick === 'H').length;
+          const dCount = fixturePicks.filter(p => p.pick === 'D').length;
+          const aCount = fixturePicks.filter(p => p.pick === 'A').length;
+
+          percentagesMap.set(fixture.fixture_index, {
+            H: Math.round((hCount / total) * 100),
+            D: Math.round((dCount / total) * 100),
+            A: Math.round((aCount / total) * 100),
+          });
+        });
+
+        setPickPercentages(percentagesMap);
+      } catch (error) {
+        console.error('[Predictions] Error calculating pick percentages:', error);
+        setPickPercentages(new Map());
+      }
+    })();
+  }, [currentTestGw, gameState, fixtures]);
+
   // Calculate top percentage when we have results and picks
   // Use app_v_gw_points view for consistency with other components (UserPicksModal, LeaderboardCard)
   useEffect(() => {
@@ -1833,6 +1891,7 @@ export default function PredictionsPage() {
                             liveScore={fixtureCardLiveScore}
                             isTestApi={true}
                             showPickButtons={true}
+                            pickPercentages={pickPercentages.get(fixture.fixture_index) || null}
                           />
                         </li>
                       );
