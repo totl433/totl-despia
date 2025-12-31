@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { resolveLeagueStartGw as getLeagueStartGw, shouldIncludeGwForLeague } from "../lib/leagueStart";
@@ -531,6 +531,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
    ========================= */
 export default function LeaguePage() {
   const { code = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [oldSchoolMode] = useState(() => {
     const saved = localStorage.getItem('oldSchoolMode');
@@ -677,11 +678,23 @@ export default function LeaguePage() {
   const [loading, setLoading] = useState(true);
 
   // tabs: Chat / Mini League Table / GW Picks / GW Results
-  // Default to "gwr" (GW Results) if gameweek is live or finished within 12 hours
-  const [tab, setTab] = useState<"chat" | "chat-beta" | "mlt" | "gw" | "gwr">("chat-beta");
+  // Check URL parameter for initial tab (e.g., from notification deep link)
+  const tabParam = searchParams.get('tab');
+  const initialTab = tabParam === 'chat' ? 'chat-beta' : 'chat-beta';
+  const [tab, setTab] = useState<"chat" | "chat-beta" | "mlt" | "gw" | "gwr">(initialTab);
   // Use ref to track manual tab selection immediately (synchronously) to prevent race conditions
   const manualTabSelectedRef = useRef(false);
   const manualGwSelectedRef = useRef(false);
+  
+  // Update tab when URL parameter changes (e.g., from notification deep link)
+  useEffect(() => {
+    const urlTab = searchParams.get('tab');
+    if (urlTab === 'chat' && tab !== 'chat-beta') {
+      setTab('chat-beta');
+      // Clear the parameter after setting the tab to avoid re-triggering
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, tab]);
   const headerRef = useRef<HTMLDivElement | null>(null);
 
   const [showForm, setShowForm] = useState(false);

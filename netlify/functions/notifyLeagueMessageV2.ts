@@ -86,15 +86,17 @@ async function calculateUnreadCountAndUrl(
       .filter(([_, count]) => count > 0)
       .map(([id]) => id);
     
+    // If only current league has unread, link directly to chat tab
+    // Otherwise link to leagues list
     const url = leaguesWithUnread.length === 1 && leaguesWithUnread[0] === currentLeagueId
-      ? `/league/${currentLeagueCode}`
+      ? `/league/${currentLeagueCode}?tab=chat`
       : '/leagues';
     
     return { badgeCount, url };
   } catch (error) {
     console.error('[notifyLeagueMessageV2] Error calculating unread count:', error);
-    // Fallback: just use current league
-    return { badgeCount: 1, url: `/league/${currentLeagueCode}` };
+    // Fallback: just use current league with chat tab
+    return { badgeCount: 1, url: `/league/${currentLeagueCode}?tab=chat` };
   }
 }
 
@@ -248,9 +250,9 @@ export const handler: Handler = async (event) => {
         leagueId,
         leagueCode,
         senderId,
-        url,
+        url, // Include URL in data for badge clicks
       },
-      url,
+      url, // Also set top-level URL for notification clicks
       grouping_params: {
         league_id: leagueId,
       },

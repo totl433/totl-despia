@@ -390,12 +390,18 @@ function AppContent() {
       OneSignal.on('notificationClick', (event: any) => {
         console.log('[Notification] Notification clicked:', event);
         const data = event?.notification?.additionalData || event?.data;
-        if (data?.url) {
-          console.log('[Notification] Navigating to:', data.url);
-          navigate(data.url);
+        // Check for URL in data (for badge clicks) or in notification.url (for notification clicks)
+        const url = data?.url || event?.notification?.url;
+        if (url) {
+          console.log('[Notification] Navigating to:', url);
+          navigate(url);
         } else if (data?.leagueCode) {
-          console.log('[Notification] Navigating to league:', data.leagueCode);
-          navigate(`/league/${data.leagueCode}`);
+          // Fallback: construct URL from leagueCode
+          const leagueUrl = data?.type === 'league_message' 
+            ? `/league/${data.leagueCode}?tab=chat` 
+            : `/league/${data.leagueCode}`;
+          console.log('[Notification] Navigating to league:', leagueUrl);
+          navigate(leagueUrl);
         }
       });
     }
@@ -416,10 +422,14 @@ function AppContent() {
         }
       }
       
-      // If leagueCode is in query params
+      // If leagueCode is in query params (for chat notifications, preserve tab=chat)
       const leagueCode = searchParams.get('leagueCode');
       if (leagueCode) {
-        navigate(`/league/${leagueCode}`);
+        const tab = searchParams.get('tab');
+        const leagueUrl = tab === 'chat' 
+          ? `/league/${leagueCode}?tab=chat`
+          : `/league/${leagueCode}`;
+        navigate(leagueUrl);
       }
     };
 
