@@ -3,6 +3,8 @@ import type { MouseEvent } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useMiniLeagueChat } from "../hooks/useMiniLeagueChat";
 import ChatThread, { type ChatThreadProps } from "./chat/ChatThread";
+import EmojiPicker from 'emoji-picker-react';
+import { supabase } from "../lib/supabase";
 
 type MemberNames = Map<string, string> | Record<string, string> | undefined;
 
@@ -48,6 +50,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [reactions, setReactions] = useState<Record<string, Array<{ emoji: string; count: number; hasUserReacted: boolean }>>>({});
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputAreaRef = useRef<HTMLDivElement | null>(null);
@@ -69,6 +73,164 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     },
     [scrollToBottom]
   );
+
+  // Load reactions for all messages
+  useEffect(() => {
+    if (messages.length === 0 || !user?.id) return;
+    
+    const messageIds = messages.map(m => m.id);
+    if (messageIds.length === 0) return;
+    
+    const loadReactions = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('league_message_reactions')
+          .select('message_id, emoji, user_id')
+          .in('message_id', messageIds);
+        
+        if (error) {
+          console.error('[MiniLeagueChatBeta] Error loading reactions:', error);
+          return;
+        }
+        
+        // Group reactions by message_id and emoji
+        const reactionsByMessage: Record<string, Record<string, { count: number; hasUserReacted: boolean }>> = {};
+        
+        (data || []).forEach((reaction: any) => {
+          if (!reactionsByMessage[reaction.message_id]) {
+            reactionsByMessage[reaction.message_id] = {};
+          }
+          if (!reactionsByMessage[reaction.message_id][reaction.emoji]) {
+            reactionsByMessage[reaction.message_id][reaction.emoji] = { count: 0, hasUserReacted: false };
+          }
+          reactionsByMessage[reaction.message_id][reaction.emoji].count++;
+          if (reaction.user_id === user.id) {
+            reactionsByMessage[reaction.message_id][reaction.emoji].hasUserReacted = true;
+          }
+        });
+        
+        // Convert to array format
+        const formattedReactions: Record<string, Array<{ emoji: string; count: number; hasUserReacted: boolean }>> = {};
+        Object.keys(reactionsByMessage).forEach(messageId => {
+          formattedReactions[messageId] = Object.entries(reactionsByMessage[messageId]).map(([emoji, data]) => ({
+            emoji,
+            count: data.count,
+            hasUserReacted: data.hasUserReacted,
+          }));
+        });
+        
+        setReactions(formattedReactions);
+      } catch (err) {
+        console.error('[MiniLeagueChatBeta] Error in loadReactions:', err);
+      }
+    };
+    
+    loadReactions();
+  }, [messages, user?.id]);
+
+  // Subscribe to reaction changes
+  useEffect(() => {
+    if (messages.length === 0 || !user?.id) return;
+    
+    const messageIds = messages.map(m => m.id);
+    if (messageIds.length === 0) return;
+    
+    // Subscribe to all reaction changes and reload when any change occurs
+    const channel = supabase
+      .channel('message-reactions-mlcb')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'league_message_reactions',
+        },
+        () => {
+          // Reload reactions when they change
+          const loadReactions = async () => {
+            try {
+              const { data, error } = await supabase
+                .from('league_message_reactions')
+                .select('message_id, emoji, user_id')
+                .in('message_id', messageIds);
+              
+              if (error) return;
+              
+              const reactionsByMessage: Record<string, Record<string, { count: number; hasUserReacted: boolean }>> = {};
+              
+              (data || []).forEach((reaction: any) => {
+                if (!reactionsByMessage[reaction.message_id]) {
+                  reactionsByMessage[reaction.message_id] = {};
+                }
+                if (!reactionsByMessage[reaction.message_id][reaction.emoji]) {
+                  reactionsByMessage[reaction.message_id][reaction.emoji] = { count: 0, hasUserReacted: false };
+                }
+                reactionsByMessage[reaction.message_id][reaction.emoji].count++;
+                if (reaction.user_id === user.id) {
+                  reactionsByMessage[reaction.message_id][reaction.emoji].hasUserReacted = true;
+                }
+              });
+              
+              const formattedReactions: Record<string, Array<{ emoji: string; count: number; hasUserReacted: boolean }>> = {};
+              Object.keys(reactionsByMessage).forEach(messageId => {
+                formattedReactions[messageId] = Object.entries(reactionsByMessage[messageId]).map(([emoji, data]) => ({
+                  emoji,
+                  count: data.count,
+                  hasUserReacted: data.hasUserReacted,
+                }));
+              });
+              
+              setReactions(formattedReactions);
+            } catch (err) {
+              console.error('[MiniLeagueChatBeta] Error reloading reactions:', err);
+            }
+          };
+          
+          loadReactions();
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [messages, user?.id]);
+
+  // Handle reaction click
+  const handleReactionClick = useCallback(async (messageId: string, emoji: string) => {
+    if (!user?.id) return;
+    
+    // Check if user already reacted with this emoji
+    const messageReactions = reactions[messageId] || [];
+    const existingReaction = messageReactions.find(r => r.emoji === emoji && r.hasUserReacted);
+    
+    if (existingReaction) {
+      // Remove reaction
+      const { error } = await supabase
+        .from('league_message_reactions')
+        .delete()
+        .eq('message_id', messageId)
+        .eq('user_id', user.id)
+        .eq('emoji', emoji);
+      
+      if (error) {
+        console.error('[MiniLeagueChatBeta] Error removing reaction:', error);
+      }
+    } else {
+      // Add reaction
+      const { error } = await supabase
+        .from('league_message_reactions')
+        .upsert({
+          message_id: messageId,
+          user_id: user.id,
+          emoji,
+        });
+      
+      if (error) {
+        console.error('[MiniLeagueChatBeta] Error adding reaction:', error);
+      }
+    }
+  }, [user?.id, reactions]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -306,6 +468,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         text: msg.content,
         time: formatTime(msg.created_at),
         status: msg.status && msg.status !== "sent" ? msg.status : undefined,
+        messageId: msg.id,
       };
 
       const lastGroup = groups[groups.length - 1];
@@ -409,7 +572,11 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
             Say hi to kick off this chat!
           </div>
         ) : (
-          <ChatThread groups={chatGroups} />
+          <ChatThread 
+            groups={chatGroups}
+            reactions={reactions}
+            onReactionClick={handleReactionClick}
+          />
         )}
       </div>
 
@@ -432,7 +599,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           pointerEvents: "auto",
         }}
       >
-        <div className="flex items-end gap-3 bg-slate-100 rounded-2xl px-3 py-2">
+        <div className="flex items-end gap-3 bg-slate-100 rounded-2xl px-3 py-2 relative">
           <textarea
             ref={inputRef}
             className="flex-1 bg-transparent resize-none focus:outline-none text-sm text-slate-800 placeholder:text-slate-400"
@@ -443,23 +610,11 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
               miniLeagueId ? "Start typing a message…" : "Join this league to chat"
             }
             autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
+            autoCorrect="on"
+            autoCapitalize="sentences"
+            spellCheck={true}
             inputMode="text"
             data-1p-ignore="true"
-            readOnly={false}
-            // iOS workaround: set readonly initially, removed on focus
-            onMouseDown={() => {
-              if (inputRef.current) {
-                inputRef.current.removeAttribute('readonly');
-              }
-            }}
-            onTouchStart={() => {
-              if (inputRef.current) {
-                inputRef.current.removeAttribute('readonly');
-              }
-            }}
             onChange={(event) => {
               setDraft(event.target.value);
               if (inputRef.current) {
@@ -493,7 +648,17 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           />
           <button
             type="button"
-            onClick={handleSend}
+            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+            className="flex-shrink-0 w-10 h-10 rounded-full bg-white text-slate-600 flex items-center justify-center hover:bg-slate-50 transition-colors"
+          >
+            <span className="text-xl">😊</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              handleSend();
+              setShowEmojiPicker(false);
+            }}
             disabled={!miniLeagueId || sending || !draft.trim()}
             className="w-10 h-10 rounded-full bg-[#1C8376] text-white flex items-center justify-center disabled:opacity-40"
           >
@@ -507,6 +672,18 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
             </svg>
           </button>
+          {showEmojiPicker && (
+            <div className="absolute bottom-full right-0 mb-2 z-50">
+              <EmojiPicker
+            onEmojiClick={(emojiData: any) => {
+              setDraft(draft + emojiData.emoji);
+              setShowEmojiPicker(false);
+            }}
+                width={350}
+                height={400}
+              />
+            </div>
+          )}
         </div>
         {error && (
           <div className="text-xs text-red-500 mt-2 text-center">

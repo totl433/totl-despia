@@ -19,9 +19,11 @@ type ChatThreadGroup = {
 
 export type ChatThreadProps = {
   groups: ChatThreadGroup[];
+  reactions?: Record<string, Array<{ emoji: string; count: number; hasUserReacted: boolean }>>;
+  onReactionClick?: (messageId: string, emoji: string) => void;
 };
 
-export function ChatThread({ groups }: ChatThreadProps) {
+export function ChatThread({ groups, reactions, onReactionClick }: ChatThreadProps) {
   return (
     <div className="flex flex-col gap-5">
       {groups.map((group) => (
@@ -36,6 +38,8 @@ export function ChatThread({ groups }: ChatThreadProps) {
             avatarInitials={group.avatarInitials}
             isOwnMessage={group.isOwnMessage}
             messages={group.messages}
+            reactions={reactions}
+            onReactionClick={onReactionClick}
           />
         </div>
       ))}

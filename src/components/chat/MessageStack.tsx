@@ -13,6 +13,8 @@ export type MessageStackProps = {
   messages: Message[];
   isOwnMessage?: boolean;
   avatarInitials?: string;
+  reactions?: Record<string, Array<{ emoji: string; count: number; hasUserReacted: boolean }>>;
+  onReactionClick?: (messageId: string, emoji: string) => void;
 };
 
 export function MessageStack({
@@ -20,6 +22,8 @@ export function MessageStack({
   messages,
   isOwnMessage,
   avatarInitials,
+  reactions,
+  onReactionClick,
 }: MessageStackProps) {
   const alignment = isOwnMessage ? "justify-end" : "justify-start";
 
@@ -44,24 +48,30 @@ export function MessageStack({
               ? "bottom"
               : "middle";
 
+          const messageId = (message as any).messageId || message.id;
           return (
-            <div key={message.id} className={`flex w-full ${isOwnMessage ? "justify-end" : "justify-start"}`}>
-              <MessageBubble
-                author={!isOwnMessage && index === 0 ? author : undefined}
-                text={message.text}
-                time={message.time}
-                isOwnMessage={isOwnMessage}
-                shape={shape}
-              />
-              {message.status && (
-                <div
-                  className={`text-[11px] ml-2 ${
-                    message.status === "error" ? "text-red-500" : "text-slate-400"
-                  }`}
-                >
-                  {message.status === "error" ? "Failed" : "Sending…"}
-                </div>
-              )}
+            <div key={message.id} className={`flex flex-col w-full ${isOwnMessage ? "items-end" : "items-start"}`}>
+              <div className={`flex w-full ${isOwnMessage ? "justify-end" : "justify-start"}`}>
+                <MessageBubble
+                  author={!isOwnMessage && index === 0 ? author : undefined}
+                  text={message.text}
+                  time={message.time}
+                  isOwnMessage={isOwnMessage}
+                  shape={shape}
+                  messageId={messageId}
+                  reactions={reactions?.[messageId] || []}
+                  onReactionClick={onReactionClick}
+                />
+                {message.status && (
+                  <div
+                    className={`text-[11px] ml-2 ${
+                      message.status === "error" ? "text-red-500" : "text-slate-400"
+                    }`}
+                  >
+                    {message.status === "error" ? "Failed" : "Sending…"}
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}
