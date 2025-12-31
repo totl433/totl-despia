@@ -3362,13 +3362,6 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                 }
               >
                 {(() => {
-                  // For Live Table, always use currentGw if available (it's the active/live GW)
-                  // Only use selectedGw if currentGw is not available
-                  const resGw = league?.name === 'API Test' 
-                    ? (currentTestGw ?? 1) 
-                    : (currentGw || selectedGw);
-                  // For API Test league, show "GW T1", "GW T2", etc. based on test_gw
-                  const displayGw = league?.name === 'API Test' ? `T${resGw}` : resGw;
                   // Check if GW is live: first game started AND last game not finished
                   const now = new Date();
                   const firstFixture = fixtures[0];
@@ -3381,7 +3374,6 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                   const lastGameFinished = lastFixtureScore?.status === 'FINISHED';
                   
                   const isGwLive = firstGameStarted && !lastGameFinished;
-                  const label = isGwLive ? 'Live Table' : 'Results';
                   
                   return (
                     <>
