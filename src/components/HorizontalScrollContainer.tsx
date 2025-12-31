@@ -12,7 +12,7 @@ interface HorizontalScrollContainerProps {
 export function HorizontalScrollContainer({ children, className = '' }: HorizontalScrollContainerProps) {
   return (
     <div 
-      className={`overflow-x-auto scrollbar-hide ${className}`}
+      className={`overflow-x-auto overflow-y-visible scrollbar-hide ${className}`}
       style={{ 
         scrollbarWidth: 'none', 
         msOverflowStyle: 'none', 
@@ -24,6 +24,8 @@ export function HorizontalScrollContainer({ children, className = '' }: Horizont
         marginRight: '-1rem',
         paddingLeft: '1rem',
         paddingRight: '1rem',
+        paddingTop: '0.5rem', // Add top padding to prevent header clipping
+        paddingBottom: '0.5rem', // Add bottom padding for consistency
         width: 'calc(100% + 2rem)'
       }}
     >

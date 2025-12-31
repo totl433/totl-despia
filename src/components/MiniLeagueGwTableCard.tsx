@@ -384,7 +384,7 @@ export default function MiniLeagueGwTableCard({
         }
       `}</style>
       {/* Compact Header */}
-      <div className="px-4 py-3 bg-gradient-to-r from-[#1C8376] to-[#1C8376]/90 border-b border-[#1C8376]/20">
+      <div className="px-4 py-3 bg-gradient-to-r from-[#1C8376] to-[#1C8376]/90 border-b border-[#1C8376]/20 rounded-t-xl">
         <div className="flex items-center justify-between gap-2">
           <div className="flex-1 min-w-0 flex items-center gap-2">
             <img
@@ -433,7 +433,7 @@ export default function MiniLeagueGwTableCard({
             {/* Table */}
             {rows.length > 0 ? (
               <div className="overflow-visible flex-1 -mx-4">
-                <div className="overflow-visible bg-white">
+                <div className="bg-white">
                   <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: '#ffffff', width: '100%' }}>
                     <thead className="sticky top-0" style={{ 
                       position: 'sticky', 
@@ -508,7 +508,7 @@ export default function MiniLeagueGwTableCard({
   return (
     <Link
       to={`/league/${leagueCode}`}
-      className="w-[320px] flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-visible hover:shadow-md transition-shadow block no-underline"
+      className="w-[320px] flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow block no-underline"
       style={{ 
         minHeight: `${cardHeight}px`,
         height: 'auto', // Use auto to allow card to grow to fit all rows
