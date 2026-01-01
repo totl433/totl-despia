@@ -33,3 +33,4 @@ Triggered when a user joins a mini-league.
 - All league members except the person who joined
 - Filtered by `member-joins` preference
 
+

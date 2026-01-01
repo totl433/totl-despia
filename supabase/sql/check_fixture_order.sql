@@ -85,3 +85,4 @@ INNER JOIN app_fixtures af ON (
 WHERE f.gw = :gw
 ORDER BY f.fixture_index ASC;
 
+

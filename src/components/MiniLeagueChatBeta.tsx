@@ -208,6 +208,49 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     const messageReactions = reactions[messageId] || [];
     const existingReaction = messageReactions.find(r => r.emoji === emoji && r.hasUserReacted);
     
+    // Optimistically update local state immediately
+    setReactions((prev) => {
+      const newReactions = { ...prev };
+      const currentReactions = newReactions[messageId] || [];
+      
+      if (existingReaction) {
+        // Remove reaction optimistically
+        const updatedReactions = currentReactions.map(r => {
+          if (r.emoji === emoji) {
+            return {
+              ...r,
+              count: Math.max(0, r.count - 1),
+              hasUserReacted: false,
+            };
+          }
+          return r;
+        }).filter(r => r.count > 0 || r.emoji !== emoji);
+        
+        if (updatedReactions.length === 0) {
+          delete newReactions[messageId];
+        } else {
+          newReactions[messageId] = updatedReactions;
+        }
+      } else {
+        // Add reaction optimistically
+        const existingEmojiReaction = currentReactions.find(r => r.emoji === emoji);
+        if (existingEmojiReaction) {
+          // Emoji already exists, increment count and mark as reacted
+          newReactions[messageId] = currentReactions.map(r => 
+            r.emoji === emoji 
+              ? { ...r, count: r.count + 1, hasUserReacted: true }
+              : r
+          );
+        } else {
+          // New emoji reaction
+          newReactions[messageId] = [...currentReactions, { emoji, count: 1, hasUserReacted: true }];
+        }
+      }
+      
+      return newReactions;
+    });
+    
+    // Then update database
     if (existingReaction) {
       // Remove reaction
       const { error } = await supabase
@@ -219,6 +262,22 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       
       if (error) {
         console.error('[MiniLeagueChatBeta] Error removing reaction:', error);
+        // Revert optimistic update on error
+        setReactions((prev) => {
+          const reverted = { ...prev };
+          const currentReactions = reverted[messageId] || [];
+          const existingEmojiReaction = currentReactions.find(r => r.emoji === emoji);
+          if (existingEmojiReaction) {
+            reverted[messageId] = currentReactions.map(r => 
+              r.emoji === emoji 
+                ? { ...r, count: r.count + 1, hasUserReacted: true }
+                : r
+            );
+          } else {
+            reverted[messageId] = [...currentReactions, { emoji, count: 1, hasUserReacted: true }];
+          }
+          return reverted;
+        });
       }
     } else {
       // Add reaction
@@ -232,6 +291,28 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       
       if (error) {
         console.error('[MiniLeagueChatBeta] Error adding reaction:', error);
+        // Revert optimistic update on error
+        setReactions((prev) => {
+          const reverted = { ...prev };
+          const currentReactions = reverted[messageId] || [];
+          const updatedReactions = currentReactions.map(r => {
+            if (r.emoji === emoji) {
+              return {
+                ...r,
+                count: Math.max(0, r.count - 1),
+                hasUserReacted: false,
+              };
+            }
+            return r;
+          }).filter(r => r.count > 0 || r.emoji !== emoji);
+          
+          if (updatedReactions.length === 0) {
+            delete reverted[messageId];
+          } else {
+            reverted[messageId] = updatedReactions;
+          }
+          return reverted;
+        });
       }
     }
   }, [user?.id, reactions]);
@@ -788,13 +869,21 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     if (!miniLeagueId || !text || sending) return;
     try {
       setSending(true);
+      // Clear draft immediately for better UX
+      setDraft("");
+      // Reset textarea height
+      if (inputRef.current) {
+        inputRef.current.style.height = "auto";
+        inputRef.current.style.height = "42px";
+      }
       await sendMessage(text, replyingTo?.id || null);
       await notifyRecipients(text);
-      setDraft("");
       setReplyingTo(null);
       scrollToBottomWithRetries([0, 150, 300]);
     } catch (err) {
       console.error("[MiniLeagueChatBeta] Failed to send message", err);
+      // Restore draft on error
+      setDraft(text);
     } finally {
       setSending(false);
     }
