@@ -2323,11 +2323,12 @@ ${shareUrl}`;
       let relevantGws = gwsWithResults.filter(gw => gw >= leagueStartGw);
       
       // CRITICAL: Form tables should only include COMPLETED gameweeks, not live ones
-      // Filter out the current gameweek if it's still live (not in latestResultsGw)
-      // This ensures form only updates when a gameweek ends, not during live play
-      if (latestResultsGw !== null && currentGw !== null && currentGw > latestResultsGw) {
+      // A gameweek is complete if it has results in app_gw_results
+      // If currentGw is greater than the max GW with results, it means currentGw is still live
+      const maxGwWithResults = gwsWithResults.length > 0 ? Math.max(...gwsWithResults) : null;
+      if (currentGw !== null && maxGwWithResults !== null && currentGw > maxGwWithResults) {
         // Current GW is live (hasn't finished yet) - exclude it from form calculation
-        relevantGws = relevantGws.filter(gw => gw <= latestResultsGw);
+        relevantGws = relevantGws.filter(gw => gw <= maxGwWithResults);
       }
 
       // For late-starting leagues, if there are no results for the start gameweek or later, show empty table
@@ -2443,7 +2444,7 @@ ${shareUrl}`;
     return () => {
       alive = false;
     };
-  }, [members, league, currentGw, latestResultsGw, createEmptyMltRows, gwResultsVersion]);
+  }, [members, league, currentGw, createEmptyMltRows, gwResultsVersion]);
 
   /* =========================
      Renderers
