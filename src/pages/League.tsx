@@ -832,6 +832,7 @@ export default function LeaguePage() {
   }, []);
 
   const [league, setLeague] = useState<League | null>(null);
+  const [showBadgeModal, setShowBadgeModal] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -3408,7 +3409,14 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
 
             {/* Title with badge */}
             <div className="flex items-center gap-3 flex-1 min-w-0 px-2">
-              <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 border border-slate-200 flex-shrink-0 relative">
+              <button
+                type="button"
+                onClick={() => {
+                  console.log('[League] Badge clicked, opening modal. isMember:', isMember);
+                  setShowBadgeModal(true);
+                }}
+                className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 border border-slate-200 flex-shrink-0 relative hover:opacity-80 transition-opacity cursor-pointer"
+              >
                 {league ? (
                   <img
                     src={getLeagueAvatarUrl(league)}
@@ -3430,7 +3438,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                 ) : (
                   <div className="w-full h-full bg-slate-200" />
                 )}
-              </div>
+              </button>
               <div className="flex-1 min-w-0">
                 <h1 className="text-lg font-normal text-slate-900 truncate">
                   {league.name}
@@ -4145,6 +4153,55 @@ If two or more players are tied on Points in the table, the player with the most
         <div className="mt-6 mb-4 px-4 py-3 bg-yellow-50 border border-yellow-200 rounded-lg">
           <div className="text-sm text-yellow-800">
             <strong>⚠️ Test League:</strong> This league uses test API data and starts from Test GW 1 with zero points. It does not affect your main game scores.
+          </div>
+        </div>
+      )}
+
+      {/* Full-screen league badge modal */}
+      {showBadgeModal && league && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center"
+          onClick={() => setShowBadgeModal(false)}
+        >
+          <div 
+            className="flex flex-col items-center gap-4 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-80 h-80 rounded-full overflow-hidden bg-white shadow-2xl relative">
+              <img
+                src={getLeagueAvatarUrl(league)}
+                alt="League badge"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  const defaultAvatar = getDefaultMlAvatar(league.id);
+                  const fallbackSrc = `/assets/league-avatars/${defaultAvatar}`;
+                  if (target.src !== fallbackSrc) {
+                    target.src = fallbackSrc;
+                  }
+                }}
+              />
+            </div>
+            {isMember && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  console.log('[League] Edit icon clicked');
+                  setShowBadgeModal(false);
+                  setShowBadgeUpload(true);
+                }}
+                className="absolute bottom-[272px] right-1/2 translate-x-[144px] w-16 h-16 rounded-full bg-white hover:bg-slate-50 shadow-2xl flex items-center justify-center transition-all z-20 border-4 border-slate-400"
+                title="Edit League Badge"
+              >
+                <svg className="w-8 h-8 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            )}
+            <div className="text-white text-xl font-medium">
+              {league.name}
+            </div>
           </div>
         </div>
       )}
