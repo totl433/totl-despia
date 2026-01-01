@@ -2320,7 +2320,15 @@ ${shareUrl}`;
       const gw7StartLeagues = ['The Bird league'];
       
       const leagueStartGw = await getLeagueStartGw(league, currentGw);
-      const relevantGws = gwsWithResults.filter(gw => gw >= leagueStartGw);
+      let relevantGws = gwsWithResults.filter(gw => gw >= leagueStartGw);
+      
+      // CRITICAL: Form tables should only include COMPLETED gameweeks, not live ones
+      // Filter out the current gameweek if it's still live (not in latestResultsGw)
+      // This ensures form only updates when a gameweek ends, not during live play
+      if (latestResultsGw !== null && currentGw !== null && currentGw > latestResultsGw) {
+        // Current GW is live (hasn't finished yet) - exclude it from form calculation
+        relevantGws = relevantGws.filter(gw => gw <= latestResultsGw);
+      }
 
       // For late-starting leagues, if there are no results for the start gameweek or later, show empty table
       if (!specialLeagues.includes(league?.name || '') && !gw7StartLeagues.includes(league?.name || '') && relevantGws.length === 0) {
@@ -2435,7 +2443,7 @@ ${shareUrl}`;
     return () => {
       alive = false;
     };
-  }, [members, league, currentGw, createEmptyMltRows, gwResultsVersion]);
+  }, [members, league, currentGw, latestResultsGw, createEmptyMltRows, gwResultsVersion]);
 
   /* =========================
      Renderers
