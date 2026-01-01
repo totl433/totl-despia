@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { MiniLeagueCard, type LeagueRow, type LeagueData } from './MiniLeagueCard';
 import { HorizontalScrollContainer } from './HorizontalScrollContainer';
 import Section from './Section';
@@ -32,13 +32,23 @@ export function MiniLeaguesSection({
   // State for toggle between cards and live tables
   const [showLiveTables, setShowLiveTables] = useState(false);
   
-  // Reset to overview when game state is no longer LIVE
-  const isLive = gameState === 'LIVE';
+  // Track previous gameweek to detect when user moves to next GW
+  const prevGwRef = useRef<number | null>(currentGw);
+  
+  // Reset to overview only when user moves to next gameweek (not just when state changes)
   useEffect(() => {
-    if (!isLive && showLiveTables) {
+    // If gameweek changed, reset live tables view
+    if (prevGwRef.current !== null && currentGw !== null && prevGwRef.current !== currentGw) {
       setShowLiveTables(false);
     }
-  }, [isLive, showLiveTables]);
+    // Update ref to current GW
+    prevGwRef.current = currentGw;
+  }, [currentGw]);
+  
+  // Determine if we should show toggle buttons (LIVE or RESULTS_PRE_GW states)
+  const isLive = gameState === 'LIVE';
+  const isResultsPreGw = gameState === 'RESULTS_PRE_GW';
+  const showToggleButtons = isLive || isResultsPreGw;
   
   // Memoize card data transformations to prevent unnecessary re-renders
   const memoizedCardData = useMemo(() => {
@@ -71,8 +81,9 @@ export function MiniLeaguesSection({
     );
   }, [leagueData]);
 
-  // Toggle component for mobile header - alternates between buttons, only show when LIVE
-  const toggleComponent = isLive ? (
+  // Toggle component for mobile header - alternates between buttons
+  // Show in both LIVE and RESULTS_PRE_GW states (until user moves to next GW)
+  const toggleComponent = showToggleButtons ? (
     <div className="lg:hidden flex items-center gap-2">
       {showLiveTables ? (
         <button

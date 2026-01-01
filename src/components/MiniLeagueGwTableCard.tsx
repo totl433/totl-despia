@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
+import WinnerBanner from './league/WinnerBanner';
 import type { Fixture } from './FixtureCard';
 
 export interface MiniLeagueGwTableCardProps {
@@ -45,15 +46,16 @@ function rowToOutcome(r: { result?: "H" | "D" | "A" | null }): "H" | "D" | "A" |
 
 /**
  * Calculate minimum height needed for a card based on member count
- * Header: ~60px, Table header: ~32px, Each row: ~32px, Padding: ~24px
+ * Header: ~60px, Winner banner: ~80px (when shown), Table header: ~32px, Each row: ~32px, Padding: ~24px
  */
-function calculateCardHeight(maxMembers: number): number {
+function calculateCardHeight(maxMembers: number, hasWinnerBanner: boolean = false): number {
   const headerHeight = 60;
+  const winnerBannerHeight = hasWinnerBanner ? 80 : 0;
   const tableHeaderHeight = 32;
   const rowHeight = 32;
   const padding = 24;
   
-  return headerHeight + tableHeaderHeight + (maxMembers * rowHeight) + padding;
+  return headerHeight + winnerBannerHeight + tableHeaderHeight + (maxMembers * rowHeight) + padding;
 }
 
 /**
@@ -80,6 +82,7 @@ export default function MiniLeagueGwTableCard({
   const [results, setResults] = useState<Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>>([]);
   const [submittedUserIds, setSubmittedUserIds] = useState<Set<string>>(new Set());
   const [rows, setRows] = useState<ResultRow[]>([]);
+  const [allFixturesFinished, setAllFixturesFinished] = useState(false);
 
   // Determine which GW to display based on game state
   const { state: currentGwState } = useGameweekState(currentGw);
@@ -336,10 +339,29 @@ export default function MiniLeagueGwTableCard({
 
     calculatedRows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name));
     setRows(calculatedRows);
+
+    // Check if all fixtures are finished
+    const allFinished = fixturesForGw.every((f) => {
+      if (hasLiveScores && displayGw === currentGw) {
+        const liveScore = liveScores[f.fixture_index];
+        return liveScore?.status === 'FINISHED';
+      }
+      return outcomes.has(f.fixture_index);
+    });
+    setAllFixturesFinished(allFinished);
   }, [displayGw, fixtures, picks, results, members, liveScores, currentGw, submittedUserIds]);
 
-  // Force isLive to true for testing - remove this later
-  const isLive = true; // mockData?.isLive ?? (hasLiveFixtures && displayGw === currentGw);
+  // Determine if GW is live (has active games)
+  const hasLiveFixtures = fixtures.some((f) => {
+    if (f.gw !== displayGw) return false;
+    const liveScore = liveScores[f.fixture_index];
+    return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
+  });
+  const isLive = mockData?.isLive ?? (hasLiveFixtures && displayGw === currentGw);
+  
+  // Determine if gameweek is finished and if there's a draw
+  const isFinished = allFixturesFinished;
+  const isDraw = rows.length > 1 && rows[0]?.score === rows[1]?.score && rows[0]?.unicorns === rows[1]?.unicorns;
   
   // Calculate fixed height based on actual submitted members for this league
   // CRITICAL: Use actual rows.length (submitted members) to ensure all rows are visible
@@ -347,7 +369,8 @@ export default function MiniLeagueGwTableCard({
   const memberCountForHeight = rows.length > 0 
     ? rows.length // Use actual submitted count for this league
     : (members.length); // Fallback to total members if rows not calculated yet
-  const cardHeight = calculateCardHeight(memberCountForHeight);
+  const shouldShowBanner = rows.length > 0 && isFinished && !isLive;
+  const cardHeight = calculateCardHeight(memberCountForHeight, shouldShowBanner);
   
   // maxMemberCount is passed but not used - we use actual rows.length instead for accurate height
 
@@ -430,6 +453,16 @@ export default function MiniLeagueGwTableCard({
           </div>
         ) : (
           <>
+            {/* Winner Banner - only show for completed GWs, not live ones */}
+            {rows.length > 0 && isFinished && !isLive && (
+              <div className="mb-3">
+                <WinnerBanner 
+                  winnerName={rows[0].name} 
+                  isDraw={isDraw}
+                />
+              </div>
+            )}
+
             {/* Table */}
             {rows.length > 0 ? (
               <div className="overflow-visible flex-1 -mx-4">
