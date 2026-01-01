@@ -2322,10 +2322,29 @@ ${shareUrl}`;
       const leagueStartGw = await getLeagueStartGw(league, currentGw);
       let relevantGws = gwsWithResults.filter(gw => gw >= leagueStartGw);
       
-      // CRITICAL: Always exclude currentGw from form calculation if it's still live
-      // A gameweek is complete only when it's less than currentGw (i.e., previous gameweeks)
-      // Even if currentGw has some results in app_gw_results, it's still live until all games finish
-      if (currentGw !== null) {
+      // CRITICAL: Exclude currentGw only if it's still live (not all fixtures have results)
+      // A gameweek is complete when all fixtures have results in app_gw_results
+      // Check if currentGw is complete by comparing fixture count to result count
+      if (currentGw !== null && relevantGws.includes(currentGw)) {
+        // Fetch fixtures for currentGw to check if it's complete
+        const { data: fixturesForCurrentGw } = await supabase
+          .from("app_fixtures")
+          .select("fixture_index")
+          .eq("gw", currentGw);
+        
+        const fixtureCount = fixturesForCurrentGw?.length ?? 0;
+        const resultCountForCurrentGw = Array.from(outcomeByGwIdx.keys())
+          .filter(k => parseInt(k.split(":")[0], 10) === currentGw)
+          .length;
+        
+        // If currentGw doesn't have results for all fixtures, exclude it (still live)
+        // Otherwise, include it (complete)
+        if (fixtureCount > 0 && resultCountForCurrentGw < fixtureCount) {
+          relevantGws = relevantGws.filter(gw => gw < currentGw);
+        }
+        // If currentGw is complete (all fixtures have results), keep it in relevantGws
+      } else if (currentGw !== null) {
+        // currentGw is not in gwsWithResults, so exclude it
         relevantGws = relevantGws.filter(gw => gw < currentGw);
       }
 
