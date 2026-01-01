@@ -2322,10 +2322,6 @@ ${shareUrl}`;
       const leagueStartGw = await getLeagueStartGw(league, currentGw);
       let relevantGws = gwsWithResults.filter(gw => gw >= leagueStartGw);
       
-      // CRITICAL: Form tables should only include COMPLETED gameweeks, not live ones
-      // A gameweek is complete if it has results in app_gw_results
-      // If currentGw is greater than the max GW with results, it means currentGw is still live
-      const maxGwWithResults = gwsWithResults.length > 0 ? Math.max(...gwsWithResults) : null;
       // CRITICAL: Always exclude currentGw from form calculation if it's still live
       // A gameweek is complete only when it's less than currentGw (i.e., previous gameweeks)
       // Even if currentGw has some results in app_gw_results, it's still live until all games finish
