@@ -15,6 +15,7 @@ import { calculateFormRank, calculateLastGwRank, calculateSeasonRank } from "../
 import { fireConfettiCannon } from "../lib/confettiCannon";
 import { APP_ONLY_USER_IDS } from "../lib/appOnlyUsers";
 import { useGameweekState } from "../hooks/useGameweekState";
+import GameweekResultsModal from "../components/GameweekResultsModal";
 
 // Types (League type is now from useLeagues hook)
 type LeagueMember = { id: string; name: string };
@@ -201,6 +202,8 @@ export default function HomePage() {
   const [gw, setGw] = useState<number>(initialState.gw);
   const [latestGw, setLatestGw] = useState<number | null>(initialState.latestGw);
   const logoContainerRef = useRef<HTMLDivElement>(null);
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [resultsModalGw, setResultsModalGw] = useState<number | null>(null);
   
   // Use centralized game state system (PR.md rule 10)
   const { state: gameState, loading: gameStateLoading } = useGameweekState(gw);
@@ -296,6 +299,24 @@ export default function HomePage() {
     const timeout = setTimeout(checkConfetti, 100);
     return () => clearTimeout(timeout);
   }, []);
+
+  // Auto-open results modal on first visit after GW results are out
+  useEffect(() => {
+    if (!user?.id || gameStateLoading || !gw) return;
+    
+    // Only auto-open if we're in RESULTS_PRE_GW state (results are out)
+    if (gameState !== 'RESULTS_PRE_GW') return;
+    
+    // Check if we've already shown the modal for this GW
+    const localStorageKey = `gwResultsModalShown:${user.id}:${gw}`;
+    const hasShownModal = localStorage.getItem(localStorageKey) === 'true';
+    
+    if (!hasShownModal && !showResultsModal) {
+      // Open the modal for this GW
+      setResultsModalGw(gw);
+      setShowResultsModal(true);
+    }
+  }, [user?.id, gameState, gameStateLoading, gw, showResultsModal]);
 
   // Track gw_results changes to trigger leaderboard recalculation
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
@@ -1829,6 +1850,24 @@ export default function HomePage() {
           {/* Bottom padding */}
           <div className="h-20"></div>
         </>
+      )}
+
+      {/* GameweekResultsModal */}
+      {showResultsModal && resultsModalGw && (
+        <GameweekResultsModal
+          isOpen={showResultsModal}
+          onClose={() => {
+            // Mark modal as shown for this GW in localStorage
+            if (user?.id && resultsModalGw) {
+              const localStorageKey = `gwResultsModalShown:${user.id}:${resultsModalGw}`;
+              localStorage.setItem(localStorageKey, 'true');
+            }
+            setShowResultsModal(false);
+            setResultsModalGw(null);
+          }}
+          gw={resultsModalGw}
+          nextGw={latestGw && latestGw > resultsModalGw ? latestGw : null}
+        />
       )}
 
     </div>
