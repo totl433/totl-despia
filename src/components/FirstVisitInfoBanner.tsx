@@ -31,6 +31,8 @@ export default function FirstVisitInfoBanner({
   className = '',
   imageSrc = '/assets/Volley/Volley-Tool-Tip.png',
 }: FirstVisitInfoBannerProps) {
+  // Ensure image path is absolute for reliable loading
+  const imageUrl = imageSrc.startsWith('http') ? imageSrc : imageSrc.startsWith('/') ? imageSrc : `/${imageSrc}`;
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -142,15 +144,20 @@ export default function FirstVisitInfoBanner({
               <div className="flex items-end gap-3 mb-6 mt-2">
                 {/* Icon Image - bigger, inline with content */}
                 <img 
-                  src={imageSrc} 
+                  src={imageUrl} 
                   alt="" 
                   className="w-32 h-32 object-contain flex-shrink-0"
                   style={{ imageRendering: 'pixelated' }}
+                  onLoad={() => {
+                    console.log('[FirstVisitInfoBanner] Image loaded successfully:', imageUrl);
+                  }}
                   onError={(e) => {
-                    console.error('[FirstVisitInfoBanner] Failed to load image:', imageSrc);
+                    const img = e.currentTarget as HTMLImageElement;
+                    console.error('[FirstVisitInfoBanner] Failed to load image:', imageUrl);
+                    console.error('[FirstVisitInfoBanner] Attempted URL:', img.src);
                     // Fallback to default if custom image fails
-                    if (imageSrc !== '/assets/Volley/Volley-Tool-Tip.png') {
-                      (e.currentTarget as HTMLImageElement).src = '/assets/Volley/Volley-Tool-Tip.png';
+                    if (imageUrl !== '/assets/Volley/Volley-Tool-Tip.png') {
+                      img.src = '/assets/Volley/Volley-Tool-Tip.png';
                     }
                   }}
                 />
