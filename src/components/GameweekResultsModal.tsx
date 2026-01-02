@@ -268,40 +268,6 @@ export default function GameweekResultsModal({
     }, 300);
   };
 
-
-    const userId = user.id;
-    setIsTransitioning(true);
-    try {
-      const { error } = await supabase
-        .from('user_notification_preferences')
-        .update({
-          current_viewing_gw: nextGw,
-        })
-        .eq('user_id', userId);
-
-      if (error) {
-        // Try upsert if no row exists
-        await supabase
-          .from('user_notification_preferences')
-          .upsert({
-            user_id: userId,
-            current_viewing_gw: nextGw,
-            preferences: {},
-          }, {
-            onConflict: 'user_id',
-          });
-      }
-
-      // Dispatch event and reload
-      window.dispatchEvent(new CustomEvent('gwTransition', { detail: { newGw: nextGw } }));
-      setTimeout(() => {
-        window.location.reload();
-      }, 1200);
-    } catch (error) {
-      setIsTransitioning(false);
-    }
-  };
-
   // Close on escape key
   useEffect(() => {
     if (!isOpen) return;
