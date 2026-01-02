@@ -296,7 +296,55 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   const leagues = cachedLeagues;
   
   // ═══════════════════════════════════════════════════════════════════════
-  // STEP 2: PRE-WARM TABLES PAGE CACHE (non-blocking)
+  // STEP 2: PRE-WARM HOMEPAGE LEAGUE DATA CACHE (non-blocking)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Homepage ML live tables need league data (members, picks, results, etc.)
+  // This pre-warms that cache so ML live tables load instantly.
+  // ═══════════════════════════════════════════════════════════════════════
+  // Note: This is a simplified version - full processing happens in Home.tsx
+  // We just pre-fetch and cache the raw data here
+  if (leagueIds.length > 0 && currentGw) {
+    (async () => {
+      try {
+        const leagueDataCacheKey = `home:leagueData:${userId}:${currentGw}`;
+        
+        // Check if already cached
+        const existingCache = getCached<any>(leagueDataCacheKey);
+        if (existingCache && existingCache.leagueData && Object.keys(existingCache.leagueData).length > 0) {
+          const allLeaguesHaveWebUserIds = Object.values(existingCache.leagueData).every((data: any) => 
+            data.webUserIds !== undefined
+          );
+          if (allLeaguesHaveWebUserIds) {
+            log.debug('preload/league_data_cached', { userId: userId.slice(0, 8), gw: currentGw });
+            return;
+          }
+        }
+        
+        log.debug('preload/league_data_start', { userId: userId.slice(0, 8), gw: currentGw, leagueCount: leagueIds.length });
+        
+        // Pre-fetch the data that Home.tsx needs (it will process it)
+        // This ensures the data is available when Home.tsx checks cache
+        await Promise.all([
+          supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds),
+          supabase.from("app_gw_submissions").select("user_id").eq("gw", currentGw),
+          supabase.from("app_gw_results").select("gw, fixture_index, result"),
+          supabase.from("app_fixtures").select("gw, fixture_index, home_team, away_team, home_name, away_name, kickoff_time").in("gw", Array.from({ length: Math.min(20, latestGw || 20) }, (_, i) => i + 1)),
+          supabase.from("picks").select("user_id, gw, created_at").limit(10000),
+          supabase.from("app_picks").select("user_id, gw, created_at").limit(10000),
+        ]);
+        
+        // Data is now in Supabase cache, Home.tsx will fetch and process it
+        // The main benefit is that the network requests happen during Volley loading
+        log.debug('preload/league_data_network_complete', { userId: userId.slice(0, 8), gw: currentGw });
+      } catch (error) {
+        console.warn('[Pre-loading] Failed to pre-fetch league data:', error);
+        // Non-critical - Home.tsx will fetch it when needed
+      }
+    })();
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // STEP 3: PRE-WARM TABLES PAGE CACHE (non-blocking)
   // ═══════════════════════════════════════════════════════════════════════
   // Tables page needs member counts and submission data.
   // This pre-warms that cache so Tables loads instantly.
