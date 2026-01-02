@@ -299,10 +299,8 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   // STEP 2: PRE-WARM HOMEPAGE LEAGUE DATA CACHE (non-blocking)
   // ═══════════════════════════════════════════════════════════════════════
   // Homepage ML live tables need league data (members, picks, results, etc.)
-  // This pre-warms that cache so ML live tables load instantly.
+  // This FULLY processes and caches the data so ML live tables load instantly.
   // ═══════════════════════════════════════════════════════════════════════
-  // Note: This is a simplified version - full processing happens in Home.tsx
-  // We just pre-fetch and cache the raw data here
   if (leagueIds.length > 0 && currentGw) {
     (async () => {
       try {
@@ -322,10 +320,10 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
         
         log.debug('preload/league_data_start', { userId: userId.slice(0, 8), gw: currentGw, leagueCount: leagueIds.length });
         
-        // Pre-fetch the data that Home.tsx needs (it will process it)
-        // This ensures the data is available when Home.tsx checks cache
-        await Promise.all([
+        // Fetch all data in parallel (same as Home.tsx)
+        const [membersResult, readsResult, submissionsResult, resultsResult, fixturesResult, webPicksResult, appPicksResult] = await Promise.all([
           supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds),
+          supabase.from("league_message_reads").select("league_id, last_read_at").eq("user_id", userId).in("league_id", leagueIds),
           supabase.from("app_gw_submissions").select("user_id").eq("gw", currentGw),
           supabase.from("app_gw_results").select("gw, fixture_index, result"),
           supabase.from("app_fixtures").select("gw, fixture_index, home_team, away_team, home_name, away_name, kickoff_time").in("gw", Array.from({ length: Math.min(20, latestGw || 20) }, (_, i) => i + 1)),
@@ -333,11 +331,310 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
           supabase.from("app_picks").select("user_id, gw, created_at").limit(10000),
         ]);
         
-        // Data is now in Supabase cache, Home.tsx will fetch and process it
-        // The main benefit is that the network requests happen during Volley loading
-        log.debug('preload/league_data_network_complete', { userId: userId.slice(0, 8), gw: currentGw });
+        // Process members
+        const membersByLeague: Record<string, Array<{ id: string; name: string }>> = {};
+        (membersResult.data ?? []).forEach((m: any) => {
+          if (!membersByLeague[m.league_id]) {
+            membersByLeague[m.league_id] = [];
+          }
+          membersByLeague[m.league_id].push({
+            id: m.users.id,
+            name: m.users.name
+          });
+        });
+        
+        const allMemberIdsSet = new Set(Object.values(membersByLeague).flat().map(m => m.id));
+        const submittedUserIds = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id).filter((id: string) => allMemberIdsSet.has(id)));
+        
+        // Identify Web users (same logic as Home.tsx)
+        const webPicksEarliest = new Map<string, Date>();
+        (webPicksResult.data || []).forEach((p: any) => {
+          if (!p.created_at) return;
+          const key = `${p.user_id}:${p.gw}`;
+          const pickTime = new Date(p.created_at);
+          const existing = webPicksEarliest.get(key);
+          if (!existing || pickTime < existing) {
+            webPicksEarliest.set(key, pickTime);
+          }
+        });
+        
+        const appPicksEarliest = new Map<string, Date>();
+        (appPicksResult.data || []).forEach((p: any) => {
+          if (!p.created_at) return;
+          const key = `${p.user_id}:${p.gw}`;
+          const pickTime = new Date(p.created_at);
+          const existing = appPicksEarliest.get(key);
+          if (!existing || pickTime < existing) {
+            appPicksEarliest.set(key, pickTime);
+          }
+        });
+        
+        const appTestUserIds = new Set(APP_ONLY_USER_IDS);
+        const webUserIds = new Set<string>();
+        
+        webPicksEarliest.forEach((webTime, key) => {
+          const [userIdStr, gwStr] = key.split(':');
+          const gwNum = parseInt(gwStr, 10);
+          if (gwNum !== currentGw) return;
+          const appTime = appPicksEarliest.get(key);
+          if (appTime && (webTime.getTime() - appTime.getTime()) < -500) {
+            if (allMemberIdsSet.has(userIdStr) && !appTestUserIds.has(userIdStr)) {
+              webUserIds.add(userIdStr);
+            }
+          }
+        });
+        
+        // Fetch picks per league
+        const picksPromises = leagues.map(async (league) => {
+          const memberIds = (membersByLeague[league.id] ?? []).map(m => m.id);
+          if (memberIds.length === 0) return { leagueId: league.id, picks: [] };
+          const { data } = await supabase
+            .from("app_picks")
+            .select("user_id, gw, fixture_index, pick")
+            .in("user_id", memberIds);
+          return { leagueId: league.id, picks: (data ?? []) as Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }> };
+        });
+        const picksResults = await Promise.all(picksPromises);
+        
+        // Process outcomes
+        const outcomeByGwIdx = new Map<string, "H" | "D" | "A">();
+        (resultsResult.data ?? []).forEach((r: any) => {
+          const out = r.result === "H" || r.result === "D" || r.result === "A" ? r.result : null;
+          if (out) outcomeByGwIdx.set(`${r.gw}:${r.fixture_index}`, out);
+        });
+        
+        const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort((a, b) => a - b);
+        if (currentGw && !gwsWithResults.includes(currentGw)) {
+          const currentGwResults = (resultsResult.data ?? []).filter((r: any) => r.gw === currentGw);
+          if (currentGwResults.length > 0) {
+            gwsWithResults.push(currentGw);
+            gwsWithResults.sort((a, b) => a - b);
+          }
+        }
+        
+        // Process picks
+        const picksByLeague = new Map<string, Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }>>();
+        picksResults.forEach(({ leagueId, picks }) => {
+          picksByLeague.set(leagueId, picks);
+        });
+        
+        // Calculate league start GWs
+        const leagueStartGws = new Map<string, number>();
+        const leagueStartGwPromises = leagues.map(async (league) => {
+          const leagueStartGw = await resolveLeagueStartGw(league, currentGw);
+          return { leagueId: league.id, leagueStartGw };
+        });
+        const leagueStartGwResults = await Promise.all(leagueStartGwPromises);
+        leagueStartGwResults.forEach(({ leagueId, leagueStartGw }) => {
+          leagueStartGws.set(leagueId, leagueStartGw);
+        });
+        
+        // Process league data (full logic from Home.tsx)
+        const leagueDataMap: Record<string, any> = {};
+        const submissionStatus: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }> = {};
+        
+        leagues.forEach(league => {
+          const members = membersByLeague[league.id] ?? [];
+          const memberIds = members.map(m => m.id);
+          const submittedCount = memberIds.filter(id => submittedUserIds.has(id)).length;
+          const totalCount = memberIds.length;
+          
+          submissionStatus[league.id] = {
+            allSubmitted: submittedCount === totalCount && totalCount > 0,
+            submittedCount,
+            totalCount
+          };
+          
+          if (outcomeByGwIdx.size === 0) {
+            const sortedMembers = members.sort((a, b) => a.name.localeCompare(b.name));
+            leagueDataMap[league.id] = {
+              id: league.id,
+              members: sortedMembers,
+              userPosition: null,
+              positionChange: null,
+              submittedMembers: Array.from(memberIds.filter(id => submittedUserIds.has(id))),
+              sortedMemberIds: sortedMembers.map(m => m.id),
+              latestGwWinners: [],
+              latestRelevantGw: null,
+              webUserIds: Array.from(memberIds.filter(id => webUserIds.has(id)))
+            };
+            return;
+          }
+          
+          const leagueStartGw = leagueStartGws.get(league.id) ?? currentGw;
+          const currentGwFinished = gwsWithResults.includes(currentGw);
+          const allRelevantGws = leagueStartGw === 0 
+            ? gwsWithResults 
+            : gwsWithResults.filter(g => g >= leagueStartGw);
+          const relevantGws = currentGwFinished && !allRelevantGws.includes(currentGw)
+            ? [...allRelevantGws, currentGw].sort((a, b) => a - b)
+            : allRelevantGws;
+          
+          if (relevantGws.length === 0) {
+            const sortedMembers = members.sort((a, b) => a.name.localeCompare(b.name));
+            leagueDataMap[league.id] = {
+              id: league.id,
+              members: sortedMembers,
+              userPosition: null,
+              positionChange: null,
+              submittedMembers: Array.from(memberIds.filter(id => submittedUserIds.has(id))),
+              sortedMemberIds: sortedMembers.map(m => m.id),
+              latestGwWinners: [],
+              latestRelevantGw: null,
+              webUserIds: Array.from(memberIds.filter(id => webUserIds.has(id)))
+            };
+            return;
+          }
+          
+          const allPicks = picksByLeague.get(league.id) ?? [];
+          const relevantGwsSet = new Set(relevantGws);
+          const picksAll = allPicks.filter(p => relevantGwsSet.has(p.gw));
+          
+          const outcomeByGwAndIdx = new Map<number, Map<number, "H" | "D" | "A">>();
+          relevantGws.forEach((g) => {
+            outcomeByGwAndIdx.set(g, new Map<number, "H" | "D" | "A">());
+          });
+          outcomeByGwIdx.forEach((out: "H" | "D" | "A", key: string) => {
+            const [gwStr, idxStr] = key.split(":");
+            const g = parseInt(gwStr, 10);
+            const idx = parseInt(idxStr, 10);
+            if (relevantGwsSet.has(g)) {
+              outcomeByGwAndIdx.get(g)?.set(idx, out);
+            }
+          });
+          
+          const perGw = new Map<number, Map<string, { user_id: string; score: number; unicorns: number }>>();
+          const gwWinners = new Map<number, Set<string>>();
+          
+          relevantGws.forEach((g) => {
+            const map = new Map<string, { user_id: string; score: number; unicorns: number }>();
+            members.forEach((m) => map.set(m.id, { user_id: m.id, score: 0, unicorns: 0 }));
+            perGw.set(g, map);
+          });
+          
+          const picksByGwIdx = new Map<string, Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }>>();
+          picksAll.forEach((p) => {
+            const key = `${p.gw}:${p.fixture_index}`;
+            const arr = picksByGwIdx.get(key) ?? [];
+            arr.push(p);
+            picksByGwIdx.set(key, arr);
+          });
+          
+          const memberIdsSet = new Set(members.map(m => m.id));
+          
+          relevantGws.forEach((g) => {
+            const gwOutcomes = outcomeByGwAndIdx.get(g)!;
+            const map = perGw.get(g)!;
+            
+            gwOutcomes.forEach((out: "H" | "D" | "A", idx: number) => {
+              const key = `${g}:${idx}`;
+              const thesePicks = (picksByGwIdx.get(key) ?? []).filter((p) => memberIdsSet.has(p.user_id));
+              const correctUsers: string[] = [];
+              
+              thesePicks.forEach((p) => {
+                if (p.pick === out) {
+                  const row = map.get(p.user_id);
+                  if (row) {
+                    row.score += 1;
+                    correctUsers.push(p.user_id);
+                  }
+                }
+              });
+              
+              if (correctUsers.length === 1 && members.length >= 3) {
+                const row = map.get(correctUsers[0]);
+                if (row) row.unicorns += 1;
+              }
+            });
+          });
+          
+          const mltPts = new Map<string, number>();
+          const ocp = new Map<string, number>();
+          const unis = new Map<string, number>();
+          members.forEach((m) => {
+            mltPts.set(m.id, 0);
+            ocp.set(m.id, 0);
+            unis.set(m.id, 0);
+          });
+          
+          relevantGws.forEach((g) => {
+            const gwRows: Array<{ user_id: string; score: number; unicorns: number }> = Array.from(perGw.get(g)!.values());
+            gwRows.forEach((r) => {
+              ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);
+              unis.set(r.user_id, (unis.get(r.user_id) ?? 0) + r.unicorns);
+            });
+            
+            gwRows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns);
+            if (gwRows.length === 0) return;
+            
+            const top = gwRows[0];
+            const coTop = gwRows.filter((r) => r.score === top.score && r.unicorns === top.unicorns);
+            const winners = new Set(coTop.map((r) => r.user_id));
+            gwWinners.set(g, winners);
+            
+            if (coTop.length === 1) {
+              mltPts.set(top.user_id, (mltPts.get(top.user_id) ?? 0) + 3);
+            } else {
+              coTop.forEach((r) => {
+                mltPts.set(r.user_id, (mltPts.get(r.user_id) ?? 0) + 1);
+              });
+            }
+          });
+          
+          const mltRows = members.map((m) => ({
+            user_id: m.id,
+            name: m.name,
+            mltPts: mltPts.get(m.id) ?? 0,
+            unicorns: unis.get(m.id) ?? 0,
+            ocp: ocp.get(m.id) ?? 0,
+          }));
+          
+          const sortedMltRows = [...mltRows].sort((a, b) => 
+            b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
+          );
+          
+          const sortedMemberIds = sortedMltRows.map(r => r.user_id);
+          const userIndex = sortedMltRows.findIndex(r => r.user_id === userId);
+          const userPosition = userIndex !== -1 ? userIndex + 1 : null;
+          
+          const latestRelevantGw = relevantGws.length ? Math.max(...relevantGws) : null;
+          const latestGwWinners = latestRelevantGw !== null ? (gwWinners.get(latestRelevantGw) ?? new Set<string>()) : new Set<string>();
+          const sortedMembers = members.sort((a, b) => a.name.localeCompare(b.name));
+          
+          const leagueWebUserIds = Array.from(memberIds.filter(id => webUserIds.has(id)));
+          
+          leagueDataMap[league.id] = {
+            id: league.id,
+            members: sortedMembers,
+            userPosition,
+            positionChange: null,
+            submittedMembers: Array.from(memberIds.filter(id => submittedUserIds.has(id))),
+            sortedMemberIds,
+            latestGwWinners: Array.from(latestGwWinners),
+            latestRelevantGw,
+            webUserIds: leagueWebUserIds
+          };
+        });
+        
+        // Cache the processed data (same format as Home.tsx)
+        const cacheableLeagueData: Record<string, any> = {};
+        for (const [leagueId, data] of Object.entries(leagueDataMap)) {
+          cacheableLeagueData[leagueId] = {
+            ...data,
+            submittedMembers: data.submittedMembers ? (data.submittedMembers instanceof Set ? Array.from(data.submittedMembers) : data.submittedMembers) : undefined,
+            latestGwWinners: data.latestGwWinners ? (data.latestGwWinners instanceof Set ? Array.from(data.latestGwWinners) : data.latestGwWinners) : undefined,
+            webUserIds: data.webUserIds ? (data.webUserIds instanceof Set ? Array.from(data.webUserIds) : data.webUserIds) : undefined,
+          };
+        }
+        
+        setCached(leagueDataCacheKey, {
+          leagueData: cacheableLeagueData,
+          leagueSubmissions: submissionStatus,
+        }, CACHE_TTL.HOME);
+        
+        log.debug('preload/league_data_complete', { userId: userId.slice(0, 8), gw: currentGw, leagueCount: Object.keys(leagueDataMap).length });
       } catch (error) {
-        console.warn('[Pre-loading] Failed to pre-fetch league data:', error);
+        console.warn('[Pre-loading] Failed to pre-load league data:', error);
         // Non-critical - Home.tsx will fetch it when needed
       }
     })();
