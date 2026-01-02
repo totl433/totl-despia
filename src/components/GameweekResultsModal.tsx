@@ -313,6 +313,8 @@ export default function GameweekResultsModal({
   // But allow ShareSheet to render even when modal is closed
   // Keep component mounted if ShareSheet is open, even if modal is closed
   if (!isOpen && !showShareSheet) return null;
+  
+  // Don't show modal until data is ready (no loading spinner in modal)
   if (loading || !results) {
     // Still allow ShareSheet to render if it's open
     if (showShareSheet) {
@@ -334,32 +336,8 @@ export default function GameweekResultsModal({
       );
     }
     
-    // Show loading state with backdrop and spinner when modal is open but data isn't ready
-    return (
-      <>
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm"
-          aria-hidden="true"
-          style={{
-            animation: 'fadeIn 200ms ease-out',
-            zIndex: 999999,
-          }}
-        />
-        <div
-          className="fixed inset-0 flex items-center justify-center p-4"
-          role="dialog"
-          aria-modal="true"
-          style={{
-            zIndex: 1000001,
-          }}
-        >
-          <div className="bg-white rounded-3xl shadow-2xl p-12 flex flex-col items-center justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mb-4"></div>
-            <p className="text-slate-600 text-sm">Loading results...</p>
-          </div>
-        </div>
-      </>
-    );
+    // Don't render modal at all while loading - parent handles loading state
+    return null;
   }
 
   const trophyCount = Object.values(results?.trophies || {}).filter(Boolean).length;
