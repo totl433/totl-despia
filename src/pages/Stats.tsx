@@ -13,7 +13,6 @@ import UnicornCollection from '../components/profile/UnicornCollection';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { supabase } from '../lib/supabase';
 import GameweekResultsModal from '../components/GameweekResultsModal';
-import { fireConfettiCannon } from '../lib/confettiCannon';
 
 export default function Stats() {
   const { user } = useAuth();

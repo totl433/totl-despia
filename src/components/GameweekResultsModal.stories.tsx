@@ -47,6 +47,7 @@ export const Default: Story = {
         overall: false,
       },
       mlVictories: 2,
+      mlVictoryNames: ['Prem Predictions', 'Work League'],
       mlVictoryData: [
         { id: 'ml-1', name: 'Prem Predictions', avatar: null },
         { id: 'ml-2', name: 'Work League', avatar: null },
@@ -77,6 +78,7 @@ export const WithTrophies: Story = {
         overall: false,
       },
       mlVictories: 3,
+      mlVictoryNames: ['Prem Predictions', 'Work League', 'Family League'],
       mlVictoryData: [
         { id: 'ml-1', name: 'Prem Predictions', avatar: null },
         { id: 'ml-2', name: 'Work League', avatar: null },
@@ -108,6 +110,7 @@ export const NoNextGw: Story = {
         overall: false,
       },
       mlVictories: 2,
+      mlVictoryNames: ['Prem Predictions', 'Work League'],
       mlVictoryData: [
         { id: 'ml-1', name: 'Prem Predictions', avatar: null },
         { id: 'ml-2', name: 'Work League', avatar: null },
@@ -138,6 +141,8 @@ export const NoTrophies: Story = {
         overall: false,
       },
       mlVictories: 0,
+      mlVictoryNames: [],
+      mlVictoryData: [],
       leaderboardChanges: {
         overall: { before: 230, after: 234, change: -4 },
         form5: { before: 245, after: 250, change: -5 },
@@ -256,6 +261,7 @@ export const ShareCard: Story = {
         overall: false,
       },
       mlVictories: 2,
+      mlVictoryNames: ['Prem Predictions', 'Work League'],
       mlVictoryData: [
         { id: 'ml-1', name: 'Prem Predictions', avatar: null },
         { id: 'ml-2', name: 'Work League', avatar: null },

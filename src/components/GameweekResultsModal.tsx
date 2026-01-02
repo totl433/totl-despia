@@ -268,8 +268,8 @@ export default function GameweekResultsModal({
     }, 300);
   };
 
-  // Continue to next GW
-  const handleContinue = async () => {
+  // Continue to next GW (removed - no longer used)
+  const _handleContinue = async () => {
     if (!nextGw || isTransitioning || !user?.id) return;
 
     const userId = user.id;

@@ -273,7 +273,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
 
   // Determine viewing GW (for PredictionsBanner)
   const viewingGw = userViewingGw ?? (currentGw > 1 ? currentGw - 1 : currentGw);
-  
+
   // Now fetch fixtures, picks, and user's own OCP (if not in top 100)
   const userInTop100 = (overallResult.data || []).some((r: any) => r.user_id === userId);
   
@@ -372,7 +372,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
         log.debug('preload/league_data_start', { userId: userId.slice(0, 8), gw: currentGw, leagueCount: leagueIds.length });
         
         // Fetch all data in parallel (same as Home.tsx)
-        const [membersResult, readsResult, submissionsResult, resultsResult, fixturesResult, webPicksResult, appPicksResult] = await Promise.all([
+        const [membersResult, _readsResult, submissionsResult, resultsResult, _fixturesResult, webPicksResult, appPicksResult] = await Promise.all([
           supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds),
           supabase.from("league_message_reads").select("league_id, last_read_at").eq("user_id", userId).in("league_id", leagueIds),
           supabase.from("app_gw_submissions").select("user_id").eq("gw", currentGw),

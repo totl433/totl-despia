@@ -175,7 +175,7 @@ export async function fetchGwResults(userId: string, gw: number): Promise<GwResu
     // For each league, check if user won
     for (const leagueId of leagueIds) {
       // Get league name and avatar
-      const { data: leagueData, error: leagueError } = await supabase
+      const { data: leagueData } = await supabase
         .from('leagues')
         .select('id, name, avatar')
         .eq('id', leagueId)
