@@ -62,9 +62,15 @@ export default function GameweekResultsModal({
   useEffect(() => {
     if (!isOpen || !gw) {
       setLoading(false);
+      setResults(null);
+      setError(null);
       onLoadingChange?.(false);
       return;
     }
+
+    // Reset state when modal opens
+    setResults(null);
+    setError(null);
 
     // If preloadedResults provided, use them immediately (no loading needed)
     if (preloadedResults !== undefined && preloadedResults !== null) {
@@ -307,7 +313,8 @@ export default function GameweekResultsModal({
     if (!isOpen) {
       onLoadingChange?.(false);
     }
-  }, [isOpen, onLoadingChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   // Don't render modal content until data is ready
   // But allow ShareSheet to render even when modal is closed
@@ -710,22 +717,22 @@ export default function GameweekResultsModal({
           {/* Green Header */}
           <div style={{ 
             backgroundColor: '#1C8376', 
-            paddingTop: '6px', 
-            paddingBottom: '6px',
+            paddingTop: '12px', 
+            paddingBottom: '12px',
             paddingLeft: '16px',
             paddingRight: '16px',
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
             position: 'relative',
-            minHeight: '50px'
+            minHeight: '80px'
           }}>
             <img 
               src="/assets/badges/totl-logo1.svg" 
               alt="TOTL" 
               style={{ 
-                width: '40px', 
-                height: '40px',
+                width: '70px', 
+                height: '70px',
                 filter: 'brightness(0) invert(1)',
                 display: 'block',
                 position: 'absolute',
