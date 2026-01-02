@@ -2,6 +2,7 @@ import React from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useGameweekState } from "../hooks/useGameweekState";
+import { getCached } from "../lib/cache";
 import GameweekBanner from "./ComingSoonBanner";
 
 /**
@@ -94,18 +95,25 @@ export default function PredictionsBanner() {
       
       setCurrentGw(gw);
       
-      // Get user's current_viewing_gw
-      const { data: prefs } = await supabase
-        .from("user_notification_preferences")
-        .select("current_viewing_gw")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      // Get user's current_viewing_gw (check cache first, then fetch)
+      const cached = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
+      let userViewingGw: number | null = cached?.current_viewing_gw ?? null;
+      
+      // If not in cache, fetch from DB
+      if (userViewingGw === null) {
+        const { data: prefs } = await supabase
+          .from("user_notification_preferences")
+          .select("current_viewing_gw")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        userViewingGw = prefs?.current_viewing_gw ?? null;
+      }
       
       // If user hasn't set current_viewing_gw, default to previous GW (currentGw - 1)
       // This ensures users stay on the previous GW's results when a new GW is published
       // and see the "GW ready" banner to transition
-      const userViewingGw = prefs?.current_viewing_gw ?? (gw > 1 ? gw - 1 : gw);
-      setViewingGw(userViewingGw);
+      const effectiveViewingGw = userViewingGw ?? (gw > 1 ? gw - 1 : gw);
+      setViewingGw(effectiveViewingGw);
       
     } catch (error) {
       console.error('[PredictionsBanner] Error in refreshBanner:', error);

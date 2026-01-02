@@ -155,6 +155,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     _allResultsResult, // Used in background async function
     _allFixturesResult, // Used in background async function
     _leagueSubmissionsResult, // Placeholder - populated later
+    userNotificationPrefsResult, // User notification preferences for PredictionsBanner
   ] = await Promise.all([
     // 1. Get current GW from app_meta
     supabase
@@ -230,6 +231,13 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     
     // 13. Get league submissions (will be populated after we get league IDs and currentGw)
     Promise.resolve({ data: null, error: null }), // Placeholder
+    
+    // 14. Get user notification preferences (for PredictionsBanner - current_viewing_gw)
+    supabase
+      .from('user_notification_preferences')
+      .select('current_viewing_gw')
+      .eq('user_id', userId)
+      .maybeSingle(),
   ]);
 
   // Handle errors (non-critical errors for Tables/Global data are handled separately)
@@ -241,6 +249,13 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   if (webPicksResult.error) throw new Error(`Failed to load Web picks: ${webPicksResult.error.message}`);
   if (appPicksResult.error) throw new Error(`Failed to load App picks: ${appPicksResult.error.message}`);
   // Note: _allResultsResult, _allFixturesResult errors are non-critical
+  // Note: userNotificationPrefsResult error is non-critical (banner will work without it)
+  
+  // Cache user notification preferences for PredictionsBanner
+  const userViewingGw = userNotificationPrefsResult.data?.current_viewing_gw ?? null;
+  if (userViewingGw !== null) {
+    setCached(`user_notification_prefs:${userId}`, { current_viewing_gw: userViewingGw }, CACHE_TTL.HOME);
+  }
 
   const currentGw = metaResult.data?.current_gw ?? 1;
   const latestGw = latestGwResult.data?.gw ?? null;
