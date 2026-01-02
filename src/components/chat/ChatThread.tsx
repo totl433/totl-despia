@@ -20,6 +20,7 @@ type ChatThreadGroup = {
   avatarInitials?: string;
   isOwnMessage?: boolean;
   dayLabel?: string;
+  userId?: string;
   messages: ChatThreadMessage[];
 };
 
@@ -54,6 +55,7 @@ export function ChatThread({ groups, reactions, onReactionClick, onMessageClick 
             author={group.author}
             avatarInitials={group.avatarInitials}
             isOwnMessage={group.isOwnMessage}
+            userId={group.userId}
             messages={group.messages}
             reactions={reactions}
             onReactionClick={onReactionClick}

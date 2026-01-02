@@ -19,6 +19,7 @@ import { getCachedWithMeta, setCached, CACHE_TTL } from '../lib/cache';
 import { log } from '../lib/logEvent';
 import type { League, LeagueWithUnread } from '../types/league';
 import { sortLeaguesAttachingUnread } from '../lib/sortLeagues';
+import { VOLLEY_USER_ID } from '../lib/volley';
 
 // Cache key generator for leagues
 const getLeaguesCacheKey = (userId: string) => `leagues:${userId}`;
@@ -92,12 +93,14 @@ export async function fetchUnreadCountsFromDb(
     });
 
     // Query 2: Fetch all messages since earliest last_read (single query for all leagues)
+    // Exclude own messages and Volley's messages (no badges/notifications)
     const { data: messagesData, error: messagesError } = await supabase
       .from('league_messages')
       .select('league_id, created_at, user_id')
       .in('league_id', leagueIds)
       .gte('created_at', earliestTime)
       .neq('user_id', userId) // Exclude own messages
+      .neq('user_id', VOLLEY_USER_ID) // Exclude Volley's messages
       .limit(10000); // Safety limit
 
     if (messagesError) {
@@ -105,11 +108,14 @@ export async function fetchUnreadCountsFromDb(
       return {};
     }
 
-    // Count unread messages client-side
+    // Count unread messages client-side (also filter out Volley messages as a safety check)
     const unreadMap: Record<string, number> = {};
     leagueIds.forEach(id => { unreadMap[id] = 0; });
 
     (messagesData ?? []).forEach((msg: any) => {
+      // Double-check: exclude Volley messages (should already be filtered by query, but safety check)
+      if (msg.user_id === VOLLEY_USER_ID) return;
+      
       const leagueLastRead = lastRead.get(msg.league_id) ?? defaultTime;
       if (msg.created_at >= leagueLastRead) {
         unreadMap[msg.league_id] = (unreadMap[msg.league_id] ?? 0) + 1;

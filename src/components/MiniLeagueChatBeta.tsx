@@ -665,6 +665,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           id: `${baseId}-${fallbackName}`, // Update ID to include current author name
           author: fallbackName, // Always use the current resolved name
           avatarInitials,
+          userId: msg.user_id,
           messages: [...updatedMessages, messagePayload], // Create new array with updated messages
         };
         // Replace the last group with the updated one - create new array immutably
@@ -675,6 +676,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           author: fallbackName,
           avatarInitials,
           isOwnMessage,
+          userId: msg.user_id,
           dayLabel: shouldLabelDay ? formatDayLabel(msg.created_at) : undefined,
           messages: [messagePayload],
         }];
@@ -721,6 +723,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
               id: `${baseId}-${resolvedName}`, // Update ID to include resolved name
               author: resolvedName,
               avatarInitials: initials(resolvedName),
+              userId: firstMessage.user_id, // Preserve userId
               messages: updatedMessages, // Use updated messages with refreshed replyTo.authorName
             };
           } else {

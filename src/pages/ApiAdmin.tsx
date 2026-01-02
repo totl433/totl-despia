@@ -493,6 +493,26 @@ export default function ApiAdmin() {
         // Don't throw - gameweek is saved, notification failure is non-critical
       }
 
+      // Send Volley messages to all leagues
+      try {
+        const volleyRes = await fetch('/.netlify/functions/sendVolleyGwReady', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameweek: nextGw })
+        });
+
+        const volleyData = await volleyRes.json().catch(() => ({}));
+        
+        if (volleyRes.ok && volleyData.ok) {
+          console.log(`[ApiAdmin] Volley messages sent to ${volleyData.totalLeagues || 0} leagues`);
+        } else {
+          console.warn('[ApiAdmin] Volley message failed:', volleyData);
+        }
+      } catch (volleyError) {
+        console.error('[ApiAdmin] Error sending Volley messages:', volleyError);
+        // Don't throw - gameweek is published, Volley message failure is non-critical
+      }
+
       setOk(`✅ Gameweek ${nextGw} PUBLISHED with ${selectedFixtures.size} Premier League fixtures! Notification sent to all users.`);
     } catch (e: any) {
       setError(e.message ?? "Failed to publish gameweek.");

@@ -58,20 +58,25 @@ async function calculateUnreadCountAndUrl(
       }
     });
     
-    // Fetch all unread messages
+    // Fetch all unread messages (exclude Volley messages and own messages)
+    const VOLLEY_USER_ID = '00000000-0000-0000-0000-000000000001';
     const { data: messagesData } = await admin
       .from('league_messages')
       .select('league_id, created_at, user_id')
       .in('league_id', leagueIds)
       .gte('created_at', earliestTime)
       .neq('user_id', userId) // Exclude own messages
+      .neq('user_id', VOLLEY_USER_ID) // Exclude Volley messages from badge count
       .limit(10000);
+    
+    // Safety check: filter out any Volley messages that slipped through
+    const filteredMessages = (messagesData || []).filter((msg: any) => msg.user_id !== VOLLEY_USER_ID);
     
     // Count unread per league
     const unreadByLeague: Record<string, number> = {};
     leagueIds.forEach(id => { unreadByLeague[id] = 0; });
     
-    (messagesData || []).forEach((msg: any) => {
+    filteredMessages.forEach((msg: any) => {
       const leagueLastRead = lastRead.get(msg.league_id) ?? defaultTime;
       if (msg.created_at >= leagueLastRead) {
         unreadByLeague[msg.league_id] = (unreadByLeague[msg.league_id] || 0) + 1;
@@ -150,6 +155,13 @@ export const handler: Handler = async (event) => {
   if (!leagueId || !senderId || !content) {
     console.log('[notifyLeagueMessageV2] Missing required fields');
     return json(400, { error: 'Missing leagueId, senderId, or content' });
+  }
+
+  // Skip notifications for Volley messages (bot messages shouldn't trigger notifications or badges)
+  const VOLLEY_USER_ID = '00000000-0000-0000-0000-000000000001';
+  if (senderId === VOLLEY_USER_ID) {
+    console.log('[notifyLeagueMessageV2] Skipping notification for Volley message');
+    return json(200, { ok: true, message: 'Volley messages do not trigger notifications', skipped: true });
   }
 
   // Optional auth check with JWT

@@ -19,6 +19,7 @@ import MiniLeagueTable from "../components/league/MiniLeagueTable";
 import ResultsTable from "../components/league/ResultsTable";
 import SubmissionStatusTable from "../components/league/SubmissionStatusTable";
 import LeagueFixtureSection from "../components/league/LeagueFixtureSection";
+import { VOLLEY_USER_ID, VOLLEY_NAME, VOLLEY_AVATAR_PATH } from "../lib/volley";
 
 const MAX_MEMBERS = 8;
 
@@ -548,13 +549,23 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
               style={{ marginTop: startsRun ? 24 : 4 }}
             >
               {!mine && (
-                <div className="flex-shrink-0 w-8 h-8 flex justify-center self-end">
+                <div className="flex-shrink-0 w-10 h-10 flex justify-center self-end">
                   {showAvatar ? (
-                    <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500">
-                      {initials}
-                    </div>
+                    m.user_id === VOLLEY_USER_ID ? (
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 border border-slate-200 flex items-center justify-center overflow-hidden">
+                        <img 
+                          src={VOLLEY_AVATAR_PATH}
+                          alt="Volley" 
+                          className="w-10 h-10 rounded-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-sm font-semibold text-slate-500">
+                        {initials}
+                      </div>
+                    )
                   ) : (
-                    <div className="w-8 h-8" />
+                    <div className="w-10 h-10" />
                   )}
                 </div>
               )}
@@ -912,6 +923,7 @@ export default function LeaguePage() {
   const memberNameById = useMemo(() => {
     const m = new Map<string, string>();
     members.forEach((x) => m.set(x.id, x.name));
+    m.set(VOLLEY_USER_ID, VOLLEY_NAME); // Add Volley
     return m;
   }, [members]);
 

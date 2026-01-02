@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import MessageBubble from "./MessageBubble";
+import { VOLLEY_USER_ID, VOLLEY_AVATAR_PATH } from "../../lib/volley";
 
 type Message = {
   id: string;
@@ -18,6 +19,7 @@ export type MessageStackProps = {
   messages: Message[];
   isOwnMessage?: boolean;
   avatarInitials?: string;
+  userId?: string;
   reactions?: Record<string, Array<{ emoji: string; count: number; hasUserReacted: boolean }>>;
   onReactionClick?: (messageId: string, emoji: string) => void;
   onMessageClick?: (messageId: string, content: string, authorName?: string) => void;
@@ -28,6 +30,7 @@ export function MessageStack({
   messages,
   isOwnMessage,
   avatarInitials,
+  userId,
   reactions,
   onReactionClick,
   onMessageClick,
@@ -37,15 +40,26 @@ export function MessageStack({
     console.error('[MessageStack] Received "Unknown" as author prop!', 'isOwnMessage:', isOwnMessage, 'messages:', messages.length);
   }
   const alignment = isOwnMessage ? "justify-end" : "justify-start";
+  const isVolley = userId === VOLLEY_USER_ID;
 
   return (
     <div className={`flex items-end gap-3 w-full ${alignment}`}>
       {!isOwnMessage ? (
-        <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[13px] font-semibold text-slate-500 flex-shrink-0">
+        isVolley ? (
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 border border-slate-200 flex items-center justify-center flex-shrink-0 overflow-hidden">
+            <img 
+              src={VOLLEY_AVATAR_PATH}
+              alt="Volley" 
+              className="w-10 h-10 rounded-full object-cover"
+            />
+          </div>
+        ) : (
+          <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-sm font-semibold text-slate-500 flex-shrink-0">
             {(avatarInitials || author.charAt(0)).toUpperCase()}
-        </div>
+          </div>
+        )
       ) : (
-        <div className="w-8 flex-shrink-0" />
+        <div className="w-10 flex-shrink-0" />
       )}
 
       <div className="flex flex-col gap-1 flex-1">

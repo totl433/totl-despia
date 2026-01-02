@@ -517,6 +517,27 @@ export const handler: Handler = async (event, context) => {
             const result = await sendGameweekCompleteNotification(gwUserIds, gw);
             console.log(`[scoreWebhookV2] [${requestId}] Gameweek complete: ${result.results.accepted} sent`);
           }
+
+          // Send Volley congratulations to all leagues
+          try {
+            const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://your-site.netlify.app';
+            const volleyRes = await fetch(`${baseUrl}/.netlify/functions/sendVolleyGwCongratulations`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ gameweek: gw })
+            });
+
+            const volleyData = await volleyRes.json().catch(() => ({}));
+            
+            if (volleyRes.ok && volleyData.ok) {
+              console.log(`[scoreWebhookV2] [${requestId}] Volley congratulations sent to ${volleyData.totalLeagues || 0} leagues`);
+            } else {
+              console.warn(`[scoreWebhookV2] [${requestId}] Volley congratulations failed:`, volleyData);
+            }
+          } catch (volleyError) {
+            console.error(`[scoreWebhookV2] [${requestId}] Error sending Volley congratulations:`, volleyError);
+            // Don't throw - gameweek complete notification is sent, Volley message failure is non-critical
+          }
         }
       }
 
