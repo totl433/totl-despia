@@ -584,7 +584,10 @@ export default function HomePage() {
     const cacheKey = `home:basic:${user.id}`;
     
     // Check if we already loaded from cache (state was initialized from cache)
-    const alreadyLoadedFromCache = leagues.length > 0 && !loading;
+    // We have cached data if we have any rank data (leaderboard) or league data
+    const hasCachedLeaderboardData = lastGwRank !== null || fiveGwRank !== null || tenGwRank !== null || seasonRank !== null;
+    const hasCachedLeagueData = Object.keys(leagueData).length > 0;
+    const alreadyLoadedFromCache = hasCachedLeaderboardData || hasCachedLeagueData;
     
     if (!alreadyLoadedFromCache) {
       // No cache found on init, fetching fresh data
@@ -1820,7 +1823,11 @@ export default function HomePage() {
     });
   }, [fixturesToShow, liveScores, userPicks]);
 
-  const isDataReady = !loading && !leaderboardDataLoading && !leagueDataLoading;
+  // Allow rendering if we have cached data OR if all loading is complete
+  // This ensures the page renders immediately with cached data while fresh data loads in background
+  const hasCachedData = (lastGwRank !== null || fiveGwRank !== null || tenGwRank !== null || seasonRank !== null) && 
+                       Object.keys(leagueData).length > 0;
+  const isDataReady = hasCachedData || (!loading && !leaderboardDataLoading && !leagueDataLoading);
   // NOTE: Unread counts refresh on focus is now handled by useLeagues hook
 
   return (
