@@ -15,8 +15,6 @@ import { calculateFormRank, calculateLastGwRank, calculateSeasonRank } from "../
 import { fireConfettiCannon } from "../lib/confettiCannon";
 import { APP_ONLY_USER_IDS } from "../lib/appOnlyUsers";
 import { useGameweekState } from "../hooks/useGameweekState";
-import GameweekResultsModal, { type GwResults } from "../components/GameweekResultsModal";
-import { fetchGwResults } from "../lib/fetchGwResults";
 
 // Types (League type is now from useLeagues hook)
 type LeagueMember = { id: string; name: string };
@@ -203,10 +201,6 @@ export default function HomePage() {
   const [gw, setGw] = useState<number>(initialState.gw);
   const [latestGw, setLatestGw] = useState<number | null>(initialState.latestGw);
   const logoContainerRef = useRef<HTMLDivElement>(null);
-  const [showResultsModal, setShowResultsModal] = useState(false);
-  const [resultsModalGw, setResultsModalGw] = useState<number | null>(null);
-  const [preloadedResultsData, setPreloadedResultsData] = useState<GwResults | null>(null);
-  const [preloadedResultsLoading, setPreloadedResultsLoading] = useState(false);
   
   // Use centralized game state system (PR.md rule 10)
   const { state: gameState, loading: gameStateLoading } = useGameweekState(gw);
@@ -302,60 +296,6 @@ export default function HomePage() {
     const timeout = setTimeout(checkConfetti, 100);
     return () => clearTimeout(timeout);
   }, []);
-
-  // Pre-load results data when we detect RESULTS_PRE_GW state (during app initialization)
-  // This should happen as early as possible, ideally during the Volley loading screen
-  useEffect(() => {
-    if (!user?.id || !gw) return;
-    
-    // Wait for game state to be determined
-    if (gameStateLoading) return;
-    
-    // Only pre-load if we're in RESULTS_PRE_GW state (results are out)
-    if (gameState !== 'RESULTS_PRE_GW') return;
-    
-    // Check if we've already shown the modal for this GW
-    const localStorageKey = `gwResultsModalShown:${user.id}:${gw}`;
-    const hasShownModal = localStorage.getItem(localStorageKey) === 'true';
-    
-    // Only pre-load if user hasn't seen the modal yet and we haven't already loaded
-    if (hasShownModal || preloadedResultsData || preloadedResultsLoading) return;
-    
-    // Pre-fetch the results data immediately
-    setPreloadedResultsLoading(true);
-    fetchGwResults(user.id, gw)
-      .then((data) => {
-        setPreloadedResultsData(data);
-        setPreloadedResultsLoading(false);
-      })
-      .catch((error) => {
-        console.error('[Home] Error pre-loading results:', error);
-        setPreloadedResultsLoading(false);
-      });
-  }, [user?.id, gameState, gameStateLoading, gw, preloadedResultsData, preloadedResultsLoading]);
-
-  // Auto-open results modal once pre-loaded data is ready
-  useEffect(() => {
-    if (!user?.id || !gw) return;
-    
-    // Wait for game state to be determined
-    if (gameStateLoading) return;
-    
-    // Only auto-open if we're in RESULTS_PRE_GW state (results are out)
-    if (gameState !== 'RESULTS_PRE_GW') return;
-    
-    // Check if we've already shown the modal for this GW
-    const localStorageKey = `gwResultsModalShown:${user.id}:${gw}`;
-    const hasShownModal = localStorage.getItem(localStorageKey) === 'true';
-    
-    // Only open if we have pre-loaded data ready (wait for preloading to complete)
-    // This ensures the modal opens with data ready, showing confetti immediately
-    if (!hasShownModal && !showResultsModal && preloadedResultsData && !preloadedResultsLoading) {
-      // Open the modal for this GW - data is already loaded!
-      setResultsModalGw(gw);
-      setShowResultsModal(true);
-    }
-  }, [user?.id, gameState, gameStateLoading, gw, showResultsModal, preloadedResultsData, preloadedResultsLoading]);
 
   // Track gw_results changes to trigger leaderboard recalculation
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
@@ -584,21 +524,17 @@ export default function HomePage() {
     const cacheKey = `home:basic:${user.id}`;
     
     // Check if we already loaded from cache (state was initialized from cache)
-    // We have cached data if we have any rank data (leaderboard)
-    const hasCachedLeaderboardData = lastGwRank !== null || fiveGwRank !== null || tenGwRank !== null || seasonRank !== null;
+    const alreadyLoadedFromCache = leagues.length > 0 && !loading;
     
-    if (!hasCachedLeaderboardData) {
+    if (!alreadyLoadedFromCache) {
       // No cache found on init, fetching fresh data
+      // Only set loading if we didn't load from cache
       setLoading(true);
       setLeaderboardDataLoading(true);
-    } else {
-      // We have cached data, so we can render immediately
-      // But still fetch fresh data in background to update cache
-      setLoading(false);
-      setLeaderboardDataLoading(false);
+      setLeagueDataLoading(true);
     }
     
-    // Always fetch fresh data in background (for cache refresh)
+    // 2. Fetch fresh data in background
     (async () => {
       try {
         // Add timeout to prevent infinite hanging (15 seconds max)
@@ -699,20 +635,13 @@ export default function HomePage() {
           // Failed to cache data (non-critical)
         }
         
-        // Only update loading states if we didn't have cached data initially
-        // If we had cached data, these are already false and page is already rendered
-        if (!hasCachedLeaderboardData) {
-          setLoading(false);
-          setLeaderboardDataLoading(false);
-        }
+        setLoading(false);
+        setLeaderboardDataLoading(false);
       } catch (error: any) {
         console.error('[Home] Error fetching data:', error);
         if (alive) {
-          // Only update loading states if we didn't have cached data
-          if (!hasCachedLeaderboardData) {
-            setLoading(false);
-            setLeaderboardDataLoading(false);
-          }
+          setLoading(false);
+          setLeaderboardDataLoading(false);
           setLeagueDataLoading(false);
         }
       }
@@ -1831,11 +1760,7 @@ export default function HomePage() {
     });
   }, [fixturesToShow, liveScores, userPicks]);
 
-  // Render immediately if we have cached data (from initialDataLoader pre-load)
-  // This ensures the page shows instantly after Volley screen
-  const hasCachedData = (lastGwRank !== null || fiveGwRank !== null || tenGwRank !== null || seasonRank !== null) && 
-                       fixtures.length > 0;
-  const isDataReady = hasCachedData || (!loading && !leaderboardDataLoading && !leagueDataLoading);
+  const isDataReady = !loading && !leaderboardDataLoading && !leagueDataLoading;
   // NOTE: Unread counts refresh on focus is now handled by useLeagues hook
 
   return (
@@ -1904,27 +1829,6 @@ export default function HomePage() {
           {/* Bottom padding */}
           <div className="h-20"></div>
         </>
-      )}
-
-      {/* GameweekResultsModal */}
-      {showResultsModal && resultsModalGw && (
-        <GameweekResultsModal
-          isOpen={showResultsModal}
-          onClose={() => {
-            // Mark modal as shown for this GW in localStorage
-            if (user?.id && resultsModalGw) {
-              const localStorageKey = `gwResultsModalShown:${user.id}:${resultsModalGw}`;
-              localStorage.setItem(localStorageKey, 'true');
-            }
-            setShowResultsModal(false);
-            setResultsModalGw(null);
-            // Clear preloaded data after modal is closed
-            setPreloadedResultsData(null);
-          }}
-          gw={resultsModalGw}
-          nextGw={latestGw && latestGw > resultsModalGw ? latestGw : null}
-          preloadedResults={preloadedResultsData}
-        />
       )}
 
     </div>
