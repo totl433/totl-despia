@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { toPng } from 'html-to-image';
 import ShareSheet from './ShareSheet';
@@ -42,7 +41,7 @@ export default function GameweekResultsModal({
   isOpen,
   onClose,
   gw,
-  nextGw,
+  nextGw: _nextGw,
   mockResults,
   preloadedResults,
   onLoadingChange,
@@ -54,7 +53,6 @@ export default function GameweekResultsModal({
   const [isSharing, setIsSharing] = useState(false);
   const [showShareSheet, setShowShareSheet] = useState(false);
   const [shareImageUrl, setShareImageUrl] = useState<string | null>(null);
-  const [isTransitioning, setIsTransitioning] = useState(false);
   const [showCaptureModal, setShowCaptureModal] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const shareCardRef = useRef<HTMLDivElement>(null);
