@@ -584,20 +584,23 @@ export default function HomePage() {
     const cacheKey = `home:basic:${user.id}`;
     
     // Check if we already loaded from cache (state was initialized from cache)
-    // We have cached data if we have any rank data (leaderboard) or league data
+    // We have cached data if we have any rank data (leaderboard)
     const hasCachedLeaderboardData = lastGwRank !== null || fiveGwRank !== null || tenGwRank !== null || seasonRank !== null;
-    const hasCachedLeagueData = Object.keys(leagueData).length > 0;
-    const alreadyLoadedFromCache = hasCachedLeaderboardData || hasCachedLeagueData;
     
-    if (!alreadyLoadedFromCache) {
+    // If we have cached data, skip fetching and just refresh in background silently
+    // This ensures the page renders immediately with cached data
+    if (hasCachedLeaderboardData) {
+      // Data already loaded from cache, just refresh in background without blocking
+      setLoading(false);
+      setLeaderboardDataLoading(false);
+    } else {
       // No cache found on init, fetching fresh data
-      // Only set loading if we didn't load from cache
       setLoading(true);
       setLeaderboardDataLoading(true);
-      setLeagueDataLoading(true);
     }
     
-    // 2. Fetch fresh data in background
+    // Always fetch fresh data in background (for cache refresh)
+    // But don't block rendering if we have cached data
     (async () => {
       try {
         // Add timeout to prevent infinite hanging (15 seconds max)
@@ -698,20 +701,27 @@ export default function HomePage() {
           // Failed to cache data (non-critical)
         }
         
-        setLoading(false);
-        setLeaderboardDataLoading(false);
+        // Only update loading states if we didn't have cached data
+        // If we had cached data, these are already false
+        if (!hasCachedLeaderboardData) {
+          setLoading(false);
+          setLeaderboardDataLoading(false);
+        }
       } catch (error: any) {
         console.error('[Home] Error fetching data:', error);
         if (alive) {
-          setLoading(false);
-          setLeaderboardDataLoading(false);
+          // Only update loading states if we didn't have cached data
+          if (!hasCachedLeaderboardData) {
+            setLoading(false);
+            setLeaderboardDataLoading(false);
+          }
           setLeagueDataLoading(false);
         }
       }
     })();
     
     return () => { alive = false; };
-  }, [user?.id]);
+  }, [user?.id, lastGwRank, fiveGwRank, tenGwRank, seasonRank]);
 
   // Subscribe to app_meta changes to detect when current_gw changes
   useEffect(() => {
