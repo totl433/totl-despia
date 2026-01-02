@@ -15,7 +15,8 @@ import { calculateFormRank, calculateLastGwRank, calculateSeasonRank } from "../
 import { fireConfettiCannon } from "../lib/confettiCannon";
 import { APP_ONLY_USER_IDS } from "../lib/appOnlyUsers";
 import { useGameweekState } from "../hooks/useGameweekState";
-import GameweekResultsModal from "../components/GameweekResultsModal";
+import GameweekResultsModal, { type GwResults } from "../components/GameweekResultsModal";
+import { fetchGwResults } from "../lib/fetchGwResults";
 
 // Types (League type is now from useLeagues hook)
 type LeagueMember = { id: string; name: string };
@@ -204,6 +205,8 @@ export default function HomePage() {
   const logoContainerRef = useRef<HTMLDivElement>(null);
   const [showResultsModal, setShowResultsModal] = useState(false);
   const [resultsModalGw, setResultsModalGw] = useState<number | null>(null);
+  const [preloadedResultsData, setPreloadedResultsData] = useState<GwResults | null>(null);
+  const [preloadedResultsLoading, setPreloadedResultsLoading] = useState(false);
   
   // Use centralized game state system (PR.md rule 10)
   const { state: gameState, loading: gameStateLoading } = useGameweekState(gw);
@@ -300,9 +303,43 @@ export default function HomePage() {
     return () => clearTimeout(timeout);
   }, []);
 
-  // Auto-open results modal on first visit after GW results are out
+  // Pre-load results data when we detect RESULTS_PRE_GW state (during app initialization)
+  // This should happen as early as possible, ideally during the Volley loading screen
   useEffect(() => {
-    if (!user?.id || gameStateLoading || !gw) return;
+    if (!user?.id || !gw) return;
+    
+    // Wait for game state to be determined
+    if (gameStateLoading) return;
+    
+    // Only pre-load if we're in RESULTS_PRE_GW state (results are out)
+    if (gameState !== 'RESULTS_PRE_GW') return;
+    
+    // Check if we've already shown the modal for this GW
+    const localStorageKey = `gwResultsModalShown:${user.id}:${gw}`;
+    const hasShownModal = localStorage.getItem(localStorageKey) === 'true';
+    
+    // Only pre-load if user hasn't seen the modal yet and we haven't already loaded
+    if (hasShownModal || preloadedResultsData || preloadedResultsLoading) return;
+    
+    // Pre-fetch the results data immediately
+    setPreloadedResultsLoading(true);
+    fetchGwResults(user.id, gw)
+      .then((data) => {
+        setPreloadedResultsData(data);
+        setPreloadedResultsLoading(false);
+      })
+      .catch((error) => {
+        console.error('[Home] Error pre-loading results:', error);
+        setPreloadedResultsLoading(false);
+      });
+  }, [user?.id, gameState, gameStateLoading, gw, preloadedResultsData, preloadedResultsLoading]);
+
+  // Auto-open results modal once pre-loaded data is ready
+  useEffect(() => {
+    if (!user?.id || !gw) return;
+    
+    // Wait for game state to be determined
+    if (gameStateLoading) return;
     
     // Only auto-open if we're in RESULTS_PRE_GW state (results are out)
     if (gameState !== 'RESULTS_PRE_GW') return;
@@ -311,12 +348,14 @@ export default function HomePage() {
     const localStorageKey = `gwResultsModalShown:${user.id}:${gw}`;
     const hasShownModal = localStorage.getItem(localStorageKey) === 'true';
     
-    if (!hasShownModal && !showResultsModal) {
-      // Open the modal for this GW
+    // Only open if we have pre-loaded data ready (wait for preloading to complete)
+    // This ensures the modal opens with data ready, showing confetti immediately
+    if (!hasShownModal && !showResultsModal && preloadedResultsData && !preloadedResultsLoading) {
+      // Open the modal for this GW - data is already loaded!
       setResultsModalGw(gw);
       setShowResultsModal(true);
     }
-  }, [user?.id, gameState, gameStateLoading, gw, showResultsModal]);
+  }, [user?.id, gameState, gameStateLoading, gw, showResultsModal, preloadedResultsData, preloadedResultsLoading]);
 
   // Track gw_results changes to trigger leaderboard recalculation
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
@@ -1864,9 +1903,12 @@ export default function HomePage() {
             }
             setShowResultsModal(false);
             setResultsModalGw(null);
+            // Clear preloaded data after modal is closed
+            setPreloadedResultsData(null);
           }}
           gw={resultsModalGw}
           nextGw={latestGw && latestGw > resultsModalGw ? latestGw : null}
+          preloadedResults={preloadedResultsData}
         />
       )}
 
