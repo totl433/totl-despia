@@ -1761,9 +1761,9 @@ export default function HomePage() {
     });
   }, [fixturesToShow, liveScores, userPicks]);
 
-  // Wait for gameState to load before rendering to ensure correct state (LIVE vs non-LIVE)
-  const isDataReady = !loading && !leaderboardDataLoading && !leagueDataLoading && !gameStateLoading;
+  const isDataReady = !loading && !leaderboardDataLoading && !leagueDataLoading;
   // NOTE: Unread counts refresh on focus is now handled by useLeagues hook
+  // NOTE: gameState loads asynchronously but MiniLeaguesSection handles null/loading state gracefully
 
   return (
     <div className="max-w-6xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 pt-2 pb-4 min-h-screen relative">
