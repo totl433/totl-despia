@@ -13,6 +13,7 @@ import { useLiveScores } from "../hooks/useLiveScores";
 import { useGameweekState } from "../hooks/useGameweekState";
 import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import Confetti from "react-confetti";
+import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
 
 // Generate a color from a string (team name or code)
 function stringToColor(str: string): string {
@@ -2297,6 +2298,14 @@ export default function PredictionsPage() {
                 </div>
               </div>
             )}
+            {/* First Visit Info Banner - How to Swipe */}
+            <div className="px-4 pb-4">
+              <FirstVisitInfoBanner
+                storageKey="predictionsSwipeFirstVisit"
+                message="Swipe cards left for Home Win, right for Away Win, or down for Draw. You can also use the buttons at the bottom."
+                imageSrc="/assets/Volley/swipe-hand.png"
+              />
+            </div>
           </div>
         </div>
       )}

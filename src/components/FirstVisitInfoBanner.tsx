@@ -10,6 +10,8 @@ export type FirstVisitInfoBannerProps = {
   onDismiss?: () => void;
   /** Custom className for styling */
   className?: string;
+  /** Custom image source. Defaults to Volley-Tool-Tip.png */
+  imageSrc?: string;
 };
 
 /**
@@ -27,6 +29,7 @@ export default function FirstVisitInfoBanner({
   message,
   onDismiss,
   className = '',
+  imageSrc = '/assets/Volley/Volley-Tool-Tip.png',
 }: FirstVisitInfoBannerProps) {
   const [isVisible, setIsVisible] = useState(false);
 
@@ -137,11 +140,11 @@ export default function FirstVisitInfoBanner({
             {/* Message */}
             <div className="flex-1 min-w-0">
               <div className="flex items-end gap-3 mb-6 mt-2">
-                {/* Volley Tool Tip Image - bigger, inline with content */}
+                {/* Icon Image - bigger, inline with content */}
                 <img 
-                  src="/assets/Volley/Volley-Tool-Tip.png" 
+                  src={imageSrc} 
                   alt="" 
-                  className="w-20 h-20 object-contain flex-shrink-0"
+                  className="w-32 h-32 object-contain flex-shrink-0"
                   style={{ imageRendering: 'pixelated' }}
                 />
                 <p id="first-visit-title" className="text-sm text-slate-700 leading-relaxed">
