@@ -524,7 +524,8 @@ export default function HomePage() {
     const cacheKey = `home:basic:${user.id}`;
     
     // Check if we already loaded from cache (state was initialized from cache)
-    const alreadyLoadedFromCache = leagues.length > 0 && !loading;
+    // We have cached data if loading is false (meaning initialState had cached data)
+    const alreadyLoadedFromCache = !loading;
     
     if (!alreadyLoadedFromCache) {
       // No cache found on init, fetching fresh data
