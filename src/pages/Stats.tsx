@@ -258,26 +258,10 @@ export default function Stats() {
           
           return (
             <button
-              onClick={async () => {
-                const gw = stats.lastCompletedGw;
-                if (!gw) return;
-                
+              onClick={() => {
+                setResultsModalGw(stats.lastCompletedGw);
+                setShowResultsModal(true);
                 setResultsModalLoading(true);
-                setResultsModalGw(gw);
-                
-                // Fetch data first, then open modal
-                try {
-                  const { fetchGwResults } = await import('../lib/fetchGwResults');
-                  if (user?.id) {
-                    await fetchGwResults(user.id, gw);
-                    // Data is ready, now open modal
-                    setShowResultsModal(true);
-                  }
-                } catch (error) {
-                  // Error handled by modal
-                } finally {
-                  setResultsModalLoading(false);
-                }
               }}
               className="w-full mb-6 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold py-3 px-4 rounded-xl shadow-md transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-75 disabled:cursor-not-allowed"
               disabled={resultsModalLoading}
