@@ -123,7 +123,6 @@ export default function ShareSheet({
       // Fallback: download image
       handleDownload();
     } catch (error: any) {
-      console.error('Share failed:', error);
       handleDownload();
     }
   };

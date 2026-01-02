@@ -12,6 +12,8 @@ import LiveGamesToggle from '../components/LiveGamesToggle';
 import UnicornCollection from '../components/profile/UnicornCollection';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { supabase } from '../lib/supabase';
+import GameweekResultsModal from '../components/GameweekResultsModal';
+import { fireConfettiCannon } from '../lib/confettiCannon';
 
 export default function Stats() {
   const { user } = useAuth();
@@ -20,19 +22,19 @@ export default function Stats() {
   const [showParChartInfo, setShowParChartInfo] = useState(false);
   const [currentGw, setCurrentGw] = useState<number | null>(null);
   const lastUpdatedGwRef = useRef<number | null>(null); // Track which GW we last updated stats for
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [resultsModalGw, setResultsModalGw] = useState<number | null>(null);
+  const [latestGw, setLatestGw] = useState<number | null>(null);
+  const [resultsModalLoading, setResultsModalLoading] = useState(false);
   
   async function loadStats() {
     if (!user) return;
 
     setLoading(true);
     try {
-      console.log('[Stats] Fetching user stats for user:', user.id);
       const userStats = await fetchUserStats(user.id);
-      console.log('[Stats] Fetched stats:', userStats);
-      console.log('[Stats] Trophy cabinet:', userStats?.trophyCabinet);
       setStats(userStats);
     } catch (error) {
-      console.error('[Stats] Error loading stats:', error);
     } finally {
       setLoading(false);
     }
@@ -81,6 +83,31 @@ export default function Stats() {
   
   // Get game state for current GW
   const { state: currentGwState } = useGameweekState(currentGw, user?.id);
+  
+  // Get game state for last completed GW (for results box)
+  const { state: lastGwState } = useGameweekState(stats?.lastCompletedGw ?? null, user?.id);
+  
+  // Get latest GW for results modal
+  useEffect(() => {
+    let alive = true;
+    
+    const fetchLatestGw = async () => {
+      const { data: meta } = await supabase
+        .from("app_meta")
+        .select("current_gw")
+        .eq("id", 1)
+        .maybeSingle();
+      
+      if (alive && meta) {
+        const gw: number | null = (meta as any)?.current_gw ?? null;
+        setLatestGw(gw);
+      }
+    };
+    
+    fetchLatestGw();
+    
+    return () => { alive = false; };
+  }, []);
   
   // Initial load
   useEffect(() => {
@@ -221,6 +248,49 @@ export default function Stats() {
           <span>Back to Profile</span>
         </Link>
         <PageHeader title="Stats" as="h1" className="mb-6" />
+
+        {/* Gameweek Results Box - Show when results are available */}
+        {stats && stats.lastCompletedGw !== null && (() => {
+          const hasResults = lastGwState !== 'LIVE' && 
+            lastGwState !== 'GW_OPEN' && 
+            lastGwState !== 'GW_PREDICTED';
+          
+          if (!hasResults) return null;
+          
+          return (
+            <button
+              onClick={() => {
+                setResultsModalGw(stats.lastCompletedGw);
+                setShowResultsModal(true);
+                setResultsModalLoading(true);
+                // Confetti will fire automatically when the card loads
+              }}
+              className="w-full mb-6 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold py-3 px-4 rounded-xl shadow-md transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-75 disabled:cursor-not-allowed"
+              disabled={resultsModalLoading}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-lg whitespace-nowrap">Your Gameweek {stats.lastCompletedGw} Results</span>
+                {resultsModalLoading ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white flex-shrink-0 ml-2"></div>
+                ) : (
+                  <svg
+                    className="w-5 h-5 flex-shrink-0 ml-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
+                )}
+              </div>
+            </button>
+          );
+        })()}
 
         {!hasEnoughData && !loading ? (
           <div className="bg-white rounded-xl shadow-md p-8 text-center">
@@ -464,6 +534,23 @@ export default function Stats() {
               />
             )}
           </div>
+        )}
+
+        {/* GameweekResultsModal */}
+        {showResultsModal && resultsModalGw && (
+          <GameweekResultsModal
+            isOpen={showResultsModal}
+            onClose={() => {
+              setShowResultsModal(false);
+              setResultsModalGw(null);
+              setResultsModalLoading(false);
+            }}
+            gw={resultsModalGw}
+            nextGw={latestGw && latestGw > resultsModalGw ? latestGw : null}
+            onLoadingChange={(loading) => {
+              setResultsModalLoading(loading);
+            }}
+          />
         )}
       </div>
     </div>
