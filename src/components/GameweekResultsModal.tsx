@@ -712,7 +712,7 @@ export default function GameweekResultsModal({
               maxWidth: '512px',
               width: '100%',
             }}
-            className="bg-white rounded-3xl shadow-2xl overflow-hidden"
+            className="bg-white shadow-2xl overflow-hidden"
           >
           {/* Green Header */}
           <div style={{ 

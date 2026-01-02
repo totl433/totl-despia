@@ -45,7 +45,7 @@ export default function ShareSheet({
     e.preventDefault();
     e.stopPropagation();
     try {
-      const shareText = `Check out my Gameweek ${gw} predictions! ${userName}`;
+      const shareText = `Check out my Gameweek ${gw} results! ${userName}`;
       
       // Always convert through canvas to ensure proper PNG format for iOS thumbnail
       const img = new Image();
@@ -106,7 +106,7 @@ export default function ShareSheet({
       if (nav.share && nav.canShare?.({ files: [file] })) {
         try {
           await nav.share({
-            title: `${userName}'s Predictions - TOTL Gameweek ${gw}`,
+            title: `${userName}'s Results - TOTL Gameweek ${gw}`,
             text: shareText,
             files: [file],
           });
@@ -197,7 +197,7 @@ export default function ShareSheet({
           ) : (
             <img
               src={imageUrl}
-              alt={`Gameweek ${gw} predictions`}
+              alt={`Gameweek ${gw} results`}
               className="rounded-2xl"
               style={{ 
                 maxHeight: 'calc(90vh - 250px)',
