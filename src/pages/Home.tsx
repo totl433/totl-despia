@@ -587,20 +587,18 @@ export default function HomePage() {
     // We have cached data if we have any rank data (leaderboard)
     const hasCachedLeaderboardData = lastGwRank !== null || fiveGwRank !== null || tenGwRank !== null || seasonRank !== null;
     
-    // If we have cached data, skip fetching and just refresh in background silently
-    // This ensures the page renders immediately with cached data
-    if (hasCachedLeaderboardData) {
-      // Data already loaded from cache, just refresh in background without blocking
-      setLoading(false);
-      setLeaderboardDataLoading(false);
-    } else {
+    if (!hasCachedLeaderboardData) {
       // No cache found on init, fetching fresh data
       setLoading(true);
       setLeaderboardDataLoading(true);
+    } else {
+      // We have cached data, so we can render immediately
+      // But still fetch fresh data in background to update cache
+      setLoading(false);
+      setLeaderboardDataLoading(false);
     }
     
     // Always fetch fresh data in background (for cache refresh)
-    // But don't block rendering if we have cached data
     (async () => {
       try {
         // Add timeout to prevent infinite hanging (15 seconds max)
@@ -701,8 +699,7 @@ export default function HomePage() {
           // Failed to cache data (non-critical)
         }
         
-        // Only update loading states if we didn't have cached data
-        // If we had cached data, these are already false
+        // Update loading states (only if we didn't have cached data initially)
         if (!hasCachedLeaderboardData) {
           setLoading(false);
           setLeaderboardDataLoading(false);
@@ -710,18 +707,15 @@ export default function HomePage() {
       } catch (error: any) {
         console.error('[Home] Error fetching data:', error);
         if (alive) {
-          // Only update loading states if we didn't have cached data
-          if (!hasCachedLeaderboardData) {
-            setLoading(false);
-            setLeaderboardDataLoading(false);
-          }
+          setLoading(false);
+          setLeaderboardDataLoading(false);
           setLeagueDataLoading(false);
         }
       }
     })();
     
     return () => { alive = false; };
-  }, [user?.id, lastGwRank, fiveGwRank, tenGwRank, seasonRank]);
+  }, [user?.id]);
 
   // Subscribe to app_meta changes to detect when current_gw changes
   useEffect(() => {
@@ -1225,10 +1219,7 @@ export default function HomePage() {
         
         setLeagueSubmissions(submissionStatus);
         setLeagueData(leagueDataMap);
-        // Only update loading state if we didn't load from cache
-        if (!loadedFromCache) {
-          setLeagueDataLoading(false);
-        }
+        setLeagueDataLoading(false);
         
         // Cache the processed data for next time
         try {
@@ -1836,11 +1827,7 @@ export default function HomePage() {
     });
   }, [fixturesToShow, liveScores, userPicks]);
 
-  // Allow rendering if we have cached data OR if all loading is complete
-  // This ensures the page renders immediately with cached data while fresh data loads in background
-  const hasCachedData = (lastGwRank !== null || fiveGwRank !== null || tenGwRank !== null || seasonRank !== null) && 
-                       Object.keys(leagueData).length > 0;
-  const isDataReady = hasCachedData || (!loading && !leaderboardDataLoading && !leagueDataLoading);
+  const isDataReady = !loading && !leaderboardDataLoading && !leagueDataLoading;
   // NOTE: Unread counts refresh on focus is now handled by useLeagues hook
 
   return (
