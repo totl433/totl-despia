@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabase';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
-import WinnerBanner from './league/WinnerBanner';
 import type { Fixture } from './FixtureCard';
 
 export interface MiniLeagueGwTableCardProps {
@@ -46,16 +45,15 @@ function rowToOutcome(r: { result?: "H" | "D" | "A" | null }): "H" | "D" | "A" |
 
 /**
  * Calculate minimum height needed for a card based on member count
- * Header: ~60px, Winner banner: ~80px (when shown), Table header: ~32px, Each row: ~32px, Padding: ~24px
+ * Header: ~60px, Table header: ~32px, Each row: ~32px, Padding: ~24px
  */
-function calculateCardHeight(maxMembers: number, hasWinnerBanner: boolean = false): number {
+function calculateCardHeight(maxMembers: number): number {
   const headerHeight = 60;
-  const winnerBannerHeight = hasWinnerBanner ? 80 : 0;
   const tableHeaderHeight = 32;
   const rowHeight = 32;
   const padding = 24;
   
-  return headerHeight + winnerBannerHeight + tableHeaderHeight + (maxMembers * rowHeight) + padding;
+  return headerHeight + tableHeaderHeight + (maxMembers * rowHeight) + padding;
 }
 
 /**
@@ -369,8 +367,7 @@ export default function MiniLeagueGwTableCard({
   const memberCountForHeight = rows.length > 0 
     ? rows.length // Use actual submitted count for this league
     : (members.length); // Fallback to total members if rows not calculated yet
-  const shouldShowBanner = rows.length > 0 && isFinished && !isLive;
-  const cardHeight = calculateCardHeight(memberCountForHeight, shouldShowBanner);
+  const cardHeight = calculateCardHeight(memberCountForHeight);
   
   // maxMemberCount is passed but not used - we use actual rows.length instead for accurate height
 
@@ -408,31 +405,49 @@ export default function MiniLeagueGwTableCard({
       `}</style>
       {/* Compact Header */}
       <div className="px-4 py-3 bg-gradient-to-r from-[#1C8376] to-[#1C8376]/90 border-b border-[#1C8376]/20 rounded-t-xl">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex-1 min-w-0 flex items-center gap-2">
-            <img
-              src={getLeagueAvatarUrl({ id: leagueId, avatar })}
-              alt={`${leagueName} avatar`}
-              className="w-10 h-10 rounded-full flex-shrink-0 object-cover border-2 border-white/30 shadow-sm"
-              onError={(e) => {
-                // Fallback to default ML avatar if custom avatar fails
-                const target = e.target as HTMLImageElement;
-                const defaultAvatar = getDefaultMlAvatar(leagueId);
-                const fallbackSrc = `/assets/league-avatars/${defaultAvatar}`;
-                if (target.src !== fallbackSrc) {
-                  target.src = fallbackSrc;
+        <div className="flex items-start gap-2">
+          <img
+            src={getLeagueAvatarUrl({ id: leagueId, avatar })}
+            alt={`${leagueName} avatar`}
+            className="w-[45px] h-[45px] rounded-full flex-shrink-0 object-cover shadow-sm"
+            onError={(e) => {
+              // Fallback to default ML avatar if custom avatar fails
+              const target = e.target as HTMLImageElement;
+              const defaultAvatar = getDefaultMlAvatar(leagueId);
+              const fallbackSrc = `/assets/league-avatars/${defaultAvatar}`;
+              if (target.src !== fallbackSrc) {
+                target.src = fallbackSrc;
+              }
+            }}
+          />
+          <div className="flex-1 min-w-0 flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white truncate drop-shadow-sm">
+                {leagueName}
+              </h3>
+              {isLive && (
+                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600 text-white shadow-sm flex-shrink-0">
+                  <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+                  <span className="text-[10px] font-semibold">LIVE</span>
+                </div>
+              )}
+            </div>
+            {/* Small winner indicator - only show for completed GWs, not live ones */}
+            {rows.length > 0 && isFinished && !isLive && (() => {
+              const winnerText = isDraw ? 'Draw!' : (() => {
+                const winnerName = rows[0].name;
+                const maxLength = 15;
+                if (winnerName.length > maxLength) {
+                  return `${winnerName.substring(0, maxLength)}... Wins!`;
                 }
-              }}
-            />
-            <h3 className="text-sm font-bold text-white truncate drop-shadow-sm">
-              {leagueName}
-            </h3>
-            {isLive && (
-              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600 text-white shadow-sm flex-shrink-0">
-                <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
-                <span className="text-[10px] font-semibold">LIVE</span>
-              </div>
-            )}
+                return `${winnerName} Wins!`;
+              })();
+              return (
+                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-yellow-400 via-orange-500 to-pink-500 text-white shadow-sm flex-shrink-0 w-fit">
+                  <span className="text-[10px] font-semibold">{winnerText}</span>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
@@ -453,16 +468,6 @@ export default function MiniLeagueGwTableCard({
           </div>
         ) : (
           <>
-            {/* Winner Banner - only show for completed GWs, not live ones */}
-            {rows.length > 0 && isFinished && !isLive && (
-              <div className="mb-3">
-                <WinnerBanner 
-                  winnerName={rows[0].name} 
-                  isDraw={isDraw}
-                />
-              </div>
-            )}
-
             {/* Table */}
             {rows.length > 0 ? (
               <div className="overflow-visible flex-1 -mx-4">

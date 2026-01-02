@@ -29,8 +29,14 @@ export function MiniLeaguesSection({
   currentUserId,
   gameState,
 }: MiniLeaguesSectionProps) {
+  // Determine if we should show toggle buttons (LIVE or RESULTS_PRE_GW states)
+  const isLive = gameState === 'LIVE';
+  const isResultsPreGw = gameState === 'RESULTS_PRE_GW';
+  const showToggleButtons = isLive || isResultsPreGw;
+  
   // State for toggle between cards and live tables
-  const [showLiveTables, setShowLiveTables] = useState(false);
+  // Default to live tables during LIVE or RESULTS_PRE_GW states
+  const [showLiveTables, setShowLiveTables] = useState(showToggleButtons);
   
   // Track previous gameweek to detect when user moves to next GW
   const prevGwRef = useRef<number | null>(currentGw);
@@ -45,10 +51,12 @@ export function MiniLeaguesSection({
     prevGwRef.current = currentGw;
   }, [currentGw]);
   
-  // Determine if we should show toggle buttons (LIVE or RESULTS_PRE_GW states)
-  const isLive = gameState === 'LIVE';
-  const isResultsPreGw = gameState === 'RESULTS_PRE_GW';
-  const showToggleButtons = isLive || isResultsPreGw;
+  // Update showLiveTables when game state changes to LIVE or RESULTS_PRE_GW
+  useEffect(() => {
+    if (showToggleButtons) {
+      setShowLiveTables(true);
+    }
+  }, [showToggleButtons]);
   
   // Memoize card data transformations to prevent unnecessary re-renders
   const memoizedCardData = useMemo(() => {
@@ -172,6 +180,7 @@ How To Play →`}
   return (
     <Section 
       title="Mini Leagues" 
+      subtitle={showLiveTables && currentGw ? `Gameweek ${currentGw} Live Tables` : undefined}
       className="mt-8"
       headerRight={toggleComponent}
       infoTitle="Mini Leagues"
