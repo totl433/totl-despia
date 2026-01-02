@@ -20,6 +20,8 @@ import { sortLeaguesWithUnreadMap } from '../lib/sortLeagues';
 import { log } from '../lib/logEvent';
 import { prewarmLeaguesCache } from '../api/leagues';
 import { getGameweekState, type GameweekState } from '../lib/gameweekState';
+import { resolveLeagueStartGw } from '../lib/leagueStart';
+import { APP_ONLY_USER_IDS } from '../lib/appOnlyUsers';
 
 /**
  * Return type for initial data loading.
