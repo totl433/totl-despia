@@ -19,6 +19,7 @@ import { setCached, CACHE_TTL, getCached } from '../lib/cache';
 import { sortLeaguesWithUnreadMap } from '../lib/sortLeagues';
 import { log } from '../lib/logEvent';
 import { prewarmLeaguesCache } from '../api/leagues';
+import { getGameweekState, type GameweekState } from '../lib/gameweekState';
 
 /**
  * Return type for initial data loading.

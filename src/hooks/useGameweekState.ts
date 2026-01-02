@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getUserGameweekState, getGameweekState, type GameweekState } from '../lib/gameweekState';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { getCached } from '../lib/cache';
 
 /**
  * Hook to get the state of a gameweek (GW_OPEN, GW_PREDICTED, LIVE, or RESULTS_PRE_GW)
@@ -10,8 +11,17 @@ import { supabase } from '../lib/supabase';
  * Subscribes to real-time updates from app_gw_results, live_scores, and app_gw_submissions
  */
 export function useGameweekState(gw: number | null | undefined, userId?: string | null | undefined) {
-  const [state, setState] = useState<GameweekState | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Try to load from cache first (pre-loaded during initial data load)
+  const [state, setState] = useState<GameweekState | null>(() => {
+    if (gw === null || gw === undefined) return null;
+    const cached = getCached<GameweekState>(`gameState:${gw}`);
+    return cached ?? null;
+  });
+  const [loading, setLoading] = useState(() => {
+    if (gw === null || gw === undefined) return false;
+    const cached = getCached<GameweekState>(`gameState:${gw}`);
+    return cached === null; // Only loading if not in cache
+  });
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
