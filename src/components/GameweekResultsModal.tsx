@@ -129,7 +129,7 @@ export default function GameweekResultsModal({
     return () => {
       alive = false;
     };
-  }, [isOpen, user?.id, gw, mockResults, preloadedResults, onLoadingChange]);
+  }, [isOpen, user?.id, gw, mockResults, preloadedResults]);
 
   // Share functionality
   const handleShare = async () => {
