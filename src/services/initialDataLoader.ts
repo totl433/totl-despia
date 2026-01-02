@@ -243,6 +243,17 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   const currentGw = metaResult.data?.current_gw ?? 1;
   const latestGw = latestGwResult.data?.gw ?? null;
 
+  // Pre-load gameState for current GW (so homepage knows LIVE vs non-LIVE immediately)
+  let gameState: GameweekState | null = null;
+  try {
+    gameState = await getGameweekState(currentGw);
+    // Cache gameState for immediate access
+    setCached(`gameState:${currentGw}`, gameState, CACHE_TTL.HOME);
+  } catch (error) {
+    console.warn('[Pre-loading] Failed to pre-load gameState:', error);
+    // Non-critical - gameState will load when useGameweekState hook runs
+  }
+
   // Now fetch fixtures, picks, and user's own OCP (if not in top 100)
   const userInTop100 = (overallResult.data || []).some((r: any) => r.user_id === userId);
   
