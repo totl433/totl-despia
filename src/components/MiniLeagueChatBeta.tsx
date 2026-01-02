@@ -894,7 +894,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
 
 
   return (
-    <div className="flex flex-col h-full w-full" style={{ position: 'relative', zIndex: 1 }}>
+    <div className="flex flex-col h-full w-full" style={{ position: 'relative', zIndex: 1, overflowX: 'hidden' }}>
       <div
         ref={listRef}
         className="flex-1 overflow-y-auto px-4 py-5"
@@ -904,6 +904,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           overscrollBehavior: "contain",
           backgroundColor: 'transparent',
           cursor: "pointer",
+          overflowX: 'hidden',
+          maxWidth: '100%',
         }}
       >
         {hasMore && miniLeagueId && (
@@ -967,11 +969,12 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           left: inputBottom > 0 ? 0 : "auto",
           right: inputBottom > 0 ? 0 : "auto",
           width: "100%",
-          maxWidth: inputBottom > 0 ? "440px" : "none",
+          maxWidth: inputBottom > 0 ? "440px" : "100%",
           marginLeft: inputBottom > 0 ? "auto" : undefined,
           marginRight: inputBottom > 0 ? "auto" : undefined,
           zIndex: inputBottom > 0 ? 100 : "auto",
           boxShadow: inputBottom > 0 ? "0 -2px 8px rgba(0, 0, 0, 0.1)" : "none",
+          overflowX: "hidden",
           // Ensure input is always accessible and clickable
           pointerEvents: "auto",
         }}

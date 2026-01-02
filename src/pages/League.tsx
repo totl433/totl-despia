@@ -525,7 +525,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           zIndex: 0,
         }}
       />
-      <div style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflowX: 'hidden' }}>
       {/* Messages list */}
       <div 
         ref={listRef} 
@@ -536,6 +536,8 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           overscrollBehavior: 'contain',
           cursor: 'pointer',
           backgroundColor: 'transparent',
+          overflowX: 'hidden',
+          maxWidth: '100%',
         }}
       >
         {chat.map((m, index) => {
@@ -3428,7 +3430,10 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           max-height: calc(100vh - 3.5rem - 3rem - env(safe-area-inset-top, 0px));
           z-index: 10;
           overflow: visible;
+          overflow-x: hidden;
           pointer-events: none;
+          width: 100%;
+          max-width: 100%;
         }
         .chat-tab-wrapper::before {
           content: '';
