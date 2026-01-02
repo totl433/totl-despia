@@ -146,6 +146,13 @@ export default function FirstVisitInfoBanner({
                   alt="" 
                   className="w-32 h-32 object-contain flex-shrink-0"
                   style={{ imageRendering: 'pixelated' }}
+                  onError={(e) => {
+                    console.error('[FirstVisitInfoBanner] Failed to load image:', imageSrc);
+                    // Fallback to default if custom image fails
+                    if (imageSrc !== '/assets/Volley/Volley-Tool-Tip.png') {
+                      (e.currentTarget as HTMLImageElement).src = '/assets/Volley/Volley-Tool-Tip.png';
+                    }
+                  }}
                 />
                 <p id="first-visit-title" className="text-sm text-slate-700 leading-relaxed">
                   <span className="font-semibold text-slate-900">Quick tip:</span> {message}
