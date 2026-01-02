@@ -1225,7 +1225,10 @@ export default function HomePage() {
         
         setLeagueSubmissions(submissionStatus);
         setLeagueData(leagueDataMap);
-        setLeagueDataLoading(false);
+        // Only update loading state if we didn't load from cache
+        if (!loadedFromCache) {
+          setLeagueDataLoading(false);
+        }
         
         // Cache the processed data for next time
         try {
