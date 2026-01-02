@@ -894,7 +894,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
 
 
   return (
-    <div className="flex flex-col h-full bg-[#f5f6fb] w-full" style={{ position: 'relative' }}>
+    <div className="flex flex-col h-full w-full" style={{ position: 'relative', zIndex: 1 }}>
       <div
         ref={listRef}
         className="flex-1 overflow-y-auto px-4 py-5"
@@ -902,6 +902,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         style={{
           WebkitOverflowScrolling: "touch",
           overscrollBehavior: "contain",
+          backgroundColor: 'transparent',
           cursor: "pointer",
         }}
       >

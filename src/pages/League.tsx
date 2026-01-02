@@ -509,6 +509,23 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
 
   return (
     <div className="flex flex-col chat-container" style={{ height: '100%', position: 'relative' }}>
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundImage: 'url(/assets/Volley/volley-chat-backgroud.png)',
+          backgroundRepeat: 'repeat',
+          backgroundSize: '110%',
+          backgroundPosition: 'top left',
+          opacity: 0.1,
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+      <div style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Messages list */}
       <div 
         ref={listRef} 
@@ -518,6 +535,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
           cursor: 'pointer',
+          backgroundColor: 'transparent',
         }}
       >
         {chat.map((m, index) => {
@@ -690,6 +708,7 @@ function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, 
             {notificationStatus.message}
           </div>
         )}
+      </div>
       </div>
     </div>
   );
@@ -3410,6 +3429,22 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           z-index: 10;
           overflow: visible;
           pointer-events: none;
+        }
+        .chat-tab-wrapper::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-image: url(/assets/Volley/volley-chat-backgroud.png);
+          background-repeat: repeat;
+          background-size: 110%;
+          background-position: top left;
+          background-attachment: local;
+          opacity: 0.1;
+          pointer-events: none;
+          z-index: 0;
         }
         .chat-tab-wrapper.has-banner {
           top: calc(3.5rem + 3rem + 3.5rem + env(safe-area-inset-top, 0px));
