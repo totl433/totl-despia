@@ -1761,7 +1761,8 @@ export default function HomePage() {
     });
   }, [fixturesToShow, liveScores, userPicks]);
 
-  const isDataReady = !loading && !leaderboardDataLoading && !leagueDataLoading;
+  // Wait for gameState to load before rendering to ensure correct state (LIVE vs non-LIVE)
+  const isDataReady = !loading && !leaderboardDataLoading && !leagueDataLoading && !gameStateLoading;
   // NOTE: Unread counts refresh on focus is now handled by useLeagues hook
 
   return (
