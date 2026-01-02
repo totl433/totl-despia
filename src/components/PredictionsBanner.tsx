@@ -151,35 +151,80 @@ export default function PredictionsBanner() {
       
       // User is viewing current or previous GW - determine banner based on viewing GW's state
       if (viewingGwState === 'GW_OPEN') {
-        // Check if user has submitted
-        const { data: submission } = await supabase
-          .from("app_gw_submissions")
-          .select("submitted_at")
-          .eq("user_id", user.id)
-          .eq("gw", effectiveGw)
-          .maybeSingle();
-        
-        const hasSubmitted = submission?.submitted_at !== null && submission?.submitted_at !== undefined;
+        // Check if user has submitted (check cache first - submissions are pre-loaded)
+        let hasSubmitted = false;
+        try {
+          // Check cache for submissions (pre-loaded during initial data load)
+          const cachedSubmissions = getCached<Array<{ user_id: string; gw: number }>>(`home:submissions:${effectiveGw}`);
+          if (cachedSubmissions) {
+            hasSubmitted = cachedSubmissions.some(s => s.user_id === user.id);
+          } else {
+            // Not in cache, fetch from DB
+            const { data: submission } = await supabase
+              .from("app_gw_submissions")
+              .select("submitted_at")
+              .eq("user_id", user.id)
+              .eq("gw", effectiveGw)
+              .maybeSingle();
+            hasSubmitted = submission?.submitted_at !== null && submission?.submitted_at !== undefined;
+          }
+        } catch (e) {
+          // Cache read failed, fetch from DB
+          const { data: submission } = await supabase
+            .from("app_gw_submissions")
+            .select("submitted_at")
+            .eq("user_id", user.id)
+            .eq("gw", effectiveGw)
+            .maybeSingle();
+          hasSubmitted = submission?.submitted_at !== null && submission?.submitted_at !== undefined;
+        }
         
         if (!hasSubmitted) {
-          // Calculate deadline
-          const { data: fixtures } = await supabase
-            .from("app_fixtures")
-            .select("kickoff_time")
-            .eq("gw", effectiveGw)
-            .order("kickoff_time", { ascending: true })
-            .limit(1);
+          // Calculate deadline (check cache first - fixtures are pre-loaded)
+          let deadlineFormatted: string | null = null;
+          try {
+            const cachedFixtures = getCached<Array<{ gw: number; kickoff_time: string }>>(`home:fixtures:${effectiveGw}`);
+            if (cachedFixtures && cachedFixtures.length > 0) {
+              const firstFixture = cachedFixtures.sort((a, b) => 
+                new Date(a.kickoff_time).getTime() - new Date(b.kickoff_time).getTime()
+              )[0];
+              if (firstFixture.kickoff_time) {
+                const firstKickoff = new Date(firstFixture.kickoff_time);
+                const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
+                const weekday = deadlineTime.toLocaleDateString(undefined, { weekday: 'short' });
+                const month = deadlineTime.toLocaleDateString(undefined, { month: 'short' });
+                const day = deadlineTime.toLocaleDateString(undefined, { day: 'numeric' });
+                const hour = String(deadlineTime.getUTCHours()).padStart(2, '0');
+                const minute = String(deadlineTime.getUTCMinutes()).padStart(2, '0');
+                deadlineFormatted = `${weekday}, ${month} ${day}, ${hour}:${minute}`;
+              }
+            }
+          } catch (e) {
+            // Cache read failed, fetch from DB
+          }
           
-          if (fixtures && fixtures.length > 0 && fixtures[0].kickoff_time) {
-            const firstKickoff = new Date(fixtures[0].kickoff_time);
-            const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
+          if (!deadlineFormatted) {
+            // Not in cache, fetch from DB
+            const { data: fixtures } = await supabase
+              .from("app_fixtures")
+              .select("kickoff_time")
+              .eq("gw", effectiveGw)
+              .order("kickoff_time", { ascending: true })
+              .limit(1);
             
-            const weekday = deadlineTime.toLocaleDateString(undefined, { weekday: 'short' });
-            const month = deadlineTime.toLocaleDateString(undefined, { month: 'short' });
-            const day = deadlineTime.toLocaleDateString(undefined, { day: 'numeric' });
-            const hour = String(deadlineTime.getUTCHours()).padStart(2, '0');
-            const minute = String(deadlineTime.getUTCMinutes()).padStart(2, '0');
-            const deadlineFormatted = `${weekday}, ${month} ${day}, ${hour}:${minute}`;
+            if (fixtures && fixtures.length > 0 && fixtures[0].kickoff_time) {
+              const firstKickoff = new Date(fixtures[0].kickoff_time);
+              const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
+              const weekday = deadlineTime.toLocaleDateString(undefined, { weekday: 'short' });
+              const month = deadlineTime.toLocaleDateString(undefined, { month: 'short' });
+              const day = deadlineTime.toLocaleDateString(undefined, { day: 'numeric' });
+              const hour = String(deadlineTime.getUTCHours()).padStart(2, '0');
+              const minute = String(deadlineTime.getUTCMinutes()).padStart(2, '0');
+              deadlineFormatted = `${weekday}, ${month} ${day}, ${hour}:${minute}`;
+            }
+          }
+          
+          if (deadlineFormatted) {
             setDeadlineText(deadlineFormatted);
           }
           

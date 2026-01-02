@@ -271,10 +271,29 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     // Non-critical - gameState will load when useGameweekState hook runs
   }
 
+  // Determine viewing GW (for PredictionsBanner)
+  const viewingGw = userViewingGw ?? (currentGw > 1 ? currentGw - 1 : currentGw);
+  
   // Now fetch fixtures, picks, and user's own OCP (if not in top 100)
   const userInTop100 = (overallResult.data || []).some((r: any) => r.user_id === userId);
   
-  const [fixturesForGw, picksForGw, userOcpResult] = await Promise.all([
+  // Fetch submissions for both current and viewing GW (for PredictionsBanner)
+  const submissionsForBanner = viewingGw !== currentGw
+    ? await Promise.all([
+        supabase.from('app_gw_submissions').select('user_id, gw').eq('gw', currentGw),
+        supabase.from('app_gw_submissions').select('user_id, gw').eq('gw', viewingGw),
+      ])
+    : [await supabase.from('app_gw_submissions').select('user_id, gw').eq('gw', currentGw)];
+  
+  // Cache submissions for PredictionsBanner
+  if (submissionsForBanner[0]?.data) {
+    setCached(`home:submissions:${currentGw}`, submissionsForBanner[0].data, CACHE_TTL.HOME);
+  }
+  if (viewingGw !== currentGw && submissionsForBanner[1]?.data) {
+    setCached(`home:submissions:${viewingGw}`, submissionsForBanner[1].data, CACHE_TTL.HOME);
+  }
+  
+  const [fixturesForGw, picksForGw, userOcpResult, fixturesForViewingGw] = await Promise.all([
     supabase
       .from('app_fixtures')
       .select('*')
@@ -295,7 +314,24 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
           .select('user_id, name, ocp')
           .eq('user_id', userId)
           .maybeSingle(),
+    
+    // Fetch fixtures for viewing GW (for PredictionsBanner deadline calculation)
+    viewingGw !== currentGw
+      ? supabase
+          .from('app_fixtures')
+          .select('gw, kickoff_time')
+          .eq('gw', viewingGw)
+          .order('kickoff_time', { ascending: true })
+      : Promise.resolve({ data: null, error: null }),
   ]);
+  
+  // Cache fixtures for PredictionsBanner
+  if (fixturesForGw.data) {
+    setCached(`home:fixtures:${currentGw}`, fixturesForGw.data, CACHE_TTL.HOME);
+  }
+  if (viewingGw !== currentGw && fixturesForViewingGw.data) {
+    setCached(`home:fixtures:${viewingGw}`, fixturesForViewingGw.data, CACHE_TTL.HOME);
+  }
   
   // Merge user's OCP into overall if they weren't in top 100
   let overallData = overallResult.data || [];
