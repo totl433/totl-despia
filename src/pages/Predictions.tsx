@@ -2303,7 +2303,7 @@ export default function PredictionsPage() {
               <FirstVisitInfoBanner
                 storageKey="predictionsSwipeFirstVisit"
                 message="Swipe cards left for Home Win, right for Away Win, or down for Draw. You can also use the buttons at the bottom."
-                imageSrc="/assets/Volley/swipe-hand.png"
+                imageSrc="/assets/Volley/volley-swipe.png"
               />
             </div>
           </div>
