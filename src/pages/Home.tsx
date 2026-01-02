@@ -699,7 +699,8 @@ export default function HomePage() {
           // Failed to cache data (non-critical)
         }
         
-        // Update loading states (only if we didn't have cached data initially)
+        // Only update loading states if we didn't have cached data initially
+        // If we had cached data, these are already false and page is already rendered
         if (!hasCachedLeaderboardData) {
           setLoading(false);
           setLeaderboardDataLoading(false);
@@ -707,8 +708,11 @@ export default function HomePage() {
       } catch (error: any) {
         console.error('[Home] Error fetching data:', error);
         if (alive) {
-          setLoading(false);
-          setLeaderboardDataLoading(false);
+          // Only update loading states if we didn't have cached data
+          if (!hasCachedLeaderboardData) {
+            setLoading(false);
+            setLeaderboardDataLoading(false);
+          }
           setLeagueDataLoading(false);
         }
       }
@@ -1827,7 +1831,11 @@ export default function HomePage() {
     });
   }, [fixturesToShow, liveScores, userPicks]);
 
-  const isDataReady = !loading && !leaderboardDataLoading && !leagueDataLoading;
+  // Render immediately if we have cached data (from initialDataLoader pre-load)
+  // This ensures the page shows instantly after Volley screen
+  const hasCachedData = (lastGwRank !== null || fiveGwRank !== null || tenGwRank !== null || seasonRank !== null) && 
+                       fixtures.length > 0;
+  const isDataReady = hasCachedData || (!loading && !leaderboardDataLoading && !leagueDataLoading);
   // NOTE: Unread counts refresh on focus is now handled by useLeagues hook
 
   return (
