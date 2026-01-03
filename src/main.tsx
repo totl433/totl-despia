@@ -39,18 +39,12 @@ import DesktopNav from "./components/DesktopNav";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useAppLifecycle } from "./hooks/useAppLifecycle";
 import LoadingScreen from "./components/LoadingScreen";
+import { PageLoader } from "./components/PageLoader";
 import ScrollToTop from "./components/ScrollToTop";
 // import { isLoadEverythingFirstEnabled } from "./lib/featureFlags"; // Unused - feature flag checked inline
 import { loadInitialData } from "./services/initialDataLoader";
 import { bootLog } from "./lib/logEvent";
 import { supabase } from "./lib/supabase";
-
-// Loading Fallback
-const PageLoader = () => (
-  <div className="flex items-center justify-center min-h-[50vh]">
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
-  </div>
-);
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -508,16 +502,17 @@ function AppContent() {
         console.warn('[DeepLink] Error checking storage:', e);
       }
       
-      // Method 5: Fallback - if we're on home page and no deep link found,
-      // check if there's a recent unread chat message and navigate to that league
+      // Method 5: Fallback - check for VERY recent messages (last 30 seconds)
       // This handles the case where OneSignal doesn't set URL but we know a notification was just received
-      if ((currentPath === '/' || currentPath === '') && user?.id) {
+      // Works from ANY page, not just home page
+      if (user?.id) {
         // Only do this check once per session to avoid interfering with normal app usage
         const lastFallbackCheck = sessionStorage.getItem('deepLink_fallback_checked');
         if (!lastFallbackCheck) {
           sessionStorage.setItem('deepLink_fallback_checked', 'true');
-          // Reduced delay - check immediately, then again after short delay
-          // First check immediately (no delay)
+          
+          // Check immediately for very recent messages (within last 30 seconds)
+          // This catches notifications that just arrived
           (async () => {
             try {
               // Get user's league IDs
@@ -529,11 +524,13 @@ function AppContent() {
               if (leagueMembers && leagueMembers.length > 0) {
                 const leagueIds = leagueMembers.map((lm: any) => lm.league_id).filter(Boolean);
                 if (leagueIds.length > 0) {
-                  // Get most recent message from user's leagues
+                  // Get most recent message from user's leagues (within last 30 seconds)
+                  const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
                   const { data: recentMessage } = await supabase
                     .from('league_messages')
-                    .select('league_id, leagues!inner(code)')
+                    .select('league_id, created_at, leagues!inner(code)')
                     .in('league_id', leagueIds)
+                    .gte('created_at', thirtySecondsAgo) // Only messages from last 30 seconds
                     .order('created_at', { ascending: false })
                     .limit(1)
                     .maybeSingle();
@@ -543,9 +540,33 @@ function AppContent() {
                     if (leagueData && typeof leagueData === 'object' && 'code' in leagueData) {
                       const leagueCode = leagueData.code;
                       const leagueUrl = `/league/${leagueCode}?tab=chat`;
-                      console.log('[DeepLink] Fallback: Navigating to league with recent message:', leagueUrl);
+                      console.log('[DeepLink] Fallback: Found very recent message, navigating:', leagueUrl);
                       navigate(leagueUrl, { replace: true });
-                      return; // Found it, no need for delayed check
+                      return;
+                    }
+                  }
+                  
+                  // If no very recent message, check for most recent overall (fallback)
+                  const { data: mostRecentMessage } = await supabase
+                    .from('league_messages')
+                    .select('league_id, created_at, leagues!inner(code)')
+                    .in('league_id', leagueIds)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                  
+                  if (mostRecentMessage) {
+                    const leagueData = (mostRecentMessage as any).leagues;
+                    if (leagueData && typeof leagueData === 'object' && 'code' in leagueData) {
+                      // Only navigate if message is from last 5 minutes (likely from notification)
+                      const messageTime = new Date(mostRecentMessage.created_at).getTime();
+                      const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+                      if (messageTime > fiveMinutesAgo) {
+                        const leagueCode = leagueData.code;
+                        const leagueUrl = `/league/${leagueCode}?tab=chat`;
+                        console.log('[DeepLink] Fallback: Found recent message (within 5min), navigating:', leagueUrl);
+                        navigate(leagueUrl, { replace: true });
+                      }
                     }
                   }
                 }
@@ -554,43 +575,6 @@ function AppContent() {
               console.warn('[DeepLink] Fallback check failed:', e);
             }
           })();
-          
-          // Also check again after short delay in case first check was too fast
-          setTimeout(async () => {
-            try {
-              // Get user's league IDs
-              const { data: leagueMembers } = await supabase
-                .from('league_members')
-                .select('league_id')
-                .eq('user_id', user.id);
-              
-              if (leagueMembers && leagueMembers.length > 0) {
-                const leagueIds = leagueMembers.map((lm: any) => lm.league_id).filter(Boolean);
-                if (leagueIds.length > 0) {
-                  // Get most recent message from user's leagues
-                  const { data: recentMessage } = await supabase
-                    .from('league_messages')
-                    .select('league_id, leagues!inner(code)')
-                    .in('league_id', leagueIds)
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-                  
-                  if (recentMessage) {
-                    const leagueData = (recentMessage as any).leagues;
-                    if (leagueData && typeof leagueData === 'object' && 'code' in leagueData) {
-                      const leagueCode = leagueData.code;
-                      const leagueUrl = `/league/${leagueCode}?tab=chat`;
-                      console.log('[DeepLink] Fallback: Navigating to league with recent message:', leagueUrl);
-                      navigate(leagueUrl, { replace: true });
-                    }
-                  }
-                }
-              }
-            } catch (e) {
-              console.warn('[DeepLink] Fallback check failed:', e);
-            }
-          }, 2000); // Wait 2 seconds for leagues to load
         }
       }
       
