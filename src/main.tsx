@@ -62,6 +62,26 @@ function AppShell() {
     // Update URL immediately before React Router sees it
     const targetUrl = `/league/${leagueCode}?tab=chat`;
     window.history.replaceState(null, '', targetUrl);
+    
+    // Store debug info for AdminData page
+    try {
+      localStorage.setItem('deepLink_debug', JSON.stringify({
+        method: 'AppShell_sync',
+        originalUrl: window.location.href,
+        leagueCode,
+        targetUrl,
+        timestamp: new Date().toISOString()
+      }));
+      localStorage.setItem('deepLink_result', JSON.stringify({
+        success: true,
+        method: 'AppShell_sync',
+        leagueCode,
+        targetUrl,
+        timestamp: new Date().toISOString()
+      }));
+    } catch (e) {
+      // Ignore storage errors
+    }
   }
   
   return (
@@ -84,7 +104,28 @@ function AppContent() {
     const leagueCode = searchParams.get('leagueCode');
     
     if (leagueCode && !location.pathname.startsWith('/league/')) {
-      navigate(`/league/${leagueCode}?tab=chat`, { replace: true });
+      const targetUrl = `/league/${leagueCode}?tab=chat`;
+      navigate(targetUrl, { replace: true });
+      
+      // Store debug info if AppShell didn't catch it
+      try {
+        localStorage.setItem('deepLink_debug', JSON.stringify({
+          method: 'useLayoutEffect',
+          originalPath: location.pathname,
+          leagueCode,
+          targetUrl,
+          timestamp: new Date().toISOString()
+        }));
+        localStorage.setItem('deepLink_result', JSON.stringify({
+          success: true,
+          method: 'useLayoutEffect',
+          leagueCode,
+          targetUrl,
+          timestamp: new Date().toISOString()
+        }));
+      } catch (e) {
+        // Ignore storage errors
+      }
     }
   }, [navigate, location.pathname]);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
@@ -427,7 +468,40 @@ function AppContent() {
         
         const leagueData = recentMessage?.leagues as { code: string } | undefined;
         if (leagueData?.code) {
-          navigate(`/league/${leagueData.code}?tab=chat`, { replace: true });
+          const targetUrl = `/league/${leagueData.code}?tab=chat`;
+          navigate(targetUrl, { replace: true });
+          
+          // Store debug info for fallback navigation
+          try {
+            localStorage.setItem('deepLink_debug', JSON.stringify({
+              method: 'fallback_recent_message',
+              originalPath: location.pathname,
+              leagueCode: leagueData.code,
+              targetUrl,
+              timestamp: new Date().toISOString()
+            }));
+            localStorage.setItem('deepLink_result', JSON.stringify({
+              success: true,
+              method: 'fallback_recent_message',
+              leagueCode: leagueData.code,
+              targetUrl,
+              timestamp: new Date().toISOString()
+            }));
+          } catch (e) {
+            // Ignore storage errors
+          }
+        } else {
+          // Store failure if no recent message found
+          try {
+            localStorage.setItem('deepLink_result', JSON.stringify({
+              success: false,
+              method: 'fallback_recent_message',
+              reason: 'no_recent_message_found',
+              timestamp: new Date().toISOString()
+            }));
+          } catch (e) {
+            // Ignore storage errors
+          }
         }
       } catch (e) {
         console.warn('[DeepLink] Fallback check failed:', e);
