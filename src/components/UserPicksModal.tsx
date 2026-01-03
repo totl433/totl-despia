@@ -65,7 +65,7 @@ export default function UserPicksModal({
         let shouldShowFallback = false;
         
         // If deadline hasn't passed and we have a fallback GW, try showing that instead
-        if (!deadlineHasPassed && fallbackGw) {
+        if (!deadlinePassed && fallbackGw) {
           // Check if user has picks for fallback GW
           const { data: fallbackSubmission } = await supabase
             .from('app_gw_submissions')
@@ -86,7 +86,7 @@ export default function UserPicksModal({
         setDisplayGw(gwToDisplay);
         
         // If deadline hasn't passed and no fallback to show, don't fetch picks
-        if (!deadlineHasPassed && !shouldShowFallback) {
+        if (!deadlinePassed && !shouldShowFallback) {
           setLoading(false);
           setHasSubmitted(null);
           setPicks({});
