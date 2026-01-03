@@ -141,7 +141,7 @@ export async function hasGoalNotificationForMinute(
 }
 
 /**
- * Send a goal notification
+ * Send a goal notification (personalized with pick indicator)
  */
 export async function sendGoalNotification(
   userIds: string[],
@@ -158,12 +158,13 @@ export async function sendGoalNotification(
     awayScore: number;
     isHomeTeam: boolean;
     isOwnGoal?: boolean;
+    userPicks?: Map<string, string>; // userId -> pick (H/D/A) - optional for backward compatibility
   }
-): Promise<BatchDispatchResult> {
+): Promise<BatchDispatchResult | { results: BatchDispatchResult[]; summary: { accepted: number; failed: number } }> {
   const {
     apiMatchId, fixtureIndex, gw, scorer, minute,
     teamName, homeTeam, awayTeam, homeScore, awayScore,
-    isHomeTeam, isOwnGoal,
+    isHomeTeam, isOwnGoal, userPicks,
   } = params;
 
   const eventId = buildGoalEventId(apiMatchId, scorer, minute);
@@ -172,23 +173,121 @@ export async function sendGoalNotification(
     ? `${homeTeam} [${homeScore}] - ${awayScore} ${awayTeam}`
     : `${homeTeam} ${homeScore} - [${awayScore}] ${awayTeam}`;
 
-  let title: string;
-  let body: string;
+  let baseTitle: string;
+  let baseBody: string;
 
   if (isOwnGoal) {
-    title = `Own Goal`;
-    body = `${minute}' Own goal by ${scorer}\n${scoreDisplay}`;
+    baseTitle = `Own Goal`;
+    baseBody = `${minute}' Own goal by ${scorer}\n${scoreDisplay}`;
   } else {
-    title = `Goal ${teamName}!`;
-    body = `${minute}' ${scorer}\n${scoreDisplay}`;
+    baseTitle = `Goal ${teamName}!`;
+    baseBody = `${minute}' ${scorer}\n${scoreDisplay}`;
   }
 
+  // If userPicks provided, send personalized notifications with pick indicator
+  if (userPicks && userPicks.size > 0) {
+    // Determine current result state
+    let currentResult: 'H' | 'D' | 'A';
+    if (homeScore > awayScore) currentResult = 'H';
+    else if (awayScore > homeScore) currentResult = 'A';
+    else currentResult = 'D';
+
+    // Group users by whether their pick matches the current result
+    const onTrackUsers: string[] = [];
+    const offTrackUsers: string[] = [];
+    const usersWithoutPicks: string[] = [];
+
+    for (const userId of userIds) {
+      const pick = userPicks.get(userId);
+      if (!pick) {
+        usersWithoutPicks.push(userId);
+      } else if (pick === currentResult) {
+        onTrackUsers.push(userId);
+      } else {
+        offTrackUsers.push(userId);
+      }
+    }
+
+    const results: BatchDispatchResult[] = [];
+    let totalAccepted = 0;
+    let totalFailed = 0;
+
+    // Send to users whose pick is on track (✅)
+    if (onTrackUsers.length > 0) {
+      const onTrackResult = await dispatchNotification({
+        notification_key: 'goal-scored',
+        event_id: `${eventId}:ontrack`,
+        user_ids: onTrackUsers,
+        title: baseTitle,
+        body: `${baseBody} ✅`,
+        data: {
+          type: 'goal',
+          api_match_id: apiMatchId,
+          fixture_index: fixtureIndex,
+          gw,
+        },
+        grouping_params: { api_match_id: apiMatchId },
+      });
+      results.push(onTrackResult);
+      totalAccepted += onTrackResult.results.accepted;
+      totalFailed += onTrackResult.results.failed;
+    }
+
+    // Send to users whose pick is off track (❌)
+    if (offTrackUsers.length > 0) {
+      const offTrackResult = await dispatchNotification({
+        notification_key: 'goal-scored',
+        event_id: `${eventId}:offtrack`,
+        user_ids: offTrackUsers,
+        title: baseTitle,
+        body: `${baseBody} ❌`,
+        data: {
+          type: 'goal',
+          api_match_id: apiMatchId,
+          fixture_index: fixtureIndex,
+          gw,
+        },
+        grouping_params: { api_match_id: apiMatchId },
+      });
+      results.push(offTrackResult);
+      totalAccepted += offTrackResult.results.accepted;
+      totalFailed += offTrackResult.results.failed;
+    }
+
+    // Send to users without picks (no indicator)
+    if (usersWithoutPicks.length > 0) {
+      const noPickResult = await dispatchNotification({
+        notification_key: 'goal-scored',
+        event_id: `${eventId}:nopick`,
+        user_ids: usersWithoutPicks,
+        title: baseTitle,
+        body: baseBody,
+        data: {
+          type: 'goal',
+          api_match_id: apiMatchId,
+          fixture_index: fixtureIndex,
+          gw,
+        },
+        grouping_params: { api_match_id: apiMatchId },
+      });
+      results.push(noPickResult);
+      totalAccepted += noPickResult.results.accepted;
+      totalFailed += noPickResult.results.failed;
+    }
+
+    return {
+      results,
+      summary: { accepted: totalAccepted, failed: totalFailed },
+    };
+  }
+
+  // Fallback: send batch notification (no picks available)
   return dispatchNotification({
     notification_key: 'goal-scored',
     event_id: eventId,
     user_ids: userIds,
-    title,
-    body,
+    title: baseTitle,
+    body: baseBody,
     data: {
       type: 'goal',
       api_match_id: apiMatchId,

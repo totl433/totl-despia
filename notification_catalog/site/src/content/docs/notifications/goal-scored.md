@@ -49,8 +49,15 @@ head: []
 
 **Title:** `Goal {teamName}!`
 
-**Body:** `{minute}' {scorer}\n{homeTeam} [{homeScore}] - {awayScore} {awayTeam}`
+**Body:** `{minute}' {scorer}\n{homeTeam} [{homeScore}] - {awayScore} {awayTeam} {indicator}`
 
-Example: 
+The indicator shows whether the user's pick is currently on track:
+- `✅` - User's pick matches the current result (e.g., picked Home and Home is winning, or picked Draw and score is tied)
+- `❌` - User's pick doesn't match the current result
+- No indicator - User has no pick for this fixture
+
+Examples: 
 - Title: `Goal Man United!`
-- Body: `52' Marcus Rashford\nMan United [2] - 1 Liverpool`
+- Body (pick on track): `52' Marcus Rashford\nMan United [2] - 1 Liverpool ✅`
+- Body (pick off track): `52' Marcus Rashford\nMan United [2] - 1 Liverpool ❌`
+- Body (no pick): `52' Marcus Rashford\nMan United [2] - 1 Liverpool`

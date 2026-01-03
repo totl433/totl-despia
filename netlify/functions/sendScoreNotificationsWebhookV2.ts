@@ -331,8 +331,14 @@ export const handler: Handler = async (event, context) => {
       const newGoals = goals.filter((g: any) => !oldGoalKeys.has(normalizeGoalKey(g)));
 
       if (newGoals.length > 0) {
-        const picksData = await fetchUserIdsWithPicks(gw, fixture_index, isAppFixture, isTestFixture, testGwForPicks);
+        const picksData = await fetchUserIdsWithPicks(gw, fixture_index, isAppFixture, isTestFixture, testGwForPicks, true); // Include picks
         const userIds = [...new Set(picksData.map(p => p.userId))];
+        
+        // Build user picks map
+        const userPicksMap = new Map<string, string>();
+        for (const p of picksData) {
+          if (p.pick) userPicksMap.set(p.userId, p.pick);
+        }
 
         if (userIds.length > 0) {
           // Send notification for each new goal
@@ -390,13 +396,21 @@ export const handler: Handler = async (event, context) => {
                 apiMatchId, fixtureIndex: fixture_index, gw,
                 scorer, minute: goalMinute, teamName,
                 homeTeam: liveHomeTeam, awayTeam: liveAwayTeam,  // Use team names from live_scores
-                homeScore,  // Use score directly from database (same as app)
-                awayScore,  // Use score directly from database (same as app)
+                homeScore,  // Use calculated score
+                awayScore,  // Use calculated score
                 isHomeTeam,
                 isOwnGoal,
+                userPicks: userPicksMap, // Pass user picks map
               });
-              totalSent += result.results.accepted;
-              console.log(`[scoreWebhookV2] [${requestId}] Goal ${goalMinute}' (${scorer}): ${result.results.accepted} sent (${usersWithExisting.size} suppressed - scorer-only change)`);
+              
+              // Handle both single result and batch result format
+              if ('summary' in result) {
+                totalSent += result.summary.accepted;
+                console.log(`[scoreWebhookV2] [${requestId}] Goal ${goalMinute}' (${scorer}): ${result.summary.accepted} sent (${usersWithExisting.size} suppressed - scorer-only change)`);
+              } else {
+                totalSent += result.results.accepted;
+                console.log(`[scoreWebhookV2] [${requestId}] Goal ${goalMinute}' (${scorer}): ${result.results.accepted} sent (${usersWithExisting.size} suppressed - scorer-only change)`);
+              }
             } else {
               console.log(`[scoreWebhookV2] [${requestId}] Goal ${goalMinute}' (${scorer}): All ${userIds.length} users already notified (scorer-only change)`);
             }

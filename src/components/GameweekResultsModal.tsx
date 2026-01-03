@@ -473,7 +473,7 @@ export default function GameweekResultsModal({
                       Won {results.mlVictories} Mini-League{results.mlVictories !== 1 ? 's' : ''}!
                     </div>
                   </div>
-                  <div className="flex gap-2 justify-center">
+                  <div className="grid grid-cols-4 gap-2 justify-items-center">
                     {(results.mlVictoryData || results.mlVictoryNames?.map((name, idx) => ({
                       id: `fallback-${idx}`,
                       name,
@@ -827,7 +827,7 @@ export default function GameweekResultsModal({
                     Won {results.mlVictories} Mini-League{results.mlVictories !== 1 ? 's' : ''}!
                   </div>
                 </div>
-                <div className="flex gap-2 justify-center">
+                <div className="grid grid-cols-4 gap-2 justify-items-center">
                   {(results.mlVictoryData || results.mlVictoryNames?.map((name, idx) => ({
                     id: `fallback-${idx}`,
                     name,

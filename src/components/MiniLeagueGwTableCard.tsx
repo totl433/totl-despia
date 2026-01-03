@@ -425,13 +425,13 @@ export default function MiniLeagueGwTableCard({
               <h3 className="text-sm font-bold text-white truncate drop-shadow-sm">
                 {leagueName}
               </h3>
-              {isLive && (
-                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600 text-white shadow-sm flex-shrink-0">
-                  <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
-                  <span className="text-[10px] font-semibold">LIVE</span>
-                </div>
-              )}
             </div>
+            {isLive && (
+              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600 text-white shadow-sm flex-shrink-0 w-fit">
+                <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+                <span className="text-[10px] font-semibold">LIVE</span>
+              </div>
+            )}
             {/* Small winner indicator - only show for completed GWs, not live ones */}
             {rows.length > 0 && isFinished && !isLive && (() => {
               const winnerText = isDraw ? 'Draw!' : (() => {

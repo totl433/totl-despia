@@ -1,0 +1,487 @@
+---
+title: Notification Previews
+description: See how your notifications look on iPhone
+head:
+  - tag: style
+    content: |
+      .iphone-preview {
+        max-width: 400px;
+        margin: 2rem auto;
+        background: #000;
+        border-radius: 40px;
+        padding: 20px 10px 30px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      }
+      
+      .iphone-screen {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 30px;
+        padding: 60px 20px 20px;
+        min-height: 600px;
+        position: relative;
+      }
+      
+      .notch {
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 150px;
+        height: 30px;
+        background: #000;
+        border-radius: 0 0 20px 20px;
+      }
+      
+      .notification {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 14px;
+        padding: 0;
+        margin-bottom: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        backdrop-filter: blur(20px);
+        position: relative;
+        overflow: visible;
+      }
+      
+      .notification-header {
+        position: absolute;
+        top: 0;
+        right: 16px;
+        margin: 0;
+        padding: 0;
+        line-height: 1;
+        height: 11px;
+        padding-top: 8px;
+      }
+      
+      .notification-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 9px;
+        background: #1C8376;
+        display: inline-block;
+        vertical-align: top;
+        margin-right: 12px;
+        margin-top: 19px;
+        margin-left: 16px;
+        padding: 6px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        box-sizing: border-box;
+      }
+      
+      .notification-icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+      
+      .notification-content {
+        display: inline-block;
+        vertical-align: top;
+        margin-top: 19px;
+        margin-bottom: 12px;
+        width: calc(100% - 68px);
+      }
+      
+      .time {
+        font-size: 11px;
+        color: #999;
+        font-weight: 400;
+        letter-spacing: -0.01em;
+        line-height: 1.2;
+      }
+      
+      .notification-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: #000;
+        margin: 0;
+        padding: 0;
+        line-height: 1.2;
+        letter-spacing: -0.01em;
+        display: block;
+      }
+      
+      .notification-body {
+        font-size: 13px;
+        color: #333;
+        line-height: 1.3;
+        white-space: pre-line;
+        letter-spacing: -0.01em;
+        margin: 0;
+        padding: 0;
+        display: block;
+      }
+      
+      .notification-title + .notification-body {
+        margin-top: 0;
+        padding-top: 0;
+        line-height: 1.3;
+      }
+---
+
+# 📱 Notification Previews
+
+See how each notification type appears on iPhone.
+
+<div class="iphone-preview">
+  <div class="iphone-screen">
+    <div class="notch"></div>
+    
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">now</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">Goal Man United!</div>
+        <div class="notification-body">52' Marcus Rashford
+Man United [2] - 1 Liverpool ✅</div>
+      </div>
+    </div>
+    
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">2m ago</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">Goal Disallowed</div>
+        <div class="notification-body">67' Marcus Rashford's goal for Man United was disallowed
+Arsenal 1-0 Man United</div>
+      </div>
+    </div>
+    
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">5m ago</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">Chelsea vs Tottenham</div>
+        <div class="notification-body">Kickoff!</div>
+      </div>
+    </div>
+    
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">10m ago</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">Half-Time</div>
+        <div class="notification-body">Chelsea 1-1 Tottenham</div>
+      </div>
+    </div>
+    
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">15m ago</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">FT: Chelsea 2-0 Tottenham</div>
+        <div class="notification-body">✅ Got it right! 45% of players got this fixture correct</div>
+      </div>
+    </div>
+    
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">1h ago</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">Gameweek 16 Complete!</div>
+        <div class="notification-body">All games finished. Check your results!</div>
+      </div>
+    </div>
+    
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">2h ago</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">John</div>
+        <div class="notification-body">Good luck this week everyone! 🍀</div>
+      </div>
+    </div>
+    
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">3h ago</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">All predictions submitted!</div>
+        <div class="notification-body">Everyone in My League has submitted for GW 16. Check out who picked what!</div>
+      </div>
+    </div>
+    
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">1d ago</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">⚽ Gameweek 17 is live!</div>
+        <div class="notification-body">Fixtures are now available. Make your picks before kickoff!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+## Individual Notification Types
+
+### Goal Scored
+<div class="iphone-preview" style="max-width: 300px;">
+  <div class="iphone-screen" style="min-height: 200px; padding: 40px 15px 15px;">
+    <div class="notch"></div>
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">now</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">Goal Man United!</div>
+        <div class="notification-body">52' Marcus Rashford
+Man United [2] - 1 Liverpool ✅</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+**Note:** The `✅` or `❌` indicator shows whether the user's pick matches the current result. Users without a pick see no indicator.
+
+### Goal Scored (Pick Off Track)
+<div class="iphone-preview" style="max-width: 300px;">
+  <div class="iphone-screen" style="min-height: 200px; padding: 40px 15px 15px;">
+    <div class="notch"></div>
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">now</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">Goal Liverpool!</div>
+        <div class="notification-body">52' Mohamed Salah
+Man United 1 - [1] Liverpool ❌</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+### Goal Disallowed
+<div class="iphone-preview" style="max-width: 300px;">
+  <div class="iphone-screen" style="min-height: 200px; padding: 40px 15px 15px;">
+    <div class="notch"></div>
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">now</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">Goal Disallowed</div>
+        <div class="notification-body">67' Marcus Rashford's goal for Man United was disallowed
+Arsenal 1-0 Man United</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+### Kickoff (First Half)
+<div class="iphone-preview" style="max-width: 300px;">
+  <div class="iphone-screen" style="min-height: 200px; padding: 40px 15px 15px;">
+    <div class="notch"></div>
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">now</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">Chelsea vs Tottenham</div>
+        <div class="notification-body">Kickoff!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+### Kickoff (Second Half)
+<div class="iphone-preview" style="max-width: 300px;">
+  <div class="iphone-screen" style="min-height: 200px; padding: 40px 15px 15px;">
+    <div class="notch"></div>
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">now</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">Chelsea vs Tottenham</div>
+        <div class="notification-body">Second half underway</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+### Half-Time
+<div class="iphone-preview" style="max-width: 300px;">
+  <div class="iphone-screen" style="min-height: 200px; padding: 40px 15px 15px;">
+    <div class="notch"></div>
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">now</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">Half-Time</div>
+        <div class="notification-body">Chelsea 1-1 Tottenham</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+### Final Whistle (Correct Pick)
+<div class="iphone-preview" style="max-width: 300px;">
+  <div class="iphone-screen" style="min-height: 200px; padding: 40px 15px 15px;">
+    <div class="notch"></div>
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">now</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">FT: Chelsea 2-0 Tottenham</div>
+        <div class="notification-body">✅ Got it right! 45% of players got this fixture correct</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+### Final Whistle (Wrong Pick)
+<div class="iphone-preview" style="max-width: 300px;">
+  <div class="iphone-screen" style="min-height: 200px; padding: 40px 15px 15px;">
+    <div class="notch"></div>
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">now</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">FT: Chelsea 2-0 Tottenham</div>
+        <div class="notification-body">❌ Wrong pick 45% of players got this fixture correct</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+### Gameweek Complete
+<div class="iphone-preview" style="max-width: 300px;">
+  <div class="iphone-screen" style="min-height: 200px; padding: 40px 15px 15px;">
+    <div class="notch"></div>
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">now</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">Gameweek 16 Complete!</div>
+        <div class="notification-body">All games finished. Check your results!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+### Chat Message
+<div class="iphone-preview" style="max-width: 300px;">
+  <div class="iphone-screen" style="min-height: 200px; padding: 40px 15px 15px;">
+    <div class="notch"></div>
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">now</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">John</div>
+        <div class="notification-body">Good luck this week everyone! 🍀</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+### Final Submission
+<div class="iphone-preview" style="max-width: 300px;">
+  <div class="iphone-screen" style="min-height: 200px; padding: 40px 15px 15px;">
+    <div class="notch"></div>
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">now</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">All predictions submitted!</div>
+        <div class="notification-body">Everyone in My League has submitted for GW 16. Check out who picked what!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+### New Gameweek
+<div class="iphone-preview" style="max-width: 300px;">
+  <div class="iphone-screen" style="min-height: 200px; padding: 40px 15px 15px;">
+    <div class="notch"></div>
+    <div class="notification">
+      <div class="notification-header">
+        <span class="time">now</span>
+      </div>
+      <div class="notification-icon">
+        <img src="/assets/totl-logo.svg" alt="TOTL"></img>
+      </div>
+      <div class="notification-content">
+        <div class="notification-title">⚽ Gameweek 17 is live!</div>
+        <div class="notification-body">Fixtures are now available. Make your picks before kickoff!</div>
+      </div>
+    </div>
+  </div>
+</div>
+

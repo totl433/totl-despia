@@ -12,6 +12,7 @@ export default defineConfig({
           items: [
             { label: 'Introduction', link: '/' },
             { label: 'Architecture', link: '/architecture/' },
+            { label: '📱 Previews', link: '/previews/' },
             { label: '🧪 Test Console', link: '/test/' },
           ],
         },
