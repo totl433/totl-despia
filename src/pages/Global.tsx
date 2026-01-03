@@ -945,10 +945,10 @@ export default function GlobalLeaderboardPage() {
             </div>
           )}
           
-          {activeTab === "lastgw" && !isCurrentGwLive && (
+          {activeTab === "lastgw" && (
             <div className="text-center pb-3">
               <div className="text-sm text-slate-600">
-                Players who completed GW{latestGw}
+                All players who submitted for GW{isCurrentGwLive && currentGwFromMeta ? currentGwFromMeta : latestGw}
               </div>
             </div>
           )}
