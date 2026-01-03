@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
-import { getCached } from '../lib/cache';
+import { getCached, setCached, CACHE_TTL } from '../lib/cache';
 import type { Fixture } from './FixtureCard';
 
 // Cache key for last completed GW (to avoid DB query)
@@ -81,14 +81,8 @@ export default function MiniLeagueGwTableCard({
   // Initialize displayGw immediately from cache (optimistic - assume currentGw, will adjust if needed)
   const [displayGw, setDisplayGw] = useState<number | null>(() => {
     if (!currentGw) return null;
-    // Try to get last completed GW from cache
-    try {
-      const cachedLastGw = getCached<number>(LAST_COMPLETED_GW_CACHE_KEY);
-      // For now, default to currentGw - will be adjusted based on game state
-      return currentGw;
-    } catch {
-      return currentGw;
-    }
+    // For now, default to currentGw - will be adjusted based on game state
+    return currentGw;
   });
   
   // Load data from cache IMMEDIATELY on mount if available
@@ -211,7 +205,8 @@ export default function MiniLeagueGwTableCard({
             // Update cache if different
             if (dbLastGw !== lastCompletedGw) {
               // Cache update handled by initial data loader, just update local state if needed
-              if (dbLastGw && currentGwState !== 'LIVE' && currentGwState !== 'RESULTS_PRE_GW') {
+              // We're already in a block where currentGwState is not LIVE or RESULTS_PRE_GW
+              if (dbLastGw && currentGwState) {
                 setDisplayGw(dbLastGw);
               }
             }
@@ -246,7 +241,7 @@ export default function MiniLeagueGwTableCard({
     };
   }, [currentGw, currentGwState, mockData]);
 
-  // Fetch data when displayGw is determined OR check cache immediately if displayGw is already set
+  // Update data when displayGw changes (and re-check cache)
   useEffect(() => {
     if (mockData) {
       return;
@@ -264,101 +259,8 @@ export default function MiniLeagueGwTableCard({
     }
 
     let alive = true;
-
-    async function fetchData() {
-      try {
-        // Check cache first - ML live table data pre-cached during initial load
-        // Try both currentGw and lastCompletedGw cache keys for instant load
-        const cacheKeys = [
-          `ml_live_table:${leagueId}:${displayGw}`,
-          ...(currentGw && currentGw !== displayGw ? [`ml_live_table:${leagueId}:${currentGw}`] : [])
-        ];
-        
-        let cached: {
-          fixtures: Fixture[];
-          picks: PickRow[];
-          submissions: string[];
-          results: Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>;
-        } | null = null;
-        
-        // Try cache keys in order
-        for (const cacheKey of cacheKeys) {
-          const cachedData = getCached<{
-            fixtures: Fixture[];
-            picks: PickRow[];
-            submissions: string[];
-            results: Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>;
-          }>(cacheKey);
-          
-          if (cachedData && cachedData.fixtures && cachedData.fixtures.length > 0) {
-            cached = cachedData;
-            break;
-          }
-        }
-        
-        if (cached) {
-          // INSTANT LOAD from cache!
-          setFixtures(cached.fixtures);
-          setPicks(cached.picks ?? []);
-          setResults(cached.results ?? []);
-          
-          // Create Set of submitted user IDs from cache
-          const submitted = new Set<string>(cached.submissions ?? []);
-          setSubmittedUserIds(submitted);
-          
-          setLoading(false);
-          
-          // Background refresh in case cache is stale (non-blocking, silent)
-          fetchDataFromDb(false).catch(() => {
-            // Silently fail - we already have cached data displayed
-          });
-          return;
-        }
-        
-        // Cache miss - fetch from DB
-        await fetchDataFromDb(true); // Set loading for cache miss
-      } catch (err: any) {
-        console.error('[MiniLeagueGwTableCard] Error fetching data:', err);
-        if (alive) {
-          setError(err?.message || 'Failed to load data');
-          setLoading(false);
-        }
-      }
-    }
     
-    // Check cache synchronously first (don't wait for async)
-    try {
-      const cacheKey = `ml_live_table:${leagueId}:${displayGw}`;
-      const cached = getCached<{
-        fixtures: Fixture[];
-        picks: PickRow[];
-        submissions: string[];
-        results: Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>;
-      }>(cacheKey);
-      
-      if (cached && cached.fixtures && cached.fixtures.length > 0 && members && members.length > 0) {
-        // INSTANT LOAD from cache (synchronous)!
-        setFixtures(cached.fixtures);
-        setPicks(cached.picks ?? []);
-        setResults(cached.results ?? []);
-        
-        // Create Set of submitted user IDs from cache
-        const submitted = new Set<string>(cached.submissions ?? []);
-        setSubmittedUserIds(submitted);
-        
-        setLoading(false);
-        
-        // Background refresh (async)
-        fetchData();
-        return;
-      }
-    } catch {
-      // Cache error - continue to async fetch
-    }
-    
-    // No cache or cache miss - fetch async
-    fetchData();
-    
+    // Define fetchDataFromDb first so it can be called
     async function fetchDataFromDb(setLoadingState: boolean = true) {
       if (setLoadingState) {
         setLoading(true);
@@ -379,8 +281,7 @@ export default function MiniLeagueGwTableCard({
 
         const memberIds = members.map(m => m.id);
         if (memberIds.length === 0) {
-          // No members yet - can't fetch picks
-          setLoading(false);
+          if (setLoadingState) setLoading(false);
           return;
         }
         
@@ -416,21 +317,6 @@ export default function MiniLeagueGwTableCard({
           });
         }
         
-        // Debug logging for "Prem Predictions" league
-        if (leagueName?.toLowerCase().includes('prem')) {
-          console.log('[MiniLeagueGwTableCard] Prem Predictions debug:', {
-            leagueName,
-            displayGw,
-            totalMembers: members.length,
-            memberIds: memberIds,
-            memberNames: members.map(m => m.name),
-            submissionsCount: submissionsData?.length || 0,
-            submittedUserIds: Array.from(submitted),
-            submittedNames: members.filter(m => submitted.has(m.id)).map(m => m.name),
-            notSubmittedNames: members.filter(m => !submitted.has(m.id)).map(m => m.name),
-          });
-        }
-        
         setSubmittedUserIds(submitted);
 
         const { data: resultsData, error: resultsError } = await supabase
@@ -443,22 +329,55 @@ export default function MiniLeagueGwTableCard({
 
         setResults((resultsData ?? []) as Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>);
 
-        setLoading(false);
+        if (setLoadingState) setLoading(false);
+        
+        // Cache the fetched data
+        const cacheKey = `ml_live_table:${leagueId}:${displayGw}`;
+        setCached(cacheKey, {
+          fixtures: fixturesData,
+          picks: picksData ?? [],
+          submissions: Array.from(submitted),
+          results: resultsData ?? [],
+        }, CACHE_TTL.HOME);
+
       } catch (err: any) {
-        console.error('[MiniLeagueGwTableCard] Error fetching data:', err);
-        if (alive) {
+        console.error('[MiniLeagueGwTableCard] Error fetching data from DB:', err);
+        if (alive && setLoadingState) {
           setError(err?.message || 'Failed to load data');
           setLoading(false);
         }
       }
     }
-
-    fetchData();
-
-    return () => {
-      alive = false;
-    };
-  }, [displayGw, leagueId, members, mockData]);
+    
+    // Check cache immediately for current displayGw (synchronous)
+    const cacheData = loadInitialDataFromCache(displayGw, leagueId, members);
+    if (cacheData.found) {
+      // Update state from cache (already loaded on mount, but update if displayGw changed)
+      setFixtures(cacheData.fixtures);
+      setPicks(cacheData.picks);
+      setResults(cacheData.results);
+      setSubmittedUserIds(cacheData.submissions);
+      setLoading(false);
+      
+      // Background refresh (non-blocking, silent on error)
+      fetchDataFromDb(false).catch(() => {
+        // Silently fail - we already have cached data displayed
+      });
+      
+      return () => { alive = false; };
+    }
+    
+    // No cache - fetch from DB
+    fetchDataFromDb(true).catch((err: any) => {
+      console.error('[MiniLeagueGwTableCard] Error fetching data:', err);
+      if (alive) {
+        setError(err?.message || 'Failed to load data');
+        setLoading(false);
+      }
+    });
+    
+    return () => { alive = false; };
+  }, [displayGw, leagueId, members, mockData, currentGw]);
 
   // Calculate rows from picks and results/live scores
   useEffect(() => {

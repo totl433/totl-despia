@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { getCached, setCached, getCacheTimestamp, CACHE_TTL } from '../lib/cache';
 
 export interface Goal {
   minute: number | null;
@@ -75,7 +74,7 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
       }
     };
 
-    async function fetchLiveScores(isInitialCheck: boolean = false) {
+    async function fetchLiveScores(_isInitialCheck: boolean = false) {
       try {
         let query = supabase
           .from('live_scores')

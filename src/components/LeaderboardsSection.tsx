@@ -5,8 +5,10 @@ import { HorizontalScrollContainer } from './HorizontalScrollContainer';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { useAuth } from '../context/AuthContext';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
+import { getCached } from '../lib/cache';
+import type { GameweekState } from '../lib/gameweekState';
 
 interface LeaderboardsSectionProps {
   lastGwRank: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null;
@@ -29,12 +31,35 @@ export function LeaderboardsSection({
 }: LeaderboardsSectionProps) {
   // Check if the current GW is LIVE (first game kicked off, last game hasn't ended)
   // All leaderboards (form, season) include the current GW, so if current GW is LIVE, all are live
+  // Load from cache immediately for instant display
+  const cachedCurrentGwState = useMemo(() => {
+    if (!currentGw) return null;
+    try {
+      return getCached<GameweekState>(`gameState:${currentGw}`);
+    } catch {
+      return null;
+    }
+  }, [currentGw]);
+  
   const { state: currentGwState } = useGameweekState(currentGw ?? null);
-  const isCurrentGwLive = currentGwState === 'LIVE';
+  // Use cached state immediately if available, otherwise use hook state
+  const effectiveCurrentGwState = cachedCurrentGwState ?? currentGwState;
+  const isCurrentGwLive = effectiveCurrentGwState === 'LIVE';
   
   // Check if the Last GW is currently LIVE (for the Last GW card specifically)
+  const cachedLastGwState = useMemo(() => {
+    if (!lastGwRank?.gw) return null;
+    try {
+      return getCached<GameweekState>(`gameState:${lastGwRank.gw}`);
+    } catch {
+      return null;
+    }
+  }, [lastGwRank?.gw]);
+  
   const { state: lastGwState } = useGameweekState(lastGwRank?.gw ?? null);
-  const isLastGwLive = lastGwState === 'LIVE';
+  // Use cached state immediately if available, otherwise use hook state
+  const effectiveLastGwState = cachedLastGwState ?? lastGwState;
+  const isLastGwLive = effectiveLastGwState === 'LIVE';
   
   // Check for active live scores (ACTIVE LIVE = live scores are being used to calculate points)
   const { liveScores: currentGwLiveScores } = useLiveScores(currentGw ?? undefined);

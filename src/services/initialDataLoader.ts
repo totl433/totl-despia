@@ -364,6 +364,14 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   
   const liveScoresArray = liveScoresResult.data || [];
   
+  // Build userPicks map from picksForGw data
+  const userPicks: Record<number, "H" | "D" | "A"> = {};
+  if (picksForGw.data) {
+    for (const pick of picksForGw.data) {
+      userPicks[pick.fixture_index] = pick.pick;
+    }
+  }
+  
   // Cache fixtures WITH live scores for currentGw
   if (fixturesForGw.data) {
     setCached(`home:fixtures:${userId}:${currentGw}`, {
@@ -1011,8 +1019,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     })(); // Don't await - let it run in background
   }
 
-  // Process user picks
-  const userPicks: Record<number, "H" | "D" | "A"> = {};
+  // Process user picks (userPicks already created above from picksForGw.data)
   (picksForGw.data || []).forEach((pick: any) => {
     userPicks[pick.fixture_index] = pick.pick;
   });
