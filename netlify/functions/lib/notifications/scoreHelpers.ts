@@ -376,7 +376,7 @@ export async function sendKickoffNotification(
 }
 
 /**
- * Send a half-time notification
+ * Send a half-time notification (personalized with pick indicator)
  */
 export async function sendHalftimeNotification(
   userIds: string[],
@@ -388,18 +388,121 @@ export async function sendHalftimeNotification(
     awayTeam: string;
     homeScore: number;
     awayScore: number;
+    userPicks?: Map<string, string>; // userId -> pick (H/D/A) - optional for backward compatibility
   }
-): Promise<BatchDispatchResult> {
-  const { apiMatchId, fixtureIndex, gw, homeTeam, awayTeam, homeScore, awayScore } = params;
+): Promise<BatchDispatchResult | { results: BatchDispatchResult[]; summary: { accepted: number; failed: number } }> {
+  const { apiMatchId, fixtureIndex, gw, homeTeam, awayTeam, homeScore, awayScore, userPicks } = params;
 
   const eventId = buildHalftimeEventId(apiMatchId);
+  const baseBody = `${homeTeam} ${homeScore}-${awayScore} ${awayTeam}`;
 
+  // If userPicks provided, send personalized notifications with pick indicator
+  if (userPicks && userPicks.size > 0) {
+    // Determine current result state at half-time
+    let currentResult: 'H' | 'D' | 'A';
+    if (homeScore > awayScore) currentResult = 'H';
+    else if (awayScore > homeScore) currentResult = 'A';
+    else currentResult = 'D';
+
+    // Group users by whether their pick matches the current result
+    const onTrackUsers: string[] = [];
+    const offTrackUsers: string[] = [];
+    const usersWithoutPicks: string[] = [];
+
+    for (const userId of userIds) {
+      const pick = userPicks.get(userId);
+      if (!pick) {
+        usersWithoutPicks.push(userId);
+      } else if (pick === currentResult) {
+        onTrackUsers.push(userId);
+      } else {
+        offTrackUsers.push(userId);
+      }
+    }
+
+    const results: BatchDispatchResult[] = [];
+    let totalAccepted = 0;
+    let totalFailed = 0;
+
+    // Send to users whose pick is on track (✅)
+    if (onTrackUsers.length > 0) {
+      const onTrackResult = await dispatchNotification({
+        notification_key: 'half-time',
+        event_id: `${eventId}:ontrack`,
+        user_ids: onTrackUsers,
+        title: `Half-Time`,
+        body: `${baseBody} ✅`,
+        data: {
+          type: 'half_time',
+          api_match_id: apiMatchId,
+          fixture_index: fixtureIndex,
+          gw,
+        },
+        grouping_params: { api_match_id: apiMatchId },
+        skip_preference_check: true, // Half-time has no preference
+      });
+      results.push(onTrackResult);
+      totalAccepted += onTrackResult.results.accepted;
+      totalFailed += onTrackResult.results.failed;
+    }
+
+    // Send to users whose pick is off track (❌)
+    if (offTrackUsers.length > 0) {
+      const offTrackResult = await dispatchNotification({
+        notification_key: 'half-time',
+        event_id: `${eventId}:offtrack`,
+        user_ids: offTrackUsers,
+        title: `Half-Time`,
+        body: `${baseBody} ❌`,
+        data: {
+          type: 'half_time',
+          api_match_id: apiMatchId,
+          fixture_index: fixtureIndex,
+          gw,
+        },
+        grouping_params: { api_match_id: apiMatchId },
+        skip_preference_check: true, // Half-time has no preference
+      });
+      results.push(offTrackResult);
+      totalAccepted += offTrackResult.results.accepted;
+      totalFailed += offTrackResult.results.failed;
+    }
+
+    // Send to users without picks (no indicator)
+    if (usersWithoutPicks.length > 0) {
+      const noPickResult = await dispatchNotification({
+        notification_key: 'half-time',
+        event_id: `${eventId}:nopick`,
+        user_ids: usersWithoutPicks,
+        title: `Half-Time`,
+        body: baseBody,
+        data: {
+          type: 'half_time',
+          api_match_id: apiMatchId,
+          fixture_index: fixtureIndex,
+          gw,
+        },
+        grouping_params: { api_match_id: apiMatchId },
+        skip_preference_check: true, // Half-time has no preference
+      });
+      results.push(noPickResult);
+      totalAccepted += noPickResult.results.accepted;
+      totalFailed += noPickResult.results.failed;
+    }
+
+    return {
+      results,
+      summary: { accepted: totalAccepted, failed: totalFailed },
+    };
+  }
+
+  // Fallback: send batch notification (no picks available)
   return dispatchNotification({
     notification_key: 'half-time',
     event_id: eventId,
     user_ids: userIds,
     title: `Half-Time`,
-    body: `${homeTeam} ${homeScore}-${awayScore} ${awayTeam}`,
+    body: baseBody,
     data: {
       type: 'half_time',
       api_match_id: apiMatchId,

@@ -453,17 +453,31 @@ export const handler: Handler = async (event, context) => {
 
     // 4. Handle half-time
     if (isHalfTime) {
-      const picksData = await fetchUserIdsWithPicks(gw, fixture_index, isAppFixture, isTestFixture, testGwForPicks);
+      const picksData = await fetchUserIdsWithPicks(gw, fixture_index, isAppFixture, isTestFixture, testGwForPicks, true); // Include picks
       const userIds = [...new Set(picksData.map(p => p.userId))];
+      
+      // Build user picks map
+      const userPicksMap = new Map<string, string>();
+      for (const p of picksData) {
+        if (p.pick) userPicksMap.set(p.userId, p.pick);
+      }
 
       if (userIds.length > 0) {
         const result = await sendHalftimeNotification(userIds, {
           apiMatchId, fixtureIndex: fixture_index, gw,
           homeTeam: home_team, awayTeam: away_team,
           homeScore, awayScore,
+          userPicks: userPicksMap, // Pass user picks map
         });
-        totalSent += result.results.accepted;
-        console.log(`[scoreWebhookV2] [${requestId}] Half-time: ${result.results.accepted} sent`);
+        
+        // Handle both single result and batch result format
+        if ('summary' in result) {
+          totalSent += result.summary.accepted;
+          console.log(`[scoreWebhookV2] [${requestId}] Half-time: ${result.summary.accepted} sent`);
+        } else {
+          totalSent += result.results.accepted;
+          console.log(`[scoreWebhookV2] [${requestId}] Half-time: ${result.results.accepted} sent`);
+        }
       }
 
       return { statusCode: 200, headers, body: JSON.stringify({ message: 'Half-time notification sent', sentTo: totalSent }) };
