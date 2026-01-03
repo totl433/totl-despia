@@ -219,6 +219,7 @@ How To Play →`}
                   currentGw={currentGw}
                   maxMemberCount={maxMemberCount}
                   avatar={league.avatar}
+                  unread={unreadByLeague[league.id] ?? 0}
                 />
               );
             })}

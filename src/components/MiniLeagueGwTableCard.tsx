@@ -15,6 +15,7 @@ export interface MiniLeagueGwTableCardProps {
   currentGw: number | null;
   maxMemberCount?: number; // Max members across all leagues for consistent height
   avatar?: string | null; // League avatar
+  unread?: number; // Unread message count
   // Optional mock data for Storybook/testing
   mockData?: {
     fixtures: Fixture[];
@@ -70,6 +71,7 @@ export default function MiniLeagueGwTableCard({
   currentGw,
   maxMemberCount: _maxMemberCount,
   avatar,
+  unread = 0,
   mockData,
 }: MiniLeagueGwTableCardProps) {
   const [loading, setLoading] = useState(true);
@@ -349,13 +351,9 @@ export default function MiniLeagueGwTableCard({
     setAllFixturesFinished(allFinished);
   }, [displayGw, fixtures, picks, results, members, liveScores, currentGw, submittedUserIds]);
 
-  // Determine if GW is live (has active games)
-  const hasLiveFixtures = fixtures.some((f) => {
-    if (f.gw !== displayGw) return false;
-    const liveScore = liveScores[f.fixture_index];
-    return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED');
-  });
-  const isLive = mockData?.isLive ?? (hasLiveFixtures && displayGw === currentGw);
+  // Determine if GW is live - show LIVE badge for entire duration of LIVE state
+  // (from when games start until GW ends, not just when fixtures are currently IN_PLAY)
+  const isLive = mockData?.isLive ?? (currentGwState === 'LIVE' && displayGw === currentGw);
   
   // Determine if gameweek is finished and if there's a draw
   const isFinished = allFixturesFinished;
@@ -370,6 +368,12 @@ export default function MiniLeagueGwTableCard({
   const cardHeight = calculateCardHeight(memberCountForHeight);
   
   // maxMemberCount is passed but not used - we use actual rows.length instead for accurate height
+
+  // Debug: log unread count
+  const badge = unread > 0 ? Math.min(unread, 99) : 0;
+  if (unread > 0) {
+    console.log('[MiniLeagueGwTableCard]', leagueName, 'unread:', unread, 'badge:', badge);
+  }
 
   const cardContent = (
     <>
@@ -404,12 +408,12 @@ export default function MiniLeagueGwTableCard({
         }
       `}</style>
       {/* Compact Header */}
-      <div className="px-4 py-3 bg-gradient-to-r from-[#1C8376] to-[#1C8376]/90 border-b border-[#1C8376]/20 rounded-t-xl">
+      <div className="px-4 py-3 bg-white rounded-t-xl">
         <div className="flex items-start gap-2">
           <img
             src={getLeagueAvatarUrl({ id: leagueId, avatar })}
             alt={`${leagueName} avatar`}
-            className="w-[45px] h-[45px] rounded-full flex-shrink-0 object-cover shadow-sm"
+            className="w-[47px] h-[47px] rounded-full flex-shrink-0 object-cover shadow-sm"
             onError={(e) => {
               // Fallback to default ML avatar if custom avatar fails
               const target = e.target as HTMLImageElement;
@@ -421,11 +425,9 @@ export default function MiniLeagueGwTableCard({
             }}
           />
           <div className="flex-1 min-w-0 flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-white truncate drop-shadow-sm">
-                {leagueName}
-              </h3>
-            </div>
+            <h3 className="text-base font-bold text-black truncate">
+              {leagueName}
+            </h3>
             {isLive && (
               <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600 text-white shadow-sm flex-shrink-0 w-fit">
                 <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
@@ -471,7 +473,7 @@ export default function MiniLeagueGwTableCard({
             {/* Table */}
             {rows.length > 0 ? (
               <div className="overflow-visible flex-1 -mx-4">
-                <div className="bg-white">
+                <div className="bg-white px-4">
                   <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: '#ffffff', width: '100%' }}>
                     <thead className="sticky top-0" style={{ 
                       position: 'sticky', 
@@ -481,11 +483,11 @@ export default function MiniLeagueGwTableCard({
                       display: 'table-header-group'
                     } as any}>
                       <tr style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0' }}>
-                        <th className="py-2 text-left font-semibold text-xs uppercase tracking-wide" style={{ backgroundColor: '#ffffff', width: '24px', paddingLeft: '0.5rem', paddingRight: '0.25rem', color: '#1C8376' }}>#</th>
-                        <th className="py-2 text-left font-semibold text-xs uppercase tracking-wide" style={{ backgroundColor: '#ffffff', color: '#1C8376', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
+                        <th className="py-2 text-left font-semibold text-xs uppercase tracking-wide" style={{ backgroundColor: '#ffffff', width: '24px', paddingLeft: '0.5rem', paddingRight: '0.25rem', color: '#1C8376' }}></th>
+                        <th className="py-2 text-left font-semibold text-xs text-slate-300" style={{ backgroundColor: '#ffffff', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
                           Player
                         </th>
-                        <th className="py-2 text-center font-semibold uppercase tracking-wide" style={{ backgroundColor: '#ffffff', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#1C8376', fontSize: '0.5rem' }}>
+                        <th className="py-2 text-center font-semibold text-xs text-slate-300" style={{ backgroundColor: '#ffffff', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem' }}>
                           Score
                         </th>
                         {members.length >= 3 && <th className="py-2 text-center font-semibold text-xs" style={{ backgroundColor: '#ffffff', width: '32px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#1C8376', fontSize: '1rem' }}>🦄</th>}
@@ -546,7 +548,7 @@ export default function MiniLeagueGwTableCard({
   return (
     <Link
       to={`/league/${leagueCode}`}
-      className="w-[320px] flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow block no-underline"
+      className="w-[320px] flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow block no-underline relative"
       style={{ 
         minHeight: `${cardHeight}px`,
         height: 'auto', // Use auto to allow card to grow to fit all rows
@@ -554,6 +556,14 @@ export default function MiniLeagueGwTableCard({
         flexDirection: 'column'
       }}
     >
+      {/* Chat Badge - Top Right of Card */}
+      {badge > 0 && (
+        <div className="absolute top-3 right-3 z-30">
+          <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-[#1C8376] text-white text-xs font-bold shadow-sm">
+            {badge}
+          </span>
+        </div>
+      )}
       {cardContent}
     </Link>
   );
