@@ -59,6 +59,45 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 function AppShell() {
+  // Check for deep link BEFORE React Router renders to avoid home page flash
+  // This runs synchronously before any React rendering
+  const checkDeepLinkBeforeRender = () => {
+    const currentPath = window.location.pathname;
+    const searchParams = new URLSearchParams(window.location.search);
+    const hash = window.location.hash;
+    
+    // Check if URL is already set to league page
+    if (currentPath.startsWith('/league/')) {
+      const tab = searchParams.get('tab');
+      if (tab !== 'chat') {
+        // Update URL to include tab=chat before React Router initializes
+        window.history.replaceState({}, '', `${currentPath}?tab=chat`);
+      }
+      return; // Already on league page
+    }
+    
+    // Check hash-based URLs
+    if (hash && hash.startsWith('#/')) {
+      const path = hash.slice(1);
+      if (path.startsWith('/league/')) {
+        window.history.replaceState({}, '', path);
+        return;
+      }
+    }
+    
+    // Check query params for leagueCode (from notifications)
+    const leagueCodeParam = searchParams.get('leagueCode');
+    if (leagueCodeParam) {
+      const leagueUrl = `/league/${leagueCodeParam}?tab=chat`;
+      // Update URL before React Router initializes
+      window.history.replaceState({}, '', leagueUrl);
+      return;
+    }
+  };
+  
+  // Run check immediately (synchronously, before React renders)
+  checkDeepLinkBeforeRender();
+  
   return (
     <BrowserRouter>
       <AppContent />
@@ -502,7 +541,46 @@ function AppContent() {
         const lastFallbackCheck = sessionStorage.getItem('deepLink_fallback_checked');
         if (!lastFallbackCheck) {
           sessionStorage.setItem('deepLink_fallback_checked', 'true');
-          // Small delay to let leagues load, then check for unread messages
+          // Reduced delay - check immediately, then again after short delay
+          // First check immediately (no delay)
+          (async () => {
+            try {
+              // Get user's league IDs
+              const { data: leagueMembers } = await supabase
+                .from('league_members')
+                .select('league_id')
+                .eq('user_id', user.id);
+              
+              if (leagueMembers && leagueMembers.length > 0) {
+                const leagueIds = leagueMembers.map((lm: any) => lm.league_id).filter(Boolean);
+                if (leagueIds.length > 0) {
+                  // Get most recent message from user's leagues
+                  const { data: recentMessage } = await supabase
+                    .from('league_messages')
+                    .select('league_id, leagues!inner(code)')
+                    .in('league_id', leagueIds)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                  
+                  if (recentMessage) {
+                    const leagueData = (recentMessage as any).leagues;
+                    if (leagueData && typeof leagueData === 'object' && 'code' in leagueData) {
+                      const leagueCode = leagueData.code;
+                      const leagueUrl = `/league/${leagueCode}?tab=chat`;
+                      console.log('[DeepLink] Fallback: Navigating to league with recent message:', leagueUrl);
+                      navigate(leagueUrl, { replace: true });
+                      return; // Found it, no need for delayed check
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn('[DeepLink] Fallback check failed:', e);
+            }
+          })();
+          
+          // Also check again after short delay in case first check was too fast
           setTimeout(async () => {
             try {
               // Get user's league IDs
