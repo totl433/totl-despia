@@ -1813,36 +1813,10 @@ ${shareUrl}`;
           
           // Set notification status based on response
           if (result.ok === true) {
-            const results = result.results || {};
-            const suppressed = {
-              preference: results.suppressed_preference || 0,
-              muted: results.suppressed_muted || 0,
-              cooldown: results.suppressed_cooldown || 0,
-              unsubscribed: results.suppressed_unsubscribed || 0,
-              duplicate: results.suppressed_duplicate || 0,
-            };
-            const totalSuppressed = Object.values(suppressed).reduce((a, b) => a + b, 0);
-            
             if (result.sent && result.sent > 0) {
-              const suppressedMsg = totalSuppressed > 0 
-                ? ` (${totalSuppressed} suppressed: ${suppressed.preference ? 'pref' : ''}${suppressed.muted ? 'muted' : ''}${suppressed.cooldown ? 'cooldown' : ''}${suppressed.unsubscribed ? 'unsub' : ''})`
-                : '';
               setNotificationStatus({
-                message: `✓ Sent to ${result.sent} device${result.sent === 1 ? '' : 's'}${suppressedMsg}`,
+                message: `✓ Message sent to ${result.sent} device${result.sent === 1 ? '' : 's'}`,
                 type: 'success'
-              });
-            } else if (totalSuppressed > 0) {
-              // Show why notifications were suppressed
-              const reasons: string[] = [];
-              if (suppressed.preference) reasons.push(`${suppressed.preference} preference disabled`);
-              if (suppressed.muted) reasons.push(`${suppressed.muted} muted`);
-              if (suppressed.cooldown) reasons.push(`${suppressed.cooldown} cooldown`);
-              if (suppressed.unsubscribed) reasons.push(`${suppressed.unsubscribed} unsubscribed`);
-              if (suppressed.duplicate) reasons.push(`${suppressed.duplicate} duplicate`);
-              
-              setNotificationStatus({
-                message: `⚠️ ${result.recipients || 0} recipients, but all suppressed: ${reasons.join(', ')}`,
-                type: 'warning'
               });
             } else if (result.message === 'No subscribed devices') {
               setNotificationStatus({

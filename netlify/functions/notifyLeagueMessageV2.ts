@@ -276,7 +276,6 @@ export const handler: Handler = async (event) => {
         leagueCode, // Make this easy to find
         senderId,
         url: deepLinkUrl, // Include URL in data for badge clicks
-        web_url: deepLinkUrl, // For iOS native
       },
       url: deepLinkUrl, // Also set top-level URL for notification clicks
       grouping_params: {
@@ -300,9 +299,7 @@ export const handler: Handler = async (event) => {
   };
 
   console.log('[notifyLeagueMessageV2] Dispatch result:', combinedResults);
-  console.log('[notifyLeagueMessageV2] Detailed results:', JSON.stringify(results, null, 2));
 
-  // Return detailed response for debugging
   return json(200, {
     ok: true,
     sent: totalAccepted,
@@ -310,22 +307,6 @@ export const handler: Handler = async (event) => {
     results: combinedResults,
     event_id: eventId,
     groups: recipientGroups.size,
-    debug: {
-      totalRecipients: recipientIds.size,
-      totalGroups: recipientGroups.size,
-      detailedResults: results.map(r => ({
-        accepted: r.results.accepted,
-        failed: r.results.failed,
-        suppressed: {
-          duplicate: r.results.suppressed_duplicate,
-          preference: r.results.suppressed_preference,
-          muted: r.results.suppressed_muted,
-          cooldown: r.results.suppressed_cooldown,
-          unsubscribed: r.results.suppressed_unsubscribed,
-        },
-        userResults: r.user_results.slice(0, 5), // First 5 for debugging
-      })),
-    },
   });
 };
 
