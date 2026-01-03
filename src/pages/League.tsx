@@ -870,30 +870,28 @@ export default function LeaguePage() {
   const [loading, setLoading] = useState(true);
 
   // tabs: Chat / Mini League Table / GW Picks / GW Results
-  // Check URL parameter for initial tab (e.g., from notification deep link)
-  const tabParam = searchParams.get('tab');
-  // Default to chat-beta, but respect tab=chat from URL (for notification deep links)
-  const initialTab = tabParam === 'chat' ? 'chat-beta' : 'chat-beta';
+  // CHAT is always the default tab (never auto-switch to GW Table during live)
+  // Only exception: tab=chat in URL from notification deep links (handled by useEffect below)
+  const initialTab: "chat" | "chat-beta" | "mlt" | "gw" | "gwr" = 'chat-beta'; // Always default to chat
   const [tab, setTab] = useState<"chat" | "chat-beta" | "mlt" | "gw" | "gwr">(initialTab);
   // Use ref to track manual tab selection immediately (synchronously) to prevent race conditions
   const manualTabSelectedRef = useRef(false);
   const manualGwSelectedRef = useRef(false);
   
-  // Update tab when URL parameter changes (e.g., from notification deep link)
-  // This handles cases where the tab param is set after component mounts or when navigating
+  // Handle deep link from notifications - open chat tab when tab=chat is in URL
+  // This runs on mount and when URL changes (e.g., from notification click on iOS)
   useEffect(() => {
     const urlTab = searchParams.get('tab');
-    if (urlTab === 'chat' && tab !== 'chat-beta') {
-      console.log('[League] Opening chat tab from URL parameter (tab=chat)');
-      setTab('chat-beta');
+    if (urlTab === 'chat') {
+      if (tab !== 'chat-beta') {
+        console.log('[League] Opening chat tab from deep link (tab=chat)');
+        setTab('chat-beta');
+      }
       // Clear the parameter after setting the tab to avoid re-triggering
       // Use replace: true to avoid adding to history
       setSearchParams({}, { replace: true });
-    } else if (!urlTab && tab === 'chat-beta' && initialTab === 'chat-beta') {
-      // If tab param was cleared and we're on chat-beta (from initial load), that's fine
-      // This handles the case where we clear the param after opening
     }
-  }, [searchParams, setSearchParams, tab, initialTab]);
+  }, [searchParams, setSearchParams, tab]);
   const headerRef = useRef<HTMLDivElement | null>(null);
 
   const [showForm, setShowForm] = useState(false);

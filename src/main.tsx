@@ -376,78 +376,38 @@ function AppContent() {
   // Hide header/banner for full-screen pages
   const isFullScreenPage = false;
 
-  // Handle notification opens - navigate to league when notification is clicked
+  // Handle deep links from notifications (iOS native - OneSignal opens app with URL in window.location)
   useEffect(() => {
-    // Check if OneSignal is available (for web)
-    const OneSignal = (globalThis as any)?.OneSignal || (typeof window !== 'undefined' ? (window as any)?.OneSignal : null);
+    // On iOS native, when a notification is clicked, OneSignal opens the app
+    // with the URL already set in window.location. React Router should handle it automatically,
+    // but we check here to ensure proper navigation and log for debugging.
+    const currentPath = window.location.pathname;
+    const searchParams = new URLSearchParams(window.location.search);
+    const hash = window.location.hash;
     
-    if (OneSignal && typeof OneSignal.on === 'function') {
-      // Listen for notification opened event
-      OneSignal.on('notificationDisplay', (event: any) => {
-        console.log('[Notification] Notification displayed:', event);
-      });
-
-      OneSignal.on('notificationClick', (event: any) => {
-        console.log('[Notification] Notification clicked:', event);
-        const data = event?.notification?.additionalData || event?.data;
-        // Check for URL in data (for badge clicks) or in notification.url (for notification clicks)
-        const url = data?.url || event?.notification?.url;
-        if (url) {
-          console.log('[Notification] Navigating to URL from notification:', url);
-          // Ensure URL is properly formatted (handle relative paths)
-          const targetUrl = url.startsWith('/') ? url : `/${url}`;
-          navigate(targetUrl);
-        } else if (data?.leagueCode) {
-          // Fallback: construct URL from leagueCode
-          // For league messages, always open to chat tab
-          const leagueUrl = data?.type === 'league_message' 
-            ? `/league/${data.leagueCode}?tab=chat` 
-            : `/league/${data.leagueCode}`;
-          console.log('[Notification] Navigating to league (fallback):', leagueUrl);
-          navigate(leagueUrl);
-        }
-      });
+    // Check if we're opening from a notification deep link
+    // Format: /league/{code}?tab=chat
+    if (currentPath.startsWith('/league/') && searchParams.get('tab') === 'chat') {
+      console.log('[DeepLink] App opened from chat notification:', currentPath + window.location.search);
+      // React Router will handle the navigation automatically
+      // League page component will read tab=chat and open chat tab
+      return;
     }
-
-    // Also handle URL-based navigation (for when app opens from notification)
-    // Check if there's a URL parameter or hash that indicates a notification open
-    const handleNotificationUrl = () => {
-      // OneSignal may set a URL in the notification that opens the app
-      // Check for URL in hash or query params
-      const hash = window.location.hash;
-      const searchParams = new URLSearchParams(window.location.search);
-      const currentPath = window.location.pathname;
-      
-      // If URL is in hash (e.g., #/league/code?tab=chat)
-      if (hash && hash.startsWith('#/')) {
-        const path = hash.slice(1); // Remove #
-        if (path.startsWith('/league/')) {
-          console.log('[Notification] Navigating from hash:', path);
-          navigate(path);
-          return;
-        }
-      }
-      
-      // If we're already on a league page with tab param, ensure it's handled
-      if (currentPath.startsWith('/league/') && searchParams.get('tab') === 'chat') {
-        // The League page will handle this via its useEffect
-        console.log('[Notification] Already on league page with tab=chat, League component will handle it');
+    
+    // Handle hash-based URLs (fallback for some OneSignal configurations)
+    if (hash && hash.startsWith('#/')) {
+      const path = hash.slice(1); // Remove #
+      if (path.startsWith('/league/')) {
+        console.log('[DeepLink] Navigating from hash:', path);
+        navigate(path);
         return;
       }
-      
-      // If leagueCode is in query params (for chat notifications, preserve tab=chat)
-      const leagueCode = searchParams.get('leagueCode');
-      if (leagueCode) {
-        const tab = searchParams.get('tab');
-        const leagueUrl = tab === 'chat' 
-          ? `/league/${leagueCode}?tab=chat`
-          : `/league/${leagueCode}`;
-        console.log('[Notification] Navigating from query params:', leagueUrl);
-        navigate(leagueUrl);
-      }
-    };
-
-    handleNotificationUrl();
+    }
+    
+    // If URL doesn't match expected format but has league data, log for debugging
+    if (currentPath.startsWith('/league/')) {
+      console.log('[DeepLink] On league page but no tab=chat param:', currentPath);
+    }
   }, [navigate]);
   
   // Add a maximum timeout to prevent infinite loading (15 seconds total including auth)
