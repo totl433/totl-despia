@@ -79,6 +79,12 @@ export function buildPayload(
   // Add deep link URL
   if (url) {
     payload.url = url;
+    // For iOS native apps, also set web_url (OneSignal uses this for deep linking)
+    // Extract from data if provided, otherwise use url
+    const webUrl = (data && data.web_url) || url;
+    if (webUrl) {
+      payload.web_url = webUrl;
+    }
   }
   
   return payload;

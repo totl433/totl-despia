@@ -251,6 +251,19 @@ export const handler: Handler = async (event) => {
     const [badgeCountStr, url] = groupKey.split('|');
     const badgeCount = parseInt(badgeCountStr, 10) || 1;
     
+    // Ensure URL includes tab=chat and leagueCode in query params for deep link handler
+    // The URL from calculateUnreadCountAndUrl might be /league/{code} or /league/{code}?tab=chat
+    let deepLinkUrl = url;
+    if (!deepLinkUrl.includes('tab=chat')) {
+      deepLinkUrl = deepLinkUrl.includes('?') 
+        ? `${deepLinkUrl}&tab=chat`
+        : `${deepLinkUrl}?tab=chat`;
+    }
+    // Always add leagueCode to query params (needed for deep link handler)
+    deepLinkUrl = deepLinkUrl.includes('?') 
+      ? `${deepLinkUrl}&leagueCode=${leagueCode}`
+      : `${deepLinkUrl}?leagueCode=${leagueCode}`;
+    
     const result = await dispatchNotification({
       notification_key: 'chat-message',
       event_id: eventId,
@@ -260,11 +273,12 @@ export const handler: Handler = async (event) => {
       data: {
         type: 'league_message',
         leagueId,
-        leagueCode,
+        leagueCode, // Make this easy to find
         senderId,
-        url, // Include URL in data for badge clicks
+        url: deepLinkUrl, // Include URL in data for badge clicks
+        web_url: deepLinkUrl, // For iOS native
       },
-      url, // Also set top-level URL for notification clicks
+      url: deepLinkUrl, // Also set top-level URL for notification clicks
       grouping_params: {
         league_id: leagueId,
       },
