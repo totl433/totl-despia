@@ -388,13 +388,22 @@ function AppContent() {
       const hash = window.location.hash;
       const fullUrl = window.location.href;
       
-      console.log('[DeepLink] Checking for notification deep link...', {
+      // Store debug info in localStorage for debugging (can't access console in Despia)
+      const debugInfo = {
         pathname: currentPath,
         search: window.location.search,
         hash: hash,
         fullUrl: fullUrl,
-        href: window.location.href
-      });
+        href: window.location.href,
+        timestamp: new Date().toISOString()
+      };
+      try {
+        localStorage.setItem('deepLink_debug', JSON.stringify(debugInfo));
+      } catch (e) {
+        // Ignore storage errors
+      }
+      
+      console.log('[DeepLink] Checking for notification deep link...', debugInfo);
       
       // Method 1: Check if URL is already in window.location
       if (currentPath.startsWith('/league/')) {
