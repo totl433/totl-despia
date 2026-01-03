@@ -218,6 +218,22 @@ export function useLeagues(options: UseLeaguesOptions = {}): UseLeaguesResult {
     return () => window.removeEventListener('focus', handleFocus);
   }, [userId, refreshUnreadCounts]);
 
+  // Refresh unread counts when messages are marked as read (from League page)
+  useEffect(() => {
+    if (!userId) return;
+    
+    const handleMessagesRead = (event: CustomEvent) => {
+      const { userId: eventUserId } = event.detail || {};
+      // Only refresh if the event is for this user
+      if (eventUserId === userId) {
+        refreshUnreadCounts();
+      }
+    };
+    
+    window.addEventListener('leagueMessagesRead', handleMessagesRead as EventListener);
+    return () => window.removeEventListener('leagueMessagesRead', handleMessagesRead as EventListener);
+  }, [userId, refreshUnreadCounts]);
+
   return {
     leagues,
     unreadByLeague,

@@ -393,14 +393,17 @@ function AppContent() {
         // Check for URL in data (for badge clicks) or in notification.url (for notification clicks)
         const url = data?.url || event?.notification?.url;
         if (url) {
-          console.log('[Notification] Navigating to:', url);
-          navigate(url);
+          console.log('[Notification] Navigating to URL from notification:', url);
+          // Ensure URL is properly formatted (handle relative paths)
+          const targetUrl = url.startsWith('/') ? url : `/${url}`;
+          navigate(targetUrl);
         } else if (data?.leagueCode) {
           // Fallback: construct URL from leagueCode
+          // For league messages, always open to chat tab
           const leagueUrl = data?.type === 'league_message' 
             ? `/league/${data.leagueCode}?tab=chat` 
             : `/league/${data.leagueCode}`;
-          console.log('[Notification] Navigating to league:', leagueUrl);
+          console.log('[Notification] Navigating to league (fallback):', leagueUrl);
           navigate(leagueUrl);
         }
       });
@@ -413,13 +416,23 @@ function AppContent() {
       // Check for URL in hash or query params
       const hash = window.location.hash;
       const searchParams = new URLSearchParams(window.location.search);
+      const currentPath = window.location.pathname;
       
-      // If URL is in hash (e.g., #/league/code)
+      // If URL is in hash (e.g., #/league/code?tab=chat)
       if (hash && hash.startsWith('#/')) {
         const path = hash.slice(1); // Remove #
         if (path.startsWith('/league/')) {
+          console.log('[Notification] Navigating from hash:', path);
           navigate(path);
+          return;
         }
+      }
+      
+      // If we're already on a league page with tab param, ensure it's handled
+      if (currentPath.startsWith('/league/') && searchParams.get('tab') === 'chat') {
+        // The League page will handle this via its useEffect
+        console.log('[Notification] Already on league page with tab=chat, League component will handle it');
+        return;
       }
       
       // If leagueCode is in query params (for chat notifications, preserve tab=chat)
@@ -429,6 +442,7 @@ function AppContent() {
         const leagueUrl = tab === 'chat' 
           ? `/league/${leagueCode}?tab=chat`
           : `/league/${leagueCode}`;
+        console.log('[Notification] Navigating from query params:', leagueUrl);
         navigate(leagueUrl);
       }
     };

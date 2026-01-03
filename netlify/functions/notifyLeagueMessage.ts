@@ -220,7 +220,8 @@ export const handler: Handler = async (event) => {
   const message = String(content).slice(0, 180);
 
   // Build deep link URL - use relative path for web app routing
-  const leagueUrl = `/league/${leagueCode}`;
+  // Include ?tab=chat to open directly to chat tab
+  const leagueUrl = `/league/${leagueCode}?tab=chat`;
 
   // 7) Send via OneSignal (only to subscribed Player IDs)
   const payloadOS: Record<string, any> = {

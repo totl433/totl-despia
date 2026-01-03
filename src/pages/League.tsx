@@ -872,6 +872,7 @@ export default function LeaguePage() {
   // tabs: Chat / Mini League Table / GW Picks / GW Results
   // Check URL parameter for initial tab (e.g., from notification deep link)
   const tabParam = searchParams.get('tab');
+  // Default to chat-beta, but respect tab=chat from URL (for notification deep links)
   const initialTab = tabParam === 'chat' ? 'chat-beta' : 'chat-beta';
   const [tab, setTab] = useState<"chat" | "chat-beta" | "mlt" | "gw" | "gwr">(initialTab);
   // Use ref to track manual tab selection immediately (synchronously) to prevent race conditions
@@ -879,14 +880,20 @@ export default function LeaguePage() {
   const manualGwSelectedRef = useRef(false);
   
   // Update tab when URL parameter changes (e.g., from notification deep link)
+  // This handles cases where the tab param is set after component mounts or when navigating
   useEffect(() => {
     const urlTab = searchParams.get('tab');
     if (urlTab === 'chat' && tab !== 'chat-beta') {
+      console.log('[League] Opening chat tab from URL parameter (tab=chat)');
       setTab('chat-beta');
       // Clear the parameter after setting the tab to avoid re-triggering
+      // Use replace: true to avoid adding to history
       setSearchParams({}, { replace: true });
+    } else if (!urlTab && tab === 'chat-beta' && initialTab === 'chat-beta') {
+      // If tab param was cleared and we're on chat-beta (from initial load), that's fine
+      // This handles the case where we clear the param after opening
     }
-  }, [searchParams, setSearchParams, tab]);
+  }, [searchParams, setSearchParams, tab, initialTab]);
   const headerRef = useRef<HTMLDivElement | null>(null);
 
   const [showForm, setShowForm] = useState(false);
@@ -1621,12 +1628,21 @@ ${shareUrl}`;
   useEffect(() => {
     if ((tab !== "chat" && tab !== "chat-beta") || !league?.id || !user?.id) return;
     const mark = async () => {
+      // Update last_read_at in database
       await supabase
         .from("league_message_reads")
         .upsert(
           { league_id: league.id, user_id: user.id, last_read_at: new Date().toISOString() },
           { onConflict: "league_id,user_id" }
         );
+      
+      // Invalidate unread cache so badges clear immediately
+      invalidateLeagueCache(user.id);
+      
+      // Dispatch event to trigger immediate unread count refresh on pages using useLeagues
+      window.dispatchEvent(new CustomEvent('leagueMessagesRead', { 
+        detail: { leagueId: league.id, userId: user.id } 
+      }));
     };
     mark();
   }, [tab, league?.id, user?.id]);
@@ -1760,6 +1776,27 @@ ${shareUrl}`;
     } else if (inserted) {
       // Optimistic add so the message appears immediately; realtime will also append
       setChat((prev) => [...prev, inserted as ChatMsg]);
+      
+      // Update last_read_at immediately to prevent own message from showing as unread
+      // Use the message's created_at timestamp (or slightly after) to ensure it's after the message
+      const messageTime = inserted.created_at ? new Date(inserted.created_at) : new Date();
+      // Add 1ms buffer to ensure last_read_at is definitely after the message timestamp
+      const readTime = new Date(messageTime.getTime() + 1);
+      
+      await supabase
+        .from("league_message_reads")
+        .upsert(
+          { league_id: league.id, user_id: user.id, last_read_at: readTime.toISOString() },
+          { onConflict: "league_id,user_id" }
+        );
+      
+      // Invalidate unread cache so badge doesn't show for own message
+      invalidateLeagueCache(user.id);
+      
+      // Dispatch event to trigger immediate unread count refresh
+      window.dispatchEvent(new CustomEvent('leagueMessagesRead', { 
+        detail: { leagueId: league.id, userId: user.id } 
+      }));
     }
     // Request push notifications to league members (exclude sender)
     // Skip in local development (Netlify Functions not available)
