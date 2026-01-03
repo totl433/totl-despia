@@ -521,28 +521,32 @@ function AppContent() {
           // Small delay to let leagues load, then check for unread messages
           setTimeout(async () => {
             try {
-              // Get user's leagues with unread messages
-              const { data: leagues } = await supabase
+              // Get user's league IDs
+              const { data: leagueMembers } = await supabase
                 .from('league_members')
-                .select('leagues(code, name)')
+                .select('league_id')
                 .eq('user_id', user.id);
               
-              if (leagues && leagues.length > 0) {
-                const leagueCodes = leagues.map((l: any) => l.leagues?.code).filter(Boolean);
-                if (leagueCodes.length > 0) {
-                  // Get most recent unread message
+              if (leagueMembers && leagueMembers.length > 0) {
+                const leagueIds = leagueMembers.map((lm: any) => lm.league_id).filter(Boolean);
+                if (leagueIds.length > 0) {
+                  // Get most recent message from user's leagues
                   const { data: recentMessage } = await supabase
                     .from('league_messages')
-                    .select('league_id, leagues(code)')
-                    .in('league_id', leagues.map((l: any) => l.league_id))
+                    .select('league_id, leagues!inner(code)')
+                    .in('league_id', leagueIds)
                     .order('created_at', { ascending: false })
                     .limit(1)
                     .maybeSingle();
                   
-                  if (recentMessage?.leagues?.code) {
-                    const leagueUrl = `/league/${recentMessage.leagues.code}?tab=chat`;
-                    console.log('[DeepLink] Fallback: Navigating to league with recent message:', leagueUrl);
-                    navigate(leagueUrl, { replace: true });
+                  if (recentMessage) {
+                    const leagueData = (recentMessage as any).leagues;
+                    if (leagueData && typeof leagueData === 'object' && 'code' in leagueData) {
+                      const leagueCode = leagueData.code;
+                      const leagueUrl = `/league/${leagueCode}?tab=chat`;
+                      console.log('[DeepLink] Fallback: Navigating to league with recent message:', leagueUrl);
+                      navigate(leagueUrl, { replace: true });
+                    }
                   }
                 }
               }
