@@ -377,15 +377,46 @@ function AppContent() {
   const isFullScreenPage = false;
 
   // Handle deep links from notifications (iOS native)
-  // OneSignal on iOS native may not automatically navigate to the URL
-  // We need to manually extract the leagueCode from notification data and navigate
+  // Check IMMEDIATELY on mount to avoid showing home page first
+  // Run synchronous checks first, then async checks
   useEffect(() => {
-    if (!user) return; // Wait for user to be loaded
+    // IMMEDIATE synchronous check - no waiting for user or delays
+    const currentPath = window.location.pathname;
+    const searchParams = new URLSearchParams(window.location.search);
+    const hash = window.location.hash;
     
-    const handleNotificationDeepLink = () => {
-      const currentPath = window.location.pathname;
-      const searchParams = new URLSearchParams(window.location.search);
-      const hash = window.location.hash;
+    // Method 1: Check if URL is already in window.location (fastest path)
+    if (currentPath.startsWith('/league/')) {
+      const tab = searchParams.get('tab');
+      if (tab !== 'chat') {
+        // Navigate to chat tab immediately
+        navigate(`${currentPath}?tab=chat`, { replace: true });
+      }
+      return; // Already on league page, no need for further checks
+    }
+    
+    // Method 2: Check hash-based URLs (synchronous)
+    if (hash && hash.startsWith('#/')) {
+      const path = hash.slice(1);
+      if (path.startsWith('/league/')) {
+        navigate(path, { replace: true });
+        return;
+      }
+    }
+    
+    // Method 3: Check query params for leagueCode (synchronous - fastest for notifications)
+    const leagueCodeParam = searchParams.get('leagueCode');
+    if (leagueCodeParam) {
+      const leagueUrl = `/league/${leagueCodeParam}?tab=chat`;
+      navigate(leagueUrl, { replace: true });
+      return;
+    }
+    
+    // If we get here, no immediate deep link found
+    // Continue with async checks below (but only if user is loaded)
+    if (!user) return;
+    
+    const handleAsyncNotificationDeepLink = () => {
       const fullUrl = window.location.href;
       
       // Store debug info in localStorage for debugging (can't access console in Despia)
@@ -403,54 +434,7 @@ function AppContent() {
         // Ignore storage errors
       }
       
-      console.log('[DeepLink] Checking for notification deep link...', debugInfo);
-      
-      // Method 1: Check if URL is already in window.location
-      if (currentPath.startsWith('/league/')) {
-        const tab = searchParams.get('tab');
-        console.log('[DeepLink] Already on league page:', currentPath, 'tab:', tab);
-        if (tab === 'chat') {
-          return true; // Already where we need to be
-        } else {
-          // Navigate to chat tab
-          navigate(`${currentPath}?tab=chat`, { replace: true });
-          return true;
-        }
-      }
-      
-      // Method 2: Check hash-based URLs
-      if (hash && hash.startsWith('#/')) {
-        const path = hash.slice(1);
-        if (path.startsWith('/league/')) {
-          console.log('[DeepLink] Navigating from hash:', path);
-          navigate(path);
-          return true;
-        }
-      }
-      
-      // Method 3: Check query params for leagueCode (OneSignal might pass it this way)
-      const leagueCodeParam = searchParams.get('leagueCode');
-      if (leagueCodeParam) {
-        const tab = searchParams.get('tab');
-        const leagueUrl = tab === 'chat' 
-          ? `/league/${leagueCodeParam}?tab=chat`
-          : `/league/${leagueCodeParam}?tab=chat`; // Always go to chat for notifications
-        console.log('[DeepLink] Found leagueCode in query params, navigating:', leagueUrl);
-        
-        // Store success in localStorage
-        try {
-          localStorage.setItem('deepLink_result', JSON.stringify({
-            success: true,
-            method: 'query_params',
-            leagueCode: leagueCodeParam,
-            url: leagueUrl,
-            timestamp: new Date().toISOString()
-          }));
-        } catch (e) {}
-        
-        navigate(leagueUrl, { replace: true });
-        return true;
-      }
+      console.log('[DeepLink] Checking for async notification deep link...', debugInfo);
       
       // Method 4: Check localStorage/sessionStorage for OneSignal notification data
       // OneSignal might store notification data here on iOS native
@@ -572,39 +556,42 @@ function AppContent() {
       return false;
     };
     
-    // Check immediately on mount
-    handleNotificationDeepLink();
-    
-    // Check again after a delay (OneSignal might set URL/data asynchronously)
-    const timeoutId1 = setTimeout(() => {
-      console.log('[DeepLink] Re-checking after 500ms delay...');
-      handleNotificationDeepLink();
-    }, 500);
-    
-    // Check again after longer delay (in case OneSignal is very slow)
-    const timeoutId2 = setTimeout(() => {
-      console.log('[DeepLink] Re-checking after 2s delay...');
-      handleNotificationDeepLink();
-    }, 2000);
-    
-    // Also check when app becomes visible (notification tapped while backgrounded)
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        console.log('[DeepLink] App became visible, checking for notification...');
-        setTimeout(() => {
-          handleNotificationDeepLink();
-        }, 100);
-      }
-    };
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      clearTimeout(timeoutId1);
-      clearTimeout(timeoutId2);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [navigate, user]);
+    // Run async checks (only if user is loaded)
+    if (user) {
+      // Check immediately for async sources
+      handleAsyncNotificationDeepLink();
+      
+      // Check again after a delay (OneSignal might set URL/data asynchronously)
+      const timeoutId1 = setTimeout(() => {
+        console.log('[DeepLink] Re-checking async sources after 500ms delay...');
+        handleAsyncNotificationDeepLink();
+      }, 500);
+      
+      // Check again after longer delay (in case OneSignal is very slow)
+      const timeoutId2 = setTimeout(() => {
+        console.log('[DeepLink] Re-checking async sources after 2s delay...');
+        handleAsyncNotificationDeepLink();
+      }, 2000);
+      
+      // Also check when app becomes visible (notification tapped while backgrounded)
+      const handleVisibilityChange = () => {
+        if (!document.hidden) {
+          console.log('[DeepLink] App became visible, checking for notification...');
+          setTimeout(() => {
+            handleAsyncNotificationDeepLink();
+          }, 100);
+        }
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      
+      return () => {
+        clearTimeout(timeoutId1);
+        clearTimeout(timeoutId2);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+  }, [navigate, user, location.pathname]);
   
   // Add a maximum timeout to prevent infinite loading (15 seconds total including auth)
   useEffect(() => {
