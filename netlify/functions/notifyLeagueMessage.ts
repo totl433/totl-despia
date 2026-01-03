@@ -221,7 +221,8 @@ export const handler: Handler = async (event) => {
 
   // Build deep link URL - use relative path for web app routing
   // Include ?tab=chat to open directly to chat tab
-  const leagueUrl = `/league/${leagueCode}?tab=chat`;
+  // Also include leagueCode as query param as fallback for iOS native
+  const leagueUrl = `/league/${leagueCode}?tab=chat&leagueCode=${leagueCode}`;
 
   // 7) Send via OneSignal (only to subscribed Player IDs)
   const payloadOS: Record<string, any> = {

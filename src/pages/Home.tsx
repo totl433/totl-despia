@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import ScrollLogo from "../components/ScrollLogo";
@@ -54,6 +54,21 @@ function rowToOutcome(r: { result?: "H" | "D" | "A" | null }): "H" | "D" | "A" |
 
 export default function HomePage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  
+  // Check if we opened from a notification deep link (iOS native may pass leagueCode as query param)
+  useEffect(() => {
+    const leagueCode = searchParams.get('leagueCode');
+    if (leagueCode) {
+      const tab = searchParams.get('tab');
+      const leagueUrl = tab === 'chat' 
+        ? `/league/${leagueCode}?tab=chat`
+        : `/league/${leagueCode}`;
+      console.log('[HomePage] Detected notification deep link, navigating to:', leagueUrl);
+      navigate(leagueUrl, { replace: true });
+    }
+  }, [searchParams, navigate]);
   
   // Initialize ALL state from cache synchronously to avoid any render gaps
   // We check localStorage directly to avoid waiting for user to be available

@@ -376,39 +376,69 @@ function AppContent() {
   // Hide header/banner for full-screen pages
   const isFullScreenPage = false;
 
-  // Handle deep links from notifications (iOS native - OneSignal opens app with URL in window.location)
+  // Handle deep links from notifications (iOS native)
+  // OneSignal on iOS native may not automatically navigate to the URL
+  // We need to manually extract the leagueCode from notification data and navigate
   useEffect(() => {
-    // On iOS native, when a notification is clicked, OneSignal opens the app
-    // with the URL already set in window.location. React Router should handle it automatically,
-    // but we check here to ensure proper navigation and log for debugging.
-    const currentPath = window.location.pathname;
-    const searchParams = new URLSearchParams(window.location.search);
-    const hash = window.location.hash;
+    if (!user) return; // Wait for user to be loaded
     
-    // Check if we're opening from a notification deep link
-    // Format: /league/{code}?tab=chat
-    if (currentPath.startsWith('/league/') && searchParams.get('tab') === 'chat') {
-      console.log('[DeepLink] App opened from chat notification:', currentPath + window.location.search);
-      // React Router will handle the navigation automatically
-      // League page component will read tab=chat and open chat tab
-      return;
-    }
-    
-    // Handle hash-based URLs (fallback for some OneSignal configurations)
-    if (hash && hash.startsWith('#/')) {
-      const path = hash.slice(1); // Remove #
-      if (path.startsWith('/league/')) {
-        console.log('[DeepLink] Navigating from hash:', path);
-        navigate(path);
-        return;
+    const handleNotificationDeepLink = () => {
+      const currentPath = window.location.pathname;
+      const searchParams = new URLSearchParams(window.location.search);
+      const hash = window.location.hash;
+      
+      // Method 1: Check if URL is already in window.location
+      if (currentPath.startsWith('/league/') && searchParams.get('tab') === 'chat') {
+        console.log('[DeepLink] URL already set in window.location:', currentPath + window.location.search);
+        return true;
       }
-    }
+      
+      // Method 2: Check hash-based URLs
+      if (hash && hash.startsWith('#/')) {
+        const path = hash.slice(1);
+        if (path.startsWith('/league/')) {
+          console.log('[DeepLink] Navigating from hash:', path);
+          navigate(path);
+          return true;
+        }
+      }
+      
+      // Method 3: Check if we're on home page - try to extract leagueCode from URL params
+      // OneSignal might pass data as query params instead of path
+      if (currentPath === '/' || currentPath === '') {
+        const leagueCodeParam = searchParams.get('leagueCode');
+        if (leagueCodeParam) {
+          const leagueUrl = `/league/${leagueCodeParam}?tab=chat`;
+          console.log('[DeepLink] Found leagueCode in query params, navigating:', leagueUrl);
+          navigate(leagueUrl);
+          return true;
+        }
+      }
+      
+      return false;
+    };
     
-    // If URL doesn't match expected format but has league data, log for debugging
-    if (currentPath.startsWith('/league/')) {
-      console.log('[DeepLink] On league page but no tab=chat param:', currentPath);
-    }
-  }, [navigate]);
+    // Check on mount with a small delay to allow OneSignal to set URL if it does
+    const timeoutId = setTimeout(() => {
+      handleNotificationDeepLink();
+    }, 500);
+    
+    // Also check when app becomes visible (notification tapped while backgrounded)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        setTimeout(() => {
+          handleNotificationDeepLink();
+        }, 100);
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [navigate, user]);
   
   // Add a maximum timeout to prevent infinite loading (15 seconds total including auth)
   useEffect(() => {
