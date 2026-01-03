@@ -427,6 +427,18 @@ function AppContent() {
           ? `/league/${leagueCodeParam}?tab=chat`
           : `/league/${leagueCodeParam}?tab=chat`; // Always go to chat for notifications
         console.log('[DeepLink] Found leagueCode in query params, navigating:', leagueUrl);
+        
+        // Store success in localStorage
+        try {
+          localStorage.setItem('deepLink_result', JSON.stringify({
+            success: true,
+            method: 'query_params',
+            leagueCode: leagueCodeParam,
+            url: leagueUrl,
+            timestamp: new Date().toISOString()
+          }));
+        } catch (e) {}
+        
         navigate(leagueUrl, { replace: true });
         return true;
       }
@@ -458,6 +470,19 @@ function AppContent() {
               if (leagueCode) {
                 const leagueUrl = `/league/${leagueCode}?tab=chat`;
                 console.log('[DeepLink] Extracted leagueCode from storage, navigating:', leagueUrl);
+                
+                // Store success in localStorage
+                try {
+                  localStorage.setItem('deepLink_result', JSON.stringify({
+                    success: true,
+                    method: 'storage',
+                    storageKey: key,
+                    leagueCode: leagueCode,
+                    url: leagueUrl,
+                    timestamp: new Date().toISOString()
+                  }));
+                } catch (e) {}
+                
                 navigate(leagueUrl, { replace: true });
                 // Clear the storage after using it
                 localStorage.removeItem(key);
@@ -474,6 +499,17 @@ function AppContent() {
       }
       
       console.log('[DeepLink] No notification deep link found');
+      
+      // Store failure in localStorage
+      try {
+        localStorage.setItem('deepLink_result', JSON.stringify({
+          success: false,
+          reason: 'no_deep_link_found',
+          debugInfo: debugInfo,
+          timestamp: new Date().toISOString()
+        }));
+      } catch (e) {}
+      
       return false;
     };
     

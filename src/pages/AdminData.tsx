@@ -1035,6 +1035,70 @@ export default function AdminDataPage() {
           )}
         </div>
 
+        {/* Deep Link Debug Info */}
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <h3 className="text-lg font-semibold text-slate-800 mb-3">🔗 Deep Link Debug</h3>
+          <div className="space-y-3">
+            {(() => {
+              try {
+                const debugInfo = localStorage.getItem('deepLink_debug');
+                const result = localStorage.getItem('deepLink_result');
+                return (
+                  <>
+                    {debugInfo && (
+                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-xs">
+                        <div className="font-semibold text-blue-800 mb-2">Last Check:</div>
+                        <pre className="text-blue-700 whitespace-pre-wrap break-all">
+                          {JSON.stringify(JSON.parse(debugInfo), null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                    {result && (
+                      <div className={`p-3 rounded-lg border text-xs ${
+                        JSON.parse(result).success 
+                          ? 'bg-green-50 border-green-200' 
+                          : 'bg-red-50 border-red-200'
+                      }`}>
+                        <div className={`font-semibold mb-2 ${
+                          JSON.parse(result).success ? 'text-green-800' : 'text-red-800'
+                        }`}>
+                          {JSON.parse(result).success ? '✅ Success' : '❌ Failed'}:
+                        </div>
+                        <pre className={`whitespace-pre-wrap break-all ${
+                          JSON.parse(result).success ? 'text-green-700' : 'text-red-700'
+                        }`}>
+                          {JSON.stringify(JSON.parse(result), null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                    {!debugInfo && !result && (
+                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-600">
+                        No deep link attempts recorded yet. Tap a chat notification to see debug info.
+                      </div>
+                    )}
+                    <button
+                      onClick={() => {
+                        localStorage.removeItem('deepLink_debug');
+                        localStorage.removeItem('deepLink_result');
+                        window.location.reload();
+                      }}
+                      className="w-full py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium rounded-lg transition-colors text-sm"
+                    >
+                      Clear Debug Info
+                    </button>
+                  </>
+                );
+              } catch (e) {
+                return (
+                  <div className="p-3 bg-red-50 rounded-lg border border-red-200 text-xs text-red-700">
+                    Error reading debug info: {String(e)}
+                  </div>
+                );
+              }
+            })()}
+          </div>
+        </div>
+
         {/* Admin Links */}
         <div className="bg-white rounded-xl shadow-md p-6">
           <h3 className="text-lg font-semibold text-slate-800 mb-3">Admin Pages</h3>
