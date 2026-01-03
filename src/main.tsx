@@ -1,7 +1,7 @@
 // src/main.tsx
 import "./index.css";
 import "react-chat-elements/dist/main.css";
-import React, { Suspense, lazy, useState, useEffect } from "react";
+import React, { Suspense, lazy, useState, useEffect, useLayoutEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
 
@@ -59,45 +59,6 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 function AppShell() {
-  // Check for deep link BEFORE React Router renders to avoid home page flash
-  // This runs synchronously before any React rendering
-  const checkDeepLinkBeforeRender = () => {
-    const currentPath = window.location.pathname;
-    const searchParams = new URLSearchParams(window.location.search);
-    const hash = window.location.hash;
-    
-    // Check if URL is already set to league page
-    if (currentPath.startsWith('/league/')) {
-      const tab = searchParams.get('tab');
-      if (tab !== 'chat') {
-        // Update URL to include tab=chat before React Router initializes
-        window.history.replaceState({}, '', `${currentPath}?tab=chat`);
-      }
-      return; // Already on league page
-    }
-    
-    // Check hash-based URLs
-    if (hash && hash.startsWith('#/')) {
-      const path = hash.slice(1);
-      if (path.startsWith('/league/')) {
-        window.history.replaceState({}, '', path);
-        return;
-      }
-    }
-    
-    // Check query params for leagueCode (from notifications)
-    const leagueCodeParam = searchParams.get('leagueCode');
-    if (leagueCodeParam) {
-      const leagueUrl = `/league/${leagueCodeParam}?tab=chat`;
-      // Update URL before React Router initializes
-      window.history.replaceState({}, '', leagueUrl);
-      return;
-    }
-  };
-  
-  // Run check immediately (synchronously, before React renders)
-  checkDeepLinkBeforeRender();
-  
   return (
     <BrowserRouter>
       <AppContent />
@@ -110,6 +71,20 @@ function AppContent() {
   const navigate = useNavigate();
   const { showWelcome, dismissWelcome, user, loading: authLoading } = useAuth();
   const [initialDataLoading, setInitialDataLoading] = useState(false);
+  
+  // Check for deep link IMMEDIATELY on mount using useLayoutEffect (runs synchronously before paint)
+  // This prevents the home page from rendering if we have a notification deep link
+  useLayoutEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const leagueCodeParam = searchParams.get('leagueCode');
+    const currentPath = window.location.pathname;
+    
+    // If we have leagueCode in URL but aren't on league page, navigate immediately
+    if (leagueCodeParam && !currentPath.startsWith('/league/')) {
+      const leagueUrl = `/league/${leagueCodeParam}?tab=chat`;
+      navigate(leagueUrl, { replace: true });
+    }
+  }, [navigate]);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [maxLoadingTimeout, setMaxLoadingTimeout] = useState(false);
   const [isSwipeMode, setIsSwipeMode] = useState(false);
