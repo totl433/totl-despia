@@ -1,10 +1,13 @@
 import { supabase } from "./supabase";
 
-export type GameweekState = 'GW_OPEN' | 'GW_PREDICTED' | 'LIVE' | 'RESULTS_PRE_GW';
+export type GameweekState = 'GW_OPEN' | 'GW_PREDICTED' | 'DEADLINE_PASSED' | 'LIVE' | 'RESULTS_PRE_GW';
+
+const DEADLINE_BUFFER_MINUTES = 75;
 
 /**
  * Determines the global state of a gameweek (not user-specific):
- * - GW_OPEN: New GW published, players can make predictions (before first kickoff)
+ * - GW_OPEN: New GW published, players can make predictions (before deadline)
+ * - DEADLINE_PASSED: Deadline has passed but first kickoff hasn't happened yet
  * - LIVE: First kickoff happened AND last game hasn't finished (FT)
  * - RESULTS_PRE_GW: GW has finished (last game has reached FT AND no active games)
  */
@@ -24,11 +27,26 @@ export async function getGameweekState(gw: number): Promise<GameweekState> {
   const now = new Date();
   const firstKickoff = fixtures[0]?.kickoff_time ? new Date(fixtures[0].kickoff_time) : null;
   
+  if (!firstKickoff) {
+    return 'GW_OPEN';
+  }
+  
+  // Calculate deadline (75 minutes before first kickoff)
+  const deadlineTime = new Date(firstKickoff.getTime() - (DEADLINE_BUFFER_MINUTES * 60 * 1000));
+  
+  // Check if deadline has passed
+  const deadlinePassed = now >= deadlineTime;
+  
   // Check if first game has kicked off
-  const firstGameStarted = firstKickoff ? now >= firstKickoff : false;
+  const firstGameStarted = now >= firstKickoff;
   
   if (!firstGameStarted) {
-    return 'GW_OPEN';
+    // Before first kickoff - check if deadline has passed
+    if (deadlinePassed) {
+      return 'DEADLINE_PASSED';
+    } else {
+      return 'GW_OPEN';
+    }
   }
   
   // Check if GW has finished: last game has reached FT AND no active games
@@ -43,8 +61,9 @@ export async function getGameweekState(gw: number): Promise<GameweekState> {
 
 /**
  * Determines the user-specific state of a gameweek:
- * - GW_OPEN: New GW published, user hasn't submitted predictions yet (before first kickoff)
- * - GW_PREDICTED: User has submitted predictions but first kickoff hasn't happened yet
+ * - GW_OPEN: New GW published, user hasn't submitted predictions yet (before deadline)
+ * - GW_PREDICTED: User has submitted predictions but deadline hasn't passed yet
+ * - DEADLINE_PASSED: Deadline has passed but first kickoff hasn't happened yet
  * - LIVE: First kickoff happened AND last game hasn't finished (FT)
  * - RESULTS_PRE_GW: GW has finished (last game has reached FT AND no active games)
  */
@@ -64,26 +83,41 @@ export async function getUserGameweekState(gw: number, userId: string | null | u
   const now = new Date();
   const firstKickoff = fixtures[0]?.kickoff_time ? new Date(fixtures[0].kickoff_time) : null;
   
+  if (!firstKickoff) {
+    return 'GW_OPEN';
+  }
+  
+  // Calculate deadline (75 minutes before first kickoff)
+  const deadlineTime = new Date(firstKickoff.getTime() - (DEADLINE_BUFFER_MINUTES * 60 * 1000));
+  
+  // Check if deadline has passed
+  const deadlinePassed = now >= deadlineTime;
+  
   // Check if first game has kicked off
-  const firstGameStarted = firstKickoff ? now >= firstKickoff : false;
+  const firstGameStarted = now >= firstKickoff;
   
   if (!firstGameStarted) {
-    // Before first kickoff - check if user has submitted
-    if (userId) {
-      const { data: submission } = await supabase
-        .from("app_gw_submissions")
-        .select("submitted_at")
-        .eq("user_id", userId)
-        .eq("gw", gw)
-        .maybeSingle();
-      
-      const hasSubmitted = submission?.submitted_at !== null && submission?.submitted_at !== undefined;
-      
-      if (hasSubmitted) {
-        return 'GW_PREDICTED';
+    // Before first kickoff - check if deadline has passed
+    if (deadlinePassed) {
+      return 'DEADLINE_PASSED';
+    } else {
+      // Before deadline - check if user has submitted
+      if (userId) {
+        const { data: submission } = await supabase
+          .from("app_gw_submissions")
+          .select("submitted_at")
+          .eq("user_id", userId)
+          .eq("gw", gw)
+          .maybeSingle();
+        
+        const hasSubmitted = submission?.submitted_at !== null && submission?.submitted_at !== undefined;
+        
+        if (hasSubmitted) {
+          return 'GW_PREDICTED';
+        }
       }
+      return 'GW_OPEN';
     }
-    return 'GW_OPEN';
   }
   
   // Check if GW has finished: last game has reached FT AND no active games

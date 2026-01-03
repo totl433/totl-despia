@@ -6,6 +6,7 @@ import { resolveLeagueStartGw as getLeagueStartGw, shouldIncludeGwForLeague } fr
 import imageCompression from "browser-image-compression";
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
 import { useLiveScores } from "../hooks/useLiveScores";
+import { useGameweekState } from "../hooks/useGameweekState";
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import { invalidateLeagueCache } from "../api/leagues";
@@ -2585,6 +2586,10 @@ ${shareUrl}`;
 
   function GwPicksTab() {
     const picksGw = league?.name === 'API Test' ? (currentTestGw ?? 1) : currentGw;
+    
+    // Use centralized game state system for deadline checks
+    const { state: picksGwState } = useGameweekState(picksGw);
+    
     if (!picksGw) {
       return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No current gameweek available.</div>;
     }
@@ -2726,9 +2731,10 @@ ${shareUrl}`;
     const remaining = members.filter((m) => !submittedMap.get(`${m.id}:${picksGw}`)).length;
     const whoDidntSubmit = members.filter((m) => !submittedMap.get(`${m.id}:${picksGw}`)).map(m => m.name);
     
-    // Check if deadline has passed for this GW
-    const gwDeadline = gwDeadlines.get(picksGw);
-    const deadlinePassed = gwDeadline ? new Date() >= gwDeadline : false;
+    // Check if deadline has passed using centralized game state
+    // SAFE: Only show picks if we're CERTAIN deadline has passed (state is not null)
+    const deadlinePassed = picksGwState !== null && 
+      (picksGwState === 'DEADLINE_PASSED' || picksGwState === 'LIVE' || picksGwState === 'RESULTS_PRE_GW');
     
     // Debug logging for API Test league
     if (isApiTestLeague && picksGw === 1) {
@@ -2759,8 +2765,7 @@ ${shareUrl}`;
     }
     
     console.log(`GW${picksGw} deadline check:`, {
-      gwDeadline,
-      now: new Date(),
+      gameState: picksGwState,
       deadlinePassed,
       allSubmitted,
       willShowPredictions: allSubmitted || deadlinePassed

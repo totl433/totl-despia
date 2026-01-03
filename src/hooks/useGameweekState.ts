@@ -5,9 +5,9 @@ import { supabase } from '../lib/supabase';
 import { getCached } from '../lib/cache';
 
 /**
- * Hook to get the state of a gameweek (GW_OPEN, GW_PREDICTED, LIVE, or RESULTS_PRE_GW)
- * If userId is provided, returns user-specific state (includes GW_PREDICTED)
- * If userId is not provided, returns global state (GW_OPEN, LIVE, or RESULTS_PRE_GW)
+ * Hook to get the state of a gameweek (GW_OPEN, GW_PREDICTED, DEADLINE_PASSED, LIVE, or RESULTS_PRE_GW)
+ * If userId is provided, returns user-specific state (includes GW_PREDICTED and DEADLINE_PASSED)
+ * If userId is not provided, returns global state (GW_OPEN, DEADLINE_PASSED, LIVE, or RESULTS_PRE_GW)
  * Subscribes to real-time updates from app_gw_results, live_scores, and app_gw_submissions
  */
 export function useGameweekState(gw: number | null | undefined, userId?: string | null | undefined) {

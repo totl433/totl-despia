@@ -4,8 +4,7 @@ import { supabase } from '../lib/supabase';
 import GameweekFixturesCardList from './GameweekFixturesCardList';
 import type { Fixture, LiveScore } from './FixtureCard';
 import { useLiveScores } from '../hooks/useLiveScores';
-
-const DEADLINE_BUFFER_MINUTES = 75;
+import { useGameweekState } from '../hooks/useGameweekState';
 
 export interface UserPicksModalProps {
   isOpen: boolean;
@@ -33,8 +32,13 @@ export default function UserPicksModal({
   const [error, setError] = useState<string | null>(null);
   const [liveScoresByFixtureIndex, setLiveScoresByFixtureIndex] = useState<Map<number, LiveScore>>(new Map());
   const [gwRankPercent, setGwRankPercent] = useState<number | undefined>(undefined);
-  const [deadlinePassed, setDeadlinePassed] = useState<boolean>(false);
   const [displayGw, setDisplayGw] = useState<number>(gw); // The GW we're actually displaying
+
+  // Use centralized game state system for deadline checks
+  const { state: gwState } = useGameweekState(gw);
+  // SAFE: Only show picks if we're CERTAIN deadline has passed (state is not null)
+  const deadlinePassed = gwState !== null && 
+    (gwState === 'DEADLINE_PASSED' || gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW');
 
   // Get live scores for the displayed gameweek
   const { liveScores: liveScoresMap } = useLiveScores(displayGw, undefined);
@@ -53,31 +57,8 @@ export default function UserPicksModal({
       setError(null);
 
       try {
-        // CRITICAL: Check if gameweek deadline has passed
-        // Deadline is first kickoff time minus 75 minutes
-        // Picks should only be visible AFTER the deadline to prevent users from seeing other players' picks
-        const { data: firstFixture, error: fixtureError } = await supabase
-          .from('app_fixtures')
-          .select('kickoff_time')
-          .eq('gw', gw)
-          .order('kickoff_time', { ascending: true })
-          .limit(1)
-          .maybeSingle();
-
-        let deadlineHasPassed = false;
-        if (!fixtureError && firstFixture?.kickoff_time) {
-          const firstKickoff = new Date(firstFixture.kickoff_time);
-          const deadlineTime = new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000);
-          const now = new Date();
-          deadlineHasPassed = now >= deadlineTime;
-        } else {
-          // If we can't determine the deadline, assume it hasn't passed (safer to hide picks)
-          deadlineHasPassed = false;
-        }
-        
-        if (!alive) return;
-        
-        setDeadlinePassed(deadlineHasPassed);
+        // Use centralized game state (already calculated by useGameweekState hook above)
+        // deadlinePassed is derived from gwState
         
         // Determine which GW to display
         let gwToDisplay = gw;
@@ -337,7 +318,7 @@ export default function UserPicksModal({
               <div className="bg-white rounded-3xl shadow-2xl p-12 flex items-center justify-center">
                 <div className="text-red-500">{error}</div>
               </div>
-            ) : !deadlinePassed && displayGw === gw ? (
+            ) : !deadlinePassed && displayGw === gw && gwState !== null ? (
               <div className="bg-white rounded-3xl shadow-2xl p-12 flex flex-col items-center justify-center">
                 <div className="text-slate-500 text-lg font-medium mb-2">Predictions hidden</div>
                 <div className="text-slate-400 text-sm">Predictions for GW {gw} will be visible after the deadline</div>

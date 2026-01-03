@@ -1133,7 +1133,7 @@ export default function PredictionsPage() {
 
   // Fetch pick percentages for all fixtures after deadline has passed
   useEffect(() => {
-    const deadlineHasPassed = gameState === 'RESULTS_PRE_GW' || gameState === 'LIVE';
+    const deadlineHasPassed = gameState === 'DEADLINE_PASSED' || gameState === 'RESULTS_PRE_GW' || gameState === 'LIVE';
     if (!currentTestGw || !deadlineHasPassed || fixtures.length === 0) {
       setPickPercentages(new Map());
       return;
@@ -1504,7 +1504,7 @@ export default function PredictionsPage() {
   // This prevents blank screens and swipe card flashes
   // Game state is used to determine if we should show swipe, but we don't block on it loading
   // If game state is still loading or null, default to not showing swipe (safer default)
-  // Check finished/live states first to avoid TypeScript narrowing issues
+  // Check finished/live/deadline states first to avoid TypeScript narrowing issues
   const isFinishedOrLive = gameState === 'RESULTS_PRE_GW' || gameState === 'LIVE';
   const canShowSwipePredictions = !gameStateLoading && gameState !== null && (gameState === 'GW_OPEN' || gameState === 'GW_PREDICTED');
   // If data has been loaded before (even if component remounted), be more lenient with loading check
@@ -1533,9 +1533,11 @@ export default function PredictionsPage() {
   // Also check initial state from cache - if fixtures were loaded from cache initially, we have data
   // Access initialState from the closure - it's defined at the top of the component
   const hasInitialFixtures = typeof initialState !== 'undefined' && initialState.fixtures && initialState.fixtures.length > 0;
-  // SIMPLIFIED: If deadline has passed (RESULTS_PRE_GW or LIVE), skip loading checks and show the page
+  // SIMPLIFIED: If deadline has passed (DEADLINE_PASSED, RESULTS_PRE_GW, or LIVE), skip loading checks and show the page
   // This allows users to see the predictions list even if they haven't predicted
-  const deadlinePassed = gameState === 'RESULTS_PRE_GW' || gameState === 'LIVE';
+  // SAFE: Only show picks if we're CERTAIN deadline has passed (state is not null)
+  const deadlinePassed = gameState !== null && 
+    (gameState === 'DEADLINE_PASSED' || gameState === 'RESULTS_PRE_GW' || gameState === 'LIVE');
   
   // Only block loading if deadline hasn't passed AND we're still loading AND have no fixtures
   // If deadline has passed, always show the page (even with empty fixtures - we'll show a message)
@@ -1713,7 +1715,7 @@ export default function PredictionsPage() {
                       style={{ imageRendering: 'pixelated' }}
                     />
                     <div className="text-slate-900 font-semibold text-base text-center">
-                      {gameState === 'RESULTS_PRE_GW' ? 'THE DEADLINE HAS PASSED' : 'Games In Progress'}
+                      {gameState === 'DEADLINE_PASSED' ? 'THE DEADLINE HAS PASSED' : gameState === 'LIVE' ? 'Games In Progress' : 'THE DEADLINE HAS PASSED'}
                     </div>
                   </div>
                   <div className="text-slate-900 text-sm">
@@ -1770,8 +1772,11 @@ export default function PredictionsPage() {
                   state = 'live';
                 } else if (gameState === 'RESULTS_PRE_GW') {
                   state = 'finished';
+                } else if (gameState === 'DEADLINE_PASSED') {
+                  // Deadline passed but games haven't started - show as finished (no predictions allowed)
+                  state = 'finished';
                 } else if (gameState === 'GW_OPEN' || gameState === 'GW_PREDICTED') {
-                  // Before first kickoff - check if starting soon
+                  // Before deadline - check if starting soon
                   if (hasStartingSoon && !hasAnyLiveOrFinished) {
                     state = 'starting-soon';
                   } else {
@@ -2161,13 +2166,15 @@ export default function PredictionsPage() {
   
   // CRITICAL: Don't show swipe predictions if:
   // 1. User has submitted (checkSubmittedBeforeSwipe)
-  // 2. Gameweek is finished (RESULTS_PRE_GW) - deadline passed and games finished
-  // 3. Gameweek is live (LIVE) - games have started
-  // 4. Game state is null (not loaded yet) - default to blocking
+  // 2. Deadline has passed (DEADLINE_PASSED) - deadline passed but games haven't started
+  // 3. Gameweek is finished (RESULTS_PRE_GW) - deadline passed and games finished
+  // 4. Gameweek is live (LIVE) - games have started
+  // 5. Game state is null (not loaded yet) - default to blocking
   // Only show swipe predictions if gameState is GW_OPEN or GW_PREDICTED
   // isFinishedOrLive is already defined above to avoid TypeScript narrowing issues
   const shouldBlockSwipePredictions = checkSubmittedBeforeSwipe || 
     isFinishedOrLive ||
+    gameState === 'DEADLINE_PASSED' ||
     gameState === null ||
     !canShowSwipePredictions;
   

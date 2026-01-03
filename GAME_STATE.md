@@ -10,7 +10,7 @@ The game state system is a centralized way to determine what phase a gameweek is
 
 ## Game States
 
-There are **4 game states** that a gameweek can be in:
+There are **5 game states** that a gameweek can be in:
 
 ### 1. `GW_OPEN`
 **When:** New gameweek published, before first kickoff, and user hasn't submitted predictions yet.
@@ -28,11 +28,11 @@ There are **4 game states** that a gameweek can be in:
 - Predictions icon in bottom nav is shiny (until user submits)
 
 ### 2. `GW_PREDICTED`
-**When:** User has submitted predictions, but first kickoff hasn't happened yet.
+**When:** User has submitted predictions, but deadline hasn't passed yet.
 
 **Characteristics:**
 - Fixtures exist for the gameweek
-- First kickoff hasn't happened yet
+- Deadline (75 minutes before first kickoff) hasn't passed yet
 - User HAS submitted predictions (user-specific state only)
 
 **What should happen:**
@@ -41,8 +41,29 @@ There are **4 game states** that a gameweek can be in:
 - Show previous GW results in leaderboards
 - Show previous GW stats
 - Predictions icon in bottom nav is NOT shiny (user has submitted)
+- Users can still submit predictions (deadline hasn't passed)
 
-### 3. `LIVE`
+### 3. `DEADLINE_PASSED`
+**When:** Deadline has passed (75 minutes before first kickoff), but first kickoff hasn't happened yet.
+
+**Characteristics:**
+- Deadline (75 minutes before first kickoff) has passed
+- First kickoff hasn't happened yet
+- Users can no longer submit predictions (enforced by database trigger)
+
+**What should happen:**
+- Hide "Make your predictions" banner
+- Show "THE DEADLINE HAS PASSED" message for users who haven't submitted
+- Show predictions to all users (no longer hidden)
+- Show pick percentages for all fixtures
+- Force list view (no card swipe mode)
+- Show upcoming fixtures with kickoff times
+- Show previous GW results in leaderboards
+- Show previous GW stats
+- In League pages: Show predictions even if not all members submitted
+- Show "Deadline Passed" badges in League fixture sections
+
+### 4. `LIVE`
 **When:** First kickoff has happened AND last game hasn't finished (FT).
 
 **Characteristics:**
@@ -58,7 +79,7 @@ There are **4 game states** that a gameweek can be in:
 - Show live indicators (red pulsing dots) on relevant sections
 - Use "Active Live" mode for some sections (points update in real-time as if final, then lock at FT)
 
-### 4. `RESULTS_PRE_GW`
+### 5. `RESULTS_PRE_GW`
 **When:** Gameweek has finished (last game has reached FT AND no active games).
 
 **Characteristics:**
@@ -77,13 +98,14 @@ There are **4 game states** that a gameweek can be in:
 
 ### Global State (`getGameweekState`)
 - Used when you don't need to know if a specific user has submitted
-- Returns: `GW_OPEN`, `LIVE`, or `RESULTS_PRE_GW`
+- Returns: `GW_OPEN`, `DEADLINE_PASSED`, `LIVE`, or `RESULTS_PRE_GW`
 - Never returns `GW_PREDICTED` (that's user-specific)
 
 ### User-Specific State (`getUserGameweekState`)
 - Used when you need to know if a specific user has submitted predictions
-- Returns: `GW_OPEN`, `GW_PREDICTED`, `LIVE`, or `RESULTS_PRE_GW`
-- Returns `GW_PREDICTED` if user has submitted but first kickoff hasn't happened
+- Returns: `GW_OPEN`, `GW_PREDICTED`, `DEADLINE_PASSED`, `LIVE`, or `RESULTS_PRE_GW`
+- Returns `GW_PREDICTED` if user has submitted but deadline hasn't passed
+- Returns `DEADLINE_PASSED` if deadline has passed but first kickoff hasn't happened (regardless of submission status)
 
 ## Implementation
 
@@ -127,20 +149,25 @@ The state will automatically update when any of these change.
 
 **Mini League Cards:**
 - `GW_OPEN` / `GW_PREDICTED`: Green/grey chips for who's submitted
+- `DEADLINE_PASSED`: Green/grey chips for who's submitted
 - `LIVE`: Green/grey chips for who's submitted
 - `RESULTS_PRE_GW`: Shiny winner chips
 
 **Games Section:**
 - `GW_OPEN` / `GW_PREDICTED`: Upcoming fixtures with kickoff times
+- `DEADLINE_PASSED`: Upcoming fixtures with kickoff times
 - `LIVE`: Live scores/updates
 - `RESULTS_PRE_GW`: Final results
 
 **Leaderboards Section:**
 - `GW_OPEN` / `GW_PREDICTED`: Previous GW score
+- `DEADLINE_PASSED`: Previous GW score
 - `LIVE`: Last GW and Season Rank show active live; 5-WEEK and 10-WEEK show previous GW
 - `RESULTS_PRE_GW`: All show results from the GW
 
 ### Predictions Page
+- `GW_OPEN` / `GW_PREDICTED`: Card swipe mode available, predictions can be submitted
+- `DEADLINE_PASSED`: List view only, shows "THE DEADLINE HAS PASSED" banner if user hasn't submitted, shows pick percentages
 - `LIVE`: Shows live scores
 - `RESULTS_PRE_GW`: Shows completed fixtures
 
@@ -155,6 +182,7 @@ The state will automatically update when any of these change.
 ### Predictions Banner (Top Banner)
 - `GW_OPEN`: Show "Make your predictions"
 - `GW_PREDICTED`: Show nothing
+- `DEADLINE_PASSED`: Show nothing
 - `LIVE`: Show nothing
 - `RESULTS_PRE_GW`: Either "GW Coming soon" (if next GW not published) OR "GW ready" banner (if new GW published, user clicks to transition)
 
@@ -163,6 +191,7 @@ The state will automatically update when any of these change.
 
 ### STATS Page
 - `GW_OPEN` / `GW_PREDICTED`: Show previous GW stats
+- `DEADLINE_PASSED`: Show previous GW stats
 - `LIVE`: Show static stats (no live updates)
 - `RESULTS_PRE_GW`: Show updated stats for completed GW (updated once when it finishes)
 
@@ -225,6 +254,12 @@ const { state } = useGameweekState(currentGw, user?.id);
 const showBanner = state === 'GW_OPEN';
 ```
 
+### Checking if deadline has passed:
+```typescript
+const { state } = useGameweekState(currentGw);
+const deadlinePassed = state === 'DEADLINE_PASSED' || state === 'LIVE' || state === 'RESULTS_PRE_GW';
+```
+
 ### Checking if showing live data:
 ```typescript
 const { state } = useGameweekState(currentGw);
@@ -240,15 +275,24 @@ const showResults = state === 'RESULTS_PRE_GW';
 ### Checking if user has submitted:
 ```typescript
 const { state } = useGameweekState(currentGw, user?.id);
-const hasSubmitted = state === 'GW_PREDICTED' || state === 'LIVE' || state === 'RESULTS_PRE_GW';
+const hasSubmitted = state === 'GW_PREDICTED' || state === 'DEADLINE_PASSED' || state === 'LIVE' || state === 'RESULTS_PRE_GW';
 ```
 
 ## Migration Notes
 
 If you're updating an existing component:
 1. Import `useGameweekState` hook
-2. Replace any custom state logic with the hook
+2. Replace any custom deadline logic with the hook (check for `DEADLINE_PASSED` state)
 3. Update conditional rendering to use the state values
-4. Test in all 4 states to ensure correct behavior
-5. Remove any old state-checking code
+4. Test in all 5 states to ensure correct behavior
+5. Remove any old state-checking code or manual deadline calculations
+
+## Deadline Calculation
+
+The deadline is **75 minutes before the first kickoff** of the gameweek. This is centralized in the game state system:
+- Before deadline: `GW_OPEN` or `GW_PREDICTED`
+- After deadline, before first kickoff: `DEADLINE_PASSED`
+- After first kickoff: `LIVE` or `RESULTS_PRE_GW`
+
+**Never calculate deadlines manually** - always use the game state system via `useGameweekState` hook or `getGameweekState`/`getUserGameweekState` functions.
 

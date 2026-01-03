@@ -85,7 +85,6 @@ export default function GlobalLeaderboardPage() {
   
   // Get current GW from app_meta for LIVE functionality
   const [currentGwFromMeta, setCurrentGwFromMeta] = useState<number | null>(null);
-  const [currentGwDeadlinePassed, setCurrentGwDeadlinePassed] = useState<boolean>(false);
 
   // Modal state for user picks
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -99,30 +98,6 @@ export default function GlobalLeaderboardPage() {
       if (alive && data) {
         const currentGw = (data as any)?.current_gw ?? null;
         setCurrentGwFromMeta(currentGw);
-        
-        // Check if deadline has passed for current GW
-        if (currentGw) {
-          const { data: firstFixture } = await supabase
-            .from('app_fixtures')
-            .select('kickoff_time')
-            .eq('gw', currentGw)
-            .order('kickoff_time', { ascending: true })
-            .limit(1)
-            .maybeSingle();
-          
-          if (firstFixture?.kickoff_time) {
-            const firstKickoff = new Date(firstFixture.kickoff_time);
-            const deadlineTime = new Date(firstKickoff.getTime() - 75 * 60 * 1000); // 75 minutes before
-            const now = new Date();
-            if (alive) {
-              setCurrentGwDeadlinePassed(now >= deadlineTime);
-            }
-          } else if (alive) {
-            setCurrentGwDeadlinePassed(false);
-          }
-        } else if (alive) {
-          setCurrentGwDeadlinePassed(false);
-        }
       }
     })();
     return () => { alive = false; };
@@ -130,6 +105,10 @@ export default function GlobalLeaderboardPage() {
 
   // Use centralized gameweek state logic
   const { state: currentGwState } = useGameweekState(currentGwFromMeta ?? null);
+  // Check if deadline has passed using centralized game state
+  // SAFE: Only show picks if we're CERTAIN deadline has passed (state is not null)
+  const currentGwDeadlinePassed = currentGwState !== null && 
+    (currentGwState === 'DEADLINE_PASSED' || currentGwState === 'LIVE' || currentGwState === 'RESULTS_PRE_GW');
   const { state: lastGwState } = useGameweekState(latestGw ?? null);
   const isCurrentGwLive = currentGwState === 'LIVE';
   const isLastGwLive = lastGwState === 'LIVE';
