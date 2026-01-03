@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import { getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
+import { VOLLEY_USER_ID } from "../lib/volley";
 
 export type League = {
   id: string;
@@ -121,6 +122,29 @@ export async function createLeague(name: string, userId: string): Promise<{ succ
 
     if (memberError) {
       return { success: false, error: memberError.message };
+    }
+
+    // Send Volley's welcome message as the first message in the chat
+    try {
+      const welcomeMessages = [
+        "Hello 👋 I'm Volley. I'll let you know who wins and when new Gameweeks are ready to play.",
+        "Hi — I'm Volley 🦄 I'll share results and let you know when new Gameweeks are ready.",
+        "I'm Volley. I'll handle the scoring and tell you when new Gameweeks are ready to play.",
+        "I'm Volley 🦄 I'll let you know who wins, plus when new Gameweeks are ready.",
+        "Hello, I'm Volley. I'll keep track of results and new Gameweeks for you.",
+      ];
+      const randomMessage = welcomeMessages[Math.floor(Math.random() * welcomeMessages.length)];
+      
+      await supabase
+        .from("league_messages")
+        .insert({
+          league_id: league.id,
+          user_id: VOLLEY_USER_ID,
+          content: randomMessage,
+        });
+    } catch (error) {
+      // Log error but don't fail league creation if message insert fails
+      console.error('[createLeague] Failed to insert Volley welcome message:', error);
     }
 
     return { success: true, league: leagueWithAvatar };

@@ -1020,78 +1020,76 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   }, CACHE_TTL.GLOBAL);
   console.log('[Pre-loading] Global page data cached:', { latestGw: globalLatestGw, gwPointsCount: (gwPointsResult.data || []).length });
 
-  // Preload Predictions page data (non-blocking - let it complete in background)
-  (async () => {
-    try {
-      // Load test fixtures for current GW
-      const { data: testFixtures, error: testFixturesError } = await supabase
-        .from('app_fixtures')
-        .select('*')
+  // Preload Predictions page data (BLOCKING - ensures zero loading in Predictions page)
+  try {
+    // Load test fixtures for current GW
+    const { data: testFixtures, error: testFixturesError } = await supabase
+      .from('app_fixtures')
+      .select('*')
+      .eq('gw', currentGw)
+      .order('fixture_index', { ascending: true });
+
+    if (!testFixturesError && testFixtures && testFixtures.length > 0) {
+      // Load user picks for test GW
+      const { data: testPicks, error: testPicksError } = await supabase
+        .from('app_picks')
+        .select('gw, fixture_index, pick')
+        .eq('user_id', userId)
+        .eq('gw', currentGw);
+
+      // Check submission status
+      const { data: testSubmission, error: testSubmissionError } = await supabase
+        .from('app_gw_submissions')
+        .select('submitted_at')
         .eq('gw', currentGw)
-        .order('fixture_index', { ascending: true });
+        .eq('user_id', userId)
+        .maybeSingle();
 
-      if (!testFixturesError && testFixtures && testFixtures.length > 0) {
-        // Load user picks for test GW
-        const { data: testPicks, error: testPicksError } = await supabase
-          .from('app_picks')
-          .select('gw, fixture_index, pick')
-          .eq('user_id', userId)
-          .eq('gw', currentGw);
+      if (!testPicksError && !testSubmissionError) {
+        // Convert fixtures to the format Predictions expects
+        const fixturesData = testFixtures.map((f: any) => ({
+          id: f.id || String(f.api_match_id || f.fixture_index),
+          gw: currentGw,
+          fixture_index: f.fixture_index,
+          home_team: f.home_team,
+          away_team: f.away_team,
+          home_code: f.home_code,
+          away_code: f.away_code,
+          home_name: f.home_name,
+          away_name: f.away_name,
+          home_crest: null,
+          away_crest: null,
+          kickoff_time: f.kickoff_time,
+          api_match_id: f.api_match_id || null,
+        }));
 
-        // Check submission status
-        const { data: testSubmission, error: testSubmissionError } = await supabase
-          .from('app_gw_submissions')
-          .select('submitted_at')
-          .eq('gw', currentGw)
-          .eq('user_id', userId)
-          .maybeSingle();
+        // Convert picks to array format
+        const picksArray = (testPicks || []).map((p: any) => ({
+          fixture_index: p.fixture_index,
+          pick: p.pick,
+          matchday: currentGw,
+        }));
 
-        if (!testPicksError && !testSubmissionError) {
-          // Convert fixtures to the format Predictions expects
-          const fixturesData = testFixtures.map((f: any) => ({
-            id: f.id || String(f.api_match_id || f.fixture_index),
-            gw: currentGw,
-            fixture_index: f.fixture_index,
-            home_team: f.home_team,
-            away_team: f.away_team,
-            home_code: f.home_code,
-            away_code: f.away_code,
-            home_name: f.home_name,
-            away_name: f.away_name,
-            home_crest: null,
-            away_crest: null,
-            kickoff_time: f.kickoff_time,
-            api_match_id: f.api_match_id || null,
-          }));
+        // Cache Predictions data
+        const testPredictionsCacheKey = `predictions:${userId}:${currentGw}`;
+        setCached(testPredictionsCacheKey, {
+          fixtures: fixturesData,
+          picks: picksArray,
+          submitted: !!testSubmission?.submitted_at,
+          results: [], // Results loaded separately via useLiveScores
+        }, CACHE_TTL.PREDICTIONS);
 
-          // Convert picks to array format
-          const picksArray = (testPicks || []).map((p: any) => ({
-            fixture_index: p.fixture_index,
-            pick: p.pick,
-            matchday: currentGw,
-          }));
-
-          // Cache Predictions data
-          const testPredictionsCacheKey = `predictions:${userId}:${currentGw}`;
-          setCached(testPredictionsCacheKey, {
-            fixtures: fixturesData,
-            picks: picksArray,
-            submitted: !!testSubmission?.submitted_at,
-            results: [], // Results loaded separately via useLiveScores
-          }, CACHE_TTL.HOME);
-
-          console.log('[Pre-loading] Predictions page data cached:', { 
-            fixturesCount: fixturesData.length, 
-            picksCount: picksArray.length,
-            submitted: !!testSubmission?.submitted_at 
-          });
-        }
+        console.log('[Pre-loading] Predictions page data cached:', { 
+          fixturesCount: fixturesData.length, 
+          picksCount: picksArray.length,
+          submitted: !!testSubmission?.submitted_at 
+        });
       }
-    } catch (error) {
-      // Silent fail for Predictions preload - non-critical
-      console.warn('[Pre-loading] Failed to preload Predictions data:', error);
     }
-  })(); // Don't await - let it run in background
+  } catch (error) {
+    // Silent fail for Predictions preload - non-critical, but log for debugging
+    console.warn('[Pre-loading] Failed to preload Predictions data:', error);
+  }
 
   return {
     currentGw,

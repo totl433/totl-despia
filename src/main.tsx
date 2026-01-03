@@ -53,6 +53,17 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 function AppShell() {
+  // Check for deep link SYNCHRONOUSLY before React Router renders
+  // This prevents the home page from ever rendering if we have a notification deep link
+  const searchParams = new URLSearchParams(window.location.search);
+  const leagueCode = searchParams.get('leagueCode');
+  
+  if (leagueCode && !window.location.pathname.startsWith('/league/')) {
+    // Update URL immediately before React Router sees it
+    const targetUrl = `/league/${leagueCode}?tab=chat`;
+    window.history.replaceState(null, '', targetUrl);
+  }
+  
   return (
     <BrowserRouter>
       <AppContent />
@@ -66,19 +77,16 @@ function AppContent() {
   const { showWelcome, dismissWelcome, user, loading: authLoading } = useAuth();
   const [initialDataLoading, setInitialDataLoading] = useState(false);
   
-  // Check for deep link IMMEDIATELY on mount using useLayoutEffect (runs synchronously before paint)
-  // This prevents the home page from rendering if we have a notification deep link
+  // Handle deep links from notifications (iOS native)
+  // Check URL immediately (AppShell already updated window.location, but double-check here)
   useLayoutEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
-    const leagueCodeParam = searchParams.get('leagueCode');
-    const currentPath = window.location.pathname;
+    const leagueCode = searchParams.get('leagueCode');
     
-    // If we have leagueCode in URL but aren't on league page, navigate immediately
-    if (leagueCodeParam && !currentPath.startsWith('/league/')) {
-      const leagueUrl = `/league/${leagueCodeParam}?tab=chat`;
-      navigate(leagueUrl, { replace: true });
+    if (leagueCode && !location.pathname.startsWith('/league/')) {
+      navigate(`/league/${leagueCode}?tab=chat`, { replace: true });
     }
-  }, [navigate]);
+  }, [navigate, location.pathname]);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [maxLoadingTimeout, setMaxLoadingTimeout] = useState(false);
   const [isSwipeMode, setIsSwipeMode] = useState(false);
@@ -384,251 +392,48 @@ function AppContent() {
   // Hide header/banner for full-screen pages
   const isFullScreenPage = false;
 
-  // Handle deep links from notifications (iOS native)
-  // Check IMMEDIATELY on mount to avoid showing home page first
-  // Run synchronous checks first, then async checks
+  // Fallback: If OneSignal didn't set URL, check for very recent messages (last 30 seconds)
+  // This only runs once per session and only if we're not already on a league page
   useEffect(() => {
-    // IMMEDIATE synchronous check - no waiting for user or delays
-    const currentPath = window.location.pathname;
-    const searchParams = new URLSearchParams(window.location.search);
-    const hash = window.location.hash;
+    // Skip if already on league page or no user
+    if (location.pathname.startsWith('/league/') || !user?.id) return;
     
-    // Method 1: Check if URL is already in window.location (fastest path)
-    if (currentPath.startsWith('/league/')) {
-      const tab = searchParams.get('tab');
-      if (tab !== 'chat') {
-        // Navigate to chat tab immediately
-        navigate(`${currentPath}?tab=chat`, { replace: true });
-      }
-      return; // Already on league page, no need for further checks
-    }
+    // Only check once per session
+    const checked = sessionStorage.getItem('deepLink_fallback_checked');
+    if (checked) return;
+    sessionStorage.setItem('deepLink_fallback_checked', 'true');
     
-    // Method 2: Check hash-based URLs (synchronous)
-    if (hash && hash.startsWith('#/')) {
-      const path = hash.slice(1);
-      if (path.startsWith('/league/')) {
-        navigate(path, { replace: true });
-        return;
-      }
-    }
-    
-    // Method 3: Check query params for leagueCode (synchronous - fastest for notifications)
-    const leagueCodeParam = searchParams.get('leagueCode');
-    if (leagueCodeParam) {
-      const leagueUrl = `/league/${leagueCodeParam}?tab=chat`;
-      navigate(leagueUrl, { replace: true });
-      return;
-    }
-    
-    // If we get here, no immediate deep link found
-    // Continue with async checks below (but only if user is loaded)
-    if (!user) return;
-    
-    const handleAsyncNotificationDeepLink = () => {
-      const fullUrl = window.location.href;
-      
-      // Store debug info in localStorage for debugging (can't access console in Despia)
-      const debugInfo = {
-        pathname: currentPath,
-        search: window.location.search,
-        hash: hash,
-        fullUrl: fullUrl,
-        href: window.location.href,
-        timestamp: new Date().toISOString()
-      };
+    // Check for very recent message (within last 30 seconds)
+    (async () => {
       try {
-        localStorage.setItem('deepLink_debug', JSON.stringify(debugInfo));
-      } catch (e) {
-        // Ignore storage errors
-      }
-      
-      console.log('[DeepLink] Checking for async notification deep link...', debugInfo);
-      
-      // Method 4: Check localStorage/sessionStorage for OneSignal notification data
-      // OneSignal might store notification data here on iOS native
-      try {
-        // Check various possible storage keys
-        const storageKeys = [
-          'onesignal_notification_opened',
-          'onesignal_notification_data',
-          'onesignal_last_notification',
-          'OneSignal_notificationOpened',
-          'onesignal_notification',
-        ];
+        const { data: leagueMembers } = await supabase
+          .from('league_members')
+          .select('league_id')
+          .eq('user_id', user.id);
         
-        for (const key of storageKeys) {
-          const stored = localStorage.getItem(key) || sessionStorage.getItem(key);
-          if (stored) {
-            try {
-              const data = JSON.parse(stored);
-              console.log('[DeepLink] Found notification data in storage:', key, data);
-              
-              // Extract leagueCode from various possible locations in the data
-              const leagueCode = data?.leagueCode || 
-                                data?.additionalData?.leagueCode || 
-                                data?.data?.leagueCode ||
-                                data?.notification?.additionalData?.leagueCode ||
-                                data?.payload?.additionalData?.leagueCode ||
-                                data?.notification?.payload?.additionalData?.leagueCode;
-              
-              if (leagueCode) {
-                const leagueUrl = `/league/${leagueCode}?tab=chat`;
-                console.log('[DeepLink] Extracted leagueCode from storage, navigating:', leagueUrl);
-                
-                // Store success in localStorage
-                try {
-                  localStorage.setItem('deepLink_result', JSON.stringify({
-                    success: true,
-                    method: 'storage',
-                    storageKey: key,
-                    leagueCode: leagueCode,
-                    url: leagueUrl,
-                    timestamp: new Date().toISOString()
-                  }));
-                } catch (e) {}
-                
-                navigate(leagueUrl, { replace: true });
-                // Clear the storage after using it
-                localStorage.removeItem(key);
-                sessionStorage.removeItem(key);
-                return true;
-              }
-            } catch (e) {
-              console.warn('[DeepLink] Error parsing stored notification data:', e);
-            }
-          }
+        if (!leagueMembers?.length) return;
+        
+        const leagueIds = leagueMembers.map((lm: any) => lm.league_id).filter(Boolean);
+        const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
+        
+        const { data: recentMessage } = await supabase
+          .from('league_messages')
+          .select('leagues!inner(code)')
+          .in('league_id', leagueIds)
+          .gte('created_at', thirtySecondsAgo)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        const leagueData = recentMessage?.leagues as { code: string } | undefined;
+        if (leagueData?.code) {
+          navigate(`/league/${leagueData.code}?tab=chat`, { replace: true });
         }
       } catch (e) {
-        console.warn('[DeepLink] Error checking storage:', e);
+        console.warn('[DeepLink] Fallback check failed:', e);
       }
-      
-      // Method 5: Fallback - check for VERY recent messages (last 30 seconds)
-      // This handles the case where OneSignal doesn't set URL but we know a notification was just received
-      // Works from ANY page, not just home page
-      if (user?.id) {
-        // Only do this check once per session to avoid interfering with normal app usage
-        const lastFallbackCheck = sessionStorage.getItem('deepLink_fallback_checked');
-        if (!lastFallbackCheck) {
-          sessionStorage.setItem('deepLink_fallback_checked', 'true');
-          
-          // Check immediately for very recent messages (within last 30 seconds)
-          // This catches notifications that just arrived
-          (async () => {
-            try {
-              // Get user's league IDs
-              const { data: leagueMembers } = await supabase
-                .from('league_members')
-                .select('league_id')
-                .eq('user_id', user.id);
-              
-              if (leagueMembers && leagueMembers.length > 0) {
-                const leagueIds = leagueMembers.map((lm: any) => lm.league_id).filter(Boolean);
-                if (leagueIds.length > 0) {
-                  // Get most recent message from user's leagues (within last 30 seconds)
-                  const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
-                  const { data: recentMessage } = await supabase
-                    .from('league_messages')
-                    .select('league_id, created_at, leagues!inner(code)')
-                    .in('league_id', leagueIds)
-                    .gte('created_at', thirtySecondsAgo) // Only messages from last 30 seconds
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-                  
-                  if (recentMessage) {
-                    const leagueData = (recentMessage as any).leagues;
-                    if (leagueData && typeof leagueData === 'object' && 'code' in leagueData) {
-                      const leagueCode = leagueData.code;
-                      const leagueUrl = `/league/${leagueCode}?tab=chat`;
-                      console.log('[DeepLink] Fallback: Found very recent message, navigating:', leagueUrl);
-                      navigate(leagueUrl, { replace: true });
-                      return;
-                    }
-                  }
-                  
-                  // If no very recent message, check for most recent overall (fallback)
-                  const { data: mostRecentMessage } = await supabase
-                    .from('league_messages')
-                    .select('league_id, created_at, leagues!inner(code)')
-                    .in('league_id', leagueIds)
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-                  
-                  if (mostRecentMessage) {
-                    const leagueData = (mostRecentMessage as any).leagues;
-                    if (leagueData && typeof leagueData === 'object' && 'code' in leagueData) {
-                      // Only navigate if message is from last 5 minutes (likely from notification)
-                      const messageTime = new Date(mostRecentMessage.created_at).getTime();
-                      const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
-                      if (messageTime > fiveMinutesAgo) {
-                        const leagueCode = leagueData.code;
-                        const leagueUrl = `/league/${leagueCode}?tab=chat`;
-                        console.log('[DeepLink] Fallback: Found recent message (within 5min), navigating:', leagueUrl);
-                        navigate(leagueUrl, { replace: true });
-                      }
-                    }
-                  }
-                }
-              }
-            } catch (e) {
-              console.warn('[DeepLink] Fallback check failed:', e);
-            }
-          })();
-        }
-      }
-      
-      console.log('[DeepLink] No notification deep link found');
-      
-      // Store failure in localStorage
-      try {
-        localStorage.setItem('deepLink_result', JSON.stringify({
-          success: false,
-          reason: 'no_deep_link_found',
-          debugInfo: debugInfo,
-          timestamp: new Date().toISOString()
-        }));
-      } catch (e) {}
-      
-      return false;
-    };
-    
-    // Run async checks (only if user is loaded)
-    if (user) {
-      // Check immediately for async sources
-      handleAsyncNotificationDeepLink();
-      
-      // Check again after a delay (OneSignal might set URL/data asynchronously)
-      const timeoutId1 = setTimeout(() => {
-        console.log('[DeepLink] Re-checking async sources after 500ms delay...');
-        handleAsyncNotificationDeepLink();
-      }, 500);
-      
-      // Check again after longer delay (in case OneSignal is very slow)
-      const timeoutId2 = setTimeout(() => {
-        console.log('[DeepLink] Re-checking async sources after 2s delay...');
-        handleAsyncNotificationDeepLink();
-      }, 2000);
-      
-      // Also check when app becomes visible (notification tapped while backgrounded)
-      const handleVisibilityChange = () => {
-        if (!document.hidden) {
-          console.log('[DeepLink] App became visible, checking for notification...');
-          setTimeout(() => {
-            handleAsyncNotificationDeepLink();
-          }, 100);
-        }
-      };
-      
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-      
-      return () => {
-        clearTimeout(timeoutId1);
-        clearTimeout(timeoutId2);
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-      };
-    }
-  }, [navigate, user, location.pathname]);
+    })();
+  }, [user?.id, location.pathname, navigate]);
   
   // Add a maximum timeout to prevent infinite loading (15 seconds total including auth)
   useEffect(() => {

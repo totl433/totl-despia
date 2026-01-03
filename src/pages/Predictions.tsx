@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import TeamBadge from "../components/TeamBadge";
 import { useNavigate } from "react-router-dom";
-import { invalidateUserCache, getCached, setCached, CACHE_TTL } from "../lib/cache";
+import { invalidateUserCache, getCached, setCached, getCacheTimestamp, CACHE_TTL } from "../lib/cache";
 import SwipeCard from "../components/predictions/SwipeCard";
 import ScoreIndicator from "../components/predictions/ScoreIndicator";
 import ConfirmationModal from "../components/predictions/ConfirmationModal";
@@ -703,6 +703,17 @@ export default function PredictionsPage() {
             
             setPicksChecked(true);
             loadedFromCache = true;
+            
+            // Check if cache is stale - only refresh in background if stale (>5 minutes old)
+            const cacheTimestamp = getCacheTimestamp(cacheKey);
+            const cacheAge = cacheTimestamp ? Date.now() - cacheTimestamp : Infinity;
+            const isCacheStale = cacheAge > 5 * 60 * 1000; // 5 minutes
+            
+            if (!isCacheStale) {
+              // Cache is fresh - skip fetch entirely for zero loading experience
+              return;
+            }
+            // Cache is stale - continue with background refresh (non-blocking)
           }
         } catch (error) {
           // If cache is corrupted, just continue with fresh fetch

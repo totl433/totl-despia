@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import ScrollLogo from "../components/ScrollLogo";
@@ -9,7 +9,7 @@ import { GamesSection } from "../components/GamesSection";
 import { resolveLeagueStartGw } from "../lib/leagueStart";
 import type { Fixture as FixtureCardFixture, LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import { useLiveScores } from "../hooks/useLiveScores";
-import { getCached, setCached, removeCached, CACHE_TTL } from "../lib/cache";
+import { getCached, setCached, removeCached, getCacheTimestamp, CACHE_TTL } from "../lib/cache";
 import { useLeagues } from "../hooks/useLeagues";
 import { calculateFormRank, calculateLastGwRank, calculateSeasonRank } from "../lib/helpers";
 import { fireConfettiCannon } from "../lib/confettiCannon";
@@ -54,31 +54,6 @@ function rowToOutcome(r: { result?: "H" | "D" | "A" | null }): "H" | "D" | "A" |
 
 export default function HomePage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  
-  // Check if we opened from a notification deep link (iOS native may pass leagueCode as query param)
-  useEffect(() => {
-    const leagueCode = searchParams.get('leagueCode');
-    if (leagueCode) {
-      const tab = searchParams.get('tab');
-      const leagueUrl = tab === 'chat' 
-        ? `/league/${leagueCode}?tab=chat`
-        : `/league/${leagueCode}?tab=chat`; // Always go to chat for notifications
-      console.log('[HomePage] Detected notification deep link (leagueCode in query), navigating to:', leagueUrl);
-      navigate(leagueUrl, { replace: true });
-      return;
-    }
-    
-    // Also check window.location.search directly (in case React Router hasn't parsed it yet)
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlLeagueCode = urlParams.get('leagueCode');
-    if (urlLeagueCode && urlLeagueCode !== leagueCode) {
-      const leagueUrl = `/league/${urlLeagueCode}?tab=chat`;
-      console.log('[HomePage] Detected notification deep link (from window.location), navigating to:', leagueUrl);
-      navigate(leagueUrl, { replace: true });
-    }
-  }, [searchParams, navigate]);
   
   // Initialize ALL state from cache synchronously to avoid any render gaps
   // We check localStorage directly to avoid waiting for user to be available
@@ -1324,94 +1299,92 @@ export default function HomePage() {
       return;
     }
     
-    // If fixtures were already loaded from basic cache, just refresh in background silently
-    if (fixturesLoadedFromCacheRef.current && fixtures.length > 0) {
-      // Fixtures already loaded from basic cache, refresh in background
-      (async () => {
-        try {
-          const [fixturesResult, picksResult] = await Promise.all([
-            supabase
-              .from("app_fixtures")
-              .select("id, gw, fixture_index, api_match_id, home_code, away_code, home_team, away_team, home_name, away_name, kickoff_time")
-              .eq("gw", gw)
-              .order("fixture_index", { ascending: true }),
-            supabase
-              .from("app_picks")
-              .select("fixture_index, pick")
-              .eq("gw", gw)
-              .eq("user_id", user.id)
-          ]);
-          
-          const fixturesData = fixturesResult.error ? [] : (fixturesResult.data ?? []) as Fixture[];
-          const picksMap: Record<number, "H" | "D" | "A"> = {};
-          
-          if (!picksResult.error) {
-            (picksResult.data ?? []).forEach((p: { fixture_index: number; pick: "H" | "D" | "A" }) => {
-              picksMap[p.fixture_index] = p.pick;
-            });
-          }
-          
-          setFixtures(fixturesData);
-          setUserPicks(picksMap);
-          
-          // Cache the data
-          const fixturesCacheKey = `home:fixtures:${user.id}:${gw}`;
-          try {
-            const liveScoresArray: Array<any> = [];
-            liveScoresMap.forEach((score) => {
-              liveScoresArray.push(score);
-            });
-            
-            setCached(fixturesCacheKey, {
-              fixtures: fixturesData,
-              userPicks: picksMap,
-              liveScores: liveScoresArray.length > 0 ? liveScoresArray : undefined,
-            }, CACHE_TTL.HOME);
-          } catch (cacheError) {
-            // Failed to cache (non-critical)
-          }
-        } catch (error) {
-          // Error refreshing fixtures (non-critical)
-        }
-      })();
-      return;
-    }
-    
     let alive = true;
-    let loadedFromCache = false;
+    const fixturesCacheKey = `home:fixtures:${user.id}:${gw}`;
     
     // 1. Load from cache immediately (if available)
     (async () => {
       try {
-        const fixturesCacheKey = `home:fixtures:${user.id}:${gw}`;
+        // Check cache first - if fresh, use it and skip fetch
+        const cached = getCached<{
+          fixtures: Fixture[];
+          userPicks: Record<number, "H" | "D" | "A">;
+          liveScores?: Array<{ api_match_id: number; [key: string]: any }>;
+        }>(fixturesCacheKey);
         
-        // Try to load from cache
-        try {
-          const cached = getCached<{
-            fixtures: Fixture[];
-            userPicks: Record<number, "H" | "D" | "A">;
-          }>(fixturesCacheKey);
+        if (cached && cached.fixtures && Array.isArray(cached.fixtures) && cached.fixtures.length > 0) {
+          // Cache exists and is fresh - use it immediately, NO FETCH
+          setFixtures(cached.fixtures);
+          setUserPicks(cached.userPicks || {});
+          setFixturesLoading(false);
+          fixturesLoadedFromCacheRef.current = true;
+          hasCheckedCacheRef.current = true;
           
-          if (cached && cached.fixtures && Array.isArray(cached.fixtures) && cached.fixtures.length > 0) {
-            setFixtures(cached.fixtures);
-            setUserPicks(cached.userPicks || {});
-            setFixturesLoading(false);
-            loadedFromCache = true;
-            fixturesLoadedFromCacheRef.current = true;
-            hasCheckedCacheRef.current = true;
-          } else {
-            hasCheckedCacheRef.current = true;
+          // Only refresh in background if cache is stale (older than 2 minutes)
+          const cacheTimestamp = getCacheTimestamp(fixturesCacheKey);
+          const cacheAge = cacheTimestamp ? Date.now() - cacheTimestamp : Infinity;
+          const isCacheStale = cacheAge > 2 * 60 * 1000; // 2 minutes
+          
+          if (isCacheStale && alive) {
+            // Background refresh for stale cache (non-blocking)
+            (async () => {
+              try {
+                const [fixturesResult, picksResult] = await Promise.all([
+                  supabase
+                    .from("app_fixtures")
+                    .select("id, gw, fixture_index, api_match_id, home_code, away_code, home_team, away_team, home_name, away_name, kickoff_time")
+                    .eq("gw", gw)
+                    .order("fixture_index", { ascending: true }),
+                  supabase
+                    .from("app_picks")
+                    .select("fixture_index, pick")
+                    .eq("gw", gw)
+                    .eq("user_id", user.id)
+                ]);
+                
+                if (!alive) return;
+                
+                const fixturesData = fixturesResult.error ? [] : (fixturesResult.data ?? []) as Fixture[];
+                const picksMap: Record<number, "H" | "D" | "A"> = {};
+                
+                if (!picksResult.error) {
+                  (picksResult.data ?? []).forEach((p: { fixture_index: number; pick: "H" | "D" | "A" }) => {
+                    picksMap[p.fixture_index] = p.pick;
+                  });
+                }
+                
+                // Update state with fresh data
+                setFixtures(fixturesData);
+                setUserPicks(picksMap);
+                
+                // Update cache
+                try {
+                  const liveScoresArray: Array<any> = [];
+                  liveScoresMap.forEach((score) => {
+                    liveScoresArray.push(score);
+                  });
+                  
+                  setCached(fixturesCacheKey, {
+                    fixtures: fixturesData,
+                    userPicks: picksMap,
+                    liveScores: liveScoresArray.length > 0 ? liveScoresArray : undefined,
+                  }, CACHE_TTL.HOME);
+                } catch (cacheError) {
+                  // Failed to cache (non-critical)
+                }
+              } catch (error) {
+                // Error refreshing (non-critical - cache is still usable)
+              }
+            })();
           }
-        } catch (error) {
-          // Cache miss, continue to fetch
+          
+          return; // Exit early - cache loaded, no fetch needed
         }
         
-        // 2. Fetch fresh data in background
-        if (!loadedFromCache) {
-          setFixturesLoading(true);
-        }
+        // Cache miss - fetch now
+        hasCheckedCacheRef.current = true;
+        setFixturesLoading(true);
         
-        // Always load from app_fixtures using current GW
         const [fixturesResult, picksResult] = await Promise.all([
           supabase
             .from("app_fixtures")
@@ -1440,7 +1413,6 @@ export default function HomePage() {
         setUserPicks(picksMap);
         setFixturesLoading(false);
         fixturesLoadedFromCacheRef.current = false;
-        hasCheckedCacheRef.current = true;
         
         // Cache the data
         try {

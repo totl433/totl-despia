@@ -5,7 +5,7 @@ import { MiniLeagueCard } from "../components/MiniLeagueCard";
 import type { LeagueRow, LeagueData } from "../components/MiniLeagueCard";
 import { getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
 import { resolveLeagueStartGw } from "../lib/leagueStart";
-import { getCached, setCached, CACHE_TTL, invalidateUserCache } from "../lib/cache";
+import { getCached, setCached, getCacheTimestamp, CACHE_TTL, invalidateUserCache } from "../lib/cache";
 import { useLeagues } from "../hooks/useLeagues";
 import { PageHeader } from "../components/PageHeader";
 
@@ -248,7 +248,37 @@ export default function TablesPage() {
     let alive = true;
     const cacheKey = `tables:${user.id}`;
     
-    // Fetch member data and other Tables-specific data in background
+    // Check cache first - if fresh, skip fetch entirely
+    (async () => {
+      const cached = getCached<{
+        rows: any[];
+        currentGw: number | null;
+        leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
+        leagueData: Record<string, any>;
+      }>(cacheKey);
+      
+      if (cached && cached.rows && Array.isArray(cached.rows) && cached.rows.length > 0) {
+        // Cache exists - check if stale
+        const cacheTimestamp = getCacheTimestamp(cacheKey);
+        const cacheAge = cacheTimestamp ? Date.now() - cacheTimestamp : Infinity;
+        const isCacheStale = cacheAge > 5 * 60 * 1000; // 5 minutes (Tables TTL)
+        
+        if (!isCacheStale) {
+          // Cache is fresh - use cached data, skip fetch for zero loading
+          setCurrentGw(cached.currentGw);
+          setLeagueSubmissions(cached.leagueSubmissions || {});
+          setLeagueDataLoading(false);
+          
+          // Skip fetch entirely - cache is fresh
+          return;
+        }
+        // Cache is stale - continue with fetch below
+      }
+      
+      // Fetch member data and other Tables-specific data (cache miss or stale cache)
+    })();
+    
+    // Separate async function for fetching
     (async () => {
       try {
         // Step 1: Get current GW (respects user's current_viewing_gw from GAME_STATE.md)

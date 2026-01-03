@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
-import { getCached, setCached, removeCached, CACHE_TTL } from "../lib/cache";
+import { getCached, setCached, removeCached, getCacheTimestamp, CACHE_TTL } from "../lib/cache";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { useGameweekState } from "../hooks/useGameweekState";
 import { PageHeader } from "../components/PageHeader";
@@ -298,7 +298,22 @@ export default function GlobalLeaderboardPage() {
       loadedFromCache = true; // Already loaded from cache in initial state
     }
     
-    // 2. Fetch fresh data in background
+    // 2. Only fetch if cache is missing or stale
+    // If cache exists and is fresh, skip fetch entirely for zero loading
+    if (loadedFromCache) {
+      // Check if cache is stale - only refresh in background if stale (>1 minute old for Global)
+      const cacheTimestamp = getCacheTimestamp(cacheKey);
+      const cacheAge = cacheTimestamp ? Date.now() - cacheTimestamp : Infinity;
+      const isCacheStale = cacheAge > 1 * 60 * 1000; // 1 minute (Global TTL)
+      
+      if (!isCacheStale) {
+        // Cache is fresh - skip fetch entirely for zero loading experience
+        return;
+      }
+      // Cache is stale - continue with background refresh (non-blocking)
+    }
+    
+    // Fetch fresh data (either cache miss or stale cache)
     (async () => {
       try {
         // Only set loading state if we didn't load from cache

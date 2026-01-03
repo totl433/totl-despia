@@ -1540,6 +1540,14 @@ video {
   width: 47px;
 }
 
+.w-1\/2{
+  width: 50%;
+}
+
+.w-3\/4{
+  width: 75%;
+}
+
 .min-w-0{
   min-width: 0px;
 }

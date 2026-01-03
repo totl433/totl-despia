@@ -8,7 +8,7 @@ export interface AccountMenuProps {
     icon: React.ReactNode;
     label: string;
   }>;
-  onLogout: () => void;
+  onLogout: () => Promise<void>;
 }
 
 export const AccountMenu = React.memo(function AccountMenu({
@@ -39,7 +39,9 @@ export const AccountMenu = React.memo(function AccountMenu({
 
       {/* Sign Out Button */}
       <button
-        onClick={onLogout}
+        onClick={async () => {
+          await onLogout();
+        }}
         className="w-full mt-6 py-3 text-red-600 font-semibold underline"
       >
         Log out
