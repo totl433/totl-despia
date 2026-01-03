@@ -73,7 +73,7 @@ export function MessageBubble({
   const textAlignment = isOwnMessage ? "text-right" : "text-left";
   const bubbleClasses = isOwnMessage ? "bg-[#1C8376] text-white" : "bg-white text-slate-900";
   const shapeClasses = isOwnMessage ? outgoingShape : incomingShape;
-  const maxWidth = "max-w-[70%]";
+  const maxWidth = "max-w-[80%]";
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const reactionPickerRef = useRef<HTMLDivElement>(null);
@@ -119,13 +119,14 @@ export function MessageBubble({
   };
 
   return (
-    <div className={`inline-block w-fit ${maxWidth} relative`}>
+    <div className={`inline-block w-fit ${maxWidth} min-w-0 relative`}>
       <div
         className={`px-3 py-2 text-sm leading-snug shadow-sm whitespace-normal break-words ${textAlignment} ${bubbleClasses} ${shapeClasses[shape]} ${onMessageClick ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
         onClick={handleBubbleClick}
+        style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
       >
         {author && !isOwnMessage && (
-          <div className="text-[11px] font-semibold text-slate-600 mb-1">{author}</div>
+          <div className="text-[11px] font-semibold text-slate-600 mb-1 break-words" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>{author}</div>
         )}
         {/* Reply preview - WhatsApp style */}
         {replyTo && (
@@ -135,16 +136,17 @@ export function MessageBubble({
                 ? "border-white/30 text-white/90"
                 : "border-[#1C8376] text-slate-600"
             } pl-2 text-sm`}
+            style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
           >
-            <div className="font-medium text-xs mb-0.5">
+            <div className="font-medium text-xs mb-0.5 break-words" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
               {replyTo.authorName || "Unknown"}
             </div>
-            <div className="text-xs line-clamp-2 truncate">
+            <div className="text-xs line-clamp-2 truncate break-words" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
               {replyTo.content}
             </div>
           </div>
         )}
-        <div>{text}</div>
+        <div style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>{text}</div>
         <div className="text-[11px] text-[#DCDCDD] mt-1">{time}</div>
       </div>
       {/* Reaction button and picker - positioned on the right of the bubble (only for other users' messages) */}

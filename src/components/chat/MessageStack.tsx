@@ -62,7 +62,7 @@ export function MessageStack({
         <div className="w-10 flex-shrink-0" />
       )}
 
-      <div className="flex flex-col gap-1 flex-1">
+      <div className="flex flex-col gap-1 flex-1 min-w-0">
         {messages.map((message, index) => {
           const shape: "single" | "top" | "middle" | "bottom" =
             messages.length === 1
@@ -85,8 +85,8 @@ export function MessageStack({
             messageContent = String(message.text);
           }
           return (
-            <div key={message.id} className={`flex flex-col w-full ${isOwnMessage ? "items-end" : "items-start"}`}>
-              <div className={`flex w-full ${isOwnMessage ? "justify-end" : "justify-start"}`}>
+            <div key={message.id} className={`flex flex-col w-full min-w-0 ${isOwnMessage ? "items-end" : "items-start"}`}>
+              <div className={`flex w-full min-w-0 ${isOwnMessage ? "justify-end" : "justify-start"}`}>
                 <MessageBubble
                   author={!isOwnMessage && index === 0 ? author : undefined}
                   text={message.text}
