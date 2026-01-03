@@ -109,9 +109,7 @@ export default function GlobalLeaderboardPage() {
   // SAFE: Only show picks if we're CERTAIN deadline has passed (state is not null)
   const currentGwDeadlinePassed = currentGwState !== null && 
     (currentGwState === 'DEADLINE_PASSED' || currentGwState === 'LIVE' || currentGwState === 'RESULTS_PRE_GW');
-  const { state: lastGwState } = useGameweekState(latestGw ?? null);
   const isCurrentGwLive = currentGwState === 'LIVE';
-  const isLastGwLive = lastGwState === 'LIVE';
 
   // Fetch all mini league friends (users in leagues with the current user)
   useEffect(() => {
