@@ -1803,7 +1803,7 @@ ${shareUrl}`;
       setTimeout(async () => {
         try {
           const senderName = user.user_metadata?.display_name || user.email || 'User';
-          const response = await fetch('/.netlify/functions/notifyLeagueMessageV2', {
+          const response = await fetch('/.netlify/functions/notifyLeagueMessage', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ leagueId: league.id, senderId: user.id, senderName, content: text })

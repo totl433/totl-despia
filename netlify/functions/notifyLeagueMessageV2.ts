@@ -276,6 +276,9 @@ export const handler: Handler = async (event) => {
         leagueCode, // Make this easy to find
         senderId,
         url: deepLinkUrl, // Include URL in data for badge clicks
+        // Also add as top-level for easier access (matching old working version)
+        leagueCode: leagueCode,
+        navigateTo: deepLinkUrl,
       },
       url: deepLinkUrl, // Also set top-level URL for notification clicks
       grouping_params: {

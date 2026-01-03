@@ -850,7 +850,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         "User";
 
       try {
-        await fetch("/.netlify/functions/notifyLeagueMessageV2", {
+        await fetch("/.netlify/functions/notifyLeagueMessage", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

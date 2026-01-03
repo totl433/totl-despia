@@ -1,6 +1,6 @@
 # TOTL Web - Current Project State
 
-> **Last Updated**: 2025-01-XX
+> **Last Updated**: 2025-01-XX (Performance optimization: Cache-first loading strategy implemented)
 > 
 > This is a living document. Update it when major features are added, architecture changes, or significant decisions are made.
 > 
@@ -50,6 +50,14 @@ sendScoreNotificationsWebhook (Netlify Function)
   ↓ (sends)
 OneSignal → User devices
 ```
+
+### Caching & Performance
+- **Cache Layer**: `src/lib/cache.ts` - localStorage-based caching with TTL
+- **Pre-loading**: `src/services/initialDataLoader.ts` - Pre-warms cache on app init
+- **Strategy**: Cache-first with background refresh
+  - Synchronous cache checks for instant rendering
+  - Background refresh for stale data (non-blocking)
+  - All critical data pre-loaded during Volley loading screen
 
 ## 🌐 Platform Differentiation (Web vs Native App)
 
@@ -256,9 +264,38 @@ npm run check            # Type check + build
 - Utilities in `src/lib/`
 
 ### Loading Strategy
+
+#### Pre-loading & Caching (Performance Optimization)
+- **Initial Data Loader** (`src/services/initialDataLoader.ts`): Pre-warms cache during app initialization
+  - Blocks on critical data: fixtures, picks, league data, ML live tables, user submissions, game state
+  - Pre-caches for instant page loads: Home, Predictions, Global, Tables pages
+  - Cache TTL: HOME (5min), GLOBAL (10min), PREDICTIONS (5min)
+  
+- **Cache-First Strategy**: All pages check cache synchronously on mount
+  - Instant render if cache is fresh (< TTL threshold)
+  - Background refresh if cache is stale
+  - Blocking fetch only if no cache exists
+  
+- **Synchronous State Initialization**: Components initialize state from cache immediately
+  - No loading spinners when cache is available
+  - Data appears instantly on page load
+  - Background updates refresh data silently
+
+#### Page Loading
 - **Eagerly loaded**: Home, Tables, Global, Predictions (BottomNav pages)
 - **Lazy loaded**: League, Admin, Profile, etc.
-- Uses `Suspense` with `PageLoader` fallback
+- Uses `Suspense` with `PageLoader` fallback for lazy routes
+- All critical data pre-loaded before initial render
+
+#### Cache Keys
+- `home:basic:${userId}` - Basic home page data (GW, points, overall)
+- `home:fixtures:${userId}:${gw}` - Fixtures with live scores and user picks
+- `home:gwResults:${gw}` - GW results for fixture outcomes
+- `home:leagueData:${userId}:${gw}` - Mini-league data
+- `ml_live_table:${leagueId}:${gw}` - ML live table data (fixtures, picks, submissions, results)
+- `gameState:${gw}` - Gameweek state (GW_OPEN, LIVE, etc.)
+- `user:submissions:${userId}` - User submission status for all GWs
+- `app:lastCompletedGw` - Last completed GW (avoids DB query)
 
 ### Game State Pattern
 ```typescript
@@ -297,6 +334,10 @@ const { state, loading, error } = useGameweekState(currentGw, user?.id);
 2. Add route in `src/main.tsx`
 3. Use lazy loading if not critical path
 4. Add to BottomNav if needed
+5. **For performance**: Implement cache-first loading pattern (see `Home.tsx` example)
+   - Initialize state from cache synchronously
+   - Background refresh if cache is stale
+   - Pre-load data in `initialDataLoader.ts` if page is critical
 
 ### Adding a Netlify Function
 1. Create `.ts` file in `netlify/functions/`
