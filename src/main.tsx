@@ -386,11 +386,27 @@ function AppContent() {
       const currentPath = window.location.pathname;
       const searchParams = new URLSearchParams(window.location.search);
       const hash = window.location.hash;
+      const fullUrl = window.location.href;
+      
+      console.log('[DeepLink] Checking for notification deep link...', {
+        pathname: currentPath,
+        search: window.location.search,
+        hash: hash,
+        fullUrl: fullUrl,
+        href: window.location.href
+      });
       
       // Method 1: Check if URL is already in window.location
-      if (currentPath.startsWith('/league/') && searchParams.get('tab') === 'chat') {
-        console.log('[DeepLink] URL already set in window.location:', currentPath + window.location.search);
-        return true;
+      if (currentPath.startsWith('/league/')) {
+        const tab = searchParams.get('tab');
+        console.log('[DeepLink] Already on league page:', currentPath, 'tab:', tab);
+        if (tab === 'chat') {
+          return true; // Already where we need to be
+        } else {
+          // Navigate to chat tab
+          navigate(`${currentPath}?tab=chat`, { replace: true });
+          return true;
+        }
       }
       
       // Method 2: Check hash-based URLs
@@ -403,29 +419,83 @@ function AppContent() {
         }
       }
       
-      // Method 3: Check if we're on home page - try to extract leagueCode from URL params
-      // OneSignal might pass data as query params instead of path
-      if (currentPath === '/' || currentPath === '') {
-        const leagueCodeParam = searchParams.get('leagueCode');
-        if (leagueCodeParam) {
-          const leagueUrl = `/league/${leagueCodeParam}?tab=chat`;
-          console.log('[DeepLink] Found leagueCode in query params, navigating:', leagueUrl);
-          navigate(leagueUrl);
-          return true;
-        }
+      // Method 3: Check query params for leagueCode (OneSignal might pass it this way)
+      const leagueCodeParam = searchParams.get('leagueCode');
+      if (leagueCodeParam) {
+        const tab = searchParams.get('tab');
+        const leagueUrl = tab === 'chat' 
+          ? `/league/${leagueCodeParam}?tab=chat`
+          : `/league/${leagueCodeParam}?tab=chat`; // Always go to chat for notifications
+        console.log('[DeepLink] Found leagueCode in query params, navigating:', leagueUrl);
+        navigate(leagueUrl, { replace: true });
+        return true;
       }
       
+      // Method 4: Check localStorage/sessionStorage for OneSignal notification data
+      // OneSignal might store notification data here on iOS native
+      try {
+        // Check various possible storage keys
+        const storageKeys = [
+          'onesignal_notification_opened',
+          'onesignal_notification_data',
+          'onesignal_last_notification',
+          'OneSignal_notificationOpened',
+        ];
+        
+        for (const key of storageKeys) {
+          const stored = localStorage.getItem(key) || sessionStorage.getItem(key);
+          if (stored) {
+            try {
+              const data = JSON.parse(stored);
+              console.log('[DeepLink] Found notification data in storage:', key, data);
+              
+              // Extract leagueCode from various possible locations in the data
+              const leagueCode = data?.leagueCode || 
+                                data?.additionalData?.leagueCode || 
+                                data?.data?.leagueCode ||
+                                data?.notification?.additionalData?.leagueCode;
+              
+              if (leagueCode) {
+                const leagueUrl = `/league/${leagueCode}?tab=chat`;
+                console.log('[DeepLink] Extracted leagueCode from storage, navigating:', leagueUrl);
+                navigate(leagueUrl, { replace: true });
+                // Clear the storage after using it
+                localStorage.removeItem(key);
+                sessionStorage.removeItem(key);
+                return true;
+              }
+            } catch (e) {
+              console.warn('[DeepLink] Error parsing stored notification data:', e);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[DeepLink] Error checking storage:', e);
+      }
+      
+      console.log('[DeepLink] No notification deep link found');
       return false;
     };
     
-    // Check on mount with a small delay to allow OneSignal to set URL if it does
-    const timeoutId = setTimeout(() => {
+    // Check immediately on mount
+    handleNotificationDeepLink();
+    
+    // Check again after a delay (OneSignal might set URL/data asynchronously)
+    const timeoutId1 = setTimeout(() => {
+      console.log('[DeepLink] Re-checking after 500ms delay...');
       handleNotificationDeepLink();
     }, 500);
+    
+    // Check again after longer delay (in case OneSignal is very slow)
+    const timeoutId2 = setTimeout(() => {
+      console.log('[DeepLink] Re-checking after 2s delay...');
+      handleNotificationDeepLink();
+    }, 2000);
     
     // Also check when app becomes visible (notification tapped while backgrounded)
     const handleVisibilityChange = () => {
       if (!document.hidden) {
+        console.log('[DeepLink] App became visible, checking for notification...');
         setTimeout(() => {
           handleNotificationDeepLink();
         }, 100);
@@ -435,7 +505,8 @@ function AppContent() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
-      clearTimeout(timeoutId);
+      clearTimeout(timeoutId1);
+      clearTimeout(timeoutId2);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [navigate, user]);

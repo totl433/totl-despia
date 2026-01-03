@@ -223,6 +223,9 @@ export const handler: Handler = async (event) => {
   // Include ?tab=chat to open directly to chat tab
   // Also include leagueCode as query param as fallback for iOS native
   const leagueUrl = `/league/${leagueCode}?tab=chat&leagueCode=${leagueCode}`;
+  
+  // For iOS native, also try using web_url field (some OneSignal configs prefer this)
+  // The web_url is used when the app is opened from a notification
 
   // 7) Send via OneSignal (only to subscribed Player IDs)
   const payloadOS: Record<string, any> = {

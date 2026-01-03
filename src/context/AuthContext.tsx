@@ -220,7 +220,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signOut() {
     // Deactivate push subscription before signing out to prevent ghost notifications
-    await deactivatePushSubscription(session);
+    // Wrap in try-catch to ensure logout always proceeds even if deactivation fails
+    try {
+      await deactivatePushSubscription(session);
+    } catch (error) {
+      console.warn('[Auth] Push deactivation failed during logout, continuing with logout:', error);
+    }
     resetPushSessionState();
     await supabase.auth.signOut();
   }

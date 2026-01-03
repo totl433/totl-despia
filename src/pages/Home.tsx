@@ -64,8 +64,18 @@ export default function HomePage() {
       const tab = searchParams.get('tab');
       const leagueUrl = tab === 'chat' 
         ? `/league/${leagueCode}?tab=chat`
-        : `/league/${leagueCode}`;
-      console.log('[HomePage] Detected notification deep link, navigating to:', leagueUrl);
+        : `/league/${leagueCode}?tab=chat`; // Always go to chat for notifications
+      console.log('[HomePage] Detected notification deep link (leagueCode in query), navigating to:', leagueUrl);
+      navigate(leagueUrl, { replace: true });
+      return;
+    }
+    
+    // Also check window.location.search directly (in case React Router hasn't parsed it yet)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlLeagueCode = urlParams.get('leagueCode');
+    if (urlLeagueCode && urlLeagueCode !== leagueCode) {
+      const leagueUrl = `/league/${urlLeagueCode}?tab=chat`;
+      console.log('[HomePage] Detected notification deep link (from window.location), navigating to:', leagueUrl);
       navigate(leagueUrl, { replace: true });
     }
   }, [searchParams, navigate]);

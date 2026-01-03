@@ -174,29 +174,55 @@ export default function TablesPage() {
   // Simple check: is everything ready (including chips)?
   const isDataReady = useMemo(() => {
     // Must have leagues loaded
-    if (leaguesLoading) return false;
+    if (leaguesLoading) {
+      console.log('[Tables isDataReady] FALSE - leaguesLoading:', leaguesLoading);
+      return false;
+    }
     
     // Must have league data loaded
-    if (leagueDataLoading) return false;
+    if (leagueDataLoading) {
+      console.log('[Tables isDataReady] FALSE - leagueDataLoading:', leagueDataLoading);
+      return false;
+    }
     
     // If we have leagues, check that leagueData is complete for leagues with members
     if (leagues.length > 0) {
       // Check if we have data for all leagues that have members
       const leaguesWithMembers = leagues.filter(l => (memberCounts[l.id] ?? 0) > 0);
+      console.log('[Tables isDataReady] Checking:', {
+        leaguesCount: leagues.length,
+        leaguesWithMembersCount: leaguesWithMembers.length,
+        memberCounts: Object.fromEntries(Object.entries(memberCounts).filter(([_, v]) => v > 0)),
+        leagueDataKeys: Object.keys(leagueData)
+      });
       if (leaguesWithMembers.length > 0) {
         // All leagues with members must have complete leagueData with sortedMemberIds
         const allHaveData = leaguesWithMembers.every(league => {
           const data = leagueData[league.id];
-          return data && 
+          const hasData = data && 
                  data.members && 
                  data.members.length > 0 && 
                  data.sortedMemberIds && 
                  data.sortedMemberIds.length > 0;
+          if (!hasData) {
+            console.log('[Tables isDataReady] League missing data:', league.id, {
+              hasData: !!data,
+              hasMembers: !!(data && data.members),
+              membersLength: data?.members?.length,
+              hasSortedMemberIds: !!(data && data.sortedMemberIds),
+              sortedMemberIdsLength: data?.sortedMemberIds?.length
+            });
+          }
+          return hasData;
         });
-        if (!allHaveData) return false;
+        if (!allHaveData) {
+          console.log('[Tables isDataReady] FALSE - not all leagues have data');
+          return false;
+        }
       }
     }
     
+    console.log('[Tables isDataReady] TRUE');
     return true;
   }, [leaguesLoading, leagueDataLoading, leagues, memberCounts, leagueData]);
 
@@ -279,6 +305,10 @@ export default function TablesPage() {
         ]);
         
         if (memDataResult.error) throw memDataResult.error;
+        if (allMembersWithUsersResult.error) {
+          console.error('[Tables] Error fetching members with users:', allMembersWithUsersResult.error);
+          throw allMembersWithUsersResult.error;
+        }
         if (!alive) return;
 
         // Process members and build member counts
@@ -352,11 +382,24 @@ export default function TablesPage() {
         
         // Process members with user names
         const membersByLeagueIdMap = new Map<string, LeagueMember[]>();
-        (allMembersWithUsersResult.data ?? []).forEach((m: any) => {
-          if (!m.users?.name) return;
+        const membersData = allMembersWithUsersResult.data ?? [];
+        console.log('[Tables] Processing members with users:', {
+          totalMembers: membersData.length,
+          leagueIds: leagueIds,
+          membersByLeagueCounts: Object.fromEntries(Array.from(membersByLeague.entries()).map(([id, arr]) => [id, arr.length])),
+          sampleMember: membersData[0] ? { league_id: membersData[0].league_id, user_id: membersData[0].user_id, hasUsers: !!membersData[0].users, usersType: typeof membersData[0].users } : null
+        });
+        membersData.forEach((m: any) => {
+          // Use name if available, otherwise fallback to user_id (shouldn't happen but defensive)
+          const name = m.users?.name || `User ${m.user_id.slice(0, 8)}`;
           const arr = membersByLeagueIdMap.get(m.league_id) ?? [];
-          arr.push({ id: m.user_id, name: m.users.name });
+          arr.push({ id: m.user_id, name });
           membersByLeagueIdMap.set(m.league_id, arr);
+        });
+        console.log('[Tables] Members by league ID map:', {
+          size: membersByLeagueIdMap.size,
+          entries: Array.from(membersByLeagueIdMap.entries()).map(([id, arr]) => [id, arr.length]),
+          membersByLeagueSize: membersByLeague.size
         });
         setMembersByLeagueId(membersByLeagueIdMap);
 
@@ -464,7 +507,17 @@ export default function TablesPage() {
         
         for (let i = 0; i < leagues.length; i++) {
           const league = leagues[i];
-          const memberIds = membersByLeagueIdMap.get(league.id) ?? [];
+          let memberIds = membersByLeagueIdMap.get(league.id) ?? [];
+          
+          // Fallback: if membersByLeagueIdMap is empty but we have memberCounts, use member IDs from membersByLeague
+          if (memberIds.length === 0) {
+            const memberUserIds = membersByLeague.get(league.id) ?? [];
+            if (memberUserIds.length > 0) {
+              // Create minimal member objects from user IDs (fallback when users join fails)
+              memberIds = memberUserIds.map(id => ({ id, name: `User ${id.slice(0, 8)}` }));
+              console.log('[Tables] Using fallback member IDs for league', league.id, 'with', memberIds.length, 'members');
+            }
+          }
           
           if (memberIds.length === 0) continue;
           
@@ -812,11 +865,19 @@ export default function TablesPage() {
     });
     
     
-    const leagueDataMap: Record<string, LeagueData> = {};
+    // Start with existing leagueData to preserve entries we can't process
+    const leagueDataMap: Record<string, LeagueData> = { ...leagueData };
     
     for (const league of leagues) {
-      const memberIds = membersByLeagueId.get(league.id) ?? [];
-      if (memberIds.length === 0) continue;
+      let memberIds = membersByLeagueId.get(league.id) ?? [];
+      
+      // Note: Reactive effect doesn't have access to membersByLeague fallback
+      // If membersByLeagueId is empty for a league, we can't create leagueData for it
+      // This should be rare since the reactive effect only runs when membersByLeagueId has data
+      if (memberIds.length === 0) {
+        console.warn('[Tables Reactive] No member IDs for league', league.id, '- skipping');
+        continue;
+      }
       
       const leagueStartGw = leagueStartGwMap.get(league.id) ?? currentGw ?? 1;
       const relevantGws = updatedGwsWithResults.filter(gw => gw >= leagueStartGw);
