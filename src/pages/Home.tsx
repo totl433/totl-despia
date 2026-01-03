@@ -317,9 +317,9 @@ export default function HomePage() {
     return fixtures.map(f => f.api_match_id).filter((id): id is number => id !== null && id !== undefined);
   }, [fixtures]);
   
-  // Load live scores from cache synchronously
+  // Load live scores from cache synchronously (don't depend on fixtures - load immediately)
   const cachedLiveScoresMap = useMemo(() => {
-    if (!fixtures?.length || !user?.id || !gw) return new Map();
+    if (!user?.id || !gw) return new Map();
     
     try {
       const fixturesCacheKey = `home:fixtures:${user.id}:${gw}`;
@@ -342,7 +342,7 @@ export default function HomePage() {
       // Error loading live scores from cache (non-critical)
     }
     return new Map();
-  }, [fixtures, user?.id, gw]);
+  }, [user?.id, gw]); // Remove fixtures dependency - load immediately
   
   // Subscribe to real-time live scores
   const { liveScores: liveScoresMapFromHook } = useLiveScores(
@@ -387,8 +387,25 @@ export default function HomePage() {
     }
   }, [user?.id, fixtures, liveScoresMap, gw]);
   
-  // Fetch results from app_gw_results for fixtures without api_match_id
-  const [gwResults, setGwResults] = useState<Record<number, "H" | "D" | "A">>({});
+  // Load results from cache immediately, then refresh in background
+  const [gwResults, setGwResults] = useState<Record<number, "H" | "D" | "A">>(() => {
+    if (!gw) return {};
+    try {
+      const cached = getCached<Array<{ fixture_index: number; result: "H" | "D" | "A" }>>(`home:gwResults:${gw}`);
+      if (cached) {
+        const resultsMap: Record<number, "H" | "D" | "A"> = {};
+        cached.forEach((r) => {
+          if (r.result === "H" || r.result === "D" || r.result === "A") {
+            resultsMap[r.fixture_index] = r.result;
+          }
+        });
+        return resultsMap;
+      }
+    } catch {
+      // Ignore cache errors
+    }
+    return {};
+  });
   
   useEffect(() => {
     if (!gw || !fixtures.length) {
@@ -400,6 +417,26 @@ export default function HomePage() {
     if (!hasNonApiFixtures) {
       setGwResults({});
       return;
+    }
+    
+    // Check cache first
+    const cacheKey = `home:gwResults:${gw}`;
+    const cached = getCached<Array<{ fixture_index: number; result: "H" | "D" | "A" }>>(cacheKey);
+    if (cached) {
+      const resultsMap: Record<number, "H" | "D" | "A"> = {};
+      cached.forEach((r) => {
+        if (r.result === "H" || r.result === "D" || r.result === "A") {
+          resultsMap[r.fixture_index] = r.result;
+        }
+      });
+      setGwResults(resultsMap);
+      
+      // Check if cache is stale for background refresh
+      const cacheTimestamp = getCacheTimestamp(cacheKey);
+      const cacheAge = cacheTimestamp ? Date.now() - cacheTimestamp : Infinity;
+      const isCacheStale = cacheAge > 5 * 60 * 1000; // 5 minutes
+      
+      if (!isCacheStale) return; // Cache is fresh, skip fetch
     }
     
     let alive = true;
@@ -414,12 +451,17 @@ export default function HomePage() {
         
         if (!error && results) {
           const resultsMap: Record<number, "H" | "D" | "A"> = {};
+          const resultsArray: Array<{ fixture_index: number; result: "H" | "D" | "A" }> = [];
           results.forEach((r: { fixture_index: number; result: "H" | "D" | "A" | null }) => {
             if (r.result === "H" || r.result === "D" || r.result === "A") {
               resultsMap[r.fixture_index] = r.result;
+              resultsArray.push({ fixture_index: r.fixture_index, result: r.result });
             }
           });
           setGwResults(resultsMap);
+          
+          // Cache results
+          setCached(cacheKey, resultsArray, CACHE_TTL.HOME);
         }
       } catch (error) {
         // Error fetching results (non-critical)

@@ -177,6 +177,9 @@ export async function dispatchNotification(
         sub => sub.is_active && sub.player_id
       );
       console.log(`[dispatch] User ${userId.slice(0, 8)}...: ${activeSubscriptions.length} active subscriptions after filtering`);
+      if (activeSubscriptions.length === 0 && subscriptions.length > 0) {
+        console.log(`[dispatch] User ${userId.slice(0, 8)}...: Subscription details:`, subscriptions.map(s => ({ is_active: s.is_active, has_player_id: !!s.player_id, subscribed: s.subscribed })));
+      }
       
       if (activeSubscriptions.length === 0) {
         console.log(`[dispatch] User ${userId.slice(0, 8)}...: No active devices found. Total subscriptions: ${subscriptions.length}, Details:`, subscriptions.map(s => ({ is_active: s.is_active, has_player_id: !!s.player_id })));

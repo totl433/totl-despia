@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { getCached, setCached, getCacheTimestamp, CACHE_TTL } from '../lib/cache';
 
 export interface Goal {
   minute: number | null;
@@ -40,8 +41,19 @@ export interface LiveScore {
  * @param apiMatchIds - Specific match IDs to subscribe to (optional)
  */
 export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
-  const [liveScores, setLiveScores] = useState<Map<number, LiveScore>>(new Map());
-  const [loading, setLoading] = useState(true);
+  // Load from cache immediately (cache is populated during initial data load)
+  const [liveScores, setLiveScores] = useState<Map<number, LiveScore>>(() => {
+    if (!gw) return new Map();
+    try {
+      // Live scores are cached in fixtures cache
+      // Try to get them from any fixtures cache key (they're stored together)
+      // For now, return empty map - HomePage loads from its own cache
+      return new Map();
+    } catch {
+      return new Map();
+    }
+  });
+  const [loading, setLoading] = useState(false); // Start with false if we have cache
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,7 +62,20 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
     let pollInterval: number | null = null;
     let lastUpdateTime = Date.now();
 
-    async function fetchLiveScores() {
+    // Check cache first
+    const loadFromCache = () => {
+      if (!gw) return;
+      try {
+        // Live scores might be cached in multiple places - check fixtures cache
+        // HomePage handles this, but we can also check a dedicated cache if it exists
+        // For now, rely on HomePage's cache loading - this hook will just fetch fresh data
+        return false; // No dedicated cache check here - HomePage handles it
+      } catch {
+        return false;
+      }
+    };
+
+    async function fetchLiveScores(isInitialCheck: boolean = false) {
       try {
         let query = supabase
           .from('live_scores')
@@ -133,8 +158,16 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
 
     async function setupSubscription() {
       try {
-        // First, fetch initial live scores
-        await fetchLiveScores();
+        // Check cache first - if available, use it immediately, then refresh
+        const hasCache = loadFromCache();
+        
+        // If no cache, set loading true for initial fetch
+        if (!hasCache && liveScores.size === 0) {
+          setLoading(true);
+        }
+        
+        // Fetch initial live scores (or refresh if cache exists)
+        await fetchLiveScores(true);
 
         // Set up real-time subscription
         const channelName = `live_scores_${gw || 'all'}_${apiMatchIds?.join('-') || 'all'}_${Date.now()}`;

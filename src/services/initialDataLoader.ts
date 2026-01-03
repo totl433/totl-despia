@@ -259,6 +259,11 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
 
   const currentGw = metaResult.data?.current_gw ?? 1;
   const latestGw = latestGwResult.data?.gw ?? null;
+  
+  // Cache last completed GW for MiniLeagueGwTableCard (avoids DB query)
+  if (latestGw) {
+    setCached('app:lastCompletedGw', latestGw, CACHE_TTL.HOME);
+  }
 
   // Pre-load gameState for current GW (so homepage knows LIVE vs non-LIVE immediately)
   let gameState: GameweekState | null = null;
@@ -337,10 +342,38 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
       : Promise.resolve({ data: null, error: null }),
   ]);
   
-  // Cache fixtures for PredictionsBanner
-  if (fixturesForGw.data) {
-    setCached(`home:fixtures:${currentGw}`, fixturesForGw.data, CACHE_TTL.HOME);
+  // Fetch results for currentGw (needed for fixture cards to show outcomes)
+  const gwResultsResult = await supabase
+    .from('app_gw_results')
+    .select('fixture_index, result')
+    .eq('gw', currentGw);
+  
+  // Cache results for currentGw
+  if (gwResultsResult.data) {
+    const resultsArray = gwResultsResult.data
+      .filter((r: any) => r.result === "H" || r.result === "D" || r.result === "A")
+      .map((r: any) => ({ fixture_index: r.fixture_index, result: r.result as "H" | "D" | "A" }));
+    setCached(`home:gwResults:${currentGw}`, resultsArray, CACHE_TTL.HOME);
   }
+  
+  // Fetch and cache live scores for currentGw (needed for fixture cards to show scores/goals instantly)
+  const liveScoresResult = await supabase
+    .from('live_scores')
+    .select('*')
+    .eq('gw', currentGw);
+  
+  const liveScoresArray = liveScoresResult.data || [];
+  
+  // Cache fixtures WITH live scores for currentGw
+  if (fixturesForGw.data) {
+    setCached(`home:fixtures:${userId}:${currentGw}`, {
+      fixtures: fixturesForGw.data,
+      userPicks,
+      liveScores: liveScoresArray.length > 0 ? liveScoresArray : undefined,
+    }, CACHE_TTL.HOME);
+  }
+  
+  // Cache fixtures for viewingGw (PredictionsBanner)
   if (viewingGw !== currentGw && fixturesForViewingGw.data) {
     setCached(`home:fixtures:${viewingGw}`, fixturesForViewingGw.data, CACHE_TTL.HOME);
   }
@@ -1182,11 +1215,23 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     isInApiTestLeague,
   }, CACHE_TTL.HOME);
 
-  // Cache fixtures
+  // Cache fixtures with live scores (preserve live scores if they were cached earlier, or use fresh ones)
   const fixturesCacheKey = `home:fixtures:${userId}:${currentGw}`;
+  const existingCache = getCached<{
+    fixtures: any[];
+    userPicks: Record<number, "H" | "D" | "A">;
+    liveScores?: Array<any>;
+  }>(fixturesCacheKey);
+  
+  // Prefer fresh liveScoresArray if available, otherwise use existing cache
+  const liveScoresToCache = (liveScoresArray && liveScoresArray.length > 0) 
+    ? liveScoresArray 
+    : existingCache?.liveScores;
+  
   setCached(fixturesCacheKey, {
     fixtures: fixturesForGw.data || [],
     userPicks,
+    liveScores: liveScoresToCache,
   }, CACHE_TTL.HOME);
 
   // Cache Global page data (ensure latestGw is a number, not null)
