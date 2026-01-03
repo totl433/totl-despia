@@ -111,7 +111,7 @@ export function MiniLeaguesSection({
     </div>
   ) : null;
 
-  if (!leagueDataLoading && leagues.length === 0) {
+  if (leagues.length === 0) {
     return (
       <Section 
         title="Mini Leagues" 
@@ -142,36 +142,6 @@ How To Play →`}
           >
             Create one now!
           </Link>
-        </div>
-      </Section>
-    );
-  }
-
-  if (leagues.length === 0) {
-    return (
-      <Section 
-        title="Mini Leagues" 
-        className="mt-8"
-        headerRight={toggleComponent}
-        infoTitle="Mini Leagues"
-        infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
-
-You compete each Gameweek and across the full season — with one overall winner at the end of the season.
-
-(TB) Predictions submitted
-
-(TB) Predictions not submitted yet
-
-(TB) Gameweek winner!
-
-Chips are ordered by the current league table.
-
-Start a Mini League →
-
-How To Play →`}
-      >
-        <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
-          <div className="text-slate-600">Loading leagues...</div>
         </div>
       </Section>
     );

@@ -293,6 +293,18 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     setCached(`home:submissions:${viewingGw}`, submissionsForBanner[1].data, CACHE_TTL.HOME);
   }
   
+  // Fetch and cache user's own submissions (for Share button visibility)
+  const userSubmissionsResult = await supabase
+    .from('app_gw_submissions')
+    .select('gw')
+    .eq('user_id', userId)
+    .order('gw', { ascending: false });
+  
+  if (userSubmissionsResult.data) {
+    const userSubmissionsGws = userSubmissionsResult.data.map((s: any) => s.gw);
+    setCached(`home:userSubmissions:${userId}`, userSubmissionsGws, CACHE_TTL.HOME);
+  }
+  
   const [fixturesForGw, picksForGw, userOcpResult, fixturesForViewingGw] = await Promise.all([
     supabase
       .from('app_fixtures')
@@ -347,43 +359,77 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   const leagues = cachedLeagues;
   
   // ═══════════════════════════════════════════════════════════════════════
-  // STEP 2: PRE-WARM HOMEPAGE LEAGUE DATA CACHE (non-blocking)
+  // STEP 2: PRE-WARM HOMEPAGE LEAGUE DATA CACHE (BLOCKING - must complete before page loads)
   // ═══════════════════════════════════════════════════════════════════════
   // Homepage ML live tables need league data (members, picks, results, etc.)
   // This FULLY processes and caches the data so ML live tables load instantly.
+  // MUST be blocking to ensure cache is ready when components render.
   // ═══════════════════════════════════════════════════════════════════════
   if (leagueIds.length > 0 && currentGw) {
-    (async () => {
+    // BLOCKING - await to ensure cache is populated before page loads
+    await (async () => {
       try {
         const leagueDataCacheKey = `home:leagueData:${userId}:${currentGw}`;
         
         // Check if already cached
         const existingCache = getCached<any>(leagueDataCacheKey);
-        if (existingCache && existingCache.leagueData && Object.keys(existingCache.leagueData).length > 0) {
-          const allLeaguesHaveWebUserIds = Object.values(existingCache.leagueData).every((data: any) => 
-            data.webUserIds !== undefined
-          );
-          if (allLeaguesHaveWebUserIds) {
+        const hasExistingLeagueData = existingCache && existingCache.leagueData && Object.keys(existingCache.leagueData).length > 0;
+        const allLeaguesHaveWebUserIds = hasExistingLeagueData && Object.values(existingCache.leagueData).every((data: any) => 
+          data.webUserIds !== undefined
+        );
+        
+        // Declare variables that may be used in both branches (declare before usage)
+        let membersByLeague: Record<string, Array<{ id: string; name: string }>> = {};
+        let picksByLeague: Map<string, Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }>> = new Map();
+        let submittedUserIds: Set<string> = new Set();
+        
+        // Check if ML live table cache exists for all leagues
+        let needsMlLiveTableCache = false;
+        if (hasExistingLeagueData && allLeaguesHaveWebUserIds) {
+          // League data is cached, but check if ML live table cache exists
+          for (const league of leagues) {
+            const mlTableCacheKey = `ml_live_table:${league.id}:${currentGw}`;
+            const mlCache = getCached<any>(mlTableCacheKey);
+            if (!mlCache || !mlCache.fixtures || mlCache.fixtures.length === 0) {
+              needsMlLiveTableCache = true;
+              break;
+            }
+          }
+          
+        if (!needsMlLiveTableCache) {
             log.debug('preload/league_data_cached', { userId: userId.slice(0, 8), gw: currentGw });
-            return;
+            // Both caches exist - skip league data processing but continue to ML cache check
+            // (ML cache section will detect it exists and skip)
+          } else {
+            // League data cached but ML live table cache missing - need to fetch minimal data for ML cache
+            log.debug('preload/ml_live_table_cache_missing', { userId: userId.slice(0, 8), gw: currentGw });
+            // Load members from existing cache for ML cache population
+            const cachedLeagueData = existingCache.leagueData;
+            for (const [leagueId, data] of Object.entries(cachedLeagueData)) {
+              if (data && typeof data === 'object' && 'members' in data && Array.isArray(data.members)) {
+                membersByLeague[leagueId] = data.members;
+              }
+            }
           }
         }
         
-        log.debug('preload/league_data_start', { userId: userId.slice(0, 8), gw: currentGw, leagueCount: leagueIds.length });
+        // Only process league data if cache doesn't exist
+        if (!hasExistingLeagueData || !allLeaguesHaveWebUserIds) {
+          log.debug('preload/league_data_start', { userId: userId.slice(0, 8), gw: currentGw, leagueCount: leagueIds.length });
         
-        // Fetch all data in parallel (same as Home.tsx)
-        const [membersResult, _readsResult, submissionsResult, resultsResult, _fixturesResult, webPicksResult, appPicksResult] = await Promise.all([
-          supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds),
-          supabase.from("league_message_reads").select("league_id, last_read_at").eq("user_id", userId).in("league_id", leagueIds),
-          supabase.from("app_gw_submissions").select("user_id").eq("gw", currentGw),
-          supabase.from("app_gw_results").select("gw, fixture_index, result"),
-          supabase.from("app_fixtures").select("gw, fixture_index, home_team, away_team, home_name, away_name, kickoff_time").in("gw", Array.from({ length: Math.min(20, latestGw || 20) }, (_, i) => i + 1)),
-          supabase.from("picks").select("user_id, gw, created_at").limit(10000),
-          supabase.from("app_picks").select("user_id, gw, created_at").limit(10000),
-        ]);
-        
-        // Process members
-        const membersByLeague: Record<string, Array<{ id: string; name: string }>> = {};
+          // Fetch all data in parallel (same as Home.tsx)
+          const [membersResult, _readsResult, submissionsResult, resultsResult, _fixturesResult, webPicksResult, appPicksResult] = await Promise.all([
+            supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds),
+            supabase.from("league_message_reads").select("league_id, last_read_at").eq("user_id", userId).in("league_id", leagueIds),
+            supabase.from("app_gw_submissions").select("user_id").eq("gw", currentGw),
+            supabase.from("app_gw_results").select("gw, fixture_index, result"),
+            supabase.from("app_fixtures").select("gw, fixture_index, home_team, away_team, home_name, away_name, kickoff_time").in("gw", Array.from({ length: Math.min(20, latestGw || 20) }, (_, i) => i + 1)),
+            supabase.from("picks").select("user_id, gw, created_at").limit(10000),
+            supabase.from("app_picks").select("user_id, gw, created_at").limit(10000),
+          ]);
+          
+          // Process members
+          membersByLeague = {};
         (membersResult.data ?? []).forEach((m: any) => {
           if (!membersByLeague[m.league_id]) {
             membersByLeague[m.league_id] = [];
@@ -394,8 +440,8 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
           });
         });
         
-        const allMemberIdsSet = new Set(Object.values(membersByLeague).flat().map(m => m.id));
-        const submittedUserIds = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id).filter((id: string) => allMemberIdsSet.has(id)));
+          const allMemberIdsSet = new Set(Object.values(membersByLeague).flat().map(m => m.id));
+          submittedUserIds = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id).filter((id: string) => allMemberIdsSet.has(id)));
         
         // Identify Web users (same logic as Home.tsx)
         const webPicksEarliest = new Map<string, Date>();
@@ -678,18 +724,158 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
           };
         }
         
-        setCached(leagueDataCacheKey, {
-          leagueData: cacheableLeagueData,
-          leagueSubmissions: submissionStatus,
-        }, CACHE_TTL.HOME);
+          setCached(leagueDataCacheKey, {
+            leagueData: cacheableLeagueData,
+            leagueSubmissions: submissionStatus,
+          }, CACHE_TTL.HOME);
+          
+          log.debug('preload/league_data_complete', { userId: userId.slice(0, 8), gw: currentGw, leagueCount: Object.keys(leagueDataMap).length });
+        }
         
-        log.debug('preload/league_data_complete', { userId: userId.slice(0, 8), gw: currentGw, leagueCount: Object.keys(leagueDataMap).length });
+        // ═══════════════════════════════════════════════════════════════════════
+        // PRE-CACHE ML LIVE TABLE DATA for MiniLeagueGwTableCard
+        // ═══════════════════════════════════════════════════════════════════════
+        // MiniLeagueGwTableCard needs fixtures, picks, submissions, results for currentGw
+        // Pre-cache these so cards load instantly without individual fetches
+        // ═══════════════════════════════════════════════════════════════════════
+        try {
+          // Fetch fixtures for currentGw (for ML live tables)
+          const { data: mlFixtures, error: mlFixturesError } = await supabase
+            .from('app_fixtures')
+            .select('id, gw, fixture_index, home_name, away_name, home_team, away_team, home_code, away_code, kickoff_time, api_match_id')
+            .eq('gw', currentGw)
+            .order('fixture_index', { ascending: true });
+          
+          if (!mlFixturesError && mlFixtures) {
+            // Fetch results for currentGw
+            const { data: mlResults } = await supabase
+              .from('app_gw_results')
+              .select('gw, fixture_index, result')
+              .eq('gw', currentGw);
+            
+            // If picksByLeague is empty, we need to fetch picks (happens when league data was cached)
+            if (picksByLeague.size === 0) {
+              const picksPromises = leagues.map(async (league) => {
+                const memberIds = (membersByLeague[league.id] ?? []).map(m => m.id);
+                if (memberIds.length === 0) return { leagueId: league.id, picks: [] };
+                const { data } = await supabase
+                  .from("app_picks")
+                  .select("user_id, gw, fixture_index, pick")
+                  .eq("gw", currentGw)
+                  .in("user_id", memberIds);
+                return { leagueId: league.id, picks: (data ?? []) as Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }> };
+              });
+              const picksResults = await Promise.all(picksPromises);
+              picksResults.forEach(({ leagueId, picks }) => {
+                picksByLeague.set(leagueId, picks);
+              });
+            }
+            
+            // If submittedUserIds is empty, fetch submissions
+            if (submittedUserIds.size === 0) {
+              const { data: submissionsData } = await supabase
+                .from('app_gw_submissions')
+                .select('user_id')
+                .eq('gw', currentGw);
+              const allMemberIds = new Set(Object.values(membersByLeague).flat().map(m => m.id));
+              submittedUserIds = new Set((submissionsData ?? []).map((s: any) => s.user_id).filter((id: string) => allMemberIds.has(id)));
+            }
+            
+            // Cache ML live table data per league (fixtures, picks, submissions, results)
+            for (const league of leagues) {
+              const memberIds = (membersByLeague[league.id] ?? []).map(m => m.id);
+              if (memberIds.length === 0) continue;
+              
+              // Get picks for this league's members for currentGw
+              const leaguePicks = (picksByLeague.get(league.id) ?? []).filter(p => p.gw === currentGw);
+              
+              // Get submissions for this league's members for currentGw
+              const leagueSubmissions = Array.from(submittedUserIds).filter(id => memberIds.includes(id));
+              
+              // Cache per league so MiniLeagueGwTableCard can load instantly
+              const mlTableCacheKey = `ml_live_table:${league.id}:${currentGw}`;
+              setCached(mlTableCacheKey, {
+                fixtures: mlFixtures,
+                picks: leaguePicks,
+                submissions: leagueSubmissions,
+                results: mlResults ?? [],
+              }, CACHE_TTL.HOME);
+            }
+            
+            log.debug('preload/ml_live_table_data_cached', { 
+              userId: userId.slice(0, 8), 
+              gw: currentGw, 
+              leagueCount: leagues.length,
+              fixturesCount: mlFixtures.length 
+            });
+          }
+          
+          // Also pre-cache for last completed GW (in case displayGw is different)
+          if (latestGw && latestGw !== currentGw) {
+            const { data: lastGwFixtures } = await supabase
+              .from('app_fixtures')
+              .select('id, gw, fixture_index, home_name, away_name, home_team, away_team, home_code, away_code, kickoff_time, api_match_id')
+              .eq('gw', latestGw)
+              .order('fixture_index', { ascending: true });
+            
+            if (lastGwFixtures) {
+              const { data: lastGwResults } = await supabase
+                .from('app_gw_results')
+                .select('gw, fixture_index, result')
+                .eq('gw', latestGw);
+              
+              // Fetch picks for last completed GW
+              const lastGwPicksPromises = leagues.map(async (league) => {
+                const memberIds = (membersByLeague[league.id] ?? []).map(m => m.id);
+                if (memberIds.length === 0) return { leagueId: league.id, picks: [] };
+                const { data } = await supabase
+                  .from("app_picks")
+                  .select("user_id, gw, fixture_index, pick")
+                  .eq("gw", latestGw)
+                  .in("user_id", memberIds);
+                return { leagueId: league.id, picks: (data ?? []) as Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }> };
+              });
+              const lastGwPicksResults = await Promise.all(lastGwPicksPromises);
+              
+              // Fetch submissions for last completed GW
+              const { data: lastGwSubmissionsData } = await supabase
+                .from('app_gw_submissions')
+                .select('user_id')
+                .eq('gw', latestGw);
+              
+              const lastGwSubmittedUserIds = new Set((lastGwSubmissionsData ?? []).map((s: any) => s.user_id));
+              
+              // Cache per league for last completed GW
+              for (const league of leagues) {
+                const memberIds = (membersByLeague[league.id] ?? []).map(m => m.id);
+                if (memberIds.length === 0) continue;
+                
+                const lastGwPicks = lastGwPicksResults.find(r => r.leagueId === league.id)?.picks ?? [];
+                const lastGwSubmissions = Array.from(lastGwSubmittedUserIds).filter(id => memberIds.includes(id));
+                
+                const mlTableCacheKey = `ml_live_table:${league.id}:${latestGw}`;
+                setCached(mlTableCacheKey, {
+                  fixtures: lastGwFixtures,
+                  picks: lastGwPicks,
+                  submissions: lastGwSubmissions,
+                  results: lastGwResults ?? [],
+                }, CACHE_TTL.HOME);
+              }
+            }
+          }
+        } catch (mlError) {
+          console.warn('[Pre-loading] Failed to pre-cache ML live table data:', mlError);
+          // Non-critical - cards will fetch their own data
+        }
       } catch (error) {
         console.warn('[Pre-loading] Failed to pre-load league data:', error);
         // Non-critical - Home.tsx will fetch it when needed
       }
     })();
   }
+  
+  // Ensure ML live table data is cached before returning (critical for instant load)
+  // This is already handled above, but we wait for it here to ensure completion
   
   // ═══════════════════════════════════════════════════════════════════════
   // STEP 3: PRE-WARM TABLES PAGE CACHE (non-blocking)

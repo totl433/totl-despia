@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
+import { getCached } from '../lib/cache';
 import type { Fixture } from './FixtureCard';
 
 export interface MiniLeagueGwTableCardProps {
@@ -169,12 +170,61 @@ export default function MiniLeagueGwTableCard({
       return;
     }
 
+    // If members is empty, we can't fetch picks yet - show loading until members are available
+    if (!members || members.length === 0) {
+      setLoading(true);
+      return;
+    }
+
     let alive = true;
 
     async function fetchData() {
-      setLoading(true);
-      setError(null);
-
+      try {
+        // Check cache first - ML live table data pre-cached during initial load
+        const cacheKey = `ml_live_table:${leagueId}:${displayGw}`;
+        const cached = getCached<{
+          fixtures: Fixture[];
+          picks: PickRow[];
+          submissions: string[];
+          results: Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>;
+        }>(cacheKey);
+        
+        if (cached && cached.fixtures && cached.fixtures.length > 0) {
+          // INSTANT LOAD from cache!
+          setFixtures(cached.fixtures);
+          setPicks(cached.picks ?? []);
+          setResults(cached.results ?? []);
+          
+          // Create Set of submitted user IDs from cache
+          const submitted = new Set<string>(cached.submissions ?? []);
+          setSubmittedUserIds(submitted);
+          
+          setLoading(false);
+          
+          // Background refresh in case cache is stale (non-blocking, silent)
+          fetchDataFromDb(false).catch(() => {
+            // Silently fail - we already have cached data displayed
+          });
+          return;
+        }
+        
+        // Cache miss - fetch from DB
+        await fetchDataFromDb(true); // Set loading for cache miss
+      } catch (err: any) {
+        console.error('[MiniLeagueGwTableCard] Error fetching data:', err);
+        if (alive) {
+          setError(err?.message || 'Failed to load data');
+          setLoading(false);
+        }
+      }
+    }
+    
+    async function fetchDataFromDb(setLoadingState: boolean = true) {
+      if (setLoadingState) {
+        setLoading(true);
+        setError(null);
+      }
+      
       try {
         const { data: fixturesData, error: fixturesError } = await supabase
           .from('app_fixtures')
@@ -188,6 +238,12 @@ export default function MiniLeagueGwTableCard({
         setFixtures((fixturesData as Fixture[]) ?? []);
 
         const memberIds = members.map(m => m.id);
+        if (memberIds.length === 0) {
+          // No members yet - can't fetch picks
+          setLoading(false);
+          return;
+        }
+        
         const { data: picksData, error: picksError } = await supabase
           .from('app_picks')
           .select('user_id, gw, fixture_index, pick')

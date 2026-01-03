@@ -36,9 +36,14 @@ export function useGameweekState(gw: number | null | undefined, userId?: string 
     let liveScoresChannel: RealtimeChannel | null = null;
     let submissionsChannel: RealtimeChannel | null = null;
 
-    const checkState = async () => {
+    const checkState = async (isInitialCheck: boolean = false) => {
       if (!alive) return;
-      setLoading(true);
+      // Only show loading state if we don't have cached state yet (don't block on refresh)
+      const hasCachedState = state !== null;
+      const shouldShowLoading = !hasCachedState || !isInitialCheck;
+      if (shouldShowLoading) {
+        setLoading(true);
+      }
       setError(null);
       try {
         // Use user-specific state if userId is provided, otherwise use global state
@@ -54,13 +59,13 @@ export function useGameweekState(gw: number | null | undefined, userId?: string 
           setError(err.message || 'Failed to check gameweek state');
         }
       } finally {
-        if (alive) {
+        if (alive && shouldShowLoading) {
           setLoading(false);
         }
       }
     };
 
-    checkState();
+    checkState(true); // Initial check - don't block if we have cached state
 
     // Subscribe to app_gw_results changes
     resultsChannel = supabase

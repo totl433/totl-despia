@@ -48,7 +48,9 @@ export const Default: Story = {
         label: 'Help',
       },
     ],
-    onLogout: () => console.log('Logout clicked'),
+    onLogout: async () => {
+      console.log('Logout clicked');
+    },
   },
 };
 
@@ -72,7 +74,9 @@ export const LongEmail: Story = {
         label: 'Help',
       },
     ],
-    onLogout: () => console.log('Logout clicked'),
+    onLogout: async () => {
+      console.log('Logout clicked');
+    },
   },
 };
 

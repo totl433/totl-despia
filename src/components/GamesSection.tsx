@@ -48,7 +48,7 @@ export function GamesSection({
   onToggleLiveOnly: _onToggleLiveOnly,
   scoreComponent,
   fixturesLoading,
-  hasCheckedCache,
+  hasCheckedCache: _hasCheckedCache,
   currentGw,
   showPickButtons = true,
   userPicks = {},
@@ -668,9 +668,7 @@ export function GamesSection({
         showInfoIcon={false}
       >
         <div className="lg:-mt-2">
-        {(!hasCheckedCache || fixturesLoading) ? (
-          <div className="p-4 text-slate-500">Loading fixtures...</div>
-        ) : fixtures.length === 0 ? (
+        {fixtures.length === 0 ? (
           <div className="p-4 text-slate-500">No fixtures yet.</div>
         ) : fixtures.length > 0 ? (
           <>

@@ -219,8 +219,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user?.id, session?.access_token]);
 
   async function signOut() {
-    // Deactivate push subscription before signing out to prevent ghost notifications
-    // Wrap in try-catch to ensure logout always proceeds even if deactivation fails
     try {
       await deactivatePushSubscription(session);
     } catch (error) {
