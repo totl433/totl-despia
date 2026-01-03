@@ -461,6 +461,7 @@ function AppContent() {
           'onesignal_notification_data',
           'onesignal_last_notification',
           'OneSignal_notificationOpened',
+          'onesignal_notification',
         ];
         
         for (const key of storageKeys) {
@@ -474,7 +475,9 @@ function AppContent() {
               const leagueCode = data?.leagueCode || 
                                 data?.additionalData?.leagueCode || 
                                 data?.data?.leagueCode ||
-                                data?.notification?.additionalData?.leagueCode;
+                                data?.notification?.additionalData?.leagueCode ||
+                                data?.payload?.additionalData?.leagueCode ||
+                                data?.notification?.payload?.additionalData?.leagueCode;
               
               if (leagueCode) {
                 const leagueUrl = `/league/${leagueCode}?tab=chat`;
@@ -505,6 +508,49 @@ function AppContent() {
         }
       } catch (e) {
         console.warn('[DeepLink] Error checking storage:', e);
+      }
+      
+      // Method 5: Fallback - if we're on home page and no deep link found,
+      // check if there's a recent unread chat message and navigate to that league
+      // This handles the case where OneSignal doesn't set URL but we know a notification was just received
+      if ((currentPath === '/' || currentPath === '') && user?.id) {
+        // Only do this check once per session to avoid interfering with normal app usage
+        const lastFallbackCheck = sessionStorage.getItem('deepLink_fallback_checked');
+        if (!lastFallbackCheck) {
+          sessionStorage.setItem('deepLink_fallback_checked', 'true');
+          // Small delay to let leagues load, then check for unread messages
+          setTimeout(async () => {
+            try {
+              // Get user's leagues with unread messages
+              const { data: leagues } = await supabase
+                .from('league_members')
+                .select('leagues(code, name)')
+                .eq('user_id', user.id);
+              
+              if (leagues && leagues.length > 0) {
+                const leagueCodes = leagues.map((l: any) => l.leagues?.code).filter(Boolean);
+                if (leagueCodes.length > 0) {
+                  // Get most recent unread message
+                  const { data: recentMessage } = await supabase
+                    .from('league_messages')
+                    .select('league_id, leagues(code)')
+                    .in('league_id', leagues.map((l: any) => l.league_id))
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                  
+                  if (recentMessage?.leagues?.code) {
+                    const leagueUrl = `/league/${recentMessage.leagues.code}?tab=chat`;
+                    console.log('[DeepLink] Fallback: Navigating to league with recent message:', leagueUrl);
+                    navigate(leagueUrl, { replace: true });
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn('[DeepLink] Fallback check failed:', e);
+            }
+          }, 2000); // Wait 2 seconds for leagues to load
+        }
       }
       
       console.log('[DeepLink] No notification deep link found');

@@ -228,13 +228,25 @@ export const handler: Handler = async (event) => {
   // The web_url is used when the app is opened from a notification
 
   // 7) Send via OneSignal (only to subscribed Player IDs)
+  // For iOS native, we need both 'url' and 'web_url' fields
+  // Also put leagueCode prominently in data for easy access
   const payloadOS: Record<string, any> = {
     app_id: ONESIGNAL_APP_ID,
     include_player_ids: validPlayerIds,
     headings: { en: title },
     contents: { en: message },
-    url: leagueUrl,
-    data: { type: 'league_message', leagueId, leagueCode, senderId, url: leagueUrl },
+    url: leagueUrl, // For web/Android
+    web_url: leagueUrl, // For iOS native - some configs prefer this
+    data: { 
+      type: 'league_message', 
+      leagueId, 
+      leagueCode, // Make this easy to find
+      senderId, 
+      url: leagueUrl,
+      // Also add as top-level for easier access
+      leagueCode: leagueCode,
+      navigateTo: leagueUrl
+    },
   };
 
   try {
