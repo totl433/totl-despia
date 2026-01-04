@@ -226,26 +226,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     resetPushSessionState();
     
-    // Try to deactivate push subscription in background (don't wait)
-    deactivatePushSubscription(session).catch((error) => {
-      console.warn('[Auth] Push deactivation failed (non-blocking):', error);
-    });
-    
-    // Try Supabase signOut with timeout
+    // Clear Supabase session from localStorage directly (CRITICAL - prevents session restoration)
     try {
-      const signOutPromise = supabase.auth.signOut();
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Sign out timeout')), 1000)
-      );
-      await Promise.race([signOutPromise, timeoutPromise]);
-      console.log('[Auth] Sign out complete');
-    } catch (error) {
-      console.warn('[Auth] Sign out error (non-blocking):', error);
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+      if (supabaseUrl) {
+        const projectRef = supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
+        if (projectRef) {
+          // Clear all Supabase-related localStorage keys
+          const keysToRemove: string[] = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.includes('supabase') || key.includes(projectRef) || key.startsWith('sb-'))) {
+              keysToRemove.push(key);
+            }
+          }
+          keysToRemove.forEach(key => {
+            console.log('[Auth] Removing localStorage key:', key);
+            localStorage.removeItem(key);
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[Auth] Error clearing localStorage:', e);
     }
     
-    // Force redirect regardless of what happened
+    // Fire and forget - don't wait for anything
+    deactivatePushSubscription(session).catch(() => {});
+    supabase.auth.signOut().catch(() => {});
+    
+    // Use replace() and add a cache-busting query param to force fresh auth check
     console.log('[Auth] Force redirecting to /auth');
-    window.location.href = '/auth';
+    window.location.replace('/auth?logout=' + Date.now());
   }
 
   function dismissWelcome() {
