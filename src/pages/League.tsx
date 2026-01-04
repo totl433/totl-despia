@@ -1801,15 +1801,29 @@ ${shareUrl}`;
     const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     if (!isLocalDev) {
       setTimeout(async () => {
+        const logEntry: any = {
+          timestamp: new Date().toISOString(),
+          ok: false,
+          sent: 0,
+          error: 'Unknown error',
+        };
+        
         try {
           const senderName = user.user_metadata?.display_name || user.email || 'User';
+          console.log('[Chat] Calling notifyLeagueMessage...', { leagueId: league.id, senderId: user.id });
+          
           const response = await fetch('/.netlify/functions/notifyLeagueMessage', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ leagueId: league.id, senderId: user.id, senderName, content: text })
           });
           
-          const result = await response.json().catch(() => ({}));
+          console.log('[Chat] Response status:', response.status);
+          
+          const result = await response.json().catch((e) => {
+            console.error('[Chat] Failed to parse response:', e);
+            return { ok: false, error: 'Failed to parse response', httpStatus: response.status };
+          });
           
           // Log full response for debugging
           console.log('[Chat] Notification response:', result);
@@ -1817,25 +1831,17 @@ ${shareUrl}`;
             console.log('[Chat] Notification debug info:', result.debug);
           }
           
-          // Store in localStorage for AdminData diagnostic page
-          try {
-            const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
-            logs.push({
-              timestamp: new Date().toISOString(),
-              ok: result.ok,
-              sent: result.sent || 0,
-              message: result.message,
-              error: result.error,
-              debug: result.debug,
-              oneSignalErrors: result.oneSignalErrors,
-              fullResponse: result.fullResponse || result.result,
-            });
-            // Keep only last 50 logs
-            const recentLogs = logs.slice(-50);
-            localStorage.setItem('notification_logs', JSON.stringify(recentLogs));
-          } catch (e) {
-            // Ignore storage errors
-          }
+          // Update log entry with result
+          Object.assign(logEntry, {
+            ok: result.ok,
+            sent: result.sent || 0,
+            message: result.message,
+            error: result.error,
+            debug: result.debug,
+            oneSignalErrors: result.oneSignalErrors,
+            fullResponse: result.fullResponse || result.result,
+            httpStatus: response.status,
+          });
           
           // Set notification status based on response
           if (result.ok === true) {
@@ -1889,13 +1895,27 @@ ${shareUrl}`;
           
           // Clear status after 5 seconds
           setTimeout(() => setNotificationStatus(null), 5000);
-        } catch (err) {
+        } catch (err: any) {
           console.error('[Chat] Notification exception:', err);
+          logEntry.error = err?.message || String(err);
+          logEntry.exception = true;
           setNotificationStatus({
             message: '✗ Failed to send notification',
             type: 'error'
           });
           setTimeout(() => setNotificationStatus(null), 5000);
+        } finally {
+          // Always store log entry, even on error
+          try {
+            const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
+            logs.push(logEntry);
+            // Keep only last 50 logs
+            const recentLogs = logs.slice(-50);
+            localStorage.setItem('notification_logs', JSON.stringify(recentLogs));
+            console.log('[Chat] Logged notification attempt to localStorage');
+          } catch (e) {
+            console.error('[Chat] Failed to store notification log:', e);
+          }
         }
       }, 100);
     }
