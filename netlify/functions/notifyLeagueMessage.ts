@@ -14,6 +14,23 @@ export const handler: Handler = async (event) => {
   const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
   const ONESIGNAL_APP_ID = (process.env.ONESIGNAL_APP_ID || '').trim();
   const ONESIGNAL_REST_API_KEY = (process.env.ONESIGNAL_REST_API_KEY || '').trim();
+  
+  // Get base URL for constructing full deep link URLs (OneSignal requires full URLs)
+  // Try to get from event headers, fallback to environment variable or default
+  const getBaseUrl = () => {
+    // Try to extract from event headers
+    if (event.headers.host) {
+      const protocol = event.headers['x-forwarded-proto'] || 'https';
+      return `${protocol}://${event.headers.host}`;
+    }
+    // Fallback to environment variable
+    if (process.env.URL || process.env.SITE_URL) {
+      return (process.env.URL || process.env.SITE_URL || '').trim();
+    }
+    // Default fallback (shouldn't happen in production)
+    return 'https://totl-staging.netlify.app';
+  };
+  const baseUrl = getBaseUrl();
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
     return json(500, { error: 'Missing Supabase environment variables' });
@@ -64,7 +81,8 @@ export const handler: Handler = async (event) => {
       // Don't fail the notification, but log the error
     } else if (leagueData?.code) {
       leagueCode = leagueData.code;
-      leagueUrl = `/league/${leagueCode}?tab=chat`;
+      // Construct full URL (OneSignal requires http:// or https://)
+      leagueUrl = `${baseUrl}/league/${leagueCode}?tab=chat`;
     } else {
       console.warn('[notifyLeagueMessage] League code not found for leagueId:', leagueId);
     }
@@ -137,8 +155,8 @@ export const handler: Handler = async (event) => {
   if (leagueUrl) {
     oneSignalPayload.web_url = leagueUrl;
   } else if (leagueCode) {
-    // Fallback: construct URL from code if leagueUrl wasn't set
-    const fallbackUrl = `/league/${leagueCode}?tab=chat`;
+    // Fallback: construct full URL from code if leagueUrl wasn't set
+    const fallbackUrl = `${baseUrl}/league/${leagueCode}?tab=chat`;
     oneSignalPayload.web_url = fallbackUrl;
   }
 
