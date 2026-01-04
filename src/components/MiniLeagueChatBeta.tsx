@@ -772,6 +772,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
             senderId: user.id,
             senderName,
             content: text,
+            activeUserIds: [user.id], // Exclude yourself from notifications when you're actively in chat
           }),
         });
 
