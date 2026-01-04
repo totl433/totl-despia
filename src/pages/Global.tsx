@@ -1091,16 +1091,16 @@ export default function GlobalLeaderboardPage() {
                     }
                   }
 
-                  // Highlight entire row for current user
-                  const rowBgColor = isMe ? '#ecfdf5' : '#f8fafc';
-                  const rowHoverBgColor = isMe ? '#d1fae5' : 'rgb(241 245 249)';
+                  // Highlight entire row for current user - make it very obvious
+                  const rowBgColor = isMe ? '#d1fae5' : '#f8fafc';
+                  const rowHoverBgColor = isMe ? '#a7f3d0' : 'rgb(241 245 249)';
                   
                   return (
                     <tr 
                       key={r.user_id}
                       ref={isMe ? userRowRef : null}
                       onClick={() => handleUserClick(r.user_id, r.name)}
-                      className={`transition-colors cursor-pointer ${isMe ? 'border-l-4 border-emerald-500' : ''}`}
+                      className={`transition-colors cursor-pointer ${isMe ? 'border-l-4 border-emerald-600 shadow-sm' : ''}`}
                       style={{
                         ...(i > 0 ? { 
                           borderTop: '1px solid #e2e8f0',
@@ -1109,10 +1109,12 @@ export default function GlobalLeaderboardPage() {
                         } : { position: 'relative', backgroundColor: rowBgColor })
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = rowHoverBgColor;
-                        Array.from(e.currentTarget.children).forEach((td: any) => {
-                          td.style.backgroundColor = rowHoverBgColor;
-                        });
+                        if (!isMe) {
+                          e.currentTarget.style.backgroundColor = rowHoverBgColor;
+                          Array.from(e.currentTarget.children).forEach((td: any) => {
+                            td.style.backgroundColor = rowHoverBgColor;
+                          });
+                        }
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.backgroundColor = rowBgColor;
@@ -1151,7 +1153,7 @@ export default function GlobalLeaderboardPage() {
                               </svg>
                             </span>
                           )}
-                          <span className={`font-normal text-sm truncate min-w-0 whitespace-nowrap ${isMe ? 'font-semibold' : ''}`} style={{ color: 'rgb(0, 0, 0)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <span className={`text-sm truncate min-w-0 whitespace-nowrap ${isMe ? 'font-bold text-emerald-900' : 'font-normal'}`} style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {r.name}
                           </span>
                         </div>
