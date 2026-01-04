@@ -48,19 +48,22 @@ export const handler: Handler = async (event) => {
 
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // Get league code for deep linking
-  const { data: leagueData, error: leagueErr } = await admin
-    .from('leagues')
-    .select('code')
-    .eq('id', leagueId)
-    .single();
-  
-  if (leagueErr || !leagueData?.code) {
-    return json(500, { error: 'Failed to load league' });
+  // Try to get league code for deep linking (optional - don't fail if it doesn't work)
+  let leagueCode: string | undefined;
+  let leagueUrl: string | undefined;
+  try {
+    const { data: leagueData } = await admin
+      .from('leagues')
+      .select('code')
+      .eq('id', leagueId)
+      .single();
+    if (leagueData?.code) {
+      leagueCode = leagueData.code;
+      leagueUrl = `/league/${leagueCode}?tab=chat&leagueCode=${leagueCode}`;
+    }
+  } catch {
+    // Ignore - deep linking is optional
   }
-  
-  const leagueCode = leagueData.code;
-  const leagueUrl = `/league/${leagueCode}?tab=chat&leagueCode=${leagueCode}`;
 
   // Get current league members
   const { data: members, error: memErr } = await admin
@@ -130,9 +133,9 @@ export const handler: Handler = async (event) => {
           data: {
             type: 'league_message',
             leagueId,
-            leagueCode,
             senderId,
-            url: leagueUrl,
+            ...(leagueCode && { leagueCode }),
+            ...(leagueUrl && { url: leagueUrl }),
           },
         }),
       });
