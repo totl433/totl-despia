@@ -56,6 +56,43 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   const [reactions, setReactions] = useState<Record<string, Array<{ emoji: string; count: number; hasUserReacted: boolean }>>>({});
   const [replyingTo, setReplyingTo] = useState<{ id: string; content: string; authorName?: string } | null>(null);
   const [uiErrors, setUiErrors] = useState<Array<{ id: string; message: string; timestamp: number }>>([]);
+  
+  // Track presence: mark user as active in chat to suppress notifications
+  useEffect(() => {
+    if (!miniLeagueId || !user?.id) return;
+    
+    // Update presence every 10 seconds while user is viewing chat
+    const updatePresence = async () => {
+      try {
+        const { error } = await supabase
+          .from('chat_presence')
+          .upsert({
+            league_id: miniLeagueId,
+            user_id: user.id,
+            last_seen: new Date().toISOString(),
+          }, {
+            onConflict: 'league_id,user_id'
+          });
+        if (error) {
+          console.error('[MiniLeagueChatBeta] Failed to update presence:', error);
+        }
+      } catch (err) {
+        // Silently fail - presence is best effort
+        console.error('[MiniLeagueChatBeta] Failed to update presence:', err);
+      }
+    };
+    
+    // Update immediately and then every 10 seconds
+    updatePresence();
+    const interval = setInterval(updatePresence, 10000);
+    
+    // Cleanup: remove presence when component unmounts or user leaves
+    return () => {
+      clearInterval(interval);
+      // Note: We don't delete the presence record here because the notification function
+      // will filter by last_seen timestamp (only exclude if seen in last 30 seconds)
+    };
+  }, [miniLeagueId, user?.id]);
   // Force re-render when memberNames loads by tracking a version
   const [memberNamesVersion, setMemberNamesVersion] = useState(0);
   const listRef = useRef<HTMLDivElement | null>(null);

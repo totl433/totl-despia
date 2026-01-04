@@ -116,6 +116,20 @@ export const handler: Handler = async (event) => {
     for (const uid of activeUserIds) recipientIds.delete(uid);
   }
 
+  // Also exclude users who are actively viewing the chat (presence tracking)
+  // Users are considered "active" if they've been seen in the last 30 seconds
+  const { data: activeViewers, error: presenceErr } = await admin
+    .from('chat_presence')
+    .select('user_id')
+    .eq('league_id', leagueId)
+    .gte('last_seen', new Date(Date.now() - 30000).toISOString()); // Last 30 seconds
+  
+  if (!presenceErr && activeViewers) {
+    for (const viewer of activeViewers) {
+      recipientIds.delete(viewer.user_id);
+    }
+  }
+
   if (recipientIds.size === 0) return json(200, { ok: true, message: 'No eligible recipients' });
 
   // Resolve player IDs
