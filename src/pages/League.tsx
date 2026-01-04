@@ -1799,139 +1799,38 @@ ${shareUrl}`;
     // Request push notifications to league members (exclude sender)
     // Skip in local development (Netlify Functions not available)
     const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    console.log('[Chat] Notification check - isLocalDev:', isLocalDev, 'hostname:', window.location.hostname);
     
     if (!isLocalDev && inserted) {
       // Only send notification if message was successfully inserted
-      console.log('[Chat] Message inserted successfully, calling notifyLeagueMessage...');
       setTimeout(async () => {
-        const logEntry: any = {
-          timestamp: new Date().toISOString(),
-          ok: false,
-          sent: 0,
-          error: 'Unknown error',
-          leagueId: league.id,
-          senderId: user.id,
-        };
-        
         try {
           const senderName = user.user_metadata?.display_name || user.email || 'User';
-          console.log('[Chat] Calling notifyLeagueMessage...', { leagueId: league.id, senderId: user.id });
-          
           const response = await fetch('/.netlify/functions/notifyLeagueMessage', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ leagueId: league.id, senderId: user.id, senderName, content: text })
           });
           
-          console.log('[Chat] Response status:', response.status);
+          const result = await response.json().catch(() => ({}));
           
-          const result = await response.json().catch((e) => {
-            console.error('[Chat] Failed to parse response:', e);
-            return { ok: false, error: 'Failed to parse response', httpStatus: response.status };
-          });
-          
-          // Log full response for debugging
-          console.log('[Chat] Notification response:', result);
-          if (result.debug) {
-            console.log('[Chat] Notification debug info:', result.debug);
-          }
-          
-          // Update log entry with result
-          Object.assign(logEntry, {
-            ok: result.ok,
-            sent: result.sent || 0,
-            message: result.message,
-            error: result.error,
-            debug: result.debug,
-            oneSignalErrors: result.oneSignalErrors,
-            fullResponse: result.fullResponse || result.result,
-            httpStatus: response.status,
-          });
-          
-          // Set notification status based on response
-          if (result.ok === true) {
-            if (result.sent && result.sent > 0) {
-              setNotificationStatus({
-                message: `✓ Sent to ${result.sent} device${result.sent === 1 ? '' : 's'}`,
-                type: 'success'
-              });
-            } else if (result.message === 'No subscribed devices') {
-              const debug = result.debug || {};
-              setNotificationStatus({
-                message: `⚠️ No subscribed devices (${debug.eligibleRecipients || result.eligibleRecipients || 0} eligible, ${debug.playerIdsSent || 0} player IDs sent)`,
-                type: 'warning'
-              });
-            } else if (result.message === 'No devices') {
-              const debug = result.debug || {};
-              setNotificationStatus({
-                message: `⚠️ No devices (${debug.eligibleRecipients || result.eligibleRecipients || 0} eligible, ${debug.subscriptionsInDb || 0} in DB)`,
-                type: 'warning'
-              });
-            } else if (result.message === 'No eligible recipients') {
-              setNotificationStatus({
-                message: '✓ All members are currently active',
-                type: 'success'
-              });
-            } else {
-              const debug = result.debug || {};
-              const detail = debug.oneSignalRecipients !== undefined 
-                ? ` (${debug.playerIdsSent || 0} player IDs → ${debug.oneSignalRecipients || 0} delivered)`
-                : '';
-              setNotificationStatus({
-                message: `✓ ${result.message || 'Notification sent'}${detail}`,
-                type: 'success'
-              });
-            }
+          // Set simple notification status
+          if (result.ok === true && result.sent > 0) {
+            setNotificationStatus({
+              message: `✓ Sent to ${result.sent} device${result.sent === 1 ? '' : 's'}`,
+              type: 'success'
+            });
           } else if (result.ok === false || result.error) {
-            const errorDetail = result.oneSignalErrors 
-              ? ` OneSignal: ${JSON.stringify(result.oneSignalErrors)}`
-              : '';
-            const debugInfo = result.debug ? ` (Debug: ${JSON.stringify(result.debug).slice(0, 100)}...)` : '';
             setNotificationStatus({
-              message: `✗ Failed: ${result.error || 'Unknown error'}${errorDetail}${debugInfo}`,
-              type: 'error'
-            });
-          } else if (!response.ok) {
-            setNotificationStatus({
-              message: `✗ Notification error (HTTP ${response.status})`,
+              message: '✗ Failed to send notification',
               type: 'error'
             });
           }
           
-          // Clear status after 5 seconds
-          setTimeout(() => setNotificationStatus(null), 5000);
-        } catch (err: any) {
-          console.error('[Chat] Notification exception:', err);
-          logEntry.error = err?.message || String(err);
-          logEntry.exception = true;
-          setNotificationStatus({
-            message: '✗ Failed to send notification',
-            type: 'error'
-          });
-          setTimeout(() => setNotificationStatus(null), 5000);
-        } finally {
-          // Always store log entry, even on error
-          try {
-            const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
-            logs.push(logEntry);
-            // Keep only last 50 logs
-            const recentLogs = logs.slice(-50);
-            localStorage.setItem('notification_logs', JSON.stringify(recentLogs));
-            console.log('[Chat] Logged notification attempt to localStorage:', logEntry);
-          } catch (e) {
-            console.error('[Chat] Failed to store notification log:', e);
-            // If localStorage fails, at least show error in console
-            console.error('[Chat] Notification log entry that failed to save:', logEntry);
-          }
+          setTimeout(() => setNotificationStatus(null), 3000);
+        } catch (err) {
+          console.error('[Chat] Notification error:', err);
         }
       }, 100);
-    } else if (isLocalDev) {
-      // In local dev, still log that we skipped it
-      console.log('[Chat] Skipping notification (local dev mode)');
-    } else if (!inserted) {
-      // Message insertion failed, can't send notification
-      console.log('[Chat] Skipping notification (message insertion failed)');
     }
   }, [league, user, newMsg, setNewMsg, setChat, setNotificationStatus]);
 

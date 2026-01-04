@@ -62,26 +62,6 @@ function AppShell() {
     // Update URL immediately before React Router sees it
     const targetUrl = `/league/${leagueCode}?tab=chat`;
     window.history.replaceState(null, '', targetUrl);
-    
-    // Store debug info for AdminData page
-    try {
-      localStorage.setItem('deepLink_debug', JSON.stringify({
-        method: 'AppShell_sync',
-        originalUrl: window.location.href,
-        leagueCode,
-        targetUrl,
-        timestamp: new Date().toISOString()
-      }));
-      localStorage.setItem('deepLink_result', JSON.stringify({
-        success: true,
-        method: 'AppShell_sync',
-        leagueCode,
-        targetUrl,
-        timestamp: new Date().toISOString()
-      }));
-    } catch (e) {
-      // Ignore storage errors
-    }
   }
   
   return (
@@ -98,34 +78,13 @@ function AppContent() {
   const [initialDataLoading, setInitialDataLoading] = useState(false);
   
   // Handle deep links from notifications (iOS native)
-  // Check URL immediately (AppShell already updated window.location, but double-check here)
+  // Check URL immediately - AppShell already updated window.location, but ensure React Router sees it
   useLayoutEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const leagueCode = searchParams.get('leagueCode');
     
     if (leagueCode && !location.pathname.startsWith('/league/')) {
-      const targetUrl = `/league/${leagueCode}?tab=chat`;
-      navigate(targetUrl, { replace: true });
-      
-      // Store debug info if AppShell didn't catch it
-      try {
-        localStorage.setItem('deepLink_debug', JSON.stringify({
-          method: 'useLayoutEffect',
-          originalPath: location.pathname,
-          leagueCode,
-          targetUrl,
-          timestamp: new Date().toISOString()
-        }));
-        localStorage.setItem('deepLink_result', JSON.stringify({
-          success: true,
-          method: 'useLayoutEffect',
-          leagueCode,
-          targetUrl,
-          timestamp: new Date().toISOString()
-        }));
-      } catch (e) {
-        // Ignore storage errors
-      }
+      navigate(`/league/${leagueCode}?tab=chat`, { replace: true });
     }
   }, [navigate, location.pathname]);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);

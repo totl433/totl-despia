@@ -49,21 +49,27 @@ export const handler: Handler = async (event) => {
 
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // Try to get league code for deep linking (optional - don't fail if it doesn't work)
+  // Get league code for deep linking (REQUIRED for notifications to work)
   let leagueCode: string | undefined;
   let leagueUrl: string | undefined;
   try {
-    const { data: leagueData } = await admin
+    const { data: leagueData, error: leagueErr } = await admin
       .from('leagues')
       .select('code')
       .eq('id', leagueId)
       .single();
-    if (leagueData?.code) {
+    
+    if (leagueErr) {
+      console.error('[notifyLeagueMessage] Failed to load league code:', leagueErr);
+      // Don't fail the notification, but log the error
+    } else if (leagueData?.code) {
       leagueCode = leagueData.code;
-      leagueUrl = `/league/${leagueCode}?tab=chat&leagueCode=${leagueCode}`;
+      leagueUrl = `/league/${leagueCode}?tab=chat`;
+    } else {
+      console.warn('[notifyLeagueMessage] League code not found for leagueId:', leagueId);
     }
-  } catch {
-    // Ignore - deep linking is optional
+  } catch (e) {
+    console.error('[notifyLeagueMessage] Error getting league code:', e);
   }
 
   // Get current league members
@@ -112,6 +118,32 @@ export const handler: Handler = async (event) => {
   const title = senderName || 'New message';
   const message = String(content).slice(0, 180);
 
+  // Build OneSignal payload with deep link URL
+  // iOS requires url and web_url at top level for deep linking
+  const payload: Record<string, any> = {
+    app_id: ONESIGNAL_APP_ID,
+    include_player_ids: playerIds,
+    headings: { en: title },
+    contents: { en: message },
+    data: {
+      type: 'league_message',
+      leagueId,
+      senderId,
+      ...(leagueCode && { leagueCode }),
+    },
+  };
+  
+  // Add URL for deep linking (iOS needs both url and web_url)
+  if (leagueUrl) {
+    payload.url = leagueUrl;
+    payload.web_url = leagueUrl;
+  } else if (leagueCode) {
+    // Fallback: construct URL from code if leagueUrl wasn't set
+    const fallbackUrl = `/league/${leagueCode}?tab=chat`;
+    payload.url = fallbackUrl;
+    payload.web_url = fallbackUrl;
+  }
+
   // Try endpoints and headers similar to original working version
   const isV2 = ONESIGNAL_REST_API_KEY.startsWith('os_');
   const endpoints = isV2
@@ -127,19 +159,7 @@ export const handler: Handler = async (event) => {
       const resp = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': auth },
-        body: JSON.stringify({
-          app_id: ONESIGNAL_APP_ID,
-          include_player_ids: playerIds,
-          headings: { en: title },
-          contents: { en: message },
-          data: {
-            type: 'league_message',
-            leagueId,
-            senderId,
-            ...(leagueCode && { leagueCode }),
-            ...(leagueUrl && { url: leagueUrl }),
-          },
-        }),
+        body: JSON.stringify(payload),
       });
       const body = await resp.json().catch(() => ({}));
       lastResp = { endpoint, auth, status: resp.status, body };
