@@ -107,34 +107,50 @@ export const handler: Handler = async (event) => {
   const title = senderName || 'New message';
   const message = String(content).slice(0, 180);
 
-  // Send via OneSignal - use the working endpoint and auth method
-  const resp = await fetch('https://onesignal.com/api/v1/notifications', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Basic ${ONESIGNAL_REST_API_KEY}`,
-    },
-    body: JSON.stringify({
-      app_id: ONESIGNAL_APP_ID,
-      include_player_ids: playerIds,
-      headings: { en: title },
-      contents: { en: message },
-      url: leagueUrl,
-      web_url: leagueUrl,
-      data: {
-        type: 'league_message',
-        leagueId,
-        leagueCode,
-        senderId,
-        url: leagueUrl,
-      },
-    }),
-  });
+  // Try endpoints and headers similar to original working version
+  const isV2 = ONESIGNAL_REST_API_KEY.startsWith('os_');
+  const endpoints = isV2
+    ? ['https://api.onesignal.com/notifications', 'https://onesignal.com/api/v1/notifications']
+    : ['https://onesignal.com/api/v1/notifications', 'https://api.onesignal.com/notifications'];
+  const headersList = isV2
+    ? [`Bearer ${ONESIGNAL_REST_API_KEY}`, ONESIGNAL_REST_API_KEY, `Basic ${ONESIGNAL_REST_API_KEY}`]
+    : [`Basic ${ONESIGNAL_REST_API_KEY}`, `Bearer ${ONESIGNAL_REST_API_KEY}`, ONESIGNAL_REST_API_KEY];
 
-  const body = await resp.json().catch(() => ({}));
-  if (!resp.ok) {
-    return json(resp.status, { error: 'OneSignal error', details: body });
+  let lastResp: any = null;
+  for (const endpoint of endpoints) {
+    for (const auth of headersList) {
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': auth },
+        body: JSON.stringify({
+          app_id: ONESIGNAL_APP_ID,
+          include_player_ids: playerIds,
+          headings: { en: title },
+          contents: { en: message },
+          data: {
+            type: 'league_message',
+            leagueId,
+            leagueCode,
+            senderId,
+            url: leagueUrl,
+          },
+        }),
+      });
+      const body = await resp.json().catch(() => ({}));
+      lastResp = { endpoint, auth, status: resp.status, body };
+      
+      if (resp.ok) {
+        // Check for errors in response body (OneSignal can return 200 with errors)
+        if (body.errors && Array.isArray(body.errors) && body.errors.length > 0) {
+          // Try next auth/endpoint combination
+          if (![401, 403].includes(resp.status)) break;
+          continue;
+        }
+        return json(200, { ok: true, result: body, sent: body.recipients || playerIds.length });
+      }
+      if (![401, 403].includes(resp.status)) break;
+    }
   }
-
-  return json(200, { ok: true, result: body, sent: playerIds.length });
+  
+  return json(200, { ok: false, error: 'OneSignal error', details: lastResp });
 };
