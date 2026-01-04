@@ -39,17 +39,20 @@ export const AccountMenu = React.memo(function AccountMenu({
 
       {/* Sign Out Button */}
       <button
-        onClick={async (e) => {
+        onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          console.log('[AccountMenu] Logout button clicked');
-          try {
-            await onLogout();
-          } catch (error) {
-            console.error('[AccountMenu] Logout error:', error);
-            // Force reload if logout fails
+          console.log('[AccountMenu] Logout button clicked - forcing immediate logout');
+          // Call logout but don't wait - force redirect immediately
+          onLogout().catch(() => {
+            // If logout fails, still redirect
             window.location.href = '/auth';
-          }
+          });
+          // Also set a backup redirect in case onLogout hangs
+          setTimeout(() => {
+            console.log('[AccountMenu] Backup redirect triggered');
+            window.location.href = '/auth';
+          }, 500);
         }}
         className="w-full mt-6 py-3 text-red-600 font-semibold underline"
       >

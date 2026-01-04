@@ -220,33 +220,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signOut() {
     console.log('[Auth] Sign out initiated');
-    try {
-      // Try to deactivate push subscription, but don't block logout if it fails
-      const deactivatePromise = deactivatePushSubscription(session).catch((error) => {
-        console.warn('[Auth] Push deactivation failed during logout, continuing with logout:', error);
-      });
-      
-      // Set a timeout to prevent hanging
-      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 2000));
-      await Promise.race([deactivatePromise, timeoutPromise]);
-    } catch (error) {
-      console.warn('[Auth] Push deactivation error (non-blocking):', error);
-    }
     
+    // Immediately clear local state
+    setSession(null);
+    setUser(null);
     resetPushSessionState();
     
+    // Try to deactivate push subscription in background (don't wait)
+    deactivatePushSubscription(session).catch((error) => {
+      console.warn('[Auth] Push deactivation failed (non-blocking):', error);
+    });
+    
+    // Try Supabase signOut with timeout
     try {
-      console.log('[Auth] Calling supabase.auth.signOut()');
-      await supabase.auth.signOut();
+      const signOutPromise = supabase.auth.signOut();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Sign out timeout')), 1000)
+      );
+      await Promise.race([signOutPromise, timeoutPromise]);
       console.log('[Auth] Sign out complete');
     } catch (error) {
-      console.error('[Auth] Sign out failed:', error);
-      // Force clear local state even if Supabase signOut fails
-      setSession(null);
-      setUser(null);
-      // Reload page to force full reset
-      window.location.href = '/auth';
+      console.warn('[Auth] Sign out error (non-blocking):', error);
     }
+    
+    // Force redirect regardless of what happened
+    console.log('[Auth] Force redirecting to /auth');
+    window.location.href = '/auth';
   }
 
   function dismissWelcome() {

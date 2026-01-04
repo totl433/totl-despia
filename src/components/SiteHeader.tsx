@@ -52,17 +52,20 @@ export default function SiteHeader() {
             
             {/* Logout button */}
             <button
-              onClick={async (e) => {
+              onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log('[SiteHeader] Sign out button clicked');
-                try {
-                  await signOut();
-                } catch (error) {
-                  console.error('[SiteHeader] Sign out error:', error);
-                  // Force reload if sign out fails
+                console.log('[SiteHeader] Sign out button clicked - forcing immediate logout');
+                // Call signOut but don't wait - force redirect immediately
+                signOut().catch(() => {
+                  // If signOut fails, still redirect
                   window.location.href = '/auth';
-                }
+                });
+                // Also set a backup redirect in case signOut hangs
+                setTimeout(() => {
+                  console.log('[SiteHeader] Backup redirect triggered');
+                  window.location.href = '/auth';
+                }, 500);
               }}
               className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-md text-white text-sm font-medium transition-colors"
             >
