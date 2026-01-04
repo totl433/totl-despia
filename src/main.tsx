@@ -64,6 +64,17 @@ function AppShell() {
     window.history.replaceState(null, '', targetUrl);
   }
   
+  // Also handle direct league URLs with tab=chat (from OneSignal web_url)
+  // Ensure the URL is preserved correctly
+  const pathMatch = window.location.pathname.match(/^\/league\/([^/]+)$/);
+  if (pathMatch) {
+    const tab = searchParams.get('tab');
+    if (tab === 'chat') {
+      // URL is already correct, just ensure it stays that way
+      // React Router will handle it
+    }
+  }
+  
   return (
     <BrowserRouter>
       <AppContent />
@@ -86,9 +97,19 @@ function AppContent() {
     // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat)
     if (leagueCode && !location.pathname.startsWith('/league/')) {
       navigate(`/league/${leagueCode}?tab=chat`, { replace: true });
+      return;
     }
-    // For direct URLs like /league/ABC12?tab=chat, React Router handles it automatically
-  }, [navigate, location.pathname]);
+    
+    // For direct URLs like /league/ABC12?tab=chat, ensure React Router processes it
+    // The League page will handle opening the chat tab based on the tab=chat param
+    if (location.pathname.startsWith('/league/')) {
+      const tab = searchParams.get('tab');
+      if (tab === 'chat') {
+        // URL is correct, League page will handle opening chat tab
+        // No navigation needed - React Router already matched the route
+      }
+    }
+  }, [navigate, location.pathname, location.search]);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [maxLoadingTimeout, setMaxLoadingTimeout] = useState(false);
   const [isSwipeMode, setIsSwipeMode] = useState(false);
