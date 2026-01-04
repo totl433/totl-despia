@@ -540,17 +540,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       return [];
     }
     
-    // Debug: log memberNames state
-    console.log('[chatGroups] Computing with memberNames:', memberNames instanceof Map ? `Map(${memberNames.size})` : memberNames ? `Record(${Object.keys(memberNames).length})` : 'null/undefined');
-    if (memberNames instanceof Map) {
-      const memberKeys = Array.from(memberNames.keys());
-      console.log('[chatGroups] memberNames keys:', memberKeys);
-      // Log the actual name values
-      memberKeys.forEach(key => {
-        const name = memberNames.get(key);
-        console.log(`[chatGroups] memberNames[${key}] = "${name}"`);
-      });
-    }
     
     // Build groups immutably using reduce to avoid mutation issues
     let lastDayKey: string | null = null;
@@ -559,19 +548,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       const resolvedName = resolveName(msg.user_id, memberNames);
       const authorName = resolvedName || (isOwnMessage ? currentUserDisplayName : "");
       const fallbackName = authorName || (isOwnMessage ? "You" : "Unknown");
-      
-      // Debug: log name resolution for first few messages
-      if (messages.indexOf(msg) < 5) {
-        const hasKey = memberNames instanceof Map ? memberNames.has(msg.user_id) : memberNames ? msg.user_id in memberNames : false;
-        const mapValue = memberNames instanceof Map ? memberNames.get(msg.user_id) : memberNames ? memberNames[msg.user_id] : undefined;
-        console.log(`[chatGroups] Message ${messages.indexOf(msg)}: user_id=${msg.user_id}, hasKey=${hasKey}, mapValue="${mapValue}", resolvedName="${resolvedName}", fallbackName="${fallbackName}"`);
-      }
-      
-      // Debug: log if we can't resolve a name
-      if (!resolvedName && !isOwnMessage && memberNames) {
-        const hasKey = memberNames instanceof Map ? memberNames.has(msg.user_id) : msg.user_id in memberNames;
-        console.warn('[chatGroups] Could not resolve name for user_id:', msg.user_id, 'memberNames has this key?', hasKey, 'resolvedName:', resolvedName, 'authorName:', authorName, 'fallbackName:', fallbackName);
-      }
       
       const avatarInitials = !isOwnMessage ? initials(fallbackName) : undefined;
 
@@ -582,36 +558,10 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         lastDayKey = dayKey;
       }
 
-      // Debug: log ALL messages with reply_to to see their structure
-      if (msg.reply_to) {
-        console.log('[chatGroups] Message', msg.id, 'has reply_to:', {
-          id: msg.reply_to.id,
-          content: msg.reply_to.content,
-          user_id: msg.reply_to.user_id,
-          author_name: msg.reply_to.author_name,
-          full_reply_to: msg.reply_to,
-        });
-      }
-      
       // Resolve reply author name
       const replyAuthorName = msg.reply_to 
         ? (resolveName(msg.reply_to.user_id, memberNames) || "Unknown")
         : null;
-      
-      // Debug: log if reply author is "Unknown" but memberNames is available
-      if (msg.reply_to && replyAuthorName === "Unknown") {
-        const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
-        const hasKey = memberNames instanceof Map 
-          ? memberNames.has(msg.reply_to.user_id)
-          : memberNames 
-            ? msg.reply_to.user_id in memberNames 
-            : false;
-        console.warn('[chatGroups] Reply author is "Unknown" for message', msg.id, 'reply_to.user_id:', msg.reply_to.user_id, 'hasMemberNames:', hasMemberNames, 'hasKey:', hasKey, 'reply_to object:', msg.reply_to);
-        if (hasKey && memberNames) {
-          const resolved = resolveName(msg.reply_to.user_id, memberNames);
-          console.warn('[chatGroups] Resolved name should be:', resolved, 'but got "Unknown"');
-        }
-      }
 
       const messagePayload = {
         id: msg.id,
@@ -686,7 +636,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     // Return a new array reference to ensure React detects changes
     // Also ensure all groups have the correct author name (in case memberNames loaded after groups were created)
     // Create a completely new array to ensure React detects changes
-    const finalGroups: ChatThreadProps["groups"] = groups.map((group, idx) => {
+    const finalGroups: ChatThreadProps["groups"] = groups.map((group) => {
       // Always create a new object to ensure React detects changes
       const baseGroup = { ...group };
       
@@ -696,7 +646,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         if (originalMsg?.reply_to && msg.replyTo) {
           const updatedReplyAuthorName = resolveName(originalMsg.reply_to.user_id, memberNames) || "Unknown";
           if (updatedReplyAuthorName !== msg.replyTo.authorName) {
-            console.log('[chatGroups] POST-PROCESSING: Updating replyTo.authorName for message', msg.messageId, 'from', msg.replyTo.authorName, 'to', updatedReplyAuthorName);
             return {
               ...msg,
               replyTo: {
@@ -715,7 +664,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         if (firstMessage) {
           const resolvedName = resolveName(firstMessage.user_id, memberNames);
           if (resolvedName && resolvedName !== "Unknown") {
-            console.log('[chatGroups] POST-PROCESSING: Resolving "Unknown" to:', resolvedName, 'for user_id:', firstMessage.user_id, 'group.id:', baseGroup.id, 'group index:', idx);
             // Extract the base message ID from the group ID (handle both formats: "msg-id" and "msg-id-Unknown")
             const baseId = baseGroup.id.includes('-') ? baseGroup.id.split('-')[0] : baseGroup.id;
             return {
@@ -726,14 +674,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
               userId: firstMessage.user_id, // Preserve userId
               messages: updatedMessages, // Use updated messages with refreshed replyTo.authorName
             };
-          } else {
-            console.log('[chatGroups] POST-PROCESSING: Could not resolve "Unknown" for group', idx, 'user_id:', firstMessage.user_id, 'resolvedName:', resolvedName);
           }
-        } else {
-          console.log('[chatGroups] POST-PROCESSING: Could not find first message for group', idx, 'messageId:', baseGroup.messages[0]?.messageId);
         }
-      } else if (baseGroup.author === "Unknown") {
-        console.log('[chatGroups] POST-PROCESSING: Group', idx, 'has "Unknown" author but no messages');
       }
       
       // Always return a new object with updated messages to ensure React detects changes
@@ -743,28 +685,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       };
     });
     
-    // Log if we resolved any names
-    const resolvedCount = finalGroups.filter(g => g.author !== "Unknown" && groups.find((og: ChatThreadProps["groups"][number]) => {
-      const ogBaseId = og.id.includes('-') ? og.id.split('-')[0] : og.id;
-      const gBaseId = g.id.includes('-') ? g.id.split('-')[0] : g.id;
-      return ogBaseId === gBaseId && og.author === "Unknown";
-    })).length;
-    if (resolvedCount > 0) {
-      console.log('[chatGroups] Resolved', resolvedCount, 'groups from "Unknown" to actual names');
-    }
-    
-    // Debug: log final groups to see what we're returning
-    const unknownCount = finalGroups.filter((g: ChatThreadProps["groups"][number]) => g.author === "Unknown").length;
-    if (unknownCount > 0) {
-      console.warn('[chatGroups] FINAL GROUPS: Found', unknownCount, 'groups with "Unknown" author out of', finalGroups.length, 'total groups');
-      finalGroups.forEach((g: ChatThreadProps["groups"][number], idx: number) => {
-        if (g.author === "Unknown") {
-          console.warn(`[chatGroups] Group ${idx}: id="${g.id}", author="${g.author}", messages=${g.messages.length}, firstMessageId=${g.messages[0]?.messageId}`);
-        }
-      });
-    } else {
-      console.log('[chatGroups] FINAL GROUPS: All', finalGroups.length, 'groups have resolved author names');
-    }
     
     return finalGroups;
   }, [currentUserDisplayName, memberNames, messages, user?.id, memberNamesVersion]);
@@ -773,7 +693,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
   useEffect(() => {
     const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
     if (hasMemberNames && memberNamesVersion === 0) {
-      console.log('[MiniLeagueChatBeta] memberNames loaded, incrementing version to force re-render');
       setMemberNamesVersion(1);
     }
   }, [memberNames, memberNamesVersion]);
@@ -784,46 +703,26 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     const hasUnknownGroups = chatGroups.some(g => g.author === "Unknown");
     
     if (hasMemberNames && hasUnknownGroups && chatGroups.length > 0) {
-      console.warn('[MiniLeagueChatBeta] DETECTED: memberNames available but groups have "Unknown" authors - forcing re-render');
       // Use setTimeout to avoid infinite loops, and increment multiple times to force multiple re-renders
       setTimeout(() => {
-        setMemberNamesVersion(prev => {
-          const newVersion = prev + 1;
-          console.warn('[MiniLeagueChatBeta] Incrementing memberNamesVersion to', newVersion);
-          return newVersion;
-        });
+        setMemberNamesVersion(prev => prev + 1);
       }, 50);
       // Also try again after a longer delay
       setTimeout(() => {
-        setMemberNamesVersion(prev => {
-          const newVersion = prev + 1;
-          console.warn('[MiniLeagueChatBeta] Second increment of memberNamesVersion to', newVersion);
-          return newVersion;
-        });
+        setMemberNamesVersion(prev => prev + 1);
       }, 200);
     }
   }, [chatGroups, memberNames]);
 
-  // Debug: log when chatGroups changes
+  // Log errors when chatGroups has Unknown authors but memberNames is available
   useEffect(() => {
     const unknownGroups = chatGroups.filter(g => g.author === "Unknown");
     if (unknownGroups.length > 0) {
-      console.error('[MiniLeagueChatBeta] chatGroups changed:', unknownGroups.length, 'groups with "Unknown" author out of', chatGroups.length, 'total groups');
-      unknownGroups.forEach((g, idx) => {
-        console.error(`[MiniLeagueChatBeta] Group ${idx}: id="${g.id}", author="${g.author}", messages=${g.messages.length}, firstMessageId=${g.messages[0]?.id}`);
-      });
-      // CRITICAL: If we have Unknown groups but memberNames is available, something is wrong
       const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
       if (hasMemberNames) {
-        console.error('[MiniLeagueChatBeta] ERROR: memberNames is available but groups still have "Unknown" authors! This should not happen!');
+        console.error('[MiniLeagueChatBeta] ERROR: memberNames is available but groups still have "Unknown" authors!');
       }
-    } else {
-      console.log('[MiniLeagueChatBeta] chatGroups changed: All', chatGroups.length, 'groups have resolved author names');
     }
-    // Log first few groups to verify author names
-    chatGroups.slice(0, 5).forEach((g, idx) => {
-      console.log(`[MiniLeagueChatBeta] Group ${idx}: id="${g.id}", author="${g.author}", messages=${g.messages.length}`);
-    });
   }, [chatGroups, memberNames]);
   
   // Force re-render when groups change by creating a key based on group authors and memberNamesVersion

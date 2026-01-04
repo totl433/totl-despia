@@ -202,22 +202,12 @@ export const handler: Handler = async (event) => {
       });
     }
 
-    // Format deadline for notification message
-    const deadlineFormatted = deadlineTime.toLocaleString('en-GB', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'UTC'
-    });
-
     // Send notification via OneSignal
     const notificationPayload = {
       app_id: ONESIGNAL_APP_ID,
       include_player_ids: eligiblePlayerIds,
       headings: { en: `Gameweek ${currentGw} Predictions Due Soon!` },
-      contents: { en: `Don't forget to make your predictions! Deadline: ${deadlineFormatted}` },
+      contents: { en: `5 hours to go!` },
       collapse_id: `prediction_reminder_gw${currentGw}`, // Prevent duplicate notifications
       thread_id: 'totl_predictions',
       android_group: 'totl_predictions',

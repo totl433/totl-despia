@@ -41,7 +41,7 @@ All subscribed users who:
 ## Message
 
 **Title:** `Gameweek {gw} Predictions Due Soon!`  
-**Body:** `Don't forget to make your predictions! Deadline: {deadline}`
+**Body:** `5 hours to go!`
 
 ## Data Payload
 
