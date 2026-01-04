@@ -16,6 +16,7 @@ import { fireConfettiCannon } from "../lib/confettiCannon";
 import { APP_ONLY_USER_IDS } from "../lib/appOnlyUsers";
 import { useGameweekState } from "../hooks/useGameweekState";
 import type { GameweekState } from "../lib/gameweekState";
+import GameweekResultsModal from "../components/GameweekResultsModal";
 
 // Types
 type LeagueMember = { id: string; name: string };
@@ -278,6 +279,9 @@ export default function HomePage() {
   const logoContainerRef = useRef<HTMLDivElement>(null);
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
   const [basicDataLoading, setBasicDataLoading] = useState(!initialState.hasCache);
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [resultsModalGw, setResultsModalGw] = useState<number | null>(null);
+  const [resultsModalLoading, setResultsModalLoading] = useState(false);
   
   // Use centralized hooks
   const { leagues, unreadByLeague, loading: leaguesLoading, refresh: refreshLeagues } = useLeagues({ pageName: 'home' });
@@ -1856,12 +1860,53 @@ export default function HomePage() {
     );
   }
 
+  // Determine if we should show the GW results button
+  // Show it when the current viewing GW has finished (state is RESULTS_PRE_GW)
+  const shouldShowGwResultsButton = useMemo(() => {
+    if (!gw || !user?.id || gameStateLoading) return false;
+    return effectiveGameState === 'RESULTS_PRE_GW';
+  }, [gw, user?.id, effectiveGameState, gameStateLoading]);
+
   return (
     <div className="max-w-6xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 pt-2 pb-4 min-h-screen relative">
       {/* Logo header */}
       <div ref={logoContainerRef} className="relative mb-4 lg:hidden">
         <ScrollLogo />
       </div>
+      
+      {/* Gameweek Results Button - Show when current viewing GW has finished */}
+      {shouldShowGwResultsButton && (
+        <button
+          onClick={() => {
+            setResultsModalGw(gw);
+            setShowResultsModal(true);
+            setResultsModalLoading(true);
+          }}
+          className="w-full mb-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold py-3 px-4 rounded-xl shadow-md transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-75 disabled:cursor-not-allowed"
+          disabled={resultsModalLoading}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-lg whitespace-nowrap">Your Gameweek {gw} Results</span>
+            {resultsModalLoading ? (
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white flex-shrink-0 ml-2"></div>
+            ) : (
+              <svg
+                className="w-5 h-5 flex-shrink-0 ml-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            )}
+          </div>
+        </button>
+      )}
       
           {/* LEADERBOARDS */}
           <LeaderboardsSection
@@ -1919,6 +1964,23 @@ export default function HomePage() {
 
           {/* Bottom padding */}
           <div className="h-20"></div>
+      
+      {/* GameweekResultsModal */}
+      {showResultsModal && resultsModalGw && (
+        <GameweekResultsModal
+          isOpen={showResultsModal}
+          onClose={() => {
+            setShowResultsModal(false);
+            setResultsModalGw(null);
+            setResultsModalLoading(false);
+          }}
+          gw={resultsModalGw}
+          nextGw={latestGw && latestGw > resultsModalGw ? latestGw : null}
+          onLoadingChange={(loading) => {
+            setResultsModalLoading(loading);
+          }}
+        />
+      )}
     </div>
   );
 }
