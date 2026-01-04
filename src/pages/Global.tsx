@@ -1093,34 +1093,19 @@ export default function GlobalLeaderboardPage() {
 
                   // Highlight entire row for current user - make it very obvious
                   const rowBgColor = isMe ? '#a7f3d0' : '#f8fafc';
-                  const rowHoverBgColor = isMe ? '#86efac' : 'rgb(241 245 249)';
                   
                   return (
                     <tr 
                       key={r.user_id}
                       ref={isMe ? userRowRef : null}
                       onClick={() => handleUserClick(r.user_id, r.name)}
-                      className={`transition-colors cursor-pointer ${isMe ? 'border-l-4 border-emerald-600 shadow-sm' : ''}`}
+                      className={`cursor-pointer ${isMe ? 'border-l-4 border-emerald-600 shadow-sm' : ''}`}
                       style={{
                         ...(i > 0 ? { 
                           borderTop: '1px solid #e2e8f0',
                           position: 'relative',
                           backgroundColor: rowBgColor
                         } : { position: 'relative', backgroundColor: rowBgColor })
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isMe) {
-                          e.currentTarget.style.backgroundColor = rowHoverBgColor;
-                          Array.from(e.currentTarget.children).forEach((td: any) => {
-                            td.style.backgroundColor = rowHoverBgColor;
-                          });
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = rowBgColor;
-                        Array.from(e.currentTarget.children).forEach((td: any) => {
-                          td.style.backgroundColor = rowBgColor;
-                        });
                       }}
                     >
                       {/* Rank number only */}
