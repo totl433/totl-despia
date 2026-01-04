@@ -6,6 +6,7 @@ function json(statusCode: number, body: unknown) {
 }
 
 export const handler: Handler = async (event) => {
+  console.log('[notifyLeagueMessage] Function called');
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' });
 
   const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
@@ -104,6 +105,7 @@ export const handler: Handler = async (event) => {
 
   if (subErr) return json(500, { error: 'Failed to load subscriptions', details: subErr.message });
   const playerIds = Array.from(new Set((subs ?? []).map((s: any) => s.player_id).filter(Boolean)));
+  console.log(`[notifyLeagueMessage] Found ${playerIds.length} player IDs to send to`);
   if (playerIds.length === 0) return json(200, { ok: true, message: 'No devices' });
 
   // Build message: title = sender, body = content (trim to reasonable length)
@@ -143,11 +145,13 @@ export const handler: Handler = async (event) => {
       lastResp = { endpoint, auth, status: resp.status, body };
       
       if (resp.ok) {
+        console.log(`[notifyLeagueMessage] Success! Sent to ${playerIds.length} devices, OneSignal recipients: ${body.recipients || 0}`);
         return json(200, { ok: true, result: body, sent: playerIds.length });
       }
       if (![401, 403].includes(resp.status)) break;
     }
   }
   
+  console.error('[notifyLeagueMessage] All attempts failed:', lastResp);
   return json(200, { ok: false, error: 'OneSignal error', details: lastResp });
 };
