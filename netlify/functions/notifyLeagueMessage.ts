@@ -164,14 +164,30 @@ export const handler: Handler = async (event) => {
       const body = await resp.json().catch(() => ({}));
       lastResp = { endpoint, auth, status: resp.status, body };
       
+      // OneSignal often returns HTTP 200 even with errors in the body
       if (resp.ok) {
-        console.log(`[notifyLeagueMessage] Success! Sent to ${playerIds.length} devices, OneSignal recipients: ${body.recipients || 0}`);
-        return json(200, { ok: true, result: body, sent: playerIds.length });
+        // Check for errors in response body
+        if (body.errors && body.errors.length > 0) {
+          console.error(`[notifyLeagueMessage] OneSignal returned errors:`, body.errors);
+          // If all players are not subscribed, that's a different issue
+          if (body.errors.some((e: string) => e.includes('not subscribed'))) {
+            console.warn(`[notifyLeagueMessage] Some/all players not subscribed in OneSignal`);
+            // Continue to next endpoint/auth combo
+            continue;
+          }
+        }
+        
+        // Success - check recipients count
+        const recipients = body.recipients || 0;
+        if (recipients > 0 || !body.errors) {
+          console.log(`[notifyLeagueMessage] Success! Sent to ${playerIds.length} devices, OneSignal recipients: ${recipients}`);
+          return json(200, { ok: true, result: body, sent: playerIds.length, recipients });
+        }
       }
       if (![401, 403].includes(resp.status)) break;
     }
   }
   
   console.error('[notifyLeagueMessage] All attempts failed:', lastResp);
-  return json(200, { ok: false, error: 'OneSignal error', details: lastResp });
+  return json(200, { ok: false, error: 'OneSignal error', details: lastResp, sent: 0 });
 };

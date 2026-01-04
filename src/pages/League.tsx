@@ -1813,15 +1813,32 @@ ${shareUrl}`;
           
           const result = await response.json().catch(() => ({}));
           
-          // Set simple notification status
-          if (result.ok === true && result.sent > 0) {
-            setNotificationStatus({
-              message: `✓ Sent to ${result.sent} device${result.sent === 1 ? '' : 's'}`,
-              type: 'success'
-            });
+          // Log full result for debugging
+          console.log('[Chat] Notification result:', result);
+          
+          // Set notification status based on response
+          if (result.ok === true) {
+            if (result.recipients > 0 || result.sent > 0) {
+              const count = result.recipients || result.sent || 0;
+              setNotificationStatus({
+                message: `✓ Sent to ${count} device${count === 1 ? '' : 's'}`,
+                type: 'success'
+              });
+            } else if (result.message === 'No devices' || result.message === 'No eligible recipients') {
+              setNotificationStatus({
+                message: '✓ No devices to notify',
+                type: 'success'
+              });
+            } else {
+              setNotificationStatus({
+                message: `✓ ${result.message || 'Notification sent'}`,
+                type: 'success'
+              });
+            }
           } else if (result.ok === false || result.error) {
+            const errorMsg = result.details?.body?.errors?.[0] || result.error || 'Failed to send notification';
             setNotificationStatus({
-              message: '✗ Failed to send notification',
+              message: `✗ ${errorMsg}`,
               type: 'error'
             });
           }
@@ -1829,6 +1846,11 @@ ${shareUrl}`;
           setTimeout(() => setNotificationStatus(null), 3000);
         } catch (err) {
           console.error('[Chat] Notification error:', err);
+          setNotificationStatus({
+            message: '✗ Failed to send notification',
+            type: 'error'
+          });
+          setTimeout(() => setNotificationStatus(null), 3000);
         }
       }, 100);
     }
