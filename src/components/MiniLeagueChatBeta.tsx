@@ -834,6 +834,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     return `chat-${chatGroups.length}-${hasUnknown ? 'unknown' : 'resolved'}-${memberNamesVersion}-${authorNames.slice(0, 50)}`;
   }, [chatGroups, memberNamesVersion]);
 
+  const [notificationStatus, setNotificationStatus] = useState<{ message: string; type: 'success' | 'warning' | 'error' } | null>(null);
+
   const notifyRecipients = useCallback(
     async (text: string) => {
       if (!miniLeagueId || !user?.id) return;
@@ -849,8 +851,17 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         user.email ||
         "User";
 
+      const logEntry: any = {
+        timestamp: new Date().toISOString(),
+        leagueId: miniLeagueId,
+        senderId: user.id,
+        ok: false,
+        sent: 0,
+        error: 'Unknown error',
+      };
+
       try {
-        await fetch("/.netlify/functions/notifyLeagueMessage", {
+        const response = await fetch("/.netlify/functions/notifyLeagueMessage", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -860,8 +871,77 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
             content: text,
           }),
         });
-      } catch (err) {
-        console.error("[MiniLeagueChatBeta] notifyLeagueMessageV2 failed:", err);
+
+        const result = await response.json().catch((e) => {
+          logEntry.error = `Failed to parse response: ${e?.message || String(e)}`;
+          logEntry.httpStatus = response.status;
+          return { ok: false, error: 'Failed to parse response' };
+        });
+
+        // Update log entry
+        Object.assign(logEntry, {
+          ok: result.ok,
+          sent: result.sent || 0,
+          recipients: result.recipients || 0,
+          message: result.message,
+          error: result.error,
+          details: result.details,
+          httpStatus: response.status,
+          fullResponse: result,
+        });
+
+        // ALWAYS show status message
+        if (result.ok === true) {
+          if (result.recipients > 0 || result.sent > 0) {
+            const count = result.recipients || result.sent || 0;
+            setNotificationStatus({
+              message: `✓ Sent to ${count} device${count === 1 ? '' : 's'}`,
+              type: 'success'
+            });
+          } else if (result.message === 'No devices' || result.message === 'No eligible recipients') {
+            setNotificationStatus({
+              message: '⚠️ No devices to notify',
+              type: 'warning'
+            });
+          } else {
+            setNotificationStatus({
+              message: `✓ ${result.message || 'Notification sent'}`,
+              type: 'success'
+            });
+          }
+        } else {
+          // Error case - show detailed error
+          const errorMsg = result.details?.body?.errors?.[0] 
+            || result.details?.error 
+            || result.error 
+            || 'Failed to send notification';
+          setNotificationStatus({
+            message: `✗ ${errorMsg}`,
+            type: 'error'
+          });
+        }
+
+        setTimeout(() => setNotificationStatus(null), 5000);
+      } catch (err: any) {
+        logEntry.error = err?.message || String(err);
+        logEntry.exception = true;
+        setNotificationStatus({
+          message: `✗ Error: ${err?.message || 'Failed to send notification'}`,
+          type: 'error'
+        });
+        setTimeout(() => setNotificationStatus(null), 5000);
+      } finally {
+        // ALWAYS store log entry for AdminData page
+        try {
+          const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
+          logs.push(logEntry);
+          // Keep only last 50 logs
+          const recentLogs = logs.slice(-50);
+          localStorage.setItem('notification_logs', JSON.stringify(recentLogs));
+        } catch (e) {
+          // If localStorage fails, at least try to show error
+          console.error('[MiniLeagueChatBeta] Failed to store notification log:', e);
+        }
       }
     },
     [miniLeagueId, user?.id]
@@ -1075,6 +1155,17 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         {error && (
           <div className="text-xs text-red-500 mt-2 text-center">
             {error} — try again or switch to the classic chat tab.
+          </div>
+        )}
+        {notificationStatus && (
+          <div className={`text-xs mt-2 text-center ${
+            notificationStatus.type === 'success' 
+              ? 'text-green-600' 
+              : notificationStatus.type === 'warning'
+              ? 'text-amber-600'
+              : 'text-red-600'
+          }`}>
+            {notificationStatus.message}
           </div>
         )}
       </div>
