@@ -1912,12 +1912,17 @@ ${shareUrl}`;
             // Keep only last 50 logs
             const recentLogs = logs.slice(-50);
             localStorage.setItem('notification_logs', JSON.stringify(recentLogs));
-            console.log('[Chat] Logged notification attempt to localStorage');
+            console.log('[Chat] Logged notification attempt to localStorage:', logEntry);
           } catch (e) {
             console.error('[Chat] Failed to store notification log:', e);
+            // If localStorage fails, at least show error in console
+            console.error('[Chat] Notification log entry that failed to save:', logEntry);
           }
         }
       }, 100);
+    } else {
+      // In local dev, still log that we skipped it
+      console.log('[Chat] Skipping notification (local dev mode)');
     }
   }, [league, user, newMsg, setNewMsg, setChat, setNotificationStatus]);
 
