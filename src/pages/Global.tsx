@@ -46,12 +46,20 @@ export default function GlobalLeaderboardPage() {
       }>(cacheKey);
       
       if (cached && cached.gwPoints && Array.isArray(cached.gwPoints) && cached.gwPoints.length > 0) {
+        // Check cache freshness synchronously
+        const cacheTimestamp = getCacheTimestamp(cacheKey);
+        const cacheAge = cacheTimestamp ? Date.now() - cacheTimestamp : Infinity;
+        const isCacheStale = cacheAge > CACHE_TTL.GLOBAL;
+        
+        // If cache is fresh or stale, use it immediately (stale will refresh in background)
         return {
           loading: false,
           latestGw: cached.latestGw,
           gwPoints: cached.gwPoints,
           overall: cached.overall || [],
           prevOcp: cached.prevOcp || {},
+          hasCache: true,
+          isCacheStale,
         };
       }
     } catch (error) {
@@ -64,12 +72,15 @@ export default function GlobalLeaderboardPage() {
       gwPoints: [] as GwPointsRow[],
       overall: [] as OverallRow[],
       prevOcp: {} as Record<string, number>,
+      hasCache: false,
+      isCacheStale: false,
     };
   };
   
   const initialState = loadInitialStateFromCache();
   
   const [loading, setLoading] = useState(initialState.loading);
+  const [hasCache, setHasCache] = useState(initialState.hasCache);
   const [err, setErr] = useState<string>("");
   const [latestGw, setLatestGw] = useState<number | null>(initialState.latestGw);
   const [overall, setOverall] = useState<OverallRow[]>(initialState.overall);
@@ -91,13 +102,31 @@ export default function GlobalLeaderboardPage() {
   const [selectedUserName, setSelectedUserName] = useState<string | null>(null);
   const [selectedUserRank, setSelectedUserRank] = useState<number | undefined>(undefined);
   
+  // Load current_gw from cache immediately, then fetch in background if needed
   useEffect(() => {
+    // Try to load from cache first for instant display
+    try {
+      const cached = getCached<{ current_gw: number }>('app:meta');
+      if (cached?.current_gw) {
+        setCurrentGwFromMeta(cached.current_gw);
+      }
+    } catch (error) {
+      // Non-critical
+    }
+    
+    // Fetch fresh data in background
     let alive = true;
     (async () => {
       const { data } = await supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle();
       if (alive && data) {
         const currentGw = (data as any)?.current_gw ?? null;
         setCurrentGwFromMeta(currentGw);
+        // Cache it for next time
+        try {
+          setCached('app:meta', { current_gw: currentGw }, CACHE_TTL.HOME);
+        } catch (error) {
+          // Non-critical
+        }
       }
     })();
     return () => { alive = false; };
@@ -267,57 +296,23 @@ export default function GlobalLeaderboardPage() {
   useEffect(() => {
     let alive = true;
     const cacheKey = `global:leaderboard`;
-    let loadedFromCache = false;
     
-    // If we already loaded from cache in initial state, skip cache check here
-    // Otherwise check cache again (in case cache was updated)
-    if (initialState.loading) {
-      try {
-        const cached = getCached<{
-          latestGw: number;
-          gwPoints: GwPointsRow[];
-          overall: OverallRow[];
-          prevOcp: Record<string, number>;
-        }>(cacheKey);
-        
-        if (cached && cached.gwPoints && Array.isArray(cached.gwPoints) && cached.gwPoints.length > 0) {
-          // INSTANT RENDER from cache!
-          // Loaded from cache
-          setLatestGw(cached.latestGw);
-          setGwPoints(cached.gwPoints);
-          setOverall(cached.overall || []);
-          setPrevOcp(cached.prevOcp || {});
-          setLoading(false);
-          loadedFromCache = true;
-        }
-      } catch (error) {
-        // If cache is corrupted, just continue with fresh fetch
-        // Error loading from cache (non-critical)
-      }
-    } else {
-      loadedFromCache = true; // Already loaded from cache in initial state
+    // Check cache freshness synchronously
+    const cacheTimestamp = getCacheTimestamp(cacheKey);
+    const cacheAge = cacheTimestamp ? Date.now() - cacheTimestamp : Infinity;
+    const isCacheStale = cacheAge > CACHE_TTL.GLOBAL;
+    
+    // If we have cache and it's fresh, skip fetch entirely (already loaded from initialState)
+    if (hasCache && !isCacheStale) {
+      return;
     }
     
-    // 2. Only fetch if cache is missing or stale
-    // If cache exists and is fresh, skip fetch entirely for zero loading
-    if (loadedFromCache) {
-      // Check if cache is stale - only refresh in background if stale (>1 minute old for Global)
-      const cacheTimestamp = getCacheTimestamp(cacheKey);
-      const cacheAge = cacheTimestamp ? Date.now() - cacheTimestamp : Infinity;
-      const isCacheStale = cacheAge > 1 * 60 * 1000; // 1 minute (Global TTL)
-      
-      if (!isCacheStale) {
-        // Cache is fresh - skip fetch entirely for zero loading experience
-        return;
-      }
-      // Cache is stale - continue with background refresh (non-blocking)
-    }
-    
-    // Fetch fresh data (either cache miss or stale cache)
+    // If we have cache but it's stale, render immediately and refresh in background
+    // Otherwise, fetch fresh data (cache miss)
     (async () => {
       try {
         // Only set loading state if we didn't load from cache
-        if (!loadedFromCache) {
+        if (!hasCache) {
           setLoading(true);
         }
         setErr("");
@@ -374,7 +369,7 @@ export default function GlobalLeaderboardPage() {
             overall: (ocp as OverallRow[]) ?? [],
             prevOcp: prevOcpData,
           }, CACHE_TTL.GLOBAL);
-          // Cached data for next time
+          setHasCache(true);
         } catch (cacheError) {
           // Failed to cache data (non-critical)
         }
@@ -387,7 +382,7 @@ export default function GlobalLeaderboardPage() {
     return () => {
       alive = false;
     };
-  }, [gwResultsVersion]);
+  }, [gwResultsVersion, hasCache]);
 
   /* ---------- Subscribe to app_gw_results changes for real-time leaderboard updates ---------- */
   useEffect(() => {
