@@ -93,7 +93,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           .in('message_id', messageIds);
         
         if (error) {
-          console.error('[MiniLeagueChatBeta] Error loading reactions:', error);
           return;
         }
         
@@ -125,7 +124,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         
         setReactions(formattedReactions);
       } catch (err) {
-        console.error('[MiniLeagueChatBeta] Error in loadReactions:', err);
+        // Silently handle errors
       }
     };
     
@@ -186,7 +185,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
               
               setReactions(formattedReactions);
             } catch (err) {
-              console.error('[MiniLeagueChatBeta] Error reloading reactions:', err);
+              // Silently handle errors
             }
           };
           
@@ -261,7 +260,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         .eq('emoji', emoji);
       
       if (error) {
-        console.error('[MiniLeagueChatBeta] Error removing reaction:', error);
         // Revert optimistic update on error
         setReactions((prev) => {
           const reverted = { ...prev };
@@ -290,7 +288,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         });
       
       if (error) {
-        console.error('[MiniLeagueChatBeta] Error adding reaction:', error);
         // Revert optimistic update on error
         setReactions((prev) => {
           const reverted = { ...prev };
@@ -536,7 +533,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     // This ensures groups are always created with correct author names from the start
     const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
     if (!hasMemberNames) {
-      console.warn('[chatGroups] memberNames not available yet, returning empty array to prevent "Unknown" authors');
       return [];
     }
     
@@ -714,16 +710,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     }
   }, [chatGroups, memberNames]);
 
-  // Log errors when chatGroups has Unknown authors but memberNames is available
-  useEffect(() => {
-    const unknownGroups = chatGroups.filter(g => g.author === "Unknown");
-    if (unknownGroups.length > 0) {
-      const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
-      if (hasMemberNames) {
-        console.error('[MiniLeagueChatBeta] ERROR: memberNames is available but groups still have "Unknown" authors!');
-      }
-    }
-  }, [chatGroups, memberNames]);
+  // Unknown groups will resolve when memberNames loads
   
   // Force re-render when groups change by creating a key based on group authors and memberNamesVersion
   // This ensures React re-renders when any author name changes from "Unknown" to actual name
@@ -838,8 +825,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           const recentLogs = logs.slice(-50);
           localStorage.setItem('notification_logs', JSON.stringify(recentLogs));
         } catch (e) {
-          // If localStorage fails, at least try to show error
-          console.error('[MiniLeagueChatBeta] Failed to store notification log:', e);
+          // Silently handle localStorage errors
         }
       }
     },
@@ -863,7 +849,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       setReplyingTo(null);
       scrollToBottomWithRetries([0, 150, 300]);
     } catch (err) {
-      console.error("[MiniLeagueChatBeta] Failed to send message", err);
       // Restore draft on error
       setDraft(text);
     } finally {
