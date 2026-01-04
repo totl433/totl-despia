@@ -351,6 +351,48 @@ const { state, loading, error } = useGameweekState(currentGw, user?.id);
    - Background refresh if cache is stale
    - Pre-load data in `initialDataLoader.ts` if page is critical
 
+### Implementing Cache-First Loading (Best Practice)
+When adding new pages or optimizing existing ones, follow this pattern to ensure instant loading:
+
+1. **Create `loadInitialStateFromCache()` function**:
+   - Load all required data from cache synchronously (before first render)
+   - Return object with all initial state values
+   - Return empty/fallback values if no cache exists
+
+2. **Initialize state from cache**:
+   ```typescript
+   const initialState = loadInitialStateFromCache();
+   const [data, setData] = useState(initialState.data);
+   ```
+
+3. **Merge with hook updates**:
+   - Use `useMemo` to merge cached state with hook data
+   - Prioritize cached data for instant display
+   - Hook updates refresh silently in background
+
+4. **Avoid redundant cache reads**:
+   - Read cache once per data type in parent component
+   - Pass pre-calculated data as props to children
+   - Don't re-read the same cache key in child components
+
+5. **Example pattern** (from HomePage):
+   ```typescript
+   // Load from cache synchronously (before render)
+   const loadInitialStateFromCache = () => {
+     const cached = getCached<DataType>(`cache:key`);
+     return { data: cached?.data || defaultData, hasCache: !!cached };
+   };
+   
+   // Initialize state from cache
+   const initialState = loadInitialStateFromCache();
+   const [data, setData] = useState(initialState.data);
+   
+   // Merge with hook updates (background refresh)
+   const mergedData = useMemo(() => {
+     return { ...data, ...hookData };
+   }, [data, hookData]);
+   ```
+
 ### Adding a Netlify Function
 1. Create `.ts` file in `netlify/functions/`
 2. Export handler function
