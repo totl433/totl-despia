@@ -246,6 +246,13 @@ export default function LeaguePage() {
   // Only exception: tab=chat in URL from notification deep links (handled by useEffect below)
   const initialTab: "chat" | "mlt" | "gw" | "gwr" = 'chat'; // Always default to chat
   const [tab, setTab] = useState<"chat" | "mlt" | "gw" | "gwr">(initialTab);
+  const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
+  const tabRef = useRef(tab);
+  
+  // Keep ref in sync with state
+  useEffect(() => {
+    tabRef.current = tab;
+  }, [tab]);
   // Use ref to track manual tab selection immediately (synchronously) to prevent race conditions
   const manualTabSelectedRef = useRef(false);
   const manualGwSelectedRef = useRef(false);
@@ -254,19 +261,44 @@ export default function LeaguePage() {
   // This runs on mount and when URL changes (e.g., from notification click on iOS)
   useEffect(() => {
     const urlTab = searchParams.get('tab');
-    if (urlTab === 'chat') {
-      // Always set tab to chat if it's in the URL, even if already on chat
-      // This ensures it works when notification comes in while already on league page
-      if (tab !== 'chat') {
-        setTab('chat');
+    const urlLeagueCode = searchParams.get('leagueCode');
+    
+    // Clear any previous errors
+    setDeepLinkError(null);
+    
+    // Check if we have a deep link
+    if (urlTab === 'chat' || urlLeagueCode) {
+      // Verify we're on the correct league page
+      if (urlLeagueCode && code !== urlLeagueCode) {
+        setDeepLinkError(`Deep link mismatch: URL has leagueCode=${urlLeagueCode} but we're on league ${code}. Current URL: ${window.location.href}`);
+        return;
       }
-      // Clear the parameter after a brief delay to ensure tab opens
-      const timer = setTimeout(() => {
-        setSearchParams({}, { replace: true });
-      }, 200);
-      return () => clearTimeout(timer);
+      
+      // Check if tab should be chat
+      if (urlTab === 'chat') {
+        if (tab !== 'chat') {
+          setTab('chat');
+          // Verify tab actually changed after a short delay
+          setTimeout(() => {
+            if (tabRef.current !== 'chat') {
+              setDeepLinkError(`Failed to open chat tab. Current tab: ${tabRef.current}, Expected: chat. URL: ${window.location.href}`);
+            }
+          }, 300);
+        }
+        
+        // Clear the parameter after a brief delay
+        const timer = setTimeout(() => {
+          setSearchParams({}, { replace: true });
+        }, 200);
+        return () => clearTimeout(timer);
+      }
     }
-  }, [searchParams, setSearchParams, tab]);
+    
+    // Log deep link info for debugging
+    if (urlTab === 'chat' || urlLeagueCode) {
+      console.log('[Deep Link] URL params:', { urlTab, urlLeagueCode, currentCode: code, currentTab: tab, fullUrl: window.location.href });
+    }
+  }, [searchParams, setSearchParams, tab, code]);
   const headerRef = useRef<HTMLDivElement | null>(null);
 
   const [showForm, setShowForm] = useState(false);
@@ -2934,6 +2966,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           <MiniLeagueChatBeta
             miniLeagueId={league?.id ?? null}
             memberNames={memberNameById}
+            deepLinkError={deepLinkError}
           />
         </div>
       ) : (

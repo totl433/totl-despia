@@ -10,6 +10,7 @@ type MemberNames = Map<string, string> | Record<string, string> | undefined;
 type MiniLeagueChatBetaProps = {
   miniLeagueId?: string | null;
   memberNames?: MemberNames;
+  deepLinkError?: string | null;
 };
 
 const formatTime = (value: string) =>
@@ -35,7 +36,7 @@ const resolveName = (id: string, memberNames?: MemberNames) => {
 };
 
 
-function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaProps) {
+function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLeagueChatBetaProps) {
   const { user } = useAuth();
   const {
     messages,
@@ -832,6 +833,21 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       setSending(false);
     }
   }, [draft, miniLeagueId, notifyRecipients, scrollToBottomWithRetries, sendMessage, sending, replyingTo]);
+
+  // Add deep link error to uiErrors if present
+  useEffect(() => {
+    if (deepLinkError) {
+      setUiErrors(prev => {
+        // Don't duplicate if already shown
+        if (prev.some(e => e.message.includes('Deep Link'))) return prev;
+        return [...prev, { 
+          id: `deeplink-${Date.now()}`, 
+          message: `Deep Link Error: ${deepLinkError}`, 
+          timestamp: Date.now() 
+        }];
+      });
+    }
+  }, [deepLinkError]);
 
   // Auto-dismiss errors after 5 seconds
   useEffect(() => {
