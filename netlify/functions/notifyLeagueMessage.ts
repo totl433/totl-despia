@@ -143,13 +143,7 @@ export const handler: Handler = async (event) => {
       lastResp = { endpoint, auth, status: resp.status, body };
       
       if (resp.ok) {
-        // Check for errors in response body (OneSignal can return 200 with errors)
-        if (body.errors && Array.isArray(body.errors) && body.errors.length > 0) {
-          // Try next auth/endpoint combination
-          if (![401, 403].includes(resp.status)) break;
-          continue;
-        }
-        return json(200, { ok: true, result: body, sent: body.recipients || playerIds.length });
+        return json(200, { ok: true, result: body, sent: playerIds.length });
       }
       if (![401, 403].includes(resp.status)) break;
     }
