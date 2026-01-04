@@ -1092,8 +1092,8 @@ export default function GlobalLeaderboardPage() {
                   }
 
                   // Highlight entire row for current user - make it very obvious
-                  const rowBgColor = isMe ? '#d1fae5' : '#f8fafc';
-                  const rowHoverBgColor = isMe ? '#a7f3d0' : 'rgb(241 245 249)';
+                  const rowBgColor = isMe ? '#a7f3d0' : '#f8fafc';
+                  const rowHoverBgColor = isMe ? '#86efac' : 'rgb(241 245 249)';
                   
                   return (
                     <tr 
