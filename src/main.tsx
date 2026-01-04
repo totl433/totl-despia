@@ -58,8 +58,8 @@ function AppShell() {
   const searchParams = new URLSearchParams(window.location.search);
   const leagueCode = searchParams.get('leagueCode');
   
+  // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat)
   if (leagueCode && !window.location.pathname.startsWith('/league/')) {
-    // Update URL immediately before React Router sees it
     const targetUrl = `/league/${leagueCode}?tab=chat`;
     window.history.replaceState(null, '', targetUrl);
   }
@@ -83,9 +83,11 @@ function AppContent() {
     const searchParams = new URLSearchParams(window.location.search);
     const leagueCode = searchParams.get('leagueCode');
     
+    // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat)
     if (leagueCode && !location.pathname.startsWith('/league/')) {
       navigate(`/league/${leagueCode}?tab=chat`, { replace: true });
     }
+    // For direct URLs like /league/ABC12?tab=chat, React Router handles it automatically
   }, [navigate, location.pathname]);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [maxLoadingTimeout, setMaxLoadingTimeout] = useState(false);

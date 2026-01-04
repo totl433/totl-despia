@@ -256,7 +256,6 @@ export default function LeaguePage() {
     const urlTab = searchParams.get('tab');
     if (urlTab === 'chat') {
       if (tab !== 'chat') {
-        console.log('[League] Opening chat tab from deep link');
         setTab('chat');
       }
       // Clear the parameter after setting the tab to avoid re-triggering
