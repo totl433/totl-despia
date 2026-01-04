@@ -15,9 +15,40 @@ import GameweekBanner from "./ComingSoonBanner";
 export default function PredictionsBanner() {
   const { user } = useAuth();
   
+  // Initialize currentGw and viewingGw from cache synchronously (cache-first)
+  const [currentGw, setCurrentGw] = React.useState<number | null>(() => {
+    if (!user?.id && typeof window !== 'undefined') {
+      // For non-logged-in users, try to get from any cache or default to null
+      try {
+        // Try to get from any home cache if available
+        const userId = localStorage.getItem('totl:user');
+        if (userId) {
+          const userObj = JSON.parse(userId);
+          const cached = getCached<{ currentGw: number }>(`home:basic:${userObj.id}`);
+          if (cached?.currentGw) return cached.currentGw;
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+    if (user?.id) {
+      const cached = getCached<{ currentGw: number }>(`home:basic:${user.id}`);
+      if (cached?.currentGw) return cached.currentGw;
+    }
+    return null;
+  });
+  
+  const [viewingGw, setViewingGw] = React.useState<number | null>(() => {
+    if (user?.id) {
+      const cached = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
+      if (cached?.current_viewing_gw !== undefined) {
+        return cached.current_viewing_gw;
+      }
+    }
+    return null;
+  });
+  
   const [visible, setVisible] = React.useState(false);
-  const [currentGw, setCurrentGw] = React.useState<number | null>(null);
-  const [viewingGw, setViewingGw] = React.useState<number | null>(null);
   const [bannerType, setBannerType] = React.useState<"predictions" | "watch-space" | "gw-ready" | null>(null);
   const [deadlineText, setDeadlineText] = React.useState<string | null>(null);
   const [isTransitioning, setIsTransitioning] = React.useState(false);
@@ -31,6 +62,25 @@ export default function PredictionsBanner() {
     effectiveViewingGw && typeof effectiveViewingGw === 'number' ? effectiveViewingGw : null,
     user?.id
   );
+  
+  // Calculate effective viewing GW (default to currentGw - 1 if not set, matching refreshBanner logic)
+  const effectiveViewingGwCalculated = React.useMemo(() => {
+    if (user?.id && viewingGw === null && currentGw !== null) {
+      // User hasn't set current_viewing_gw, default to previous GW (currentGw - 1)
+      return currentGw > 1 ? currentGw - 1 : currentGw;
+    }
+    return viewingGw ?? currentGw;
+  }, [user?.id, viewingGw, currentGw]);
+  
+  // Get cached game state immediately (pre-loaded during initial data load)
+  const cachedViewingGwState = React.useMemo(() => {
+    const gw = effectiveViewingGwCalculated;
+    if (!gw || typeof gw !== 'number') return null;
+    return getCached<import('../lib/gameweekState').GameweekState>(`gameState:${gw}`);
+  }, [effectiveViewingGwCalculated]);
+  
+  // Use cached state if available, otherwise fall back to hook state
+  const effectiveViewingGwState = cachedViewingGwState ?? viewingGwState;
   
   // Define refreshBanner using useCallback so it can be used in multiple effects
   const refreshBanner = React.useCallback(async () => {
@@ -122,37 +172,48 @@ export default function PredictionsBanner() {
   }, [user?.id]);
   
   // Determine banner based on game state of the viewing GW
+  // Use cached data immediately, then refresh in background
   React.useEffect(() => {
-    // Compute effective viewing GW inside the effect
-    const effectiveGw = viewingGw ?? currentGw;
-    
-    // Don't run if we don't have the necessary data yet
-    if (!currentGw || !user?.id || !effectiveGw) {
+    // Don't run if we don't have currentGw yet
+    if (!currentGw) {
       return;
     }
     
-    // If state is still loading, wait
-    if (viewingGwState === null) {
+    // Calculate effective viewing GW (use calculated one if available, otherwise compute it)
+    const effectiveGw = effectiveViewingGwCalculated ?? (user?.id && currentGw ? (currentGw > 1 ? currentGw - 1 : currentGw) : currentGw);
+    
+    // If state is still loading and we don't have cached state, wait
+    if (effectiveViewingGwState === null && !cachedViewingGwState) {
       return;
     }
+    
+    // Use cached state if available, otherwise use hook state
+    const state = effectiveViewingGwState;
+    if (!state) return;
     
     let alive = true;
     
     (async () => {
       // Check if new GW is published but user hasn't transitioned
-      const userViewingGw = viewingGw ?? currentGw;
+      const userViewingGw = effectiveViewingGwCalculated ?? currentGw;
       if (userViewingGw < currentGw) {
         // New GW published - show "GW ready" banner
-        setNewGwNumber(currentGw);
-        setBannerType("gw-ready");
-        setVisible(true);
+        if (alive) {
+          setNewGwNumber(currentGw);
+          setBannerType("gw-ready");
+          setVisible(true);
+        }
         return;
       }
       
       // User is viewing current or previous GW - determine banner based on viewing GW's state
-      if (viewingGwState === 'GW_OPEN') {
+      if (state === 'GW_OPEN') {
         // Check if user has submitted (check cache first - submissions are pre-loaded)
         let hasSubmitted = false;
+        if (!user?.id) {
+          if (alive) setVisible(false);
+          return;
+        }
         try {
           // Check cache for submissions (pre-loaded during initial data load)
           const cachedSubmissions = getCached<Array<{ user_id: string; gw: number }>>(`home:submissions:${effectiveGw}`);
@@ -235,21 +296,24 @@ export default function PredictionsBanner() {
         } else {
           if (alive) setVisible(false);
         }
-      } else if (viewingGwState === 'GW_PREDICTED' || viewingGwState === 'LIVE') {
+      } else if (state === 'GW_PREDICTED' || state === 'LIVE') {
         // Hide banner in these states
         if (alive) setVisible(false);
-      } else if (viewingGwState === 'RESULTS_PRE_GW') {
+      } else if (state === 'RESULTS_PRE_GW') {
         // Check if next GW is published in app_meta (not just if fixtures exist)
         // Fixtures can exist (mirrored from web) even if GW isn't published on app yet
         const nextGw = effectiveGw + 1;
         
         if (nextGw <= currentGw) {
           // Next GW is published in app_meta - check if user has transitioned
-          if (userViewingGw < nextGw) {
+          const userViewingGwForTransition = effectiveViewingGwCalculated ?? currentGw;
+          if (userViewingGwForTransition < nextGw) {
             // User hasn't transitioned - show "GW ready" banner
-            setNewGwNumber(nextGw);
-            setBannerType("gw-ready");
-            setVisible(true);
+            if (alive) {
+              setNewGwNumber(nextGw);
+              setBannerType("gw-ready");
+              setVisible(true);
+            }
           } else {
             // User has transitioned - hide banner
             if (alive) setVisible(false);
@@ -265,7 +329,7 @@ export default function PredictionsBanner() {
     })();
     
     return () => { alive = false; };
-  }, [currentGw, viewingGw, viewingGwState, user?.id]);
+  }, [currentGw, viewingGw, effectiveViewingGwCalculated, effectiveViewingGwState, cachedViewingGwState, user?.id]);
   
   // Set up subscriptions and initial check
   React.useEffect(() => {
@@ -456,10 +520,10 @@ export default function PredictionsBanner() {
   }
   
   // Predictions banner (GW_OPEN, user hasn't submitted)
-  if (bannerType === "predictions" && effectiveViewingGw) {
+  if (bannerType === "predictions" && effectiveViewingGwCalculated) {
     return (
       <GameweekBanner
-        gameweek={effectiveViewingGw}
+        gameweek={effectiveViewingGwCalculated}
         variant="live"
         deadlineText={deadlineText}
         linkTo="/predictions"
@@ -468,10 +532,10 @@ export default function PredictionsBanner() {
   }
   
   // Coming soon banner (RESULTS_PRE_GW, next GW not published)
-  if (bannerType === "watch-space" && effectiveViewingGw) {
+  if (bannerType === "watch-space" && effectiveViewingGwCalculated) {
     return (
       <GameweekBanner
-        gameweek={(effectiveViewingGw || 1) + 1}
+        gameweek={effectiveViewingGwCalculated + 1}
         variant="coming-soon"
       />
     );
