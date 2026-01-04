@@ -84,7 +84,10 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   useEffect(() => {
     if (messages.length === 0 || !user?.id) return;
     
-    const messageIds = messages.map(m => m.id);
+    // Filter out optimistic message IDs (they start with "optimistic-")
+    const messageIds = messages
+      .map(m => m.id)
+      .filter(id => !id.startsWith('optimistic-'));
     if (messageIds.length === 0) return;
     
     const loadReactions = async () => {
@@ -140,7 +143,10 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   useEffect(() => {
     if (messages.length === 0 || !user?.id) return;
     
-    const messageIds = messages.map(m => m.id);
+    // Filter out optimistic message IDs (they start with "optimistic-")
+    const messageIds = messages
+      .map(m => m.id)
+      .filter(id => !id.startsWith('optimistic-'));
     if (messageIds.length === 0) return;
     
     // Subscribe to all reaction changes and reload when any change occurs
