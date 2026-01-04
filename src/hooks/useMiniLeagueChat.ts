@@ -287,10 +287,45 @@ export function useMiniLeagueChat(
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        // If subscription fails or becomes inactive, refresh messages
+        if (status === 'SUBSCRIBED') {
+          // Subscription active
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          // Subscription failed - refresh to get any missed messages
+          if (active) {
+            refresh();
+          }
+        }
+      });
+
+    // Refresh messages when page becomes visible (user returns from background)
+    const handleVisibilityChange = () => {
+      if (!active) return;
+      if (document.visibilityState === 'visible') {
+        // User returned to the app - refresh to catch any missed messages
+        refresh();
+      }
+    };
+
+    // Refresh messages when window gains focus (user taps notification)
+    const handleFocus = () => {
+      if (!active) return;
+      // Small delay to ensure we're fully back in the app
+      setTimeout(() => {
+        if (active) {
+          refresh();
+        }
+      }, 100);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
       active = false;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
       supabase.removeChannel(channel);
     };
   }, [miniLeagueId, enabled, autoSubscribe, refresh, applyMessages]);
