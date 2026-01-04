@@ -22,7 +22,8 @@ alter table public.chat_presence enable row level security;
 
 -- Users can manage their own presence
 do $$ begin
-  create policy if not exists "Users can upsert their own presence" 
+  drop policy if exists "Users can upsert their own presence" on public.chat_presence;
+  create policy "Users can upsert their own presence" 
   on public.chat_presence
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 exception when others then null; end $$;
