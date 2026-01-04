@@ -131,21 +131,39 @@ export const handler: Handler = async (event) => {
 
   if (recipients.size === 0) {
     console.log('[notifyLeagueMessage] No eligible recipients after filtering');
-    return json(200, { ok: true, message: 'No eligible recipients' });
+    return json(200, { 
+      ok: true, 
+      message: 'No eligible recipients',
+      debug: {
+        totalMembers,
+        afterExcludingSender: recipients.size,
+        muted: (mutes || []).length,
+        disabledPreferences: 0,
+        activeUsers: activeUserIds?.length || 0,
+      }
+    });
   }
 
   // 4) Load push targets (Despia uses legacy OneSignal SDK - only player_id)
   const toIds = Array.from(recipients);
+  console.log(`[notifyLeagueMessage] Loading subscriptions for ${toIds.length} recipient user IDs`);
+  
   const { data: subs, error: subErr } = await admin
     .from('push_subscriptions')
-    .select('user_id, player_id, is_active, subscribed')
+    .select('user_id, player_id, is_active, subscribed, last_checked_at')
     .in('user_id', toIds)
     .eq('is_active', true);
   if (subErr) {
     console.error('[notifyLeagueMessage] Failed to load subscriptions:', subErr);
-    return json(500, { error: 'Failed to load subscriptions', details: subErr.message });
+    return json(500, { 
+      error: 'Failed to load subscriptions', 
+      details: subErr.message,
+      debug: { recipientUserIds: toIds }
+    });
   }
 
+  console.log(`[notifyLeagueMessage] Found ${subs?.length || 0} active subscriptions in database`);
+  
   const candidatePlayerIds = Array.from(
     new Set((subs || []).map((s: any) => s.player_id).filter(Boolean))
   );
@@ -157,7 +175,19 @@ export const handler: Handler = async (event) => {
       message: 'No devices', 
       eligibleRecipients: recipients.size,
       recipientUserIds: Array.from(recipients),
-      debug: `Found ${recipients.size} eligible recipients but none have registered devices. Recipients: ${Array.from(recipients).join(', ')}`
+      debug: {
+        totalMembers,
+        recipientsAfterFiltering: recipients.size,
+        subscriptionsInDb: subs?.length || 0,
+        subscriptionsWithPlayerId: candidatePlayerIds.length,
+        recipientUserIds: Array.from(recipients),
+        subscriptionDetails: (subs || []).map((s: any) => ({
+          user_id: s.user_id?.slice(0, 8) + '...',
+          has_player_id: !!s.player_id,
+          is_active: s.is_active,
+          subscribed: s.subscribed,
+        })),
+      }
     });
   }
 
@@ -166,7 +196,8 @@ export const handler: Handler = async (event) => {
   // OneSignal will reject unsubscribed devices, but we'll still send to valid ones
   const validPlayerIds = candidatePlayerIds;
   
-  console.log(`[notifyLeagueMessage] Sending to ${validPlayerIds.length} devices (OneSignal will filter unsubscribed)`);
+  console.log(`[notifyLeagueMessage] Sending to ${validPlayerIds.length} player IDs (OneSignal will filter unsubscribed)`);
+  console.log(`[notifyLeagueMessage] Player IDs: ${validPlayerIds.map(id => id.slice(0, 12) + '...').join(', ')}`);
 
   // 6) Build message
   const title = senderName || 'New message';
@@ -213,9 +244,29 @@ export const handler: Handler = async (event) => {
     });
 
     const body = await resp.json().catch(() => ({}));
+    
+    // Log full response for debugging
+    console.log(`[notifyLeagueMessage] OneSignal response status: ${resp.status}`);
+    console.log(`[notifyLeagueMessage] OneSignal response body:`, JSON.stringify(body, null, 2));
+    
     if (!resp.ok) {
       console.error('[notifyLeagueMessage] OneSignal API error:', resp.status, JSON.stringify(body, null, 2));
-      return json(resp.status, { error: 'OneSignal error', details: body, statusCode: resp.status });
+      return json(resp.status, { 
+        error: 'OneSignal error', 
+        details: body, 
+        statusCode: resp.status,
+        debug: {
+          playerIdsSent: validPlayerIds.length,
+          playerIds: validPlayerIds.map(id => id.slice(0, 12) + '...'),
+          payload: {
+            app_id: ONESIGNAL_APP_ID.slice(0, 8) + '...',
+            include_player_ids_count: validPlayerIds.length,
+            has_url: !!leagueUrl,
+            has_web_url: !!leagueUrl,
+            has_data: true,
+          }
+        }
+      });
     }
 
     // Even if resp.ok is true, check for errors in the response body
@@ -227,22 +278,47 @@ export const handler: Handler = async (event) => {
         error: 'OneSignal rejected the request',
         oneSignalErrors: body.errors,
         fullResponse: body,
-        playerIdsSent: validPlayerIds,
-        candidatePlayerIds: candidatePlayerIds.length,
-        filtered: filteredCount,
-        debug: `OneSignal returned errors: ${JSON.stringify(body.errors)}`
+        debug: {
+          playerIdsSent: validPlayerIds.length,
+          playerIds: validPlayerIds.map(id => id.slice(0, 12) + '...'),
+          recipients: recipients.size,
+          eligibleRecipients: recipients.size,
+          oneSignalResponse: {
+            id: body.id,
+            recipients: body.recipients,
+            errors: body.errors,
+          },
+          payload: {
+            app_id: ONESIGNAL_APP_ID.slice(0, 8) + '...',
+            include_player_ids_count: validPlayerIds.length,
+            url: leagueUrl,
+            web_url: leagueUrl,
+          }
+        }
       });
     }
 
-    console.log(`[notifyLeagueMessage] Successfully sent to ${validPlayerIds.length} devices`);
+    const deliveredCount = body.recipients || 0;
+    console.log(`[notifyLeagueMessage] Successfully sent to ${validPlayerIds.length} player IDs, OneSignal delivered to ${deliveredCount} recipients`);
+    
     return json(200, {
       ok: true,
       result: body,
-      sent: body.recipients || 0,
+      sent: deliveredCount,
       recipients: recipients.size,
-      playerIdsSent: validPlayerIds.length,
-      oneSignalRecipients: body.recipients || 0,
-      debug: `Sent notification to ${validPlayerIds.length} player IDs, OneSignal delivered to ${body.recipients || 0} recipients`
+      debug: {
+        eligibleRecipients: recipients.size,
+        playerIdsSent: validPlayerIds.length,
+        oneSignalRecipients: deliveredCount,
+        oneSignalNotificationId: body.id,
+        playerIds: validPlayerIds.map(id => id.slice(0, 12) + '...'),
+        payload: {
+          app_id: ONESIGNAL_APP_ID.slice(0, 8) + '...',
+          include_player_ids_count: validPlayerIds.length,
+          url: leagueUrl,
+          web_url: leagueUrl,
+        }
+      }
     });
   } catch (e: any) {
     return json(500, { error: 'Failed to send notification', details: e?.message || String(e) });

@@ -1811,21 +1811,49 @@ ${shareUrl}`;
           
           const result = await response.json().catch(() => ({}));
           
+          // Log full response for debugging
+          console.log('[Chat] Notification response:', result);
+          if (result.debug) {
+            console.log('[Chat] Notification debug info:', result.debug);
+          }
+          
+          // Store in localStorage for AdminData diagnostic page
+          try {
+            const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
+            logs.push({
+              timestamp: new Date().toISOString(),
+              ok: result.ok,
+              sent: result.sent || 0,
+              message: result.message,
+              error: result.error,
+              debug: result.debug,
+              oneSignalErrors: result.oneSignalErrors,
+              fullResponse: result.fullResponse || result.result,
+            });
+            // Keep only last 50 logs
+            const recentLogs = logs.slice(-50);
+            localStorage.setItem('notification_logs', JSON.stringify(recentLogs));
+          } catch (e) {
+            // Ignore storage errors
+          }
+          
           // Set notification status based on response
           if (result.ok === true) {
             if (result.sent && result.sent > 0) {
               setNotificationStatus({
-                message: `✓ Message sent to ${result.sent} device${result.sent === 1 ? '' : 's'}`,
+                message: `✓ Sent to ${result.sent} device${result.sent === 1 ? '' : 's'}`,
                 type: 'success'
               });
             } else if (result.message === 'No subscribed devices') {
+              const debug = result.debug || {};
               setNotificationStatus({
-                message: `⚠️ No subscribed devices (${result.eligibleRecipients || 0} eligible recipient${result.eligibleRecipients === 1 ? '' : 's'})`,
+                message: `⚠️ No subscribed devices (${debug.eligibleRecipients || result.eligibleRecipients || 0} eligible, ${debug.playerIdsSent || 0} player IDs sent)`,
                 type: 'warning'
               });
             } else if (result.message === 'No devices') {
+              const debug = result.debug || {};
               setNotificationStatus({
-                message: `⚠️ No devices registered (${result.eligibleRecipients || 0} eligible recipient${result.eligibleRecipients === 1 ? '' : 's'})`,
+                message: `⚠️ No devices (${debug.eligibleRecipients || result.eligibleRecipients || 0} eligible, ${debug.subscriptionsInDb || 0} in DB)`,
                 type: 'warning'
               });
             } else if (result.message === 'No eligible recipients') {
@@ -1834,14 +1862,22 @@ ${shareUrl}`;
                 type: 'success'
               });
             } else {
+              const debug = result.debug || {};
+              const detail = debug.oneSignalRecipients !== undefined 
+                ? ` (${debug.playerIdsSent || 0} player IDs → ${debug.oneSignalRecipients || 0} delivered)`
+                : '';
               setNotificationStatus({
-                message: `✓ ${result.message || 'Notification sent'}`,
+                message: `✓ ${result.message || 'Notification sent'}${detail}`,
                 type: 'success'
               });
             }
           } else if (result.ok === false || result.error) {
+            const errorDetail = result.oneSignalErrors 
+              ? ` OneSignal: ${JSON.stringify(result.oneSignalErrors)}`
+              : '';
+            const debugInfo = result.debug ? ` (Debug: ${JSON.stringify(result.debug).slice(0, 100)}...)` : '';
             setNotificationStatus({
-              message: `✗ Failed to send notification: ${result.error || 'Unknown error'}`,
+              message: `✗ Failed: ${result.error || 'Unknown error'}${errorDetail}${debugInfo}`,
               type: 'error'
             });
           } else if (!response.ok) {

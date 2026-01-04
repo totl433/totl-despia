@@ -1099,6 +1099,62 @@ export default function AdminDataPage() {
           </div>
         </div>
 
+        {/* Notification Diagnostic */}
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <h3 className="text-lg font-semibold text-slate-800 mb-3">🔔 Notification Diagnostic</h3>
+          <div className="space-y-3">
+            {(() => {
+              try {
+                const notificationLogs = localStorage.getItem('notification_logs');
+                const logs = notificationLogs ? JSON.parse(notificationLogs) : [];
+                
+                return (
+                  <>
+                    {logs.length > 0 ? (
+                      <div className="space-y-2">
+                        <div className="text-xs text-slate-600 mb-2">Recent notification attempts (last 10):</div>
+                        {logs.slice(-10).reverse().map((log: any, idx: number) => (
+                          <div key={idx} className={`p-3 rounded-lg border text-xs ${
+                            log.ok 
+                              ? (log.sent > 0 ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200')
+                              : 'bg-red-50 border-red-200'
+                          }`}>
+                            <div className="font-semibold mb-1">
+                              {new Date(log.timestamp).toLocaleTimeString()} - {log.ok ? (log.sent > 0 ? '✅ Sent' : '⚠️ No delivery') : '❌ Failed'}
+                            </div>
+                            <pre className="whitespace-pre-wrap break-all text-xs">
+                              {JSON.stringify(log, null, 2)}
+                            </pre>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-600">
+                        No notification attempts logged yet. Send a chat message to see diagnostic info.
+                      </div>
+                    )}
+                    <button
+                      onClick={() => {
+                        localStorage.removeItem('notification_logs');
+                        window.location.reload();
+                      }}
+                      className="w-full py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium rounded-lg transition-colors text-sm"
+                    >
+                      Clear Notification Logs
+                    </button>
+                  </>
+                );
+              } catch (e) {
+                return (
+                  <div className="p-3 bg-red-50 rounded-lg border border-red-200 text-xs text-red-700">
+                    Error reading notification logs: {String(e)}
+                  </div>
+                );
+              }
+            })()}
+          </div>
+        </div>
+
         {/* Admin Links */}
         <div className="bg-white rounded-xl shadow-md p-6">
           <h3 className="text-lg font-semibold text-slate-800 mb-3">Admin Pages</h3>
