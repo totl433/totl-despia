@@ -200,11 +200,11 @@ How To Play →`}
             linkTo="/global?tab=lastgw"
             rank={lastGwRank?.rank ?? null}
             total={lastGwRank?.total ?? null}
-            score={lastGwLiveScore?.score ?? cachedLastGwLiveScore?.score ?? lastGwRank?.score}
+            score={lastGwLiveScoreState?.score ?? lastGwLiveScore?.score ?? lastGwRank?.score}
             gw={lastGwRank?.gw}
             totalFixtures={lastGwRank?.totalFixtures}
             variant="lastGw"
-            isActiveLive={isLastGwLive && (lastGwLiveScore !== null || cachedLastGwLiveScore !== null)}
+            isActiveLive={isLastGwLive && (lastGwLiveScoreState !== null || lastGwLiveScore !== null)}
           />
           <LeaderboardCard
             title="5-WEEK FORM"
@@ -229,7 +229,7 @@ How To Play →`}
             linkTo="/global?tab=overall"
             rank={seasonRank?.rank ?? null}
             total={seasonRank?.total ?? null}
-            isActiveLive={isCurrentGwLive && (currentGwLiveScore !== null || cachedCurrentGwLiveScore !== null)}
+            isActiveLive={isCurrentGwLive && (currentGwLiveScoreState !== null || currentGwLiveScore !== null)}
           />
           {userStreakData && (
             <StreakCard

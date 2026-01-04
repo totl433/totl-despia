@@ -261,7 +261,7 @@ export default function HomePage() {
   const [seasonRank, setSeasonRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(initialState.seasonRank ?? null);
   const [fixtures, setFixtures] = useState<Fixture[]>(initialState.fixtures);
   const [userPicks, setUserPicks] = useState<Record<number, "H" | "D" | "A">>(initialState.userPicks);
-  const [liveScoresFromCache, setLiveScoresFromCache] = useState<Record<number, { 
+  const [liveScoresFromCache] = useState<Record<number, { 
     homeScore: number; 
     awayScore: number; 
     status: string; 
@@ -271,7 +271,7 @@ export default function HomePage() {
     home_team?: string | null;
     away_team?: string | null;
     result?: "H" | "D" | "A" | null;
-  }>>(initialState.liveScores);
+  }>>(initialState.liveScores || {});
   const [leagueData, setLeagueData] = useState<Record<string, LeagueDataInternal>>(initialState.leagueData);
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>(initialState.leagueSubmissions);
   
