@@ -161,59 +161,12 @@ export const handler: Handler = async (event) => {
     });
   }
 
-  console.log(`[notifyLeagueMessage] Checking subscription status for ${candidatePlayerIds.length} candidate Player IDs`);
-
-  // 5) Verify each Player ID is actually subscribed in OneSignal and update DB
-  const checks = await Promise.allSettled(
-    candidatePlayerIds.map(async (playerId) => {
-      const result = await isSubscribed(playerId, ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY);
-      
-      // Update DB with subscription health
-      if (result.player) {
-        await admin
-          .from('push_subscriptions')
-          .update({
-            subscribed: result.subscribed,
-            last_checked_at: new Date().toISOString(),
-            last_active_at: result.player.last_active ? new Date(result.player.last_active * 1000).toISOString() : null,
-            invalid: !!result.player.invalid_identifier,
-            os_payload: result.player,
-          })
-          .eq('player_id', playerId)
-          .then(() => {}, (err) => console.error(`[notifyLeagueMessage] Failed to update subscription health for ${playerId}:`, err));
-      }
-      
-      return { playerId, subscribed: result.subscribed };
-    })
-  );
-
-  const validPlayerIds = candidatePlayerIds.filter((playerId, i) => {
-    const check = checks[i];
-    if (check.status === 'fulfilled') {
-      return (check as PromiseFulfilledResult<{ playerId: string; subscribed: boolean }>).value.subscribed;
-    }
-    return false;
-  });
-
-  const filteredCount = candidatePlayerIds.length - validPlayerIds.length;
-  if (filteredCount > 0) {
-    console.log(`[notifyLeagueMessage] Filtered out ${filteredCount} unsubscribed/stale Player IDs`);
-  }
-
-  if (validPlayerIds.length === 0) {
-    console.log(`[notifyLeagueMessage] No subscribed devices after filtering (checked ${candidatePlayerIds.length} Player IDs)`);
-    return json(200, {
-      ok: true,
-      message: 'No subscribed devices',
-      eligibleRecipients: recipients.size,
-      candidatePlayerIds: candidatePlayerIds.length,
-      validPlayerIds: 0,
-      filtered: filteredCount,
-      debug: `Checked ${candidatePlayerIds.length} Player IDs, none are subscribed in OneSignal`
-    });
-  }
-
-  console.log(`[notifyLeagueMessage] Sending to ${validPlayerIds.length} subscribed devices (filtered ${filteredCount} unsubscribed)`);
+  // 5) Use all candidate player IDs - let OneSignal handle subscription validation
+  // Pre-checking subscriptions can be too strict and filter out valid devices
+  // OneSignal will reject unsubscribed devices, but we'll still send to valid ones
+  const validPlayerIds = candidatePlayerIds;
+  
+  console.log(`[notifyLeagueMessage] Sending to ${validPlayerIds.length} devices (OneSignal will filter unsubscribed)`);
 
   // 6) Build message
   const title = senderName || 'New message';
@@ -285,12 +238,11 @@ export const handler: Handler = async (event) => {
     return json(200, {
       ok: true,
       result: body,
-      sent: validPlayerIds.length,
+      sent: body.recipients || 0,
       recipients: recipients.size,
-      candidatePlayerIds: candidatePlayerIds.length,
-      validPlayerIds: validPlayerIds.length,
-      filtered: filteredCount,
-      debug: `Sent notification to ${validPlayerIds.length} subscribed devices (filtered ${filteredCount} unsubscribed)`
+      playerIdsSent: validPlayerIds.length,
+      oneSignalRecipients: body.recipients || 0,
+      debug: `Sent notification to ${validPlayerIds.length} player IDs, OneSignal delivered to ${body.recipients || 0} recipients`
     });
   } catch (e: any) {
     return json(500, { error: 'Failed to send notification', details: e?.message || String(e) });
