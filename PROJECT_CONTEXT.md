@@ -267,7 +267,7 @@ npm run check            # Type check + build
 
 #### Pre-loading & Caching (Performance Optimization)
 - **Initial Data Loader** (`src/services/initialDataLoader.ts`): Pre-warms cache during app initialization
-  - Blocks on critical data: fixtures, picks, league data, ML live tables, user submissions, game state
+  - Blocks on critical data: fixtures, picks, league data, ML live tables, user submissions, game state, live scores
   - Pre-caches for instant page loads: Home, Predictions, Global, Tables pages
   - Cache TTL: HOME (5min), GLOBAL (10min), PREDICTIONS (5min)
   
@@ -275,11 +275,23 @@ npm run check            # Type check + build
   - Instant render if cache is fresh (< TTL threshold)
   - Background refresh if cache is stale
   - Blocking fetch only if no cache exists
+  - **Single source of truth**: Read cache once, pass data via props/state to avoid redundant reads
   
-- **Synchronous State Initialization**: Components initialize state from cache immediately
-  - No loading spinners when cache is available
+- **Synchronous State Initialization**: Components initialize state from cache immediately in `loadInitialStateFromCache()`
+  - State initialized before first render (no loading spinners when cache exists)
+  - Example: `liveScoresFromCache` state initialized from `initialState.liveScores`
   - Data appears instantly on page load
-  - Background updates refresh data silently
+  - Background updates refresh data silently via hooks/subscriptions
+  
+- **Props-Based Data Flow**: Parent components calculate derived data from cache and pass as props
+  - Avoids child components re-reading cache (e.g., LeaderboardsSection receives pre-calculated live scores)
+  - Single cache read per data type, data flows down via props
+  - Example: HomePage calculates `currentGwLiveScore` from cache and passes to LeaderboardsSection
+  
+- **Font Loading Optimization**: 
+  - Font preloading via `<link rel="preload">` in `index.html`
+  - `font-display: block` prevents layout shift during font loading
+  - Ensures text renders with correct sizing immediately
 
 #### Page Loading
 - **Eagerly loaded**: Home, Tables, Global, Predictions (BottomNav pages)
