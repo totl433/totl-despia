@@ -219,13 +219,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user?.id, session?.access_token]);
 
   async function signOut() {
+    console.log('[Auth] Sign out initiated');
     try {
-      await deactivatePushSubscription(session);
+      // Try to deactivate push subscription, but don't block logout if it fails
+      const deactivatePromise = deactivatePushSubscription(session).catch((error) => {
+        console.warn('[Auth] Push deactivation failed during logout, continuing with logout:', error);
+      });
+      
+      // Set a timeout to prevent hanging
+      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 2000));
+      await Promise.race([deactivatePromise, timeoutPromise]);
     } catch (error) {
-      console.warn('[Auth] Push deactivation failed during logout, continuing with logout:', error);
+      console.warn('[Auth] Push deactivation error (non-blocking):', error);
     }
+    
     resetPushSessionState();
-    await supabase.auth.signOut();
+    
+    try {
+      console.log('[Auth] Calling supabase.auth.signOut()');
+      await supabase.auth.signOut();
+      console.log('[Auth] Sign out complete');
+    } catch (error) {
+      console.error('[Auth] Sign out failed:', error);
+      // Force clear local state even if Supabase signOut fails
+      setSession(null);
+      setUser(null);
+      // Reload page to force full reset
+      window.location.href = '/auth';
+    }
   }
 
   function dismissWelcome() {

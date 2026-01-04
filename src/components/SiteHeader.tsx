@@ -52,8 +52,17 @@ export default function SiteHeader() {
             
             {/* Logout button */}
             <button
-              onClick={async () => {
-                await signOut();
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[SiteHeader] Sign out button clicked');
+                try {
+                  await signOut();
+                } catch (error) {
+                  console.error('[SiteHeader] Sign out error:', error);
+                  // Force reload if sign out fails
+                  window.location.href = '/auth';
+                }
               }}
               className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-md text-white text-sm font-medium transition-colors"
             >

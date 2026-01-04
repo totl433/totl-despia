@@ -39,8 +39,17 @@ export const AccountMenu = React.memo(function AccountMenu({
 
       {/* Sign Out Button */}
       <button
-        onClick={async () => {
-          await onLogout();
+        onClick={async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('[AccountMenu] Logout button clicked');
+          try {
+            await onLogout();
+          } catch (error) {
+            console.error('[AccountMenu] Logout error:', error);
+            // Force reload if logout fails
+            window.location.href = '/auth';
+          }
         }}
         className="w-full mt-6 py-3 text-red-600 font-semibold underline"
       >
