@@ -120,7 +120,7 @@ export const handler: Handler = async (event) => {
 
   // Build OneSignal payload with deep link URL
   // iOS requires url and web_url at top level for deep linking
-  const payload: Record<string, any> = {
+  const oneSignalPayload: Record<string, any> = {
     app_id: ONESIGNAL_APP_ID,
     include_player_ids: playerIds,
     headings: { en: title },
@@ -135,13 +135,13 @@ export const handler: Handler = async (event) => {
   
   // Add URL for deep linking (iOS needs both url and web_url)
   if (leagueUrl) {
-    payload.url = leagueUrl;
-    payload.web_url = leagueUrl;
+    oneSignalPayload.url = leagueUrl;
+    oneSignalPayload.web_url = leagueUrl;
   } else if (leagueCode) {
     // Fallback: construct URL from code if leagueUrl wasn't set
     const fallbackUrl = `/league/${leagueCode}?tab=chat`;
-    payload.url = fallbackUrl;
-    payload.web_url = fallbackUrl;
+    oneSignalPayload.url = fallbackUrl;
+    oneSignalPayload.web_url = fallbackUrl;
   }
 
   // Try endpoints and headers similar to original working version
@@ -159,7 +159,7 @@ export const handler: Handler = async (event) => {
       const resp = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': auth },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(oneSignalPayload),
       });
       const body = await resp.json().catch(() => ({}));
       lastResp = { endpoint, auth, status: resp.status, body };
