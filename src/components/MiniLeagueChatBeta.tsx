@@ -54,6 +54,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
   const [sending, setSending] = useState(false);
   const [reactions, setReactions] = useState<Record<string, Array<{ emoji: string; count: number; hasUserReacted: boolean }>>>({});
   const [replyingTo, setReplyingTo] = useState<{ id: string; content: string; authorName?: string } | null>(null);
+  const [uiErrors, setUiErrors] = useState<Array<{ id: string; message: string; timestamp: number }>>([]);
   // Force re-render when memberNames loads by tracking a version
   const [memberNamesVersion, setMemberNamesVersion] = useState(0);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -94,6 +95,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         
         if (error) {
           console.error('[MiniLeagueChatBeta] Error loading reactions:', error);
+          setUiErrors(prev => [...prev, { id: `reactions-${Date.now()}`, message: `Failed to load reactions: ${error.message}`, timestamp: Date.now() }]);
           return;
         }
         
@@ -124,8 +126,9 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         });
         
         setReactions(formattedReactions);
-      } catch (err) {
+      } catch (err: any) {
         console.error('[MiniLeagueChatBeta] Error in loadReactions:', err);
+        setUiErrors(prev => [...prev, { id: `reactions-load-${Date.now()}`, message: `Error loading reactions: ${err?.message || String(err)}`, timestamp: Date.now() }]);
       }
     };
     
@@ -160,6 +163,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
               
               if (error) {
                 console.error('[MiniLeagueChatBeta] Error reloading reactions:', error);
+                setUiErrors(prev => [...prev, { id: `reactions-reload-${Date.now()}`, message: `Failed to reload reactions: ${error.message}`, timestamp: Date.now() }]);
                 return;
               }
               
@@ -188,8 +192,9 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
               });
               
               setReactions(formattedReactions);
-            } catch (err) {
+            } catch (err: any) {
               console.error('[MiniLeagueChatBeta] Error in reaction subscription handler:', err);
+              setUiErrors(prev => [...prev, { id: `reactions-sub-${Date.now()}`, message: `Error updating reactions: ${err?.message || String(err)}`, timestamp: Date.now() }]);
             }
           };
           
@@ -293,6 +298,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       
       if (error) {
         console.error('[MiniLeagueChatBeta] Error adding reaction:', error);
+        setUiErrors(prev => [...prev, { id: `reaction-add-${Date.now()}`, message: `Failed to add reaction: ${error.message}`, timestamp: Date.now() }]);
         // Revert optimistic update on error
         setReactions((prev) => {
           const reverted = { ...prev };
@@ -792,8 +798,9 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           // Keep only last 50 logs
           const recentLogs = logs.slice(-50);
           localStorage.setItem('notification_logs', JSON.stringify(recentLogs));
-        } catch (e) {
+        } catch (e: any) {
           console.error('[MiniLeagueChatBeta] Error storing notification log:', e);
+          setUiErrors(prev => [...prev, { id: `notif-log-${Date.now()}`, message: `Failed to log notification: ${e?.message || String(e)}`, timestamp: Date.now() }]);
         }
       }
     },
@@ -816,8 +823,9 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       await notifyRecipients(text);
       setReplyingTo(null);
       scrollToBottomWithRetries([0, 150, 300]);
-    } catch (err) {
+    } catch (err: any) {
       console.error('[MiniLeagueChatBeta] Error sending message:', err);
+      setUiErrors(prev => [...prev, { id: `send-${Date.now()}`, message: `Failed to send message: ${err?.message || String(err)}`, timestamp: Date.now() }]);
       // Restore draft on error
       setDraft(text);
     } finally {
@@ -825,9 +833,36 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
     }
   }, [draft, miniLeagueId, notifyRecipients, scrollToBottomWithRetries, sendMessage, sending, replyingTo]);
 
+  // Auto-dismiss errors after 5 seconds
+  useEffect(() => {
+    if (uiErrors.length === 0) return;
+    const timer = setTimeout(() => {
+      setUiErrors(prev => prev.filter(e => Date.now() - e.timestamp < 5000));
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [uiErrors]);
 
   return (
     <div className="flex flex-col h-full w-full" style={{ position: 'relative', zIndex: 1, overflowX: 'hidden' }}>
+      {/* Error display */}
+      {uiErrors.length > 0 && (
+        <div className="px-4 pt-2 space-y-2">
+          {uiErrors.map(err => (
+            <div
+              key={err.id}
+              className="bg-red-50 border border-red-200 text-red-800 text-xs px-3 py-2 rounded-lg flex items-start justify-between gap-2"
+            >
+              <span className="flex-1">{err.message}</span>
+              <button
+                onClick={() => setUiErrors(prev => prev.filter(e => e.id !== err.id))}
+                className="text-red-600 hover:text-red-800 flex-shrink-0"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <div
         ref={listRef}
         className="flex-1 overflow-y-auto px-4 py-5"
