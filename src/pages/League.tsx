@@ -1799,13 +1799,19 @@ ${shareUrl}`;
     // Request push notifications to league members (exclude sender)
     // Skip in local development (Netlify Functions not available)
     const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    if (!isLocalDev) {
+    console.log('[Chat] Notification check - isLocalDev:', isLocalDev, 'hostname:', window.location.hostname);
+    
+    if (!isLocalDev && inserted) {
+      // Only send notification if message was successfully inserted
+      console.log('[Chat] Message inserted successfully, calling notifyLeagueMessage...');
       setTimeout(async () => {
         const logEntry: any = {
           timestamp: new Date().toISOString(),
           ok: false,
           sent: 0,
           error: 'Unknown error',
+          leagueId: league.id,
+          senderId: user.id,
         };
         
         try {
@@ -1920,9 +1926,12 @@ ${shareUrl}`;
           }
         }
       }, 100);
-    } else {
+    } else if (isLocalDev) {
       // In local dev, still log that we skipped it
       console.log('[Chat] Skipping notification (local dev mode)');
+    } else if (!inserted) {
+      // Message insertion failed, can't send notification
+      console.log('[Chat] Skipping notification (message insertion failed)');
     }
   }, [league, user, newMsg, setNewMsg, setChat, setNotificationStatus]);
 
