@@ -795,23 +795,6 @@ export default function GlobalLeaderboardPage() {
         .sparkle-trophy svg {
           filter: drop-shadow(0 0 2px rgba(251, 191, 36, 0.8));
         }
-        @keyframes flash {
-          0%, 100% {
-            background-color: rgb(209, 250, 229);
-          }
-          25% {
-            background-color: rgb(167, 243, 208);
-          }
-          50% {
-            background-color: rgb(209, 250, 229);
-          }
-          75% {
-            background-color: rgb(167, 243, 208);
-          }
-        }
-        .flash-you-badge {
-          animation: flash 1.5s ease-in-out 3;
-        }
         .full-width-header-border::after {
           content: '';
           position: absolute;
@@ -1108,18 +1091,34 @@ export default function GlobalLeaderboardPage() {
                     }
                   }
 
+                  // Highlight entire row for current user
+                  const rowBgColor = isMe ? '#ecfdf5' : '#f8fafc';
+                  const rowHoverBgColor = isMe ? '#d1fae5' : 'rgb(241 245 249)';
+                  
                   return (
                     <tr 
                       key={r.user_id}
                       ref={isMe ? userRowRef : null}
                       onClick={() => handleUserClick(r.user_id, r.name)}
-                      className="hover:bg-slate-100 transition-colors cursor-pointer"
+                      className={`transition-colors cursor-pointer ${isMe ? 'border-l-4 border-emerald-500' : ''}`}
                       style={{
                         ...(i > 0 ? { 
                           borderTop: '1px solid #e2e8f0',
                           position: 'relative',
-                          backgroundColor: '#f8fafc'
-                        } : { position: 'relative', backgroundColor: '#f8fafc' })
+                          backgroundColor: rowBgColor
+                        } : { position: 'relative', backgroundColor: rowBgColor })
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = rowHoverBgColor;
+                        Array.from(e.currentTarget.children).forEach((td: any) => {
+                          td.style.backgroundColor = rowHoverBgColor;
+                        });
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = rowBgColor;
+                        Array.from(e.currentTarget.children).forEach((td: any) => {
+                          td.style.backgroundColor = rowBgColor;
+                        });
                       }}
                     >
                       {/* Rank number only */}
@@ -1127,13 +1126,13 @@ export default function GlobalLeaderboardPage() {
                         width: '45px',
                         paddingLeft: '0.5rem', 
                         paddingRight: '0.5rem',
-                        backgroundColor: '#f8fafc'
+                        backgroundColor: rowBgColor
                       }}>
                           <span>{currentRank}{isTied ? '=' : ''}</span>
                       </td>
 
                       {/* Player name with color-coded indicator */}
-                      <td className="px-4 py-3" style={{ backgroundColor: '#f8fafc' }}>
+                      <td className="px-4 py-3" style={{ backgroundColor: rowBgColor }}>
                         <div className="flex items-center gap-2">
                           {(indicator || indicatorClass) && activeTab === "overall" && (
                             <span
@@ -1152,29 +1151,24 @@ export default function GlobalLeaderboardPage() {
                               </svg>
                             </span>
                           )}
-                          <span className="font-normal text-sm truncate min-w-0 whitespace-nowrap" style={{ color: 'rgb(0, 0, 0)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <span className={`font-normal text-sm truncate min-w-0 whitespace-nowrap ${isMe ? 'font-semibold' : ''}`} style={{ color: 'rgb(0, 0, 0)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {r.name}
                           </span>
-                          {isMe && (
-                            <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 flex-shrink-0 flash-you-badge">
-                              you
-                            </span>
-                          )}
                         </div>
                       </td>
 
                       {/* Overall tab columns */}
                       {activeTab === "overall" && (
                         <>
-                          <td className="px-4 py-3 text-center tabular-nums font-bold" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}></td>
-                          <td className="px-1 py-3 text-center tabular-nums font-bold" style={{ width: '55px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}>
+                          <td className="px-4 py-3 text-center tabular-nums font-bold" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: rowBgColor }}></td>
+                          <td className="px-1 py-3 text-center tabular-nums font-bold" style={{ width: '55px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: rowBgColor }}>
                             {'this_gw' in r ? r.this_gw : 0}
                           </td>
                           <td className="py-3 text-center tabular-nums font-bold" style={{ 
                             width: '60px',
                             paddingLeft: '0.5rem', 
                             paddingRight: '0.5rem',
-                            backgroundColor: '#f8fafc'
+                            backgroundColor: rowBgColor
                           }}>
                             {'ocp' in r ? r.ocp : 0}
                           </td>
@@ -1184,12 +1178,12 @@ export default function GlobalLeaderboardPage() {
                       {/* Form tab columns (both 5 Week and 10 Week) */}
                       {(activeTab === "form5" || activeTab === "form10") && (
                         <>
-                          <td className="px-4 py-3 text-center tabular-nums font-bold" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}></td>
+                          <td className="px-4 py-3 text-center tabular-nums font-bold" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: rowBgColor }}></td>
                           <td className="py-3 text-center tabular-nums font-bold" style={{ 
                             width: '60px',
                             paddingLeft: '0.5rem', 
                             paddingRight: '0.5rem',
-                            backgroundColor: '#f8fafc'
+                            backgroundColor: rowBgColor
                           }}>
                             {'formPoints' in r ? r.formPoints : 0}
                         </td>
@@ -1199,12 +1193,12 @@ export default function GlobalLeaderboardPage() {
                       {/* Last GW tab columns */}
                       {activeTab === "lastgw" && (
                         <>
-                          <td className="px-4 py-3 text-center tabular-nums font-bold" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: '#f8fafc' }}></td>
+                          <td className="px-4 py-3 text-center tabular-nums font-bold" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: rowBgColor }}></td>
                           <td className="py-3 text-center tabular-nums font-bold" style={{ 
                             width: '60px',
                             paddingLeft: '0.5rem', 
                             paddingRight: '0.5rem',
-                            backgroundColor: '#f8fafc'
+                            backgroundColor: rowBgColor
                           }}>
                             {'points' in r ? r.points : 0}
                         </td>
