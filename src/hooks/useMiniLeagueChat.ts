@@ -263,9 +263,9 @@ export function useMiniLeagueChat(
                 .eq("id", fullMessage.reply_to_message_id)
                 .single();
               
-          if (replyMessage) {
-            (fullMessage as any).reply_to = replyMessage;
-          }
+              if (replyMessage) {
+                (fullMessage as any).reply_to = replyMessage;
+              }
             }
             
             const incoming = normalizeMessage(fullMessage);
@@ -287,45 +287,22 @@ export function useMiniLeagueChat(
           }
         }
       )
-      .subscribe((status) => {
-        // If subscription fails or becomes inactive, refresh messages
-        if (status === 'SUBSCRIBED') {
-          // Subscription active
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          // Subscription failed - refresh to get any missed messages
-          if (active) {
-            refresh();
-          }
-        }
-      });
+      .subscribe();
 
-    // Refresh messages when page becomes visible (user returns from background)
+    // Single mechanism: refresh when page becomes visible (covers all cases)
     const handleVisibilityChange = () => {
       if (!active) return;
       if (document.visibilityState === 'visible') {
-        // User returned to the app - refresh to catch any missed messages
+        // Refresh to catch any messages missed while backgrounded
         refresh();
       }
     };
 
-    // Refresh messages when window gains focus (user taps notification)
-    const handleFocus = () => {
-      if (!active) return;
-      // Small delay to ensure we're fully back in the app
-      setTimeout(() => {
-        if (active) {
-          refresh();
-        }
-      }, 100);
-    };
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
 
     return () => {
       active = false;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
       supabase.removeChannel(channel);
     };
   }, [miniLeagueId, enabled, autoSubscribe, refresh, applyMessages]);
