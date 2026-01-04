@@ -1803,6 +1803,15 @@ ${shareUrl}`;
     if (!isLocalDev && inserted) {
       // Only send notification if message was successfully inserted
       setTimeout(async () => {
+        const logEntry: any = {
+          timestamp: new Date().toISOString(),
+          leagueId: league.id,
+          senderId: user.id,
+          ok: false,
+          sent: 0,
+          error: 'Unknown error',
+        };
+        
         try {
           const senderName = user.user_metadata?.display_name || user.email || 'User';
           const response = await fetch('/.netlify/functions/notifyLeagueMessage', {
@@ -1811,12 +1820,25 @@ ${shareUrl}`;
             body: JSON.stringify({ leagueId: league.id, senderId: user.id, senderName, content: text })
           });
           
-          const result = await response.json().catch(() => ({}));
+          const result = await response.json().catch((e) => {
+            logEntry.error = `Failed to parse response: ${e?.message || String(e)}`;
+            logEntry.httpStatus = response.status;
+            return { ok: false, error: 'Failed to parse response' };
+          });
           
-          // Log full result for debugging
-          console.log('[Chat] Notification result:', result);
+          // Update log entry
+          Object.assign(logEntry, {
+            ok: result.ok,
+            sent: result.sent || 0,
+            recipients: result.recipients || 0,
+            message: result.message,
+            error: result.error,
+            details: result.details,
+            httpStatus: response.status,
+            fullResponse: result,
+          });
           
-          // Set notification status based on response
+          // ALWAYS show status message
           if (result.ok === true) {
             if (result.recipients > 0 || result.sent > 0) {
               const count = result.recipients || result.sent || 0;
@@ -1826,8 +1848,8 @@ ${shareUrl}`;
               });
             } else if (result.message === 'No devices' || result.message === 'No eligible recipients') {
               setNotificationStatus({
-                message: '✓ No devices to notify',
-                type: 'success'
+                message: '⚠️ No devices to notify',
+                type: 'warning'
               });
             } else {
               setNotificationStatus({
@@ -1835,22 +1857,39 @@ ${shareUrl}`;
                 type: 'success'
               });
             }
-          } else if (result.ok === false || result.error) {
-            const errorMsg = result.details?.body?.errors?.[0] || result.error || 'Failed to send notification';
+          } else {
+            // Error case - show detailed error
+            const errorMsg = result.details?.body?.errors?.[0] 
+              || result.details?.error 
+              || result.error 
+              || 'Failed to send notification';
             setNotificationStatus({
               message: `✗ ${errorMsg}`,
               type: 'error'
             });
           }
           
-          setTimeout(() => setNotificationStatus(null), 3000);
-        } catch (err) {
-          console.error('[Chat] Notification error:', err);
+          setTimeout(() => setNotificationStatus(null), 5000);
+        } catch (err: any) {
+          logEntry.error = err?.message || String(err);
+          logEntry.exception = true;
           setNotificationStatus({
-            message: '✗ Failed to send notification',
+            message: `✗ Error: ${err?.message || 'Failed to send notification'}`,
             type: 'error'
           });
-          setTimeout(() => setNotificationStatus(null), 3000);
+          setTimeout(() => setNotificationStatus(null), 5000);
+        } finally {
+          // ALWAYS store log entry for AdminData page
+          try {
+            const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
+            logs.push(logEntry);
+            // Keep only last 50 logs
+            const recentLogs = logs.slice(-50);
+            localStorage.setItem('notification_logs', JSON.stringify(recentLogs));
+          } catch (e) {
+            // If localStorage fails, at least try to show error
+            console.error('[Chat] Failed to store notification log:', e);
+          }
         }
       }, 100);
     }
