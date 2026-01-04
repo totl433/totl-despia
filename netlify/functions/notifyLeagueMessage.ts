@@ -133,14 +133,12 @@ export const handler: Handler = async (event) => {
     },
   };
   
-  // Add URL for deep linking (iOS needs both url and web_url)
+  // Add URL for deep linking (iOS needs web_url, NOT url - they conflict)
   if (leagueUrl) {
-    oneSignalPayload.url = leagueUrl;
     oneSignalPayload.web_url = leagueUrl;
   } else if (leagueCode) {
     // Fallback: construct URL from code if leagueUrl wasn't set
     const fallbackUrl = `/league/${leagueCode}?tab=chat`;
-    oneSignalPayload.url = fallbackUrl;
     oneSignalPayload.web_url = fallbackUrl;
   }
 

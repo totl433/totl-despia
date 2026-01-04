@@ -11,7 +11,6 @@ import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import { invalidateLeagueCache } from "../api/leagues";
 import MiniLeagueChatBeta from "../components/MiniLeagueChatBeta";
-import MessageBubble from "../components/chat/MessageBubble";
 import InfoSheet from "../components/InfoSheet";
 import WinnerBanner from "../components/league/WinnerBanner";
 import GwSelector from "../components/league/GwSelector";
@@ -20,7 +19,7 @@ import MiniLeagueTable from "../components/league/MiniLeagueTable";
 import ResultsTable from "../components/league/ResultsTable";
 import SubmissionStatusTable from "../components/league/SubmissionStatusTable";
 import LeagueFixtureSection from "../components/league/LeagueFixtureSection";
-import { VOLLEY_USER_ID, VOLLEY_NAME, VOLLEY_AVATAR_PATH } from "../lib/volley";
+import { VOLLEY_USER_ID, VOLLEY_NAME } from "../lib/volley";
 
 const MAX_MEMBERS = 8;
 
@@ -68,14 +67,7 @@ type MltRow = {
   form: ("W" | "D" | "L")[];
 };
 
-/* Chat */
-type ChatMsg = {
-  id: string;
-  league_id: string;
-  user_id: string;
-  content: string;
-  created_at: string;
-};
+/* Chat - types removed, MiniLeagueChatBeta uses its own types */
 
 /* =========================
    Helpers
@@ -94,628 +86,8 @@ function rowToOutcome(r: ResultRowRaw): "H" | "D" | "A" | null {
 // Chip component moved to src/components/league/PickChip.tsx
 
 /* =========================
-   ChatTab (external to avoid remount on typing)
+   ChatTab removed - using MiniLeagueChatBeta instead
    ========================= */
-
-type ChatTabProps = {
-  chat: ChatMsg[];
-  userId?: string;
-  nameById: Map<string, string>;
-  isMember: boolean;
-  newMsg: string;
-  setNewMsg: (v: string) => void;
-  onSend: () => void;
-  leagueCode?: string;
-  memberCount?: number;
-  maxMembers?: number;
-};
-
-type ReactionData = {
-  emoji: string;
-  count: number;
-  hasUserReacted: boolean;
-};
-
-function ChatTab({ chat, userId, nameById, isMember, newMsg, setNewMsg, onSend, leagueCode: _leagueCode, memberCount: _memberCount, maxMembers: _maxMembers, notificationStatus }: ChatTabProps & { notificationStatus?: { message: string; type: 'success' | 'warning' | 'error' | null } | null }) {
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const inputAreaRef = useRef<HTMLDivElement | null>(null);
-  const [inputBottom, setInputBottom] = useState<number>(0);
-  const [reactions, setReactions] = useState<Record<string, ReactionData[]>>({});
-
-  // Simple scroll to bottom
-  const scrollToBottom = () => {
-    if (listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
-  };
-
-  // Helper to scroll with multiple attempts for reliability
-  const scrollToBottomWithRetries = useCallback((delays: number[] = [0, 100, 300, 500, 700]) => {
-    requestAnimationFrame(() => {
-      delays.forEach((delay) => {
-        setTimeout(() => scrollToBottom(), delay);
-      });
-    });
-  }, []);
-
-  const applyKeyboardLayout = useCallback(
-    (keyboardHeight: number, scrollDelays: number[] = [0, 100, 300, 500, 700]) => {
-      // Always calculate input area height dynamically
-      const inputAreaHeight = inputAreaRef.current?.offsetHeight || 72;
-      
-      if (keyboardHeight > 0) {
-        // Calculate the total height needed for input area (including safe area)
-        const totalBottomSpace = keyboardHeight + inputAreaHeight;
-        
-        setInputBottom(keyboardHeight);
-        if (listRef.current) {
-          // Set padding to account for input area height, ensuring messages are never hidden
-          // The accessory view space is already included in keyboardHeight from visualViewport
-          listRef.current.style.paddingBottom = `${totalBottomSpace + 8}px`;
-        }
-      } else {
-        setInputBottom(0);
-        if (listRef.current) {
-          // When keyboard is hidden, use normal padding for input area
-          listRef.current.style.paddingBottom = `${inputAreaHeight + 8}px`;
-        }
-      }
-
-      scrollToBottomWithRetries(scrollDelays);
-    },
-    [scrollToBottomWithRetries]
-  );
-
-  // Load reactions for all messages
-  useEffect(() => {
-    if (chat.length === 0 || !userId) return;
-    
-    const messageIds = chat.map(m => m.id);
-    if (messageIds.length === 0) return;
-    
-    const loadReactions = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('league_message_reactions')
-          .select('message_id, emoji, user_id')
-          .in('message_id', messageIds);
-        
-        if (error) {
-          console.error('[ChatTab] Error loading reactions:', error);
-          return;
-        }
-      
-      // Group reactions by message_id and emoji
-      const reactionsByMessage: Record<string, Record<string, { count: number; hasUserReacted: boolean }>> = {};
-      
-      (data || []).forEach((reaction: any) => {
-        if (!reactionsByMessage[reaction.message_id]) {
-          reactionsByMessage[reaction.message_id] = {};
-        }
-        if (!reactionsByMessage[reaction.message_id][reaction.emoji]) {
-          reactionsByMessage[reaction.message_id][reaction.emoji] = { count: 0, hasUserReacted: false };
-        }
-        reactionsByMessage[reaction.message_id][reaction.emoji].count++;
-        if (reaction.user_id === userId) {
-          reactionsByMessage[reaction.message_id][reaction.emoji].hasUserReacted = true;
-        }
-      });
-      
-      // Convert to array format
-      const formattedReactions: Record<string, ReactionData[]> = {};
-      Object.keys(reactionsByMessage).forEach(messageId => {
-        formattedReactions[messageId] = Object.entries(reactionsByMessage[messageId]).map(([emoji, data]) => ({
-          emoji,
-          count: data.count,
-          hasUserReacted: data.hasUserReacted,
-        }));
-      });
-      
-      setReactions(formattedReactions);
-      } catch (err) {
-        console.error('[ChatTab] Error in loadReactions:', err);
-      }
-    };
-    
-    loadReactions();
-  }, [chat, userId]);
-
-  // Subscribe to reaction changes
-  useEffect(() => {
-    if (chat.length === 0 || !userId) return;
-    
-    const messageIds = chat.map(m => m.id);
-    if (messageIds.length === 0) return;
-    
-    // Subscribe to all reaction changes and reload when any change occurs
-    const channel = supabase
-      .channel('message-reactions')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'league_message_reactions',
-        },
-        () => {
-          // Reload reactions when they change
-          const loadReactions = async () => {
-            try {
-              const { data, error } = await supabase
-                .from('league_message_reactions')
-                .select('message_id, emoji, user_id')
-                .in('message_id', messageIds);
-              
-              if (error) return;
-              
-              const reactionsByMessage: Record<string, Record<string, { count: number; hasUserReacted: boolean }>> = {};
-              
-              (data || []).forEach((reaction: any) => {
-                if (!reactionsByMessage[reaction.message_id]) {
-                  reactionsByMessage[reaction.message_id] = {};
-                }
-                if (!reactionsByMessage[reaction.message_id][reaction.emoji]) {
-                  reactionsByMessage[reaction.message_id][reaction.emoji] = { count: 0, hasUserReacted: false };
-                }
-                reactionsByMessage[reaction.message_id][reaction.emoji].count++;
-                if (reaction.user_id === userId) {
-                  reactionsByMessage[reaction.message_id][reaction.emoji].hasUserReacted = true;
-                }
-              });
-              
-              const formattedReactions: Record<string, ReactionData[]> = {};
-              Object.keys(reactionsByMessage).forEach(messageId => {
-                formattedReactions[messageId] = Object.entries(reactionsByMessage[messageId]).map(([emoji, data]) => ({
-                  emoji,
-                  count: data.count,
-                  hasUserReacted: data.hasUserReacted,
-                }));
-              });
-              
-              setReactions(formattedReactions);
-            } catch (err) {
-              console.error('[ChatTab] Error reloading reactions:', err);
-            }
-          };
-          
-          loadReactions();
-        }
-      )
-      .subscribe();
-    
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [chat, userId]);
-
-  // Handle reaction click
-  const handleReactionClick = useCallback(async (messageId: string, emoji: string) => {
-    if (!userId) return;
-    
-    // Check if user already reacted with this emoji
-    const messageReactions = reactions[messageId] || [];
-    const existingReaction = messageReactions.find(r => r.emoji === emoji && r.hasUserReacted);
-    
-    if (existingReaction) {
-      // Remove reaction
-      const { error } = await supabase
-        .from('league_message_reactions')
-        .delete()
-        .eq('message_id', messageId)
-        .eq('user_id', userId)
-        .eq('emoji', emoji);
-      
-      if (error) {
-        console.error('[ChatTab] Error removing reaction:', error);
-      }
-    } else {
-      // Add reaction
-      const { error } = await supabase
-        .from('league_message_reactions')
-        .upsert({
-          message_id: messageId,
-          user_id: userId,
-          emoji,
-        });
-      
-      if (error) {
-        console.error('[ChatTab] Error adding reaction:', error);
-      }
-    }
-  }, [userId, reactions]);
-
-  // Scroll when messages change
-  useEffect(() => {
-    if (chat.length > 0) {
-      setTimeout(() => scrollToBottom(), 100);
-    }
-  }, [chat.length]);
-
-  // Reset textarea height when message is cleared (after send)
-  useEffect(() => {
-    if (!newMsg && inputRef.current) {
-      inputRef.current.style.height = 'auto';
-      inputRef.current.style.height = '42px';
-    }
-  }, [newMsg]);
-
-  // Set initial padding for messages container
-  useEffect(() => {
-    if (listRef.current && inputAreaRef.current) {
-      const inputAreaHeight = inputAreaRef.current.offsetHeight || 72;
-      listRef.current.style.paddingBottom = `${inputAreaHeight + 8}px`;
-    }
-  }, []);
-
-  // Reliable keyboard detection - works on both desktop and mobile
-  useEffect(() => {
-    const visualViewport = (window as any).visualViewport;
-    let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
-    let lastKeyboardHeight = 0;
-    let isInputFocused = false;
-
-    const detectKeyboardHeight = (): number => {
-      if (visualViewport) {
-        // Use visualViewport API (best for mobile)
-        const windowHeight = window.innerHeight;
-        const viewportHeight = visualViewport.height;
-        const viewportBottom = visualViewport.offsetTop + viewportHeight;
-        let keyboardHeight = Math.max(0, windowHeight - viewportBottom);
-        return keyboardHeight;
-      } else {
-        // Fallback: detect via window resize (works on desktop too)
-        // On desktop, this will be 0, which is correct
-        return 0;
-      }
-    };
-
-    const updateLayout = () => {
-      // Clear any pending updates
-      if (resizeTimeout) {
-        clearTimeout(resizeTimeout);
-        resizeTimeout = null;
-      }
-
-      // Debounce updates to avoid flickering
-      resizeTimeout = setTimeout(() => {
-        const keyboardHeight = detectKeyboardHeight();
-        
-        // Only update if keyboard height changed significantly (avoid jitter)
-        // On desktop, keyboardHeight will be 0, which is fine
-        if (Math.abs(keyboardHeight - lastKeyboardHeight) < 10 && keyboardHeight > 0 && !isInputFocused) {
-          return;
-        }
-        lastKeyboardHeight = keyboardHeight;
-        
-        applyKeyboardLayout(keyboardHeight);
-      }, 50); // Small debounce delay
-    };
-
-    // Use visualViewport if available (mobile/Despia)
-    if (visualViewport) {
-      visualViewport.addEventListener('resize', updateLayout);
-      visualViewport.addEventListener('scroll', updateLayout);
-    }
-    
-    // Also listen to window resize as fallback (works everywhere)
-    window.addEventListener('resize', updateLayout);
-    
-    // Listen to input focus/blur for immediate response
-    const handleFocus = () => {
-      isInputFocused = true;
-      // Multiple attempts to catch keyboard appearance
-      setTimeout(updateLayout, 50);
-      setTimeout(updateLayout, 150);
-      setTimeout(updateLayout, 300);
-      setTimeout(updateLayout, 500);
-    };
-    
-    const handleBlur = () => {
-      isInputFocused = false;
-      setTimeout(updateLayout, 100);
-    };
-    
-    // Set up focus/blur listeners
-    const focusTimeout = setTimeout(() => {
-      if (inputRef.current) {
-        inputRef.current.addEventListener('focus', handleFocus);
-        inputRef.current.addEventListener('blur', handleBlur);
-      }
-    }, 100);
-    
-    // Initial layout update
-    updateLayout();
-
-    return () => {
-      if (resizeTimeout) clearTimeout(resizeTimeout);
-      clearTimeout(focusTimeout);
-      if (visualViewport) {
-        visualViewport.removeEventListener('resize', updateLayout);
-        visualViewport.removeEventListener('scroll', updateLayout);
-      }
-      window.removeEventListener('resize', updateLayout);
-      if (inputRef.current) {
-        inputRef.current.removeEventListener('focus', handleFocus);
-        inputRef.current.removeEventListener('blur', handleBlur);
-      }
-    };
-  }, [applyKeyboardLayout]);
-
-  // Scroll on input focus and trigger layout update
-  const handleInputFocus = () => {
-    // Try to remove readonly attribute if it exists (workaround for iOS accessory view)
-    if (inputRef.current) {
-      inputRef.current.removeAttribute('readonly');
-    }
-    
-    // Trigger layout update to detect keyboard (works on both desktop and mobile)
-    const detectAndApply = () => {
-      const visualViewport = (window as any).visualViewport;
-      let keyboardHeight = 0;
-      
-      if (visualViewport) {
-        const windowHeight = window.innerHeight;
-        const viewportHeight = visualViewport.height;
-        const viewportBottom = visualViewport.offsetTop + viewportHeight;
-        keyboardHeight = Math.max(0, windowHeight - viewportBottom);
-      }
-      
-      applyKeyboardLayout(keyboardHeight, [0, 100, 200, 400, 600, 800]);
-    };
-    
-    // Multiple attempts to catch keyboard appearance (especially on mobile)
-    setTimeout(detectAndApply, 50);
-    setTimeout(detectAndApply, 150);
-    setTimeout(detectAndApply, 300);
-    setTimeout(detectAndApply, 500);
-    
-    // Multiple scroll attempts for reliability
-    scrollToBottomWithRetries([100, 200, 400, 600]);
-  };
-
-  // Additional resize handler as backup (handles window resizing on desktop)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handleResize = () => {
-      const visualViewport = (window as any).visualViewport;
-      let keyboardHeight = 0;
-      
-      if (visualViewport) {
-        const windowHeight = window.innerHeight;
-        const viewportHeight = visualViewport.height;
-        const viewportBottom = visualViewport.offsetTop + viewportHeight;
-        keyboardHeight = Math.max(0, windowHeight - viewportBottom);
-      }
-      
-      applyKeyboardLayout(keyboardHeight);
-    };
-    
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [applyKeyboardLayout]);
-
-  // Dismiss keyboard when tapping messages area (WhatsApp-like behavior)
-  const handleMessagesClick = (e: React.MouseEvent) => {
-    // Don't blur if clicking on interactive elements (links, buttons, etc.)
-    const target = e.target as HTMLElement;
-    const isInteractive = target.tagName === 'A' || target.tagName === 'BUTTON' || target.closest('a, button');
-    
-    // Blur input to dismiss keyboard when tapping messages area
-    if (!isInteractive && inputRef.current && document.activeElement === inputRef.current) {
-      inputRef.current.blur();
-    }
-  };
-
-  return (
-    <div className="flex flex-col chat-container" style={{ height: '100%', position: 'relative' }}>
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundImage: 'url(/assets/Volley/volley-chat-backgroud.png)',
-          backgroundRepeat: 'repeat',
-          backgroundSize: '110%',
-          backgroundPosition: 'top left',
-          opacity: 0.1,
-          pointerEvents: 'none',
-          zIndex: 0,
-        }}
-      />
-      <div style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflowX: 'hidden' }}>
-      {/* Messages list */}
-      <div 
-        ref={listRef} 
-        className="flex-1 overflow-y-auto px-3 pt-3 min-h-0 messages-container" 
-        onClick={handleMessagesClick}
-        style={{
-          WebkitOverflowScrolling: 'touch',
-          overscrollBehavior: 'contain',
-          cursor: 'pointer',
-          backgroundColor: 'transparent',
-          overflowX: 'hidden',
-          maxWidth: '100%',
-        }}
-      >
-        {chat.map((m, index) => {
-          const mine = m.user_id === userId;
-          const name = nameById.get(m.user_id) ?? "Unknown";
-          const time = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-          const prev = chat[index - 1];
-          const next = chat[index + 1];
-          const samePrev = prev?.user_id === m.user_id;
-          const sameNext = next?.user_id === m.user_id;
-          const startsRun = !samePrev;
-          const endsRun = !sameNext;
-          const isSingle = !samePrev && !sameNext;
-          const isTop = startsRun && sameNext;
-          const isBottom = samePrev && endsRun;
-          const showAvatar = !mine && (isSingle || isBottom);
-          const initials = name
-            .split(/\s+/)
-            .map((part) => part[0])
-            .join("")
-            .toUpperCase();
-          const rowClasses = mine ? "flex justify-end" : "flex items-end gap-2";
-          const shape: "single" | "top" | "middle" | "bottom" =
-            isSingle ? "single" : isTop ? "top" : isBottom ? "bottom" : "middle";
-          return (
-            <div
-              key={m.id}
-              className={rowClasses}
-              style={{ marginTop: startsRun ? 24 : 4 }}
-            >
-              {!mine && (
-                <div className="flex-shrink-0 w-10 h-10 flex justify-center self-end">
-                  {showAvatar ? (
-                    m.user_id === VOLLEY_USER_ID ? (
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 border border-slate-200 flex items-center justify-center overflow-hidden">
-                        <img 
-                          src={VOLLEY_AVATAR_PATH}
-                          alt="Volley" 
-                          className="w-10 h-10 rounded-full object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-sm font-semibold text-slate-500">
-                        {initials}
-                      </div>
-                    )
-                  ) : (
-                    <div className="w-10 h-10" />
-                  )}
-                </div>
-              )}
-              <div className={`flex flex-col gap-1 ${mine ? "items-end" : "items-start"}`}>
-                <MessageBubble
-                  author={!mine && startsRun ? name : undefined}
-                  text={m.content}
-                  time={time}
-                  isOwnMessage={mine}
-                  shape={shape}
-                  messageId={m.id}
-                  reactions={reactions[m.id] || []}
-                  onReactionClick={handleReactionClick}
-                />
-              </div>
-            </div>
-          );
-        })}
-        <div ref={bottomRef} style={{ height: '1px', width: '100%' }} />
-      </div>
-
-      {/* Input area - fixed above keyboard when visible, relative when keyboard hidden */}
-      <div 
-        ref={inputAreaRef}
-        className="flex-shrink-0 bg-white border-t border-slate-200 px-4 py-3" 
-        style={{
-          paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px))`,
-          position: inputBottom > 0 ? 'fixed' : 'relative',
-          bottom: inputBottom > 0 ? `${inputBottom}px` : '0',
-          left: inputBottom > 0 ? '0' : 'auto',
-          right: inputBottom > 0 ? '0' : 'auto',
-          width: '100%',
-          zIndex: inputBottom > 0 ? 100 : 'auto',
-          boxShadow: inputBottom > 0 ? '0 -2px 8px rgba(0, 0, 0, 0.1)' : 'none',
-          // Ensure input is always accessible and clickable
-          pointerEvents: 'auto',
-        }}
-      >
-        {isMember ? (
-          <>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                onSend();
-              }}
-              className="flex items-center gap-2 relative"
-            >
-              <textarea
-                ref={inputRef}
-                value={newMsg}
-                onChange={(e) => {
-                  setNewMsg(e.target.value);
-                  // Auto-resize textarea
-                  if (inputRef.current) {
-                    inputRef.current.style.height = 'auto';
-                    inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
-                  }
-                  // Update layout when textarea height changes
-                  requestAnimationFrame(() => {
-                    const visualViewport = (window as any).visualViewport;
-                    if (visualViewport) {
-                      const windowHeight = window.innerHeight;
-                      const viewportHeight = visualViewport.height;
-                      const viewportBottom = visualViewport.offsetTop + viewportHeight;
-                      const keyboardHeight = windowHeight - viewportBottom;
-                      applyKeyboardLayout(keyboardHeight, [0, 100]);
-                    }
-                  });
-                }}
-                onFocus={handleInputFocus}
-                onKeyDown={(e) => {
-                  // Submit on Enter (but allow Shift+Enter for new line)
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    if (newMsg.trim()) {
-                      onSend();
-                    }
-                  }
-                }}
-                placeholder="Start typing..."
-                maxLength={2000}
-                rows={1}
-                autoComplete="off"
-                autoCorrect="on"
-                autoCapitalize="sentences"
-                spellCheck={true}
-                inputMode="text"
-                data-1p-ignore="true"
-                className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-transparent resize-none overflow-hidden"
-                style={{
-                  minHeight: '42px',
-                  maxHeight: '120px',
-                  lineHeight: '1.5',
-                }}
-              />
-              <button
-                type="submit"
-                className="flex-shrink-0 w-10 h-10 rounded-full bg-[#1C8376] text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!newMsg.trim()}
-                style={{
-                  backgroundColor: !newMsg.trim() ? '#94a3b8' : '#1C8376',
-                }}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                </svg>
-              </button>
-            </form>
-          </>
-        ) : (
-          <div className="rounded-md border border-amber-200 bg-amber-50 text-amber-800 p-3 text-sm">
-            Join this league to chat with other members.
-          </div>
-        )}
-        {/* Notification status banner */}
-        {notificationStatus && (
-          <div className={`w-full rounded px-2 py-1 text-xs mt-2 ${
-            notificationStatus.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
-            notificationStatus.type === 'warning' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-            'bg-red-50 text-red-700 border border-red-200'
-          }`}>
-            {notificationStatus.message}
-          </div>
-        )}
-      </div>
-      </div>
-    </div>
-  );
-}
 
 /* =========================
    Page
@@ -872,8 +244,8 @@ export default function LeaguePage() {
   // tabs: Chat / Mini League Table / GW Picks / GW Results
   // CHAT is always the default tab (never auto-switch to GW Table during live)
   // Only exception: tab=chat in URL from notification deep links (handled by useEffect below)
-  const initialTab: "chat" | "chat-beta" | "mlt" | "gw" | "gwr" = 'chat-beta'; // Always default to chat
-  const [tab, setTab] = useState<"chat" | "chat-beta" | "mlt" | "gw" | "gwr">(initialTab);
+  const initialTab: "chat" | "mlt" | "gw" | "gwr" = 'chat'; // Always default to chat
+  const [tab, setTab] = useState<"chat" | "mlt" | "gw" | "gwr">(initialTab);
   // Use ref to track manual tab selection immediately (synchronously) to prevent race conditions
   const manualTabSelectedRef = useRef(false);
   const manualGwSelectedRef = useRef(false);
@@ -883,9 +255,9 @@ export default function LeaguePage() {
   useEffect(() => {
     const urlTab = searchParams.get('tab');
     if (urlTab === 'chat') {
-      if (tab !== 'chat-beta') {
-        console.log('[League] Opening chat tab from deep link (tab=chat)');
-        setTab('chat-beta');
+      if (tab !== 'chat') {
+        console.log('[League] Opening chat tab from deep link');
+        setTab('chat');
       }
       // Clear the parameter after setting the tab to avoid re-triggering
       // Use replace: true to avoid adding to history
@@ -934,10 +306,7 @@ export default function LeaguePage() {
   const [ending, setEnding] = useState(false);
   const [firstMember, setFirstMember] = useState<Member | null>(null);
 
-  /* ----- Chat state ----- */
-  const [chat, setChat] = useState<ChatMsg[]>([]);
-  const [newMsg, setNewMsg] = useState("");
-  const [notificationStatus, setNotificationStatus] = useState<{ message: string; type: 'success' | 'warning' | 'error' | null } | null>(null);
+  /* ----- Chat state (no longer used - MiniLeagueChatBeta handles its own state) ----- */
   const isMember = useMemo(
     () => !!user?.id && members.some((m) => m.id === user.id),
     [user?.id, members]
@@ -1624,7 +993,7 @@ ${shareUrl}`;
 
   /* ---------- mark-as-read when viewing Chat or Chat Beta ---------- */
   useEffect(() => {
-    if ((tab !== "chat" && tab !== "chat-beta") || !league?.id || !user?.id) return;
+    if (tab !== "chat" || !league?.id || !user?.id) return;
     const mark = async () => {
       // Update last_read_at in database
       await supabase
@@ -1645,255 +1014,10 @@ ${shareUrl}`;
     mark();
   }, [tab, league?.id, user?.id]);
 
-  // Helper function to load and merge messages (reusable)
-  const loadAndMergeMessages = useCallback(async (leagueId: string, isInitialLoad = false) => {
-    const { data, error } = await supabase
-      .from("league_messages")
-      .select("id, league_id, user_id, content, created_at")
-      .eq("league_id", leagueId)
-      .order("created_at", { ascending: false })
-      .limit(500);
-    
-    if (!error && data) {
-      const fetchedMessages = (data as ChatMsg[]) ?? [];
-      const sortedMessages = fetchedMessages.reverse();
-      if (isInitialLoad) {
-        console.log('[Chat] Loaded messages:', sortedMessages.length, 'from database (most recent)');
-      }
-      
-      setChat((prev) => {
-        const existingIds = new Set(prev.map(m => m.id));
-        const newMessages = sortedMessages.filter(m => !existingIds.has(m.id));
-        
-        if (prev.length === 0) {
-          if (isInitialLoad) {
-            console.log('[Chat] Initial load, setting', sortedMessages.length, 'messages');
-          }
-          return sortedMessages;
-        }
-        
-        const combined = [...prev, ...newMessages];
-        const sorted = combined.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-        const limited = sorted.length > 500 ? sorted.slice(-500) : sorted;
-        
-        if (isInitialLoad) {
-          console.log('[Chat] Merged messages. Previous:', prev.length, 'New from DB:', newMessages.length, 'Total:', sorted.length, 'After limit:', limited.length);
-        }
-        return limited;
-      });
-    } else if (error) {
-      console.error('[Chat] Error loading messages:', error);
-    }
-  }, []);
-
-  /* ---------- realtime chat: load + subscribe ---------- */
-  useEffect(() => {
-    if (!league?.id) return;
-    let alive = true;
-
-    const loadMessages = async () => {
-      if (!alive) return;
-      await loadAndMergeMessages(league.id, true);
-    };
-
-    // Initial load
-    loadMessages();
-
-    const channel = supabase
-      .channel(`league-messages:${league.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "league_messages",
-          filter: `league_id=eq.${league.id}`,
-        },
-        (payload) => {
-          const msg = payload.new as ChatMsg;
-          console.log('[Chat] Realtime message received:', msg.id, msg.content.substring(0, 50));
-          setChat((prev) => {
-            if (prev.some((m) => m.id === msg.id)) {
-              console.log('[Chat] Message already exists, skipping');
-              return prev;
-            }
-            const updated = [...prev, msg];
-            console.log('[Chat] Added realtime message. Total messages:', updated.length);
-            return updated;
-          });
-        }
-      )
-      .subscribe();
-
-    // Refetch messages when app comes to foreground (e.g., user taps push notification)
-    // This ensures messages sent while app was in background are loaded
-    const handleVisibilityChange = () => {
-      if (!document.hidden && league?.id && alive) {
-        console.log('[Chat] App became visible, refetching messages...');
-        loadMessages();
-      }
-    };
-
-    // Also refetch when window gains focus (similar to Home.tsx)
-    const handleFocus = () => {
-      if (league?.id && alive) {
-        console.log('[Chat] Window gained focus, refetching messages...');
-        loadMessages();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      alive = false;
-      supabase.removeChannel(channel);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [league?.id]);
+  // Chat loading removed - MiniLeagueChatBeta handles its own state via useMiniLeagueChat hook
 
   /* ---------- send chat ---------- */
-  const sendChat = useCallback(async () => {
-    if (!league || !user?.id) return;
-    const text = newMsg.trim();
-    if (!text) return;
-    setNewMsg("");
-    const { data: inserted, error } = await supabase
-      .from("league_messages")
-      .insert({
-        league_id: league.id,
-        user_id: user.id,
-        content: text,
-      })
-      .select("id, league_id, user_id, content, created_at")
-      .single();
-    if (error) {
-      console.error(error);
-      alert("Failed to send message.");
-    } else if (inserted) {
-      // Optimistic add so the message appears immediately; realtime will also append
-      setChat((prev) => [...prev, inserted as ChatMsg]);
-      
-      // Update last_read_at immediately to prevent own message from showing as unread
-      // Use the message's created_at timestamp (or slightly after) to ensure it's after the message
-      const messageTime = inserted.created_at ? new Date(inserted.created_at) : new Date();
-      // Add 1ms buffer to ensure last_read_at is definitely after the message timestamp
-      const readTime = new Date(messageTime.getTime() + 1);
-      
-      await supabase
-        .from("league_message_reads")
-        .upsert(
-          { league_id: league.id, user_id: user.id, last_read_at: readTime.toISOString() },
-          { onConflict: "league_id,user_id" }
-        );
-      
-      // Invalidate unread cache so badge doesn't show for own message
-      invalidateLeagueCache(user.id);
-      
-      // Dispatch event to trigger immediate unread count refresh
-      window.dispatchEvent(new CustomEvent('leagueMessagesRead', { 
-        detail: { leagueId: league.id, userId: user.id } 
-      }));
-    }
-    // Request push notifications to league members (exclude sender)
-    // Skip in local development (Netlify Functions not available)
-    const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    
-    if (!isLocalDev && inserted) {
-      // Only send notification if message was successfully inserted
-      setTimeout(async () => {
-        const logEntry: any = {
-          timestamp: new Date().toISOString(),
-          leagueId: league.id,
-          senderId: user.id,
-          ok: false,
-          sent: 0,
-          error: 'Unknown error',
-        };
-        
-        try {
-          const senderName = user.user_metadata?.display_name || user.email || 'User';
-          const response = await fetch('/.netlify/functions/notifyLeagueMessage', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ leagueId: league.id, senderId: user.id, senderName, content: text })
-          });
-          
-          const result = await response.json().catch((e) => {
-            logEntry.error = `Failed to parse response: ${e?.message || String(e)}`;
-            logEntry.httpStatus = response.status;
-            return { ok: false, error: 'Failed to parse response' };
-          });
-          
-          // Update log entry
-          Object.assign(logEntry, {
-            ok: result.ok,
-            sent: result.sent || 0,
-            recipients: result.recipients || 0,
-            message: result.message,
-            error: result.error,
-            details: result.details,
-            httpStatus: response.status,
-            fullResponse: result,
-          });
-          
-          // ALWAYS show status message
-          if (result.ok === true) {
-            if (result.recipients > 0 || result.sent > 0) {
-              const count = result.recipients || result.sent || 0;
-              setNotificationStatus({
-                message: `✓ Sent to ${count} device${count === 1 ? '' : 's'}`,
-                type: 'success'
-              });
-            } else if (result.message === 'No devices' || result.message === 'No eligible recipients') {
-              setNotificationStatus({
-                message: '⚠️ No devices to notify',
-                type: 'warning'
-              });
-            } else {
-              setNotificationStatus({
-                message: `✓ ${result.message || 'Notification sent'}`,
-                type: 'success'
-              });
-            }
-          } else {
-            // Error case - show detailed error
-            const errorMsg = result.details?.body?.errors?.[0] 
-              || result.details?.error 
-              || result.error 
-              || 'Failed to send notification';
-            setNotificationStatus({
-              message: `✗ ${errorMsg}`,
-              type: 'error'
-            });
-          }
-          
-          setTimeout(() => setNotificationStatus(null), 5000);
-        } catch (err: any) {
-          logEntry.error = err?.message || String(err);
-          logEntry.exception = true;
-          setNotificationStatus({
-            message: `✗ Error: ${err?.message || 'Failed to send notification'}`,
-            type: 'error'
-          });
-          setTimeout(() => setNotificationStatus(null), 5000);
-        } finally {
-          // ALWAYS store log entry for AdminData page
-          try {
-            const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
-            logs.push(logEntry);
-            // Keep only last 50 logs
-            const recentLogs = logs.slice(-50);
-            localStorage.setItem('notification_logs', JSON.stringify(recentLogs));
-          } catch (e) {
-            // If localStorage fails, at least try to show error
-            console.error('[Chat] Failed to store notification log:', e);
-          }
-        }
-      }, 100);
-    }
-  }, [league, user, newMsg, setNewMsg, setChat, setNotificationStatus]);
+  // sendChat removed - MiniLeagueChatBeta handles sending messages and notifications internally
 
   /* ---------- load fixtures + picks + submissions + results for selected GW ---------- */
   useEffect(() => {
@@ -3706,18 +2830,18 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
             <button
               onClick={() => {
                 manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                        setTab("chat-beta");
+                        setTab("chat");
               }}
               className={
                 "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight " +
-                (tab === "chat-beta" ? "text-[#1C8376]" : "text-slate-400")
+                (tab === "chat" ? "text-[#1C8376]" : "text-slate-400")
               }
             >
               <span className="hidden sm:inline">Chat</span>
               <span className="sm:hidden whitespace-pre-line text-center">
                 Chat
               </span>
-              {tab === "chat-beta" && (
+              {tab === "chat" && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1C8376]" />
               )}
             </button>
@@ -3803,23 +2927,6 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
       </div>
 
       {tab === "chat" ? (
-        <div className="chat-tab-wrapper">
-          <ChatTab
-            chat={chat}
-            userId={user?.id}
-            nameById={memberNameById}
-            isMember={isMember}
-            newMsg={newMsg}
-            setNewMsg={setNewMsg}
-            onSend={sendChat}
-            leagueCode={league?.code}
-            memberCount={members.length}
-            maxMembers={MAX_MEMBERS}
-            notificationStatus={notificationStatus}
-          />
-        </div>
-      ) : tab === "chat-beta" ? (
-
         <div className="chat-tab-wrapper">
           <MiniLeagueChatBeta
             miniLeagueId={league?.id ?? null}
