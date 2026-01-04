@@ -93,6 +93,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           .in('message_id', messageIds);
         
         if (error) {
+          console.error('[MiniLeagueChatBeta] Error loading reactions:', error);
           return;
         }
         
@@ -124,7 +125,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         
         setReactions(formattedReactions);
       } catch (err) {
-        // Silently handle errors
+        console.error('[MiniLeagueChatBeta] Error in loadReactions:', err);
       }
     };
     
@@ -157,7 +158,10 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
                 .select('message_id, emoji, user_id')
                 .in('message_id', messageIds);
               
-              if (error) return;
+              if (error) {
+                console.error('[MiniLeagueChatBeta] Error reloading reactions:', error);
+                return;
+              }
               
               const reactionsByMessage: Record<string, Record<string, { count: number; hasUserReacted: boolean }>> = {};
               
@@ -185,7 +189,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
               
               setReactions(formattedReactions);
             } catch (err) {
-              // Silently handle errors
+              console.error('[MiniLeagueChatBeta] Error in reaction subscription handler:', err);
             }
           };
           
@@ -288,6 +292,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
         });
       
       if (error) {
+        console.error('[MiniLeagueChatBeta] Error adding reaction:', error);
         // Revert optimistic update on error
         setReactions((prev) => {
           const reverted = { ...prev };
@@ -788,7 +793,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
           const recentLogs = logs.slice(-50);
           localStorage.setItem('notification_logs', JSON.stringify(recentLogs));
         } catch (e) {
-          // Silently handle localStorage errors
+          console.error('[MiniLeagueChatBeta] Error storing notification log:', e);
         }
       }
     },
@@ -812,6 +817,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames }: MiniLeagueChatBetaPro
       setReplyingTo(null);
       scrollToBottomWithRetries([0, 150, 300]);
     } catch (err) {
+      console.error('[MiniLeagueChatBeta] Error sending message:', err);
       // Restore draft on error
       setDraft(text);
     } finally {

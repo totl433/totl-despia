@@ -126,6 +126,7 @@ export function useMiniLeagueChat(
 
       const { data, error } = await query;
       if (error) {
+        console.error('[useMiniLeagueChat] Error fetching messages:', error);
         throw error;
       }
 
@@ -143,6 +144,10 @@ export function useMiniLeagueChat(
           .select("id, content, user_id")
           .in("id", replyMessageIds);
         
+        if (replyError) {
+          console.error('[useMiniLeagueChat] Error fetching reply messages:', replyError);
+        }
+
         if (!replyError && replyMessages) {
           replyMessages.forEach((msg: any) => {
             replyDataMap.set(msg.id, msg);
@@ -206,6 +211,7 @@ export function useMiniLeagueChat(
     try {
       await fetchPage({ append: false });
     } catch (err: any) {
+      console.error('[useMiniLeagueChat] Error in refresh:', err);
       setError(err?.message ?? "Failed to load chat");
     } finally {
       setLoading(false);
@@ -277,6 +283,7 @@ export function useMiniLeagueChat(
             });
           } else {
             // Fallback to basic normalization if fetch fails
+            console.warn('[useMiniLeagueChat] Failed to fetch full message, using payload data:', payload.new.id);
             const incoming = normalizeMessage(payload.new);
             applyMessages((prev) => {
               if (prev.some((msg) => msg.id === incoming.id)) {
@@ -315,6 +322,7 @@ export function useMiniLeagueChat(
     try {
       await fetchPage({ before, append: true });
     } catch (err: any) {
+      console.error('[useMiniLeagueChat] Error loading more messages:', err);
       setError(err?.message ?? "Failed to load more messages");
     } finally {
       setLoadingMore(false);
@@ -377,6 +385,7 @@ export function useMiniLeagueChat(
       }
 
       if (error) {
+        console.error('[useMiniLeagueChat] Error sending message:', error);
         applyMessages((prev) =>
           prev.map((msg) =>
             msg.id === optimisticId ? { ...msg, status: "error" as const } : msg
