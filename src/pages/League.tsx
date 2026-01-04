@@ -255,14 +255,15 @@ export default function LeaguePage() {
   useEffect(() => {
     const urlTab = searchParams.get('tab');
     if (urlTab === 'chat') {
+      // Always set tab to chat if it's in the URL, even if already on chat
+      // This ensures it works when notification comes in while already on league page
       if (tab !== 'chat') {
         setTab('chat');
       }
-      // Don't clear the parameter immediately - let it stay for a moment to ensure tab opens
-      // Clear it after a short delay to avoid re-triggering
+      // Clear the parameter after a brief delay to ensure tab opens
       const timer = setTimeout(() => {
         setSearchParams({}, { replace: true });
-      }, 100);
+      }, 200);
       return () => clearTimeout(timer);
     }
   }, [searchParams, setSearchParams, tab]);

@@ -101,13 +101,13 @@ function AppContent() {
     }
     
     // For direct URLs like /league/ABC12?tab=chat from OneSignal web_url
-    // React Router should handle it, but ensure we're on the right page
+    // If we're not already on that exact path, navigate to it
     if (location.pathname.startsWith('/league/')) {
       const tab = searchParams.get('tab');
       if (tab === 'chat') {
-        // URL is correct, League page will handle opening chat tab
-        // Force a navigation to ensure React Router processes it
-        navigate(location.pathname + location.search, { replace: true });
+        // Already on the correct path with tab=chat
+        // League page will handle opening the chat tab
+        // No navigation needed - React Router already matched the route
       }
     }
   }, [navigate, location.pathname, location.search]);
