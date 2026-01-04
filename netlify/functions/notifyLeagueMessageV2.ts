@@ -137,6 +137,22 @@ export const handler: Handler = async (event) => {
     return json(500, { error: 'Missing Supabase environment variables' });
   }
 
+  // Get base URL for constructing full deep link URLs (OneSignal requires full URLs for iOS)
+  const getBaseUrl = () => {
+    // Try to extract from event headers
+    if (event.headers.host) {
+      const protocol = event.headers['x-forwarded-proto'] || 'https';
+      return `${protocol}://${event.headers.host}`;
+    }
+    // Fallback to environment variable
+    if (process.env.URL || process.env.SITE_URL) {
+      return (process.env.URL || process.env.SITE_URL || '').trim();
+    }
+    // Default fallback (shouldn't happen in production)
+    return 'https://totl-staging.netlify.app';
+  };
+  const baseUrl = getBaseUrl();
+
   // Parse payload
   let payload: any;
   try {
@@ -264,6 +280,11 @@ export const handler: Handler = async (event) => {
       ? `${deepLinkUrl}&leagueCode=${leagueCode}`
       : `${deepLinkUrl}?leagueCode=${leagueCode}`;
     
+    // Convert relative URL to full URL for iOS (OneSignal requires full URLs for web_url)
+    const fullDeepLinkUrl = deepLinkUrl.startsWith('http') 
+      ? deepLinkUrl 
+      : `${baseUrl}${deepLinkUrl}`;
+    
     const result = await dispatchNotification({
       notification_key: 'chat-message',
       event_id: eventId,
@@ -275,12 +296,12 @@ export const handler: Handler = async (event) => {
         leagueId,
         leagueCode, // Make this easy to find
         senderId,
-        url: deepLinkUrl, // Include URL in data for badge clicks
+        url: fullDeepLinkUrl, // Include full URL in data for badge clicks
         // Also add as top-level for easier access (matching old working version)
         leagueCode: leagueCode,
-        navigateTo: deepLinkUrl,
+        navigateTo: fullDeepLinkUrl,
       },
-      url: deepLinkUrl, // Also set top-level URL for notification clicks
+      url: fullDeepLinkUrl, // Use full URL for notification clicks (iOS needs full URL for web_url)
       grouping_params: {
         league_id: leagueId,
       },
