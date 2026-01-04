@@ -69,6 +69,7 @@ export default function TablesPage() {
         currentGw: null,
         leagueSubmissions: {} as Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>,
         leagueData: {} as Record<string, LeagueData>,
+        hasCache: false,
       };
     }
     
@@ -82,7 +83,13 @@ export default function TablesPage() {
         memberCounts?: Record<string, number>;
       }>(cacheKey);
       
-      if (cached) {
+      // Check cache freshness synchronously
+      const cacheTimestamp = getCacheTimestamp(cacheKey);
+      const cacheAge = cacheTimestamp ? Date.now() - cacheTimestamp : Infinity;
+      const isCacheStale = cacheAge > CACHE_TTL.TABLES;
+      
+      if (cached && !isCacheStale) {
+        // Cache is fresh - use it immediately
         // Extract member counts from cached rows
         const memberCounts: Record<string, number> = cached.memberCounts || {};
         if (cached.rows && Array.isArray(cached.rows)) {
@@ -94,27 +101,88 @@ export default function TablesPage() {
         }
         
         // Convert arrays back to Sets for submittedMembers and latestGwWinners
-        // NOTE: sortedMemberIds is NOT loaded from cache - it must be recalculated to ensure correct MLT order
+        // Restore sortedMemberIds from cache - it will be recalculated if stale but used for instant display
+        const restoredLeagueData: Record<string, LeagueData> = {};
+        let hasValidLeagueData = false;
+        if (cached.leagueData && Object.keys(cached.leagueData).length > 0) {
+          for (const [leagueId, data] of Object.entries(cached.leagueData)) {
+            // Ensure members array exists and is properly formatted
+            let members: LeagueMember[] = [];
+            if (data.members && Array.isArray(data.members) && data.members.length > 0) {
+              members = data.members.map((m: any) => ({
+                id: typeof m === 'string' ? m : (m.id || ''),
+                name: typeof m === 'string' ? `User ${m.slice(0, 8)}` : (m.name || `User ${(m.id || '').slice(0, 8)}`)
+              })).filter((m: LeagueMember) => m.id); // Filter out any invalid entries
+            }
+            
+            // Only restore if we have members - otherwise wait for fresh data
+            if (members.length > 0) {
+              restoredLeagueData[leagueId] = {
+                ...data,
+                members,
+                submittedMembers: data.submittedMembers ? (Array.isArray(data.submittedMembers) ? new Set(data.submittedMembers) : new Set()) : undefined,
+                latestGwWinners: data.latestGwWinners ? (Array.isArray(data.latestGwWinners) ? new Set(data.latestGwWinners) : new Set()) : undefined,
+                // Restore sortedMemberIds from cache for instant chip display
+                sortedMemberIds: data.sortedMemberIds && Array.isArray(data.sortedMemberIds) && data.sortedMemberIds.length > 0 ? data.sortedMemberIds : undefined,
+              };
+              hasValidLeagueData = true;
+            }
+          }
+        }
+        
+        // Only consider cache valid if we have leagueData with members (chips need this)
+        return {
+          memberCounts,
+          leagueDataLoading: !hasValidLeagueData, // If no valid leagueData, still need to load
+          currentGw: cached.currentGw,
+          leagueSubmissions: cached.leagueSubmissions || {},
+          leagueData: restoredLeagueData,
+          hasCache: hasValidLeagueData, // Only true if we have actual leagueData
+        };
+      } else if (cached && isCacheStale) {
+        // Cache exists but is stale - use it for instant render, refresh in background
+        const memberCounts: Record<string, number> = cached.memberCounts || {};
+        if (cached.rows && Array.isArray(cached.rows)) {
+          cached.rows.forEach(row => {
+            if (row.memberCount !== undefined) {
+              memberCounts[row.id] = row.memberCount;
+            }
+          });
+        }
+        
         const restoredLeagueData: Record<string, LeagueData> = {};
         if (cached.leagueData) {
           for (const [leagueId, data] of Object.entries(cached.leagueData)) {
-            restoredLeagueData[leagueId] = {
-              ...data,
-              submittedMembers: data.submittedMembers ? (Array.isArray(data.submittedMembers) ? new Set(data.submittedMembers) : new Set()) : undefined,
-              latestGwWinners: data.latestGwWinners ? (Array.isArray(data.latestGwWinners) ? new Set(data.latestGwWinners) : new Set()) : undefined,
-              // CRITICAL: sortedMemberIds is NOT loaded from cache - it will be recalculated in the initial effect
-              // This ensures the order always matches the MLT table (same as Home page)
-              sortedMemberIds: undefined,
-            };
+            // Ensure members array exists and is properly formatted
+            let members: LeagueMember[] = [];
+            if (data.members && Array.isArray(data.members) && data.members.length > 0) {
+              members = data.members.map((m: any) => ({
+                id: typeof m === 'string' ? m : (m.id || ''),
+                name: typeof m === 'string' ? `User ${m.slice(0, 8)}` : (m.name || `User ${(m.id || '').slice(0, 8)}`)
+              })).filter((m: LeagueMember) => m.id); // Filter out any invalid entries
+            }
+            
+            // Only restore if we have members - otherwise wait for fresh data
+            if (members.length > 0) {
+              restoredLeagueData[leagueId] = {
+                ...data,
+                members,
+                submittedMembers: data.submittedMembers ? (Array.isArray(data.submittedMembers) ? new Set(data.submittedMembers) : new Set()) : undefined,
+                latestGwWinners: data.latestGwWinners ? (Array.isArray(data.latestGwWinners) ? new Set(data.latestGwWinners) : new Set()) : undefined,
+                // Restore sortedMemberIds from cache for instant chip display
+                sortedMemberIds: data.sortedMemberIds && Array.isArray(data.sortedMemberIds) && data.sortedMemberIds.length > 0 ? data.sortedMemberIds : undefined,
+              };
+            }
           }
         }
         
         return {
           memberCounts,
-          leagueDataLoading: false,
+          leagueDataLoading: false, // Render immediately from stale cache
           currentGw: cached.currentGw,
           leagueSubmissions: cached.leagueSubmissions || {},
           leagueData: restoredLeagueData,
+          hasCache: true,
         };
       }
     } catch (error) {
@@ -127,6 +195,7 @@ export default function TablesPage() {
       currentGw: null,
       leagueSubmissions: {} as Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>,
       leagueData: {} as Record<string, LeagueData>,
+      hasCache: false,
     };
   };
   
@@ -135,6 +204,7 @@ export default function TablesPage() {
   // Member counts are fetched separately since useLeagues doesn't provide them
   const [memberCounts, setMemberCounts] = useState<Record<string, number>>(initialState.memberCounts);
   const [leagueDataLoading, setLeagueDataLoading] = useState(initialState.leagueDataLoading);
+  const [hasCache, setHasCache] = useState(initialState.hasCache);
   const [creating, setCreating] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [leagueName, setLeagueName] = useState("");
@@ -171,60 +241,37 @@ export default function TablesPage() {
     });
   }, [leagues, memberCounts]);
   
-  // Simple check: is everything ready (including chips)?
+  // Check if data is ready for rendering
+  // If we have cache data loaded synchronously, we're ready immediately (even before leagues load from hook)
   const isDataReady = useMemo(() => {
-    // Must have leagues loaded
-    if (leaguesLoading) {
-      console.log('[Tables isDataReady] FALSE - leaguesLoading:', leaguesLoading);
-      return false;
+    // If we have cache data loaded synchronously, render immediately (don't wait for leaguesLoading)
+    if (hasCache && !leagueDataLoading && Object.keys(leagueData).length > 0) {
+      return true;
     }
     
-    // Must have league data loaded
-    if (leagueDataLoading) {
-      console.log('[Tables isDataReady] FALSE - leagueDataLoading:', leagueDataLoading);
-      return false;
-    }
+    // Otherwise, wait for leagues to load
+    if (leaguesLoading) return false;
+    
+    // Must have league data loaded (for non-cached scenario)
+    if (leagueDataLoading) return false;
     
     // If we have leagues, check that leagueData is complete for leagues with members
     if (leagues.length > 0) {
-      // Check if we have data for all leagues that have members
       const leaguesWithMembers = leagues.filter(l => (memberCounts[l.id] ?? 0) > 0);
-      console.log('[Tables isDataReady] Checking:', {
-        leaguesCount: leagues.length,
-        leaguesWithMembersCount: leaguesWithMembers.length,
-        memberCounts: Object.fromEntries(Object.entries(memberCounts).filter(([_, v]) => v > 0)),
-        leagueDataKeys: Object.keys(leagueData)
-      });
       if (leaguesWithMembers.length > 0) {
-        // All leagues with members must have complete leagueData with sortedMemberIds
+        // All leagues with members must have leagueData with members array (chips can render without sortedMemberIds)
         const allHaveData = leaguesWithMembers.every(league => {
           const data = leagueData[league.id];
-          const hasData = data && 
+          return data && 
                  data.members && 
-                 data.members.length > 0 && 
-                 data.sortedMemberIds && 
-                 data.sortedMemberIds.length > 0;
-          if (!hasData) {
-            console.log('[Tables isDataReady] League missing data:', league.id, {
-              hasData: !!data,
-              hasMembers: !!(data && data.members),
-              membersLength: data?.members?.length,
-              hasSortedMemberIds: !!(data && data.sortedMemberIds),
-              sortedMemberIdsLength: data?.sortedMemberIds?.length
-            });
-          }
-          return hasData;
+                 data.members.length > 0;
         });
-        if (!allHaveData) {
-          console.log('[Tables isDataReady] FALSE - not all leagues have data');
-          return false;
-        }
+        if (!allHaveData) return false;
       }
     }
     
-    console.log('[Tables isDataReady] TRUE');
     return true;
-  }, [leaguesLoading, leagueDataLoading, leagues, memberCounts, leagueData]);
+  }, [leaguesLoading, leagueDataLoading, leagues, memberCounts, leagueData, hasCache]);
 
   // Fetch member data and other Tables-specific data
   // NOTE: Leagues and unread counts come from useLeagues hook
@@ -248,37 +295,29 @@ export default function TablesPage() {
     let alive = true;
     const cacheKey = `tables:${user.id}`;
     
-    // Check cache first - if fresh, skip fetch entirely
-    (async () => {
-      const cached = getCached<{
-        rows: any[];
-        currentGw: number | null;
-        leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
-        leagueData: Record<string, any>;
-      }>(cacheKey);
-      
-      if (cached && cached.rows && Array.isArray(cached.rows) && cached.rows.length > 0) {
-        // Cache exists - check if stale
-        const cacheTimestamp = getCacheTimestamp(cacheKey);
-        const cacheAge = cacheTimestamp ? Date.now() - cacheTimestamp : Infinity;
-        const isCacheStale = cacheAge > 5 * 60 * 1000; // 5 minutes (Tables TTL)
-        
-        if (!isCacheStale) {
-          // Cache is fresh - use cached data, skip fetch for zero loading
-          setCurrentGw(cached.currentGw);
-          setLeagueSubmissions(cached.leagueSubmissions || {});
-          setLeagueDataLoading(false);
-          
-          // Skip fetch entirely - cache is fresh
-          return;
-        }
-        // Cache is stale - continue with fetch below
-      }
-      
-      // Fetch member data and other Tables-specific data (cache miss or stale cache)
-    })();
+    // Check cache freshness synchronously
+    const cacheTimestamp = getCacheTimestamp(cacheKey);
+    const cacheAge = cacheTimestamp ? Date.now() - cacheTimestamp : Infinity;
+    const isCacheStale = cacheAge > CACHE_TTL.TABLES;
     
-    // Separate async function for fetching
+    // If cache is fresh AND we have leagueData for all leagues, skip fetch entirely
+    if (hasCache && !isCacheStale) {
+      // Check if we have leagueData for all leagues with members
+      const leaguesWithMembers = leagues.filter(l => (memberCounts[l.id] ?? 0) > 0);
+      const allLeaguesHaveData = leaguesWithMembers.length === 0 || leaguesWithMembers.every(league => {
+        const data = leagueData[league.id];
+        return data && data.members && data.members.length > 0;
+      });
+      
+      if (allLeaguesHaveData) {
+        // Cache is fresh and complete - skip fetch
+        return;
+      }
+      // Otherwise, fetch to fill in missing data
+    }
+    
+    // Fetch member data and other Tables-specific data (cache miss or stale cache)
+    // If cache is stale, render immediately from cache and refresh in background
     (async () => {
       try {
         // Step 1: Get current GW (respects user's current_viewing_gw from GAME_STATE.md)
@@ -413,23 +452,12 @@ export default function TablesPage() {
         // Process members with user names
         const membersByLeagueIdMap = new Map<string, LeagueMember[]>();
         const membersData = allMembersWithUsersResult.data ?? [];
-        console.log('[Tables] Processing members with users:', {
-          totalMembers: membersData.length,
-          leagueIds: leagueIds,
-          membersByLeagueCounts: Object.fromEntries(Array.from(membersByLeague.entries()).map(([id, arr]) => [id, arr.length])),
-          sampleMember: membersData[0] ? { league_id: membersData[0].league_id, user_id: membersData[0].user_id, hasUsers: !!membersData[0].users, usersType: typeof membersData[0].users } : null
-        });
         membersData.forEach((m: any) => {
           // Use name if available, otherwise fallback to user_id (shouldn't happen but defensive)
           const name = m.users?.name || `User ${m.user_id.slice(0, 8)}`;
           const arr = membersByLeagueIdMap.get(m.league_id) ?? [];
           arr.push({ id: m.user_id, name });
           membersByLeagueIdMap.set(m.league_id, arr);
-        });
-        console.log('[Tables] Members by league ID map:', {
-          size: membersByLeagueIdMap.size,
-          entries: Array.from(membersByLeagueIdMap.entries()).map(([id, arr]) => [id, arr.length]),
-          membersByLeagueSize: membersByLeague.size
         });
         setMembersByLeagueId(membersByLeagueIdMap);
 
@@ -481,11 +509,7 @@ export default function TablesPage() {
           
           // Warn if we might have hit Supabase's 1000 row limit
           if (picks.length === 1000) {
-            console.warn(`[Tables] WARNING: ${league.name} may have hit Supabase 1000 row limit! Got exactly 1000 picks.`, {
-              memberIds: memberIds.length,
-              relevantGws: relevantGws.length,
-              estimatedPicks: memberIds.length * relevantGws.length * 10 // rough estimate
-            });
+            console.warn(`[Tables] WARNING: ${league.name} may have hit Supabase 1000 row limit! Got exactly 1000 picks.`);
           }
           
           return { data: picks, error: null };
@@ -494,29 +518,11 @@ export default function TablesPage() {
         const allPicksResults = await Promise.all(picksPromises);
         if (!alive) return;
         
-        // Check for Supabase errors or data limits
+        // Check for Supabase errors
         for (let i = 0; i < leagues.length; i++) {
-          const league = leagues[i];
           const result = allPicksResults[i];
           if (result.error) {
-            console.error(`[Tables] Supabase error fetching picks for ${league.name}:`, result.error);
-          }
-          const picksCount = (result.data ?? []).length;
-          const memberIds = membersByLeagueIdMap.get(league.id) ?? [];
-          const leagueStartGw = leagueStartGwMap.get(league.id) ?? dbCurrentGw;
-          const relevantGws = leagueStartGw === 0 
-            ? gwsWithResults 
-            : gwsWithResults.filter(gw => gw >= leagueStartGw);
-          
-          if (league.name?.toLowerCase().includes('forget')) {
-            console.log(`[Tables Initial] ${league.name} picks query result:`, {
-              picksCount,
-              memberIdsCount: memberIds.length,
-              relevantGws,
-              error: result.error,
-              dataLength: result.data?.length ?? 0,
-              limit: 10000
-            });
+            console.error(`[Tables] Supabase error fetching picks:`, result.error);
           }
         }
         
@@ -545,7 +551,6 @@ export default function TablesPage() {
             if (memberUserIds.length > 0) {
               // Create minimal member objects from user IDs (fallback when users join fails)
               memberIds = memberUserIds.map(id => ({ id, name: `User ${id.slice(0, 8)}` }));
-              console.log('[Tables] Using fallback member IDs for league', league.id, 'with', memberIds.length, 'members');
             }
           }
           
@@ -560,9 +565,6 @@ export default function TablesPage() {
           
           // If no relevant GWs, create minimal leagueData entry (for new leagues with no picks yet)
           if (relevantGws.length === 0) {
-            if (league.name?.toLowerCase().includes('forget')) {
-              console.log(`[Tables Initial] ${league.name} SKIPPING calculation - relevantGws: ${relevantGws.length}, picks: ${picks.length}`);
-            }
             // Still create leagueData entry with empty sortedMemberIds to prevent loading hang
             leagueDataMap[league.id] = {
               id: league.id,
@@ -580,28 +582,7 @@ export default function TablesPage() {
           // CRITICAL: Filter picks to ONLY include relevant GWs for this league
           // This ensures we only count points from GWs that matter for THIS mini-league
           const relevantGwsSet = new Set(relevantGws);
-          
-          // Debug: Check if picks query returned GW 1 picks
-          if (league.name?.toLowerCase().includes('forget')) {
-            const picksByGwBeforeFilter = new Map<number, number>();
-            picks.forEach((p: PickRow) => {
-              picksByGwBeforeFilter.set(p.gw, (picksByGwBeforeFilter.get(p.gw) ?? 0) + 1);
-            });
-            console.log(`[Tables Initial] ${league.name} picks BEFORE filter (from query):`, JSON.stringify(Object.fromEntries(picksByGwBeforeFilter)));
-          }
-          
           const filteredPicks = picks.filter((p: PickRow) => relevantGwsSet.has(p.gw));
-          
-          // Debug logging for "forget it" league (before building outcomeByGwAndIdx)
-          if (league.name?.toLowerCase().includes('forget')) {
-            const picksByGw = new Map<number, number>();
-            filteredPicks.forEach((p: PickRow) => {
-              picksByGw.set(p.gw, (picksByGw.get(p.gw) ?? 0) + 1);
-            });
-            console.log(`[Tables Initial] ${league.name} leagueStartGw: ${leagueStartGw}, relevantGws: [${relevantGws.join(',')}]`);
-            console.log(`[Tables Initial] ${league.name} filtered picks by GW:`, JSON.stringify(Object.fromEntries(picksByGw)));
-            console.log(`[Tables Initial] ${league.name} total picks before filter: ${picks.length}, after filter: ${filteredPicks.length}`);
-          }
           
           const picksByUserGw = new Map<string, Map<number, Map<number, "H" | "D" | "A">>>();
           
@@ -628,13 +609,6 @@ export default function TablesPage() {
           
           const picksByGwIdx = new Map<string, PickRow[]>();
           filteredPicks.forEach((p: PickRow) => {
-            // Double-check: ensure we only process picks from relevant GWs
-            if (!relevantGwsSet.has(p.gw)) {
-              if (league.name?.toLowerCase().includes('forget')) {
-                console.error(`[Tables Initial] ERROR: ${league.name} pick from non-relevant GW ${p.gw}!`);
-              }
-              return;
-            }
             const key = `${p.gw}:${p.fixture_index}`;
             const arr = picksByGwIdx.get(key) ?? [];
             arr.push(p);
@@ -656,22 +630,6 @@ export default function TablesPage() {
               outcomeByGwAndIdx.get(g)?.set(idx, out);
             }
           });
-          
-          // Debug logging for "forget it" league (after building outcomeByGwAndIdx)
-          if (league.name?.toLowerCase().includes('forget')) {
-            const outcomesByGw = new Map<number, number>();
-            outcomeByGwAndIdx.forEach((outcomes, gw) => {
-              outcomesByGw.set(gw, outcomes.size);
-            });
-            // Check if outcomeByGwIdx has GW 1
-            const allOutcomeGws = new Set<number>();
-            outcomeByGwIdx.forEach((_out, key) => {
-              const g = parseInt(key.split(":")[0], 10);
-              allOutcomeGws.add(g);
-            });
-            console.log(`[Tables Initial] ${league.name} outcomes by GW:`, JSON.stringify(Object.fromEntries(outcomesByGw)));
-            console.log(`[Tables Initial] ${league.name} ALL outcome GWs in outcomeByGwIdx:`, Array.from(allOutcomeGws).sort((a,b) => a-b));
-          }
           
           relevantGws.forEach((g) => {
             const gwOutcomes = outcomeByGwAndIdx.get(g)!;
@@ -710,13 +668,6 @@ export default function TablesPage() {
           });
           
           relevantGws.forEach((g) => {
-            // Double-check: ensure we only process relevant GWs
-            if (!relevantGwsSet.has(g)) {
-              if (league.name?.toLowerCase().includes('forget')) {
-                console.error(`[Tables Initial] ERROR: ${league.name} processing non-relevant GW ${g}!`);
-              }
-              return;
-            }
             const gwRows: Array<{ user_id: string; score: number; unicorns: number }> = Array.from(perGw.get(g)!.values());
             gwRows.forEach((r) => {
               ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);
@@ -738,11 +689,6 @@ export default function TablesPage() {
                 mltPts.set(r.user_id, (mltPts.get(r.user_id) ?? 0) + 1);
               });
             }
-            
-            // Debug logging for "forget it" league
-            if (league.name?.toLowerCase().includes('forget')) {
-              console.log(`[Tables Initial] ${league.name} GW ${g} winner: ${coTop.map(r => memberIds.find(m => m.id === r.user_id)?.name || r.user_id).join(',')}, points: ${coTop.length === 1 ? 3 : 1} each`);
-            }
           });
           
           // Build ML table rows and sort (same as Home page)
@@ -759,21 +705,6 @@ export default function TablesPage() {
           );
           
           const sortedMemberIds = sortedMltRows.map(r => r.user_id);
-          
-          // Debug logging for "forget it" league
-          if (league.name?.toLowerCase().includes('forget')) {
-            console.log(`[Tables] ${league.name} sortedMltRows:`, JSON.stringify(sortedMltRows.map((r, i) => ({
-              position: i + 1,
-              name: r.name,
-              userId: r.user_id.slice(0, 8),
-              mltPts: r.mltPts,
-              unicorns: r.unicorns,
-              ocp: r.ocp
-            })), null, 2));
-            console.log(`[Tables] ${league.name} sortedMemberIds:`, sortedMemberIds);
-            console.log(`[Tables] ${league.name} relevantGws:`, relevantGws);
-            console.log(`[Tables] ${league.name} picks count:`, picks.length);
-          }
           
           const userIndex = sortedMltRows.findIndex(r => r.user_id === user.id);
           const userPosition = userIndex !== -1 ? userIndex + 1 : null;
@@ -795,22 +726,12 @@ export default function TablesPage() {
             latestGwWinners,
             latestRelevantGw
           };
-          
-          // Debug logging for "forget it" league - verify data before storing
-          if (league.name?.toLowerCase().includes('forget')) {
-            console.log(`[Tables Initial] ${league.name} STORING leagueData:`, {
-              sortedMemberIds: sortedMemberIds,
-              sortedMemberNames: sortedMemberIds.map(id => memberIds.find(m => m.id === id)?.name || id),
-              membersCount: memberIds.length,
-              sortedMemberIdsCount: sortedMemberIds.length
-            });
-          }
         }
 
         if (alive) {
-          console.log('[Tables] Initial load complete, setting leagueData for', Object.keys(leagueDataMap).length, 'leagues');
           setLeagueData(leagueDataMap);
           setLeagueDataLoading(false);
+          setHasCache(true);
           
           // Cache the processed data for next time
           // Note: We don't cache leagues/unreadByLeague here - they're managed by useLeagues
@@ -845,7 +766,7 @@ export default function TablesPage() {
     })();
     
     return () => { alive = false; };
-  }, [user?.id, leagues, leaguesLoading]);
+  }, [user?.id, leagues, leaguesLoading, hasCache]);
   
   // Process results to create outcome map
   const outcomeByGwIdx = useMemo(() => {
@@ -873,7 +794,6 @@ export default function TablesPage() {
     }
     
     if (!user?.id || leagues.length === 0 || membersByLeagueId.size === 0) {
-      console.log(`[Tables Reactive] SKIPPING - user: ${!!user?.id}, leagues: ${leagues.length}, membersByLeagueId: ${membersByLeagueId.size}`);
       return;
     }
     
@@ -881,11 +801,8 @@ export default function TablesPage() {
     
     // Skip if no results loaded yet - wait for initial effect to load them
     if (updatedGwsWithResults.length === 0) {
-      console.log(`[Tables Reactive] SKIPPING - no results loaded yet (outcomeByGwIdx size: ${outcomeByGwIdx.size})`);
       return;
     }
-    
-    console.log(`[Tables Reactive] RUNNING for ${leagues.length} leagues, ${updatedGwsWithResults.length} GWs with results`);
     
     const fixturesByGw = new Map<number, string[]>();
     allFixturesData.forEach((f) => {
@@ -905,7 +822,6 @@ export default function TablesPage() {
       // If membersByLeagueId is empty for a league, we can't create leagueData for it
       // This should be rare since the reactive effect only runs when membersByLeagueId has data
       if (memberIds.length === 0) {
-        console.warn('[Tables Reactive] No member IDs for league', league.id, '- skipping');
         continue;
       }
       
@@ -916,9 +832,6 @@ export default function TablesPage() {
       
       // If no relevant GWs, create minimal leagueData entry (for new leagues with no picks yet)
       if (relevantGws.length === 0) {
-        if (league.name?.toLowerCase().includes('forget')) {
-          console.log(`[Tables Reactive] ${league.name} SKIPPING calculation - relevantGws: ${relevantGws.length}, leagueStartGw: ${leagueStartGw}, updatedGwsWithResults: [${updatedGwsWithResults.join(',')}]`);
-        }
         // Still create leagueData entry with empty sortedMemberIds to prevent loading hang
         leagueDataMap[league.id] = {
           id: league.id,
@@ -935,9 +848,6 @@ export default function TablesPage() {
       
       // If no picks but we have relevant GWs, skip calculation (will be handled when picks load)
       if (picks.length === 0) {
-        if (league.name?.toLowerCase().includes('forget')) {
-          console.log(`[Tables Reactive] ${league.name} SKIPPING - no picks yet (relevantGws: ${relevantGws.length})`);
-        }
         continue;
       }
       
@@ -945,16 +855,6 @@ export default function TablesPage() {
       // This ensures we only count points from GWs that matter for THIS mini-league
       const relevantGwsSetForFilter = new Set(relevantGws);
       const filteredPicks = picks.filter((p: PickRow) => relevantGwsSetForFilter.has(p.gw));
-      
-      // Debug logging for "forget it" league
-      if (league.name?.toLowerCase().includes('forget')) {
-        const picksByGw = new Map<number, number>();
-        filteredPicks.forEach((p: PickRow) => {
-          picksByGw.set(p.gw, (picksByGw.get(p.gw) ?? 0) + 1);
-        });
-        console.log(`[Tables Reactive] ${league.name} filtered picks by GW:`, Object.fromEntries(picksByGw));
-        console.log(`[Tables Reactive] ${league.name} total picks before filter: ${picks.length}, after filter: ${filteredPicks.length}`);
-      }
       
       const picksByUserGw = new Map<string, Map<number, Map<number, "H" | "D" | "A">>>();
       
@@ -1072,26 +972,11 @@ export default function TablesPage() {
         ocp: ocp.get(m.id) ?? 0,
       }));
       
-      const sortedMltRows = [...mltRows].sort((a, b) =>
-        b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
-      );
-      
-      const sortedMemberIds = sortedMltRows.map(r => r.user_id);
-      
-      // Debug logging for "forget it" league
-      if (league.name?.toLowerCase().includes('forget')) {
-        console.log(`[Tables Reactive] ${league.name} sortedMltRows:`, JSON.stringify(sortedMltRows.map((r, i) => ({
-          position: i + 1,
-          name: r.name,
-          userId: r.user_id.slice(0, 8),
-          mltPts: r.mltPts,
-          unicorns: r.unicorns,
-          ocp: r.ocp
-        })), null, 2));
-        console.log(`[Tables Reactive] ${league.name} sortedMemberIds:`, sortedMemberIds);
-        console.log(`[Tables Reactive] ${league.name} relevantGws:`, relevantGws);
-        console.log(`[Tables Reactive] ${league.name} picks count:`, picks.length);
-      }
+          const sortedMltRows = [...mltRows].sort((a, b) =>
+            b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
+          );
+          
+          const sortedMemberIds = sortedMltRows.map(r => r.user_id);
       
       const userIndex = sortedMltRows.findIndex(r => r.user_id === user.id);
       const userPosition = userIndex !== -1 ? userIndex + 1 : null;
@@ -1111,26 +996,16 @@ export default function TablesPage() {
         }
       });
       
-      leagueDataMap[league.id] = {
-        id: league.id,
-        members: memberIds,
-        userPosition: userPosition || null,
-        positionChange,
-        submittedMembers: submittedMembers,
-        sortedMemberIds: sortedMemberIds, // CRITICAL: This must match ML table order
-        latestGwWinners,
-        latestRelevantGw
-      };
-      
-      // Debug logging for "forget it" league - verify data before storing
-      if (league.name?.toLowerCase().includes('forget')) {
-        console.log(`[Tables Reactive] ${league.name} STORING leagueData:`, {
-          sortedMemberIds: sortedMemberIds,
-          sortedMemberNames: sortedMemberIds.map(id => memberIds.find(m => m.id === id)?.name || id),
-          membersCount: memberIds.length,
-          sortedMemberIdsCount: sortedMemberIds.length
-        });
-      }
+          leagueDataMap[league.id] = {
+            id: league.id,
+            members: memberIds,
+            userPosition: userPosition || null,
+            positionChange,
+            submittedMembers: submittedMembers,
+            sortedMemberIds: sortedMemberIds, // CRITICAL: This must match ML table order
+            latestGwWinners,
+            latestRelevantGw
+          };
     }
     
     setLeagueData(leagueDataMap);
@@ -1235,10 +1110,9 @@ export default function TablesPage() {
             breakdown: result.breakdown,
           }, null, 2));
         }
-      } catch (notifError) {
-        // Non-critical - log but don't fail the join
-        console.error('[Tables] Error sending join notification:', notifError);
-      }
+        } catch (notifError) {
+          // Non-critical - notification failures don't block join
+        }
       
       setJoinCode("");
       // Invalidate cache and refresh leagues
@@ -1296,15 +1170,9 @@ export default function TablesPage() {
                 <div className={rows.length >= 2 ? "grid grid-cols-1 lg:grid-cols-2 gap-3" : "space-y-3"}>
                   {rows.map((r) => {
                     const leagueDataForCard = leagueData[r.id];
-                    // Debug logging for "forget it" league
-                    if (r.name?.toLowerCase().includes('forget')) {
-                      console.log(`[Tables Render] ${r.name} passing to MiniLeagueCard:`, {
-                        sortedMemberIds: leagueDataForCard?.sortedMemberIds,
-                        members: leagueDataForCard?.members?.map(m => ({ id: m.id, name: m.name })),
-                        membersLength: leagueDataForCard?.members?.length,
-                        sortedMemberIdsLength: leagueDataForCard?.sortedMemberIds?.length
-                      });
-                    }
+                    // Only show loading if we have members but no data yet
+                    const isLoadingForThisLeague = memberCounts[r.id] > 0 && !leagueDataForCard;
+                    
                     return (
                       <MiniLeagueCard
                         key={r.id}
@@ -1312,7 +1180,7 @@ export default function TablesPage() {
                         data={leagueDataForCard}
                         unread={unreadByLeague?.[r.id] ?? 0}
                         submissions={leagueSubmissions[r.id]}
-                        leagueDataLoading={false}
+                        leagueDataLoading={isLoadingForThisLeague}
                         currentGw={currentGw}
                       />
                     );
