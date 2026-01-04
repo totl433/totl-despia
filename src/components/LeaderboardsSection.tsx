@@ -2,12 +2,10 @@ import { LeaderboardCard } from './LeaderboardCard';
 import { StreakCard } from './StreakCard';
 import Section from './Section';
 import { HorizontalScrollContainer } from './HorizontalScrollContainer';
-import { useGameweekState } from '../hooks/useGameweekState';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { useAuth } from '../context/AuthContext';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { getCached } from '../lib/cache';
 import type { GameweekState } from '../lib/gameweekState';
 
 interface LeaderboardsSectionProps {
@@ -18,6 +16,10 @@ interface LeaderboardsSectionProps {
   userStreakData: { streak: number; last10GwScores: Array<{ gw: number; score: number | null }> } | null;
   latestGw: number | null;
   currentGw: number | null; // Current active gameweek
+  effectiveGameState: GameweekState | null; // Game state from HomePage (already loaded from cache)
+  lastGwGameState: GameweekState | null; // Game state for last GW (from HomePage cache)
+  currentGwLiveScore: { score: number; totalFixtures: number } | null; // Pre-calculated live score for current GW
+  lastGwLiveScore: { score: number; totalFixtures: number } | null; // Pre-calculated live score for last GW
 }
 
 export function LeaderboardsSection({
@@ -27,60 +29,47 @@ export function LeaderboardsSection({
   seasonRank,
   userStreakData,
   latestGw,
-  currentGw
+  currentGw,
+  effectiveGameState,
+  lastGwGameState,
+  currentGwLiveScore,
+  lastGwLiveScore,
 }: LeaderboardsSectionProps) {
-  // Check if the current GW is LIVE (first game kicked off, last game hasn't ended)
-  // All leaderboards (form, season) include the current GW, so if current GW is LIVE, all are live
-  // Load from cache immediately for instant display
-  const cachedCurrentGwState = useMemo(() => {
-    if (!currentGw) return null;
-    try {
-      return getCached<GameweekState>(`gameState:${currentGw}`);
-    } catch {
-      return null;
-    }
-  }, [currentGw]);
+  // Use game state and live scores passed from HomePage (already loaded from cache)
+  const isCurrentGwLive = effectiveGameState === 'LIVE';
+  const isLastGwLive = lastGwGameState === 'LIVE';
   
-  const { state: currentGwState } = useGameweekState(currentGw ?? null);
-  // Use cached state immediately if available, otherwise use hook state
-  const effectiveCurrentGwState = cachedCurrentGwState ?? currentGwState;
-  const isCurrentGwLive = effectiveCurrentGwState === 'LIVE';
-  
-  // Check if the Last GW is currently LIVE (for the Last GW card specifically)
-  const cachedLastGwState = useMemo(() => {
-    if (!lastGwRank?.gw) return null;
-    try {
-      return getCached<GameweekState>(`gameState:${lastGwRank.gw}`);
-    } catch {
-      return null;
-    }
-  }, [lastGwRank?.gw]);
-  
-  const { state: lastGwState } = useGameweekState(lastGwRank?.gw ?? null);
-  // Use cached state immediately if available, otherwise use hook state
-  const effectiveLastGwState = cachedLastGwState ?? lastGwState;
-  const isLastGwLive = effectiveLastGwState === 'LIVE';
-  
-  // Check for active live scores (ACTIVE LIVE = live scores are being used to calculate points)
+  // Subscribe to real-time updates (background refresh)
   const { liveScores: currentGwLiveScores } = useLiveScores(currentGw ?? undefined);
   const { liveScores: lastGwLiveScores } = useLiveScores(lastGwRank?.gw ?? undefined);
   const { user } = useAuth();
   
-  // Calculate live scores for current GW
-  const [currentGwLiveScore, setCurrentGwLiveScore] = useState<{ score: number; totalFixtures: number } | null>(null);
-  const [lastGwLiveScore, setLastGwLiveScore] = useState<{ score: number; totalFixtures: number } | null>(null);
+  // State for real-time updates (initialized from props)
+  const [currentGwLiveScoreState, setCurrentGwLiveScoreState] = useState<{ score: number; totalFixtures: number } | null>(currentGwLiveScore);
+  const [lastGwLiveScoreState, setLastGwLiveScoreState] = useState<{ score: number; totalFixtures: number } | null>(lastGwLiveScore);
   
-  // Calculate live score for current GW
+  // Update state when props change (cache updates)
+  useEffect(() => {
+    if (currentGwLiveScore) {
+      setCurrentGwLiveScoreState(currentGwLiveScore);
+    }
+  }, [currentGwLiveScore]);
+  
+  useEffect(() => {
+    if (lastGwLiveScore) {
+      setLastGwLiveScoreState(lastGwLiveScore);
+    }
+  }, [lastGwLiveScore]);
+  
+  // Update live scores from hook data (background refresh - only if hook has updates)
   useEffect(() => {
     if (!currentGw || !isCurrentGwLive || currentGwLiveScores.size === 0 || !user?.id) {
-      setCurrentGwLiveScore(null);
       return;
     }
     
     let alive = true;
     
     (async () => {
-      // Convert live scores to outcomes (derive H/D/A from current scores during games)
       const outcomes = new Map<number, "H" | "D" | "A">();
       let totalFixtures = 0;
       
@@ -104,12 +93,8 @@ export function LeaderboardsSection({
         }
       });
       
-      if (outcomes.size === 0) {
-        if (alive) setCurrentGwLiveScore(null);
-        return;
-      }
+      if (outcomes.size === 0) return;
       
-      // Get user's picks for current GW
       const { data: userPicks } = await supabase
         .from("app_picks")
         .select("fixture_index, pick")
@@ -118,7 +103,6 @@ export function LeaderboardsSection({
       
       if (!alive || !userPicks) return;
       
-      // Calculate score
       let score = 0;
       userPicks.forEach((pick) => {
         const outcome = outcomes.get(pick.fixture_index);
@@ -127,7 +111,6 @@ export function LeaderboardsSection({
         }
       });
       
-      // Get total fixtures count from app_fixtures
       const { data: fixtures } = await supabase
         .from("app_fixtures")
         .select("fixture_index")
@@ -136,24 +119,21 @@ export function LeaderboardsSection({
       const total = fixtures?.length || totalFixtures;
       
       if (alive) {
-        setCurrentGwLiveScore({ score, totalFixtures: total });
+        setCurrentGwLiveScoreState({ score, totalFixtures: total });
       }
     })();
     
     return () => { alive = false; };
   }, [currentGw, isCurrentGwLive, currentGwLiveScores, user?.id]);
   
-  // Calculate live score for last GW
   useEffect(() => {
     if (!lastGwRank?.gw || !isLastGwLive || lastGwLiveScores.size === 0 || !user?.id) {
-      setLastGwLiveScore(null);
       return;
     }
     
     let alive = true;
     
     (async () => {
-      // Convert live scores to outcomes
       const outcomes = new Map<number, "H" | "D" | "A">();
       
       lastGwLiveScores.forEach((liveScore) => {
@@ -175,12 +155,8 @@ export function LeaderboardsSection({
         }
       });
       
-      if (outcomes.size === 0) {
-        if (alive) setLastGwLiveScore(null);
-        return;
-      }
+      if (outcomes.size === 0) return;
       
-      // Get user's picks for last GW
       const { data: userPicks } = await supabase
         .from("app_picks")
         .select("fixture_index, pick")
@@ -189,7 +165,6 @@ export function LeaderboardsSection({
       
       if (!alive || !userPicks) return;
       
-      // Calculate score
       let score = 0;
       userPicks.forEach((pick) => {
         const outcome = outcomes.get(pick.fixture_index);
@@ -199,7 +174,7 @@ export function LeaderboardsSection({
       });
       
       if (alive) {
-        setLastGwLiveScore({ score, totalFixtures: lastGwRank.totalFixtures });
+        setLastGwLiveScoreState({ score, totalFixtures: lastGwRank.totalFixtures });
       }
     })();
     
@@ -225,11 +200,11 @@ How To Play →`}
             linkTo="/global?tab=lastgw"
             rank={lastGwRank?.rank ?? null}
             total={lastGwRank?.total ?? null}
-            score={lastGwLiveScore?.score ?? lastGwRank?.score}
+            score={lastGwLiveScore?.score ?? cachedLastGwLiveScore?.score ?? lastGwRank?.score}
             gw={lastGwRank?.gw}
             totalFixtures={lastGwRank?.totalFixtures}
             variant="lastGw"
-            isActiveLive={isLastGwLive && lastGwLiveScore !== null}
+            isActiveLive={isLastGwLive && (lastGwLiveScore !== null || cachedLastGwLiveScore !== null)}
           />
           <LeaderboardCard
             title="5-WEEK FORM"
@@ -254,7 +229,7 @@ How To Play →`}
             linkTo="/global?tab=overall"
             rank={seasonRank?.rank ?? null}
             total={seasonRank?.total ?? null}
-            isActiveLive={isCurrentGwLive && currentGwLiveScore !== null}
+            isActiveLive={isCurrentGwLive && (currentGwLiveScore !== null || cachedCurrentGwLiveScore !== null)}
           />
           {userStreakData && (
             <StreakCard
@@ -273,11 +248,11 @@ How To Play →`}
           linkTo="/global?tab=lastgw"
           rank={lastGwRank?.rank ?? null}
           total={lastGwRank?.total ?? null}
-          score={lastGwLiveScore?.score ?? lastGwRank?.score}
-          gw={lastGwRank?.gw}
-          totalFixtures={lastGwRank?.totalFixtures}
-          variant="lastGw"
-          isActiveLive={isLastGwLive && lastGwLiveScore !== null}
+            score={lastGwLiveScoreState?.score ?? lastGwLiveScore?.score ?? lastGwRank?.score}
+            gw={lastGwRank?.gw}
+            totalFixtures={lastGwRank?.totalFixtures}
+            variant="lastGw"
+            isActiveLive={isLastGwLive && (lastGwLiveScoreState !== null || lastGwLiveScore !== null)}
         />
         <LeaderboardCard
           title="5-WEEK FORM"
@@ -302,7 +277,7 @@ How To Play →`}
           linkTo="/global?tab=overall"
           rank={seasonRank?.rank ?? null}
           total={seasonRank?.total ?? null}
-          isActiveLive={isCurrentGwLive && currentGwLiveScore !== null}
+            isActiveLive={isCurrentGwLive && (currentGwLiveScoreState !== null || currentGwLiveScore !== null)}
         />
         {userStreakData && (
           <StreakCard

@@ -15,6 +15,7 @@ import { calculateFormRank, calculateLastGwRank, calculateSeasonRank } from "../
 import { fireConfettiCannon } from "../lib/confettiCannon";
 import { APP_ONLY_USER_IDS } from "../lib/appOnlyUsers";
 import { useGameweekState } from "../hooks/useGameweekState";
+import type { GameweekState } from "../lib/gameweekState";
 
 // Types
 type LeagueMember = { id: string; name: string };
@@ -115,18 +116,59 @@ export default function HomePage() {
         // Load fixtures from cache
         let fixtures: Fixture[] = [];
         let userPicks: Record<number, "H" | "D" | "A"> = {};
+        let liveScores: Record<number, { 
+          homeScore: number; 
+          awayScore: number; 
+          status: string; 
+          minute?: number | null;
+          goals?: any[] | null;
+          red_cards?: any[] | null;
+          home_team?: string | null;
+          away_team?: string | null;
+          result?: "H" | "D" | "A" | null;
+        }> = {};
         const fixturesCacheKey = `home:fixtures:${userId}:${cached.currentGw}`;
         
         try {
           const fixturesCached = getCached<{
             fixtures: Fixture[];
             userPicks: Record<number, "H" | "D" | "A">;
-            liveScores?: Array<{ api_match_id: number; [key: string]: any }>;
+            liveScores?: Array<{ api_match_id: number; fixture_index?: number; [key: string]: any }>;
           }>(fixturesCacheKey);
           
           if (fixturesCached?.fixtures?.length) {
             fixtures = fixturesCached.fixtures;
             userPicks = fixturesCached.userPicks || {};
+            
+            // Convert cached live scores to Record format immediately
+            if (fixturesCached.liveScores?.length) {
+              const apiMatchIdToFixtureIndex = new Map<number, number>();
+              fixturesCached.fixtures.forEach((f: any) => {
+                if (f.api_match_id) {
+                  apiMatchIdToFixtureIndex.set(f.api_match_id, f.fixture_index);
+                }
+              });
+              
+              fixturesCached.liveScores.forEach((score: any) => {
+                let fixtureIndex = score.fixture_index;
+                if (!fixtureIndex && score.api_match_id) {
+                  fixtureIndex = apiMatchIdToFixtureIndex.get(score.api_match_id);
+                }
+                
+                if (fixtureIndex !== undefined) {
+                  liveScores[fixtureIndex] = {
+                    homeScore: score.home_score ?? 0,
+                    awayScore: score.away_score ?? 0,
+                    status: score.status || 'SCHEDULED',
+                    minute: score.minute ?? null,
+                    goals: score.goals ?? null,
+                    red_cards: score.red_cards ?? null,
+                    home_team: score.home_team ?? null,
+                    away_team: score.away_team ?? null
+                  };
+                }
+              });
+            }
           }
         } catch (error) {
           // Error loading fixtures from cache (non-critical)
@@ -178,6 +220,7 @@ export default function HomePage() {
           seasonRank: cached.seasonRank ?? null,
           fixtures,
           userPicks,
+          liveScores,
           leagueData,
           leagueSubmissions,
           hasCache: true,
@@ -199,6 +242,7 @@ export default function HomePage() {
       seasonRank: null,
       fixtures: [],
       userPicks: {},
+      liveScores: {},
       leagueData: {},
       leagueSubmissions: {},
       hasCache: false,
@@ -217,6 +261,17 @@ export default function HomePage() {
   const [seasonRank, setSeasonRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(initialState.seasonRank ?? null);
   const [fixtures, setFixtures] = useState<Fixture[]>(initialState.fixtures);
   const [userPicks, setUserPicks] = useState<Record<number, "H" | "D" | "A">>(initialState.userPicks);
+  const [liveScoresFromCache, setLiveScoresFromCache] = useState<Record<number, { 
+    homeScore: number; 
+    awayScore: number; 
+    status: string; 
+    minute?: number | null;
+    goals?: any[] | null;
+    red_cards?: any[] | null;
+    home_team?: string | null;
+    away_team?: string | null;
+    result?: "H" | "D" | "A" | null;
+  }>>(initialState.liveScores);
   const [leagueData, setLeagueData] = useState<Record<string, LeagueDataInternal>>(initialState.leagueData);
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>(initialState.leagueSubmissions);
   
@@ -226,7 +281,30 @@ export default function HomePage() {
   
   // Use centralized hooks
   const { leagues, unreadByLeague, loading: leaguesLoading, refresh: refreshLeagues } = useLeagues({ pageName: 'home' });
+  
+  // Load game state from cache immediately for instant LIVE detection
+  const cachedGameState = useMemo(() => {
+    if (!gw) return null;
+    try {
+      return getCached<GameweekState>(`gameState:${gw}`);
+    } catch {
+      return null;
+    }
+  }, [gw]);
+  
   const { state: gameState, loading: gameStateLoading } = useGameweekState(gw);
+  // Use cached state immediately if available, otherwise use hook state
+  const effectiveGameState = cachedGameState ?? gameState;
+  
+  // Load last GW game state for leaderboards (if different from current GW)
+  const lastGwGameState = useMemo(() => {
+    if (!lastGwRank?.gw || lastGwRank.gw === gw) return effectiveGameState;
+    try {
+      return getCached<GameweekState>(`gameState:${lastGwRank.gw}`);
+    } catch {
+      return null;
+    }
+  }, [lastGwRank?.gw, gw, effectiveGameState]);
   
   // Unified loading state - block render until ALL critical data is ready
   const isLoading = basicDataLoading || leaguesLoading || gameStateLoading;
@@ -285,7 +363,7 @@ export default function HomePage() {
     
     return () => { alive = false; };
   }, [user?.id, initialState.gw]);
-  
+
   // Confetti check
   useEffect(() => {
     const checkConfetti = () => {
@@ -310,13 +388,13 @@ export default function HomePage() {
     const timeout = setTimeout(checkConfetti, 100);
     return () => clearTimeout(timeout);
   }, []);
-  
+
   // Get api_match_ids for live scores subscription
   const apiMatchIds = useMemo(() => {
     if (!fixtures?.length) return [];
     return fixtures.map(f => f.api_match_id).filter((id): id is number => id !== null && id !== undefined);
   }, [fixtures]);
-  
+
   // Load live scores from cache synchronously (don't depend on fixtures - load immediately)
   const cachedLiveScoresMap = useMemo(() => {
     if (!user?.id || !gw) return new Map();
@@ -343,22 +421,30 @@ export default function HomePage() {
     }
     return new Map();
   }, [user?.id, gw]); // Remove fixtures dependency - load immediately
-  
+
   // Subscribe to real-time live scores
   const { liveScores: liveScoresMapFromHook } = useLiveScores(
     gw,
     apiMatchIds.length > 0 ? apiMatchIds : undefined
   );
-  
+
   // Merge cached live scores with hook's live scores
+  // Prioritize cached data for instant display - cached data shows immediately, hook updates in background
   const liveScoresMap = useMemo(() => {
+    // Always start with cached data first (available synchronously on mount)
     const merged = new Map(cachedLiveScoresMap);
+    
+    // Only merge hook data if it has content (don't overwrite with empty Map)
+    // This ensures cached data displays instantly, then hook updates merge in
+    if (liveScoresMapFromHook.size > 0) {
     liveScoresMapFromHook.forEach((score, apiMatchId) => {
       merged.set(apiMatchId, score);
     });
+    }
+    
     return merged;
   }, [cachedLiveScoresMap, liveScoresMapFromHook]);
-  
+
   // Cache live scores when available
   useEffect(() => {
     if (!user?.id || !fixtures.length || !liveScoresMap.size || !gw) return;
@@ -470,9 +556,11 @@ export default function HomePage() {
     
     return () => { alive = false; };
   }, [gw, fixtures]);
-  
-  // Convert live scores to Record format
+
+  // Merge live scores: start with cached data (from initialState), then merge hook updates
+  // liveScoresFromCache state already contains data loaded synchronously from cache
   const liveScores = useMemo(() => {
+    // Start with cached data (available immediately on mount)
     const result: Record<number, { 
       homeScore: number; 
       awayScore: number; 
@@ -483,10 +571,10 @@ export default function HomePage() {
       home_team?: string | null;
       away_team?: string | null;
       result?: "H" | "D" | "A" | null;
-    }> = {};
+    }> = { ...liveScoresFromCache };
     
-    if (!fixtures?.length) return result;
-    
+    // Merge in real-time updates from hook (background refresh)
+    if (fixtures?.length && liveScoresMap.size > 0) {
     for (const fixture of fixtures) {
       if (fixture.api_match_id) {
         const liveScore = liveScoresMap.get(fixture.api_match_id);
@@ -503,6 +591,7 @@ export default function HomePage() {
           };
         }
       } else {
+          // Handle non-API fixtures with gwResults
         const resultValue = gwResults[fixture.fixture_index];
         if (resultValue) {
           result[fixture.fixture_index] = {
@@ -519,9 +608,11 @@ export default function HomePage() {
         }
       }
     }
+    }
+    
     return result;
-  }, [liveScoresMap, fixtures, gwResults]);
-  
+  }, [liveScoresFromCache, liveScoresMap, fixtures, gwResults]);
+
   // Fetch basic data (only if cache is missing - NOT if stale)
   useEffect(() => {
     if (!user?.id || initialState.hasCache) return; // Skip if we have cache
@@ -577,13 +668,13 @@ export default function HomePage() {
           ? calculateFormRank(user.id, newLatestGw - 9, newLatestGw, allPoints, overallData)
           : null;
         const seasonRankData = calculateSeasonRank(user.id, overallData);
-        
+
         if (alive) {
           setFiveGwRank(fiveGwRankData);
           setTenGwRank(tenGwRankData);
           setSeasonRank(seasonRankData);
         }
-        
+
         try {
           setCached(cacheKey, {
             currentGw,
@@ -678,7 +769,7 @@ export default function HomePage() {
     
     return () => { alive = false; };
   }, [user?.id, initialState.hasCache]);
-  
+
   // Subscribe to app_meta changes
   useEffect(() => {
     if (!user?.id) return;
@@ -709,12 +800,12 @@ export default function HomePage() {
         }
       )
       .subscribe();
-    
+
     return () => {
       supabase.removeChannel(channel);
     };
   }, [user?.id, gw]);
-  
+
   // Fetch fixtures and picks (cache-first, only fetch if missing)
   useEffect(() => {
     if (!user?.id || !gw) {
@@ -855,29 +946,29 @@ export default function HomePage() {
     const leagueDataCacheKey = `home:leagueData:${user.id}:${gw}`;
     
     // Check cache first
-    const cached = getCached<{
+      const cached = getCached<{
       leagueData: Record<string, any>;
-      leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
-    }>(leagueDataCacheKey);
-    
-    if (cached?.leagueData && Object.keys(cached.leagueData).length > 0) {
-      const allLeaguesHaveWebUserIds = Object.values(cached.leagueData).every((data: any) => 
-        data.webUserIds !== undefined
-      );
+        leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
+      }>(leagueDataCacheKey);
       
-      if (allLeaguesHaveWebUserIds) {
+    if (cached?.leagueData && Object.keys(cached.leagueData).length > 0) {
+        const allLeaguesHaveWebUserIds = Object.values(cached.leagueData).every((data: any) => 
+          data.webUserIds !== undefined
+        );
+        
+        if (allLeaguesHaveWebUserIds) {
         // Restore Sets from arrays
-        const restoredLeagueData: Record<string, LeagueDataInternal> = {};
-        for (const [leagueId, data] of Object.entries(cached.leagueData)) {
-          restoredLeagueData[leagueId] = {
-            ...data,
-            submittedMembers: data.submittedMembers ? (Array.isArray(data.submittedMembers) ? new Set(data.submittedMembers) : data.submittedMembers) : undefined,
-            latestGwWinners: data.latestGwWinners ? (Array.isArray(data.latestGwWinners) ? new Set(data.latestGwWinners) : data.latestGwWinners) : undefined,
-            webUserIds: data.webUserIds ? (Array.isArray(data.webUserIds) ? new Set(data.webUserIds) : data.webUserIds) : undefined,
-          };
-        }
-        setLeagueData(restoredLeagueData);
-        setLeagueSubmissions(cached.leagueSubmissions || {});
+          const restoredLeagueData: Record<string, LeagueDataInternal> = {};
+          for (const [leagueId, data] of Object.entries(cached.leagueData)) {
+            restoredLeagueData[leagueId] = {
+              ...data,
+              submittedMembers: data.submittedMembers ? (Array.isArray(data.submittedMembers) ? new Set(data.submittedMembers) : data.submittedMembers) : undefined,
+              latestGwWinners: data.latestGwWinners ? (Array.isArray(data.latestGwWinners) ? new Set(data.latestGwWinners) : data.latestGwWinners) : undefined,
+              webUserIds: data.webUserIds ? (Array.isArray(data.webUserIds) ? new Set(data.webUserIds) : data.webUserIds) : undefined,
+            };
+          }
+          setLeagueData(restoredLeagueData);
+          setLeagueSubmissions(cached.leagueSubmissions || {});
         
         // Check if cache is stale for background refresh
         const cacheTimestamp = getCacheTimestamp(leagueDataCacheKey);
@@ -1193,26 +1284,26 @@ export default function HomePage() {
         });
         
         if (alive) {
-          setLeagueSubmissions(submissionStatus);
-          setLeagueData(leagueDataMap);
-          
+        setLeagueSubmissions(submissionStatus);
+        setLeagueData(leagueDataMap);
+        
           // Cache the processed data
-          try {
-            const cacheableLeagueData: Record<string, any> = {};
-            for (const [leagueId, data] of Object.entries(leagueDataMap)) {
-              cacheableLeagueData[leagueId] = {
-                ...data,
-                submittedMembers: data.submittedMembers ? (data.submittedMembers instanceof Set ? Array.from(data.submittedMembers) : data.submittedMembers) : undefined,
-                latestGwWinners: data.latestGwWinners ? (data.latestGwWinners instanceof Set ? Array.from(data.latestGwWinners) : data.latestGwWinners) : undefined,
-                webUserIds: data.webUserIds ? (data.webUserIds instanceof Set ? Array.from(data.webUserIds) : data.webUserIds) : undefined,
-              };
-            }
-            
-            setCached(leagueDataCacheKey, {
-              leagueData: cacheableLeagueData,
-              leagueSubmissions: submissionStatus,
-            }, CACHE_TTL.HOME);
-          } catch (cacheError) {
+        try {
+          const cacheableLeagueData: Record<string, any> = {};
+          for (const [leagueId, data] of Object.entries(leagueDataMap)) {
+            cacheableLeagueData[leagueId] = {
+              ...data,
+              submittedMembers: data.submittedMembers ? (data.submittedMembers instanceof Set ? Array.from(data.submittedMembers) : data.submittedMembers) : undefined,
+              latestGwWinners: data.latestGwWinners ? (data.latestGwWinners instanceof Set ? Array.from(data.latestGwWinners) : data.latestGwWinners) : undefined,
+              webUserIds: data.webUserIds ? (data.webUserIds instanceof Set ? Array.from(data.webUserIds) : data.webUserIds) : undefined,
+            };
+          }
+          
+          setCached(leagueDataCacheKey, {
+            leagueData: cacheableLeagueData,
+            leagueSubmissions: submissionStatus,
+          }, CACHE_TTL.HOME);
+        } catch (cacheError) {
             // Failed to cache (non-critical)
           }
         }
@@ -1278,14 +1369,14 @@ export default function HomePage() {
     
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleVisibilityChange);
-    
+
     return () => {
       supabase.removeChannel(channel);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleVisibilityChange);
     };
   }, [user?.id, gw, latestGw]);
-  
+
   // Refetch data when gwResultsVersion changes
   useEffect(() => {
     if (!user?.id || gwResultsVersion === 0) return;
@@ -1377,7 +1468,7 @@ export default function HomePage() {
     
     // Only fetch if cache is missing or stale (background refresh)
     if (!cached) {
-      loadSubmissions();
+    loadSubmissions();
     } else {
       // Background refresh for stale cache
       const cacheTimestamp = getCacheTimestamp(`home:userSubmissions:${user.id}`);
@@ -1399,12 +1490,12 @@ export default function HomePage() {
       window.removeEventListener('predictionsSubmitted', handleSubmission);
     };
   }, [user?.id, gw]);
-  
+
   const hasSubmittedCurrentGw = useMemo(() => {
     if (!user?.id || !gw) return false;
     return userSubmissions.has(gw);
   }, [user?.id, gw, userSubmissions]);
-  
+
   // Calculate score component
   const scoreComponent = useMemo(() => {
     if (!fixtures.length) return null;
@@ -1418,7 +1509,7 @@ export default function HomePage() {
     let hasStartingSoonFixtures = false;
     const now = new Date();
     
-    const isInLiveWindow = gameState === 'LIVE';
+    const isInLiveWindow = effectiveGameState === 'LIVE';
     
     for (const f of fixtures) {
       const liveScore = liveScores[f.fixture_index];
@@ -1553,8 +1644,8 @@ export default function HomePage() {
         />
       </div>
     );
-  }, [isInApiTestLeague, fixtures, liveScores, userPicks, hasSubmittedCurrentGw, gameState, gameStateLoading]);
-  
+  }, [isInApiTestLeague, fixtures, liveScores, userPicks, hasSubmittedCurrentGw, effectiveGameState, gameStateLoading]);
+
   const hasLiveGames = useMemo(() => {
     if (!fixtures.length) return false;
     for (const f of fixtures) {
@@ -1565,7 +1656,7 @@ export default function HomePage() {
     }
     return false;
   }, [fixtures, liveScores]);
-  
+
   const userStreakData = useMemo(() => {
     if (!user?.id || !latestGw) return null;
     
@@ -1602,6 +1693,111 @@ export default function HomePage() {
       last10GwScores: last10GwScores.reverse()
     };
   }, [user?.id, gwPoints, latestGw, userSubmissions]);
+
+  // Calculate live scores for leaderboards from cached data (instant display)
+  const currentGwLiveScore = useMemo(() => {
+    if (!gw || effectiveGameState !== 'LIVE' || !user?.id) return null;
+    
+    try {
+      const fixturesCacheKey = `home:fixtures:${user.id}:${gw}`;
+      const cached = getCached<{
+        fixtures: any[];
+        userPicks: Record<number, "H" | "D" | "A">;
+        liveScores?: Array<{ api_match_id: number; fixture_index?: number; gw: number; status: string; home_score: number; away_score: number; [key: string]: any }>;
+      }>(fixturesCacheKey);
+      
+      if (cached?.liveScores?.length && cached?.userPicks && cached?.fixtures?.length) {
+        const outcomes = new Map<number, "H" | "D" | "A">();
+        
+        cached.liveScores.forEach((liveScore) => {
+          if (liveScore.gw === gw) {
+            if (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED') {
+              const fixtureIndex = liveScore.fixture_index;
+              if (fixtureIndex !== undefined && liveScore.home_score !== null && liveScore.away_score !== null) {
+                let outcome: "H" | "D" | "A";
+                if (liveScore.home_score > liveScore.away_score) {
+                  outcome = "H";
+                } else if (liveScore.home_score < liveScore.away_score) {
+                  outcome = "A";
+                } else {
+                  outcome = "D";
+                }
+                outcomes.set(fixtureIndex, outcome);
+              }
+            }
+          }
+        });
+        
+        if (outcomes.size === 0) return null;
+        
+        let score = 0;
+        Object.entries(cached.userPicks).forEach(([fixtureIndexStr, pick]) => {
+          const fixtureIndex = parseInt(fixtureIndexStr, 10);
+          const outcome = outcomes.get(fixtureIndex);
+          if (outcome && pick === outcome) {
+            score++;
+          }
+        });
+        
+        return { score, totalFixtures: cached.fixtures.length };
+      }
+    } catch (error) {
+      // Error loading from cache (non-critical)
+    }
+    return null;
+  }, [gw, effectiveGameState, user?.id]);
+  
+  const lastGwLiveScore = useMemo(() => {
+    if (!lastGwRank?.gw || !lastGwRank || effectiveGameState !== 'LIVE' || !user?.id) return null;
+    
+    try {
+      const fixturesCacheKey = `home:fixtures:${user.id}:${lastGwRank.gw}`;
+      const cached = getCached<{
+        fixtures: any[];
+        userPicks: Record<number, "H" | "D" | "A">;
+        liveScores?: Array<{ api_match_id: number; fixture_index?: number; gw: number; status: string; home_score: number; away_score: number; [key: string]: any }>;
+      }>(fixturesCacheKey);
+      
+      if (cached?.liveScores?.length && cached?.userPicks) {
+        const outcomes = new Map<number, "H" | "D" | "A">();
+        
+        cached.liveScores.forEach((liveScore) => {
+          if (liveScore.gw === lastGwRank.gw) {
+            if (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED') {
+              const fixtureIndex = liveScore.fixture_index;
+              if (fixtureIndex !== undefined && liveScore.home_score !== null && liveScore.away_score !== null) {
+                let outcome: "H" | "D" | "A";
+                if (liveScore.home_score > liveScore.away_score) {
+                  outcome = "H";
+                } else if (liveScore.home_score < liveScore.away_score) {
+                  outcome = "A";
+                } else {
+                  outcome = "D";
+                }
+                outcomes.set(fixtureIndex, outcome);
+              }
+            }
+          }
+        });
+        
+        if (outcomes.size === 0) return null;
+        
+        let score = 0;
+        Object.entries(cached.userPicks).forEach(([fixtureIndexStr, pick]) => {
+          const fixtureIndex = parseInt(fixtureIndexStr, 10);
+          const outcome = outcomes.get(fixtureIndex);
+          if (outcome && pick === outcome) {
+            score++;
+          }
+        });
+        
+        return { score, totalFixtures: lastGwRank.totalFixtures };
+      }
+    } catch (error) {
+      // Error loading from cache (non-critical)
+    }
+    return null;
+  }, [lastGwRank?.gw, lastGwRank, effectiveGameState, user?.id]);
   
   const fixturesToShow = useMemo(() => {
     // Note: showLiveOnly toggle removed - always show all fixtures
@@ -1667,58 +1863,62 @@ export default function HomePage() {
         <ScrollLogo />
       </div>
       
-      {/* LEADERBOARDS */}
-      <LeaderboardsSection
-        lastGwRank={lastGwRank}
-        fiveGwRank={fiveGwRank}
-        tenGwRank={tenGwRank}
-        seasonRank={seasonRank}
-        userStreakData={userStreakData}
-        latestGw={latestGw}
-        currentGw={gw}
-      />
+          {/* LEADERBOARDS */}
+          <LeaderboardsSection
+            lastGwRank={lastGwRank}
+            fiveGwRank={fiveGwRank}
+            tenGwRank={tenGwRank}
+            seasonRank={seasonRank}
+            userStreakData={userStreakData}
+            latestGw={latestGw}
+            currentGw={gw}
+        effectiveGameState={effectiveGameState}
+        lastGwGameState={lastGwGameState}
+        currentGwLiveScore={currentGwLiveScore}
+        lastGwLiveScore={lastGwLiveScore}
+          />
 
       {/* Mini Leagues and Games */}
-      <div className="flex flex-col lg:flex-row lg:gap-6 lg:items-start">
+          <div className="flex flex-col lg:flex-row lg:gap-6 lg:items-start">
         {/* Mini Leagues */}
-        <div className="lg:w-[30%] lg:flex-shrink-0">
-          <MiniLeaguesSection
-            leagues={leagues}
-            leagueData={leagueData}
-            leagueSubmissions={leagueSubmissions}
-            unreadByLeague={unreadByLeague}
+            <div className="lg:w-[30%] lg:flex-shrink-0">
+              <MiniLeaguesSection
+                leagues={leagues}
+                leagueData={leagueData}
+                leagueSubmissions={leagueSubmissions}
+                unreadByLeague={unreadByLeague}
             leagueDataLoading={false}
-            currentGw={gw}
-            currentUserId={user?.id}
-            gameState={gameState}
-          />
-        </div>
+                currentGw={gw}
+                currentUserId={user?.id}
+            gameState={effectiveGameState}
+              />
+            </div>
 
         {/* Games */}
-        <div className="lg:w-[70%] lg:flex-shrink-0">
-          <GamesSection
-            isInApiTestLeague={isInApiTestLeague}
-            fixtures={fixtures}
-            fixtureCards={fixtureCards}
-            hasLiveGames={hasLiveGames}
+            <div className="lg:w-[70%] lg:flex-shrink-0">
+              <GamesSection
+                isInApiTestLeague={isInApiTestLeague}
+                fixtures={fixtures}
+                fixtureCards={fixtureCards}
+                hasLiveGames={hasLiveGames}
             showLiveOnly={false}
             onToggleLiveOnly={() => {}}
-            scoreComponent={scoreComponent}
+                scoreComponent={scoreComponent}
             fixturesLoading={false}
             hasCheckedCache={true}
-            currentGw={gw}
-            showPickButtons={hasSubmittedCurrentGw}
-            userPicks={userPicks}
-            liveScores={liveScores}
-            userName={user?.user_metadata?.display_name || user?.email || 'User'}
-            globalRank={seasonRank?.rank}
-            hasSubmitted={hasSubmittedCurrentGw}
-          />
-        </div>
-      </div>
+                currentGw={gw}
+                showPickButtons={hasSubmittedCurrentGw}
+                userPicks={userPicks}
+                liveScores={liveScores}
+                userName={user?.user_metadata?.display_name || user?.email || 'User'}
+                globalRank={seasonRank?.rank}
+                hasSubmitted={hasSubmittedCurrentGw}
+              />
+            </div>
+          </div>
 
-      {/* Bottom padding */}
-      <div className="h-20"></div>
+          {/* Bottom padding */}
+          <div className="h-20"></div>
     </div>
   );
 }
