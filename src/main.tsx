@@ -100,13 +100,14 @@ function AppContent() {
       return;
     }
     
-    // For direct URLs like /league/ABC12?tab=chat, ensure React Router processes it
-    // The League page will handle opening the chat tab based on the tab=chat param
+    // For direct URLs like /league/ABC12?tab=chat from OneSignal web_url
+    // React Router should handle it, but ensure we're on the right page
     if (location.pathname.startsWith('/league/')) {
       const tab = searchParams.get('tab');
       if (tab === 'chat') {
         // URL is correct, League page will handle opening chat tab
-        // No navigation needed - React Router already matched the route
+        // Force a navigation to ensure React Router processes it
+        navigate(location.pathname + location.search, { replace: true });
       }
     }
   }, [navigate, location.pathname, location.search]);

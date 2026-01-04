@@ -258,9 +258,12 @@ export default function LeaguePage() {
       if (tab !== 'chat') {
         setTab('chat');
       }
-      // Clear the parameter after setting the tab to avoid re-triggering
-      // Use replace: true to avoid adding to history
-      setSearchParams({}, { replace: true });
+      // Don't clear the parameter immediately - let it stay for a moment to ensure tab opens
+      // Clear it after a short delay to avoid re-triggering
+      const timer = setTimeout(() => {
+        setSearchParams({}, { replace: true });
+      }, 100);
+      return () => clearTimeout(timer);
     }
   }, [searchParams, setSearchParams, tab]);
   const headerRef = useRef<HTMLDivElement | null>(null);
