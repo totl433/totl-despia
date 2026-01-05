@@ -684,8 +684,15 @@ export default function HomePage() {
     }
     }
     
-    return result;
-  }, [liveScoresFromCache, liveScoresMap, fixtures, gwResults]);
+    // Only return new object if content actually changed (prevent unnecessary re-renders)
+    const resultStr = JSON.stringify(result);
+    const prevStr = JSON.stringify(liveScoresPrevRef.current);
+    if (resultStr !== prevStr) {
+      liveScoresPrevRef.current = result;
+      return result;
+    }
+    return liveScoresPrevRef.current;
+  }, [liveScoresFromCache, liveScoresMap, fixtures, gwResults, cachedLiveScoresMap.size]);
 
   // Only load data if we don't have cache (fixtures.length === 0 means no cache)
   useEffect(() => {
