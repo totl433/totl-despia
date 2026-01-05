@@ -10,6 +10,7 @@ import { useGameweekState } from "../hooks/useGameweekState";
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import { invalidateLeagueCache } from "../api/leagues";
+import { getCached, setCached, CACHE_TTL } from "../lib/cache";
 import MiniLeagueChatBeta from "../components/MiniLeagueChatBeta";
 import InfoSheet from "../components/InfoSheet";
 import WinnerBanner from "../components/league/WinnerBanner";
@@ -236,10 +237,53 @@ export default function LeaguePage() {
     };
   }, []);
 
-  const [league, setLeague] = useState<League | null>(null);
+  // Try to get league from cache first (pre-loaded during initial data load)
+  const getInitialLeague = (): League | null => {
+    if (!code) return null;
+    // Check if we have leagues cached - find the one matching this code
+    try {
+      const cachedLeagues = getCached<Array<{ id: string; name: string; code: string; avatar?: string | null; created_at?: string | null }>>(`leagues:${user?.id || ''}`);
+      if (cachedLeagues) {
+        const found = cachedLeagues.find(l => l.code.toUpperCase() === code.toUpperCase());
+        if (found) {
+          return found as League;
+        }
+      }
+    } catch (e) {
+      // Cache miss - that's ok
+    }
+    return null;
+  };
+
+  const [league, setLeague] = useState<League | null>(() => {
+    return getInitialLeague();
+  });
   const [showBadgeModal, setShowBadgeModal] = useState(false);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  
+  // Initialize members from cache synchronously
+  const getInitialMembers = (): Member[] => {
+    const initialLeague = getInitialLeague();
+    if (!initialLeague?.id) return [];
+    try {
+      const cachedMembers = getCached<Array<[string, string]>>(`league:members:${initialLeague.id}`);
+      if (cachedMembers && cachedMembers.length > 0) {
+        return cachedMembers.map(([id, name]) => ({
+          id,
+          name: name || "(no name)",
+        }));
+      }
+    } catch {
+      // Cache miss
+    }
+    return [];
+  };
+  
+  const [members, setMembers] = useState<Member[]>(getInitialMembers);
+  // Start with false if we have cached league, true otherwise
+  const [loading, setLoading] = useState(() => {
+    const initialLeague = getInitialLeague();
+    return !initialLeague;
+  });
 
   // tabs: Chat / Mini League Table / GW Picks / GW Results
   // CHAT is always the default tab (never auto-switch to GW Table during live)
@@ -300,10 +344,33 @@ export default function LeaguePage() {
   const [showForm, setShowForm] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [leaving, setLeaving] = useState(false);
-  const [currentGw, setCurrentGw] = useState<number | null>(null);
+  // Initialize currentGw from cache immediately (pre-loaded during initial data load)
+  const getInitialCurrentGw = (): number | null => {
+    try {
+      const cached = getCached<{ current_gw: number }>('app_meta:current_gw');
+      return cached?.current_gw ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const [currentGw, setCurrentGw] = useState<number | null>(getInitialCurrentGw);
   const [latestResultsGw, setLatestResultsGw] = useState<number | null>(null);
-  const [selectedGw, setSelectedGw] = useState<number | null>(null);
-  const [availableGws, setAvailableGws] = useState<number[]>([]);
+  // Initialize selectedGw from currentGw immediately
+  const [selectedGw, setSelectedGw] = useState<number | null>(getInitialCurrentGw);
+  // Initialize availableGws from cache immediately (pre-loaded during initial data load)
+  const getInitialAvailableGws = (): number[] => {
+    try {
+      const cached = getCached<number[]>('app:available_gws');
+      return cached ?? [];
+    } catch {
+      return [];
+    }
+  };
+  
+  const [availableGws, setAvailableGws] = useState<number[]>(() => {
+    return getInitialAvailableGws();
+  });
 
   // Ref to track current liveScores without causing re-renders
   const liveScoresRef = useRef<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
@@ -829,7 +896,13 @@ ${shareUrl}`;
       }
       
       setAvailableGws(gwList);
-      if (gwList.length > 0 && !selectedGw) setSelectedGw(gwList[0]);
+      // Only set selectedGw if it's not already set (from initial state)
+      if (gwList.length > 0 && !selectedGw) {
+        setSelectedGw(gwList[0]);
+      } else if (gwList.length > 0 && selectedGw && !gwList.includes(selectedGw)) {
+        // If selectedGw is not in available list, use first available
+        setSelectedGw(gwList[0]);
+      }
     })();
     return () => {
       alive = false;
@@ -1027,42 +1100,200 @@ ${shareUrl}`;
     return prev;
   }, [liveScoresMap, fixtures]);
 
-  // MLT rows
-  const [mltRows, setMltRows] = useState<MltRow[]>([]);
+  // Initialize mltRows from cache synchronously (like league, currentGw, etc.)
+  // This MUST run synchronously during component initialization - no async operations
+  const getInitialMltRows = (): MltRow[] => {
+    try {
+      console.log('[League] getInitialMltRows called', { code, userId: user?.id });
+      
+      // Strategy 1: Try with code + user.id to find league ID from cached leagues
+      if (code && user?.id) {
+        const cachedLeagues = getCached<Array<{ id: string; code: string }>>(`leagues:${user.id}`);
+        console.log('[League] getInitialMltRows - cachedLeagues', { hasCached: !!cachedLeagues, length: cachedLeagues?.length });
+        if (cachedLeagues && Array.isArray(cachedLeagues)) {
+          const found = cachedLeagues.find(l => l.code.toUpperCase() === code.toUpperCase());
+          console.log('[League] getInitialMltRows - found league', { found: !!found, leagueId: found?.id });
+          if (found?.id) {
+            const cacheKey = `league:mltRows:${found.id}`;
+            const cached = getCached<MltRow[]>(cacheKey);
+            console.log('[League] getInitialMltRows - cached mltRows', { 
+              hasCached: !!cached, 
+              length: cached?.length, 
+              cacheKey,
+              cachedType: typeof cached,
+              isArray: Array.isArray(cached),
+              rawCache: cached
+            });
+            if (cached && Array.isArray(cached) && cached.length > 0) {
+              console.log('[League] ✅ getInitialMltRows returning cached rows', cached.length);
+              return cached;
+            } else {
+              console.log('[League] ❌ Cache check failed', { 
+                cached: !!cached, 
+                isArray: Array.isArray(cached), 
+                length: cached?.length,
+                cacheKey 
+              });
+            }
+          }
+        }
+      }
+      
+      // Strategy 2: Try with initialLeague if available
+      const initialLeague = getInitialLeague();
+      console.log('[League] getInitialMltRows - initialLeague', { hasLeague: !!initialLeague, leagueId: initialLeague?.id });
+      if (initialLeague?.id) {
+        const cached = getCached<MltRow[]>(`league:mltRows:${initialLeague.id}`);
+        console.log('[League] getInitialMltRows - cached from initialLeague', { hasCached: !!cached, length: cached?.length });
+        if (cached && Array.isArray(cached) && cached.length > 0) {
+          console.log('[League] ✅ getInitialMltRows returning cached rows from initialLeague', cached.length);
+          return cached;
+        }
+      }
+      
+      // Strategy 3: Try all cached leagues and find one matching the code
+      // This is a fallback in case the leagues cache structure is different
+      if (code && user?.id) {
+        const allCachedLeagues = getCached<Array<{ id: string; code: string; name?: string }>>(`leagues:${user.id}`);
+        if (allCachedLeagues && Array.isArray(allCachedLeagues)) {
+          for (const l of allCachedLeagues) {
+            if (l.code?.toUpperCase() === code.toUpperCase() && l.id) {
+              const cached = getCached<MltRow[]>(`league:mltRows:${l.id}`);
+              if (cached && Array.isArray(cached) && cached.length > 0) {
+                console.log('[League] ✅ getInitialMltRows returning cached rows from strategy 3', cached.length);
+                return cached;
+              }
+            }
+          }
+        }
+      }
+      
+      console.log('[League] ⚠️ getInitialMltRows returning empty array - cache miss');
+    } catch (error) {
+      console.error('[League] ❌ getInitialMltRows error', error);
+      // Silent fail - cache miss is OK, will be populated by useEffect
+    }
+    return [];
+  };
+  
+  const [mltRows, setMltRows] = useState<MltRow[]>(getInitialMltRows);
   const [mltLoading, setMltLoading] = useState(false);
+  
+  // Log tab changes (after mltRows is declared)
+  useEffect(() => {
+    console.log('[League] Tab changed to:', tab, 'mltRows.length:', mltRows.length);
+  }, [tab, mltRows.length]);
+  
+  // Update mltRows from cache immediately when league.id becomes available
+  // This ensures state is ready BEFORE component renders
+  // Also retry if cache wasn't ready initially (initialDataLoader might still be running)
+  useEffect(() => {
+    if (league?.id) {
+      const cacheKey = `league:mltRows:${league.id}`;
+      const cached = getCached<MltRow[]>(cacheKey);
+      console.log('[League] useEffect loading mltRows from cache', { 
+        leagueId: league.id, 
+        cacheKey, 
+        hasCached: !!cached, 
+        cachedLength: cached?.length,
+        currentMltRowsLength: mltRows.length 
+      });
+      if (cached && cached.length > 0) {
+        if (mltRows.length === 0) {
+          console.log('[League] ✅ Setting mltRows from cache', cached.length);
+          setMltRows(cached);
+          setMltLoading(false);
+        } else {
+          console.log('[League] mltRows already populated, skipping');
+        }
+      } else {
+        console.log('[League] ⚠️ No cached mltRows found - will retry multiple times');
+        // Retry multiple times with increasing delays in case initialDataLoader is still running
+        let retryCount = 0;
+        const maxRetries = 10;
+        const retryDelays = [50, 100, 150, 200, 250, 300, 400, 500, 600, 800];
+        
+        const tryRetry = () => {
+          if (retryCount >= maxRetries) {
+            console.log('[League] ❌ Max retries reached, giving up on cache');
+            return;
+          }
+          const timeout = setTimeout(() => {
+            retryCount++;
+            const retryCached = getCached<MltRow[]>(cacheKey);
+            if (retryCached && retryCached.length > 0 && mltRows.length === 0) {
+              console.log(`[League] ✅ Retry ${retryCount} successful - Setting mltRows from cache`, retryCached.length);
+              setMltRows(retryCached);
+              setMltLoading(false);
+            } else if (retryCount < maxRetries) {
+              tryRetry();
+            }
+          }, retryDelays[retryCount] || 800);
+          return () => clearTimeout(timeout);
+        };
+        
+        const cleanup = tryRetry();
+        return cleanup;
+      }
+    } else {
+      console.log('[League] ⚠️ No league.id available yet');
+    }
+  }, [league?.id, mltRows.length]); // Run immediately when league.id is available
 
   /* ---------- load league + members ---------- */
   useEffect(() => {
     let alive = true;
     (async () => {
-      setLoading(true);
-
-      const { data: lg } = await supabase
-        .from("leagues")
-        .select("id,name,code,created_at,avatar")
-        .eq("code", code)
-        .maybeSingle();
-
-      if (!alive) return;
+      // If we already have league from cache, use it immediately
+      const cachedLeague = league;
+      let lg = cachedLeague;
+      
       if (!lg) {
-        setLeague(null);
-        setMembers([]);
-        setLoading(false);
-        return;
+        // Fetch league if not in cache
+        const { data } = await supabase
+          .from("leagues")
+          .select("id,name,code,created_at,avatar")
+          .eq("code", code)
+          .maybeSingle();
+
+        if (!alive) return;
+        if (!data) {
+          setLeague(null);
+          setMembers([]);
+          setLoading(false);
+          return;
+        }
+        lg = data as League;
+        setLeague(lg);
       }
-      setLeague(lg as League);
 
-      const { data: mm } = await supabase
-        .from("league_members")
-        .select("users(id,name),created_at")
-        .eq("league_id", (lg as League).id)
-        .order("created_at", { ascending: true });
+      // Check cache FIRST (pre-loaded during initial data load)
+      // If we have cache, set loading to false immediately so chat can render
+      const cachedMembers = getCached<Array<[string, string]>>(`league:members:${lg.id}`);
+      let mem: Member[] = [];
+      
+      if (cachedMembers && cachedMembers.length > 0) {
+        // Use cached member names immediately - set loading to false right away!
+        mem = cachedMembers.map(([id, name]) => ({
+          id,
+          name: name || "(no name)",
+        }));
+        setLoading(false); // Clear loading immediately when we have cache
+      } else {
+        // No cache - need to fetch
+        const { data: mm } = await supabase
+          .from("league_members")
+          .select("users(id,name),created_at")
+          .eq("league_id", lg.id)
+          .order("created_at", { ascending: true });
 
-      const mem: Member[] =
-        (mm as any[])?.map((r) => ({
-          id: r.users.id,
-          name: r.users.name ?? "(no name)",
-        })) ?? [];
+        mem =
+          (mm as any[])?.map((r) => ({
+            id: r.users.id,
+            name: r.users.name ?? "(no name)",
+          })) ?? [];
+        setLoading(false); // Clear loading after fetch
+      }
 
       const memSorted = [...mem].sort((a, b) => a.name.localeCompare(b.name));
       setMembers(memSorted);
@@ -1497,12 +1728,33 @@ ${shareUrl}`;
     };
   }, []);
 
+  // Removed - now handled by useMemo + useEffect above for immediate synchronous loading
+
   /* ---------- Compute Mini League Table (season) ---------- */
   useEffect(() => {
     let alive = true;
     (async () => {
+      // If we already have rows loaded (from cache), skip calculation entirely
+      // Also check cache directly - if cache exists, don't recalculate
+      if (mltRows.length > 0) {
+        return;
+      }
+      
+      // Check cache one more time before doing anything
+      if (league?.id) {
+        const cached = getCached<MltRow[]>(`league:mltRows:${league.id}`);
+        if (cached && cached.length > 0) {
+          setMltRows(cached);
+          setMltLoading(false);
+          return;
+        }
+      }
+      
       if (!members.length) {
-        setMltRows([]);
+        // If we have cached data, keep it; otherwise clear
+        if (!getCached<MltRow[]>(`league:mltRows:${league?.id || ''}`)) {
+          setMltRows([]);
+        }
         return;
       }
       
@@ -1510,6 +1762,14 @@ ${shareUrl}`;
       if (league?.name === 'API Test') {
         // Show empty table with zero points for all members (test league starts fresh)
         setMltRows(createEmptyMltRows(members));
+        setMltLoading(false);
+        return;
+      }
+      
+      // Check cache one more time before calculating
+      const hasCachedData = league?.id && getCached<MltRow[]>(`league:mltRows:${league.id}`);
+      if (hasCachedData && hasCachedData.length > 0) {
+        setMltRows(hasCachedData);
         setMltLoading(false);
         return;
       }
@@ -1684,6 +1944,10 @@ ${shareUrl}`;
 
       if (!alive) return;
       setMltRows(rows);
+      // Cache the calculated rows for instant loading next time
+      if (league?.id) {
+        setCached(`league:mltRows:${league.id}`, rows, CACHE_TTL.LEAGUES);
+      }
       setMltLoading(false);
     })();
 
@@ -1697,11 +1961,45 @@ ${shareUrl}`;
      ========================= */
 
   function MltTab() {
-    // CRITICAL: Call hooks in same order as other tab components to prevent hook ordering errors
-    // Add matching hook calls to ensure consistent hook count across all tab components
+    const renderStart = performance.now();
+    console.log('[MltTab] ⚡ RENDERING START', { 
+      mltRowsLength: mltRows.length, 
+      membersLength: members.length, 
+      leagueId: league?.id,
+      timestamp: renderStart
+    });
+    
+    // CRITICAL: Call hooks FIRST (React rules) - same order as other tab components
+    const hookStart = performance.now();
     const _dummyGw = useMemo(() => currentGw ?? null, [currentGw]);
     const _dummyState = useGameweekState(_dummyGw);
     void _dummyState; // Suppress unused variable warning
+    const hookEnd = performance.now();
+    console.log('[MltTab] ⚡ Hooks complete', { duration: hookEnd - hookStart });
+
+    // SIMPLE: Just use mltRows state directly - it's already populated from cache synchronously
+    // No need to read cache again - state is the source of truth
+    const rowsStart = performance.now();
+    const rows = mltRows.length > 0 
+      ? mltRows 
+      : members.length > 0
+        ? members.map((m) => ({
+            user_id: m.id,
+            name: m.name,
+            mltPts: 0,
+            ocp: 0,
+            unicorns: 0,
+            wins: 0,
+            draws: 0,
+            form: [] as ("W" | "D" | "L")[],
+          }))
+        : [];
+    const rowsEnd = performance.now();
+    console.log('[MltTab] ⚡ Rows calculated', { 
+      rowsLength: rows.length, 
+      mltRowsLength: mltRows.length,
+      duration: rowsEnd - rowsStart
+    });
 
     // Check if this is a late-starting league (not one of the special leagues that start from GW0)
     // Note: "API Test" is excluded - it uses test API data, not regular game data
@@ -1709,19 +2007,6 @@ ${shareUrl}`;
     const gw7StartLeagues = ['The Bird league'];
     const gw8StartLeagues = ['gregVjofVcarl', 'Let Down'];
     const isLateStartingLeague = !!(league && !specialLeagues.includes(league.name) && !gw7StartLeagues.includes(league.name) && !gw8StartLeagues.includes(league.name));
-
-    const rows = mltRows.length
-      ? mltRows
-      : members.map((m) => ({
-          user_id: m.id,
-          name: m.name,
-          mltPts: 0,
-          ocp: 0,
-          unicorns: 0,
-          wins: 0,
-          draws: 0,
-          form: [] as ("W" | "D" | "L")[],
-        }));
 
     if (members.length === 1) {
       return (
@@ -1746,7 +2031,7 @@ ${shareUrl}`;
           members={members}
           showForm={showForm}
           currentUserId={user?.id}
-          loading={mltLoading}
+          loading={false}
           isLateStartingLeague={isLateStartingLeague}
         />
 
@@ -2470,6 +2755,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
   if (!league) {
     return null; // Still loading
   }
+  // #endregion
 
   return (
     <div className={`${oldSchoolMode ? 'oldschool-theme' : 'bg-slate-50'}`} style={{
@@ -2864,8 +3150,10 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
             )}
             <button
               onClick={() => {
+                console.log('[League] GW Table tab clicked, setting tab to mlt');
                 manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                        setTab("mlt");
+                setTab("mlt");
+                console.log('[League] Tab set to mlt, mltRows.length:', mltRows.length);
               }}
               className={
                 "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold relative leading-tight " +
@@ -2892,7 +3180,14 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
       ) : (
         <div className={`league-content-wrapper ${showHeaderMenu ? 'menu-open' : ''}`}>
           <div className="px-1 sm:px-2">
-            {tab === "mlt" && <MltTab />}
+            {tab === "mlt" && (() => {
+              const startTime = performance.now();
+              console.log('[League] Rendering MltTab, tab is mlt', { tab, mltRowsLength: mltRows.length, leagueId: league?.id, timestamp: startTime });
+              const result = <MltTab />;
+              const endTime = performance.now();
+              console.log('[League] MltTab JSX created', { duration: endTime - startTime });
+              return result;
+            })()}
             {tab === "gw" && <GwPicksTab />}
             {tab === "gwr" && <GwResultsTab />}
           </div>

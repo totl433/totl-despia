@@ -257,6 +257,18 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   // Cache app_meta for synchronous access in HomePage (prevents DB queries)
   setCached(`app_meta:current_gw`, { current_gw: currentGw }, CACHE_TTL.HOME);
   
+  // Cache availableGws (list of all GWs with results) for League page tabs
+  // Extract unique GWs from app_gw_results
+  if (_allResultsResult.data && Array.isArray(_allResultsResult.data)) {
+    const gwList = [...new Set(_allResultsResult.data.map((r: any) => r.gw))].sort((a, b) => b - a);
+    // Include currentGw if it's not already there (for live GWs without results yet)
+    if (currentGw && !gwList.includes(currentGw)) {
+      gwList.unshift(currentGw); // Add to beginning (highest GW)
+    }
+    setCached('app:available_gws', gwList, CACHE_TTL.HOME);
+    log.info('preload/available_gws_cached', { count: gwList.length, gws: gwList.slice(0, 5) });
+  }
+  
   // Cache user notification preferences for PredictionsBanner and HomePage
   const userViewingGw = userNotificationPrefsResult.data?.current_viewing_gw ?? null;
   if (userViewingGw !== null) {
@@ -444,6 +456,46 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
             log.debug('preload/league_data_cached', { userId: userId.slice(0, 8), gw: currentGw });
             // Both caches exist - skip league data processing but continue to ML cache check
             // (ML cache section will detect it exists and skip)
+            // BUT: Still need to ensure mltRows are cached for instant GW Table loading
+            const cachedLeagueData = existingCache.leagueData;
+            console.log('[Preload] Checking mltRows cache for', Object.keys(cachedLeagueData || {}).length, 'leagues');
+            if (cachedLeagueData) {
+              for (const [leagueId, data] of Object.entries(cachedLeagueData)) {
+                if (data && typeof data === 'object' && 'members' in data && Array.isArray(data.members)) {
+                  // Check if mltRows cache exists for this league
+                  const mltRowsCacheKey = `league:mltRows:${leagueId}`;
+                  const existingMltRows = getCached<any[]>(mltRowsCacheKey);
+                  if (!existingMltRows || existingMltRows.length === 0) {
+                    // Cache empty mltRows from members for instant loading
+                    const emptyMltRows = (data.members as Array<{ id: string; name: string }>).map((m) => ({
+                      user_id: m.id,
+                      name: m.name,
+                      mltPts: 0,
+                      ocp: 0,
+                      unicorns: 0,
+                      wins: 0,
+                      draws: 0,
+                      form: [] as ("W" | "D" | "L")[],
+                    }));
+                    setCached(mltRowsCacheKey, emptyMltRows, CACHE_TTL.LEAGUES);
+                    log.info('preload/mlt_rows_cached', { 
+                      leagueId: leagueId.slice(0, 8), 
+                      leagueName: (data as any).name || 'unknown',
+                      cacheKey: mltRowsCacheKey, 
+                      rowsCount: emptyMltRows.length,
+                      note: 'empty (from existing cache)'
+                    });
+                    console.log('[Preload] ✅ Cached mltRows (empty - from existing cache)', { leagueId: leagueId.slice(0, 8), cacheKey: mltRowsCacheKey, count: emptyMltRows.length });
+                  } else {
+                    console.log('[Preload] mltRows already cached for', leagueId.slice(0, 8), existingMltRows.length);
+                  }
+                } else {
+                  console.log('[Preload] ⚠️ Invalid data structure for league', leagueId.slice(0, 8), { hasData: !!data, hasMembers: data && 'members' in data });
+                }
+              }
+            } else {
+              console.log('[Preload] ⚠️ No cachedLeagueData available');
+            }
           } else {
             // League data cached but ML live table cache missing - need to fetch minimal data for ML cache
             log.debug('preload/ml_live_table_cache_missing', { userId: userId.slice(0, 8), gw: currentGw });
@@ -599,6 +651,27 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
               latestRelevantGw: null,
               webUserIds: Array.from(memberIds.filter(id => webUserIds.has(id)))
             };
+            // Cache empty mltRows for instant loading (no results yet)
+            const emptyMltRows = sortedMembers.map((m) => ({
+              user_id: m.id,
+              name: m.name,
+              mltPts: 0,
+              ocp: 0,
+              unicorns: 0,
+              wins: 0,
+              draws: 0,
+              form: [] as ("W" | "D" | "L")[],
+            }));
+          const cacheKey = `league:mltRows:${league.id}`;
+          setCached(cacheKey, emptyMltRows, CACHE_TTL.LEAGUES);
+            log.info('preload/mlt_rows_cached', { 
+              leagueId: league.id.slice(0, 8), 
+              leagueName: league.name,
+              cacheKey, 
+              rowsCount: emptyMltRows.length,
+              note: 'empty (no results yet)'
+            });
+            console.log('[Preload] ✅ Cached mltRows (empty - no results)', { leagueId: league.id.slice(0, 8), cacheKey, count: emptyMltRows.length });
             return;
           }
           
@@ -624,6 +697,27 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
               latestRelevantGw: null,
               webUserIds: Array.from(memberIds.filter(id => webUserIds.has(id)))
             };
+            // Cache empty mltRows for instant loading (no relevant GWs yet)
+            const emptyMltRows = sortedMembers.map((m) => ({
+              user_id: m.id,
+              name: m.name,
+              mltPts: 0,
+              ocp: 0,
+              unicorns: 0,
+              wins: 0,
+              draws: 0,
+              form: [] as ("W" | "D" | "L")[],
+            }));
+            const cacheKey = `league:mltRows:${league.id}`;
+            setCached(cacheKey, emptyMltRows, CACHE_TTL.LEAGUES);
+            log.info('preload/mlt_rows_cached', { 
+              leagueId: league.id.slice(0, 8), 
+              leagueName: league.name,
+              cacheKey, 
+              rowsCount: emptyMltRows.length,
+              note: 'empty (no relevant GWs)'
+            });
+            console.log('[Preload] ✅ Cached mltRows (empty - no relevant GWs)', { leagueId: league.id.slice(0, 8), cacheKey, count: emptyMltRows.length });
             return;
           }
           
@@ -733,6 +827,25 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
           const sortedMltRows = [...mltRows].sort((a, b) => 
             b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
           );
+          
+          // Cache mltRows separately for instant loading on League page
+          // Add wins, draws, and form (empty for now - will be calculated on League page if needed)
+          const mltRowsWithForm = sortedMltRows.map((r) => ({
+            ...r,
+            wins: 0,
+            draws: 0,
+            form: [] as ("W" | "D" | "L")[],
+          }));
+          const cacheKey = `league:mltRows:${league.id}`;
+          setCached(cacheKey, mltRowsWithForm, CACHE_TTL.LEAGUES);
+          // Use log.info so it shows in console
+          log.info('preload/mlt_rows_cached', { 
+            leagueId: league.id.slice(0, 8), 
+            leagueName: league.name,
+            cacheKey, 
+            rowsCount: mltRowsWithForm.length 
+          });
+          console.log('[Preload] ✅ Cached mltRows (with data)', { leagueId: league.id.slice(0, 8), cacheKey, count: mltRowsWithForm.length });
           
           const sortedMemberIds = sortedMltRows.map(r => r.user_id);
           const userIndex = sortedMltRows.findIndex(r => r.user_id === userId);
@@ -1320,6 +1433,134 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     prevOcp: prevOcpData,
   }, CACHE_TTL.GLOBAL);
   console.log('[Pre-loading] Global page data cached:', { latestGw: globalLatestGw, gwPointsCount: (gwPointsResult.data || []).length });
+
+  // Preload chat messages and member names for all leagues (NON-BLOCKING - runs in background)
+  // This ensures chat loads instantly when user navigates to league page
+  if (leagueIds.length > 0) {
+    (async () => {
+      try {
+        log.debug('preload/chat_messages_start', { userId: userId.slice(0, 8), leagueCount: leagueIds.length });
+        
+        // Pre-load member names for all leagues (needed for chat to render)
+        const memberNamesPromises = leagueIds.map(async (leagueId) => {
+          try {
+            const { data: members, error } = await supabase
+              .from('league_members')
+              .select('user_id, users(id, name)')
+              .eq('league_id', leagueId);
+            
+            if (error) {
+              console.warn(`[Pre-loading] Failed to preload member names for league ${leagueId}:`, error);
+              return null;
+            }
+            
+            if (members) {
+              const memberMap = new Map<string, string>();
+              members.forEach((m: any) => {
+                if (m.users?.id && m.users?.name) {
+                  memberMap.set(m.users.id, m.users.name);
+                }
+              });
+              // Cache member names for this league
+              setCached(`league:members:${leagueId}`, Array.from(memberMap.entries()), CACHE_TTL.HOME);
+            }
+            return true;
+          } catch (err) {
+            console.warn(`[Pre-loading] Error preloading member names for league ${leagueId}:`, err);
+            return null;
+          }
+        });
+        
+        // Fetch messages for all leagues in parallel
+        const messagePromises = leagueIds.map(async (leagueId) => {
+          try {
+            // Fetch first page of messages (50 most recent)
+            const { data: messages, error } = await supabase
+              .from('league_messages')
+              .select(`
+                id, 
+                league_id, 
+                user_id, 
+                content, 
+                created_at,
+                reply_to_message_id
+              `)
+              .eq('league_id', leagueId)
+              .order('created_at', { ascending: false })
+              .limit(50);
+
+            if (error) {
+              console.warn(`[Pre-loading] Failed to preload chat messages for league ${leagueId}:`, error);
+              return null;
+            }
+
+            if (messages && messages.length > 0) {
+              // Fetch reply data for messages that have reply_to_message_id
+              const messagesWithReply = messages.filter((msg: any) => msg.reply_to_message_id);
+              const replyMessageIds = [...new Set(messagesWithReply.map((msg: any) => msg.reply_to_message_id))];
+              
+              let replyDataMap = new Map<string, any>();
+              if (replyMessageIds.length > 0) {
+                const { data: replyMessages } = await supabase
+                  .from('league_messages')
+                  .select('id, content, user_id')
+                  .in('id', replyMessageIds);
+                
+                if (replyMessages) {
+                  replyMessages.forEach((msg: any) => {
+                    replyDataMap.set(msg.id, msg);
+                  });
+                }
+              }
+
+              // Enrich messages with reply data
+              const enrichedMessages = messages.map((msg: any) => {
+                if (msg.reply_to_message_id && replyDataMap.has(msg.reply_to_message_id)) {
+                  const replyMsg = replyDataMap.get(msg.reply_to_message_id);
+                  return {
+                    ...msg,
+                    reply_to: {
+                      id: replyMsg.id,
+                      content: replyMsg.content,
+                      user_id: replyMsg.user_id,
+                    },
+                  };
+                }
+                return msg;
+              });
+
+              // Reverse to match hook's behavior (hook fetches newest first, then reverses)
+              // This ensures messages are in oldest-to-newest order (newest at end, scroll to bottom)
+              const reversedMessages = enrichedMessages.reverse();
+
+              // Cache messages for this league (oldest to newest, newest at end)
+              setCached(`chat:messages:${leagueId}`, reversedMessages, CACHE_TTL.HOME);
+            }
+            
+            return messages?.length || 0;
+          } catch (err) {
+            console.warn(`[Pre-loading] Error preloading chat for league ${leagueId}:`, err);
+            return null;
+          }
+        });
+
+        // Wait for both member names and messages to complete
+        const [memberResults, messageResults] = await Promise.all([
+          Promise.all(memberNamesPromises),
+          Promise.all(messagePromises)
+        ]);
+        const totalMessages = messageResults.reduce((sum, count) => sum + (count || 0), 0);
+        log.debug('preload/chat_messages_complete', { 
+          userId: userId.slice(0, 8), 
+          leagueCount: leagueIds.length,
+          totalMessages 
+        });
+      } catch (error) {
+        // Silent fail - chat will load normally if preload fails
+        console.warn('[Pre-loading] Failed to preload chat messages:', error);
+      }
+    })();
+  }
 
   // Preload Predictions page data (BLOCKING - ensures zero loading in Predictions page)
   try {
