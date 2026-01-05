@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { supabase } from "../lib/supabase";
+import { getCached } from "../lib/cache";
 
 const PAGE_SIZE = 50;
 
@@ -82,8 +83,16 @@ export function useMiniLeagueChat(
   options: UseMiniLeagueChatOptions = {}
 ) {
   const { userId, enabled = true, autoSubscribe = true } = options;
-  const [messages, setMessages] = useState<MiniLeagueChatMessage[]>([]);
-  const [loading, setLoading] = useState(false);
+  
+  // Initialize with cached messages if available (pre-loaded during initial data load)
+  const getInitialMessages = (): MiniLeagueChatMessage[] => {
+    if (!miniLeagueId || !enabled) return [];
+    const cached = getCached<MiniLeagueChatMessage[]>(`chat:messages:${miniLeagueId}`);
+    return cached || [];
+  };
+  
+  const [messages, setMessages] = useState<MiniLeagueChatMessage[]>(getInitialMessages);
+  const [loading, setLoading] = useState(false); // Start as false - we'll only set true if no cache
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -206,18 +215,45 @@ export function useMiniLeagueChat(
       setHasMore(true);
       return;
     }
-    setLoading(true);
+    // Only set loading if we don't already have messages (from cache)
+    const hasMessages = messages.length > 0;
+    if (!hasMessages) {
+      setLoading(true);
+    }
     setError(null);
     earliestTimestampRef.current = null;
     try {
+      // Check cache first (pre-loaded during initial data load)
+      const cachedMessages = getCached<MiniLeagueChatMessage[]>(`chat:messages:${miniLeagueId}`);
+      if (cachedMessages && cachedMessages.length > 0) {
+        // Use cached messages immediately
+        applyMessages(() => cachedMessages);
+        // Set earliest timestamp for pagination
+        if (cachedMessages.length > 0) {
+          earliestTimestampRef.current = cachedMessages[0].created_at;
+        }
+        // If we got 50 messages, there might be more
+        setHasMore(cachedMessages.length >= 50);
+        if (!hasMessages) {
+          setLoading(false);
+        }
+        // Still fetch fresh data in background to ensure we have latest
+        fetchPage({ append: false }).catch((err) => {
+          console.warn('[useMiniLeagueChat] Background refresh failed:', err);
+        });
+        return;
+      }
+      // No cache, fetch from database
       await fetchPage({ append: false });
     } catch (err: any) {
       console.error('[useMiniLeagueChat] Error in refresh:', err);
       setError(err?.message ?? "Failed to load chat");
     } finally {
-      setLoading(false);
+      if (!hasMessages) {
+        setLoading(false);
+      }
     }
-  }, [miniLeagueId, enabled, fetchPage]);
+  }, [miniLeagueId, enabled, fetchPage, applyMessages, messages.length]);
 
   useEffect(() => {
     if (!miniLeagueId || !enabled) {
@@ -234,6 +270,33 @@ export function useMiniLeagueChat(
     }
     initializingLeagueIdRef.current = miniLeagueId;
 
+    // Check cache FIRST - if we already have messages from initial state, use them
+    // Otherwise check cache again (in case cache was populated after component mount)
+    const hasInitialMessages = messages.length > 0;
+    const cachedMessages = getCached<MiniLeagueChatMessage[]>(`chat:messages:${miniLeagueId}`);
+    
+    if (hasInitialMessages || (cachedMessages && cachedMessages.length > 0)) {
+      // We have messages (from initial state or cache) - no loading state needed
+      if (!hasInitialMessages && cachedMessages) {
+        // Update messages if we got them from cache
+        applyMessages(() => cachedMessages);
+        if (cachedMessages.length > 0) {
+          earliestTimestampRef.current = cachedMessages[0].created_at;
+        }
+        setHasMore(cachedMessages.length >= 50);
+      } else if (hasInitialMessages && messages.length > 0) {
+        // Set earliest timestamp from existing messages
+        earliestTimestampRef.current = messages[0].created_at;
+        setHasMore(messages.length >= 50);
+      }
+      // Don't set loading - messages are ready immediately
+      // Don't refresh in background - we have cached data, no need to cause re-renders
+      // User can pull to refresh if they want latest messages
+      initializingLeagueIdRef.current = null;
+      return;
+    }
+
+    // No cache and no initial messages - need to fetch (this is the only case where loading should be true)
     let active = true;
     refresh().finally(() => {
       // Clear flag after refresh completes (allows re-initialization if league changes)

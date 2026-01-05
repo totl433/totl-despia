@@ -40,6 +40,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   const { user } = useAuth();
   const {
     messages,
+    loading,
     loadingMore,
     hasMore,
     error,
@@ -94,6 +95,9 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   }, [miniLeagueId, user?.id]);
   // Force re-render when memberNames loads by tracking a version
   const [memberNamesVersion, setMemberNamesVersion] = useState(0);
+  const hasInitiallyScrolledRef = useRef(false);
+  const initialScrollDoneRef = useRef(false);
+  const initialLoadCompleteRef = useRef(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputAreaRef = useRef<HTMLDivElement | null>(null);
@@ -368,11 +372,11 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     }
   }, [user?.id, reactions]);
 
+  // Reset scroll ref when league changes
   useEffect(() => {
-    if (messages.length > 0) {
-      scrollToBottomWithRetries([0, 150, 300]);
-    }
-  }, [messages.length, scrollToBottomWithRetries]);
+    hasInitiallyScrolledRef.current = false;
+    initialScrollDoneRef.current = false;
+  }, [miniLeagueId]);
 
   useEffect(() => {
     if (!draft && inputRef.current) {
@@ -774,6 +778,21 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     return `chat-${chatGroups.length}-${hasUnknown ? 'unknown' : 'resolved'}-${memberNamesVersion}-${authorNames.slice(0, 50)}`;
   }, [chatGroups, memberNamesVersion]);
 
+  // Set scroll to bottom immediately when container is ready
+  // Use ref callback to set scroll position as soon as element is mounted
+  const setListRef = useCallback((node: HTMLDivElement | null) => {
+    listRef.current = node;
+    // Set scroll to bottom immediately when element mounts AND content is ready
+    if (node && messages.length > 0 && chatGroups.length > 0) {
+      // Use requestAnimationFrame to ensure layout is complete
+      requestAnimationFrame(() => {
+        if (node) {
+          node.scrollTop = node.scrollHeight;
+        }
+      });
+    }
+  }, [messages.length, chatGroups.length]);
+
 
   const notifyRecipients = useCallback(
     async (text: string) => {
@@ -901,6 +920,46 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     return () => clearTimeout(timer);
   }, [uiErrors]);
 
+  // Reset refs when league changes
+  useEffect(() => {
+    if (miniLeagueId) {
+      initialScrollDoneRef.current = false;
+      initialLoadCompleteRef.current = false;
+    }
+  }, [miniLeagueId]);
+
+  // Track when initial load is complete (loading done, messages loaded, memberNames ready)
+  useEffect(() => {
+    // If we have messages already (from cache), we can show immediately
+    if (messages.length > 0) {
+      const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
+      if (hasMemberNames) {
+        // Messages are ready and memberNames are ready - show immediately
+        initialLoadCompleteRef.current = true;
+        return;
+      }
+    }
+    
+    // Otherwise wait for loading to complete
+    if (!loading && messages.length >= 0) {
+      const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
+      // Wait for memberNames if we have messages, otherwise we can show empty state
+      if (messages.length === 0 || hasMemberNames) {
+        // Small delay to ensure chatGroups is calculated
+        const timer = setTimeout(() => {
+          initialLoadCompleteRef.current = true;
+        }, 50);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [loading, messages.length, memberNames]);
+
+  // Don't render anything until messages and chatGroups are both ready
+  // This prevents all glitchy loading states
+  if (messages.length === 0 || chatGroups.length === 0) {
+    return null;
+  }
+
   return (
     <div className="flex flex-col h-full w-full" style={{ position: 'relative', zIndex: 1, overflowX: 'hidden' }}>
       {/* Error display */}
@@ -923,7 +982,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         </div>
       )}
       <div
-        ref={listRef}
+        ref={setListRef}
         className="flex-1 overflow-y-auto px-4 py-5"
         onClick={handleMessagesClick}
         style={{
@@ -945,11 +1004,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
           </button>
         )}
 
-        {chatGroups.length === 0 ? (
-          <div className="text-center text-sm text-slate-500 mt-8">
-            Say hi to kick off this chat!
-          </div>
-        ) : (
+        {/* Only render when we have messages AND chatGroups ready - prevents glitchy re-renders */}
+        {messages.length > 0 && chatGroups.length > 0 ? (
           <ChatThread 
             key={chatThreadKey}
             groups={chatGroups}
@@ -983,7 +1039,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
               }
             }}
           />
-        )}
+        ) : null}
       </div>
 
       <div

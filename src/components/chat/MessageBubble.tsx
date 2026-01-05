@@ -126,29 +126,52 @@ export function MessageBubble({
         style={{ 
           wordBreak: 'break-word', 
           overflowWrap: 'anywhere',
-          display: 'inline-block'
+          display: 'inline-block',
+          width: 'fit-content',
+          maxWidth: '100%',
+          overflow: 'hidden'
         }}
       >
         {author && !isOwnMessage && (
           <div className="text-[11px] font-semibold text-slate-600 mb-1 break-words" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{author}</div>
         )}
- {/* Reply preview - WhatsApp style */}
- {replyTo && (
- <div
- className={`mb-2 pb-2 border-l-2 ${
- isOwnMessage
- ? "border-white/30 text-white/90"
- : "border-[#1C8376] text-slate-600"
- } pl-2 text-sm`}
-          style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
-        >
-          <div className="font-medium text-xs mb-0.5 break-words" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-            {replyTo.authorName || "Unknown"}
+        {/* Reply preview - WhatsApp style */}
+        {replyTo && (
+          <div
+            className={`mb-2 pb-2 border-l-2 ${
+              isOwnMessage
+                ? "border-white/30 text-white/90"
+                : "border-[#1C8376] text-slate-600"
+            } pl-2 text-xs`}
+            style={{ 
+              wordBreak: 'break-word', 
+              overflowWrap: 'anywhere',
+              overflow: 'hidden',
+              maxWidth: '100%'
+            }}
+          >
+            <div className="font-medium text-[10px] mb-0.5 break-words" style={{ 
+              wordBreak: 'break-word', 
+              overflowWrap: 'anywhere',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}>
+              {replyTo.authorName || "Unknown"}
+            </div>
+            <div className="text-[10px] break-words" style={{ 
+              wordBreak: 'break-word', 
+              overflowWrap: 'anywhere',
+              overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              lineHeight: '1.3',
+              maxHeight: '2.6em'
+            }}>
+              {replyTo.content}
+            </div>
           </div>
-          <div className="text-xs line-clamp-2 truncate break-words" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-            {replyTo.content}
-          </div>
-        </div>
         )}
         <div style={{ 
           wordBreak: 'break-word', 
