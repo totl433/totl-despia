@@ -12,40 +12,82 @@ const DEADLINE_BUFFER_MINUTES = 75;
  * - LIVE: First kickoff happened AND last game hasn't finished (FT)
  * - RESULTS_PRE_GW: GW has finished (last game has reached FT AND no active games)
  */
+// Cache for fixture kickoff times to prevent duplicate DB queries
+const fixtureKickoffCache = new Map<number, Array<{ fixture_index: number; kickoff_time: string }>>();
+// Promise cache to prevent concurrent duplicate requests for the same GW
+const fixtureFetchPromises = new Map<number, Promise<Array<{ fixture_index: number; kickoff_time: string }>>>();
+
 export async function getGameweekState(gw: number): Promise<GameweekState> {
-  // Try to get fixtures from cache first (pre-loaded during initial data load)
+  // Check in-memory cache first (prevents duplicate requests during same render cycle)
+  if (fixtureKickoffCache.has(gw)) {
+    const fixtures = fixtureKickoffCache.get(gw)!;
+    if (fixtures && fixtures.length > 0) {
+      return calculateGameweekState(fixtures, gw);
+    }
+  }
+  
+  // Try to get fixtures from localStorage cache (pre-loaded during initial data load)
   let fixtures: Array<{ fixture_index: number; kickoff_time: string }> | null = null;
   
-  // Check cache for any user's fixtures cache (fixtures are the same for all users)
-  // Try a few common cache keys
-  const cacheKeys = [
-    `home:fixtures:${gw}`,
-    `app:fixtures:${gw}`,
-  ];
-  
-  for (const cacheKey of cacheKeys) {
-    const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(cacheKey);
-    if (cached?.fixtures?.length) {
-      fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
-      break;
+  // Check all localStorage keys to find any user's fixtures cache for this GW
+  // Cache format: home:fixtures:${userId}:${gw}
+  if (typeof window !== 'undefined') {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(`home:fixtures:`) && key.endsWith(`:${gw}`)) {
+          const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(key);
+          if (cached?.fixtures?.length) {
+            fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
+            // Cache in memory for this render cycle
+            fixtureKickoffCache.set(gw, fixtures);
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore cache errors
     }
   }
   
-  // If not in cache, fetch from DB
+  // If not in cache, fetch from DB (only once per GW, even if multiple concurrent calls)
   if (!fixtures) {
-    const { data, error: fixturesError } = await supabase
-      .from("app_fixtures")
-      .select("fixture_index, kickoff_time")
-      .eq("gw", gw)
-      .order("kickoff_time", { ascending: true });
+    // Check if there's already a fetch in progress for this GW
+    let fetchPromise = fixtureFetchPromises.get(gw);
     
-    if (fixturesError || !data || data.length === 0) {
+    if (!fetchPromise) {
+      // Create new fetch promise
+      fetchPromise = (async () => {
+        const { data, error: fixturesError } = await supabase
+          .from("app_fixtures")
+          .select("fixture_index, kickoff_time")
+          .eq("gw", gw)
+          .order("kickoff_time", { ascending: true });
+        
+        if (fixturesError || !data || data.length === 0) {
+          fixtureFetchPromises.delete(gw);
+          return [];
+        }
+        
+        fixtureKickoffCache.set(gw, data);
+        fixtureFetchPromises.delete(gw);
+        return data;
+      })();
+      
+      fixtureFetchPromises.set(gw, fetchPromise);
+    }
+    
+    fixtures = await fetchPromise;
+    
+    if (!fixtures || fixtures.length === 0) {
       return 'GW_OPEN';
     }
-    
-    fixtures = data;
   }
   
+  return calculateGameweekState(fixtures, gw);
+}
+
+async function calculateGameweekState(fixtures: Array<{ fixture_index: number; kickoff_time: string }>, gw: number): Promise<GameweekState> {
   if (!fixtures || fixtures.length === 0) {
     return 'GW_OPEN';
   }
@@ -94,45 +136,84 @@ export async function getGameweekState(gw: number): Promise<GameweekState> {
  * - RESULTS_PRE_GW: GW has finished (last game has reached FT AND no active games)
  */
 export async function getUserGameweekState(gw: number, userId: string | null | undefined): Promise<GameweekState> {
-  // Try to get fixtures from cache first (pre-loaded during initial data load)
+  // Check in-memory cache first
+  if (fixtureKickoffCache.has(gw)) {
+    const fixtures = fixtureKickoffCache.get(gw)!;
+    if (fixtures && fixtures.length > 0) {
+      return calculateUserGameweekState(fixtures, gw, userId);
+    }
+  }
+  
+  // Try to get fixtures from localStorage cache (pre-loaded during initial data load)
   let fixtures: Array<{ fixture_index: number; kickoff_time: string }> | null = null;
   
-  // Check cache - try user-specific cache first, then generic cache
+  // Check user-specific cache first
   if (userId) {
     const userCacheKey = `home:fixtures:${userId}:${gw}`;
     const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(userCacheKey);
     if (cached?.fixtures?.length) {
       fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
+      fixtureKickoffCache.set(gw, fixtures);
     }
   }
   
-  // If not in user cache, try generic cache
-  if (!fixtures) {
-    const cacheKeys = [`home:fixtures:${gw}`, `app:fixtures:${gw}`];
-    for (const cacheKey of cacheKeys) {
-      const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(cacheKey);
-      if (cached?.fixtures?.length) {
-        fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
-        break;
+  // If not in user cache, check any user's cache for this GW
+  if (!fixtures && typeof window !== 'undefined') {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(`home:fixtures:`) && key.endsWith(`:${gw}`)) {
+          const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(key);
+          if (cached?.fixtures?.length) {
+            fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
+            fixtureKickoffCache.set(gw, fixtures);
+            break;
+          }
+        }
       }
+    } catch (e) {
+      // Ignore cache errors
     }
   }
   
-  // If not in cache, fetch from DB
+  // If not in cache, fetch from DB (only once per GW, even if multiple concurrent calls)
   if (!fixtures) {
-    const { data, error: fixturesError } = await supabase
-      .from("app_fixtures")
-      .select("fixture_index, kickoff_time")
-      .eq("gw", gw)
-      .order("kickoff_time", { ascending: true });
+    // Check if there's already a fetch in progress for this GW
+    let fetchPromise = fixtureFetchPromises.get(gw);
     
-    if (fixturesError || !data || data.length === 0) {
+    if (!fetchPromise) {
+      // Create new fetch promise
+      fetchPromise = (async () => {
+        const { data, error: fixturesError } = await supabase
+          .from("app_fixtures")
+          .select("fixture_index, kickoff_time")
+          .eq("gw", gw)
+          .order("kickoff_time", { ascending: true });
+        
+        if (fixturesError || !data || data.length === 0) {
+          fixtureFetchPromises.delete(gw);
+          return [];
+        }
+        
+        fixtureKickoffCache.set(gw, data);
+        fixtureFetchPromises.delete(gw);
+        return data;
+      })();
+      
+      fixtureFetchPromises.set(gw, fetchPromise);
+    }
+    
+    fixtures = await fetchPromise;
+    
+    if (!fixtures || fixtures.length === 0) {
       return 'GW_OPEN';
     }
-    
-    fixtures = data;
   }
   
+  return calculateUserGameweekState(fixtures, gw, userId);
+}
+
+async function calculateUserGameweekState(fixtures: Array<{ fixture_index: number; kickoff_time: string }>, gw: number, userId: string | null | undefined): Promise<GameweekState> {
   if (!fixtures || fixtures.length === 0) {
     return 'GW_OPEN';
   }
@@ -195,31 +276,64 @@ export async function getUserGameweekState(gw: number, userId: string | null | u
  * A game is LIVE between kickoff and FT (status IN_PLAY or PAUSED).
  */
 export async function isGameweekFinished(gw: number): Promise<boolean> {
-  // Try to get fixtures from cache first
+  // Check in-memory cache first
   let fixtures: Array<{ fixture_index: number; kickoff_time: string }> | null = null;
   
-  const cacheKeys = [`home:fixtures:${gw}`, `app:fixtures:${gw}`];
-  for (const cacheKey of cacheKeys) {
-    const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(cacheKey);
-    if (cached?.fixtures?.length) {
-      fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
-      break;
+  if (fixtureKickoffCache.has(gw)) {
+    fixtures = fixtureKickoffCache.get(gw)!;
+  }
+  
+  // Try to get fixtures from localStorage cache
+  if (!fixtures && typeof window !== 'undefined') {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(`home:fixtures:`) && key.endsWith(`:${gw}`)) {
+          const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(key);
+          if (cached?.fixtures?.length) {
+            fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
+            fixtureKickoffCache.set(gw, fixtures);
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore cache errors
     }
   }
   
-  // If not in cache, fetch from DB
+  // If not in cache, fetch from DB (only once per GW, even if multiple concurrent calls)
   if (!fixtures) {
-    const { data, error: fixturesError } = await supabase
-      .from("app_fixtures")
-      .select("fixture_index, kickoff_time")
-      .eq("gw", gw)
-      .order("kickoff_time", { ascending: true });
+    // Check if there's already a fetch in progress for this GW
+    let fetchPromise = fixtureFetchPromises.get(gw);
     
-    if (fixturesError || !data || data.length === 0) {
-      return false;
+    if (!fetchPromise) {
+      // Create new fetch promise
+      fetchPromise = (async () => {
+        const { data, error: fixturesError } = await supabase
+          .from("app_fixtures")
+          .select("fixture_index, kickoff_time")
+          .eq("gw", gw)
+          .order("kickoff_time", { ascending: true });
+        
+        if (fixturesError || !data || data.length === 0) {
+          fixtureFetchPromises.delete(gw);
+          return [];
+        }
+        
+        fixtureKickoffCache.set(gw, data);
+        fixtureFetchPromises.delete(gw);
+        return data;
+      })();
+      
+      fixtureFetchPromises.set(gw, fetchPromise);
     }
     
-    fixtures = data;
+    fixtures = await fetchPromise;
+    
+    if (!fixtures || fixtures.length === 0) {
+      return false;
+    }
   }
   
   if (!fixtures || fixtures.length === 0) {
