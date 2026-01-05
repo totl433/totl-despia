@@ -66,3 +66,4 @@ export default function GWCard({ gw, score, submitted }: GWCardProps) {
 
 
 
+

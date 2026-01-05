@@ -122,9 +122,9 @@ export default function PredictionsPage() {
     const dbCurrentGw = metaCache?.current_gw || 14;
     
     // Determine which GW to display (user's viewing GW, or current GW if not set)
-    const gwToDisplay = userViewingGw !== null && userViewingGw < dbCurrentGw 
-      ? userViewingGw 
-      : dbCurrentGw;
+    // CRITICAL: If userViewingGw is set, use it (even if it's greater than dbCurrentGw)
+    // This handles the case where user moved on to a new GW but cache hasn't updated yet
+    const gwToDisplay = userViewingGw !== null ? userViewingGw : dbCurrentGw;
 
     const cacheKey = `predictions:${user.id}:${gwToDisplay}`;
  const cached = getCached<{

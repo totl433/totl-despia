@@ -92,3 +92,4 @@ node scripts/monitor-jof-notifications.mjs | grep "goal-scored"
 
 
 
+
