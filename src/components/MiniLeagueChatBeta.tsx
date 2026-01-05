@@ -1003,16 +1003,11 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     }
   }, [loading, messages.length, memberNames]);
 
-  // Don't render anything until messages and chatGroups are both ready
-  // This prevents all glitchy loading states
+  // Always render the container to prevent unmount/remount glitch in Despia
+  // Only show content when messages and chatGroups are ready
   // #region agent log
-  if (messages.length === 0 || chatGroups.length === 0) {
-    console.log('[Chat Scroll] Early return: not ready', { messagesLength: messages.length, chatGroupsLength: chatGroups.length, timestamp: Date.now() });
-    // #endregion
-    return null;
-  }
-  // #region agent log
-  console.log('[Chat Scroll] Rendering chat component', { messagesLength: messages.length, chatGroupsLength: chatGroups.length, timestamp: Date.now() });
+  const isReady = messages.length > 0 && chatGroups.length > 0;
+  console.log('[Chat Scroll] Rendering chat component', { messagesLength: messages.length, chatGroupsLength: chatGroups.length, isReady, timestamp: Date.now() });
   // #endregion
 
   return (
@@ -1049,7 +1044,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
           maxWidth: '100%',
         }}
       >
-        {hasMore && miniLeagueId && (
+        {isReady && hasMore && miniLeagueId && (
           <button
             className="mx-auto mb-2 text-xs font-semibold text-[#1C8376] bg-white px-3 py-1 rounded-full shadow disabled:opacity-40"
             onClick={loadMore}
@@ -1059,8 +1054,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
           </button>
         )}
 
-        {/* Only render when we have messages AND chatGroups ready - prevents glitchy re-renders */}
-        {messages.length > 0 && chatGroups.length > 0 ? (
+        {/* Only render content when we have messages AND chatGroups ready - prevents glitchy re-renders */}
+        {isReady ? (
           <ChatThread 
             key={chatThreadKey}
             groups={chatGroups}
