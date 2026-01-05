@@ -136,11 +136,16 @@ export default function PredictionsPage() {
  
  if (cached && cached.fixtures && Array.isArray(cached.fixtures) && cached.fixtures.length > 0) {
  // Restore picks from cache
+ console.log('[Predictions] loadInitialStateFromCache - cached.picks:', cached.picks);
  const picksMap = new Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>();
  if (cached.picks && Array.isArray(cached.picks)) {
  cached.picks.forEach(p => {
- picksMap.set(p.fixture_index, p);
+   console.log('[Predictions] loadInitialStateFromCache - processing pick:', p);
+   picksMap.set(p.fixture_index, p);
  });
+ console.log('[Predictions] loadInitialStateFromCache - picksMap size:', picksMap.size);
+ } else {
+   console.log('[Predictions] loadInitialStateFromCache - no picks in cache');
  }
  
  // Restore results from cache
