@@ -844,6 +844,33 @@ if (alive && fixturesData.length > 0 && currentGw) {
         if (alive && resultsMap.size > 0) {
           console.log('[Predictions] Loaded gw_results:', resultsMap.size, 'results for GW', currentGw);
           setResults(resultsMap);
+          
+          // Cache the results for instant load next time
+          if (user?.id) {
+            const resultsArray: Array<{ fixture_index: number; result: "H" | "D" | "A" }> = [];
+            resultsMap.forEach((result, fixture_index) => {
+              resultsArray.push({ fixture_index, result });
+            });
+            
+            const cacheKey = `predictions:${user.id}:${currentGw}`;
+            try {
+              const existingCache = getCached<{
+                fixtures: Fixture[];
+                picks: Array<{ fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>;
+                submitted: boolean;
+                results: Array<{ fixture_index: number; result: "H" | "D" | "A" }>;
+              }>(cacheKey);
+              
+              if (existingCache) {
+                setCached(cacheKey, {
+                  ...existingCache,
+                  results: resultsArray,
+                }, CACHE_TTL.PREDICTIONS);
+              }
+            } catch (cacheError) {
+              // Failed to cache (non-critical)
+            }
+          }
         } else if (alive) {
           console.log('[Predictions] No gw_results found for GW', currentGw);
         }
