@@ -1031,6 +1031,8 @@ if (alive && fixturesData.length > 0 && currentGw) {
         }
  }
  
+ console.log('[Predictions] After picks loading block - isSubmitted:', isSubmitted, 'user?.id:', user?.id, 'fixturesData.length:', fixturesData.length, 'alive:', alive);
+ 
  // Always try to load picks if user has submitted (even if not in cache)
  if (isSubmitted && user?.id && fixturesData.length > 0) {
  console.log('[Predictions] Loading picks from DB for submitted user, GW:', currentGw, 'user:', user.id, 'alive:', alive, 'isSubmitted:', isSubmitted);
