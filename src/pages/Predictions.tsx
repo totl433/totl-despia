@@ -1832,20 +1832,11 @@ useEffect(() => {
  }
  
  // Additional loading check removed - the condition at line 1858 already handles this case
- // Don't render until submission status is confirmed
- // Prevents blank screens and swipe card flashes
- // BUT: If we have fixtures loaded (from cache or DB), render immediately
+ // Don't block on picksChecked/submissionChecked if fixtures are loaded
  // The flags will be set in the useEffect, but we don't need to block if fixtures are loaded
- // Only block if we're still loading AND have no fixtures AND flags aren't set
- // If fixtures are loaded, render immediately (flags will be set async in useEffect)
- if ((!picksChecked || !submissionChecked) && fixtures.length === 0 && loading) {
- // Still checking and no fixtures yet - show loading spinner
- return (
- <div className="min-h-screen bg-slate-50 flex items-center justify-center">
- <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
- </div>
- );
- }
+ // Only block if we're still loading AND have no fixtures
+ // If fixtures.length > 0, render immediately (flags set async in useEffect)
+ // This prevents hanging when user moves to new gameweek
 
  if (fixtures.length === 0) {
  return (
