@@ -43,23 +43,23 @@ export function MessageStack({
   const isVolley = userId === VOLLEY_USER_ID;
 
   return (
-    <div className={`flex items-end gap-3 w-full ${alignment}`}>
+    <div className={`flex items-end gap-2 w-full ${alignment}`}>
       {!isOwnMessage ? (
         isVolley ? (
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 border border-slate-200 flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 border border-slate-200 flex items-center justify-center flex-shrink-0 overflow-hidden">
             <img 
               src={VOLLEY_AVATAR_PATH}
               alt="Volley" 
-              className="w-10 h-10 rounded-full object-cover"
+              className="w-8 h-8 rounded-full object-cover"
             />
           </div>
         ) : (
-          <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-sm font-semibold text-slate-500 flex-shrink-0">
+          <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500 flex-shrink-0">
             {(avatarInitials || author.charAt(0)).toUpperCase()}
           </div>
         )
       ) : (
-        <div className="w-10 flex-shrink-0" />
+        <div className="w-8 flex-shrink-0" />
       )}
 
       <div className="flex flex-col gap-1 flex-1 min-w-0">

@@ -70,10 +70,10 @@ export function MessageBubble({
  replyTo,
  onMessageClick,
 }: MessageBubbleProps) {
- const textAlignment = isOwnMessage ? "text-right" : "text-left";
- const bubbleClasses = isOwnMessage ? "bg-[#1C8376] text-white" : "bg-white text-slate-900";
- const shapeClasses = isOwnMessage ? outgoingShape : incomingShape;
- const maxWidth = "max-w-[80%]";
+  const textAlignment = "text-left";
+  const bubbleClasses = isOwnMessage ? "bg-[#1C8376] text-white" : "bg-white text-slate-900";
+  const shapeClasses = isOwnMessage ? outgoingShape : incomingShape;
+  const maxWidth = "max-w-[85%]";
  const [showReactionPicker, setShowReactionPicker] = useState(false);
  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
  const reactionPickerRef = useRef<HTMLDivElement>(null);
@@ -118,16 +118,20 @@ export function MessageBubble({
  }
  };
 
- return (
- <div className={`inline-block w-fit ${maxWidth} min-w-0 relative`}>
- <div
- className={`px-3 py-2 text-sm leading-snug shadow-sm whitespace-normal break-words ${textAlignment} ${bubbleClasses} ${shapeClasses[shape]} ${onMessageClick ? 'cursor-pointer' : ''}`}
- onClick={handleBubbleClick}
- style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
- >
- {author && !isOwnMessage && (
- <div className="text-[11px] font-semibold text-slate-600 mb-1 break-words" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>{author}</div>
- )}
+  return (
+    <div className={`inline-block ${maxWidth} min-w-0 relative`} style={{ width: 'fit-content', maxWidth: '85%' }}>
+      <div
+        className={`px-2.5 py-1.5 text-sm leading-relaxed shadow-sm whitespace-pre-wrap break-words ${textAlignment} ${bubbleClasses} ${shapeClasses[shape]} ${onMessageClick ? 'cursor-pointer' : ''}`}
+        onClick={handleBubbleClick}
+        style={{ 
+          wordBreak: 'break-word', 
+          overflowWrap: 'anywhere',
+          display: 'inline-block'
+        }}
+      >
+        {author && !isOwnMessage && (
+          <div className="text-[11px] font-semibold text-slate-600 mb-1 break-words" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{author}</div>
+        )}
  {/* Reply preview - WhatsApp style */}
  {replyTo && (
  <div
@@ -136,19 +140,34 @@ export function MessageBubble({
  ? "border-white/30 text-white/90"
  : "border-[#1C8376] text-slate-600"
  } pl-2 text-sm`}
- style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
- >
- <div className="font-medium text-xs mb-0.5 break-words" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
- {replyTo.authorName || "Unknown"}
- </div>
- <div className="text-xs line-clamp-2 truncate break-words" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
- {replyTo.content}
- </div>
- </div>
- )}
- <div style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>{text}</div>
- <div className="text-[11px] text-[#DCDCDD] mt-1">{time}</div>
- </div>
+          style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+        >
+          <div className="font-medium text-xs mb-0.5 break-words" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+            {replyTo.authorName || "Unknown"}
+          </div>
+          <div className="text-xs line-clamp-2 truncate break-words" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+            {replyTo.content}
+          </div>
+        </div>
+        )}
+        <div style={{ 
+          wordBreak: 'break-word', 
+          overflowWrap: 'anywhere',
+          position: 'relative'
+        }}>
+          <span style={{ 
+            wordBreak: 'break-word', 
+            overflowWrap: 'anywhere',
+            display: 'inline'
+          }}>{text}</span>
+          <span className={`text-[11px] relative top-1 ${isOwnMessage ? 'text-[#DCDCDD]' : 'text-slate-400'}`} style={{ 
+            whiteSpace: 'nowrap',
+            float: 'right',
+            clear: 'right',
+            marginLeft: '12px'
+          }}>{time}</span>
+        </div>
+      </div>
  {/* Reaction button and picker - positioned on the right of the bubble (only for other users' messages) */}
  {messageId && !isOwnMessage && (
  <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 flex items-center gap-1">
@@ -256,13 +275,13 @@ export function MessageBubble({
  <button
  key={reaction.emoji}
  onClick={() => handleReactionClick(reaction.emoji)}
-     className={`px-2 py-0.5 rounded-full text-xs flex items-center gap-1 ${
+     className={`px-2 py-0.5 rounded-full text-sm flex items-center gap-1 ${
      reaction.hasUserReacted
      ? 'bg-[#1C8376] text-white'
      : 'bg-slate-100 text-slate-700'
      }`}
  >
- <span>{reaction.emoji}</span>
+ <span className="text-base">{reaction.emoji}</span>
  <span>{reaction.count}</span>
  </button>
  ))}

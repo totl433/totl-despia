@@ -892,6 +892,10 @@ video {
   top: 10rem;
 }
 
+.top-1{
+  top: 0.25rem;
+}
+
 .z-0{
   z-index: 0;
 }
@@ -1144,6 +1148,10 @@ video {
   margin-top: auto;
 }
 
+.ml-1\.5{
+  margin-left: 0.375rem;
+}
+
 .line-clamp-2{
   overflow: hidden;
   display: -webkit-box;
@@ -1173,6 +1181,10 @@ video {
 
 .table{
   display: table;
+}
+
+.table-cell{
+  display: table-cell;
 }
 
 .table-header-group{
@@ -1638,6 +1650,10 @@ video {
 
 .max-w-xs{
   max-width: 20rem;
+}
+
+.max-w-\[85\%\]{
+  max-width: 85%;
 }
 
 .flex-1{
@@ -3219,6 +3235,10 @@ video {
 
 .text-right{
   text-align: right;
+}
+
+.align-baseline{
+  vertical-align: baseline;
 }
 
 .align-top{
