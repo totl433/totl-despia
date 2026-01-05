@@ -1956,16 +1956,16 @@ if (fixtures.length > 0 && (hasAnyLiveOrFinished || hasStartingSoon || deadlineP
   let displayScore = 0;
   
   // Always log for debugging
-  console.log('[Predictions] Score calculation check:', { 
-    hasPicks,
-    resultsSize: results.size,
-    picksSize: picks.size,
-    myScore,
-    currentScore,
-    hasAnyLiveOrFinished,
-    submitted,
-    deadlinePassed
-  });
+  console.log('[Predictions] Score calculation check:', 
+    'hasPicks:', hasPicks,
+    'resultsSize:', results.size,
+    'picksSize:', picks.size,
+    'myScore:', myScore,
+    'currentScore:', currentScore,
+    'hasAnyLiveOrFinished:', hasAnyLiveOrFinished,
+    'submitted:', submitted,
+    'deadlinePassed:', deadlinePassed
+  );
   
   if (hasPicks) {
     if (results.size > 0) {
