@@ -1224,8 +1224,41 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     isInApiTestLeague,
   }, CACHE_TTL.HOME);
 
-  // Cache fixtures with live scores (preserve live scores if they were cached earlier, or use fresh ones)
-  const fixturesCacheKey = `home:fixtures:${userId}:${currentGw}`;
+  // CRITICAL: Cache fixtures for the GW the user is VIEWING (not necessarily currentGw)
+  // This ensures HomePage loads the correct GW immediately
+  const gwToCache = viewingGw; // Use viewing GW, not current GW
+  const fixturesCacheKey = `home:fixtures:${userId}:${gwToCache}`;
+  
+  // If viewing GW is different from current GW, we need to fetch fixtures/picks for viewing GW
+  let fixturesToCache = fixturesForGw.data || [];
+  let picksToCache = userPicks;
+  
+  if (viewingGw !== currentGw) {
+    // Fetch fixtures and picks for viewing GW
+    const viewingGwFixturesResult = await supabase
+      .from('app_fixtures')
+      .select('*')
+      .eq('gw', viewingGw)
+      .order('fixture_index', { ascending: true });
+    
+    const viewingGwPicksResult = await supabase
+      .from('app_picks')
+      .select('fixture_index, pick')
+      .eq('user_id', userId)
+      .eq('gw', viewingGw);
+    
+    if (viewingGwFixturesResult.data) {
+      fixturesToCache = viewingGwFixturesResult.data;
+    }
+    
+    if (viewingGwPicksResult.data) {
+      picksToCache = {};
+      viewingGwPicksResult.data.forEach((p: any) => {
+        picksToCache[p.fixture_index] = p.pick;
+      });
+    }
+  }
+  
   const existingCache = getCached<{
     fixtures: any[];
     userPicks: Record<number, "H" | "D" | "A">;
@@ -1238,8 +1271,8 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     : existingCache?.liveScores;
   
   setCached(fixturesCacheKey, {
-    fixtures: fixturesForGw.data || [],
-    userPicks,
+    fixtures: fixturesToCache,
+    userPicks: picksToCache,
     liveScores: liveScoresToCache,
   }, CACHE_TTL.HOME);
 

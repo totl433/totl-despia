@@ -100,6 +100,17 @@ export default function HomePage() {
     }
     
     try {
+      // CRITICAL: Check user's viewing GW preference FIRST (pre-loaded by initialDataLoader)
+      // This determines which GW the user is actually viewing (may be different from current GW)
+      let userViewingGw: number | null = null;
+      try {
+        const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${userId}`);
+        userViewingGw = prefsCache?.current_viewing_gw ?? null;
+      } catch (e) {
+        // Ignore cache errors
+      }
+      
+      // Get current GW from cache (pre-loaded by initialDataLoader)
       const cacheKey = `home:basic:${userId}`;
       const cached = getCached<{
         currentGw: number;
@@ -112,8 +123,14 @@ export default function HomePage() {
         seasonRank?: { rank: number; total: number; isTied: boolean } | null;
       }>(cacheKey);
       
-      if (cached && cached.currentGw) {
-        // Load fixtures from cache
+      // Determine which GW to display (user's viewing GW, or current GW if not set)
+      const dbCurrentGw = cached?.currentGw ?? 1;
+      const gwToDisplay = userViewingGw !== null && userViewingGw < dbCurrentGw 
+        ? userViewingGw 
+        : dbCurrentGw;
+      
+      if (cached && dbCurrentGw) {
+        // Load fixtures from cache for the GW the user is viewing (not necessarily current GW)
         let fixtures: Fixture[] = [];
         let userPicks: Record<number, "H" | "D" | "A"> = {};
         let liveScores: Record<number, { 
@@ -127,7 +144,7 @@ export default function HomePage() {
           away_team?: string | null;
           result?: "H" | "D" | "A" | null;
         }> = {};
-        const fixturesCacheKey = `home:fixtures:${userId}:${cached.currentGw}`;
+        const fixturesCacheKey = `home:fixtures:${userId}:${gwToDisplay}`;
         
         try {
           const fixturesCached = getCached<{
@@ -209,7 +226,7 @@ export default function HomePage() {
         }
         
         return {
-          gw: cached.currentGw,
+          gw: gwToDisplay, // Use viewing GW, not cached.currentGw
           latestGw: cached.latestGw,
           gwPoints: (cached.allGwPoints || []).filter(gp => gp.user_id === userId),
           allGwPoints: cached.allGwPoints || [],
@@ -223,7 +240,7 @@ export default function HomePage() {
           liveScores,
           leagueData,
           leagueSubmissions,
-          hasCache: true,
+          hasCache: fixtures.length > 0, // Only has cache if fixtures loaded successfully
         };
       }
     } catch (error) {
