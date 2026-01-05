@@ -1034,10 +1034,10 @@ if (alive && fixturesData.length > 0 && currentGw) {
  
  console.log('[Predictions] After picks loading block - isSubmitted:', isSubmitted, 'user?.id:', user?.id, 'fixturesData.length:', fixturesData.length, 'alive:', alive);
  
- // Always try to load picks if user has submitted (even if not in cache)
- // Use submitted state instead of local isSubmitted to ensure we load picks even if component unmounts
- if ((isSubmitted || submitted) && user?.id && fixturesData.length > 0) {
- console.log('[Predictions] Loading picks from DB for submitted user, GW:', currentGw, 'user:', user.id, 'alive:', alive, 'isSubmitted:', isSubmitted);
+ // ALWAYS load picks if user has submitted (even if not in cache) - just like HomePage does
+ // This ensures picks are displayed even if cache is missing
+ if ((isSubmitted || submitted) && user?.id && fixturesData.length > 0 && picks.size === 0) {
+ console.log('[Predictions] Loading picks from DB for submitted user, GW:', currentGw, 'user:', user.id, 'alive:', alive);
  // User has submitted - fetch picks for display purposes
  const { data: pk, error: pkErr } = await supabase
  .from("app_picks")
@@ -1045,7 +1045,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
  .eq("gw", currentGw!)
  .eq("user_id", user.id);
  
- console.log('[Predictions] DB query result - pk:', pk, 'error:', pkErr);
+ console.log('[Predictions] DB query result - pk:', pk?.length, 'picks, error:', pkErr);
 
  if (!pkErr && pk && pk.length > 0) {
  const currentFixtureIndices = new Set(fixturesData.map(f => f.fixture_index));
@@ -1059,18 +1059,40 @@ if (alive && fixturesData.length > 0 && currentGw) {
               picksMap.set(p.fixture_index, {
                 fixture_index: p.fixture_index,
                 pick: p.pick,
-                matchday: p.gw || currentGw! // Use gw instead of matchday
+                matchday: p.gw || currentGw!
               });
             }
           });
           
-          // Always set picks, even if component appears to be unmounting
+          // CRITICAL: Always set picks, even if component appears to be unmounting
+          // React will safely handle state updates even if component unmounts
           console.log('[Predictions] Setting picks from DB, picksMap.size:', picksMap.size, 'alive:', alive);
           if (picksMap.size > 0) {
-            if (alive) {
-              setPicks(picksMap);
-            }
+            setPicks(picksMap); // Remove alive check - always set picks
             hasPicks = true;
+            
+            // Cache picks for instant load next time (like HomePage does)
+            if (user?.id) {
+              const picksArray = Array.from(picksMap.values());
+              const cacheKey = `predictions:${user.id}:${currentGw}`;
+              try {
+                const existingCache = getCached<{
+                  fixtures: Fixture[];
+                  picks: Array<{ fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>;
+                  submitted: boolean;
+                  results: Array<{ fixture_index: number; result: "H" | "D" | "A" }>;
+                }>(cacheKey);
+                
+                if (existingCache) {
+                  setCached(cacheKey, {
+                    ...existingCache,
+                    picks: picksArray,
+                  }, CACHE_TTL.PREDICTIONS);
+                }
+              } catch (cacheError) {
+                // Failed to cache (non-critical)
+              }
+            }
           }
         } else {
           console.log('[Predictions] No picksForCurrentFixtures found');
