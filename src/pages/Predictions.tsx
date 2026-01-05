@@ -727,7 +727,8 @@ export default function PredictionsPage() {
  
  // CRITICAL: If picks aren't in cache but user has submitted, load them from DB immediately (like HomePage does)
  // Check cached.picks, not picks.size (state might not be updated yet)
- if (cached.submitted && user?.id && (!cached.picks || cached.picks.length === 0) && fixtures.length > 0) {
+ // Check cached.fixtures.length, not fixtures.length (state hasn't updated yet after setFixtures)
+ if (cached.submitted && user?.id && (!cached.picks || cached.picks.length === 0) && cached.fixtures.length > 0) {
    console.log('[Predictions] Picks missing from cache but user submitted - loading from DB immediately');
    const { data: pk, error: pkErr } = await supabase
      .from("app_picks")
@@ -790,7 +791,8 @@ export default function PredictionsPage() {
  // CRITICAL: If results aren't in cache, load them from DB immediately (like HomePage does)
  // This ensures score calculation works even if cache is missing
  // Check cached.results, not results state (state might not be updated yet)
- if ((!cached.results || cached.results.length === 0) && fixtures.length > 0 && currentGw) {
+ // Check cached.fixtures.length, not fixtures.length (state hasn't updated yet after setFixtures)
+ if ((!cached.results || cached.results.length === 0) && cached.fixtures.length > 0 && currentGw) {
    console.log('[Predictions] Results missing from cache - loading from DB immediately');
    const { data: gwResultsData, error: gwResultsError } = await supabase
      .from('app_gw_results')
