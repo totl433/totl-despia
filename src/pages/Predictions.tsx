@@ -1029,10 +1029,12 @@ if (alive && fixturesData.length > 0 && currentGw) {
             }
           }
         }
- } else if (isSubmitted && user?.id && fixturesData.length > 0) {
- console.log('[Predictions] Loading picks from DB for submitted user, GW:', currentGw, 'user:', user.id, 'alive:', alive);
+ }
+ 
+ // Always try to load picks if user has submitted (even if not in cache)
+ if (isSubmitted && user?.id && fixturesData.length > 0) {
+ console.log('[Predictions] Loading picks from DB for submitted user, GW:', currentGw, 'user:', user.id, 'alive:', alive, 'isSubmitted:', isSubmitted);
  // User has submitted - fetch picks for display purposes
- console.log('[Predictions] Loading picks from DB for submitted user, GW:', currentGw, 'user:', user.id, 'alive:', alive);
  const { data: pk, error: pkErr } = await supabase
  .from("app_picks")
  .select("gw,fixture_index,pick")
