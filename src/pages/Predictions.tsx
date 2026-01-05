@@ -106,13 +106,27 @@ export default function PredictionsPage() {
  };
  }
  
- try {
- // Try to get current GW from app_meta cache or use a default
- // We'll update this when we fetch the real GW, but for now use a reasonable default
- const metaCache = getCached<{ current_gw: number }>('app_meta');
- const currentGw = metaCache?.current_gw || 14;
- 
- const cacheKey = `predictions:${user.id}:${currentGw}`;
+  try {
+    // CRITICAL: Check user's viewing GW preference FIRST (same as HomePage)
+    // This ensures we load picks for the GW the user is actually viewing
+    let userViewingGw: number | null = null;
+    try {
+      const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
+      userViewingGw = prefsCache?.current_viewing_gw ?? null;
+    } catch (e) {
+      // Ignore cache errors
+    }
+    
+    // Get current GW from app_meta cache
+    const metaCache = getCached<{ current_gw: number }>('app_meta');
+    const dbCurrentGw = metaCache?.current_gw || 14;
+    
+    // Determine which GW to display (user's viewing GW, or current GW if not set)
+    const gwToDisplay = userViewingGw !== null && userViewingGw < dbCurrentGw 
+      ? userViewingGw 
+      : dbCurrentGw;
+
+    const cacheKey = `predictions:${user.id}:${gwToDisplay}`;
  const cached = getCached<{
  fixtures: Fixture[];
  picks: Array<{ fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>;
@@ -675,14 +689,22 @@ export default function PredictionsPage() {
  setFixtures(cached.fixtures);
  setLoading(false);
  
- // Restore picks from cache
- if (cached.picks && Array.isArray(cached.picks)) {
- const picksMap = new Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>();
- cached.picks.forEach(p => {
- picksMap.set(p.fixture_index, p);
- });
- setPicks(picksMap);
- }
+        // Restore picks from cache
+        if (cached.picks && Array.isArray(cached.picks) && cached.picks.length > 0) {
+          const picksMap = new Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>();
+          cached.picks.forEach(p => {
+            if (p && p.fixture_index !== undefined && p.pick) {
+              picksMap.set(p.fixture_index, {
+                fixture_index: p.fixture_index,
+                pick: p.pick,
+                matchday: p.matchday || currentGw
+              });
+            }
+          });
+          if (picksMap.size > 0) {
+            setPicks(picksMap);
+          }
+        }
  
  // Restore submission status
  if (cached.submitted !== undefined) {
@@ -892,33 +914,54 @@ export default function PredictionsPage() {
  const noExtraPicks = picksForCurrentFixtures.length === fixturesData.length;
  const picksAreValid = allFixturesHavePicks && noExtraPicks && picksForCurrentFixtures.length > 0;
  
- if (picksAreValid) {
- // Picks are valid - use them
- const picksMap = new Map<number, Pick>();
- picksForCurrentFixtures.forEach((p: any) => {
- picksMap.set(p.fixture_index, {
- fixture_index: p.fixture_index,
- pick: p.pick,
- matchday: p.gw || currentGw! // Use gw instead of matchday
- });
- });
- 
- // Always set picks, even if component appears to be unmounting
- setPicks(picksMap);
- hasPicks = true;
- } else {
- // Picks don't match current fixtures - clear them
- if (pk.length > 0) {
- // Clear invalid picks from database
- await supabase
- .from("app_picks")
- .delete()
- .eq("gw", currentGw!)
- .eq("user_id", user.id);
- setPicks(new Map());
- hasPicks = false;
- }
- }
+        if (picksAreValid) {
+          // Picks are valid - use them
+          const picksMap = new Map<number, Pick>();
+          picksForCurrentFixtures.forEach((p: any) => {
+            if (p && p.fixture_index !== undefined && p.pick) {
+              picksMap.set(p.fixture_index, {
+                fixture_index: p.fixture_index,
+                pick: p.pick,
+                matchday: p.gw || currentGw! // Use gw instead of matchday
+              });
+            }
+          });
+          
+          // Always set picks, even if component appears to be unmounting
+          if (picksMap.size > 0) {
+            setPicks(picksMap);
+            hasPicks = true;
+          }
+        } else {
+          // Picks don't match current fixtures - but don't clear them if we have partial matches
+          // Only clear if picks are completely invalid (no matches at all)
+          if (pk.length > 0 && picksForCurrentFixtures.length === 0) {
+            // No picks match current fixtures - clear invalid picks from database
+            await supabase
+              .from("app_picks")
+              .delete()
+              .eq("gw", currentGw!)
+              .eq("user_id", user.id);
+            setPicks(new Map());
+            hasPicks = false;
+          } else if (picksForCurrentFixtures.length > 0) {
+            // Partial matches - use what we have
+            const picksMap = new Map<number, Pick>();
+            picksForCurrentFixtures.forEach((p: any) => {
+              if (p && p.fixture_index !== undefined && p.pick) {
+                picksMap.set(p.fixture_index, {
+                  fixture_index: p.fixture_index,
+                  pick: p.pick,
+                  matchday: p.gw || currentGw!
+                });
+              }
+            });
+            if (picksMap.size > 0) {
+              setPicks(picksMap);
+              hasPicks = true;
+            }
+          }
+        }
  }
  } else if (isSubmitted && user?.id && fixturesData.length > 0) {
  // User has submitted - fetch picks for display purposes
@@ -932,20 +975,24 @@ export default function PredictionsPage() {
  const currentFixtureIndices = new Set(fixturesData.map(f => f.fixture_index));
  const picksForCurrentFixtures = pk.filter((p: any) => currentFixtureIndices.has(p.fixture_index));
  
- if (picksForCurrentFixtures.length === fixturesData.length) {
- const picksMap = new Map<number, Pick>();
- picksForCurrentFixtures.forEach((p: any) => {
- picksMap.set(p.fixture_index, {
- fixture_index: p.fixture_index,
- pick: p.pick,
- matchday: p.gw || currentGw! // Use gw instead of matchday
- });
- });
- 
- // Always set picks, even if component appears to be unmounting
- setPicks(picksMap);
- hasPicks = true;
- }
+        if (picksForCurrentFixtures.length > 0) {
+          const picksMap = new Map<number, Pick>();
+          picksForCurrentFixtures.forEach((p: any) => {
+            if (p && p.fixture_index !== undefined && p.pick) {
+              picksMap.set(p.fixture_index, {
+                fixture_index: p.fixture_index,
+                pick: p.pick,
+                matchday: p.gw || currentGw! // Use gw instead of matchday
+              });
+            }
+          });
+          
+          // Always set picks, even if component appears to be unmounting
+          if (picksMap.size > 0) {
+            setPicks(picksMap);
+            hasPicks = true;
+          }
+        }
  }
  
  // Validate submission is still valid (picks match)
@@ -1199,15 +1246,23 @@ export default function PredictionsPage() {
  })();
  }, [currentTestGw, gameState, fixtures]);
 
- // Calculate top percentage when we have results and picks
- // Use app_v_gw_points view for consistency with other components (UserPicksModal, LeaderboardCard)
- useEffect(() => {
- if (!currentTestGw || !user?.id || results.size === 0 || fixtures.length === 0) {
- setTopPercent(null);
- return;
- }
+// Calculate top percentage when we have results and picks
+// Use app_v_gw_points view for consistency with other components (UserPicksModal, LeaderboardCard)
+// Note: Can calculate even without results if we have picks and fixtures (for live games)
+useEffect(() => {
+  if (!currentTestGw || !user?.id || fixtures.length === 0) {
+    setTopPercent(null);
+    return;
+  }
+  
+  // If no results yet, we can still calculate rank from picks (for live games)
+  // Only skip if we have no picks AND no results
+  if (results.size === 0 && picks.size === 0) {
+    setTopPercent(null);
+    return;
+  }
 
- // Calculate top percentage using app_v_gw_points view (same as UserPicksModal)
+  // Calculate top percentage using app_v_gw_points view (same as UserPicksModal)
  (async () => {
  try {
  // Use app_v_gw_points view for consistency - this is the authoritative source
