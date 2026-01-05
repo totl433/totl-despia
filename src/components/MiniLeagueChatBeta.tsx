@@ -946,7 +946,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
           </button>
         )}
 
-        {chatGroups.length === 0 && !loading ? (
+        {chatGroups.length === 0 ? (
           <div className="text-center text-sm text-slate-500 mt-8">
             Say hi to kick off this chat!
           </div>
