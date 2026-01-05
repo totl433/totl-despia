@@ -824,8 +824,34 @@ export default function PredictionsPage() {
  setPicksChecked(true);
  setSubmissionChecked(true);
  
- // Initialize empty results map
- setResults(new Map());
+// Load results from app_gw_results (like HomePage does)
+// This ensures we have final results even if live scores aren't available
+if (alive && fixturesData.length > 0 && currentGw) {
+  (async () => {
+    try {
+      const { data: gwResultsData, error: gwResultsError } = await supabase
+        .from('app_gw_results')
+        .select('fixture_index, result')
+        .eq('gw', currentGw);
+      
+      if (!gwResultsError && gwResultsData && gwResultsData.length > 0) {
+        const resultsMap = new Map<number, "H" | "D" | "A">();
+        gwResultsData.forEach((r: any) => {
+          if (r.result === "H" || r.result === "D" || r.result === "A") {
+            resultsMap.set(r.fixture_index, r.result);
+          }
+        });
+        if (alive && resultsMap.size > 0) {
+          setResults(resultsMap);
+        }
+      }
+    } catch (error) {
+      console.error('[Predictions] Error loading gw_results:', error);
+    }
+  })();
+} else {
+  setResults(new Map());
+}
  
  
  // Get api_match_ids for live score subscription
