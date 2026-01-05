@@ -784,11 +784,33 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     listRef.current = node;
     // Set scroll to bottom immediately when element mounts AND content is ready
     if (node && messages.length > 0 && chatGroups.length > 0) {
-      // Use requestAnimationFrame to ensure layout is complete
+      // Use double RAF for Despia - ensures layout is fully complete
       requestAnimationFrame(() => {
-        if (node) {
-          node.scrollTop = node.scrollHeight;
-        }
+        requestAnimationFrame(() => {
+          if (node) {
+            node.scrollTop = node.scrollHeight;
+            // Force scroll again after a tiny delay for Despia
+            setTimeout(() => {
+              if (node) {
+                node.scrollTop = node.scrollHeight;
+              }
+            }, 50);
+          }
+        });
+      });
+    }
+  }, [messages.length, chatGroups.length]);
+  
+  // Also scroll when messages/chatGroups change (for Despia)
+  useEffect(() => {
+    if (listRef.current && messages.length > 0 && chatGroups.length > 0) {
+      // Use double RAF for Despia
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (listRef.current) {
+            listRef.current.scrollTop = listRef.current.scrollHeight;
+          }
+        });
       });
     }
   }, [messages.length, chatGroups.length]);
