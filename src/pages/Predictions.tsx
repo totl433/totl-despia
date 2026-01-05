@@ -777,9 +777,19 @@ export default function PredictionsPage() {
    }
  }
  
+ // Restore results from cache FIRST
+ if (cached.results && Array.isArray(cached.results)) {
+ const resultsMap = new Map<number, "H" | "D" | "A">();
+ cached.results.forEach(r => {
+ resultsMap.set(r.fixture_index, r.result);
+ });
+ setResults(resultsMap);
+ }
+ 
  // CRITICAL: If results aren't in cache, load them from DB immediately (like HomePage does)
  // This ensures score calculation works even if cache is missing
- if (results.size === 0 && fixtures.length > 0 && currentGw) {
+ // Check cached.results, not results state (state might not be updated yet)
+ if ((!cached.results || cached.results.length === 0) && fixtures.length > 0 && currentGw) {
    console.log('[Predictions] Results missing from cache - loading from DB immediately');
    const { data: gwResultsData, error: gwResultsError } = await supabase
      .from('app_gw_results')
@@ -825,15 +835,6 @@ export default function PredictionsPage() {
        }
      }
    }
- }
- 
- // Restore results
- if (cached.results && Array.isArray(cached.results)) {
- const resultsMap = new Map<number, "H" | "D" | "A">();
- cached.results.forEach(r => {
- resultsMap.set(r.fixture_index, r.result);
- });
- setResults(resultsMap);
  }
  
  setPicksChecked(true);
