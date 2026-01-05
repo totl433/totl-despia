@@ -40,7 +40,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   const { user } = useAuth();
   const {
     messages,
-    loading,
     loadingMore,
     hasMore,
     error,
