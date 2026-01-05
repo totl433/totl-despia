@@ -86,8 +86,9 @@ export default function MiniLeagueGwTableCard({
   });
   
   // Load data from cache IMMEDIATELY on mount if available
-  const loadInitialDataFromCache = (gwToCheck: number | null, leagueIdToCheck: string, membersToCheck: Array<{ id: string; name: string }>) => {
-    if (!gwToCheck || !leagueIdToCheck || !membersToCheck || membersToCheck.length === 0) {
+  // Note: Can load fixtures/results even without members (members only needed for picks)
+  const loadInitialDataFromCache = (gwToCheck: number | null, leagueIdToCheck: string) => {
+    if (!gwToCheck || !leagueIdToCheck) {
       return { fixtures: [], picks: [], results: [], submissions: new Set<string>(), found: false };
     }
     
@@ -117,7 +118,7 @@ export default function MiniLeagueGwTableCard({
   };
 
   // Initialize state from cache IMMEDIATELY
-  const initialCacheData = loadInitialDataFromCache(displayGw, leagueId, members);
+  const initialCacheData = loadInitialDataFromCache(displayGw, leagueId);
   const [fixtures, setFixtures] = useState<Fixture[]>(initialCacheData.fixtures);
   const [picks, setPicks] = useState<PickRow[]>(initialCacheData.picks);
   const [results, setResults] = useState<Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>>(initialCacheData.results);
@@ -252,11 +253,10 @@ export default function MiniLeagueGwTableCard({
       return;
     }
 
-    // If members is empty, we can't fetch picks yet - show loading until members are available
-    if (!members || members.length === 0) {
-      setLoading(true);
-      return;
-    }
+    // If members is empty, we can still load fixtures/results from cache
+    // Only picks require members, so we can show partial data
+    // But if we have no cache and no members, we need to wait
+    const hasMembers = members && members.length > 0;
 
     let alive = true;
     
@@ -279,46 +279,7 @@ export default function MiniLeagueGwTableCard({
 
         setFixtures((fixturesData as Fixture[]) ?? []);
 
-        const memberIds = members.map(m => m.id);
-        if (memberIds.length === 0) {
-          if (setLoadingState) setLoading(false);
-          return;
-        }
-        
-        const { data: picksData, error: picksError } = await supabase
-          .from('app_picks')
-          .select('user_id, gw, fixture_index, pick')
-          .eq('gw', displayGw)
-          .in('user_id', memberIds);
-
-        if (picksError) throw picksError;
-        if (!alive) return;
-
-        setPicks((picksData ?? []) as PickRow[]);
-
-        // Fetch submissions to filter out members who didn't submit
-        const { data: submissionsData, error: submissionsError } = await supabase
-          .from('app_gw_submissions')
-          .select('user_id')
-          .eq('gw', displayGw)
-          .in('user_id', memberIds)
-          .not('submitted_at', 'is', null);
-
-        if (submissionsError) {
-          console.error('[MiniLeagueGwTableCard] Error fetching submissions:', submissionsError);
-        }
-        if (!alive) return;
-
-        // Create Set of user IDs who submitted
-        const submitted = new Set<string>();
-        if (submissionsData) {
-          submissionsData.forEach((s: any) => {
-            submitted.add(s.user_id);
-          });
-        }
-        
-        setSubmittedUserIds(submitted);
-
+        // Fetch results first (doesn't require members)
         const { data: resultsData, error: resultsError } = await supabase
           .from('app_gw_results')
           .select('gw, fixture_index, result')
@@ -329,13 +290,54 @@ export default function MiniLeagueGwTableCard({
 
         setResults((resultsData ?? []) as Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>);
 
+        // Only fetch picks if we have members
+        const memberIds = members?.map(m => m.id) || [];
+        let picksData: any[] = [];
+        let submitted = new Set<string>();
+        
+        if (memberIds.length > 0) {
+          const { data: picksDataResult, error: picksError } = await supabase
+            .from('app_picks')
+            .select('user_id, gw, fixture_index, pick')
+            .eq('gw', displayGw)
+            .in('user_id', memberIds);
+
+          if (picksError) throw picksError;
+          if (!alive) return;
+
+          picksData = picksDataResult ?? [];
+          setPicks(picksData as PickRow[]);
+
+          // Fetch submissions to filter out members who didn't submit
+          const { data: submissionsData, error: submissionsError } = await supabase
+            .from('app_gw_submissions')
+            .select('user_id')
+            .eq('gw', displayGw)
+            .in('user_id', memberIds)
+            .not('submitted_at', 'is', null);
+
+          if (submissionsError) {
+            console.error('[MiniLeagueGwTableCard] Error fetching submissions:', submissionsError);
+          }
+          if (!alive) return;
+
+          // Create Set of user IDs who submitted
+          if (submissionsData) {
+            submissionsData.forEach((s: any) => {
+              submitted.add(s.user_id);
+            });
+          }
+          
+          setSubmittedUserIds(submitted);
+        }
+
         if (setLoadingState) setLoading(false);
         
         // Cache the fetched data
         const cacheKey = `ml_live_table:${leagueId}:${displayGw}`;
         setCached(cacheKey, {
           fixtures: fixturesData,
-          picks: picksData ?? [],
+          picks: picksData,
           submissions: Array.from(submitted),
           results: resultsData ?? [],
         }, CACHE_TTL.HOME);
@@ -350,7 +352,8 @@ export default function MiniLeagueGwTableCard({
     }
     
     // Check cache immediately for current displayGw (synchronous)
-    const cacheData = loadInitialDataFromCache(displayGw, leagueId, members);
+    // Can load fixtures/results even without members
+    const cacheData = loadInitialDataFromCache(displayGw, leagueId);
     if (cacheData.found) {
       // Update state from cache (already loaded on mount, but update if displayGw changed)
       setFixtures(cacheData.fixtures);
@@ -359,15 +362,24 @@ export default function MiniLeagueGwTableCard({
       setSubmittedUserIds(cacheData.submissions);
       setLoading(false);
       
-      // Background refresh (non-blocking, silent on error)
-      fetchDataFromDb(false).catch(() => {
-        // Silently fail - we already have cached data displayed
-      });
+      // Background refresh (non-blocking, silent on error) - only if we have members
+      if (hasMembers) {
+        fetchDataFromDb(false).catch(() => {
+          // Silently fail - we already have cached data displayed
+        });
+      }
       
       return () => { alive = false; };
     }
     
-    // No cache - fetch from DB
+    // No cache - fetch from DB (only if we have members, otherwise wait)
+    if (!hasMembers) {
+      // No members yet - keep loading state, will retry when members arrive
+      // Don't set error - members might arrive soon
+      return () => { alive = false; };
+    }
+    
+    // No cache but we have members - fetch from DB
     fetchDataFromDb(true).catch((err: any) => {
       console.error('[MiniLeagueGwTableCard] Error fetching data:', err);
       if (alive) {
@@ -484,11 +496,7 @@ export default function MiniLeagueGwTableCard({
   
   // maxMemberCount is passed but not used - we use actual rows.length instead for accurate height
 
-  // Debug: log unread count
   const badge = unread > 0 ? Math.min(unread, 99) : 0;
-  if (unread > 0) {
-    console.log('[MiniLeagueGwTableCard]', leagueName, 'unread:', unread, 'badge:', badge);
-  }
 
   const cardContent = (
     <>
