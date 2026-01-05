@@ -777,6 +777,56 @@ export default function PredictionsPage() {
    }
  }
  
+ // CRITICAL: If results aren't in cache, load them from DB immediately (like HomePage does)
+ // This ensures score calculation works even if cache is missing
+ if (results.size === 0 && fixtures.length > 0 && currentGw) {
+   console.log('[Predictions] Results missing from cache - loading from DB immediately');
+   const { data: gwResultsData, error: gwResultsError } = await supabase
+     .from('app_gw_results')
+     .select('fixture_index, result')
+     .eq('gw', currentGw);
+   
+   if (!gwResultsError && gwResultsData && gwResultsData.length > 0) {
+     const resultsMap = new Map<number, "H" | "D" | "A">();
+     gwResultsData.forEach((r: any) => {
+       if (r.result === "H" || r.result === "D" || r.result === "A") {
+         resultsMap.set(r.fixture_index, r.result);
+       }
+     });
+     
+     if (resultsMap.size > 0) {
+       console.log('[Predictions] Loaded results from DB after cache miss:', resultsMap.size, 'results');
+       setResults(resultsMap);
+       
+       // Cache results for instant load next time
+       if (user?.id) {
+         try {
+           const resultsArray: Array<{ fixture_index: number; result: "H" | "D" | "A" }> = [];
+           resultsMap.forEach((result, fixture_index) => {
+             resultsArray.push({ fixture_index, result });
+           });
+           
+           const existingCache = getCached<{
+             fixtures: Fixture[];
+             picks: Array<{ fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>;
+             submitted: boolean;
+             results: Array<{ fixture_index: number; result: "H" | "D" | "A" }>;
+           }>(cacheKey);
+           
+           if (existingCache) {
+             setCached(cacheKey, {
+               ...existingCache,
+               results: resultsArray,
+             }, CACHE_TTL.PREDICTIONS);
+           }
+         } catch (cacheError) {
+           // Failed to cache (non-critical)
+         }
+       }
+     }
+   }
+ }
+ 
  // Restore results
  if (cached.results && Array.isArray(cached.results)) {
  const resultsMap = new Map<number, "H" | "D" | "A">();
