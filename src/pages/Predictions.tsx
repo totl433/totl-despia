@@ -737,7 +737,7 @@ export default function PredictionsPage() {
      .eq("user_id", user.id);
    
    if (!pkErr && pk && pk.length > 0) {
-     const currentFixtureIndices = new Set(fixtures.map(f => f.fixture_index));
+     const currentFixtureIndices = new Set(cached.fixtures.map(f => f.fixture_index));
      const picksForCurrentFixtures = pk.filter((p: any) => currentFixtureIndices.has(p.fixture_index));
      
      if (picksForCurrentFixtures.length > 0) {
