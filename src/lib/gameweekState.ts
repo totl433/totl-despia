@@ -16,6 +16,8 @@ const DEADLINE_BUFFER_MINUTES = 75;
 const fixtureKickoffCache = new Map<number, Array<{ fixture_index: number; kickoff_time: string }>>();
 // Promise cache to prevent concurrent duplicate requests for the same GW
 const fixtureFetchPromises = new Map<number, Promise<Array<{ fixture_index: number; kickoff_time: string }>>>();
+// Promise cache for live_scores queries to prevent concurrent duplicate requests
+const liveScoresFetchPromises = new Map<string, Promise<Array<{ fixture_index: number; status: string }>>>();
 
 export async function getGameweekState(gw: number): Promise<GameweekState> {
   // Check in-memory cache first (prevents duplicate requests during same render cycle)
@@ -346,15 +348,63 @@ export async function isGameweekFinished(gw: number): Promise<boolean> {
     return false;
   }
   
-  // Check if the last game has finished (status === 'FINISHED' in live_scores)
-  // This is the key check: GW is only finished when the LAST game has reached FT
-  const { data: lastGameLiveScore } = await supabase
-    .from("live_scores")
-    .select("status")
-    .eq("gw", gw)
-    .eq("fixture_index", lastFixture.fixture_index)
-    .maybeSingle();
+  // Try to get live_scores from cache first (pre-loaded during initial data load)
+  let liveScores: Array<{ fixture_index: number; status: string }> | null = null;
   
+  // Check cache for any user's live scores cache (live scores are the same for all users)
+  // Try to find any user-specific cache for this GW
+  if (typeof window !== 'undefined') {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('despia:cache:home:fixtures:') && key.includes(`:${gw}`)) {
+          const cached = getCached<{ liveScores?: Array<{ fixture_index: number; status: string }> }>(key.replace('despia:cache:', ''));
+          if (cached?.liveScores?.length) {
+            liveScores = cached.liveScores.map(ls => ({ fixture_index: ls.fixture_index, status: ls.status }));
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore cache errors
+    }
+  }
+  
+  // If not in cache, fetch from DB (only once per GW, even if multiple concurrent calls)
+  if (!liveScores) {
+    const cacheKey = `live_scores:${gw}`;
+    let fetchPromise = liveScoresFetchPromises.get(cacheKey);
+    
+    if (!fetchPromise) {
+      // Create new fetch promise
+      fetchPromise = (async () => {
+        const { data, error } = await supabase
+          .from("live_scores")
+          .select("fixture_index, status")
+          .eq("gw", gw);
+        
+        if (error || !data) {
+          liveScoresFetchPromises.delete(cacheKey);
+          return [];
+        }
+        
+        liveScoresFetchPromises.delete(cacheKey);
+        return data;
+      })();
+      
+      liveScoresFetchPromises.set(cacheKey, fetchPromise);
+    }
+    
+    liveScores = await fetchPromise;
+  }
+  
+  if (!liveScores || liveScores.length === 0) {
+    // No live scores = GW hasn't started yet, so not finished
+    return false;
+  }
+  
+  // Check if the last game has finished (status === 'FINISHED' in live_scores)
+  const lastGameLiveScore = liveScores.find(ls => ls.fixture_index === lastFixture.fixture_index);
   const lastGameFinished = lastGameLiveScore?.status === 'FINISHED';
   
   // If last game hasn't finished, GW is still LIVE
@@ -363,13 +413,7 @@ export async function isGameweekFinished(gw: number): Promise<boolean> {
   }
   
   // Safety check: ensure no active games in live_scores (IN_PLAY or PAUSED)
-  const { data: activeGames } = await supabase
-    .from("live_scores")
-    .select("status")
-    .eq("gw", gw)
-    .in("status", ["IN_PLAY", "PAUSED"]);
-  
-  const hasActiveGames = activeGames && activeGames.length > 0;
+  const hasActiveGames = liveScores.some(ls => ls.status === 'IN_PLAY' || ls.status === 'PAUSED');
   
   // GW is finished if last game has finished AND no active games
   return !hasActiveGames;
