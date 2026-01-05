@@ -113,8 +113,8 @@ export default function GameweekBanner({
  const displayMessage = message || defaultMessage;
 
  return (
- <div className="w-full px-4 py-3 relative gameweek-banner z-40" style={{ backgroundColor: bgColor }} data-banner-height>
- <div className="mx-auto max-w-6xl flex items-start justify-between gap-4">
+ <div className="w-full px-4 lg:px-6 py-3 relative gameweek-banner z-40" style={{ backgroundColor: bgColor }} data-banner-height>
+ <div className="mx-auto max-w-6xl lg:max-w-[1024px] flex items-start justify-between gap-4">
  <div className="flex flex-col gap-0 flex-1 min-w-0">
  {isLive ? (
  <>

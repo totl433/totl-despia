@@ -7,18 +7,19 @@ const anon = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 // This allows the app to render and show a proper error message
 let supabaseClient;
 
-console.log('[Supabase] Initializing client...', {
-  hasUrl: !!url,
-  hasAnon: !!anon,
-  urlPreview: url ? url.substring(0, 30) + '...' : 'missing',
-  allEnvKeys: Object.keys(import.meta.env).filter(k => k.startsWith('VITE_'))
-});
+// Only log Supabase initialization in development
+if (import.meta.env.DEV) {
+  console.log('[Supabase] Initializing client...', {
+    hasUrl: !!url,
+    hasAnon: !!anon,
+    urlPreview: url ? url.substring(0, 30) + '...' : 'missing',
+  });
+}
 
 if (!url || !anon) {
   console.error('[Supabase] Missing environment variables:', {
     VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL ? 'Present' : 'Missing',
     VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY ? 'Present' : 'Missing',
-    allEnvKeys: Object.keys(import.meta.env).filter(k => k.startsWith('VITE_'))
   })
   
   // Create a dummy client to prevent crashes, but log the error
@@ -36,8 +37,10 @@ if (!url || !anon) {
     },
   })
 } else {
-  console.log('[Supabase] Creating client with valid credentials');
-  console.log('[Supabase] URL:', url.substring(0, 40) + '...');
+  if (import.meta.env.DEV) {
+    console.log('[Supabase] Creating client with valid credentials');
+    console.log('[Supabase] URL:', url.substring(0, 40) + '...');
+  }
   supabaseClient = createClient(url, anon, {
     auth: {
       persistSession: true,       // keep users logged in across reloads
@@ -47,12 +50,18 @@ if (!url || !anon) {
       storageKey: 'supabase.auth.token', // Explicit storage key
     },
   })
-  console.log('[Supabase] Client created successfully');
+  if (import.meta.env.DEV) {
+    console.log('[Supabase] Client created successfully');
+  }
   
-  // Test the client immediately
+  // Test the client immediately (only log errors)
   supabaseClient.auth.getSession()
     .then(({ data, error }) => {
-      console.log('[Supabase] Initial session check:', error ? 'ERROR: ' + error.message : 'OK', data.session ? 'has session' : 'no session');
+      if (error) {
+        console.error('[Supabase] Initial session check failed:', error.message);
+      } else if (import.meta.env.DEV) {
+        console.log('[Supabase] Initial session check:', data.session ? 'has session' : 'no session');
+      }
     })
     .catch((err) => {
       console.error('[Supabase] Initial session check failed:', err);

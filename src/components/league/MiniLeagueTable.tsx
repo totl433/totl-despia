@@ -136,7 +136,7 @@ export default function MiniLeagueTable({
                       <td className="py-4 text-center tabular-nums" style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.draws}</td>
                       <td className="py-4 text-center tabular-nums" style={{ width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.ocp}</td>
                       {members.length >= 3 && <td className="py-4 text-center tabular-nums" style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.unicorns}</td>}
-                      <td className="py-4 text-center tabular-nums font-bold" style={{ width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc', color: '#1C8376' }}>{r.mltPts}</td>
+                      <td className="py-4 text-center tabular-nums font-bold text-[#1C8376] bg-slate-50 w-10 pl-1 pr-1">{r.mltPts}</td>
                     </>
                   )}
                 </tr>

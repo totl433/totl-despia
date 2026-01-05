@@ -93,19 +93,19 @@ export default function DesktopNav() {
  );
  })}
 
- {/* Admin link (if admin) */}
- {isAdmin && (
- <Link
- to="/admin"
-     className={`px-4 py-2 text-sm font-bold relative ${
-     location.pathname === '/admin'
-     ? 'text-red-600 after:absolute after:bottom-0 after:left-1/2 after:-translate-x-1/2 after:w-3/4 after:h-0.5 after:bg-red-600'
-     : 'text-red-600'
-     }`}
- >
- <span>Admin</span>
- </Link>
- )}
+        {/* Admin link (if admin) */}
+        {isAdmin && (
+          <Link
+            to="/api-admin"
+            className={`px-4 py-2 text-sm font-bold relative ${
+              location.pathname === '/api-admin'
+                ? 'text-red-600 after:absolute after:bottom-0 after:left-1/2 after:-translate-x-1/2 after:w-3/4 after:h-0.5 after:bg-red-600'
+                : 'text-red-600'
+            }`}
+          >
+            <span>Admin</span>
+          </Link>
+        )}
  </div>
 
  {/* Sign Out button on the right */}

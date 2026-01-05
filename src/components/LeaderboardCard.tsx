@@ -43,17 +43,6 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
     : null;
   const formattedPercent = formatPercentage(rankPercent);
   const displayText = formattedPercent?.text || "—";
-  
-  // Debug logging
-  if (rankPercent !== null && rankPercent !== undefined) {
-    console.log('[LeaderboardCard] Percentage calculation:',
-      'Rank:', rank,
-      'Total:', total,
-      'RankPercent:', rankPercent,
-      'Formatted:', formattedPercent?.text,
-      'DisplayText:', displayText
-    );
-  }
 
   // Special variant for Last GW card (shows score prominently)
   if (variant === 'lastGw') {

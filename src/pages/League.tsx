@@ -294,10 +294,6 @@ export default function LeaguePage() {
       }
     }
     
-    // Log deep link info for debugging
-    if (urlTab === 'chat' || urlLeagueCode) {
-      console.log('[Deep Link] URL params:', { urlTab, urlLeagueCode, currentCode: code, currentTab: tab, fullUrl: window.location.href });
-    }
   }, [searchParams, setSearchParams, tab, code]);
   const headerRef = useRef<HTMLDivElement | null>(null);
 
@@ -369,8 +365,8 @@ export default function LeaguePage() {
     if (typeof nav.share === "function") {
       nav
         .share({ title: `Join ${league.name}`, text: shareText, url: shareUrl })
-        .catch((err) => {
-          console.warn("[League] Share cancelled", err);
+        .catch(() => {
+          // Share cancelled (non-critical)
         });
       return;
     }
@@ -403,7 +399,6 @@ ${shareUrl}`;
         window.location.href = "/leagues";
       }
     } catch (error: any) {
-      console.error("[League] Error leaving league:", error);
       if (typeof window !== "undefined") {
         window.alert?.(error?.message ?? "Failed to leave league. Please try again.");
       }
@@ -448,30 +443,20 @@ ${shareUrl}`;
         try {
           result = text ? JSON.parse(text) : { error: 'Empty response body' };
         } catch (parseError) {
-          console.error('[League] Failed to parse notification response. Status:', response.status, 'Text:', text, 'Error:', parseError);
           result = { error: 'Invalid JSON response', status: response.status, raw: text.substring(0, 200) };
         }
         
         if (!response.ok) {
-          console.error('[League] Notification function returned error:', response.status, result);
-        } else {
-          console.log('[League] Join notification sent:', JSON.stringify({
-            sent: result.sent,
-            recipients: result.recipients,
-            ok: result.ok,
-            breakdown: result.breakdown,
-          }, null, 2));
+          // Notification function returned error (non-critical)
         }
       } catch (notifError) {
-        // Non-critical - log but don't fail the join
-        console.error('[League] Error sending join notification:', notifError);
+        // Non-critical - error sending join notification
       }
       
       if (typeof window !== "undefined") {
         window.location.reload();
       }
     } catch (error: any) {
-      console.error("[League] Error joining league:", error);
       if (typeof window !== "undefined") {
         window.alert?.(error?.message ?? "Failed to join league.");
       }
@@ -494,7 +479,6 @@ ${shareUrl}`;
         window.location.reload();
       }
     } catch (error: any) {
-      console.error("[League] Error removing member:", error);
       if (typeof window !== "undefined") {
         window.alert?.(error?.message ?? "Failed to remove member.");
       }
@@ -525,7 +509,6 @@ ${shareUrl}`;
         window.location.href = "/leagues";
       }
     } catch (error: any) {
-      console.error("[League] Error ending league:", error);
       if (typeof window !== "undefined") {
         window.alert?.(error?.message ?? "Failed to end league.");
       }
@@ -597,10 +580,6 @@ ${shareUrl}`;
       return;
     }
 
-    // Optional: Show a warning for large files but still process them
-    if (file.size > 5 * 1024 * 1024) {
-      console.log(`[League] Processing large image (${(file.size / 1024 / 1024).toFixed(1)}MB) - will be optimized automatically`);
-    }
 
     setBadgeUploadError(null);
     setBadgeUploadSuccess(false);
@@ -619,8 +598,7 @@ ${shareUrl}`;
           setCropImage(reader.result as string);
         };
         reader.readAsDataURL(compressed);
-      }).catch((error) => {
-        console.error('[League] Error pre-compressing image:', error);
+      }).catch(() => {
         setBadgeUploadError("Failed to process image. Please try a smaller file.");
       });
     } else {
@@ -643,7 +621,7 @@ ${shareUrl}`;
         const preview = URL.createObjectURL(croppedBlob);
         setPreviewUrl(preview);
       } catch (error) {
-        console.error('[League] Error creating preview:', error);
+        // Error creating preview (non-critical)
       }
     }
   }, [cropImage]);
@@ -717,7 +695,6 @@ ${shareUrl}`;
         window.dispatchEvent(new CustomEvent('leagueBadgeUpdated', { detail: { leagueId: league.id, avatar: publicUrl } }));
       }
     } catch (error: any) {
-      console.error("[League] Error uploading badge:", error);
       setBadgeUploadError(error?.message ?? "Failed to upload badge. Please try again.");
     } finally {
       setUploadingBadge(false);
@@ -742,7 +719,6 @@ ${shareUrl}`;
         window.dispatchEvent(new CustomEvent('leagueBadgeUpdated', { detail: { leagueId: league.id, avatar: null } }));
       }
     } catch (error: any) {
-      console.error("[League] Error removing badge:", error);
       setBadgeUploadError(error?.message ?? "Failed to remove badge. Please try again.");
     } finally {
       setUploadingBadge(false);
@@ -1185,45 +1161,46 @@ ${shareUrl}`;
             
             if (t1Data) {
               testGwForData = 1; // Fallback to GW T1
-              console.log('[League] No fixtures for current_test_gw, falling back to GW T1');
             }
-          } else {
-            console.log('[League] Using current_test_gw from meta:', testGwForData);
           }
-        } else {
-          console.log('[League] Using GW T1 or current_test_gw:', testGwForData);
         }
       }
       
       // For API Test league, only allow "gw" tab if all members have submitted
       // Check if all submitted for current test GW (we'll check this properly after loading submissions)
       const useTestFixtures = isApiTestLeague && (tab === "gw" || tab === "gwr");
-      console.log('[League] Data fetch:', { 
-        isApiTestLeague, 
-        tab, 
-        useTestFixtures, 
-        leagueName: league?.name,
-        testGwForData,
-        willUseTestTables: useTestFixtures,
-        willUseMainTables: !useTestFixtures
-      });
       
       // For API Test league in predictions/results tabs, use current test GW
-      // For "gwr" (Live Table/Results) tab, prioritize selectedGw if manually selected, otherwise currentGw, otherwise selectedGw
+      // For "gwr" (Live Table/Results) tab, use same logic as resGwMemo:
+      // - If deadline hasn't passed, show previous GW (latestResultsGw or currentGw - 1)
+      // - If deadline has passed, show current GW
+      // - If user manually selected, use selectedGw
       // For "gw" (Predictions) tab, always use currentGw
-      let gwForData = tab === "gwr" ? (manualGwSelectedRef.current ? selectedGw : (currentGw || selectedGw)) : tab === "gw" ? currentGw : currentGw;
+      let gwForData: number | null = null;
+      if (tab === "gwr") {
+        if (manualGwSelectedRef.current && selectedGw) {
+          gwForData = selectedGw;
+        } else if (currentGw) {
+          // For data fetching, we'll use latestResultsGw if it exists and is less than currentGw
+          // This ensures we fetch data for the previous GW when deadline hasn't passed
+          // The actual display logic in resGwMemo will use game state to be more precise
+          if (latestResultsGw && latestResultsGw < currentGw) {
+            gwForData = latestResultsGw;
+          } else {
+            // Fallback to currentGw - 1 if latestResultsGw not available
+            gwForData = currentGw > 1 ? currentGw - 1 : currentGw;
+          }
+        } else {
+          gwForData = selectedGw;
+        }
+      } else if (tab === "gw") {
+        gwForData = currentGw;
+      } else {
+        gwForData = currentGw;
+      }
       if (isApiTestLeague && (tab === "gw" || tab === "gwr")) {
         gwForData = testGwForData; // Use current test GW for API Test league
       }
-      
-      console.log('[League] gwForData calculation:', {
-        tab,
-        manualGwSelected: manualGwSelectedRef.current,
-        selectedGw,
-        currentGw,
-        gwForData,
-        isApiTestLeague
-      });
       
       // For predictions tab with regular leagues, try to detect the GW from submissions
       // This ensures we show picks even if currentGw hasn't been updated yet or if members submitted for a different GW
@@ -1251,7 +1228,6 @@ ${shareUrl}`;
                 .limit(1);
               
               if (fixtureCheck && fixtureCheck.length > 0) {
-                console.log('[League] Found fixtures for GW', submittedGw, 'from submissions - using this GW (currentGw was', gwForData, ')');
                 gwForData = submittedGw;
                 break; // Use the most recent GW with fixtures
               }
@@ -1262,11 +1238,9 @@ ${shareUrl}`;
         // If we still don't have a valid gwForData, use currentGw if it exists
         if (!gwForData && currentGw) {
           gwForData = currentGw;
-          console.log('[League] Using currentGw as fallback:', currentGw);
         }
       }
       
-      console.log('[League] gwForData:', gwForData, 'memberIds:', memberIds);
       
       if (!gwForData && !useTestFixtures) {
         setFixtures([]);
@@ -1294,7 +1268,6 @@ ${shareUrl}`;
         // Regular fixtures - ALWAYS use main database table for non-API Test leagues
         // CRITICAL: Never use test_api_fixtures for regular leagues
         // NOTE: fixtures table does NOT have api_match_id column (only test_api_fixtures has it)
-        console.log('[League] Fetching from MAIN database table (app_fixtures) for regular league, GW:', gwForData);
         const { data: regularFx } = await supabase
           .from("app_fixtures")
           .select(
@@ -1304,7 +1277,6 @@ ${shareUrl}`;
           .order("fixture_index", { ascending: true });
         
         fx = regularFx || null;
-        console.log('[League] Fetched fixtures from main database:', regularFx?.length || 0, 'fixtures');
       }
 
       if (!alive) return;
@@ -1350,7 +1322,7 @@ ${shareUrl}`;
           .not("submitted_at", "is", null)  // CRITICAL: Only count submissions with non-null submitted_at
           .in("user_id", memberIds);
         if (testSubsError) {
-          console.error('Error fetching test_api_submissions:', testSubsError);
+          // Error fetching test_api_submissions (non-critical)
         }
         
         // CRITICAL: Only count submissions if the user has picks for the CURRENT fixtures
@@ -1363,15 +1335,12 @@ ${shareUrl}`;
           .order("fixture_index", { ascending: true });
         
         const currentFixtureIndicesSet = new Set((currentTestFixtures || []).map(f => f.fixture_index));
-        console.log('[League] Current fixture indices from test_api_fixtures:', Array.from(currentFixtureIndicesSet));
-        console.log('[League] Current fixtures:', currentTestFixtures?.map(f => ({ index: f.fixture_index, home: f.home_team, away: f.away_team })));
         
         // Filter submissions: only count if user has picks for ALL current fixtures AND those picks match the actual teams
         // This ensures we don't count old submissions (like Brazil picks) even if they have matching fixture indices
         const validSubmissions: typeof testSubs = [];
         if (testSubs && pk && currentTestFixtures) {
           const requiredFixtureCount = currentFixtureIndicesSet.size;
-          console.log('[League] Required fixture count for valid submission:', requiredFixtureCount);
           
           // Get the picks that were fetched - we need to match them against current fixtures
           // Note: We can't directly match teams from picks table, but we can verify:
@@ -1393,8 +1362,6 @@ ${shareUrl}`;
           // Old submissions from Nov 15 (Brazil picks) will be filtered out
           // Recent submissions from Nov 19+ (Carl, ThomasJamesBird) will be counted
           const cutoffDate = new Date('2025-11-18T00:00:00Z'); // Nov 18, 2025 - when new fixtures were loaded
-          console.log('[League] Submission cutoff date (submissions before this are old):', cutoffDate.toISOString());
-          console.log('[League] Earliest kickoff:', earliestKickoff?.toISOString());
           
           testSubs.forEach((sub) => {
             // Check if this user has picks for ALL current fixtures
@@ -1414,55 +1381,21 @@ ${shareUrl}`;
             
             if (hasAllRequiredPicks && hasExactMatch && isRecentSubmission) {
               validSubmissions.push(sub);
-              console.log('[League] ✅ VALID submission (has picks for ALL current fixtures AND recent submission):', {
-                user_id: sub.user_id,
-                submitted_at: sub.submitted_at,
-                submissionDate: submissionDate?.toISOString(),
-                cutoffDate: cutoffDate.toISOString(),
-                picksCount: userPicks.length,
-                picksForCurrentFixtures: picksForCurrentFixtures.length,
-                uniqueIndices: uniqueFixtureIndices.size,
-                requiredCount: requiredFixtureCount
-              });
-            } else {
-              const reasons = [];
-              if (!hasAllRequiredPicks) reasons.push('missing picks');
-              if (!hasExactMatch) reasons.push('duplicate/extra picks');
-              if (!isRecentSubmission) reasons.push(`old submission (${submissionDate?.toISOString()} < ${cutoffDate.toISOString()})`);
-              
-              console.log('[League] ❌ INVALID submission:', {
-                user_id: sub.user_id,
-                submitted_at: sub.submitted_at,
-                submissionDate: submissionDate?.toISOString(),
-                cutoffDate: cutoffDate.toISOString(),
-                picksCount: userPicks.length,
-                picksForCurrentFixtures: picksForCurrentFixtures.length,
-                uniqueIndices: uniqueFixtureIndices.size,
-                requiredCount: requiredFixtureCount,
-                hasAllRequired: hasAllRequiredPicks,
-                hasExactMatch: hasExactMatch,
-                isRecent: isRecentSubmission,
-                reason: reasons.join(', ')
-              });
             }
           });
         }
         
         // Map matchday to gw for consistency
         submissions = validSubmissions.map(s => ({ ...s, gw: s.matchday })) || null;
-        console.log('[League] Test API submissions fetched (filtered to only current fixtures):', submissions);
-        console.log('[League] Valid submissions count:', validSubmissions.length, 'out of', testSubs?.length || 0, 'total');
       } else {
         // Regular picks and submissions - ALWAYS use main database tables for non-API Test leagues
         // CRITICAL: Never use test_api_picks or test_api_submissions for regular leagues
-        console.log('[League] Fetching from MAIN database tables (picks, gw_submissions) for regular league');
         const { data: regularPicks } = await supabase
           .from("app_picks")
           .select("user_id,gw,fixture_index,pick")
           .eq("gw", gwForData)
           .in("user_id", memberIds);
         pk = regularPicks;
-        console.log('[League] Fetched picks from main database:', regularPicks?.length || 0, 'picks');
         
         const { data: regularSubs } = await supabase
           .from("app_gw_submissions")
@@ -1470,7 +1403,6 @@ ${shareUrl}`;
           .eq("gw", gwForData)
           .in("user_id", memberIds);
         submissions = regularSubs;
-        console.log('[League] Fetched submissions from main database:', regularSubs?.length || 0, 'submissions');
       }
       
       if (!alive) return;
@@ -1516,75 +1448,6 @@ ${shareUrl}`;
     };
   }, [tab, currentGw, latestResultsGw, selectedGw, memberIds]);
 
-  // Fetch live scores from Football Data API
-  // Fetch live score from Supabase ONLY (updated by scheduled Netlify function)
-  // NO API calls from client - all API calls go through the scheduled function
-  // NOTE: This function is no longer used - we use useLiveScores hook instead
-  // const fetchLiveScore = async (apiMatchId: number, kickoffTime?: string | null) => {
-  //   try {
-  //     console.log('[League] fetchLiveScore called for matchId:', apiMatchId, 'kickoffTime:', kickoffTime);
-  //     
-  //     // Read from Supabase live_scores table (updated by scheduled Netlify function)
-  //     const { data: liveScore, error } = await supabase
-  //       .from('live_scores')
-  //       .select('*')
-  //       .eq('api_match_id', apiMatchId)
-  //       .single();
-  //     
-  //     if (error) {
-  //       if (error.code === 'PGRST116') {
-  //         // No row found - scheduled function hasn't run yet or game hasn't started
-  //         console.log('[League] No live score found in Supabase for match', apiMatchId, '- scheduled function may not have run yet');
-  //         return null;
-  //       }
-  //       console.error('[League] Error fetching live score from Supabase:', error);
-  //       return null;
-  //     }
-  //     
-  //     if (!liveScore) {
-  //       console.warn('[League] No live score data in Supabase');
-  //       return null;
-  //     }
-  //     
-  //     console.log('[League] Live score from Supabase:', liveScore);
-  //     
-  //     const homeScore = liveScore.home_score ?? 0;
-  //     const awayScore = liveScore.away_score ?? 0;
-  //     const status = liveScore.status || 'SCHEDULED';
-  //     let minute = liveScore.minute;
-  //     
-  //     // If minute is not provided, calculate from kickoff time (fallback)
-  //     if ((minute === null || minute === undefined) && (status === 'IN_PLAY' || status === 'PAUSED') && kickoffTime) {
-  //       try {
-  //         const matchStart = new Date(kickoffTime);
-  //         const now = new Date();
-  //         const diffMinutes = Math.floor((now.getTime() - matchStart.getTime()) / (1000 * 60));
-  //         
-  //         if (diffMinutes > 0 && diffMinutes < 120) {
-  //           if (status === 'PAUSED') {
-  //             minute = null;
-  //           } else if (status === 'IN_PLAY') {
-  //             if (diffMinutes <= 50) {
-  //               minute = diffMinutes;
-  //             } else {
-  //               minute = 46 + Math.max(0, diffMinutes - 50);
-  //             }
-  //           }
-  //         }
-  //       } catch (e) {
-  //         console.warn('[League] Error calculating minute from kickoff time:', e);
-  //       }
-  //     }
-  //     
-  //     const result = { homeScore, awayScore, status, minute, retryAfter: null as number | null };
-  //     console.log('[League] Returning score data from Supabase:', result);
-  //     return result;
-  //   } catch (error: any) {
-  //     console.error('[League] Error fetching live score from Supabase:', error?.message || error, error?.stack);
-  //     return null;
-  //   }
-  // };
-
   // Sync ref with liveScores state whenever it changes
   useEffect(() => {
     liveScoresRef.current = liveScores;
@@ -1595,18 +1458,13 @@ ${shareUrl}`;
 
   const submittedMap = useMemo(() => {
     const m = new Map<string, boolean>();
-    console.log('[League] Building submittedMap from subs:', subs);
     subs.forEach((s) => {
       // Only count as submitted if submitted_at is not null
       if (s.submitted_at) {
         const key = `${s.user_id}:${s.gw}`;
-        console.log(`[League] Adding submission key: ${key}`, s);
         m.set(key, true);
-      } else {
-        console.log(`[League] Skipping submission with null submitted_at:`, s);
       }
     });
-    console.log('[League] Final submittedMap:', Array.from(m.entries()));
     return m;
   }, [subs]);
 
@@ -2025,29 +1883,6 @@ ${shareUrl}`;
     // Calculate allSubmitted FIRST - we need this before processing picks
     const allSubmitted = members.length > 0 && members.every((m) => submittedMap.get(`${m.id}:${picksGw}`));
     
-    // Debug logging for API Test league
-    if (isApiTestLeague && picksGw === (currentTestGw ?? 1)) {
-      console.log('[League] API Test filtering:', {
-        currentFixtureIndices: Array.from(currentFixtureIndices),
-        totalPicks: picks.length,
-        picksForGw: picks.filter(p => p.gw === picksGw).length,
-        submittedMapSize: submittedMap.size,
-        allSubmitted,
-        members: members.map(m => ({ id: m.id, name: m.name, submitted: submittedMap.get(`${m.id}:${picksGw}`) })),
-        fixturesCount: fixtures.filter(f => f.gw === picksGw).length
-      });
-      
-      // Log all picks to see what we're dealing with
-      const allPicksForGw = picks.filter(p => p.gw === picksGw);
-      console.log(`[League] All picks for GW${picksGw}:`, allPicksForGw.map(p => ({
-        user_id: p.user_id,
-        userName: members.find(m => m.id === p.user_id)?.name,
-        fixture_index: p.fixture_index,
-        pick: p.pick,
-        hasSubmitted: !!submittedMap.get(`${p.user_id}:${picksGw}`),
-        inCurrentFixtures: currentFixtureIndices.has(p.fixture_index)
-      })));
-    }
     
     const picksByFixture = new Map<number, PickRow[]>();
     
@@ -2060,22 +1895,12 @@ ${shareUrl}`;
         // This applies to ALL leagues - if someone didn't submit, don't show their picks
         const hasSubmitted = submittedMap.get(`${p.user_id}:${picksGw}`);
         if (!hasSubmitted) {
-          if (isApiTestLeague && picksGw === 1) {
-            console.log('[League] API Test: Filtering out unsubmitted pick:', { user_id: p.user_id, fixture_index: p.fixture_index, userName: members.find(m => m.id === p.user_id)?.name });
-          }
           return;
         }
         
         // CRITICAL: Only include picks for current fixtures (filter out old picks like Brazil)
         // This ensures we don't show picks from previous test runs
         if (!currentFixtureIndices.has(p.fixture_index)) {
-          if (isApiTestLeague && picksGw === 1) {
-            console.log('[League] Filtering out old pick (not in current fixtures):', { 
-              fixture_index: p.fixture_index, 
-              currentIndices: Array.from(currentFixtureIndices),
-              userName: members.find(m => m.id === p.user_id)?.name
-            });
-          }
           return;
         }
         
@@ -2083,8 +1908,6 @@ ${shareUrl}`;
         arr.push(p);
         picksByFixture.set(p.fixture_index, arr);
       });
-    } else {
-      console.log('[League] API Test: Not all submitted - skipping ALL picks processing. allSubmitted=', allSubmitted);
     }
     const resultsPublished = latestResultsGw !== null && latestResultsGw >= picksGw;
     const remaining = members.filter((m) => !submittedMap.get(`${m.id}:${picksGw}`)).length;
@@ -2095,40 +1918,6 @@ ${shareUrl}`;
     const deadlinePassed = picksGwState !== null && 
       (picksGwState === 'DEADLINE_PASSED' || picksGwState === 'LIVE' || picksGwState === 'RESULTS_PRE_GW');
     
-    // Debug logging for API Test league
-    if (isApiTestLeague && picksGw === 1) {
-      const memberSubmissionStatus = members.map(m => {
-        const key = `${m.id}:${picksGw}`;
-        const submitted = submittedMap.get(key);
-        return { id: m.id, name: m.name, submitted: !!submitted, key };
-      });
-      console.log(`[League] ===== API Test GW${picksGw} SUBMISSION CHECK =====`);
-      console.log(`[League] All submitted:`, allSubmitted);
-      console.log(`[League] Remaining:`, remaining);
-      console.log(`[League] Who didn't submit:`, whoDidntSubmit);
-      console.log(`[League] Member submission status:`, memberSubmissionStatus);
-      console.log(`[League] Submitted map entries:`, Array.from(submittedMap.entries()));
-      console.log(`[League] ================================================`);
-      
-      // Specifically check for Steve and Jof
-      const steve = members.find(m => m.name.toLowerCase().includes('steve') || m.name.toLowerCase().includes('s'));
-      const jof = members.find(m => m.name.toLowerCase().includes('jof') || m.name.toLowerCase().includes('j'));
-      if (steve) {
-        const steveKey = `${steve.id}:${picksGw}`;
-        console.log(`[League] STEVE (${steve.name}):`, { id: steve.id, submitted: !!submittedMap.get(steveKey), key: steveKey });
-      }
-      if (jof) {
-        const jofKey = `${jof.id}:${picksGw}`;
-        console.log(`[League] JOF (${jof.name}):`, { id: jof.id, submitted: !!submittedMap.get(jofKey), key: jofKey });
-      }
-    }
-    
-    console.log(`GW${picksGw} deadline check:`, {
-      gameState: picksGwState,
-      deadlinePassed,
-      allSubmitted,
-      willShowPredictions: allSubmitted || deadlinePassed
-    });
 
     // For API Test league, show submission status only if not all submitted
     // Also show it if user is on "gw" tab but not all submitted (they should see "Who's submitted" instead of predictions)
@@ -2141,12 +1930,6 @@ ${shareUrl}`;
     const shouldShowWhoSubmitted = isApiTestLeague ? !allSubmitted : (!allSubmitted && !deadlinePassed);
     
     if (shouldShowWhoSubmitted) {
-      console.log('[League] Not all submitted, showing ONLY "Who\'s submitted" view. Blocking all predictions/fixtures.', {
-        isApiTestLeague,
-        allSubmitted,
-        deadlinePassed,
-        remaining
-      });
       return (
         <SubmissionStatusTable
           members={members}
@@ -2288,12 +2071,50 @@ ${shareUrl}`;
   function GwResultsTab() {
     // CRITICAL: Call hooks in same order as other tab components to prevent hook ordering errors
     // Add matching hook calls to ensure consistent hook count across all tab components
+    
+    // Check game state of current GW to determine which GW to show
+    const { state: currentGwState } = useGameweekState(currentGw);
+    
     const resGwMemo = useMemo(() => {
       if (league?.name === 'API Test') {
         return currentTestGw ?? 1;
       }
-      return tab === "gwr" ? (manualGwSelectedRef.current ? selectedGw : (currentGw || selectedGw)) : selectedGw;
-    }, [league?.name, currentTestGw, tab, selectedGw, currentGw]);
+      
+      // For "gwr" tab (GW table): show previous GW until deadline passes, then show current GW
+      if (tab === "gwr") {
+        // If user manually selected a GW, use that
+        if (manualGwSelectedRef.current && selectedGw) {
+          return selectedGw;
+        }
+        
+        // If no currentGw, fallback to selectedGw
+        if (!currentGw) {
+          return selectedGw;
+        }
+        
+        // Determine if deadline has passed
+        // If state is LIVE or RESULTS_PRE_GW, deadline has passed - show current GW
+        // Otherwise (GW_OPEN, GW_PREDICTED, or null/unknown), show previous GW
+        const deadlinePassed = currentGwState === 'LIVE' || currentGwState === 'RESULTS_PRE_GW';
+        
+        if (deadlinePassed) {
+          // Deadline passed - show current GW
+          return currentGw;
+        } else {
+          // Deadline hasn't passed - show previous GW
+          // Use latestResultsGw if available and valid, otherwise use currentGw - 1
+          if (latestResultsGw && latestResultsGw < currentGw) {
+            return latestResultsGw;
+          }
+          // Fallback to currentGw - 1 (or currentGw if it's GW 1)
+          return currentGw > 1 ? currentGw - 1 : currentGw;
+        }
+      }
+      
+      // For other tabs, use selectedGw
+      return selectedGw;
+    }, [league?.name, currentTestGw, tab, selectedGw, currentGw, currentGwState, latestResultsGw]);
+    
     const _dummyState = useGameweekState(resGwMemo);
     void _dummyState; // Suppress unused variable warning
     
@@ -2331,18 +2152,6 @@ ${shareUrl}`;
       return liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED');
     });
     
-    console.log('[League] Live Table calculation:', {
-      resGw,
-      currentGw,
-      selectedGw,
-      hasLiveScores,
-      liveScoresCount: Object.keys(liveScores).length,
-      isApiTestLeague,
-      fixturesCount: fixtures.length,
-      fixturesForGwCount: fixturesForGw.length,
-      manualGwSelected: manualGwSelectedRef.current
-    });
-    
     // For API Test league, ONLY use live scores (ignore database results)
     // For regular leagues, use live scores if GW is live, otherwise use results
     if (isApiTestLeague && resGw === (currentTestGw ?? 1)) {
@@ -2363,7 +2172,6 @@ ${shareUrl}`;
       // DO NOT fill in from results - only count live/finished fixtures
     } else if (hasLiveScores && resGw === currentGw) {
       // Regular league with live GW - use live scores
-      console.log('[League] Using live scores for regular league GW', resGw);
       fixturesForGw.forEach((f: any) => {
         const liveScore = liveScores[f.fixture_index];
         if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
@@ -2377,38 +2185,25 @@ ${shareUrl}`;
           }
         }
       });
-      console.log('[League] Outcomes from live scores:', Array.from(outcomes.entries()));
     } else {
       // Regular league - use results (for past GWs)
-      console.log('[League] Using results table for GW', resGw, {
-        hasLiveScores,
-        resGwEqualsCurrentGw: resGw === currentGw,
-        resultsCount: results.length,
-        resultsForThisGw: results.filter(r => r.gw === resGw).length,
-        manualGwSelected: manualGwSelectedRef.current,
-        selectedGw
-      });
       results.forEach((r) => {
         if (r.gw !== resGw) return;
         const out = rowToOutcome(r);
         if (!out) return;
         outcomes.set(r.fixture_index, out);
       });
-      console.log('[League] Outcomes from results:', Array.from(outcomes.entries()));
     }
 
     type Row = { user_id: string; name: string; score: number; unicorns: number };
-    // CRITICAL: Only include members who have submitted for this GW
-    // Filter out members who didn't submit (like Dan Gray in the user's example)
+    // Include ALL members (not just those who submitted) - show all members in GW table
     const rows: Row[] = members
-      .filter((m) => submittedMap.get(`${m.id}:${resGw}`))
       .map((m) => ({ user_id: m.id, name: m.name, score: 0, unicorns: 0 }));
 
     const picksByFixture = new Map<number, PickRow[]>();
     picks.forEach((p) => {
       if (p.gw !== resGw) return;
-      // Also filter picks to only include from users who submitted
-      if (!submittedMap.get(`${p.user_id}:${resGw}`)) return;
+      // Include all picks (not filtered by submission status)
       const arr = picksByFixture.get(p.fixture_index) ?? [];
       arr.push(p);
       picksByFixture.set(p.fixture_index, arr);
@@ -2521,14 +2316,6 @@ ${shareUrl}`;
         // 2. No active games (no IN_PLAY or PAUSED status)
         // If results are published, we trust that the GW has finished
         allFixturesFinished = allHaveResults && !hasActiveGames;
-        
-        console.log(`[League] GW ${resGw} finished check:`, {
-          allHaveResults,
-          hasActiveGames,
-          fixturesCount: fixturesForGw.length,
-          outcomesCount: fixturesForGw.filter(f => outcomes.has(f.fixture_index)).length,
-          allFixturesFinished
-        });
       }
     }
 
@@ -2863,7 +2650,6 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
               <button
                 type="button"
                 onClick={() => {
-                  console.log('[League] Badge clicked, opening modal. isMember:', isMember);
                   setShowBadgeModal(true);
                 }}
                 className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 border border-slate-200 flex-shrink-0 relative cursor-pointer"
@@ -2877,7 +2663,6 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                     decoding="async"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
-                      console.error('[League] Badge image failed to load:', target.src, 'League:', league);
                       // Fallback to default ML avatar
                       const defaultAvatar = getDefaultMlAvatar(league.id);
                       const fallbackSrc = `/assets/league-avatars/${defaultAvatar}`;
@@ -3622,7 +3407,6 @@ If two or more players are tied on Points in the table, the player with the most
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  console.log('[League] Edit icon clicked');
                   setShowBadgeModal(false);
                   setShowBadgeUpload(true);
                 }}

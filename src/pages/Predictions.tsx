@@ -136,16 +136,11 @@ export default function PredictionsPage() {
  
  if (cached && cached.fixtures && Array.isArray(cached.fixtures) && cached.fixtures.length > 0) {
  // Restore picks from cache
- console.log('[Predictions] loadInitialStateFromCache - cached.picks:', cached.picks);
  const picksMap = new Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>();
  if (cached.picks && Array.isArray(cached.picks)) {
  cached.picks.forEach(p => {
-   console.log('[Predictions] loadInitialStateFromCache - processing pick:', p);
    picksMap.set(p.fixture_index, p);
  });
- console.log('[Predictions] loadInitialStateFromCache - picksMap size:', picksMap.size);
- } else {
-   console.log('[Predictions] loadInitialStateFromCache - no picks in cache');
  }
  
  // Restore results from cache
@@ -203,7 +198,6 @@ export default function PredictionsPage() {
  .eq("gw", gw);
 
  if (error) {
- console.warn('[Predictions] Error fetching team forms:', error);
  return;
  }
 
@@ -221,7 +215,6 @@ export default function PredictionsPage() {
  setTeamForms(new Map()); // Clear forms if none found
  }
  } catch (error) {
- console.warn('[Predictions] Error fetching team forms:', error);
  setTeamForms(new Map()); // Clear on error
  }
  };
@@ -291,7 +284,6 @@ export default function PredictionsPage() {
  // Ensure checked flags are set when fixtures are loaded
  useEffect(() => {
  if (fixtures.length > 0 && (!picksChecked || !submissionChecked)) {
- console.log('[Predictions] Setting checked flags because fixtures are loaded, fixtures.length:', fixtures.length);
  setPicksChecked(true);
  setSubmissionChecked(true);
  setLoading(false);
@@ -614,13 +606,11 @@ export default function PredictionsPage() {
  // Load fixtures and picks from database
  useEffect(() => {
  let alive = true;
- console.log('[Predictions] useEffect started, user?.id:', user?.id);
  (async () => {
  try {
  // Get app_meta.current_gw (published GW)
  let dbCurrentGw: number | null = null;
  
- console.log('[Predictions] Fetching current GW from app_meta...');
  const { data: meta, error: metaError } = await supabase
  .from("app_meta")
  .select("current_gw")
@@ -630,7 +620,6 @@ export default function PredictionsPage() {
  // dbCurrentGw is guaranteed to be a number after this block
  let dbCurrentGwNum: number;
  if (metaError || !meta) {
- console.error('[Predictions] Error fetching app_meta:', metaError);
  dbCurrentGwNum = 14; // Fallback
  } else {
  dbCurrentGwNum = meta?.current_gw ?? 14;
@@ -663,8 +652,6 @@ export default function PredictionsPage() {
  // Otherwise show the current GW
  const currentGw = userViewingGw < dbCurrentGwNum ? userViewingGw : dbCurrentGwNum;
  
- console.log('[Predictions] Published GW:', dbCurrentGw, 'User viewing GW:', userViewingGw, 'Displaying GW:', currentGw);
- 
  if (!currentGw) {
  // Always set state, even if component appears to be unmounting
  setFixtures([]);
@@ -695,7 +682,6 @@ export default function PredictionsPage() {
  setLoading(false);
  
         // Restore picks from cache
-        console.log('[Predictions] Checking cache for picks, cached.picks:', cached.picks);
         if (cached.picks && Array.isArray(cached.picks) && cached.picks.length > 0) {
           const picksMap = new Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>();
           cached.picks.forEach(p => {
@@ -708,13 +694,8 @@ export default function PredictionsPage() {
             }
           });
           if (picksMap.size > 0) {
-            console.log('[Predictions] Restored picks from cache:', picksMap.size, 'picks');
             setPicks(picksMap);
-          } else {
-            console.log('[Predictions] No picks in cache after filtering, cached.picks:', cached.picks);
           }
-        } else {
-          console.log('[Predictions] No picks in cache - cached.picks is missing or empty:', cached.picks);
         }
 
  // Restore submission status
@@ -730,7 +711,6 @@ export default function PredictionsPage() {
  // Check cached.picks, not picks.size (state might not be updated yet)
  // Check cached.fixtures.length, not fixtures.length (state hasn't updated yet after setFixtures)
  if (cached.submitted && user?.id && (!cached.picks || cached.picks.length === 0) && cached.fixtures.length > 0) {
-   console.log('[Predictions] Picks missing from cache but user submitted - loading from DB immediately');
    const { data: pk, error: pkErr } = await supabase
      .from("app_picks")
      .select("gw,fixture_index,pick")
@@ -754,7 +734,6 @@ export default function PredictionsPage() {
        });
        
        if (picksMap.size > 0) {
-         console.log('[Predictions] Loaded picks from DB after cache miss:', picksMap.size, 'picks');
          setPicks(picksMap);
          
          // Cache picks for instant load next time
@@ -794,7 +773,6 @@ export default function PredictionsPage() {
  // Check cached.results, not results state (state might not be updated yet)
  // Check cached.fixtures.length, not fixtures.length (state hasn't updated yet after setFixtures)
  if ((!cached.results || cached.results.length === 0) && cached.fixtures.length > 0 && currentGw) {
-   console.log('[Predictions] Results missing from cache - loading from DB immediately');
    const { data: gwResultsData, error: gwResultsError } = await supabase
      .from('app_gw_results')
      .select('fixture_index, result')
@@ -809,7 +787,6 @@ export default function PredictionsPage() {
      });
      
      if (resultsMap.size > 0) {
-       console.log('[Predictions] Loaded results from DB after cache miss:', resultsMap.size, 'results');
        setResults(resultsMap);
        
        // Cache results for instant load next time
@@ -928,7 +905,6 @@ export default function PredictionsPage() {
  }
  }
  
- console.log('[Predictions] Setting fixtures, count:', fixturesData.length, 'alive:', alive);
  // Always set fixtures and loading state, even if component appears to be unmounting
  // React will safely handle state updates even if component unmounts
  // This prevents infinite loading when useEffect restarts
@@ -960,7 +936,6 @@ if (alive && fixturesData.length > 0 && currentGw) {
           }
         });
         if (alive && resultsMap.size > 0) {
-          console.log('[Predictions] Loaded gw_results:', resultsMap.size, 'results for GW', currentGw);
           setResults(resultsMap);
           
           // Cache the results for instant load next time
@@ -989,12 +964,10 @@ if (alive && fixturesData.length > 0 && currentGw) {
               // Failed to cache (non-critical)
             }
           }
-        } else if (alive) {
-          console.log('[Predictions] No gw_results found for GW', currentGw);
         }
       }
     } catch (error) {
-      console.error('[Predictions] Error loading gw_results:', error);
+      // Error loading gw_results (non-critical)
     }
   })();
 } else {
@@ -1063,7 +1036,6 @@ if (alive && fixturesData.length > 0 && currentGw) {
  }
 
  // Fetch user's picks from TEST API table
- console.log('[Predictions] Starting picks loading - isSubmitted:', isSubmitted, 'user?.id:', user?.id, 'fixturesData.length:', fixturesData.length);
  let hasPicks = false;
  if (user?.id && fixturesData.length > 0 && !isSubmitted) {
  // Only fetch picks if not submitted (optimization)
@@ -1138,27 +1110,20 @@ if (alive && fixturesData.length > 0 && currentGw) {
           }
         }
  }
- 
- console.log('[Predictions] After picks loading block - isSubmitted:', isSubmitted, 'user?.id:', user?.id, 'fixturesData.length:', fixturesData.length, 'alive:', alive);
- 
  // ALWAYS load picks if user has submitted (even if not in cache) - just like HomePage does
  // This ensures picks are displayed even if cache is missing
  if ((isSubmitted || submitted) && user?.id && fixturesData.length > 0 && picks.size === 0) {
- console.log('[Predictions] Loading picks from DB for submitted user, GW:', currentGw, 'user:', user.id, 'alive:', alive);
  // User has submitted - fetch picks for display purposes
  const { data: pk, error: pkErr } = await supabase
  .from("app_picks")
  .select("gw,fixture_index,pick")
  .eq("gw", currentGw!)
  .eq("user_id", user.id);
- 
- console.log('[Predictions] DB query result - pk:', pk?.length, 'picks, error:', pkErr);
 
  if (!pkErr && pk && pk.length > 0) {
  const currentFixtureIndices = new Set(fixturesData.map(f => f.fixture_index));
  const picksForCurrentFixtures = pk.filter((p: any) => currentFixtureIndices.has(p.fixture_index));
  
-        console.log('[Predictions] picksForCurrentFixtures length:', picksForCurrentFixtures.length);
         if (picksForCurrentFixtures.length > 0) {
           const picksMap = new Map<number, Pick>();
           picksForCurrentFixtures.forEach((p: any) => {
@@ -1173,7 +1138,6 @@ if (alive && fixturesData.length > 0 && currentGw) {
           
           // CRITICAL: Always set picks, even if component appears to be unmounting
           // React will safely handle state updates even if component unmounts
-          console.log('[Predictions] Setting picks from DB, picksMap.size:', picksMap.size, 'alive:', alive);
           if (picksMap.size > 0) {
             setPicks(picksMap); // Remove alive check - always set picks
             hasPicks = true;
@@ -1201,8 +1165,6 @@ if (alive && fixturesData.length > 0 && currentGw) {
               }
             }
           }
-        } else {
-          console.log('[Predictions] No picksForCurrentFixtures found');
         }
         }
  }
@@ -1348,10 +1310,8 @@ if (alive && fixturesData.length > 0 && currentGw) {
  }
  }
  } catch (error) {
- console.error('[Predictions] Error loading data:', error);
  if (alive) {
  // Always mark as checked even on error to prevent infinite loading
- console.log('[Predictions] Setting flags in catch block');
  setPicksChecked(true);
  setSubmissionChecked(true);
  setLoading(false);
@@ -1359,11 +1319,9 @@ if (alive && fixturesData.length > 0 && currentGw) {
  } finally {
  // Always set loading to false, even if component unmounted
  // This prevents infinite loading states
- console.log('[Predictions] Setting loading=false in finally block, alive:', alive);
  setLoading(false);
  // Also ensure checked flags are set to prevent blocking
  if (!alive) {
- console.log('[Predictions] Component unmounted, but setting checked flags anyway');
  setPicksChecked(true);
  setSubmissionChecked(true);
  }
@@ -1371,7 +1329,6 @@ if (alive && fixturesData.length > 0 && currentGw) {
  })();
 
  return () => {
- console.log('[Predictions] useEffect cleanup, setting alive=false');
  alive = false;
  };
  }, [user?.id]);
@@ -1418,7 +1375,6 @@ if (alive && fixturesData.length > 0 && currentGw) {
  .eq("gw", currentTestGw);
 
  if (picksError) {
- console.error('[Predictions] Error fetching pick percentages:', picksError);
  return;
  }
 
@@ -1452,7 +1408,6 @@ if (alive && fixturesData.length > 0 && currentGw) {
 
  setPickPercentages(percentagesMap);
  } catch (error) {
- console.error('[Predictions] Error calculating pick percentages:', error);
  setPickPercentages(new Map());
  }
  })();
@@ -1484,13 +1439,11 @@ useEffect(() => {
  .eq('gw', currentTestGw);
 
  if (gwPointsError) {
- console.error('[Predictions] Error fetching GW points:', gwPointsError);
  setTopPercent(null);
  return;
  }
 
  if (!gwPointsData || gwPointsData.length === 0) {
- console.log('[Predictions] No GW points data found for GW', currentTestGw);
  setTopPercent(null);
  return;
  }
@@ -1515,20 +1468,8 @@ useEffect(() => {
  const totalUsers = sorted.length;
  const rankPercent = Math.round((userRank / totalUsers) * 100);
  
- // Debug logging to help identify discrepancies
- console.log('[Predictions] Percentage calculation:', 
- 'GW:', currentTestGw,
- 'UserId:', user.id,
- 'UserRank:', userRank,
- 'TotalUsers:', totalUsers,
- 'UserPoints:', userPoints,
- 'RankPercent:', rankPercent,
- 'Top5:', sorted.slice(0, 5).map(u => ({ userId: u.user_id, points: u.points }))
- );
- 
  setTopPercent(rankPercent);
  } catch (error) {
- console.error('[Predictions] Error calculating top percent:', error);
  setTopPercent(null);
  }
  })();
@@ -1649,7 +1590,6 @@ useEffect(() => {
  .maybeSingle();
  
  if (existingSubmission?.submitted_at) {
- console.warn('[Predictions] Already submitted - this should not happen');
  setSubmitted(true);
  return;
  }
@@ -1676,7 +1616,6 @@ useEffect(() => {
  });
 
  if (picksError) {
- console.error('[Predictions] Error saving picks:', picksError);
  throw picksError;
  }
 
@@ -1693,7 +1632,6 @@ useEffect(() => {
  });
 
  if (submissionError) {
- console.error('[Predictions] Error saving submission:', submissionError);
  throw submissionError;
  }
 
@@ -1733,8 +1671,8 @@ useEffect(() => {
  matchday: currentTestGw,
  isTestApi: true,
  }),
- }).catch(err => {
- console.error('[Predictions] Failed to check final submission:', err);
+ }).catch(() => {
+ // Failed to check final submission (non-critical)
  });
  }
  
@@ -1760,18 +1698,17 @@ useEffect(() => {
  leagueId: league_id,
  gw: currentTestGw,
  }),
- }).catch((err: any) => {
- console.error('[Predictions] Failed to check final submission:', err);
+ }).catch(() => {
+ // Failed to check final submission (non-critical)
  });
  });
  }
  } catch (err: any) {
- console.error('[Predictions] Failed to fetch user leagues:', err);
+ // Failed to fetch user leagues (non-critical)
  }
  })();
  }
  } catch (error) {
- console.error('[Predictions] Error confirming picks:', error);
  setConfirmCelebration({ success: false, message: "Failed to confirm predictions. Please try again." });
  setTimeout(() => setConfirmCelebration(null), 2200);
  }
@@ -1859,7 +1796,13 @@ useEffect(() => {
  )}
  <div className="p-4">
  <div className="max-w-2xl mx-auto">
- <div className="flex items-center justify-center">
+ <div className="relative flex items-center justify-center">
+ <button 
+ onClick={() => navigate("/")} 
+ className="absolute left-0 text-slate-600 text-3xl font-bold w-10 h-10 flex items-center justify-center"
+ >
+ ✕
+ </button>
  <span className="text-lg font-extrabold text-slate-700">
  Gameweek {currentTestGw}
  </span>
@@ -1929,7 +1872,13 @@ useEffect(() => {
  )}
  <div className="p-4">
  <div className="max-w-2xl mx-auto">
- <div className="flex items-center justify-center">
+ <div className="relative flex items-center justify-center">
+ <button 
+ onClick={() => navigate("/")} 
+ className="absolute left-0 text-slate-600 text-3xl font-bold w-10 h-10 flex items-center justify-center"
+ >
+ ✕
+ </button>
  <span className="text-lg font-extrabold text-slate-700">
  Gameweek {currentTestGw}
  </span>
@@ -1938,8 +1887,8 @@ useEffect(() => {
  </div>
  <div className="flex-1 overflow-y-auto p-4 pb-4">
  <div className="max-w-2xl mx-auto">
- {/* Show deadline banner if deadline has passed and user hasn't submitted */}
- {deadlinePassed && !isUserSubmitted && (
+ {/* Show deadline banner only for DEADLINE_PASSED state when user hasn't submitted */}
+ {gameState === 'DEADLINE_PASSED' && !isUserSubmitted && (
  <div className="mb-4">
  <div className="rounded-xl border bg-slate-200 border-slate-300 px-6 py-4 text-center">
  <div className="flex items-center justify-center mb-3 relative">
@@ -1950,7 +1899,7 @@ useEffect(() => {
  style={{ imageRendering: 'pixelated' }}
  />
  <div className="text-slate-900 font-semibold text-base text-center">
- {gameState === 'DEADLINE_PASSED' ? 'THE DEADLINE HAS PASSED' : gameState === 'LIVE' ? 'Games In Progress' : 'THE DEADLINE HAS PASSED'}
+ THE DEADLINE HAS PASSED
  </div>
  </div>
  <div className="text-slate-900 text-sm">
@@ -2067,31 +2016,16 @@ if (fixtures.length > 0 && (hasAnyLiveOrFinished || hasStartingSoon || deadlineP
   // This matches HomePage behavior - use final results when available
   let displayScore = 0;
   
-  // Always log for debugging
-  console.log('[Predictions] Score calculation check:', 
-    'hasPicks:', hasPicks,
-    'resultsSize:', results.size,
-    'picksSize:', picks.size,
-    'myScore:', myScore,
-    'currentScore:', currentScore,
-    'hasAnyLiveOrFinished:', hasAnyLiveOrFinished,
-    'submitted:', submitted,
-    'deadlinePassed:', deadlinePassed
-  );
-  
   if (hasPicks) {
     if (results.size > 0) {
       // Use results Map (from app_gw_results) - most accurate
       displayScore = myScore;
-      console.log('[Predictions] Using results Map for score:', displayScore);
     } else if (hasAnyLiveOrFinished) {
       // Fall back to live scores if results not loaded yet
       displayScore = currentScore;
-      console.log('[Predictions] Using live scores for score:', currentScore);
     } else if (submitted) {
       // If submitted but no results yet, try to use myScore anyway (might be calculated from cache)
       displayScore = myScore;
-      console.log('[Predictions] Submitted but no results Map, using myScore:', myScore);
     }
   }
   
@@ -2156,6 +2090,10 @@ return null;
  red_cards: liveScore.red_cards ?? undefined,
  } : null;
 
+ // Only show pick buttons before deadline (GW_OPEN or GW_PREDICTED)
+ const canMakePicks = !gameStateLoading && gameState !== null && 
+   (gameState === 'GW_OPEN' || gameState === 'GW_PREDICTED');
+ 
  return (
  <li key={fixture.id} className={index > 0 ? "border-t" : ""}>
  <FixtureCard
@@ -2163,7 +2101,7 @@ return null;
  pick={pick?.pick}
  liveScore={fixtureCardLiveScore}
  isTestApi={true}
- showPickButtons={true}
+ showPickButtons={canMakePicks}
  pickPercentages={pickPercentages.get(fixture.fixture_index) || null}
  />
  </li>
@@ -2216,6 +2154,12 @@ return null;
  <div className="p-4">
  <div className="max-w-2xl mx-auto">
  <div className="relative flex items-center justify-center">
+ <button 
+ onClick={() => navigate("/")} 
+ className="absolute left-0 text-slate-600 text-3xl font-bold w-10 h-10 flex items-center justify-center"
+ >
+ ✕
+ </button>
  <span className="text-lg font-extrabold text-slate-700">Review Mode</span>
  {allPicksMade && !submitted ? (
  <button
@@ -2588,7 +2532,13 @@ return null;
  {(shouldBlockSwipePredictions || effectiveViewMode === "list") && !deadlinePassed && (
  <div className="flex-1 overflow-y-auto">
  <div className="max-w-2xl mx-auto px-4 py-4">
- <div className="flex items-center justify-center">
+ <div className="relative flex items-center justify-center mb-4">
+ <button 
+ onClick={() => navigate("/")} 
+ className="absolute left-0 text-slate-600 text-3xl font-bold w-10 h-10 flex items-center justify-center"
+ >
+ ✕
+ </button>
  <div className="text-center"><h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Test API Predictions</h1><div className="mt-0 mb-4 text-base text-slate-500">Call every game, lock in your results.<br />This is a TEST game.</div></div>
  </div>
  {!shouldBlockSwipePredictions && canShowSwipePredictions && (

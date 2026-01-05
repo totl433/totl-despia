@@ -89,6 +89,7 @@ export function useMiniLeagueChat(
   const [error, setError] = useState<string | null>(null);
 
   const earliestTimestampRef = useRef<string | null>(null);
+  const initializingLeagueIdRef = useRef<string | null>(null);
 
   const applyMessages = useCallback(
     (updater: (prev: MiniLeagueChatMessage[]) => MiniLeagueChatMessage[]) => {
@@ -222,11 +223,24 @@ export function useMiniLeagueChat(
     if (!miniLeagueId || !enabled) {
       setMessages([]);
       setHasMore(true);
+      initializingLeagueIdRef.current = null;
       return;
     }
 
+    // Prevent duplicate initialization (React StrictMode runs effects twice in dev)
+    // Only skip if we're already initializing the same league
+    if (initializingLeagueIdRef.current === miniLeagueId) {
+      return;
+    }
+    initializingLeagueIdRef.current = miniLeagueId;
+
     let active = true;
-    refresh();
+    refresh().finally(() => {
+      // Clear flag after refresh completes (allows re-initialization if league changes)
+      if (active && initializingLeagueIdRef.current === miniLeagueId) {
+        initializingLeagueIdRef.current = null;
+      }
+    });
 
     if (!autoSubscribe) {
       return () => {
@@ -309,6 +323,8 @@ export function useMiniLeagueChat(
 
     return () => {
       active = false;
+      // Don't clear isInitializingRef here - let it clear after refresh completes
+      // This prevents the second StrictMode run from executing
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       supabase.removeChannel(channel);
     };

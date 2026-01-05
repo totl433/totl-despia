@@ -200,7 +200,7 @@ export async function loadHomePageData(
     supabase.from("app_fixtures").select("id, gw, fixture_index, api_match_id, home_code, away_code, home_team, away_team, home_name, away_name, kickoff_time").eq("gw", currentGw).order("fixture_index", { ascending: true }),
     supabase.from("app_picks").select("user_id, gw, fixture_index, pick").eq("user_id", userId).eq("gw", currentGw),
     leagueIds.length > 0 ? supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds) : Promise.resolve({ data: [], error: null }),
-    supabase.from("app_gw_submissions").select("user_id").eq("gw", currentGw),
+    supabase.from("app_gw_submissions").select("user_id").eq("gw", currentGw).not("submitted_at", "is", null),
     supabase.from("app_gw_results").select("gw, fixture_index, result"),
     supabase.from("picks").select("user_id, gw, created_at").limit(10000),
     supabase.from("app_picks").select("user_id, gw, created_at").limit(10000),

@@ -485,8 +485,8 @@ export default function PredictionsBanner() {
   // GW Ready banner (new GW published, user needs to transition)
   if (bannerType === "gw-ready" && newGwNumber) {
     return (
-      <div className="w-full px-4 py-3 relative gameweek-banner z-40 bg-gradient-to-br from-[#1C8376]/10 to-blue-50/50" data-banner-height>
-        <div className="mx-auto max-w-6xl flex items-center justify-between gap-4">
+      <div className="w-full px-4 lg:px-6 py-3 relative gameweek-banner z-40 bg-gradient-to-br from-[#1C8376]/10 to-blue-50/50" data-banner-height>
+        <div className="mx-auto max-w-6xl lg:max-w-[1024px] flex items-center justify-between gap-4">
           <div className="flex flex-col gap-0 flex-1 min-w-0">
             <div className="flex items-center gap-2">
               {/* Circular icon with lightning bolt */}

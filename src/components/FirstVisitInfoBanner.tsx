@@ -140,13 +140,13 @@ export default function FirstVisitInfoBanner({
  {/* Message */}
  <div className="flex-1 min-w-0">
  <div className="flex items-end gap-3 mb-6 mt-2">
- {/* Icon Image - bigger, inline with content */}
- <img 
- src={imageSrc} 
- alt="" 
- className="w-32 h-32 object-contain flex-shrink-0"
- style={{ imageRendering: 'pixelated' }}
- />
+          {/* Icon Image - bigger, inline with content */}
+          <img 
+            src={imageSrc} 
+            alt="" 
+            className="w-20 h-20 object-contain flex-shrink-0"
+            style={{ imageRendering: 'pixelated' }}
+          />
  <p id="first-visit-title" className="text-sm text-slate-700 leading-relaxed">
  <span className="font-semibold text-slate-900">Quick tip:</span> {message}
  </p>

@@ -243,6 +243,30 @@ Start a Mini League →
 
 How To Play →`}
     >
+      {/* Desktop: Always show default view - never switches to live tables */}
+      <div className="hidden lg:flex lg:flex-col lg:gap-4">
+        {leagues.map((l) => {
+          const unread = unreadByLeague?.[l.id] ?? 0;
+          const cardData = memoizedCardData[l.id];
+          
+          return (
+            <MiniLeagueCard
+              key={l.id}
+              row={l as LeagueRow}
+              data={cardData}
+              unread={unread}
+              submissions={leagueSubmissions[l.id]}
+              leagueDataLoading={leagueDataLoading}
+              currentGw={currentGw}
+              onTableClick={onTableClick}
+              hidePlayerChips={hidePlayerChips}
+              showSeasonLeader={showSeasonLeader}
+            />
+          );
+        })}
+      </div>
+
+      {/* Mobile: Conditionally show live tables or default view */}
       {showLiveTables ? (
         // Live Tables View - Horizontal scroll of table cards
         <div className="lg:hidden">
@@ -269,72 +293,46 @@ How To Play →`}
           </HorizontalScrollContainer>
         </div>
       ) : (
-        // Normal Overview View - Existing card layout
-        <>
-      {/* Mobile: Horizontal scroll with batches */}
-      <div className="lg:hidden">
-        <HorizontalScrollContainer>
-          {Array.from({ length: Math.ceil(leagues.length / 3) }).map((_, batchIdx) => {
-            const startIdx = batchIdx * 3;
-            const batchLeagues = leagues.slice(startIdx, startIdx + 3);
-            
-            return (
-              <div key={batchIdx} className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm w-[320px]">
-                {batchLeagues.map((l, index) => {
-                  const unread = unreadByLeague?.[l.id] ?? 0;
-                  const cardData = memoizedCardData[l.id];
-                  
-                  return (
-                    <div key={l.id} className={index < batchLeagues.length - 1 ? 'relative' : ''}>
-                      {index < batchLeagues.length - 1 && (
-                        <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-30 pointer-events-none" />
-                      )}
-                      <div className="[&>div]:border-0 [&>div]:shadow-none [&>div]:rounded-none [&>div]:bg-transparent relative z-20 [&>div>a]:!p-4">
-                            <MiniLeagueCard
-                              row={l as LeagueRow}
-                              data={cardData}
-                              unread={unread}
-                              submissions={leagueSubmissions[l.id]}
-                              leagueDataLoading={leagueDataLoading}
-                              currentGw={currentGw}
-                              showRanking={false}
-                              onTableClick={onTableClick}
-                              hidePlayerChips={hidePlayerChips}
-                              showSeasonLeader={showSeasonLeader}
-                            />
+        // Mobile: Default Overview View - Horizontal scroll with batches
+        <div className="lg:hidden">
+          <HorizontalScrollContainer>
+            {Array.from({ length: Math.ceil(leagues.length / 3) }).map((_, batchIdx) => {
+              const startIdx = batchIdx * 3;
+              const batchLeagues = leagues.slice(startIdx, startIdx + 3);
+              
+              return (
+                <div key={batchIdx} className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm w-[320px]">
+                  {batchLeagues.map((l, index) => {
+                    const unread = unreadByLeague?.[l.id] ?? 0;
+                    const cardData = memoizedCardData[l.id];
+                    
+                    return (
+                      <div key={l.id} className={index < batchLeagues.length - 1 ? 'relative' : ''}>
+                        {index < batchLeagues.length - 1 && (
+                          <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-30 pointer-events-none" />
+                        )}
+                        <div className="[&>div]:border-0 [&>div]:shadow-none [&>div]:rounded-none [&>div]:bg-transparent relative z-20 [&>div>a]:!p-4">
+                              <MiniLeagueCard
+                                row={l as LeagueRow}
+                                data={cardData}
+                                unread={unread}
+                                submissions={leagueSubmissions[l.id]}
+                                leagueDataLoading={leagueDataLoading}
+                                currentGw={currentGw}
+                                showRanking={false}
+                                onTableClick={onTableClick}
+                                hidePlayerChips={hidePlayerChips}
+                                showSeasonLeader={showSeasonLeader}
+                              />
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </HorizontalScrollContainer>
-      </div>
-
-      {/* Desktop: Single column with individual cards */}
-      <div className="hidden lg:flex lg:flex-col lg:gap-4">
-        {leagues.map((l) => {
-          const unread = unreadByLeague?.[l.id] ?? 0;
-          const cardData = memoizedCardData[l.id];
-          
-          return (
-            <MiniLeagueCard
-              key={l.id}
-              row={l as LeagueRow}
-              data={cardData}
-              unread={unread}
-              submissions={leagueSubmissions[l.id]}
-              leagueDataLoading={leagueDataLoading}
-              currentGw={currentGw}
-              onTableClick={onTableClick}
-              hidePlayerChips={hidePlayerChips}
-              showSeasonLeader={showSeasonLeader}
-            />
-          );
-        })}
-      </div>
-      </>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </HorizontalScrollContainer>
+        </div>
       )}
     </Section>
   );

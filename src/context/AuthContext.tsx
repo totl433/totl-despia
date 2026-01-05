@@ -79,13 +79,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, 5000);
 
     bootLog.authStart();
-    console.log('[Auth] Setting up auth state listener...');
+    if (import.meta.env.DEV) {
+      console.log('[Auth] Setting up auth state listener...');
+    }
     
     // Set up auth state change listener - this fires on initialization and state changes
     let authStateReceived = false;
-    console.log('[Auth] Setting up onAuthStateChange listener...');
+    if (import.meta.env.DEV) {
+      console.log('[Auth] Setting up onAuthStateChange listener...');
+    }
     const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
-      console.log('[Auth] Auth state changed:', event, sess ? 'has session' : 'no session', sess?.user?.id);
+      if (import.meta.env.DEV) {
+        console.log('[Auth] Auth state changed:', event, sess ? 'has session' : 'no session', sess?.user?.id);
+      }
       authStateReceived = true;
       clearTimeout(authTimeout);
       if (!mounted) return;
@@ -122,7 +128,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     // Try to get session with a shorter timeout (3 seconds)
     // If it hangs, we'll rely on onAuthStateChange which should fire
-    console.log('[Auth] Attempting to get session (with 3s timeout)...');
+    if (import.meta.env.DEV) {
+      console.log('[Auth] Attempting to get session (with 3s timeout)...');
+    }
     Promise.race([
       supabase.auth.getSession(),
       new Promise((_, reject) => setTimeout(() => reject(new Error('getSession timeout')), 3000))
@@ -132,7 +140,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearTimeout(authTimeout);
         if (!mounted) return;
         const { data, error } = result;
-        console.log('[Auth] Session result:', error ? 'ERROR: ' + error.message : 'OK', data?.session ? 'has session' : 'no session');
+        if (error) {
+          console.error('[Auth] Session error:', error.message);
+        } else if (import.meta.env.DEV) {
+          console.log('[Auth] Session result:', data?.session ? 'has session' : 'no session');
+        }
         if (data?.session) {
           setSession(data.session);
           setUser(data.session.user);
@@ -141,7 +153,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
       .catch((error: any) => {
         if (authStateReceived) return; // Already got it from onAuthStateChange
-        console.log('[Auth] getSession timed out or failed, relying on onAuthStateChange:', error.message);
+        if (import.meta.env.DEV) {
+          console.log('[Auth] getSession timed out or failed, relying on onAuthStateChange:', error.message);
+        }
         // Don't set loading to false here - let onAuthStateChange handle it
         // If onAuthStateChange doesn't fire within 5 seconds, the timeout will handle it
       });
