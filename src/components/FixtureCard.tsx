@@ -108,7 +108,9 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
   // Show goals/red cards if we have live score data and the arrays exist (even if empty, let the render function decide)
   const showGoals = hasLiveScore && (isOngoing || isFinished) && !!liveScore.goals;
   const showRedCards = hasLiveScore && (isOngoing || isFinished) && !!liveScore.red_cards;
-  const showPickButtonsSection = showPickButtons && (!isTestApi || pick !== undefined);
+  // Always show pick buttons if showPickButtons is true (don't require pick to exist)
+  // This allows users to make picks even if they haven't picked yet
+  const showPickButtonsSection = showPickButtons;
   
   // Team name styling flags
   const homeIsWinning = hasLiveScore && (isOngoing || isFinished) && liveScore.homeScore > liveScore.awayScore;

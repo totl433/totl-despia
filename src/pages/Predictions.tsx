@@ -1890,24 +1890,25 @@ useEffect(() => {
  });
  }
  
- // Only show score indicator if user has actually submitted picks
- const hasPicks = picks.size > 0;
- if (hasPicks && (hasAnyLiveOrFinished || fixtures.length > 0 || hasStartingSoon || deadlinePassed)) {
- const displayScore = hasAnyLiveOrFinished ? currentScore : (submitted ? myScore : 0);
- 
- return (
- <ScoreIndicator
- score={displayScore}
- total={fixtures.length}
- topPercent={topPercent}
- state={state}
- gameweek={currentTestGw}
- gameStateLoading={gameStateLoading}
- />
- );
- }
- 
- return null;
+// Show score indicator if we have fixtures (even if no picks yet)
+// This allows users to see their score as they make picks
+if (fixtures.length > 0 && (hasAnyLiveOrFinished || hasStartingSoon || deadlinePassed || submitted)) {
+  const hasPicks = picks.size > 0;
+  const displayScore = hasAnyLiveOrFinished ? currentScore : (submitted && hasPicks ? myScore : 0);
+  
+  return (
+    <ScoreIndicator
+      score={displayScore}
+      total={fixtures.length}
+      topPercent={topPercent}
+      state={state}
+      gameweek={currentTestGw}
+      gameStateLoading={gameStateLoading}
+    />
+  );
+}
+
+return null;
  })()}
  
  <div className="space-y-6 [&>div:first-child]:mt-0">
