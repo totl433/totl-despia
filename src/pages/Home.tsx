@@ -355,17 +355,43 @@ export default function HomePage() {
   }, [refreshLeagues]);
   
   // Validate cached GW (respects user's current_viewing_gw)
-  // Only run once on mount, don't re-run when gw changes (prevents loops)
+  // CRITICAL: Only run if fixtures are missing (cache miss) - don't run if we have cache
+  // This prevents unnecessary DB queries when cache is already correct
   const gwValidatedRef = useRef(false);
   useEffect(() => {
+    // If we have fixtures from cache, GW is already correct - skip validation
+    if (fixtures.length > 0) {
+      gwValidatedRef.current = true;
+      return;
+    }
+    
     if (!user?.id || gwValidatedRef.current) return;
     
     let alive = true;
     (async () => {
       try {
-            const cacheKey = `home:basic:${user.id}`;
-            const cached = getCached<{ currentGw?: number }>(cacheKey);
-            const cachedGw = cached?.currentGw ?? gw;
+        // Check cache first (pre-loaded by initialDataLoader)
+        const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
+        const cachedMeta = getCached<{ current_gw: number }>(`app_meta:current_gw`);
+        
+        // If we have cached preferences and meta, use them (no DB query needed)
+        if (prefsCache && cachedMeta) {
+          const dbCurrentGw = cachedMeta.current_gw;
+          const userViewingGw = prefsCache.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
+          const gwToDisplay = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+          
+          // Only update if different
+          if (gw !== gwToDisplay) {
+            setGw(gwToDisplay);
+          }
+          gwValidatedRef.current = true;
+          return;
+        }
+        
+        // Fallback to DB if cache missing (shouldn't happen if pre-loader ran)
+        const cacheKey = `home:basic:${user.id}`;
+        const cached = getCached<{ currentGw?: number }>(cacheKey);
+        const cachedGw = cached?.currentGw ?? gw;
         
         const { data: meta, error: metaError } = await supabase
           .from("app_meta")
@@ -404,7 +430,7 @@ export default function HomePage() {
     })();
     
     return () => { alive = false; };
-  }, [user?.id]); // Only depend on user.id, not gw or initialState.gw
+  }, [user?.id, fixtures.length]); // Depend on fixtures.length - skip if cache exists
 
   // Confetti check
   useEffect(() => {

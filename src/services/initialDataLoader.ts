@@ -251,14 +251,17 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   // Note: _allResultsResult, _allFixturesResult errors are non-critical
   // Note: userNotificationPrefsResult error is non-critical (banner will work without it)
   
-  // Cache user notification preferences for PredictionsBanner
+  const currentGw = metaResult.data?.current_gw ?? 1;
+  const latestGw = latestGwResult.data?.gw ?? null;
+  
+  // Cache app_meta for synchronous access in HomePage (prevents DB queries)
+  setCached(`app_meta:current_gw`, { current_gw: currentGw }, CACHE_TTL.HOME);
+  
+  // Cache user notification preferences for PredictionsBanner and HomePage
   const userViewingGw = userNotificationPrefsResult.data?.current_viewing_gw ?? null;
   if (userViewingGw !== null) {
     setCached(`user_notification_prefs:${userId}`, { current_viewing_gw: userViewingGw }, CACHE_TTL.HOME);
   }
-
-  const currentGw = metaResult.data?.current_gw ?? 1;
-  const latestGw = latestGwResult.data?.gw ?? null;
   
   // Cache last completed GW for MiniLeagueGwTableCard (avoids DB query)
   if (latestGw) {
@@ -1232,20 +1235,30 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   // If viewing GW is different from current GW, we need to fetch fixtures/picks for viewing GW
   let fixturesToCache = fixturesForGw.data || [];
   let picksToCache = userPicks;
+  let liveScoresToCache = liveScoresArray;
   
   if (viewingGw !== currentGw) {
-    // Fetch fixtures and picks for viewing GW
-    const viewingGwFixturesResult = await supabase
-      .from('app_fixtures')
-      .select('*')
-      .eq('gw', viewingGw)
-      .order('fixture_index', { ascending: true });
-    
-    const viewingGwPicksResult = await supabase
-      .from('app_picks')
-      .select('fixture_index, pick')
-      .eq('user_id', userId)
-      .eq('gw', viewingGw);
+    // Fetch fixtures, picks, live scores, and results for viewing GW
+    const [viewingGwFixturesResult, viewingGwPicksResult, viewingGwLiveScoresResult, viewingGwResultsResult] = await Promise.all([
+      supabase
+        .from('app_fixtures')
+        .select('*')
+        .eq('gw', viewingGw)
+        .order('fixture_index', { ascending: true }),
+      supabase
+        .from('app_picks')
+        .select('fixture_index, pick')
+        .eq('user_id', userId)
+        .eq('gw', viewingGw),
+      supabase
+        .from('live_scores')
+        .select('*')
+        .eq('gw', viewingGw),
+      supabase
+        .from('app_gw_results')
+        .select('fixture_index, result')
+        .eq('gw', viewingGw),
+    ]);
     
     if (viewingGwFixturesResult.data) {
       fixturesToCache = viewingGwFixturesResult.data;
@@ -1257,6 +1270,21 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
         picksToCache[p.fixture_index] = p.pick;
       });
     }
+    
+    if (viewingGwLiveScoresResult.data) {
+      liveScoresToCache = viewingGwLiveScoresResult.data;
+    }
+    
+    // Cache results for viewing GW
+    if (viewingGwResultsResult.data) {
+      const resultsArray: Array<{ fixture_index: number; result: "H" | "D" | "A" }> = [];
+      viewingGwResultsResult.data.forEach((r: any) => {
+        if (r.result === "H" || r.result === "D" || r.result === "A") {
+          resultsArray.push({ fixture_index: r.fixture_index, result: r.result });
+        }
+      });
+      setCached(`home:gwResults:${viewingGw}`, resultsArray, CACHE_TTL.HOME);
+    }
   }
   
   const existingCache = getCached<{
@@ -1266,14 +1294,14 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   }>(fixturesCacheKey);
   
   // Prefer fresh liveScoresArray if available, otherwise use existing cache
-  const liveScoresToCache = (liveScoresArray && liveScoresArray.length > 0) 
-    ? liveScoresArray 
-    : existingCache?.liveScores;
+  if (!liveScoresToCache || liveScoresToCache.length === 0) {
+    liveScoresToCache = existingCache?.liveScores || undefined;
+  }
   
   setCached(fixturesCacheKey, {
     fixtures: fixturesToCache,
     userPicks: picksToCache,
-    liveScores: liveScoresToCache,
+    liveScores: (liveScoresToCache && liveScoresToCache.length > 0) ? liveScoresToCache : undefined,
   }, CACHE_TTL.HOME);
 
   // Cache Global page data (ensure latestGw is a number, not null)
