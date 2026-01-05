@@ -1032,16 +1032,20 @@ if (alive && fixturesData.length > 0 && currentGw) {
  }
  } else if (isSubmitted && user?.id && fixturesData.length > 0) {
  // User has submitted - fetch picks for display purposes
+ console.log('[Predictions] Loading picks from DB for submitted user, GW:', currentGw, 'user:', user.id, 'alive:', alive);
  const { data: pk, error: pkErr } = await supabase
  .from("app_picks")
  .select("gw,fixture_index,pick")
  .eq("gw", currentGw!)
  .eq("user_id", user.id);
+ 
+ console.log('[Predictions] DB query result - pk:', pk, 'error:', pkErr);
 
  if (!pkErr && pk && pk.length > 0) {
  const currentFixtureIndices = new Set(fixturesData.map(f => f.fixture_index));
  const picksForCurrentFixtures = pk.filter((p: any) => currentFixtureIndices.has(p.fixture_index));
  
+        console.log('[Predictions] picksForCurrentFixtures length:', picksForCurrentFixtures.length);
         if (picksForCurrentFixtures.length > 0) {
           const picksMap = new Map<number, Pick>();
           picksForCurrentFixtures.forEach((p: any) => {
@@ -1055,10 +1059,16 @@ if (alive && fixturesData.length > 0 && currentGw) {
           });
           
           // Always set picks, even if component appears to be unmounting
+          console.log('[Predictions] Setting picks from DB, picksMap.size:', picksMap.size, 'alive:', alive);
           if (picksMap.size > 0) {
-            setPicks(picksMap);
+            if (alive) {
+              setPicks(picksMap);
+            }
             hasPicks = true;
           }
+        } else {
+          console.log('[Predictions] No picksForCurrentFixtures found');
+        }
         }
  }
  
