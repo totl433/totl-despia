@@ -1177,7 +1177,6 @@ ${shareUrl}`;
   };
   
   const [mltRows, setMltRows] = useState<MltRow[]>(getInitialMltRows);
-  const [mltLoading, setMltLoading] = useState(false);
   
   // Log tab changes (after mltRows is declared)
   useEffect(() => {
@@ -1202,7 +1201,6 @@ ${shareUrl}`;
         if (mltRows.length === 0) {
           console.log('[League] ✅ Setting mltRows from cache', cached.length);
           setMltRows(cached);
-          setMltLoading(false);
         } else {
           console.log('[League] mltRows already populated, skipping');
         }
@@ -1224,7 +1222,6 @@ ${shareUrl}`;
             if (retryCached && retryCached.length > 0 && mltRows.length === 0) {
               console.log(`[League] ✅ Retry ${retryCount} successful - Setting mltRows from cache`, retryCached.length);
               setMltRows(retryCached);
-              setMltLoading(false);
             } else if (retryCount < maxRetries) {
               tryRetry();
             }
@@ -1745,7 +1742,6 @@ ${shareUrl}`;
         const cached = getCached<MltRow[]>(`league:mltRows:${league.id}`);
         if (cached && cached.length > 0) {
           setMltRows(cached);
-          setMltLoading(false);
           return;
         }
       }
@@ -1762,7 +1758,6 @@ ${shareUrl}`;
       if (league?.name === 'API Test') {
         // Show empty table with zero points for all members (test league starts fresh)
         setMltRows(createEmptyMltRows(members));
-        setMltLoading(false);
         return;
       }
       
@@ -1770,7 +1765,6 @@ ${shareUrl}`;
       const hasCachedData = league?.id && getCached<MltRow[]>(`league:mltRows:${league.id}`);
       if (hasCachedData && hasCachedData.length > 0) {
         setMltRows(hasCachedData);
-        setMltLoading(false);
         return;
       }
       
@@ -1778,8 +1772,6 @@ ${shareUrl}`;
       if (currentGw === null) {
         return;
       }
-      
-      setMltLoading(true);
 
       // Use app results for mini-league calculations (app data source)
       const { data: rs } = await supabase.from("app_gw_results").select("gw,fixture_index,result");
@@ -1794,7 +1786,6 @@ ${shareUrl}`;
 
       if (outcomeByGwIdx.size === 0) {
         setMltRows(createEmptyMltRows(members));
-        setMltLoading(false);
         return;
       }
 
@@ -1840,7 +1831,6 @@ ${shareUrl}`;
       // For late-starting leagues, if there are no results for the start gameweek or later, show empty table
       if (!specialLeagues.includes(league?.name || '') && !gw7StartLeagues.includes(league?.name || '') && relevantGws.length === 0) {
         setMltRows(createEmptyMltRows(members));
-        setMltLoading(false);
         return;
       }
 
@@ -1948,7 +1938,6 @@ ${shareUrl}`;
       if (league?.id) {
         setCached(`league:mltRows:${league.id}`, rows, CACHE_TTL.LEAGUES);
       }
-      setMltLoading(false);
     })();
 
     return () => {

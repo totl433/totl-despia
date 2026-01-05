@@ -490,7 +490,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
                     console.log('[Preload] mltRows already cached for', leagueId.slice(0, 8), existingMltRows.length);
                   }
                 } else {
-                  console.log('[Preload] ⚠️ Invalid data structure for league', leagueId.slice(0, 8), { hasData: !!data, hasMembers: data && 'members' in data });
+                  console.log('[Preload] ⚠️ Invalid data structure for league', leagueId.slice(0, 8), { hasData: !!data, hasMembers: data && typeof data === 'object' && data !== null && 'members' in data });
                 }
               }
             } else {
@@ -1545,11 +1545,11 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
         });
 
         // Wait for both member names and messages to complete
-        const [memberResults, messageResults] = await Promise.all([
+        const [, messageResults] = await Promise.all([
           Promise.all(memberNamesPromises),
           Promise.all(messagePromises)
         ]);
-        const totalMessages = messageResults.reduce((sum, count) => sum + (count || 0), 0);
+        const totalMessages = messageResults.reduce((sum, count) => (sum || 0) + (count || 0), 0);
         log.debug('preload/chat_messages_complete', { 
           userId: userId.slice(0, 8), 
           leagueCount: leagueIds.length,
