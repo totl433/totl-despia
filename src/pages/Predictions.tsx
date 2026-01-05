@@ -702,7 +702,10 @@ export default function PredictionsPage() {
             }
           });
           if (picksMap.size > 0) {
+            console.log('[Predictions] Restored picks from cache:', picksMap.size, 'picks');
             setPicks(picksMap);
+          } else {
+            console.log('[Predictions] No picks in cache, cached.picks:', cached.picks);
           }
         }
  
