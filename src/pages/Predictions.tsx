@@ -716,13 +716,65 @@ export default function PredictionsPage() {
         } else {
           console.log('[Predictions] No picks in cache - cached.picks is missing or empty:', cached.picks);
         }
- 
+
  // Restore submission status
  if (cached.submitted !== undefined) {
  setSubmitted(cached.submitted);
  hasEverBeenSubmittedRef.current = cached.submitted;
  setHasEverBeenSubmitted(cached.submitted);
  setSubmissionChecked(true);
+ }
+ 
+ // CRITICAL: If picks aren't in cache but user has submitted, load them from DB immediately (like HomePage does)
+ if (cached.submitted && user?.id && picks.size === 0 && fixtures.length > 0) {
+   console.log('[Predictions] Picks missing from cache but user submitted - loading from DB immediately');
+   const { data: pk, error: pkErr } = await supabase
+     .from("app_picks")
+     .select("gw,fixture_index,pick")
+     .eq("gw", currentGw)
+     .eq("user_id", user.id);
+   
+   if (!pkErr && pk && pk.length > 0) {
+     const currentFixtureIndices = new Set(fixtures.map(f => f.fixture_index));
+     const picksForCurrentFixtures = pk.filter((p: any) => currentFixtureIndices.has(p.fixture_index));
+     
+     if (picksForCurrentFixtures.length > 0) {
+       const picksMap = new Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>();
+       picksForCurrentFixtures.forEach((p: any) => {
+         if (p && p.fixture_index !== undefined && p.pick) {
+           picksMap.set(p.fixture_index, {
+             fixture_index: p.fixture_index,
+             pick: p.pick,
+             matchday: p.gw || currentGw
+           });
+         }
+       });
+       
+       if (picksMap.size > 0) {
+         console.log('[Predictions] Loaded picks from DB after cache miss:', picksMap.size, 'picks');
+         setPicks(picksMap);
+         
+         // Cache picks for instant load next time
+         try {
+           const existingCache = getCached<{
+             fixtures: Fixture[];
+             picks: Array<{ fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>;
+             submitted: boolean;
+             results: Array<{ fixture_index: number; result: "H" | "D" | "A" }>;
+           }>(cacheKey);
+           
+           if (existingCache) {
+             setCached(cacheKey, {
+               ...existingCache,
+               picks: Array.from(picksMap.values()),
+             }, CACHE_TTL.PREDICTIONS);
+           }
+         } catch (cacheError) {
+           // Failed to cache (non-critical)
+         }
+       }
+     }
+   }
  }
  
  // Restore results
