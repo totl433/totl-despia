@@ -1235,7 +1235,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   // If viewing GW is different from current GW, we need to fetch fixtures/picks for viewing GW
   let fixturesToCache = fixturesForGw.data || [];
   let picksToCache = userPicks;
-  let liveScoresToCache = liveScoresArray;
+  let liveScoresToCache: any[] | undefined = liveScoresArray && liveScoresArray.length > 0 ? liveScoresArray : undefined;
   
   if (viewingGw !== currentGw) {
     // Fetch fixtures, picks, live scores, and results for viewing GW
