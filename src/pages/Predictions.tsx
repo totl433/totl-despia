@@ -1920,7 +1920,22 @@ useEffect(() => {
 // This allows users to see their score as they make picks
 if (fixtures.length > 0 && (hasAnyLiveOrFinished || hasStartingSoon || deadlinePassed || submitted)) {
   const hasPicks = picks.size > 0;
-  const displayScore = hasAnyLiveOrFinished ? currentScore : (submitted && hasPicks ? myScore : 0);
+  
+  // Calculate score: prefer results Map (from app_gw_results) over live scores
+  // This matches HomePage behavior - use final results when available
+  let displayScore = 0;
+  if (hasPicks) {
+    if (results.size > 0) {
+      // Use results Map (from app_gw_results) - most accurate
+      displayScore = myScore;
+    } else if (hasAnyLiveOrFinished) {
+      // Fall back to live scores if results not loaded yet
+      displayScore = currentScore;
+    } else if (submitted) {
+      // If submitted but no results yet, show 0 (will update when results load)
+      displayScore = 0;
+    }
+  }
   
   return (
     <ScoreIndicator
