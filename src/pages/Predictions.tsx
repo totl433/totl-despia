@@ -609,8 +609,6 @@ export default function PredictionsPage() {
  (async () => {
  try {
  // Get app_meta.current_gw (published GW)
- let dbCurrentGw: number | null = null;
- 
  const { data: meta, error: metaError } = await supabase
  .from("app_meta")
  .select("current_gw")
@@ -1453,15 +1451,13 @@ useEffect(() => {
  
  // Find user's rank (handling ties - same rank for same points)
  let userRank = 1;
- let userPoints: number | null = null;
  for (let i = 0; i < sorted.length; i++) {
- if (i > 0 && sorted[i - 1].points !== sorted[i].points) {
- userRank = i + 1;
- }
- if (sorted[i].user_id === user.id) {
- userPoints = sorted[i].points || 0;
- break;
- }
+   if (i > 0 && sorted[i - 1].points !== sorted[i].points) {
+     userRank = i + 1;
+   }
+   if (sorted[i].user_id === user.id) {
+     break;
+   }
  }
 
  // Calculate rank percentage: (rank / total_users) * 100

@@ -439,11 +439,11 @@ ${shareUrl}`;
         
         // Check if response has content before trying to parse JSON
         const text = await response.text();
-        let result: any;
         try {
-          result = text ? JSON.parse(text) : { error: 'Empty response body' };
+          // Parse JSON to validate response (result not used, just validating)
+          text ? JSON.parse(text) : { error: 'Empty response body' };
         } catch (parseError) {
-          result = { error: 'Invalid JSON response', status: response.status, raw: text.substring(0, 200) };
+          // Invalid JSON response (non-critical)
         }
         
         if (!response.ok) {
@@ -1347,15 +1347,6 @@ ${shareUrl}`;
           // 1. User has picks for ALL current fixture indices
           // 2. The submission timestamp is recent (after current fixtures were created)
           // For now, we'll require ALL picks match current fixture indices
-          
-          // Get the earliest kickoff time from current fixtures to determine cutoff date
-          // Submissions before this date are from old test runs
-          const currentFixtureKickoffs = (currentTestFixtures || [])
-            .map(f => f.kickoff_time ? new Date(f.kickoff_time) : null)
-            .filter((d): d is Date => d !== null && !isNaN(d.getTime()));
-          const earliestKickoff = currentFixtureKickoffs.length > 0 
-            ? new Date(Math.min(...currentFixtureKickoffs.map(d => d.getTime())))
-            : null;
           
           // Use a cutoff date: submissions must be after Nov 18, 2025 (when new fixtures were likely loaded)
           // We use Nov 18 as the cutoff because that's when the new Premier League fixtures were loaded
