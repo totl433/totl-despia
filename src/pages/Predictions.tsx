@@ -722,8 +722,9 @@ export default function PredictionsPage() {
  setSubmitted(cached.submitted);
  hasEverBeenSubmittedRef.current = cached.submitted;
  setHasEverBeenSubmitted(cached.submitted);
- setSubmissionChecked(true);
  }
+ // Always set submissionChecked when loading from cache (even if submitted is undefined for new GW)
+ setSubmissionChecked(true);
  
  // CRITICAL: If picks aren't in cache but user has submitted, load them from DB immediately (like HomePage does)
  // Check cached.picks, not picks.size (state might not be updated yet)
