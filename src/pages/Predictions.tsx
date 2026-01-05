@@ -1954,24 +1954,32 @@ if (fixtures.length > 0 && (hasAnyLiveOrFinished || hasStartingSoon || deadlineP
   // Calculate score: prefer results Map (from app_gw_results) over live scores
   // This matches HomePage behavior - use final results when available
   let displayScore = 0;
+  
+  // Always log for debugging
+  console.log('[Predictions] Score calculation check:', { 
+    hasPicks,
+    resultsSize: results.size,
+    picksSize: picks.size,
+    myScore,
+    currentScore,
+    hasAnyLiveOrFinished,
+    submitted,
+    deadlinePassed
+  });
+  
   if (hasPicks) {
     if (results.size > 0) {
       // Use results Map (from app_gw_results) - most accurate
       displayScore = myScore;
-      console.log('[Predictions] Score calculation:', { 
-        myScore, 
-        resultsSize: results.size, 
-        picksSize: picks.size,
-        displayScore 
-      });
+      console.log('[Predictions] Using results Map for score:', displayScore);
     } else if (hasAnyLiveOrFinished) {
       // Fall back to live scores if results not loaded yet
       displayScore = currentScore;
       console.log('[Predictions] Using live scores for score:', currentScore);
     } else if (submitted) {
-      // If submitted but no results yet, show 0 (will update when results load)
-      displayScore = 0;
-      console.log('[Predictions] No results loaded yet, showing 0');
+      // If submitted but no results yet, try to use myScore anyway (might be calculated from cache)
+      displayScore = myScore;
+      console.log('[Predictions] Submitted but no results Map, using myScore:', myScore);
     }
   }
   
