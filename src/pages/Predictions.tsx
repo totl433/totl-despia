@@ -1836,7 +1836,8 @@ useEffect(() => {
  // Prevents blank screens and swipe card flashes
  // BUT: If we have fixtures loaded (from cache or DB), render immediately
  // The flags will be set in the useEffect, but we don't need to block if fixtures are loaded
- // Only block if we're still loading AND have no fixtures
+ // Only block if we're still loading AND have no fixtures AND flags aren't set
+ // If fixtures are loaded, render immediately (flags will be set async in useEffect)
  if ((!picksChecked || !submissionChecked) && fixtures.length === 0 && loading) {
  // Still checking and no fixtures yet - show loading spinner
  return (
