@@ -1788,30 +1788,7 @@ useEffect(() => {
  const canShowSwipePredictions = !gameStateLoading && gameState !== null && !isDeadlinePassed && (gameState === 'GW_OPEN' || gameState === 'GW_PREDICTED');
  // If data has been loaded before (even if component remounted), be more lenient with loading check
  // This prevents infinite loading when useEffect restarts due to dependency changes
- // Also check cache to see if we have fixtures available - this allows rendering even if state hasn't updated
- let hasCachedFixtures = false;
- if (typeof window !== 'undefined' && user?.id) {
- try {
- const metaCache = getCached<{ current_gw: number }>('app_meta');
- const currentGw = metaCache?.current_gw || 14;
- const cacheKey = `predictions:${user.id}:${currentGw}`;
- const cached = getCached<{ fixtures: Fixture[] }>(cacheKey);
- hasCachedFixtures = !!(cached?.fixtures && cached.fixtures.length > 0);
- } catch {
- // Ignore cache errors
- }
- }
- 
- // Be more lenient - if we have fixtures (either in state or cache) OR data has been loaded, allow rendering
- // Only block if we truly have no data at all
- const hasFixtures = fixtures.length > 0 || hasCachedFixtures;
- // CRITICAL FIX: Only block if we're still loading AND truly have no data
- // If loading is false, we're good to render (data fetch completed, even if state hasn't updated yet)
- // If we have fixtures (state or cache) OR data has been loaded, we're good to render
- // The key insight: once loading becomes false, the data fetch is complete, so we can render
- // Also check initial state from cache - if fixtures were loaded from cache initially, we have data
- // Access initialState from the closure - it's defined at the top of the component
- const hasInitialFixtures = typeof initialState !== 'undefined' && initialState.fixtures && initialState.fixtures.length > 0;
+ // Simplified: only check fixtures.length directly in needsMoreData condition
  // SIMPLIFIED: If deadline has passed (DEADLINE_PASSED, RESULTS_PRE_GW, or LIVE), skip loading checks and show the page
  // This allows users to see the predictions list even if they haven't predicted
  // SAFE: Only show picks if we're CERTAIN deadline has passed (state is not null)
