@@ -96,7 +96,7 @@ export default function WhatsAppBanner() {
           animation: bounceIn 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55) 0.8s both;
         }
       `}</style>
-      <div className="p-4 mb-4 rounded-lg shadow-lg h-[220px]" style={{backgroundColor: '#1C8376'}}>
+      <div className="p-4 mb-4 rounded-lg shadow-lg h-[220px] bg-[#1C8376]">
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-2 min-h-[60px]">
             <div className="flex justify-start">
@@ -124,7 +124,7 @@ export default function WhatsAppBanner() {
             <div className="flex justify-center animate-bounce-in-button">
               <button
                 onClick={handleJoin}
-                className="bg-white hover:bg-gray-100 px-6 py-3 rounded-full text-sm font-semibold transition-colors shadow-md flex items-center gap-2"
+                className="bg-white px-6 py-3 rounded-full text-sm font-semibold shadow-md flex items-center gap-2"
                 style={{color: '#1C8376'}}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -139,13 +139,13 @@ export default function WhatsAppBanner() {
             <div className="flex items-center justify-center gap-4 pb-4">
               <button
                 onClick={handleMaybeLater}
-                className="text-white/80 hover:text-white text-xs transition-colors underline"
+                className="text-white/80 text-xs underline"
               >
                 Maybe Later
               </button>
               <button
                 onClick={handleDontShowAgain}
-                className="text-white/80 hover:text-white text-xs transition-colors underline"
+                className="text-white/80 text-xs underline"
                 title="Don't show again"
               >
                 Don't show again

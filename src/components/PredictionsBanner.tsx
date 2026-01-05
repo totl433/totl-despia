@@ -505,7 +505,7 @@ export default function PredictionsBanner() {
           <button
             onClick={handleGwTransition}
             disabled={isTransitioning}
-            className="flex-shrink-0 px-4 py-2 bg-[#1C8376] text-white rounded-[20px] font-medium hover:bg-[#1C8376]/90 transition-colors disabled:opacity-50 flex items-center gap-1"
+            className="flex-shrink-0 px-4 py-2 bg-[#1C8376] text-white rounded-[20px] font-medium disabled:opacity-50 flex items-center gap-1"
           >
             {isTransitioning ? "Transitioning..." : `Gameweek ${newGwNumber}`}
             {!isTransitioning && (

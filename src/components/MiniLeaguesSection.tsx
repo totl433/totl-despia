@@ -16,6 +16,9 @@ interface MiniLeaguesSectionProps {
   onTableClick?: (leagueId: string) => void;
   currentUserId?: string;
   gameState?: GameweekState | null;
+  hideLiveTables?: boolean; // If true, always show default card view, never show live tables
+  hidePlayerChips?: boolean; // If true, hide player chips on mini league cards
+  showSeasonLeader?: boolean; // If true, show season leader name with trophy (default: false)
 }
 
 export function MiniLeaguesSection({
@@ -28,15 +31,18 @@ export function MiniLeaguesSection({
   onTableClick,
   currentUserId,
   gameState,
+  hideLiveTables = false,
+  hidePlayerChips = false,
+  showSeasonLeader = false,
 }: MiniLeaguesSectionProps) {
   // Determine if we should show toggle buttons (LIVE or RESULTS_PRE_GW states)
   const isLive = gameState === 'LIVE';
   const isResultsPreGw = gameState === 'RESULTS_PRE_GW';
-  const showToggleButtons = isLive || isResultsPreGw;
+  const showToggleButtons = (isLive || isResultsPreGw) && !hideLiveTables;
   
   // State for toggle between cards and live tables
-  // Default to live tables during LIVE or RESULTS_PRE_GW states
-  const [showLiveTables, setShowLiveTables] = useState(showToggleButtons);
+  // Default to live tables during LIVE or RESULTS_PRE_GW states (unless hideLiveTables is true)
+  const [showLiveTables, setShowLiveTables] = useState(showToggleButtons && !hideLiveTables);
   
   // Track previous gameweek to detect when user moves to next GW
   const prevGwRef = useRef<number | null>(currentGw);
@@ -51,15 +57,68 @@ export function MiniLeaguesSection({
     prevGwRef.current = currentGw;
   }, [currentGw]);
   
-  // Update showLiveTables when game state changes to LIVE or RESULTS_PRE_GW
+  // Update showLiveTables when game state changes to LIVE or RESULTS_PRE_GW (unless hideLiveTables is true)
   useEffect(() => {
-    if (showToggleButtons) {
+    if (showToggleButtons && !hideLiveTables) {
       setShowLiveTables(true);
     }
-  }, [showToggleButtons]);
+  }, [showToggleButtons, hideLiveTables]);
   
   // Memoize card data transformations to prevent unnecessary re-renders
+  // Use ref to track previous values and only create new objects when content actually changes
+  const prevCardDataRef = useRef<Record<string, LeagueData | undefined>>({});
+  const prevLeagueDataKeysRef = useRef<string>('');
   const memoizedCardData = useMemo(() => {
+    const currentKeys = Object.keys(leagueData).sort().join(',');
+    
+    // Quick check: if keys haven't changed and we have previous data, check if content changed
+    if (currentKeys === prevLeagueDataKeysRef.current && Object.keys(prevCardDataRef.current).length > 0) {
+      let hasChanges = false;
+      for (const leagueId in leagueData) {
+        const data = leagueData[leagueId];
+        const prevData = prevCardDataRef.current[leagueId];
+        
+        if (!prevData || !data) {
+          hasChanges = true;
+          break;
+        }
+        
+        // Deep comparison of key properties
+        if (
+          data.id !== prevData.id ||
+          data.userPosition !== prevData.userPosition ||
+          data.positionChange !== prevData.positionChange ||
+          data.latestRelevantGw !== prevData.latestRelevantGw ||
+          data.seasonLeaderName !== prevData.seasonLeaderName ||
+          data.members?.length !== prevData.members?.length ||
+          (data.sortedMemberIds?.join(',') ?? '') !== (prevData.sortedMemberIds?.join(',') ?? '') ||
+          (data.submittedMembers instanceof Set ? Array.from(data.submittedMembers).sort().join(',') : (data.submittedMembers?.join(',') ?? '')) !==
+          (prevData.submittedMembers instanceof Set ? Array.from(prevData.submittedMembers).sort().join(',') : (prevData.submittedMembers?.join(',') ?? '')) ||
+          (data.latestGwWinners instanceof Set ? Array.from(data.latestGwWinners).sort().join(',') : (data.latestGwWinners?.join(',') ?? '')) !==
+          (prevData.latestGwWinners instanceof Set ? Array.from(prevData.latestGwWinners).sort().join(',') : (prevData.latestGwWinners?.join(',') ?? '')) ||
+          (data.webUserIds instanceof Set ? Array.from(data.webUserIds).sort().join(',') : (data.webUserIds?.join(',') ?? '')) !==
+          (prevData.webUserIds instanceof Set ? Array.from(prevData.webUserIds).sort().join(',') : (prevData.webUserIds?.join(',') ?? ''))
+        ) {
+          hasChanges = true;
+          break;
+        }
+        
+        // Check if members array changed
+        if (data.members && prevData.members) {
+          if (data.members.length !== prevData.members.length ||
+              data.members.some((m, i) => !prevData.members[i] || m.id !== prevData.members[i].id || m.name !== prevData.members[i].name)) {
+            hasChanges = true;
+            break;
+          }
+        }
+      }
+      
+      if (!hasChanges) {
+        return prevCardDataRef.current;
+      }
+    }
+    
+    // Content changed, create new objects
     const result: Record<string, LeagueData | undefined> = {};
     for (const leagueId in leagueData) {
       const data = leagueData[leagueId];
@@ -72,9 +131,13 @@ export function MiniLeaguesSection({
         sortedMemberIds: data.sortedMemberIds,
         latestGwWinners: data.latestGwWinners,
         latestRelevantGw: data.latestRelevantGw,
-        webUserIds: data.webUserIds
+        webUserIds: data.webUserIds,
+        seasonLeaderName: data.seasonLeaderName
       } : undefined;
     }
+    
+    prevCardDataRef.current = result;
+    prevLeagueDataKeysRef.current = currentKeys;
     return result;
   }, [leagueData]);
 
@@ -89,14 +152,14 @@ export function MiniLeaguesSection({
     );
   }, [leagueData]);
 
-  // Toggle component for mobile header - alternates between buttons
-  // Show in both LIVE and RESULTS_PRE_GW states (until user moves to next GW)
-  const toggleComponent = showToggleButtons ? (
+  // Toggle component for mobile header
+  // Show toggle buttons on main Home page, but not on HomeExperimental (when hideLiveTables is true)
+  const toggleComponent = showToggleButtons && !hideLiveTables ? (
     <div className="lg:hidden flex items-center gap-2">
       {showLiveTables ? (
         <button
           onClick={() => setShowLiveTables(false)}
-          className="px-3 py-1.5 text-xs font-medium rounded-full transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200"
+          className="px-3 py-1.5 text-xs font-medium rounded-full bg-slate-100 text-slate-600"
         >
           Default View
         </button>
@@ -110,13 +173,23 @@ export function MiniLeaguesSection({
       )}
     </div>
   ) : null;
+  
+  // Live indicator for header (like GamesSection) - ONLY for HomeExperimental when showing live tables
+  // Main Home page should NOT have this - it should have live indicators on individual cards instead
+  // Only show when actually displaying live tables, not in default view
+  const liveIndicator = hideLiveTables && showLiveTables && (gameState === 'LIVE' || gameState === 'RESULTS_PRE_GW') ? (
+    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-600 text-white text-xs sm:text-sm font-medium">
+      <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+      <span>Live</span>
+    </div>
+  ) : null;
 
   if (leagues.length === 0) {
     return (
       <Section 
         title="Mini Leagues" 
         className="mt-8"
-        headerRight={toggleComponent}
+        headerRight={hideLiveTables ? liveIndicator : toggleComponent}
         infoTitle="Mini Leagues"
         infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
 
@@ -138,7 +211,7 @@ How To Play →`}
           <div className="text-slate-600 mb-3">You don't have any mini leagues yet.</div>
           <Link 
             to="/create-league" 
-            className="inline-block px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg hover:bg-[#1C8376]/80 transition-colors no-underline"
+            className="inline-block px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg no-underline"
           >
             Create one now!
           </Link>
@@ -152,7 +225,7 @@ How To Play →`}
       title="Mini Leagues" 
       subtitle={showLiveTables && currentGw ? `Gameweek ${currentGw} Live Tables` : undefined}
       className="mt-8"
-      headerRight={toggleComponent}
+      headerRight={hideLiveTables ? liveIndicator : toggleComponent}
       infoTitle="Mini Leagues"
       infoDescription={`A Mini League is a head-to-head competition for up to 8 players.
 
@@ -217,16 +290,18 @@ How To Play →`}
                         <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-30 pointer-events-none" />
                       )}
                       <div className="[&>div]:border-0 [&>div]:shadow-none [&>div]:rounded-none [&>div]:bg-transparent relative z-20 [&>div>a]:!p-4">
-                        <MiniLeagueCard
-                          row={l as LeagueRow}
-                          data={cardData}
-                          unread={unread}
-                          submissions={leagueSubmissions[l.id]}
-                          leagueDataLoading={leagueDataLoading}
-                          currentGw={currentGw}
-                          showRanking={false}
-                          onTableClick={onTableClick}
-                        />
+                            <MiniLeagueCard
+                              row={l as LeagueRow}
+                              data={cardData}
+                              unread={unread}
+                              submissions={leagueSubmissions[l.id]}
+                              leagueDataLoading={leagueDataLoading}
+                              currentGw={currentGw}
+                              showRanking={false}
+                              onTableClick={onTableClick}
+                              hidePlayerChips={hidePlayerChips}
+                              showSeasonLeader={showSeasonLeader}
+                            />
                       </div>
                     </div>
                   );
@@ -253,6 +328,8 @@ How To Play →`}
               leagueDataLoading={leagueDataLoading}
               currentGw={currentGw}
               onTableClick={onTableClick}
+              hidePlayerChips={hidePlayerChips}
+              showSeasonLeader={showSeasonLeader}
             />
           );
         })}

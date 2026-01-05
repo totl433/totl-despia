@@ -915,7 +915,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
               <span className="flex-1">{err.message}</span>
               <button
                 onClick={() => setUiErrors(prev => prev.filter(e => e.id !== err.id))}
-                className="text-red-600 hover:text-red-800 flex-shrink-0"
+                className="text-red-600 flex-shrink-0"
               >
                 ×
               </button>
@@ -1020,7 +1020,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
             </div>
             <button
               onClick={() => setReplyingTo(null)}
-              className="flex-shrink-0 w-5 h-5 rounded-full hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors"
+              className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-slate-500"
               title="Cancel reply"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

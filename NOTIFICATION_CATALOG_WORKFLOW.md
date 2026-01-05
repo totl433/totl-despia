@@ -273,3 +273,4 @@ Consider automating Step 3 (updating embedded catalog) by:
 
 For now, the manual update ensures the embedded catalog stays in sync with the JSON.
 
+

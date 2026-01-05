@@ -543,12 +543,6 @@ export default function MiniLeagueGwTableCard({
             <h3 className="text-base font-bold text-black truncate">
               {leagueName}
             </h3>
-            {isLive && (
-              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600 text-white shadow-sm flex-shrink-0 w-fit">
-                <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
-                <span className="text-[10px] font-semibold">LIVE</span>
-              </div>
-            )}
             {/* Small winner indicator - only show for completed GWs, not live ones */}
             {rows.length > 0 && isFinished && !isLive && (() => {
               const winnerText = isDraw ? 'Draw!' : (() => {
@@ -597,15 +591,15 @@ export default function MiniLeagueGwTableCard({
                       backgroundColor: '#ffffff', 
                       display: 'table-header-group'
                     } as any}>
-                      <tr style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0' }}>
-                        <th className="py-2 text-left font-semibold text-xs uppercase tracking-wide" style={{ backgroundColor: '#ffffff', width: '24px', paddingLeft: '0.5rem', paddingRight: '0.25rem', color: '#1C8376' }}></th>
-                        <th className="py-2 text-left font-semibold text-xs text-slate-300" style={{ backgroundColor: '#ffffff', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
+                      <tr className="bg-white border-b border-slate-200">
+                        <th className="py-2 text-left font-semibold text-xs uppercase tracking-wide bg-white w-6 pl-2 pr-1 text-[#1C8376]"></th>
+                        <th className="py-2 text-left font-semibold text-xs text-slate-300 bg-white pl-2 pr-2">
                           Player
                         </th>
-                        <th className="py-2 text-center font-semibold text-xs text-slate-300" style={{ backgroundColor: '#ffffff', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem' }}>
+                        <th className="py-2 text-center font-semibold text-xs text-slate-300 bg-white w-10 pl-1 pr-1">
                           Score
                         </th>
-                        {members.length >= 3 && <th className="py-2 text-center font-semibold text-xs" style={{ backgroundColor: '#ffffff', width: '32px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#1C8376', fontSize: '1rem' }}>🦄</th>}
+                        {members.length >= 3 && <th className="py-2 text-center font-semibold text-xs bg-white w-8 pl-1 pr-1 text-[#1C8376] text-base">🦄</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -621,25 +615,14 @@ export default function MiniLeagueGwTableCard({
                               ...(i < rows.length - 1 ? { borderBottom: '1px solid #e2e8f0' } : {})
                             }}
                           >
-                            <td className="py-2 text-left tabular-nums whitespace-nowrap" style={{ 
-                              paddingLeft: '0.5rem', 
-                              paddingRight: '0.25rem',
-                              backgroundColor: '#ffffff',
-                              width: '24px',
-                              fontSize: '0.75rem'
-                            }}>
+                            <td className="py-2 text-left tabular-nums whitespace-nowrap bg-white w-6 pl-2 pr-1 text-xs">
                               {i + 1}
                             </td>
-                            <td className="py-2 truncate whitespace-nowrap" style={{ backgroundColor: '#ffffff', paddingLeft: '0.5rem', paddingRight: '0.5rem', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.75rem' }}>
-                              <div className="flex items-center gap-2">
-                                {isLive && (
-                                  <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse flex-shrink-0" style={{ minWidth: '8px', minHeight: '8px' }}></div>
-                                )}
-                                <span>{r.name}</span>
-                              </div>
+                            <td className="py-2 truncate whitespace-nowrap bg-white pl-2 pr-2 text-xs">
+                              <span>{r.name}</span>
                             </td>
-                            <td className={`py-2 text-center tabular-nums font-bold ${isLive ? 'pulse-live-score' : ''}`} style={{ width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#ffffff', color: '#1C8376', fontSize: '0.75rem' }}>{r.score}</td>
-                            {members.length >= 3 && <td className={`py-2 text-center tabular-nums ${isLive ? 'pulse-live-score' : ''}`} style={{ width: '32px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#ffffff', fontSize: '0.75rem' }}>{r.unicorns}</td>}
+                            <td className={`py-2 text-center tabular-nums font-bold text-[#1C8376] text-xs bg-white w-10 pl-1 pr-1 ${isLive ? 'pulse-live-score' : ''}`}>{r.score}</td>
+                            {members.length >= 3 && <td className={`py-2 text-center tabular-nums text-xs bg-white w-8 pl-1 pr-1 ${isLive ? 'pulse-live-score' : ''}`}>{r.unicorns}</td>}
                           </tr>
                         );
                       })}
@@ -663,7 +646,7 @@ export default function MiniLeagueGwTableCard({
   return (
     <Link
       to={`/league/${leagueCode}`}
-      className="w-[320px] flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow block no-underline relative"
+      className="w-[320px] flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden block no-underline relative"
       style={{ 
         minHeight: `${cardHeight}px`,
         height: 'auto', // Use auto to allow card to grow to fit all rows

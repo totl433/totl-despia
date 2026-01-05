@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -40,6 +40,34 @@ export interface LiveScore {
  * @param apiMatchIds - Specific match IDs to subscribe to (optional)
  */
 export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
+  // Stabilize apiMatchIds to prevent unnecessary re-subscriptions
+  // Use a ref to track previous key and array, only update if IDs actually changed
+  const stableRef = useRef<{ key: string; array: number[] | undefined }>({ 
+    key: '', 
+    array: undefined 
+  });
+  
+  // Create a stable key string from the array for dependency tracking
+  const apiMatchIdsKey = useMemo(() => {
+    if (!apiMatchIds || apiMatchIds.length === 0) return '';
+    return apiMatchIds.slice().sort().join(',');
+  }, [apiMatchIds]);
+  
+  const stableApiMatchIds = useMemo(() => {
+    // If key hasn't changed, return the previous array reference
+    if (stableRef.current.key === apiMatchIdsKey) {
+      return stableRef.current.array;
+    }
+    
+    // Key changed, update ref and return new array
+    stableRef.current = {
+      key: apiMatchIdsKey,
+      array: apiMatchIdsKey ? apiMatchIdsKey.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id)) : undefined
+    };
+    
+    return stableRef.current.array;
+  }, [apiMatchIdsKey]);
+  
   // Load from cache immediately (cache is populated during initial data load)
   const [liveScores, setLiveScores] = useState<Map<number, LiveScore>>(() => {
     if (!gw) return new Map();
@@ -60,6 +88,7 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
     let alive = true;
     let pollInterval: number | null = null;
     let lastUpdateTime = Date.now();
+    let isSettingUp = false;
 
     // Check cache first
     const loadFromCache = () => {
@@ -75,6 +104,7 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
     };
 
     async function fetchLiveScores(_isInitialCheck: boolean = false) {
+      if (!alive) return;
       try {
         let query = supabase
           .from('live_scores')
@@ -85,26 +115,19 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
           // When GW is provided, fetch ALL live scores for that GW
           // Don't filter by apiMatchIds because some fixtures might not have api_match_id set yet
           // but still have live scores in the database
-        } else if (apiMatchIds && apiMatchIds.length > 0) {
+        } else if (stableApiMatchIds && stableApiMatchIds.length > 0) {
           // Only filter by apiMatchIds if no GW is provided
-          query = query.in('api_match_id', apiMatchIds);
+          query = query.in('api_match_id', stableApiMatchIds);
         }
 
         const { data, error: fetchError } = await query;
 
         if (fetchError) {
-          console.error('[useLiveScores] Error fetching scores:', fetchError);
           if (alive) {
             setError(fetchError.message);
             setLoading(false);
           }
           return;
-        }
-
-        console.log('[useLiveScores] Fetched live scores:', (data || []).length, 'records');
-        if (apiMatchIds && apiMatchIds.length > 0) {
-          console.log('[useLiveScores] Looking for api_match_ids:', apiMatchIds);
-          console.log('[useLiveScores] Found api_match_ids in response:', (data || []).map((s: LiveScore) => s.api_match_id));
         }
 
         // Initialize map with fetched data
@@ -156,6 +179,9 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
     }
 
     async function setupSubscription() {
+      if (isSettingUp || !alive) return;
+      isSettingUp = true;
+      
       try {
         // Check cache first - if available, use it immediately, then refresh
         const hasCache = loadFromCache();
@@ -168,8 +194,18 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
         // Fetch initial live scores (or refresh if cache exists)
         await fetchLiveScores(true);
 
-        // Set up real-time subscription
-        const channelName = `live_scores_${gw || 'all'}_${apiMatchIds?.join('-') || 'all'}_${Date.now()}`;
+        if (!alive) {
+          isSettingUp = false;
+          return;
+        }
+
+        // Set up real-time subscription with stable channel name (no Date.now())
+        const channelName = `live_scores_${gw || 'all'}_${stableApiMatchIds?.join('-') || 'all'}`;
+        
+        // Remove any existing channel first
+        if (channel) {
+          supabase.removeChannel(channel);
+        }
         
         channel = supabase
           .channel(channelName)
@@ -192,8 +228,8 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
                 }
                 
                 // If no GW but apiMatchIds provided, filter by apiMatchIds
-                if (apiMatchIds && apiMatchIds.length > 0) {
-                  return apiMatchIds.includes(score.api_match_id);
+                if (stableApiMatchIds && stableApiMatchIds.length > 0) {
+                  return stableApiMatchIds.includes(score.api_match_id);
                 }
                 
                 // If neither GW nor apiMatchIds provided, include all
@@ -206,7 +242,6 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
 
                 if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
                   const newScore = payload.new as LiveScore;
-                  console.log('[useLiveScores] Real-time update received:', payload.eventType, newScore?.api_match_id);
                   if (shouldInclude(newScore)) {
                     const prevScore = prev.get(newScore.api_match_id);
                     const scoreChanged = !prevScore || 
@@ -221,7 +256,6 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
                       updated.set(newScore.api_match_id, newScore);
                       hasChanges = true;
                       lastUpdateTime = Date.now();
-                      console.log('[useLiveScores] Updated score for match', newScore.api_match_id, 'minute:', newScore.minute);
                     }
                   }
                 } else if (payload.eventType === 'DELETE') {
@@ -232,18 +266,19 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
                   }
                 }
 
-                return hasChanges ? new Map(updated) : new Map(prev);
+                return hasChanges ? new Map(updated) : prev;
               });
             }
           )
           .subscribe((status) => {
-            console.log('[useLiveScores] Subscription status:', status);
+            if (!alive) return;
+            
             if (status === 'SUBSCRIBED') {
-              console.log('[useLiveScores] Successfully subscribed to real-time updates');
+              isSettingUp = false;
             } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-              console.error('[useLiveScores] Channel error:', status);
+              // Don't log as error - this is expected during cleanup
+              isSettingUp = false;
               if (alive) {
-                setError('Real-time subscription failed, using polling fallback');
                 // Start polling as fallback
                 if (!pollInterval) {
                   pollInterval = window.setInterval(() => {
@@ -258,9 +293,9 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
 
         // Fallback polling: If no real-time updates received for 30 seconds, start polling
         const fallbackCheck = setInterval(() => {
+          if (!alive) return;
           const timeSinceLastUpdate = Date.now() - lastUpdateTime;
           if (timeSinceLastUpdate > 30000 && !pollInterval) {
-            console.warn('[useLiveScores] No real-time updates for 30s, starting polling fallback');
             pollInterval = window.setInterval(() => {
               if (alive) {
                 fetchLiveScores();
@@ -275,7 +310,7 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
         };
 
       } catch (err: any) {
-        console.error('[useLiveScores] Error setting up subscription:', err);
+        isSettingUp = false;
         if (alive) {
           setError(err?.message || 'Failed to set up live scores subscription');
           setLoading(false);
@@ -295,14 +330,17 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
 
     return () => {
       alive = false;
+      isSettingUp = false;
       if (channel) {
         supabase.removeChannel(channel);
+        channel = null;
       }
       if (pollInterval) {
         clearInterval(pollInterval);
+        pollInterval = null;
       }
     };
-  }, [gw, apiMatchIds ? apiMatchIds.join(',') : undefined]);
+  }, [gw, stableApiMatchIds]);
 
   return { liveScores, loading, error };
 }

@@ -1138,7 +1138,7 @@ export default function TablesPage() {
                   createSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
               }}
-              className="text-[#1C8376] font-semibold text-sm hover:text-[#1C8376] no-underline flex items-center gap-1"
+              className="text-[#1C8376] font-semibold text-sm no-underline flex items-center gap-1"
             >
               Create League
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

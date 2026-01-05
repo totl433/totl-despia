@@ -850,7 +850,7 @@ export default function GlobalLeaderboardPage() {
                 className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
                   activeTab === "lastgw"
                     ? "bg-[#1C8376] text-white shadow-md"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                    : "text-slate-600"
                 }`}
               >
                 GW
@@ -860,7 +860,7 @@ export default function GlobalLeaderboardPage() {
                 className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
                   activeTab === "form5"
                     ? "bg-[#1C8376] text-white shadow-md"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                    : "text-slate-600"
                 }`}
               >
                 5
@@ -870,7 +870,7 @@ export default function GlobalLeaderboardPage() {
                 className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
                   activeTab === "form10"
                     ? "bg-[#1C8376] text-white shadow-md"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                    : "text-slate-600"
                 }`}
               >
                 10
@@ -880,7 +880,7 @@ export default function GlobalLeaderboardPage() {
                 className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all flex items-center justify-center ${
                   activeTab === "overall"
                     ? "bg-[#1C8376] text-white shadow-md"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                    : "text-slate-600"
                 }`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="w-5 h-5">

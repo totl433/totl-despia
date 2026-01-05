@@ -27,6 +27,7 @@ const SwipeCardPreview = lazy(() => import("./pages/SwipeCardPreview"));
 const CookiePolicyPage = lazy(() => import("./pages/CookiePolicy"));
 const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsAndConditionsPage = lazy(() => import("./pages/TermsAndConditions"));
+const HomeExperimental = lazy(() => import("./pages/HomeExperimental"));
 
 // New onboarding + auth flow
 import { AuthGate } from "./features/auth";
@@ -198,22 +199,8 @@ function AppContent() {
       return;
     }
     
-    // Check if this is a fresh install (no cache exists for this user)
-    // If fresh install, skip blocking preload and let pages load their own data
-    const cacheKey = `home:basic:${user.id}`;
-    const hasExistingCache = localStorage.getItem(`despia:cache:${cacheKey}`) !== null;
-    
-    if (!hasExistingCache) {
-      console.log('[Pre-loading] Fresh install detected (no cache), skipping blocking preload');
-      // Start loading in background (non-blocking) so cache is ready for next time
-      loadInitialData(user.id)
-        .then(() => console.log('[Pre-loading] Background preload complete'))
-        .catch((e) => console.warn('[Pre-loading] Background preload failed:', e));
-      setInitialDataLoaded(true);
-      return;
-    }
-    
-    // Start loading (blocking - we have cache, so user expects instant experience)
+    // ALWAYS block and pre-load ALL data before showing page
+    // This ensures all data is ready instantly
     console.log('[Pre-loading] Starting initial data load for user:', user.id);
     bootLog.initialDataStart(user.id);
     const startTime = Date.now();
@@ -237,6 +224,8 @@ function AppContent() {
         bootLog.initialDataSuccess(duration);
         setInitialDataLoaded(true);
         setInitialDataLoading(false);
+        // Mark pre-load as complete so HomePage knows cache is ready
+        sessionStorage.setItem('preload:complete', 'true');
       })
       .catch((error) => {
         clearTimeout(timeoutId);
@@ -556,7 +545,7 @@ function AppContent() {
               </div>
               <button
                 onClick={dismissWelcome}
-                className="absolute top-0 right-0 text-[#1C8376]/60 hover:text-white text-2xl font-bold"
+                className="absolute top-0 right-0 text-[#1C8376]/60 text-2xl font-bold"
                 aria-label="Dismiss"
               >
                 ×
@@ -578,6 +567,7 @@ function AppContent() {
               <Route path="/predictions" element={<RequireAuth><PredictionsPage /></RequireAuth>} />
               <Route path="/global" element={<RequireAuth><GlobalPage /></RequireAuth>} />
               <Route path="/temp-global" element={<RequireAuth><TempGlobalPage /></RequireAuth>} />
+              <Route path="/home-experimental" element={<RequireAuth><ErrorBoundary><HomeExperimental /></ErrorBoundary></RequireAuth>} />
               <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
               <Route path="/profile/notifications" element={<RequireAuth><NotificationCentrePage /></RequireAuth>} />
               <Route path="/profile/email-preferences" element={<RequireAuth><EmailPreferencesPage /></RequireAuth>} />

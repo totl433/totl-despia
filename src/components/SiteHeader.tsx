@@ -19,7 +19,7 @@ export default function SiteHeader() {
       to={to}
       onClick={() => setMenuOpen(false)}
       className={({ isActive }) =>
-        `px-3 py-2 rounded hover:bg-white/10 transition ` +
+        `px-3 py-2 rounded ` +
         (isActive ? "text-white" : "text-white/80")
       }
     >
@@ -67,14 +67,14 @@ export default function SiteHeader() {
                   window.location.href = '/auth';
                 }, 500);
               }}
-              className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-md text-white text-sm font-medium transition-colors"
+              className="px-3 py-1 bg-white/20 rounded-md text-white text-sm font-medium"
             >
               Sign Out
             </button>
             
             {/* Hamburger menu - mobile only */}
             <button
-              className="sm:hidden inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-white/10"
+              className="sm:hidden inline-flex items-center justify-center h-8 w-8 rounded-md"
               aria-label="Menu"
               onClick={() => setMenuOpen(o => !o)}
             >
@@ -103,7 +103,7 @@ export default function SiteHeader() {
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => setMenuOpen(false)}
-              className="px-3 py-2 rounded hover:bg-green-50 transition-colors text-green-600 hover:text-green-700 flex items-center gap-2"
+              className="px-3 py-2 rounded text-green-600 flex items-center gap-2"
             >
               <span>📱</span>
               Join WhatsApp Community
@@ -119,7 +119,7 @@ export default function SiteHeader() {
                 await signOut();
                 setMenuOpen(false);
               }}
-              className="px-3 py-2 text-left text-red-600 hover:bg-red-50 transition-colors border-t border-gray-100 mt-2"
+              className="px-3 py-2 text-left text-red-600 border-t border-gray-100 mt-2"
             >
               Sign Out
             </button>

@@ -163,14 +163,12 @@ a {
 }
 
 .chip-green {
-  background-color: #10b981; /* emerald-500 */
-  color: #ffffff;
+  @apply bg-emerald-500 text-white;
   border: 1px solid transparent; /* Default transparent border to allow border-2 to show */
 }
 
 .chip-grey {
-  background-color: #f1f5f9; /* slate-100 */
-  color: #64748b; /* slate-500 */
+  @apply bg-slate-100 text-slate-500;
 }
 
 /* GPU-optimized skeleton chips */

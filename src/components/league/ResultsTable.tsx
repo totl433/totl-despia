@@ -170,14 +170,14 @@ export default function ResultsTable({
                       <span>{r.name}</span>
                     </div>
                   </td>
-                  <td className={`py-4 text-center tabular-nums font-bold ${isApiTestLeague && hasLiveFixtures ? 'pulse-live-score' : ''}`} style={{ width: '50px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc', color: '#1C8376' }}>{r.score}</td>
-                  {members.length >= 3 && <td className={`py-4 text-center tabular-nums ${isApiTestLeague && hasLiveFixtures ? 'pulse-live-score' : ''}`} style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.unicorns}</td>}
+                  <td className={`py-4 text-center tabular-nums font-bold text-[#1C8376] bg-slate-50 w-[50px] pl-1 pr-1 ${isApiTestLeague && hasLiveFixtures ? 'pulse-live-score' : ''}`}>{r.score}</td>
+                  {members.length >= 3 && <td className={`py-4 text-center tabular-nums bg-slate-50 w-[35px] pl-1 pr-1 ${isApiTestLeague && hasLiveFixtures ? 'pulse-live-score' : ''}`}>{r.unicorns}</td>}
                 </tr>
               );
             })}
             {!rows.length && (
-              <tr style={{ backgroundColor: '#f8fafc' }}>
-                <td className="px-4 py-6 text-slate-500 text-center" colSpan={members.length >= 3 ? 4 : 3} style={{ backgroundColor: '#f8fafc' }}>
+              <tr className="bg-slate-50">
+                <td className="px-4 py-6 text-slate-500 text-center bg-slate-50" colSpan={members.length >= 3 ? 4 : 3}>
                   No results recorded for GW {resGw} yet.
                 </td>
               </tr>

@@ -311,6 +311,7 @@ export default function LeaguePage() {
 
   // Ref to track current liveScores without causing re-renders
   const liveScoresRef = useRef<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
+  const liveScoresPrevRef = useRef<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
   // Track previous positions for animation (using ref to persist across renders)
   const prevPositionsRef = useRef<Map<string, number>>(new Map());
   const [positionChangeKeys, setPositionChangeKeys] = useState<Set<string>>(new Set());
@@ -860,19 +861,52 @@ ${shareUrl}`;
   }, [gwResultsVersion]); // Re-run when app_gw_results changes
 
   // data for GW tabs
-  const memberIds = useMemo(() => members.map((m) => m.id), [members]);
+  // Memoize memberIds - create stable reference that only changes when member IDs actually change
+  const memberIdsKey = useMemo(() => members.map((m) => m.id).sort().join(','), [members]);
+  const memberIds = useMemo(() => members.map((m) => m.id), [memberIdsKey]);
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [picks, setPicks] = useState<PickRow[]>([]);
   const [subs, setSubs] = useState<SubmissionRow[]>([]);
   const [results, setResults] = useState<ResultRowRaw[]>([]);
 
   // Get api_match_ids from fixtures for real-time subscription
-  const apiMatchIds = useMemo(() => {
-    if (!fixtures || fixtures.length === 0) return [];
-    return fixtures
+  // Memoize with stable reference - only change when IDs actually change
+  // Use a ref to track previous value and only update if IDs actually changed
+  const apiMatchIdsPrevRef = useRef<string>('');
+  const fixturesLengthRef = useRef<number>(0);
+  const apiMatchIdsKey = useMemo(() => {
+    // Quick check: if fixtures length hasn't changed and we have a previous key, check if IDs are same
+    const currentLength = fixtures?.length || 0;
+    if (currentLength === fixturesLengthRef.current && apiMatchIdsPrevRef.current) {
+      // Length is same, check if IDs are actually the same
+      const currentIds = fixtures
+        ?.map(f => f.api_match_id)
+        .filter((id): id is number => id !== null && id !== undefined)
+        .sort()
+        .join(',') || '';
+      if (currentIds === apiMatchIdsPrevRef.current) {
+        return apiMatchIdsPrevRef.current; // Same IDs, return previous key
+      }
+    }
+    
+    // IDs changed or first time - update
+    fixturesLengthRef.current = currentLength;
+    if (!fixtures || fixtures.length === 0) {
+      apiMatchIdsPrevRef.current = '';
+      return '';
+    }
+    const ids = fixtures
       .map(f => f.api_match_id)
-      .filter((id): id is number => id !== null && id !== undefined);
+      .filter((id): id is number => id !== null && id !== undefined)
+      .sort()
+      .join(',');
+    apiMatchIdsPrevRef.current = ids;
+    return ids;
   }, [fixtures]);
+  const apiMatchIds = useMemo(() => {
+    if (!apiMatchIdsKey) return [];
+    return apiMatchIdsKey.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+  }, [apiMatchIdsKey]);
 
   // Subscribe to real-time live scores updates (replaces polling)
   const isApiTestLeague = useMemo(() => league?.name === 'API Test', [league?.name]);
@@ -937,15 +971,49 @@ ${shareUrl}`;
     return currentGw || selectedGw || undefined;
   }, [isApiTestLeague, currentTestGw, currentGw, selectedGw]);
   
+  // Memoize the apiMatchIds array passed to useLiveScores to prevent re-subscriptions
+  // Use a ref to track previous key and array, only update if key actually changed
+  const apiMatchIdsForHookRef = useRef<{ key: string; array: number[] | undefined }>({ 
+    key: '', 
+    array: undefined 
+  });
+  const apiMatchIdsForHook = useMemo(() => {
+    const currentKey = apiMatchIdsKey || '';
+    
+    // If key hasn't changed, return the previous array reference
+    if (apiMatchIdsForHookRef.current.key === currentKey) {
+      return apiMatchIdsForHookRef.current.array;
+    }
+    
+    // Key changed, update ref and return new array
+    const newArray = currentKey 
+      ? currentKey.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id))
+      : undefined;
+    
+    apiMatchIdsForHookRef.current = {
+      key: currentKey,
+      array: newArray
+    };
+    
+    return newArray;
+  }, [apiMatchIdsKey]);
+  
   const { liveScores: liveScoresMap } = useLiveScores(
     gwForSubscription,
-    apiMatchIds.length > 0 ? apiMatchIds : undefined
+    apiMatchIdsForHook
   );
 
   // Convert Map to Record format for backward compatibility with existing code
+  // Only update if content actually changed to prevent infinite loops
   const liveScores = useMemo(() => {
     const result: Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }> = {};
-    if (!fixtures || fixtures.length === 0) return result;
+    if (!fixtures || fixtures.length === 0) {
+      // Check if previous was also empty
+      const prevKeys = Object.keys(liveScoresPrevRef.current);
+      if (prevKeys.length === 0) return liveScoresPrevRef.current;
+      liveScoresPrevRef.current = result;
+      return result;
+    }
     fixtures.forEach(fixture => {
       const apiMatchId = fixture.api_match_id;
       if (apiMatchId) {
@@ -960,7 +1028,30 @@ ${shareUrl}`;
         }
       }
     });
-    return result;
+    // Compare with previous - only return new object if content changed
+    const prev = liveScoresPrevRef.current;
+    const resultKeys = Object.keys(result).map(Number);
+    const prevKeys = Object.keys(prev).map(Number);
+    if (resultKeys.length !== prevKeys.length) {
+      liveScoresPrevRef.current = result;
+      return result;
+    }
+    // Check if any values changed
+    let hasChanges = false;
+    for (const key of resultKeys) {
+      const r = result[key];
+      const p = prev[key];
+      if (!p || r.homeScore !== p.homeScore || r.awayScore !== p.awayScore || r.status !== p.status || r.minute !== p.minute) {
+        hasChanges = true;
+        break;
+      }
+    }
+    if (hasChanges) {
+      liveScoresPrevRef.current = result;
+      return result;
+    }
+    // No changes - return previous reference
+    return prev;
   }, [liveScoresMap, fixtures]);
 
   // MLT rows
@@ -1220,7 +1311,17 @@ ${shareUrl}`;
       }
 
       if (!alive) return;
-      setFixtures((fx as Fixture[]) ?? []);
+      // Only update if fixtures actually changed to prevent flashing
+      setFixtures((prev) => {
+        const newFx = (fx as Fixture[]) ?? [];
+        if (prev.length !== newFx.length) return newFx;
+        if (prev.length === 0 && newFx.length === 0) return prev;
+        // Check if any fixture changed
+        const hasChanged = prev.some((f, i) => 
+          !newFx[i] || f.id !== newFx[i].id || f.fixture_index !== newFx[i].fixture_index
+        ) || newFx.some((f, i) => !prev[i] || f.id !== prev[i].id || f.fixture_index !== prev[i].fixture_index);
+        return hasChanged ? newFx : prev;
+      });
 
       if (!memberIds.length) {
         setPicks([]);
@@ -1376,8 +1477,24 @@ ${shareUrl}`;
       }
       
       if (!alive) return;
-      setPicks((pk as PickRow[]) ?? []);
-      setSubs((submissions as SubmissionRow[]) ?? []);
+      // Only update if picks actually changed
+      setPicks((prev) => {
+        const newPicks = (pk as PickRow[]) ?? [];
+        if (prev.length !== newPicks.length) return newPicks;
+        if (prev.length === 0 && newPicks.length === 0) return prev;
+        const prevStr = JSON.stringify(prev.sort((a, b) => a.fixture_index - b.fixture_index));
+        const newStr = JSON.stringify(newPicks.sort((a, b) => a.fixture_index - b.fixture_index));
+        return prevStr === newStr ? prev : newPicks;
+      });
+      // Only update if subs actually changed
+      setSubs((prev) => {
+        const newSubs = (submissions as SubmissionRow[]) ?? [];
+        if (prev.length !== newSubs.length) return newSubs;
+        if (prev.length === 0 && newSubs.length === 0) return prev;
+        const prevStr = JSON.stringify(prev);
+        const newStr = JSON.stringify(newSubs);
+        return prevStr === newStr ? prev : newSubs;
+      });
 
       // For API Test league GW 1, results are stored with gw=1 (same as regular results)
       // We'll need to check if results exist for test fixtures specifically
@@ -1386,7 +1503,15 @@ ${shareUrl}`;
         .select("gw,fixture_index,result")
         .eq("gw", useTestFixtures ? 1 : (gwForData || 0));
       if (!alive) return;
-      setResults((rs as ResultRowRaw[]) ?? []);
+      // Only update if results actually changed
+      setResults((prev) => {
+        const newResults = (rs as ResultRowRaw[]) ?? [];
+        if (prev.length !== newResults.length) return newResults;
+        if (prev.length === 0 && newResults.length === 0) return prev;
+        const prevStr = JSON.stringify(prev.sort((a, b) => a.fixture_index - b.fixture_index));
+        const newStr = JSON.stringify(newResults.sort((a, b) => a.fixture_index - b.fixture_index));
+        return prevStr === newStr ? prev : newResults;
+      });
     })();
 
     return () => {
@@ -1726,6 +1851,10 @@ ${shareUrl}`;
      ========================= */
 
   function MltTab() {
+    // CRITICAL: Call hooks in same order as other tab components to prevent hook ordering errors
+    // Add matching hook calls to ensure consistent hook count across all tab components
+    const _dummyGw = useMemo(() => currentGw ?? null, [currentGw]);
+    const _dummyState = useGameweekState(_dummyGw);
 
     // Check if this is a late-starting league (not one of the special leagues that start from GW0)
     // Note: "API Test" is excluded - it uses test API data, not regular game data
@@ -1755,7 +1884,7 @@ ${shareUrl}`;
           <p className="text-slate-600 mb-4">Share your league code with friends to get the competition going!</p>
           <button
             onClick={() => setShowInvite(true)}
-            className="px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
+            className="px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg"
           >
             Share League Code
           </button>
@@ -1779,7 +1908,7 @@ ${shareUrl}`;
             <PointsFormToggle showForm={showForm} onToggle={setShowForm} />
             <button
               onClick={() => setShowTableModal(true)}
-              className="flex items-center justify-center gap-1.5 bg-white border-2 border-slate-300 hover:bg-slate-50 rounded-full text-slate-600 hover:text-slate-800 cursor-help transition-colors flex-shrink-0 px-3 py-2"
+              className="flex items-center justify-center gap-1.5 bg-white border-2 border-slate-300 rounded-full text-slate-600 cursor-help flex-shrink-0 px-3 py-2"
             >
               <img 
                 src="/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png" 
@@ -1809,9 +1938,17 @@ ${shareUrl}`;
   }
 
   function GwPicksTab() {
-    const picksGw = league?.name === 'API Test' ? (currentTestGw ?? 1) : currentGw;
+    // Memoize picksGw to prevent unnecessary re-renders and hook re-runs
+    // CRITICAL: Always return a number or null, never undefined, to ensure consistent hook calls
+    const picksGw = useMemo(() => {
+      if (league?.name === 'API Test') {
+        return currentTestGw ?? 1;
+      }
+      return currentGw ?? null;
+    }, [league?.name, currentTestGw, currentGw]);
     
     // Use centralized game state system for deadline checks
+    // Always pass a number or null (never undefined) to ensure consistent hook calls
     const { state: picksGwState } = useGameweekState(picksGw);
     
     if (!picksGw) {
@@ -2151,12 +2288,20 @@ ${shareUrl}`;
   }
 
   function GwResultsTab() {
+    // CRITICAL: Call hooks in same order as other tab components to prevent hook ordering errors
+    // Add matching hook calls to ensure consistent hook count across all tab components
+    const resGwMemo = useMemo(() => {
+      if (league?.name === 'API Test') {
+        return currentTestGw ?? 1;
+      }
+      return tab === "gwr" ? (manualGwSelectedRef.current ? selectedGw : (currentGw || selectedGw)) : selectedGw;
+    }, [league?.name, currentTestGw, tab, selectedGw, currentGw]);
+    const _dummyState = useGameweekState(resGwMemo);
+    
     // For Live Table tab, prioritize currentGw (the active/live GW) over selectedGw
     // UNLESS the user has manually selected a GW, in which case use selectedGw
     // For other tabs, use selectedGw
-    const resGw = league?.name === 'API Test' 
-      ? (currentTestGw ?? 1) 
-      : (tab === "gwr" ? (manualGwSelectedRef.current ? selectedGw : (currentGw || selectedGw)) : selectedGw);
+    const resGw = resGwMemo;
     
     if (!resGw || (availableGws.length === 0 && league?.name !== 'API Test')) {
       return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No gameweek selected.</div>;
@@ -2483,7 +2628,7 @@ ${shareUrl}`;
               />
               <button
                 onClick={() => setShowScoringModal(true)}
-                className="flex items-center justify-center gap-1.5 bg-white border-2 border-slate-300 hover:bg-slate-50 rounded-full text-slate-600 hover:text-slate-800 cursor-help transition-colors flex-shrink-0 px-3 py-2"
+                className="flex items-center justify-center gap-1.5 bg-white border-2 border-slate-300 rounded-full text-slate-600 cursor-help flex-shrink-0 px-3 py-2"
               >
                 <img 
                   src="/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png" 
@@ -2707,7 +2852,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
             {/* Back button */}
             <Link 
               to="/leagues" 
-              className="flex items-center text-slate-600 hover:text-slate-900 transition-colors -ml-2 px-2 py-1"
+              className="flex items-center text-slate-600 -ml-2 px-2 py-1"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -2722,7 +2867,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                   console.log('[League] Badge clicked, opening modal. isMember:', isMember);
                   setShowBadgeModal(true);
                 }}
-                className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 border border-slate-200 flex-shrink-0 relative hover:opacity-80 transition-opacity cursor-pointer"
+                className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 border border-slate-200 flex-shrink-0 relative cursor-pointer"
               >
                 {league ? (
                   <img
@@ -2762,7 +2907,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
             <div className="relative" style={{ zIndex: 100 }}>
               <button
                 onClick={() => setShowHeaderMenu(!showHeaderMenu)}
-                className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 transition-colors -mr-2"
+                className="flex items-center justify-center w-8 h-8 rounded-full -mr-2"
                 aria-label="Menu"
               >
                 <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2791,7 +2936,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                         setShowAdminMenu(true);
                         setShowHeaderMenu(false);
                       }}
-                      className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-colors flex items-center gap-2 touch-manipulation"
+                      className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
                     >
                       <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -2810,7 +2955,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                       setShowBadgeUpload(true);
                       setShowHeaderMenu(false);
                     }}
-                    className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-colors flex items-center gap-2 touch-manipulation"
+                    className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
                   >
                     <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -2823,7 +2968,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                     setShowInvite(true);
                     setShowHeaderMenu(false);
                   }}
-                  className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-colors flex items-center gap-2 touch-manipulation"
+                  className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
                 >
                   <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -2835,7 +2980,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                     shareLeague();
                     setShowHeaderMenu(false);
                   }}
-                  className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-colors flex items-center gap-2 touch-manipulation"
+                  className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
                 >
                   <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -2847,7 +2992,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                     setShowLeaveConfirm(true);
                     setShowHeaderMenu(false);
                   }}
-                  className="w-full text-left px-0 py-2.5 text-base font-bold text-red-600 hover:bg-red-50 active:bg-red-100 rounded-lg transition-colors flex items-center gap-2 touch-manipulation"
+                  className="w-full text-left px-0 py-2.5 text-base font-bold text-red-600 active:bg-red-100 rounded-lg flex items-center gap-2 touch-manipulation"
                 >
                   <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -2868,7 +3013,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                         setTab("chat");
               }}
               className={
-                "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight " +
+                "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold relative leading-tight " +
                 (tab === "chat" ? "text-[#1C8376]" : "text-slate-400")
               }
             >
@@ -2888,7 +3033,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                             setTab("gwr");
                 }}
                 className={
-                  "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight flex items-center justify-center gap-1.5 " +
+                  "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold relative leading-tight flex items-center justify-center gap-1.5 " +
                   (tab === "gwr" ? "text-[#1C8376]" : "text-slate-400")
                 }
               >
@@ -2931,7 +3076,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                             setTab("gw");
                 }}
                 className={
-                  "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight " +
+                  "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold relative leading-tight " +
                   (tab === "gw" ? "text-[#1C8376]" : "text-slate-400")
                 }
               >
@@ -2948,7 +3093,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                         setTab("mlt");
               }}
               className={
-                "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold transition-colors relative leading-tight " +
+                "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold relative leading-tight " +
                 (tab === "mlt" ? "text-[#1C8376]" : "text-slate-400")
               }
             >
@@ -2987,7 +3132,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
             {/* Close button */}
             <button
               onClick={() => setShowAdminMenu(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 hover:text-gray-800 transition-colors"
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -3013,7 +3158,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                               setShowRemoveConfirm(true);
                               setShowAdminMenu(false);
                             }}
-                            className="px-3 py-1.5 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded-md transition-colors font-medium"
+                            className="px-3 py-1.5 text-xs bg-red-100 text-red-700 rounded-md font-medium"
                           >
                             Remove
                           </button>
@@ -3032,7 +3177,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                       setShowEndLeagueConfirm(true);
                       setShowAdminMenu(false);
                     }}
-                    className="w-full px-4 py-3 text-sm bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+                    className="w-full px-4 py-3 text-sm bg-red-600 text-white rounded-lg font-medium flex items-center justify-center gap-2"
                   >
                     🗑️ End League
                   </button>
@@ -3068,7 +3213,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                 setBadgeUploadSuccess(false);
                 setPreviewUrl(null);
               }}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 hover:text-gray-800 transition-colors z-10"
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 z-10"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -3101,7 +3246,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                         <button
                           onClick={handleRemoveBadge}
                           disabled={uploadingBadge}
-                          className="px-4 py-2 text-xs bg-red-100 text-red-700 active:bg-red-200 rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation min-h-[36px]"
+                          className="px-4 py-2 text-xs bg-red-100 text-red-700 active:bg-red-200 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation min-h-[36px]"
                         >
                           Remove
                         </button>
@@ -3130,7 +3275,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                       />
                       <label
                         htmlFor="badge-upload-input"
-                        className="block w-full border-2 border-dashed border-slate-300 rounded-lg p-6 text-center active:bg-slate-50 active:border-[#1C8376] transition-colors touch-manipulation"
+                        className="block w-full border-2 border-dashed border-slate-300 rounded-lg p-6 text-center active:bg-slate-50 active:border-[#1C8376] touch-manipulation"
                       >
                         <div className="flex flex-col items-center gap-2">
                           <svg className="w-10 h-10 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3253,14 +3398,14 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                           setPreviewUrl(null);
                         }}
                         disabled={uploadingBadge}
-                        className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-lg active:bg-slate-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation min-h-[44px]"
+                        className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-lg active:bg-slate-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation min-h-[44px]"
                       >
                         Cancel
                       </button>
                       <button
                         onClick={handleCropAndUpload}
                         disabled={uploadingBadge || !croppedAreaPixels}
-                        className="flex-1 px-4 py-3 bg-[#1C8376] text-white rounded-lg active:bg-emerald-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation min-h-[44px]"
+                        className="flex-1 px-4 py-3 bg-[#1C8376] text-white rounded-lg active:bg-emerald-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation min-h-[44px]"
                       >
                         {uploadingBadge ? (
                           <span className="flex items-center justify-center gap-2">
@@ -3306,17 +3451,17 @@ If two or more players are tied on Points in the table, the player with the most
                 onClick={() => {
                   navigator.clipboard.writeText(league.code);
                 }}
-                className="px-3 py-1.5 border rounded-md text-sm hover:bg-slate-50"
+                className="px-3 py-1.5 border rounded-md text-sm"
               >
                 Copy
               </button>
-              <button onClick={shareLeague} className="px-3 py-1.5 border rounded-md text-sm hover:bg-slate-50">
+              <button onClick={shareLeague} className="px-3 py-1.5 border rounded-md text-sm">
                 Share
               </button>
             </div>
             <div className="mt-3 text-xs text-slate-500">{members.length}/{MAX_MEMBERS} members</div>
             <div className="mt-6 flex justify-end">
-              <button onClick={() => setShowInvite(false)} className="px-4 py-2 border border-slate-300 rounded-md hover:bg-slate-50">
+              <button onClick={() => setShowInvite(false)} className="px-4 py-2 border border-slate-300 rounded-md">
                 Close
               </button>
             </div>
@@ -3335,14 +3480,14 @@ If two or more players are tied on Points in the table, the player with the most
             <div className="flex gap-3">
               <button
                 onClick={() => setShowLeaveConfirm(false)}
-                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 transition-colors"
+                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-md"
                 disabled={leaving}
               >
                 Cancel
               </button>
               <button
                 onClick={leaveLeague}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md disabled:opacity-50"
                 disabled={leaving}
               >
                 {leaving ? "Leaving..." : "Leave League"}
@@ -3363,14 +3508,14 @@ If two or more players are tied on Points in the table, the player with the most
             <div className="flex gap-3">
               <button
                 onClick={() => setShowJoinConfirm(false)}
-                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 transition-colors"
+                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-md"
                 disabled={joining}
               >
                 Cancel
               </button>
               <button
                 onClick={joinLeague}
-                className="flex-1 px-4 py-2 bg-[#1C8376] text-white rounded-md hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2 bg-[#1C8376] text-white rounded-md disabled:opacity-50"
                 disabled={joining}
               >
                 {joining ? "Joining..." : "Join League"}
@@ -3391,14 +3536,14 @@ If two or more players are tied on Points in the table, the player with the most
             <div className="flex gap-3">
               <button
                 onClick={() => setShowRemoveConfirm(false)}
-                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 transition-colors"
+                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-md"
                 disabled={removing}
               >
                 Cancel
               </button>
               <button
                 onClick={removeMember}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md disabled:opacity-50"
                 disabled={removing}
               >
                 {removing ? "Removing..." : "Remove Member"}
@@ -3422,14 +3567,14 @@ If two or more players are tied on Points in the table, the player with the most
             <div className="flex gap-3">
               <button
                 onClick={() => setShowEndLeagueConfirm(false)}
-                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 transition-colors"
+                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-md"
                 disabled={ending}
               >
                 Cancel
               </button>
               <button
                 onClick={endLeague}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md disabled:opacity-50"
                 disabled={ending}
               >
                 {ending ? "Ending..." : "Yes, End League"}
@@ -3482,7 +3627,7 @@ If two or more players are tied on Points in the table, the player with the most
                   setShowBadgeModal(false);
                   setShowBadgeUpload(true);
                 }}
-                className="absolute bottom-[272px] right-1/2 translate-x-[144px] w-16 h-16 rounded-full bg-white hover:bg-slate-50 shadow-2xl flex items-center justify-center transition-all z-20 border-4 border-slate-400"
+                className="absolute bottom-[272px] right-1/2 translate-x-[144px] w-16 h-16 rounded-full bg-white shadow-2xl flex items-center justify-center z-20 border-4 border-slate-400"
                 title="Edit League Badge"
               >
                 <svg className="w-8 h-8 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">

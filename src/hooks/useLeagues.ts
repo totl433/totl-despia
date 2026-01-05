@@ -70,6 +70,7 @@ export function useLeagues(options: UseLeaguesOptions = {}): UseLeaguesResult {
   
   const [loading, setLoading] = useState(() => {
     if (!userId) return false;
+    if (skipInitialFetch) return false; // If skipping initial fetch, assume cache exists
     const cached = getCached<League[]>(getLeaguesCacheKey(userId));
     return !cached || cached.length === 0;
   });

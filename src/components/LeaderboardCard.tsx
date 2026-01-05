@@ -384,16 +384,16 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
     
     return (
       <>
-        <Link to={linkTo} className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block hover:shadow-md transition-shadow">
+        <Link to={linkTo} className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block">
           <div className="p-3 h-full flex flex-col relative">
             <div className="flex items-start justify-between mb-2">
               <div className="flex items-baseline gap-[3px]" style={{ marginTop: '-4px' }}>
                 {score !== undefined && totalFixtures !== undefined ? (
                   <>
-                    <span className="text-[#1C8376]" style={{ fontSize: '38px', fontWeight: 'normal', lineHeight: '1' }}>{score}</span>
+                    <span className="text-[#1C8376] text-[38px] font-normal leading-none">{score}</span>
                     <div className="flex items-baseline gap-[4px]">
-                      <span className="text-slate-500" style={{ fontSize: '18px', fontWeight: 'normal', lineHeight: '1' }}>/</span>
-                      <span className="text-slate-500" style={{ fontSize: '18px', fontWeight: 'normal', lineHeight: '1' }}>{totalFixtures}</span>
+                      <span className="text-slate-500 text-lg font-normal leading-none">/</span>
+                      <span className="text-slate-500 text-lg font-normal leading-none">{totalFixtures}</span>
                     </div>
                   </>
                 ) : (
@@ -502,7 +502,7 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
 
   // Default variant
   return (
-    <Link to={linkTo} className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block hover:shadow-md transition-shadow">
+    <Link to={linkTo} className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block">
       <div className="p-3 h-full flex flex-col relative">
         {isActiveLive && (
           <div className="absolute bottom-3 right-3 flex items-center gap-1.5">

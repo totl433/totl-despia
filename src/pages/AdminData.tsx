@@ -113,7 +113,7 @@ export default function AdminDataPage() {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
         <div className="text-center">
           <div className="text-slate-600 mb-4">Please sign in to view admin data.</div>
-          <Link to="/profile" className="text-[#1C8376] hover:underline">Go to Profile</Link>
+          <Link to="/profile" className="text-[#1C8376]">Go to Profile</Link>
         </div>
       </div>
     );
@@ -124,7 +124,7 @@ export default function AdminDataPage() {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
         <div className="text-center">
           <div className="text-slate-600 mb-4">Access denied. Admin only.</div>
-          <Link to="/profile" className="text-[#1C8376] hover:underline">Go to Profile</Link>
+          <Link to="/profile" className="text-[#1C8376]">Go to Profile</Link>
         </div>
       </div>
     );
@@ -139,7 +139,7 @@ export default function AdminDataPage() {
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-800">Admin Data</h1>
             <Link
               to="/profile"
-              className="text-slate-600 hover:text-slate-900 transition-colors"
+              className="text-slate-600"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -234,7 +234,7 @@ export default function AdminDataPage() {
               }
             }}
             disabled={activatingCarl}
-            className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-2 bg-blue-600 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {activatingCarl ? 'Activating...' : 'Activate Carl\'s Devices'}
           </button>
@@ -277,7 +277,7 @@ export default function AdminDataPage() {
               }
             }}
             disabled={forcingCarlSubscription}
-            className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+            className="w-full py-2 bg-purple-600 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed mt-2"
           >
             {forcingCarlSubscription ? 'Forcing...' : 'Force Carl\'s Subscription Status'}
           </button>
@@ -377,7 +377,7 @@ export default function AdminDataPage() {
               }
             }}
             disabled={checkingOneSignalApi}
-            className="w-full mt-2 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full mt-2 py-2 bg-indigo-600 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {checkingOneSignalApi ? 'Checking...' : 'Check OneSignal API (Carl)'}
           </button>
@@ -475,7 +475,7 @@ export default function AdminDataPage() {
               }
             }}
             disabled={checkingOneSignalApiJof}
-            className="w-full mt-2 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full mt-2 py-2 bg-indigo-600 text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {checkingOneSignalApiJof ? 'Checking...' : 'Check OneSignal API (Jof)'}
           </button>
@@ -666,7 +666,7 @@ export default function AdminDataPage() {
                 }
               }}
               disabled={sendingNotification || !notificationTitle.trim() || !notificationMessage.trim()}
-              className="w-full py-2 bg-[#1C8376] hover:bg-[#1a7569] text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-2 bg-[#1C8376] text-white font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {sendingNotification ? 'Sending...' : 'Send to All Users'}
             </button>
@@ -898,7 +898,7 @@ export default function AdminDataPage() {
                 }
               }}
               disabled={registering || !session?.access_token}
-              className="w-full py-3 bg-white border border-slate-300 hover:bg-slate-50 disabled:bg-gray-100 disabled:opacity-50 text-slate-600 hover:text-slate-800 font-medium rounded-xl transition-colors"
+              className="w-full py-3 bg-white border border-slate-300 disabled:bg-gray-100 disabled:opacity-50 text-slate-600 font-medium rounded-xl"
             >
               {registering ? 'Enabling...' : 'Enable Notifications'}
             </button>
@@ -926,7 +926,7 @@ export default function AdminDataPage() {
                   alert('Please go to iOS Settings → TotL → Notifications and enable notifications');
                 }
               }}
-              className="w-full py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-medium rounded-xl transition-colors text-sm hidden"
+              className="w-full py-2 bg-slate-200 text-slate-800 font-medium rounded-xl text-sm hidden"
             >
               ⚙️ Open OS Settings
             </button>
@@ -968,7 +968,7 @@ export default function AdminDataPage() {
                 }
               }}
               disabled={checkingSubscription || !session?.access_token}
-              className="w-full py-3 bg-white border border-slate-300 hover:bg-slate-50 disabled:bg-gray-100 disabled:opacity-50 text-slate-600 hover:text-slate-800 font-medium rounded-xl transition-colors"
+              className="w-full py-3 bg-white border border-slate-300 disabled:bg-gray-100 disabled:opacity-50 text-slate-600 font-medium rounded-xl"
             >
               {checkingSubscription ? 'Checking...' : 'Check Subscription Status'}
             </button>
@@ -997,7 +997,7 @@ export default function AdminDataPage() {
                   setRegisterResult('⚠️ Player ID not available');
                 }
               }}
-              className="w-full py-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-600 hover:text-slate-800 font-medium rounded-xl transition-colors"
+              className="w-full py-3 bg-white border border-slate-300 text-slate-600 font-medium rounded-xl"
             >
               Copy Player ID
             </button>
@@ -1082,7 +1082,7 @@ export default function AdminDataPage() {
                         localStorage.removeItem('deepLink_result');
                         window.location.reload();
                       }}
-                      className="w-full py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium rounded-lg transition-colors text-sm"
+                      className="w-full py-2 bg-slate-200 text-slate-700 font-medium rounded-lg text-sm"
                     >
                       Clear Debug Info
                     </button>
@@ -1138,7 +1138,7 @@ export default function AdminDataPage() {
                         localStorage.removeItem('notification_logs');
                         window.location.reload();
                       }}
-                      className="w-full py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium rounded-lg transition-colors text-sm"
+                      className="w-full py-2 bg-slate-200 text-slate-700 font-medium rounded-lg text-sm"
                     >
                       Clear Notification Logs
                     </button>
@@ -1161,19 +1161,19 @@ export default function AdminDataPage() {
           <div className="space-y-2">
             <Link
               to="/api-admin"
-              className="block w-full py-3 bg-[#1C8376] hover:bg-[#1C8376]/90 text-white font-semibold rounded-xl transition-colors text-center"
+              className="block w-full py-3 bg-[#1C8376] text-white font-semibold rounded-xl text-center"
             >
               API Admin - Premier League
             </Link>
             <Link
               to="/test-fixtures"
-              className="block w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-xl transition-colors text-center"
+              className="block w-full py-3 bg-purple-600 text-white font-semibold rounded-xl text-center"
             >
               Test Fixtures (Non-PL)
             </Link>
             <Link
               to="/admin"
-              className="block w-full py-3 bg-slate-600 hover:bg-slate-700 text-white font-semibold rounded-xl transition-colors text-center"
+              className="block w-full py-3 bg-slate-600 text-white font-semibold rounded-xl text-center"
             >
               Admin Panel (Web)
             </Link>

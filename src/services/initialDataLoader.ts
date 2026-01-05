@@ -400,15 +400,15 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   const leagues = cachedLeagues;
   
   // ═══════════════════════════════════════════════════════════════════════
-  // STEP 2: PRE-WARM HOMEPAGE LEAGUE DATA CACHE (BLOCKING - must complete before page loads)
+  // STEP 2: PRE-WARM HOMEPAGE LEAGUE DATA CACHE (NON-BLOCKING - load in background)
   // ═══════════════════════════════════════════════════════════════════════
   // Homepage ML live tables need league data (members, picks, results, etc.)
   // This FULLY processes and caches the data so ML live tables load instantly.
-  // MUST be blocking to ensure cache is ready when components render.
+  // NON-BLOCKING: Start in background so app shows immediately, cache will be ready when needed.
   // ═══════════════════════════════════════════════════════════════════════
   if (leagueIds.length > 0 && currentGw) {
-    // BLOCKING - await to ensure cache is populated before page loads
-    await (async () => {
+    // NON-BLOCKING - start in background, don't await (app shows immediately)
+    (async () => {
       try {
         const leagueDataCacheKey = `home:leagueData:${userId}:${currentGw}`;
         
@@ -912,7 +912,9 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
         console.warn('[Pre-loading] Failed to pre-load league data:', error);
         // Non-critical - Home.tsx will fetch it when needed
       }
-    })();
+    })().catch(err => {
+      console.warn('[Pre-loading] Background league data load failed:', err);
+    });
   }
   
   // Ensure ML live table data is cached before returning (critical for instant load)

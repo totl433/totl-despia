@@ -1,8 +1,9 @@
-import { useMemo, memo } from 'react';
+import { useMemo, memo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
 import { ordinal, initials, toStringSet } from '../lib/helpers';
 import { useGameweekState } from '../hooks/useGameweekState';
+import type { GameweekState } from '../lib/gameweekState';
 
 export type LeagueRow = {
   id: string;
@@ -30,6 +31,7 @@ export type LeagueData = {
   latestGwWinners?: Set<string> | string[]; // Set or Array of members who topped the most recent completed GW
   latestRelevantGw?: number | null; // The GW number that latestGwWinners is from (needed to know when to hide shiny chips)
   webUserIds?: Set<string> | string[]; // Set or Array of user IDs who have picks in Web table (mirrored picks)
+  seasonLeaderName?: string | null; // Name of the player currently top of the season table (sorted by OCP)
 };
 
 export type MiniLeagueCardProps = {
@@ -41,6 +43,8 @@ export type MiniLeagueCardProps = {
   currentGw: number | null;
   showRanking?: boolean; // If false, hide member count and user position (default: true)
   onTableClick?: (leagueId: string) => void; // Callback when table icon is clicked
+  hidePlayerChips?: boolean; // If true, hide the player chips (default: false)
+  showSeasonLeader?: boolean; // If true, show season leader name with trophy (default: false) - EXPERIMENTAL ONLY
 };
 
 /**
@@ -56,6 +60,8 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
   currentGw,
   showRanking = true,
   onTableClick,
+  hidePlayerChips = false,
+  showSeasonLeader = false,
 }: MiniLeagueCardProps) {
   const members = data?.members ?? [];
   const userPosition = data?.userPosition;
@@ -64,15 +70,42 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
   // Check current GW state - shiny chips should ONLY show during RESULTS_PRE_GW
   const { state: currentGwState } = useGameweekState(currentGw);
 
+  // Use ref to track previous values and prevent unnecessary recalculations
+  const prevMemberChipsRef = useRef<JSX.Element[]>([]);
+  const prevDataKeyRef = useRef<string>('');
+  const prevCurrentGwStateRef = useRef<GameweekState | null>(null);
+  
   const memberChips = useMemo(() => {
-    if (leagueDataLoading || !data) return [];
+    if (leagueDataLoading || !data) {
+      if (prevMemberChipsRef.current.length === 0) return prevMemberChipsRef.current;
+      prevMemberChipsRef.current = [];
+      return [];
+    }
+    
     const baseMembers = data.members ?? [];
-    if (!baseMembers.length) return [];
+    if (!baseMembers.length) {
+      if (prevMemberChipsRef.current.length === 0) return prevMemberChipsRef.current;
+      prevMemberChipsRef.current = [];
+      return [];
+    }
 
-    // Debug logging for "forget it" league
-    if (row.name?.toLowerCase().includes('forget')) {
-      console.log(`[MiniLeagueCard] ${row.name} data.sortedMemberIds:`, data.sortedMemberIds);
-      console.log(`[MiniLeagueCard] ${row.name} baseMembers:`, baseMembers.map(m => ({ id: m.id, name: m.name })));
+    // Create stable key for data comparison
+    const submittedKey = data.submittedMembers instanceof Set 
+      ? Array.from(data.submittedMembers).sort().join(',')
+      : (data.submittedMembers?.join(',') ?? '');
+    const winnersKey = data.latestGwWinners instanceof Set
+      ? Array.from(data.latestGwWinners).sort().join(',')
+      : (data.latestGwWinners?.join(',') ?? '');
+    const webUsersKey = data.webUserIds instanceof Set
+      ? Array.from(data.webUserIds).sort().join(',')
+      : (data.webUserIds?.join(',') ?? '');
+    const sortedIdsKey = data.sortedMemberIds?.join(',') ?? '';
+    const membersKey = baseMembers.map(m => `${m.id}:${m.name}`).join(',');
+    const dataKey = `${data.id}:${data.userPosition}:${data.latestRelevantGw}:${submittedKey}:${winnersKey}:${webUsersKey}:${sortedIdsKey}:${membersKey}:${currentGw}:${currentGwState}`;
+    
+    // If data hasn't changed, return previous chips
+    if (dataKey === prevDataKeyRef.current && currentGwState === prevCurrentGwStateRef.current) {
+      return prevMemberChipsRef.current;
     }
 
     const orderedMembers =
@@ -82,11 +115,6 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
             .filter((m): m is LeagueMember => m !== undefined)
         : [...baseMembers].sort((a, b) => a.name.localeCompare(b.name));
 
-    // Debug logging for "forget it" league
-    if (row.name?.toLowerCase().includes('forget')) {
-      console.log(`[MiniLeagueCard] ${row.name} orderedMembers (chips order):`, orderedMembers.map(m => ({ id: m.id, name: m.name, initials: initials(m.name) })));
-    }
-
     const submittedSet = toStringSet(data.submittedMembers);
     const winnersSet = toStringSet(data.latestGwWinners);
     const webUserSet = toStringSet(data.webUserIds);
@@ -94,7 +122,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
     // Check if this is API Test league
     const isApiTestLeague = row.name === "API Test";
     
-    return orderedMembers.slice(0, 8).map((member, index) => {
+    const result = orderedMembers.slice(0, 8).map((member, index) => {
       const hasSubmitted = submittedSet.has(member.id);
       const isLatestWinner = winnersSet.has(member.id);
       const isWebUser = webUserSet.has(member.id); // User has picks in Web table (mirrored)
@@ -151,6 +179,12 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
         </div>
       );
     });
+    
+    // Store for next render
+    prevDataKeyRef.current = dataKey;
+    prevCurrentGwStateRef.current = currentGwState;
+    prevMemberChipsRef.current = result;
+    return result;
   }, [data, leagueDataLoading, row.name, currentGw, currentGwState]);
 
   const extraMembers = useMemo(() => {
@@ -167,9 +201,9 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
     <div className="rounded-xl border bg-white overflow-hidden shadow-sm w-full relative">
       <Link
         to={`/league/${row.code}`}
-        className="block p-6 !bg-white no-underline hover:text-inherit relative z-20"
+        className="block p-6 !bg-white no-underline relative z-20"
       >
-        <div className="flex items-start gap-3 relative">
+        <div className="flex items-center gap-3 relative">
           {/* League Avatar Badge */}
           <div className="flex-shrink-0 w-14 h-14 rounded-full flex items-center justify-center overflow-hidden bg-slate-100">
             <img
@@ -201,7 +235,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
             />
           </div>
 
-          <div className="flex-1 min-w-0 flex flex-col gap-1 relative">
+          <div className="flex-1 min-w-0 flex flex-col justify-center gap-1 relative">
             {/* Table Button - Positioned at top right */}
             {onTableClick && (
               <button
@@ -210,7 +244,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
                   e.stopPropagation();
                   onTableClick(row.id);
                 }}
-                className="absolute top-0 right-0 px-3 py-1.5 flex items-center justify-center rounded-full bg-[#1C8376] hover:bg-[#1C8376]/90 text-white transition-colors flex-shrink-0 shadow-sm z-10"
+                className="absolute top-0 right-0 px-3 py-1.5 flex items-center justify-center rounded-full bg-[#1C8376] text-white flex-shrink-0 shadow-sm z-10"
                 title="View GW table"
                 aria-label="View gameweek table"
               >
@@ -233,12 +267,29 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
             {/* Line 1: League Name */}
             <div className="text-base font-semibold text-slate-900 truncate pr-12">{row.name}</div>
 
-            {/* Line 2: All Submitted Status - only show when showRanking is true */}
+            {/* Line 2: Season Leader - EXPERIMENTAL ONLY - only show if showSeasonLeader prop is true */}
+            {showSeasonLeader && data?.seasonLeaderName && (
+              <div className="flex items-center gap-1.5 text-sm text-slate-400">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                  className="w-4 h-4 text-slate-400"
+                >
+                  <g>
+                    <path fill="currentColor" d="M16 3c1.1046 0 2 0.89543 2 2h2c1.1046 0 2 0.89543 2 2v1c0 2.695 -2.1323 4.89 -4.8018 4.9941 -0.8777 1.5207 -2.4019 2.6195 -4.1982 2.9209V19h3c0.5523 0 1 0.4477 1 1s-0.4477 1 -1 1H8c-0.55228 0 -1 -0.4477 -1 -1s0.44772 -1 1 -1h3v-3.085c-1.7965 -0.3015 -3.32148 -1.4 -4.19922 -2.9209C4.13175 12.8895 2 10.6947 2 8V7c0 -1.10457 0.89543 -2 2 -2h2c0 -1.10457 0.89543 -2 2 -2zm-8 7c0 2.2091 1.79086 4 4 4 2.2091 0 4 -1.7909 4 -4V5H8zM4 8c0 1.32848 0.86419 2.4532 2.06055 2.8477C6.02137 10.5707 6 10.2878 6 10V7H4zm14 2c0 0.2878 -0.0223 0.5706 -0.0615 0.8477C19.1353 10.4535 20 9.32881 20 8V7h-2z" strokeWidth="1"></path>
+                  </g>
+                </svg>
+                <span className="truncate">{data.seasonLeaderName}</span>
+              </div>
+            )}
+
+            {/* Line 3: All Submitted Status - only show when showRanking is true */}
             {showRanking && submissions?.allSubmitted && (
               <span className="text-xs font-normal text-[#1C8376] whitespace-nowrap">All Submitted</span>
             )}
 
-            {/* Line 3: Ranking (Member Count and User Position) */}
+            {/* Line 4: Ranking (Member Count and User Position) */}
             {showRanking && (
             <div className="flex items-center gap-2">
               {/* Member Count */}
@@ -310,22 +361,24 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
             )}
 
             {/* Player Chips - ordered by ML table position (1st to last) */}
-            <div className="flex items-center mt-1 py-0.5">
-              {memberChips}
-              {extraMembers > 0 && (
-                <div
-                  className={`chip-container chip-grey rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 ${
-                    extraMembers > 0 ? "chip-overlap" : ""
-                  }`}
-                  style={{
-                    width: "24px",
-                    height: "24px",
-                  }}
-                >
-                  +{extraMembers}
-                </div>
-              )}
-            </div>
+            {!hidePlayerChips && (
+              <div className="flex items-center mt-1 py-0.5">
+                {memberChips}
+                {extraMembers > 0 && (
+                  <div
+                    className={`chip-container chip-grey rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 ${
+                      extraMembers > 0 ? "chip-overlap" : ""
+                    }`}
+                    style={{
+                      width: "24px",
+                      height: "24px",
+                    }}
+                  >
+                    +{extraMembers}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -349,6 +402,34 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
   const prevSortedIds = prevProps.data?.sortedMemberIds?.join(',') ?? '';
   const nextSortedIds = nextProps.data?.sortedMemberIds?.join(',') ?? '';
   
+  // Compare members arrays deeply
+  const prevMembers = prevProps.data?.members ?? [];
+  const nextMembers = nextProps.data?.members ?? [];
+  const membersEqual = prevMembers.length === nextMembers.length &&
+    prevMembers.every((m, i) => nextMembers[i]?.id === m.id && nextMembers[i]?.name === m.name);
+  
+  // Compare Sets/Arrays for submittedMembers, latestGwWinners, webUserIds
+  const prevSubmitted = prevProps.data?.submittedMembers instanceof Set 
+    ? Array.from(prevProps.data.submittedMembers).sort().join(',')
+    : (prevProps.data?.submittedMembers?.join(',') ?? '');
+  const nextSubmitted = nextProps.data?.submittedMembers instanceof Set
+    ? Array.from(nextProps.data.submittedMembers).sort().join(',')
+    : (nextProps.data?.submittedMembers?.join(',') ?? '');
+  
+  const prevWinners = prevProps.data?.latestGwWinners instanceof Set
+    ? Array.from(prevProps.data.latestGwWinners).sort().join(',')
+    : (prevProps.data?.latestGwWinners?.join(',') ?? '');
+  const nextWinners = nextProps.data?.latestGwWinners instanceof Set
+    ? Array.from(nextProps.data.latestGwWinners).sort().join(',')
+    : (nextProps.data?.latestGwWinners?.join(',') ?? '');
+  
+  const prevWebUsers = prevProps.data?.webUserIds instanceof Set
+    ? Array.from(prevProps.data.webUserIds).sort().join(',')
+    : (prevProps.data?.webUserIds?.join(',') ?? '');
+  const nextWebUsers = nextProps.data?.webUserIds instanceof Set
+    ? Array.from(nextProps.data.webUserIds).sort().join(',')
+    : (nextProps.data?.webUserIds?.join(',') ?? '');
+  
   return (
     prevProps.row.id === nextProps.row.id &&
     prevProps.row.name === nextProps.row.name &&
@@ -358,8 +439,14 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
     prevProps.showRanking === nextProps.showRanking &&
     prevProps.data?.id === nextProps.data?.id &&
     prevProps.data?.userPosition === nextProps.data?.userPosition &&
-    prevProps.data?.members?.length === nextProps.data?.members?.length &&
+    prevProps.data?.positionChange === nextProps.data?.positionChange &&
+    prevProps.data?.latestRelevantGw === nextProps.data?.latestRelevantGw &&
+    membersEqual &&
     prevSortedIds === nextSortedIds && // CRITICAL: Re-render when sortedMemberIds changes
+    prevSubmitted === nextSubmitted &&
+    prevWinners === nextWinners &&
+    prevWebUsers === nextWebUsers &&
+    prevProps.data?.seasonLeaderName === nextProps.data?.seasonLeaderName &&
     prevProps.submissions?.allSubmitted === nextProps.submissions?.allSubmitted &&
     prevProps.submissions?.submittedCount === nextProps.submissions?.submittedCount &&
     prevProps.onTableClick === nextProps.onTableClick
