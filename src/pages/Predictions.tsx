@@ -1030,6 +1030,8 @@ if (alive && fixturesData.length > 0 && currentGw) {
           }
         }
  }
+ 
+ console.log('[Predictions] Checking if should load picks for submitted user - isSubmitted:', isSubmitted, 'user?.id:', user?.id, 'fixturesData.length:', fixturesData.length);
  } else if (isSubmitted && user?.id && fixturesData.length > 0) {
  // User has submitted - fetch picks for display purposes
  console.log('[Predictions] Loading picks from DB for submitted user, GW:', currentGw, 'user:', user.id, 'alive:', alive);
