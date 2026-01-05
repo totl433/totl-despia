@@ -1801,6 +1801,11 @@ useEffect(() => {
  // If loading is false, render immediately (data fetch completed, even if fixtures are empty)
  const needsMoreData = !deadlinePassed && loading && fixtures.length === 0;
  
+ // Debug logging
+ if (needsMoreData) {
+   console.log('[Predictions] BLOCKING: deadlinePassed=', deadlinePassed, 'loading=', loading, 'fixtures.length=', fixtures.length);
+ }
+ 
  if (needsMoreData) {
  // Show loading spinner - don't render any content until ready
  return (
