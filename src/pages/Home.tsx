@@ -630,6 +630,8 @@ export default function HomePage() {
 
   // Merge live scores: start with cached data (from initialState), then merge hook updates
   // liveScoresFromCache state already contains data loaded synchronously from cache
+  // Use ref to prevent re-renders when hook updates with empty data
+  const liveScoresPrevRef = useRef<Record<number, any>>({});
   const liveScores = useMemo(() => {
     // Start with cached data (available immediately on mount)
     const result: Record<number, { 
@@ -644,8 +646,9 @@ export default function HomePage() {
       result?: "H" | "D" | "A" | null;
     }> = { ...liveScoresFromCache };
     
-    // Merge in real-time updates from hook (background refresh)
-    if (fixtures?.length && liveScoresMap.size > 0) {
+    // Only merge hook updates if they have meaningful data (not just empty Map)
+    // This prevents re-renders when hook initializes with empty Map
+    if (fixtures?.length && liveScoresMap.size > 0 && liveScoresMap.size > cachedLiveScoresMap.size) {
     for (const fixture of fixtures) {
       if (fixture.api_match_id) {
         const liveScore = liveScoresMap.get(fixture.api_match_id);
