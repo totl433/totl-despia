@@ -726,7 +726,8 @@ export default function PredictionsPage() {
  }
  
  // CRITICAL: If picks aren't in cache but user has submitted, load them from DB immediately (like HomePage does)
- if (cached.submitted && user?.id && picks.size === 0 && fixtures.length > 0) {
+ // Check cached.picks, not picks.size (state might not be updated yet)
+ if (cached.submitted && user?.id && (!cached.picks || cached.picks.length === 0) && fixtures.length > 0) {
    console.log('[Predictions] Picks missing from cache but user submitted - loading from DB immediately');
    const { data: pk, error: pkErr } = await supabase
      .from("app_picks")
