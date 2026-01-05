@@ -1831,25 +1831,7 @@ useEffect(() => {
  );
  }
  
- // Additional loading check - but skip if deadline has passed
- if (!deadlinePassed && loading && fixtures.length === 0) {
- return (
- <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col overflow-hidden">
- <div className="sticky top-0 z-40 px-4 pt-4 pb-2 bg-gradient-to-br from-slate-50 to-slate-100">
- <div className="max-w-md mx-auto">
- <div className="flex items-center justify-center mb-4">
- <span className="text-lg font-extrabold text-slate-700">
- {currentTestGw ? `Gameweek ${currentTestGw}` : 'Loading...'}
- </span>
- </div>
- </div>
- </div>
- <div className="flex items-center justify-center flex-1">
- <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1C8376]"></div>
- </div>
- </div>
- );
- }
+ // Additional loading check removed - the condition at line 1858 already handles this case
  // Don't render until submission status is confirmed
  // Prevents blank screens and swipe card flashes
  // BUT: If we have fixtures loaded (from cache or DB), render immediately
