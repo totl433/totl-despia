@@ -842,7 +842,10 @@ if (alive && fixturesData.length > 0 && currentGw) {
           }
         });
         if (alive && resultsMap.size > 0) {
+          console.log('[Predictions] Loaded gw_results:', resultsMap.size, 'results for GW', currentGw);
           setResults(resultsMap);
+        } else if (alive) {
+          console.log('[Predictions] No gw_results found for GW', currentGw);
         }
       }
     } catch (error) {
@@ -1928,12 +1931,20 @@ if (fixtures.length > 0 && (hasAnyLiveOrFinished || hasStartingSoon || deadlineP
     if (results.size > 0) {
       // Use results Map (from app_gw_results) - most accurate
       displayScore = myScore;
+      console.log('[Predictions] Score calculation:', { 
+        myScore, 
+        resultsSize: results.size, 
+        picksSize: picks.size,
+        displayScore 
+      });
     } else if (hasAnyLiveOrFinished) {
       // Fall back to live scores if results not loaded yet
       displayScore = currentScore;
+      console.log('[Predictions] Using live scores for score:', currentScore);
     } else if (submitted) {
       // If submitted but no results yet, show 0 (will update when results load)
       displayScore = 0;
+      console.log('[Predictions] No results loaded yet, showing 0');
     }
   }
   
