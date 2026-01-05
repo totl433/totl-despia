@@ -1820,7 +1820,9 @@ useEffect(() => {
  
  // Only block loading if deadline hasn't passed AND we're still loading AND have no fixtures
  // If deadline has passed, always show the page (even with empty fixtures - we'll show a message)
- const needsMoreData = !deadlinePassed && loading && !hasFixtures && !hasCachedFixtures && !hasInitialFixtures;
+ // CRITICAL: Only block if we're ACTUALLY still loading (loading === true) AND have no fixtures
+ // If loading is false, render immediately (data fetch completed, even if fixtures are empty)
+ const needsMoreData = !deadlinePassed && loading && fixtures.length === 0;
  
  if (needsMoreData) {
  // Show loading spinner - don't render any content until ready
