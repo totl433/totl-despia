@@ -106,7 +106,7 @@ export function MiniLeaguesSection({
         // Check if members array changed
         if (data.members && prevData.members) {
           if (data.members.length !== prevData.members.length ||
-              data.members.some((m, i) => !prevData.members[i] || m.id !== prevData.members[i].id || m.name !== prevData.members[i].name)) {
+              data.members.some((m: any, i: number) => !prevData.members[i] || m.id !== prevData.members[i].id || m.name !== prevData.members[i].name)) {
             hasChanges = true;
             break;
           }

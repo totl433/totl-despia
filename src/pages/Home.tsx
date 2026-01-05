@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -31,7 +31,6 @@ type LeagueDataInternal = {
   webUserIds?: string[] | Set<string>;
 };
 
-type PickRow = { user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" };
 type Fixture = {
   id: string;
   gw: number;
@@ -48,10 +47,6 @@ type Fixture = {
   api_match_id?: number | null;
   test_gw?: number | null;
 };
-
-function rowToOutcome(r: { result?: "H" | "D" | "A" | null }): "H" | "D" | "A" | null {
-  return r.result === "H" || r.result === "D" || r.result === "A" ? r.result : null;
-}
 
 /**
  * HomePage - Main dashboard showing leaderboards, mini leagues, and games
@@ -278,7 +273,7 @@ export default function HomePage() {
   const [seasonRank, setSeasonRank] = useState<{ rank: number; total: number; isTied: boolean } | null>(initialState.seasonRank ?? null);
   const [fixtures, setFixtures] = useState<Fixture[]>(initialState.fixtures);
   const [userPicks, setUserPicks] = useState<Record<number, "H" | "D" | "A">>(initialState.userPicks);
-  const [liveScoresFromCache, setLiveScoresFromCache] = useState<Record<number, { 
+  const [liveScoresFromCache] = useState<Record<number, { 
     homeScore: number; 
     awayScore: number; 
     status: string; 
@@ -314,7 +309,7 @@ export default function HomePage() {
       return false;
     }
   })();
-  const { leagues, unreadByLeague, loading: leaguesLoading, refresh: refreshLeagues } = useLeagues({ 
+  const { leagues, unreadByLeague, refresh: refreshLeagues } = useLeagues({ 
     pageName: 'home',
     skipInitialFetch: hasLeaguesCache // Skip fetch if cache exists - data already loaded synchronously
   });
@@ -329,7 +324,7 @@ export default function HomePage() {
     }
   }, [gw]);
   
-  const { state: gameState, loading: gameStateLoading } = useGameweekState(gw ?? null);
+  const { state: gameState } = useGameweekState(gw ?? null);
   // Use cached state immediately if available, otherwise use hook state
   const effectiveGameState = cachedGameState ?? gameState;
   
@@ -495,7 +490,7 @@ export default function HomePage() {
               JSON.stringify(map.get(key)) !== JSON.stringify(cachedLiveScoresMapPrevRef.current.get(key))
             )) {
           cachedLiveScoresMapPrevRef.current = map;
-          return map;
+        return map;
         }
         return cachedLiveScoresMapPrevRef.current;
       }
@@ -525,9 +520,9 @@ export default function HomePage() {
     // Only merge hook data if it has content (don't overwrite with empty Map)
     // This ensures cached data displays instantly, then hook updates merge in
     if (liveScoresMapFromHook.size > 0) {
-      liveScoresMapFromHook.forEach((score, apiMatchId) => {
-        merged.set(apiMatchId, score);
-      });
+    liveScoresMapFromHook.forEach((score, apiMatchId) => {
+      merged.set(apiMatchId, score);
+    });
     }
     
     // Only return new Map if content actually changed
@@ -537,7 +532,7 @@ export default function HomePage() {
         ) ||
         Array.from(liveScoresMapPrevRef.current.keys()).some(key => !merged.has(key))) {
       liveScoresMapPrevRef.current = merged;
-      return merged;
+    return merged;
     }
     return liveScoresMapPrevRef.current;
   }, [cachedLiveScoresMap, liveScoresMapFromHook]);
@@ -732,7 +727,7 @@ export default function HomePage() {
     const prevStr = JSON.stringify(liveScoresPrevRef.current);
     if (resultStr !== prevStr) {
       liveScoresPrevRef.current = result;
-      return result;
+    return result;
     }
     return liveScoresPrevRef.current;
   }, [liveScoresFromCache, liveScoresMap, fixtures, gwResults, cachedLiveScoresMap.size]);
@@ -777,7 +772,7 @@ export default function HomePage() {
     
     return () => { alive = false; };
   }, [user?.id, gw, fixtures.length, leagues.length]);
-  
+
   // Background refresh is now handled by loadHomePageData (checks cache freshness internally)
 
   // Subscribe to app_meta changes

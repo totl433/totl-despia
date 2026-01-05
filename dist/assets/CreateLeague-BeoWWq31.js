@@ -1,1 +1,0 @@
-import{j as e}from"./index-ClmaWrCL.js";function a(){return e.jsxs("div",{className:"max-w-4xl mx-auto px-4 py-10",children:[e.jsx("h1",{className:"text-2xl font-semibold",children:"Create a mini league"}),e.jsx("p",{className:"mt-2 text-slate-600",children:"Quick form to create/invite coming next."})]})}export{a as default};

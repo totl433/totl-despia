@@ -299,7 +299,7 @@ export default function HomeExperimental() {
   const effectiveGameState = cachedGameState ?? gameState;
   
   // Load last GW game state for leaderboards (if different from current GW)
-  const lastGwGameState = useMemo(() => {
+  const _lastGwGameState = useMemo(() => {
     if (!lastGwRank?.gw || lastGwRank.gw === gw) return effectiveGameState;
     try {
       return getCached<GameweekState>(`gameState:${lastGwRank.gw}`);
@@ -307,6 +307,8 @@ export default function HomeExperimental() {
       return null;
     }
   }, [lastGwRank?.gw, gw, effectiveGameState]);
+  void _lastGwGameState; // Suppress unused variable warning
+  void _lastGwGameState; // Suppress unused variable warning
   
   // Unified loading state - block render until ALL critical data is ready
   const isLoading = basicDataLoading || leaguesLoading || gameStateLoading;
@@ -1668,7 +1670,8 @@ export default function HomeExperimental() {
     return false;
   }, [fixtures, liveScores]);
 
-  const userStreakData = useMemo(() => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _userStreakData = useMemo(() => {
     if (!user?.id || !latestGw) return null;
     
     const userGwPoints = gwPoints.filter(gp => gp.user_id === user.id).sort((a, b) => b.gw - a.gw);
@@ -1704,9 +1707,11 @@ export default function HomeExperimental() {
       last10GwScores: last10GwScores.reverse()
     };
   }, [user?.id, gwPoints, latestGw, userSubmissions]);
-
+  void _userStreakData; // Suppress unused variable warning
+  
   // Calculate live scores for leaderboards from cached data (instant display)
-  const currentGwLiveScore = useMemo(() => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _currentGwLiveScore = useMemo(() => {
     if (!gw || effectiveGameState !== 'LIVE' || !user?.id) return null;
     
     try {
@@ -1757,8 +1762,10 @@ export default function HomeExperimental() {
     }
     return null;
   }, [gw, effectiveGameState, user?.id]);
+  void _currentGwLiveScore; // Suppress unused variable warning
   
-  const lastGwLiveScore = useMemo(() => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _lastGwLiveScore = useMemo(() => {
     if (!lastGwRank?.gw || !lastGwRank || effectiveGameState !== 'LIVE' || !user?.id) return null;
     
     try {
@@ -1809,6 +1816,7 @@ export default function HomeExperimental() {
     }
     return null;
   }, [lastGwRank?.gw, lastGwRank, effectiveGameState, user?.id]);
+  void _lastGwLiveScore; // Suppress unused variable warning
   
   const fixturesToShow = useMemo(() => {
     // Note: showLiveOnly toggle removed - always show all fixtures

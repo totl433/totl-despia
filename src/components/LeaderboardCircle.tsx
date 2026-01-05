@@ -27,7 +27,7 @@ export default function LeaderboardCircle({
   rank,
   total,
   label,
-  bgColor, // Deprecated but kept for backwards compatibility
+  bgColor: _bgColor, // Deprecated but kept for backwards compatibility
   gw,
 }: LeaderboardCircleProps) {
   const displayLabel = gw ? `GW${gw}` : label;

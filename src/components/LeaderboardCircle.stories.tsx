@@ -95,6 +95,13 @@ export const NoRank: Story = {
 };
 
 export const AllCircles: Story = {
+  args: {
+    to: "/global?tab=lastgw",
+    rank: 54,
+    total: 110,
+    label: "GW20",
+    bgColor: "bg-emerald-500",
+  },
   render: () => (
     <div className="flex flex-row gap-3 sm:gap-4 lg:gap-6 justify-between items-start w-full px-2 sm:px-0 max-w-md">
       <LeaderboardCircle

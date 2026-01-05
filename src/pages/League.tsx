@@ -903,10 +903,7 @@ ${shareUrl}`;
     apiMatchIdsPrevRef.current = ids;
     return ids;
   }, [fixtures]);
-  const apiMatchIds = useMemo(() => {
-    if (!apiMatchIdsKey) return [];
-    return apiMatchIdsKey.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id));
-  }, [apiMatchIdsKey]);
+  // apiMatchIds computed but not used directly - apiMatchIdsForHook is used instead
 
   // Subscribe to real-time live scores updates (replaces polling)
   const isApiTestLeague = useMemo(() => league?.name === 'API Test', [league?.name]);
@@ -1855,6 +1852,7 @@ ${shareUrl}`;
     // Add matching hook calls to ensure consistent hook count across all tab components
     const _dummyGw = useMemo(() => currentGw ?? null, [currentGw]);
     const _dummyState = useGameweekState(_dummyGw);
+    void _dummyState; // Suppress unused variable warning
 
     // Check if this is a late-starting league (not one of the special leagues that start from GW0)
     // Note: "API Test" is excluded - it uses test API data, not regular game data
@@ -2297,6 +2295,7 @@ ${shareUrl}`;
       return tab === "gwr" ? (manualGwSelectedRef.current ? selectedGw : (currentGw || selectedGw)) : selectedGw;
     }, [league?.name, currentTestGw, tab, selectedGw, currentGw]);
     const _dummyState = useGameweekState(resGwMemo);
+    void _dummyState; // Suppress unused variable warning
     
     // For Live Table tab, prioritize currentGw (the active/live GW) over selectedGw
     // UNLESS the user has manually selected a GW, in which case use selectedGw

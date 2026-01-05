@@ -59,7 +59,6 @@ function calculateLastGwRank(
   const sorted = [...gwPoints].sort((a, b) => b.points - a.points);
   const rank = sorted.findIndex(p => p.user_id === userId) + 1;
   const total = gwPoints.length;
-  const topScore = sorted[0]?.points ?? 0;
   const isTied = sorted.filter(p => p.points === userPoints).length > 1;
   const totalFixtures = results.filter(r => r.gw === gw).length;
   
@@ -70,8 +69,7 @@ function calculateFormRank(
   userId: string,
   startGw: number,
   endGw: number,
-  allPoints: Array<{user_id: string, gw: number, points: number}>,
-  overall: Array<{user_id: string, name: string | null, ocp: number | null}>
+  allPoints: Array<{user_id: string, gw: number, points: number}>
 ): { rank: number; total: number; isTied: boolean } | null {
   const formPoints = allPoints.filter(p => p.gw >= startGw && p.gw <= endGw);
   if (formPoints.length === 0) return null;
@@ -231,8 +229,8 @@ export async function loadHomePageData(
   
   const results = (resultsResult.data ?? []) as ResultRowRaw[];
   const lastGwRank = calculateLastGwRank(userId, latestGw, allGwPoints, results);
-  const fiveGwRank = latestGw >= 5 ? calculateFormRank(userId, latestGw - 4, latestGw, allGwPoints, overall) : null;
-  const tenGwRank = latestGw >= 10 ? calculateFormRank(userId, latestGw - 9, latestGw, allGwPoints, overall) : null;
+  const fiveGwRank = latestGw >= 5 ? calculateFormRank(userId, latestGw - 4, latestGw, allGwPoints) : null;
+  const tenGwRank = latestGw >= 10 ? calculateFormRank(userId, latestGw - 9, latestGw, allGwPoints) : null;
   const seasonRank = calculateSeasonRank(userId, overall);
   
   // Process league data
