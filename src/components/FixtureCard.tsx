@@ -72,7 +72,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
   fixture: f,
   pick,
   liveScore,
-  isTestApi = false,
+  isTestApi: _isTestApi = false,
   showPickButtons = true,
   pickPercentages = null,
 }) => {
