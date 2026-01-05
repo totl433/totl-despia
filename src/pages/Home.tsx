@@ -1050,8 +1050,6 @@ export default function HomePage() {
       }
     }
     
-    // Don't wait for gameStateLoading - use cached state immediately
-    // if (gameStateLoading) return null;
     
     if (!hasAnyActive && !hasSubmittedPicks && !hasStartingSoonFixtures && !isInLiveWindow) return null;
     
