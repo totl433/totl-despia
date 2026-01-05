@@ -374,6 +374,9 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
 
   // Reset scroll ref when league changes
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueChatBeta.tsx:377',message:'League changed: resetting scroll refs',data:{miniLeagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     hasInitiallyScrolledRef.current = false;
     initialScrollDoneRef.current = false;
   }, [miniLeagueId]);
@@ -781,17 +784,32 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   // Set scroll to bottom immediately when container is ready
   // Use ref callback to set scroll position as soon as element is mounted
   const setListRef = useCallback((node: HTMLDivElement | null) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueChatBeta.tsx:783',message:'setListRef called',data:{hasNode:!!node,messagesLength:messages.length,chatGroupsLength:chatGroups.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C'})}).catch(()=>{});
+    // #endregion
     listRef.current = node;
     // Set scroll to bottom immediately when element mounts AND content is ready
     if (node && messages.length > 0 && chatGroups.length > 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueChatBeta.tsx:787',message:'setListRef: scheduling scroll',data:{scrollHeight:node.scrollHeight,clientHeight:node.clientHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       // Use double RAF for Despia - ensures layout is fully complete
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (node) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueChatBeta.tsx:792',message:'setListRef: scrolling (double RAF)',data:{scrollHeight:node.scrollHeight,scrollTop:node.scrollTop,beforeScroll:node.scrollTop},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             node.scrollTop = node.scrollHeight;
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueChatBeta.tsx:795',message:'setListRef: after scroll',data:{scrollTop:node.scrollTop,scrollHeight:node.scrollHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             // Force scroll again after a tiny delay for Despia
             setTimeout(() => {
               if (node) {
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueChatBeta.tsx:800',message:'setListRef: timeout scroll',data:{scrollTop:node.scrollTop,scrollHeight:node.scrollHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                // #endregion
                 node.scrollTop = node.scrollHeight;
               }
             }, 50);
@@ -803,11 +821,17 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   
   // Also scroll when messages/chatGroups change (for Despia)
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueChatBeta.tsx:810',message:'useEffect scroll: messages/chatGroups changed',data:{messagesLength:messages.length,chatGroupsLength:chatGroups.length,hasListRef:!!listRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     if (listRef.current && messages.length > 0 && chatGroups.length > 0) {
       // Use double RAF for Despia
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (listRef.current) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueChatBeta.tsx:816',message:'useEffect scroll: executing',data:{scrollTop:listRef.current.scrollTop,scrollHeight:listRef.current.scrollHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
             listRef.current.scrollTop = listRef.current.scrollHeight;
           }
         });
@@ -952,6 +976,9 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
 
   // Track when initial load is complete (loading done, messages loaded, memberNames ready)
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueChatBeta.tsx:976',message:'initialLoadComplete effect',data:{loading,messagesLength:messages.length,chatGroupsLength:chatGroups.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     // If we have messages already (from cache), we can show immediately
     if (messages.length > 0) {
       const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
@@ -978,9 +1005,15 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
 
   // Don't render anything until messages and chatGroups are both ready
   // This prevents all glitchy loading states
+  // #region agent log
   if (messages.length === 0 || chatGroups.length === 0) {
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueChatBeta.tsx:959',message:'Early return: not ready',data:{messagesLength:messages.length,chatGroupsLength:chatGroups.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     return null;
   }
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueChatBeta.tsx:963',message:'Rendering chat component',data:{messagesLength:messages.length,chatGroupsLength:chatGroups.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
 
   return (
     <div className="flex flex-col h-full w-full" style={{ position: 'relative', zIndex: 1, overflowX: 'hidden' }}>
