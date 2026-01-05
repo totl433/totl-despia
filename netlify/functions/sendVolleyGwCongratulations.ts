@@ -58,8 +58,14 @@ export const handler: Handler = async (event) => {
         .select('user_id')
         .eq('league_id', league.id);
 
-      if (membersError) continue;
-      if (!members || members.length < 2) continue; // Skip single-member leagues
+      if (membersError) {
+        results.push({ leagueId: league.id, skipped: true, reason: `membersError: ${membersError.message}` });
+        continue;
+      }
+      if (!members || members.length < 2) {
+        results.push({ leagueId: league.id, skipped: true, reason: 'single-member league' });
+        continue; // Skip single-member leagues
+      }
 
       // Get user names for members
       const memberIds = members.map(m => m.user_id);
@@ -68,7 +74,10 @@ export const handler: Handler = async (event) => {
         .select('id, name')
         .in('id', memberIds);
 
-      if (usersError || !users) continue;
+      if (usersError || !users) {
+        results.push({ leagueId: league.id, skipped: true, reason: `usersError: ${usersError?.message || 'no users'}` });
+        continue;
+      }
 
       const nameById = new Map(users.map(u => [u.id, u.name]));
 
@@ -79,7 +88,10 @@ export const handler: Handler = async (event) => {
       ]);
 
       const picks = [...(appPicksResult.data || []), ...(picksResult.data || [])];
-      if (picks.length === 0) continue;
+      if (picks.length === 0) {
+        results.push({ leagueId: league.id, skipped: true, reason: 'no picks for this gameweek' });
+        continue;
+      }
 
       // Get results for this gameweek
       const { data: resultsData, error: resultsError } = await admin
@@ -87,7 +99,10 @@ export const handler: Handler = async (event) => {
         .select('fixture_index, result')
         .eq('gw', gameweek);
 
-      if (resultsError || !resultsData || resultsData.length === 0) continue;
+      if (resultsError || !resultsData || resultsData.length === 0) {
+        results.push({ leagueId: league.id, skipped: true, reason: `resultsError: ${resultsError?.message || 'no results'}` });
+        continue;
+      }
 
       // Build result map
       const resultMap = new Map<string, 'H' | 'D' | 'A'>();
@@ -139,17 +154,30 @@ export const handler: Handler = async (event) => {
       );
 
       // Check if we already sent a congratulations for this GW in this league
+      // More specific check: look for messages containing gameweek-specific congratulations patterns
+      // Exclude welcome messages by checking for specific congratulations patterns
+      // and created around the time results would be available (within last 7 days)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
       const { data: existingMessage } = await admin
         .from('league_messages')
-        .select('id')
+        .select('id, content, created_at')
         .eq('league_id', league.id)
         .eq('user_id', VOLLEY_USER_ID)
-        .or('content.ilike.%winner%,content.ilike.%round complete%,content.ilike.%winner is%,content.ilike.%belongs to%,content.ilike.%draw%,content.ilike.%shared honours%')
+        .gte('created_at', sevenDaysAgo.toISOString())
+        .or('content.ilike.%congrats to%,content.ilike.%take a bow%,content.ilike.%winner is…%,content.ilike.%belongs to%,content.ilike.%draw!%,content.ilike.%shared honours%,content.ilike.%well played%,content.ilike.%round complete%')
         .limit(1);
 
       if (existingMessage && existingMessage.length > 0) {
-        results.push({ leagueId: league.id, skipped: true, reason: 'already sent' });
-        continue;
+        // Double-check: make sure it's not the welcome message
+        const content = existingMessage[0].content.toLowerCase();
+        const isWelcomeMessage = content.includes("i'm volley") || content.includes("i'll let you know") || content.includes("i'll share results") || content.includes("i'll handle the scoring") || content.includes("i'll keep track");
+        
+        if (!isWelcomeMessage) {
+          results.push({ leagueId: league.id, skipped: true, reason: 'already sent', existingMessage: existingMessage[0].content });
+          continue;
+        }
       }
 
       // Format winners list for draw messages
@@ -212,11 +240,20 @@ export const handler: Handler = async (event) => {
       }
     }
 
+    const successCount = results.filter(r => r.success).length;
+    const skippedCount = results.filter(r => r.skipped).length;
+    const errorCount = results.filter(r => r.error).length;
+
+    console.log(`[sendVolleyGwCongratulations] GW ${gameweek}: ${successCount} sent, ${skippedCount} skipped, ${errorCount} errors out of ${leagues?.length || 0} total leagues`);
+
     return json(200, {
       ok: true,
       gameweek,
       results,
       totalLeagues: leagues?.length || 0,
+      successCount,
+      skippedCount,
+      errorCount,
     });
   } catch (error: any) {
     console.error('[sendVolleyGwCongratulations] Error:', error);

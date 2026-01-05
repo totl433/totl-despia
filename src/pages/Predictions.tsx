@@ -1852,8 +1852,12 @@ useEffect(() => {
  }
  // Don't render until submission status is confirmed
  // Prevents blank screens and swipe card flashes
- if ((!picksChecked || !submissionChecked) && fixtures.length > 0) {
+ // BUT: If we have fixtures from initialState (cache), we can render immediately
+ // The flags will be set in the useEffect, but we don't need to block on them if we have data
+ const hasFixturesFromInitialState = typeof initialState !== 'undefined' && initialState.fixtures && initialState.fixtures.length > 0;
+ if ((!picksChecked || !submissionChecked) && fixtures.length > 0 && !hasFixturesFromInitialState) {
  // Still checking submission status - show loading spinner
+ // Only block if we DON'T have fixtures from initialState (meaning we're loading from DB)
  return (
  <div className="min-h-screen bg-slate-50 flex items-center justify-center">
  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
