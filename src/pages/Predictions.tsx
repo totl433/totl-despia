@@ -956,6 +956,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
  }
 
  // Fetch user's picks from TEST API table
+ console.log('[Predictions] Starting picks loading - isSubmitted:', isSubmitted, 'user?.id:', user?.id, 'fixturesData.length:', fixturesData.length);
  let hasPicks = false;
  if (user?.id && fixturesData.length > 0 && !isSubmitted) {
  // Only fetch picks if not submitted (optimization)
