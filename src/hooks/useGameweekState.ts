@@ -38,12 +38,18 @@ export function useGameweekState(gw: number | null | undefined, userId?: string 
 
     const checkState = async (isInitialCheck: boolean = false) => {
       if (!alive) return;
-      // Only show loading state if we don't have cached state yet (don't block on refresh)
+      
+      // If we already have state from cache, skip DB query on initial check
       const hasCachedState = state !== null;
-      const shouldShowLoading = !hasCachedState || !isInitialCheck;
-      if (shouldShowLoading) {
+      if (isInitialCheck && hasCachedState) {
+        // We have cached state, refresh in background but don't block
+        setLoading(false);
+        // Still refresh in background to get latest state
+      } else {
+        // No cached state or not initial check - show loading
         setLoading(true);
       }
+      
       setError(null);
       try {
         // Use user-specific state if userId is provided, otherwise use global state
@@ -52,20 +58,24 @@ export function useGameweekState(gw: number | null | undefined, userId?: string 
           : await getGameweekState(gw);
         if (alive) {
           setState(gameweekState);
+          setLoading(false);
         }
       } catch (err: any) {
         console.error(`[useGameweekState] Error checking GW ${gw} state:`, err);
         if (alive) {
           setError(err.message || 'Failed to check gameweek state');
-        }
-      } finally {
-        if (alive && shouldShowLoading) {
           setLoading(false);
         }
       }
     };
 
-    checkState(true); // Initial check - don't block if we have cached state
+    // Only check if we don't have cached state, or refresh in background if we do
+    if (state === null) {
+      checkState(true); // Initial check - blocking if no cache
+    } else {
+      // We have cached state - refresh in background without blocking
+      checkState(true);
+    }
 
     // Subscribe to app_gw_results changes
     resultsChannel = supabase

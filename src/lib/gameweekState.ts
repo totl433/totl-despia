@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { getCached } from "./cache";
 
 export type GameweekState = 'GW_OPEN' | 'GW_PREDICTED' | 'DEADLINE_PASSED' | 'LIVE' | 'RESULTS_PRE_GW';
 
@@ -12,15 +13,40 @@ const DEADLINE_BUFFER_MINUTES = 75;
  * - RESULTS_PRE_GW: GW has finished (last game has reached FT AND no active games)
  */
 export async function getGameweekState(gw: number): Promise<GameweekState> {
-  // Get all fixtures for this GW
-  const { data: fixtures, error: fixturesError } = await supabase
-    .from("app_fixtures")
-    .select("fixture_index, kickoff_time")
-    .eq("gw", gw)
-    .order("kickoff_time", { ascending: true });
+  // Try to get fixtures from cache first (pre-loaded during initial data load)
+  let fixtures: Array<{ fixture_index: number; kickoff_time: string }> | null = null;
   
-  if (fixturesError || !fixtures || fixtures.length === 0) {
-    // No fixtures = GW_OPEN (or doesn't exist)
+  // Check cache for any user's fixtures cache (fixtures are the same for all users)
+  // Try a few common cache keys
+  const cacheKeys = [
+    `home:fixtures:${gw}`,
+    `app:fixtures:${gw}`,
+  ];
+  
+  for (const cacheKey of cacheKeys) {
+    const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(cacheKey);
+    if (cached?.fixtures?.length) {
+      fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
+      break;
+    }
+  }
+  
+  // If not in cache, fetch from DB
+  if (!fixtures) {
+    const { data, error: fixturesError } = await supabase
+      .from("app_fixtures")
+      .select("fixture_index, kickoff_time")
+      .eq("gw", gw)
+      .order("kickoff_time", { ascending: true });
+    
+    if (fixturesError || !data || data.length === 0) {
+      return 'GW_OPEN';
+    }
+    
+    fixtures = data;
+  }
+  
+  if (!fixtures || fixtures.length === 0) {
     return 'GW_OPEN';
   }
   
@@ -68,15 +94,46 @@ export async function getGameweekState(gw: number): Promise<GameweekState> {
  * - RESULTS_PRE_GW: GW has finished (last game has reached FT AND no active games)
  */
 export async function getUserGameweekState(gw: number, userId: string | null | undefined): Promise<GameweekState> {
-  // Get all fixtures for this GW
-  const { data: fixtures, error: fixturesError } = await supabase
-    .from("app_fixtures")
-    .select("fixture_index, kickoff_time")
-    .eq("gw", gw)
-    .order("kickoff_time", { ascending: true });
+  // Try to get fixtures from cache first (pre-loaded during initial data load)
+  let fixtures: Array<{ fixture_index: number; kickoff_time: string }> | null = null;
   
-  if (fixturesError || !fixtures || fixtures.length === 0) {
-    // No fixtures = GW_OPEN (or doesn't exist)
+  // Check cache - try user-specific cache first, then generic cache
+  if (userId) {
+    const userCacheKey = `home:fixtures:${userId}:${gw}`;
+    const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(userCacheKey);
+    if (cached?.fixtures?.length) {
+      fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
+    }
+  }
+  
+  // If not in user cache, try generic cache
+  if (!fixtures) {
+    const cacheKeys = [`home:fixtures:${gw}`, `app:fixtures:${gw}`];
+    for (const cacheKey of cacheKeys) {
+      const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(cacheKey);
+      if (cached?.fixtures?.length) {
+        fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
+        break;
+      }
+    }
+  }
+  
+  // If not in cache, fetch from DB
+  if (!fixtures) {
+    const { data, error: fixturesError } = await supabase
+      .from("app_fixtures")
+      .select("fixture_index, kickoff_time")
+      .eq("gw", gw)
+      .order("kickoff_time", { ascending: true });
+    
+    if (fixturesError || !data || data.length === 0) {
+      return 'GW_OPEN';
+    }
+    
+    fixtures = data;
+  }
+  
+  if (!fixtures || fixtures.length === 0) {
     return 'GW_OPEN';
   }
   
@@ -138,14 +195,34 @@ export async function getUserGameweekState(gw: number, userId: string | null | u
  * A game is LIVE between kickoff and FT (status IN_PLAY or PAUSED).
  */
 export async function isGameweekFinished(gw: number): Promise<boolean> {
-  // Get all fixtures for this GW, ordered by kickoff time
-  const { data: fixtures, error: fixturesError } = await supabase
-    .from("app_fixtures")
-    .select("fixture_index, kickoff_time")
-    .eq("gw", gw)
-    .order("kickoff_time", { ascending: true });
+  // Try to get fixtures from cache first
+  let fixtures: Array<{ fixture_index: number; kickoff_time: string }> | null = null;
   
-  if (fixturesError || !fixtures || fixtures.length === 0) {
+  const cacheKeys = [`home:fixtures:${gw}`, `app:fixtures:${gw}`];
+  for (const cacheKey of cacheKeys) {
+    const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(cacheKey);
+    if (cached?.fixtures?.length) {
+      fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
+      break;
+    }
+  }
+  
+  // If not in cache, fetch from DB
+  if (!fixtures) {
+    const { data, error: fixturesError } = await supabase
+      .from("app_fixtures")
+      .select("fixture_index, kickoff_time")
+      .eq("gw", gw)
+      .order("kickoff_time", { ascending: true });
+    
+    if (fixturesError || !data || data.length === 0) {
+      return false;
+    }
+    
+    fixtures = data;
+  }
+  
+  if (!fixtures || fixtures.length === 0) {
     return false;
   }
   
