@@ -96,10 +96,16 @@ export const handler: Handler = async (event) => {
     .eq('league_id', leagueId);
 
   if (memErr) return json(500, { error: 'Failed to load members', details: memErr.message });
+  const totalMembers = (members ?? []).length;
+  console.log(`[notifyLeagueMessage] Total league members: ${totalMembers}`);
+  
   let recipientIds = new Set<string>((members ?? []).map((r: any) => r.user_id).filter(Boolean));
+  const beforeExclusions = recipientIds.size;
 
   // Exclude sender
   recipientIds.delete(senderId);
+  const afterSenderExclusion = recipientIds.size;
+  console.log(`[notifyLeagueMessage] After excluding sender: ${afterSenderExclusion} recipients (excluded ${beforeExclusions - afterSenderExclusion})`);
 
   // Exclude muted
   const { data: mutes, error: muteErr } = await admin
@@ -109,11 +115,17 @@ export const handler: Handler = async (event) => {
     .eq('muted', true);
 
   if (muteErr) return json(500, { error: 'Failed to load mutes', details: muteErr.message });
+  const mutedCount = (mutes ?? []).length;
   for (const row of (mutes ?? [])) recipientIds.delete(row.user_id);
+  const afterMuteExclusion = recipientIds.size;
+  console.log(`[notifyLeagueMessage] After excluding ${mutedCount} muted users: ${afterMuteExclusion} recipients`);
 
   // Optional: exclude currently active chat users (if provided)
   if (Array.isArray(activeUserIds)) {
+    const activeCount = activeUserIds.length;
     for (const uid of activeUserIds) recipientIds.delete(uid);
+    const afterActiveExclusion = recipientIds.size;
+    console.log(`[notifyLeagueMessage] After excluding ${activeCount} active users: ${afterActiveExclusion} recipients`);
   }
 
   // Also exclude users who are actively viewing the chat (presence tracking)
@@ -125,9 +137,12 @@ export const handler: Handler = async (event) => {
     .gte('last_seen', new Date(Date.now() - 30000).toISOString()); // Last 30 seconds
   
   if (!presenceErr && activeViewers) {
+    const presenceCount = activeViewers.length;
     for (const viewer of activeViewers) {
       recipientIds.delete(viewer.user_id);
     }
+    const afterPresenceExclusion = recipientIds.size;
+    console.log(`[notifyLeagueMessage] After excluding ${presenceCount} active viewers (presence): ${afterPresenceExclusion} recipients`);
   }
 
   if (recipientIds.size === 0) {
