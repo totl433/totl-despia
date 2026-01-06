@@ -62,9 +62,12 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   useEffect(() => {
     if (!miniLeagueId || !user?.id) return;
     
+    let isActive = true;
+    
     const updatePresence = async () => {
+      if (!isActive) return;
       try {
-        await supabase
+        const { error } = await supabase
           .from('chat_presence')
           .upsert({
             league_id: miniLeagueId,
@@ -73,14 +76,30 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
           }, {
             onConflict: 'league_id,user_id'
           });
+        
+        if (error) {
+          console.warn('[MiniLeagueChatBeta] Failed to update presence:', error);
+        }
       } catch (err) {
-        // Silently fail - presence is best effort
+        // Silently fail - presence is best effort, but log for debugging
+        console.warn('[MiniLeagueChatBeta] Error updating presence:', err);
       }
     };
     
+    // Update immediately on mount
     updatePresence();
-    const interval = setInterval(updatePresence, 10000);
-    return () => clearInterval(interval);
+    
+    // Update every 10 seconds while component is mounted
+    const interval = setInterval(() => {
+      if (isActive) {
+        updatePresence();
+      }
+    }, 10000);
+    
+    return () => {
+      isActive = false;
+      clearInterval(interval);
+    };
   }, [miniLeagueId, user?.id]);
 
   // Ref callback: set scroll position IMMEDIATELY when node is available
