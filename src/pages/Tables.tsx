@@ -7,6 +7,7 @@ import { getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
 import { resolveLeagueStartGw } from "../lib/leagueStart";
 import { getCached, setCached, getCacheTimestamp, CACHE_TTL, invalidateUserCache } from "../lib/cache";
 import { useLeagues } from "../hooks/useLeagues";
+import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import { PageHeader } from "../components/PageHeader";
 
 /**
@@ -37,6 +38,8 @@ function rowToOutcome(r: ResultRowRaw): "H" | "D" | "A" | null {
 
 export default function TablesPage() {
   const { user } = useAuth();
+  // Use centralized hook for current gameweek (single source of truth)
+  const { currentGw: dbCurrentGwFromHook } = useCurrentGameweek();
   
   // LEAGUES: Use centralized useLeagues hook (single source of truth)
   // This provides leagues already sorted by unread count, filtered (no API Test)
@@ -320,17 +323,18 @@ export default function TablesPage() {
     // If cache is stale, render immediately from cache and refresh in background
     (async () => {
       try {
-        // Step 1: Get current GW (respects user's current_viewing_gw from GAME_STATE.md)
-        const [fixturesResult, metaResult] = await Promise.all([
-          supabase.from("app_fixtures").select("gw").order("gw", { ascending: false }).limit(1),
-          supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle()
-        ]);
+        // Step 1: Get current GW (use hook value, fallback to fixtures if hook not loaded)
+        const fixturesResult = await supabase.from("app_fixtures").select("gw").order("gw", { ascending: false }).limit(1);
         
         if (!alive) return;
 
         const fixturesList = (fixturesResult.data as Array<{ gw: number }>) ?? [];
         const fetchedCurrentGw = fixturesList.length ? Math.max(...fixturesList.map((f) => f.gw)) : 1;
-        const dbCurrentGw = (metaResult.data as any)?.current_gw ?? fetchedCurrentGw;
+        // Use hook value if available, otherwise fallback to fixtures
+        const dbCurrentGw = dbCurrentGwFromHook ?? (() => {
+          const metaCache = getCached<{ current_gw: number }>('app_meta:current_gw');
+          return metaCache?.current_gw ?? fetchedCurrentGw;
+        })();
         
         // Get user's current_viewing_gw (which GW they're actually viewing)
         let userViewingGw: number | null = null;

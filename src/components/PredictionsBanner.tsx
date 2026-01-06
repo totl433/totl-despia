@@ -2,6 +2,7 @@ import React from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useGameweekState } from "../hooks/useGameweekState";
+import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import { getCached } from "../lib/cache";
 import GameweekBanner from "./ComingSoonBanner";
 
@@ -15,28 +16,8 @@ import GameweekBanner from "./ComingSoonBanner";
 export default function PredictionsBanner() {
   const { user } = useAuth();
   
-  // Initialize currentGw and viewingGw from cache synchronously (cache-first)
-  const [currentGw, setCurrentGw] = React.useState<number | null>(() => {
-    if (!user?.id && typeof window !== 'undefined') {
-      // For non-logged-in users, try to get from any cache or default to null
-      try {
-        // Try to get from any home cache if available
-        const userId = localStorage.getItem('totl:user');
-        if (userId) {
-          const userObj = JSON.parse(userId);
-          const cached = getCached<{ currentGw: number }>(`home:basic:${userObj.id}`);
-          if (cached?.currentGw) return cached.currentGw;
-        }
-      } catch (e) {
-        // Ignore
-      }
-    }
-    if (user?.id) {
-      const cached = getCached<{ currentGw: number }>(`home:basic:${user.id}`);
-      if (cached?.currentGw) return cached.currentGw;
-    }
-    return null;
-  });
+  // Use centralized hook for current gameweek (single source of truth)
+  const { currentGw } = useCurrentGameweek();
   
   const [viewingGw, setViewingGw] = React.useState<number | null>(() => {
     if (user?.id) {
@@ -87,19 +68,10 @@ export default function PredictionsBanner() {
     try {
       if (!user?.id) {
         // For non-logged-in users, only show "watch-space" if applicable
-        const { data: meta } = await supabase
-          .from("app_meta")
-          .select("current_gw")
-          .eq("id", 1)
-          .maybeSingle();
-        
-        const gw: number | null = (meta as any)?.current_gw ?? null;
-        if (!gw) {
+        if (!currentGw) {
           setVisible(false);
           return;
         }
-        
-        setCurrentGw(gw);
         
         // Check if GW has finished and next GW fixtures don't exist
         const { count: rsCount } = await supabase
@@ -125,25 +97,13 @@ export default function PredictionsBanner() {
         return;
       }
       
-      // Get current GW from app_meta
-      const { data: meta, error: metaError } = await supabase
-        .from("app_meta")
-        .select("current_gw")
-        .eq("id", 1)
-        .maybeSingle();
-      
-      if (metaError || !meta) {
+      // Use currentGw from hook (already fetched from app_meta)
+      if (!currentGw) {
         setVisible(false);
         return;
       }
       
-      const gw: number | null = (meta as any)?.current_gw ?? null;
-      if (!gw) {
-        setVisible(false);
-        return;
-      }
-      
-      setCurrentGw(gw);
+      const gw = currentGw;
       
       // Get user's current_viewing_gw (check cache first, then fetch)
       const cached = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
@@ -169,7 +129,7 @@ export default function PredictionsBanner() {
       console.error('[PredictionsBanner] Error in refreshBanner:', error);
       setVisible(false);
     }
-  }, [user?.id]);
+  }, [user?.id, currentGw]);
   
   // Determine banner based on game state of the viewing GW
   // Use cached data immediately, then refresh in background

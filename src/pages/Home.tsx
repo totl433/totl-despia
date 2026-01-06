@@ -12,6 +12,7 @@ import { getCached, setCached, removeCached, getCacheTimestamp, CACHE_TTL } from
 import { useLeagues } from "../hooks/useLeagues";
 import { fireConfettiCannon } from "../lib/confettiCannon";
 import { useGameweekState } from "../hooks/useGameweekState";
+import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import type { GameweekState } from "../lib/gameweekState";
 import GameweekResultsModal from "../components/GameweekResultsModal";
 import { loadHomePageData } from "../lib/loadHomePageData";
@@ -293,6 +294,9 @@ export default function HomePage() {
   const [resultsModalGw, setResultsModalGw] = useState<number | null>(null);
   const [resultsModalLoading, setResultsModalLoading] = useState(false);
   
+  // Use centralized hook for current gameweek (single source of truth)
+  const { currentGw: dbCurrentGw } = useCurrentGameweek();
+  
   // Use centralized hooks
   // Skip initial fetch if we have cache (leagues are pre-loaded)
   // Check cache synchronously (before useLeagues hook) to ensure skipInitialFetch is set correctly
@@ -347,81 +351,50 @@ export default function HomePage() {
   
   // Validate cached GW (respects user's current_viewing_gw)
   // CRITICAL: Only run if fixtures are missing (cache miss) - don't run if we have cache
-  // This prevents unnecessary DB queries when cache is already correct
-  const gwValidatedRef = useRef(false);
+  // Update displayed GW when dbCurrentGw changes (from useCurrentGameweek hook)
   useEffect(() => {
-    // If we have fixtures from cache, GW is already correct - skip validation
-    if (fixtures.length > 0) {
-      gwValidatedRef.current = true;
-      return;
+    if (!user?.id || !dbCurrentGw) return;
+    
+    // Check user's viewing GW preference
+    const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
+    const userViewingGw = prefsCache?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
+    const gwToDisplay = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+    
+    // Only update if different
+    if (gw !== gwToDisplay) {
+      setGw(gwToDisplay);
     }
-    
-    if (!user?.id || gwValidatedRef.current) return;
-    
-    let alive = true;
-    (async () => {
-      try {
-        // Check cache first (pre-loaded by initialDataLoader)
-        const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
-        const cachedMeta = getCached<{ current_gw: number }>(`app_meta:current_gw`);
-        
-        // If we have cached preferences and meta, use them (no DB query needed)
-        if (prefsCache && cachedMeta) {
-          const dbCurrentGw = cachedMeta.current_gw;
-          const userViewingGw = prefsCache.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
-          const gwToDisplay = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
-          
-          // Only update if different
-          if (gw !== gwToDisplay) {
-            setGw(gwToDisplay);
-          }
-          gwValidatedRef.current = true;
-          return;
-        }
-        
-        // Fallback to DB if cache missing (shouldn't happen if pre-loader ran)
-        const cacheKey = `home:basic:${user.id}`;
-        const cached = getCached<{ currentGw?: number }>(cacheKey);
-        const cachedGw = cached?.currentGw ?? gw;
-        
-        const { data: meta, error: metaError } = await supabase
-          .from("app_meta")
-          .select("current_gw")
-          .eq("id", 1)
-          .maybeSingle();
-        
-        if (!alive || metaError) return;
-        
-        const dbCurrentGw = meta?.current_gw ?? 1;
-        
-        const { data: prefs } = await supabase
-          .from("user_notification_preferences")
-          .select("current_viewing_gw")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        
-        if (!alive) return;
-        
-        const userViewingGw = prefs?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
-        const gwToDisplay = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
-        
-        // Only update if different AND current gw doesn't already match
-        if (cachedGw !== gwToDisplay && gw !== gwToDisplay) {
-          removeCached(cacheKey);
-          if (cachedGw) {
-            removeCached(`home:fixtures:${user.id}:${cachedGw}`);
-          }
-          setGw(gwToDisplay);
-        }
-        gwValidatedRef.current = true;
-      } catch (error) {
-        console.error('[Home] Error validating cached GW:', error);
-        gwValidatedRef.current = true; // Mark as validated even on error to prevent retries
+  }, [user?.id, dbCurrentGw, gw]);
+  
+  // Listen for GW changes from useCurrentGameweek hook
+  useEffect(() => {
+    const handleGwChange = (event: CustomEvent<{ oldGw: number | null; newGw: number }>) => {
+      if (!user?.id) return;
+      
+      const { oldGw, newGw } = event.detail;
+      console.log(`[Home] GW changed from ${oldGw} to ${newGw}, invalidating caches`);
+      
+      // Invalidate related caches
+      const cacheKey = `home:basic:${user.id}`;
+      removeCached(cacheKey);
+      if (oldGw) {
+        removeCached(`home:fixtures:${user.id}:${oldGw}`);
       }
-    })();
+      removeCached(`home:fixtures:${user.id}:${newGw}`);
+      setGwResultsVersion(prev => prev + 1);
+      
+      // Update displayed GW
+      const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
+      const userViewingGw = prefsCache?.current_viewing_gw ?? (newGw > 1 ? newGw - 1 : newGw);
+      const gwToDisplay = userViewingGw < newGw ? userViewingGw : newGw;
+      setGw(gwToDisplay);
+    };
     
-    return () => { alive = false; };
-  }, [user?.id, fixtures.length]); // Depend on fixtures.length - skip if cache exists
+    window.addEventListener('currentGwChanged', handleGwChange as EventListener);
+    return () => {
+      window.removeEventListener('currentGwChanged', handleGwChange as EventListener);
+    };
+  }, [user?.id]);
 
   // Confetti check
   useEffect(() => {
@@ -778,41 +751,8 @@ export default function HomePage() {
 
   // Background refresh is now handled by loadHomePageData (checks cache freshness internally)
 
-  // Subscribe to app_meta changes
-  useEffect(() => {
-    if (!user?.id) return;
-    
-    const channel = supabase
-      .channel('app_meta_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'app_meta',
-          filter: 'id=eq.1'
-        },
-        (payload) => {
-          const newCurrentGw = (payload.new as any)?.current_gw;
-          if (newCurrentGw && typeof newCurrentGw === 'number') {
-            const oldGw = gw;
-            setGw(newCurrentGw);
-            const cacheKey = `home:basic:${user.id}`;
-            removeCached(cacheKey);
-            if (oldGw) {
-              removeCached(`home:fixtures:${user.id}:${oldGw}`);
-            }
-            removeCached(`home:fixtures:${user.id}:${newCurrentGw}`);
-            setGwResultsVersion(prev => prev + 1);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user?.id, gw]);
+  // Note: app_meta subscription is now handled by useCurrentGameweek hook
+  // This effect listens to the custom event dispatched by the hook
 
   // Fixtures and league data are now loaded by unified loadHomePageData function
   

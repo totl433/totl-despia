@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { getCached, setCached, removeCached, getCacheTimestamp, CACHE_TTL } from "../lib/cache";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { useGameweekState } from "../hooks/useGameweekState";
+import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import { PageHeader } from "../components/PageHeader";
 import SegmentedToggle from "../components/SegmentedToggle";
 import UserPicksModal from "../components/UserPicksModal";
@@ -102,35 +103,15 @@ export default function GlobalLeaderboardPage() {
   const [selectedUserName, setSelectedUserName] = useState<string | null>(null);
   const [selectedUserRank, setSelectedUserRank] = useState<number | undefined>(undefined);
   
-  // Load current_gw from cache immediately, then fetch in background if needed
+  // Use centralized hook for current gameweek (single source of truth)
+  const { currentGw } = useCurrentGameweek();
+  
+  // Update currentGwFromMeta when hook value changes
   useEffect(() => {
-    // Try to load from cache first for instant display
-    try {
-      const cached = getCached<{ current_gw: number }>('app:meta');
-      if (cached?.current_gw) {
-        setCurrentGwFromMeta(cached.current_gw);
-      }
-    } catch (error) {
-      // Non-critical
+    if (currentGw !== null) {
+      setCurrentGwFromMeta(currentGw);
     }
-    
-    // Fetch fresh data in background
-    let alive = true;
-    (async () => {
-      const { data } = await supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle();
-      if (alive && data) {
-        const currentGw = (data as any)?.current_gw ?? null;
-        setCurrentGwFromMeta(currentGw);
-        // Cache it for next time
-        try {
-          setCached('app:meta', { current_gw: currentGw }, CACHE_TTL.HOME);
-        } catch (error) {
-          // Non-critical
-        }
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
+  }, [currentGw]);
 
   // Use centralized gameweek state logic
   const { state: currentGwState } = useGameweekState(currentGwFromMeta ?? null);

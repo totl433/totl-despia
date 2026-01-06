@@ -11,6 +11,7 @@ import ConfirmationModal from "../components/predictions/ConfirmationModal";
 import DateHeader from "../components/DateHeader";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { useGameweekState } from "../hooks/useGameweekState";
+import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import Confetti from "react-confetti";
 import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
@@ -117,8 +118,8 @@ export default function PredictionsPage() {
       // Ignore cache errors
     }
     
-    // Get current GW from app_meta cache
-    const metaCache = getCached<{ current_gw: number }>('app_meta');
+    // Get current GW from cache (will be updated by useCurrentGameweek hook)
+    const metaCache = getCached<{ current_gw: number }>('app_meta:current_gw');
     const dbCurrentGw = metaCache?.current_gw || 14;
     
     // Determine which GW to display (user's viewing GW, or current GW if not set)
@@ -608,20 +609,12 @@ export default function PredictionsPage() {
  let alive = true;
  (async () => {
  try {
- // Get app_meta.current_gw (published GW)
- const { data: meta, error: metaError } = await supabase
- .from("app_meta")
- .select("current_gw")
- .eq("id", 1)
- .maybeSingle();
- 
- // dbCurrentGw is guaranteed to be a number after this block
- let dbCurrentGwNum: number;
- if (metaError || !meta) {
- dbCurrentGwNum = 14; // Fallback
- } else {
- dbCurrentGwNum = meta?.current_gw ?? 14;
- }
+ // Use current GW from hook (already fetched from app_meta)
+ // Fallback to cache or 14 if hook hasn't loaded yet
+ let dbCurrentGwNum: number = dbCurrentGwFromHook ?? (() => {
+   const metaCache = getCached<{ current_gw: number }>('app_meta:current_gw');
+   return metaCache?.current_gw ?? 14;
+ })();
  
  // Get user's current_viewing_gw (which GW they're actually viewing)
  let userViewingGw: number;
