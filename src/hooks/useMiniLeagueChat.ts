@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { supabase } from "../lib/supabase";
-import { getCached } from "../lib/cache";
+import { getCached, setCached, CACHE_TTL } from "../lib/cache";
 
 const PAGE_SIZE = 50;
 
@@ -101,6 +101,7 @@ export function useMiniLeagueChat(
   const initializingLeagueIdRef = useRef<string | null>(null);
   const refreshInProgressRef = useRef<boolean>(false);
   const latestTimestampRef = useRef<string | null>(null);
+  const lastCacheUpdateRef = useRef<number>(0);
 
   const applyMessages = useCallback(
     (updater: (prev: MiniLeagueChatMessage[]) => MiniLeagueChatMessage[]) => {
@@ -108,10 +109,26 @@ export function useMiniLeagueChat(
         const next = updater(prev);
         earliestTimestampRef.current = next.length ? next[0].created_at : null;
         latestTimestampRef.current = next.length ? next[next.length - 1].created_at : null;
+        
+        // Update cache when messages change (debounced to avoid excessive writes)
+        if (miniLeagueId && next.length > 0) {
+          // Only cache if we have real messages (not just optimistic ones)
+          const realMessages = next.filter(msg => !msg.id.startsWith('optimistic-'));
+          if (realMessages.length > 0) {
+            // Debounce cache updates - only update cache every 2 seconds max
+            const now = Date.now();
+            if (now - lastCacheUpdateRef.current > 2000) {
+              lastCacheUpdateRef.current = now;
+              const cacheKey = `chat:messages:${miniLeagueId}`;
+              setCached(cacheKey, realMessages, CACHE_TTL.HOME);
+            }
+          }
+        }
+        
         return next;
       });
     },
-    []
+    [miniLeagueId]
   );
 
   const fetchPage = useCallback(
@@ -204,12 +221,14 @@ export function useMiniLeagueChat(
           // For refresh: merge with existing to preserve any real-time messages that arrived during fetch
           // Only replace if we got a full page (50 messages), otherwise merge to preserve newer messages
           const gotFullPage = (data ?? []).length >= PAGE_SIZE;
-          if (gotFullPage) {
-            // Full page fetch - safe to replace (we're loading initial page)
+          if (gotFullPage && prev.length === 0) {
+            // Full page fetch AND no existing messages - safe to replace (initial load)
             return dedupeAndSort(normalized);
           } else {
-            // Partial page - merge to preserve any newer messages that arrived via real-time
-            return dedupeAndSort([...prev, ...normalized]);
+            // Merge: combine existing and fetched messages, keeping all unique messages
+            // This preserves real-time messages that arrived during fetch
+            const merged = [...prev, ...normalized];
+            return dedupeAndSort(merged);
           }
         }
       });
@@ -358,9 +377,59 @@ export function useMiniLeagueChat(
         if (now - lastRefreshTime >= REFRESH_INTERVAL_MS && !refreshInProgressRef.current) {
           lastRefreshTime = now;
           // Silently refresh in background to catch missed messages
-          refresh().catch((err) => {
-            console.warn('[useMiniLeagueChat] Periodic refresh failed:', err);
-          });
+          // Use a lightweight fetch that only gets messages newer than what we have
+          const latestTimestamp = latestTimestampRef.current;
+          if (latestTimestamp) {
+            // Only fetch messages newer than our latest
+            supabase
+              .from("league_messages")
+              .select("id, league_id, user_id, content, created_at, reply_to_message_id")
+              .eq("league_id", miniLeagueId)
+              .gt("created_at", latestTimestamp)
+              .order("created_at", { ascending: true })
+              .then(({ data, error }) => {
+                if (!active || error) return;
+                if (data && data.length > 0) {
+                  // Fetch reply data for any messages with replies
+                  const messagesWithReply = data.filter((row: any) => row.reply_to_message_id);
+                  const replyMessageIds = [...new Set(messagesWithReply.map((row: any) => row.reply_to_message_id))];
+                  
+                  if (replyMessageIds.length > 0) {
+                    supabase
+                      .from("league_messages")
+                      .select("id, content, user_id")
+                      .in("id", replyMessageIds)
+                      .then(({ data: replyMessages }) => {
+                        if (!active || !replyMessages) return;
+                        const replyDataMap = new Map<string, any>();
+                        replyMessages.forEach((msg: any) => {
+                          replyDataMap.set(msg.id, msg);
+                        });
+                        
+                        const enriched = data.map((row: any) => {
+                          if (row.reply_to_message_id && replyDataMap.has(row.reply_to_message_id)) {
+                            row.reply_to = replyDataMap.get(row.reply_to_message_id);
+                          }
+                          return normalizeMessage(row);
+                        });
+                        
+                        applyMessages((prev) => dedupeAndSort([...prev, ...enriched]));
+                      });
+                  } else {
+                    const normalized = data.map((row: any) => normalizeMessage(row));
+                    applyMessages((prev) => dedupeAndSort([...prev, ...normalized]));
+                  }
+                }
+              })
+              .catch((err) => {
+                console.warn('[useMiniLeagueChat] Periodic refresh failed:', err);
+              });
+          } else {
+            // No latest timestamp, do full refresh
+            refresh().catch((err) => {
+              console.warn('[useMiniLeagueChat] Periodic refresh failed:', err);
+            });
+          }
         }
       }, REFRESH_INTERVAL_MS);
     };
@@ -422,9 +491,17 @@ export function useMiniLeagueChat(
               const incoming = normalizeMessage(fullMessage);
               applyMessages((prev) => {
                 // Check if message already exists (deduplication)
-                const exists = prev.some((msg) => msg.id === incoming.id);
+                const exists = prev.some((msg) => msg.id === incoming.id || (msg.client_msg_id && msg.client_msg_id === incoming.client_msg_id));
                 if (exists) {
                   console.log('[useMiniLeagueChat] Message already exists, skipping:', incoming.id);
+                  // Update existing message if it's an optimistic one being replaced
+                  const optimisticIndex = prev.findIndex(msg => msg.client_msg_id && msg.client_msg_id === incoming.client_msg_id && msg.id.startsWith('optimistic-'));
+                  if (optimisticIndex >= 0) {
+                    // Replace optimistic message with real one
+                    const updated = [...prev];
+                    updated[optimisticIndex] = incoming;
+                    return dedupeAndSort(updated);
+                  }
                   return prev;
                 }
                 console.log('[useMiniLeagueChat] Adding new message:', incoming.id);
@@ -472,9 +549,25 @@ export function useMiniLeagueChat(
           console.error('[useMiniLeagueChat] Channel subscription error - will rely on periodic refresh');
           // Start periodic refresh immediately if subscription fails
           startPeriodicRefresh();
+          // Try to resubscribe after a delay
+          setTimeout(() => {
+            if (active && miniLeagueId) {
+              console.log('[useMiniLeagueChat] Attempting to resubscribe after error');
+              channel.unsubscribe();
+              channel.subscribe();
+            }
+          }, 5000);
         } else if (status === 'TIMED_OUT') {
           console.warn('[useMiniLeagueChat] Subscription timed out - will rely on periodic refresh');
           startPeriodicRefresh();
+          // Try to resubscribe after a delay
+          setTimeout(() => {
+            if (active && miniLeagueId) {
+              console.log('[useMiniLeagueChat] Attempting to resubscribe after timeout');
+              channel.unsubscribe();
+              channel.subscribe();
+            }
+          }, 5000);
         } else if (status === 'CLOSED') {
           console.warn('[useMiniLeagueChat] Subscription closed - will rely on periodic refresh');
           startPeriodicRefresh();
@@ -590,15 +683,35 @@ export function useMiniLeagueChat(
       }
 
       if (data) {
+        // Fetch reply data if this message has a reply
+        if (data.reply_to_message_id) {
+          const { data: replyMessage } = await supabase
+            .from("league_messages")
+            .select("id, content, user_id")
+            .eq("id", data.reply_to_message_id)
+            .single();
+          
+          if (replyMessage) {
+            (data as any).reply_to = replyMessage;
+          }
+        }
+        
         const finalized = normalizeMessage(data);
         finalized.client_msg_id = clientId;
-        applyMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === optimisticId
-              ? { ...finalized, status: "sent", client_msg_id: clientId }
-              : msg
-          )
-        );
+        finalized.status = "sent";
+        
+        applyMessages((prev) => {
+          // Find and replace optimistic message
+          const optimisticIndex = prev.findIndex(msg => msg.id === optimisticId);
+          if (optimisticIndex >= 0) {
+            const updated = [...prev];
+            updated[optimisticIndex] = finalized;
+            return dedupeAndSort(updated);
+          } else {
+            // Optimistic message not found, just add the finalized one
+            return dedupeAndSort([...prev, finalized]);
+          }
+        });
       }
     },
     [miniLeagueId, userId, applyMessages]
