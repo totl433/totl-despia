@@ -930,12 +930,30 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
             
             // If submittedUserIds is empty, fetch submissions
             if (submittedUserIds.size === 0) {
-              const { data: submissionsData } = await supabase
+              const { data: submissionsData, error: submissionsError } = await supabase
                 .from('app_gw_submissions')
                 .select('user_id')
-                .eq('gw', currentGw);
+                .eq('gw', currentGw)
+                .not('submitted_at', 'is', null);
+              
+              if (submissionsError) {
+                log.warn('preload/ml_live_table_submissions_error', { 
+                  userId: userId.slice(0, 8), 
+                  gw: currentGw, 
+                  error: submissionsError.message 
+                });
+              }
+              
               const allMemberIds = new Set(Object.values(membersByLeague).flat().map(m => m.id));
               submittedUserIds = new Set((submissionsData ?? []).map((s: any) => s.user_id).filter((id: string) => allMemberIds.has(id)));
+              
+              log.debug('preload/ml_live_table_submissions_fetched', { 
+                userId: userId.slice(0, 8), 
+                gw: currentGw, 
+                totalSubmissions: submissionsData?.length || 0,
+                filteredSubmissions: submittedUserIds.size,
+                allMemberIdsCount: allMemberIds.size
+              });
             }
             
             // Cache ML live table data per league (fixtures, picks, submissions, results)
@@ -957,6 +975,18 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
                 submissions: leagueSubmissions,
                 results: mlResults ?? [],
               }, CACHE_TTL.HOME);
+              
+              // Log cache creation for debugging
+              log.debug('preload/ml_live_table_cache_created', { 
+                userId: userId.slice(0, 8), 
+                gw: currentGw, 
+                leagueId: league.id.slice(0, 8),
+                fixturesCount: mlFixtures.length,
+                picksCount: leaguePicks.length,
+                submissionsCount: leagueSubmissions.length,
+                resultsCount: (mlResults ?? []).length,
+                memberIdsCount: memberIds.length
+              });
             }
             
             log.debug('preload/ml_live_table_data_cached', { 
