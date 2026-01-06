@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { getCached, setCached, removeCached, CACHE_TTL } from '../lib/cache';
+import { getCached, setCached, CACHE_TTL } from '../lib/cache';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 /**

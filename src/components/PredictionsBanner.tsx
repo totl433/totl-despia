@@ -74,16 +74,21 @@ export default function PredictionsBanner() {
         }
         
         // Check if GW has finished and next GW fixtures don't exist
+        if (!currentGw) {
+          setVisible(false);
+          return;
+        }
+        
         const { count: rsCount } = await supabase
           .from("app_gw_results")
           .select("gw", { count: "exact", head: true })
-          .eq("gw", gw);
+          .eq("gw", currentGw);
         
         if ((rsCount ?? 0) > 0) {
           const { count: nextGwFxCount } = await supabase
             .from("app_fixtures")
             .select("id", { count: "exact", head: true })
-            .eq("gw", gw + 1);
+            .eq("gw", currentGw + 1);
           
           if (!nextGwFxCount || nextGwFxCount === 0) {
             setBannerType("watch-space");

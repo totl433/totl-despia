@@ -11,7 +11,6 @@ import ConfirmationModal from "../components/predictions/ConfirmationModal";
 import DateHeader from "../components/DateHeader";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { useGameweekState } from "../hooks/useGameweekState";
-import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import Confetti from "react-confetti";
 import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
@@ -609,12 +608,10 @@ export default function PredictionsPage() {
  let alive = true;
  (async () => {
  try {
- // Use current GW from hook (already fetched from app_meta)
- // Fallback to cache or 14 if hook hasn't loaded yet
- let dbCurrentGwNum: number = dbCurrentGwFromHook ?? (() => {
-   const metaCache = getCached<{ current_gw: number }>('app_meta:current_gw');
-   return metaCache?.current_gw ?? 14;
- })();
+ // Use current GW from cache (pre-loaded during initial data load)
+ // Fallback to 14 if cache hasn't loaded yet
+ const metaCache = getCached<{ current_gw: number }>('app_meta:current_gw');
+ let dbCurrentGwNum: number = metaCache?.current_gw ?? 14;
  
  // Get user's current_viewing_gw (which GW they're actually viewing)
  let userViewingGw: number;
