@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo, useRef } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { 
@@ -8,6 +8,7 @@ import {
   updateHeartbeat 
 } from '../lib/pushNotificationsV2';
 import { bootLog } from '../lib/logEvent';
+import { invalidateUserCache } from '../lib/cache';
 
 type AuthState = {
   user: User | null;
@@ -33,6 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
   const [hasShownWelcome, setHasShownWelcome] = useState(false);
+  const previousUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -54,6 +56,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 fallbackSession = parsed.currentSession;
                 console.log('[Auth] Found session in localStorage, using as fallback');
                 if (mounted) {
+                  const fallbackUserId = fallbackSession.user?.id ?? null;
+                  previousUserIdRef.current = fallbackUserId;
                   setSession(fallbackSession);
                   setUser(fallbackSession.user);
                   setLoading(false);
@@ -95,6 +99,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authStateReceived = true;
       clearTimeout(authTimeout);
       if (!mounted) return;
+      
+      // Clear cache for previous user if user changed
+      const newUserId = sess?.user?.id ?? null;
+      const previousUserId = previousUserIdRef.current;
+      if (previousUserId && previousUserId !== newUserId) {
+        console.log(`[Auth] User changed from ${previousUserId} to ${newUserId}, clearing cache`);
+        invalidateUserCache(previousUserId);
+      }
+      previousUserIdRef.current = newUserId;
+      
       setSession(sess);
       setUser(sess?.user ?? null);
       setLoading(false);
@@ -146,6 +160,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log('[Auth] Session result:', data?.session ? 'has session' : 'no session');
         }
         if (data?.session) {
+          const sessionUserId = data.session.user?.id ?? null;
+          const previousUserId = previousUserIdRef.current;
+          if (previousUserId && previousUserId !== sessionUserId) {
+            console.log(`[Auth] User changed from ${previousUserId} to ${sessionUserId} (from getSession), clearing cache`);
+            invalidateUserCache(previousUserId);
+          }
+          previousUserIdRef.current = sessionUserId;
           setSession(data.session);
           setUser(data.session.user);
         }
@@ -235,9 +256,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function signOut() {
     console.log('[Auth] Sign out initiated');
     
+    // Clear cache for current user before signing out
+    if (user?.id) {
+      console.log(`[Auth] Clearing cache for user ${user.id} on sign out`);
+      invalidateUserCache(user.id);
+    }
+    
     // Immediately clear local state
     setSession(null);
     setUser(null);
+    previousUserIdRef.current = null;
     resetPushSessionState();
     
     // Clear Supabase session from localStorage directly (CRITICAL - prevents session restoration)

@@ -139,7 +139,10 @@ export function MiniLeaguesSection({
       } : undefined;
     }
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeaguesSection.tsx:140',message:'memoizedCardData result',data:{resultKeys:Object.keys(result),resultCount:Object.keys(result).length,firstResultHasMembers:Object.keys(result).length>0&&result[Object.keys(result)[0]]?.members?.length>0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    const firstKey = Object.keys(result)[0];
+    const firstResult = firstKey ? result[firstKey] : undefined;
+    const firstResultHasMembers = firstResult?.members && firstResult.members.length > 0;
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeaguesSection.tsx:140',message:'memoizedCardData result',data:{resultKeys:Object.keys(result),resultCount:Object.keys(result).length,firstResultHasMembers},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
     // #endregion
     
     prevCardDataRef.current = result;

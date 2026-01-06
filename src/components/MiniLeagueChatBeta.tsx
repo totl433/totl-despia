@@ -58,9 +58,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputAreaRef = useRef<HTMLDivElement | null>(null);
+  const hasScrolledRef = useRef<boolean>(false);
   const [inputBottom, setInputBottom] = useState(0);
-  // Track if content is scrollable to determine justifyContent
-  const [isContentScrollable, setIsContentScrollable] = useState(false);
   
   // Track presence: mark user as active in chat to suppress notifications
   useEffect(() => {
@@ -362,16 +361,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
           const newPadding = `${totalBottomSpace + 8}px`;
           const oldPadding = listRef.current.style.paddingBottom;
           listRef.current.style.paddingBottom = newPadding;
-          
-          // Keyboard open
-            keyboardHeight,
-            inputAreaHeight,
-            oldPadding,
-            newPadding,
-            changed: oldPadding !== newPadding,
-            scrollHeight: listRef.current.scrollHeight,
-            clientHeight: listRef.current.clientHeight,
-          }, 'MiniLeagueChatBeta.tsx:410', 'C');
         }
       } else {
         setInputBottom(0);
@@ -418,18 +407,11 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
 
       resizeTimeout = setTimeout(() => {
         const keyboardHeight = detectKeyboardHeight();
-
-        // Keyboard detection update
-          keyboardHeight,
-          lastKeyboardHeight,
-          initialLoadComplete,
-          willApply: initialLoadComplete && Math.abs(keyboardHeight - lastKeyboardHeight) > 10,
-        }, 'MiniLeagueChatBeta.tsx:460', 'D');
         
         // Only apply keyboard layout changes after initial load is complete
         if (initialLoadComplete && Math.abs(keyboardHeight - lastKeyboardHeight) > 10) {
           lastKeyboardHeight = keyboardHeight;
-        applyKeyboardLayout(keyboardHeight);
+          applyKeyboardLayout(keyboardHeight);
         }
       }, 50);
     };
@@ -714,8 +696,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (node && messages.length > 0 && chatGroups.length > 0) {
-            const scrollable = node.scrollHeight > node.clientHeight;
-            setIsContentScrollable(scrollable);
+            // Content scrollability check (currently unused)
           }
         });
       });
@@ -970,7 +951,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
             autoCapitalize="sentences"
             spellCheck={true}
             inputMode="text"
-            enterKeyHint="send"
+            {...({ enterKeyHint: "send" } as any)}
             data-1p-ignore="true"
             onKeyDown={(e) => {
               if (e.key === 'Escape' && replyingTo) {

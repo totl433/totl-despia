@@ -62,18 +62,9 @@ export default function HomePage() {
   
   // Load initial state from cache synchronously (happens before first render)
   const loadInitialStateFromCache = () => {
-    let userId: string | undefined = user?.id;
-    if (!userId && typeof window !== 'undefined') {
-      try {
-        const userStr = localStorage.getItem('totl:user');
-        if (userStr) {
-          const userObj = JSON.parse(userStr);
-          userId = userObj.id;
-        }
-      } catch (e) {
-        // Ignore
-      }
-    }
+    // CRITICAL: Only use user?.id from AuthContext - never fall back to localStorage
+    // This ensures we don't load cache from a different user
+    const userId: string | undefined = user?.id;
     
     if (typeof window === 'undefined' || !userId) {
       return {
