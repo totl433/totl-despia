@@ -731,12 +731,51 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
 
   const notifyRecipients = useCallback(
     async (text: string) => {
-      if (!miniLeagueId || !user?.id) return;
+      if (!miniLeagueId || !user?.id) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'MiniLeagueChatBeta.tsx:notifyRecipients:early-return',
+            message: 'notifyRecipients skipped - missing miniLeagueId or userId',
+            data: { hasMiniLeagueId: !!miniLeagueId, hasUserId: !!user?.id },
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            hypothesisId: 'H11'
+          })
+        }).catch(() => {});
+        // #endregion
+        return;
+      }
 
       const isLocal =
         typeof window !== "undefined" &&
         (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-      if (isLocal) return;
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'MiniLeagueChatBeta.tsx:notifyRecipients:localhost-check',
+          message: 'Checking if running locally',
+          data: { 
+            isLocal, 
+            hostname: typeof window !== "undefined" ? window.location.hostname : 'unknown',
+            willSkip: isLocal
+          },
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          hypothesisId: 'H11'
+        })
+      }).catch(() => {});
+      // #endregion
+      
+      if (isLocal) {
+        console.log('[Chat] Notifications skipped: running on localhost. Notifications only work on staging/production.');
+        return;
+      }
 
       const senderName =
         (user.user_metadata?.display_name as string | undefined) ||
@@ -744,8 +783,29 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         user.email ||
         "User";
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'MiniLeagueChatBeta.tsx:notifyRecipients:before-fetch',
+          message: 'Calling notifyLeagueMessage function',
+          data: {
+            leagueId: miniLeagueId,
+            senderId: user.id,
+            senderName,
+            contentLength: text.length,
+            contentPreview: text.slice(0, 50)
+          },
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          hypothesisId: 'H11'
+        })
+      }).catch(() => {});
+      // #endregion
+
       try {
-        await fetch("/.netlify/functions/notifyLeagueMessage", {
+        const response = await fetch("/.netlify/functions/notifyLeagueMessage", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -756,7 +816,48 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
             activeUserIds: [user.id],
           }),
         });
-      } catch (err) {
+        
+        const result = await response.json().catch(() => ({}));
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'MiniLeagueChatBeta.tsx:notifyRecipients:after-fetch',
+            message: 'notifyLeagueMessage function response',
+            data: {
+              status: response.status,
+              ok: response.ok,
+              result: result,
+              hasError: !!result.error,
+              recipients: result.recipients,
+              sent: result.sent
+            },
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            hypothesisId: 'H11'
+          })
+        }).catch(() => {});
+        // #endregion
+      } catch (err: any) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'MiniLeagueChatBeta.tsx:notifyRecipients:error',
+            message: 'Error calling notifyLeagueMessage',
+            data: {
+              error: err?.message || String(err),
+              errorType: err?.constructor?.name
+            },
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            hypothesisId: 'H11'
+          })
+        }).catch(() => {});
+        // #endregion
         // Silently fail - notifications are best effort
       }
     },
@@ -773,7 +874,46 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         inputRef.current.style.height = "auto";
         inputRef.current.style.height = "42px";
       }
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'MiniLeagueChatBeta.tsx:handleSend:before-send',
+          message: 'About to send message',
+          data: {
+            textLength: text.length,
+            textPreview: text.slice(0, 50),
+            hasReply: !!replyingTo,
+            miniLeagueId
+          },
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          hypothesisId: 'H11'
+        })
+      }).catch(() => {});
+      // #endregion
+      
       await sendMessage(text, replyingTo?.id || null);
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'MiniLeagueChatBeta.tsx:handleSend:after-send',
+          message: 'Message sent, about to notify recipients',
+          data: {
+            textLength: text.length,
+            miniLeagueId
+          },
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          hypothesisId: 'H11'
+        })
+      }).catch(() => {});
+      // #endregion
+      
       await notifyRecipients(text);
       setReplyingTo(null);
       scrollToBottom();

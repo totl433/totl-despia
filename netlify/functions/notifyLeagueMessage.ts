@@ -130,23 +130,46 @@ export const handler: Handler = async (event) => {
     }
   }
 
-  if (recipientIds.size === 0) return json(200, { ok: true, message: 'No eligible recipients' });
+  if (recipientIds.size === 0) {
+    console.log('[notifyLeagueMessage] No eligible recipients (all excluded: sender, muted, or active)');
+    return json(200, { ok: true, message: 'No eligible recipients' });
+  }
 
   // Resolve player IDs
   const toIds = Array.from(recipientIds);
+  console.log(`[notifyLeagueMessage] Looking up push subscriptions for ${toIds.length} recipient user IDs`);
   const { data: subs, error: subErr } = await admin
     .from('push_subscriptions')
     .select('player_id, user_id')
     .in('user_id', toIds)
     .eq('is_active', true);
 
-  if (subErr) return json(500, { error: 'Failed to load subscriptions', details: subErr.message });
+  if (subErr) {
+    console.error('[notifyLeagueMessage] Failed to load subscriptions:', subErr);
+    return json(500, { error: 'Failed to load subscriptions', details: subErr.message });
+  }
+  
   const playerIds = Array.from(new Set((subs ?? []).map((s: any) => s.player_id).filter(Boolean)));
-  if (playerIds.length === 0) return json(200, { ok: true, message: 'No devices' });
+  console.log(`[notifyLeagueMessage] Found ${playerIds.length} active player IDs for ${toIds.length} recipients`);
+  
+  if (playerIds.length === 0) {
+    console.log('[notifyLeagueMessage] No registered devices found for recipients');
+    return json(200, { ok: true, message: 'No devices' });
+  }
 
   // Build message: title = sender, body = content (trim to reasonable length)
   const title = senderName || 'New message';
   const message = String(content).slice(0, 180);
+  
+  console.log(`[notifyLeagueMessage] Sending notification to ${playerIds.length} devices:`, {
+    leagueId,
+    leagueCode,
+    leagueUrl,
+    senderId,
+    senderName: title,
+    messagePreview: message.slice(0, 50),
+    playerIds: playerIds.slice(0, 3) // Log first 3 for debugging
+  });
 
   // Build OneSignal payload with deep link URL
   // iOS requires url and web_url at top level for deep linking
@@ -184,6 +207,7 @@ export const handler: Handler = async (event) => {
   let lastResp: any = null;
   for (const endpoint of endpoints) {
     for (const auth of headersList) {
+      console.log(`[notifyLeagueMessage] Attempting OneSignal API call:`, { endpoint, authType: auth.startsWith('Bearer') ? 'Bearer' : auth.startsWith('Basic') ? 'Basic' : 'Raw' });
       const resp = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': auth },
@@ -192,6 +216,15 @@ export const handler: Handler = async (event) => {
       const body = await resp.json().catch(() => ({}));
       lastResp = { endpoint, auth, status: resp.status, body };
       
+      console.log(`[notifyLeagueMessage] OneSignal API response:`, {
+        endpoint,
+        status: resp.status,
+        ok: resp.ok,
+        recipients: body.recipients,
+        errors: body.errors,
+        id: body.id
+      });
+      
       // OneSignal often returns HTTP 200 even with errors in the body
       if (resp.ok) {
         // Check for errors in response body
@@ -199,7 +232,7 @@ export const handler: Handler = async (event) => {
           console.error(`[notifyLeagueMessage] OneSignal returned errors:`, body.errors);
           // If all players are not subscribed, that's a different issue
           if (body.errors.some((e: string) => e.includes('not subscribed'))) {
-            console.warn(`[notifyLeagueMessage] Some/all players not subscribed in OneSignal`);
+            console.warn(`[notifyLeagueMessage] Some/all players not subscribed in OneSignal - trying next endpoint/auth combo`);
             // Continue to next endpoint/auth combo
             continue;
           }
@@ -208,6 +241,7 @@ export const handler: Handler = async (event) => {
         // Success - check recipients count
         const recipients = body.recipients || 0;
         if (recipients > 0 || !body.errors) {
+          console.log(`[notifyLeagueMessage] Success! Sent to ${recipients} recipients`);
           return json(200, { ok: true, result: body, sent: playerIds.length, recipients });
         }
       }

@@ -3,6 +3,23 @@ import { v4 as uuidv4 } from "uuid";
 import { supabase } from "../lib/supabase";
 import { getCached, setCached, CACHE_TTL } from "../lib/cache";
 
+// #region agent log
+const DEBUG_LOG = (location: string, message: string, data: any, hypothesisId?: string) => {
+  fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+      sessionId: 'debug-session',
+      hypothesisId: hypothesisId || 'ALL'
+    })
+  }).catch(() => {});
+};
+// #endregion
+
 const PAGE_SIZE = 50;
 
 export type MiniLeagueChatMessage = {
@@ -186,6 +203,17 @@ export function useMiniLeagueChat(
       }
 
       console.log('[fetchPage] Fetched', data?.length || 0, 'messages from database');
+      
+      // #region agent log
+      DEBUG_LOG('useMiniLeagueChat.ts:fetchPage:fetched', 'Fetched messages from database', {
+        messageCount: data?.length || 0,
+        before,
+        append,
+        latestMessageId: data?.[0]?.id,
+        latestMessageContent: data?.[0]?.content?.slice(0, 50),
+        latestMessageCreatedAt: data?.[0]?.created_at
+      }, 'H7');
+      // #endregion
 
       // Fetch reply data for messages that have reply_to_message_id
       const messagesWithReply = (data ?? []).filter((row: any) => row.reply_to_message_id);
@@ -239,14 +267,41 @@ export function useMiniLeagueChat(
       }).reverse();
 
       applyMessages((prev) => {
+        // #region agent log
+        DEBUG_LOG('useMiniLeagueChat.ts:fetchPage:before-merge', 'Before merging fetched messages', {
+          prevCount: prev.length,
+          normalizedCount: normalized.length,
+          append,
+          prevLatestId: prev[prev.length - 1]?.id,
+          prevLatestCreatedAt: prev[prev.length - 1]?.created_at,
+          normalizedLatestId: normalized[normalized.length - 1]?.id,
+          normalizedLatestCreatedAt: normalized[normalized.length - 1]?.created_at,
+          normalizedFirstId: normalized[0]?.id,
+          normalizedFirstCreatedAt: normalized[0]?.created_at
+        }, 'H7');
+        // #endregion
+        
+        let result: MiniLeagueChatMessage[];
         if (append) {
           // Append older messages (for pagination)
-          return dedupeAndSort([...normalized, ...prev]);
+          result = dedupeAndSort([...normalized, ...prev]);
         } else {
           // For refresh: merge everything, dedupeAndSort handles duplicates
           // Optimistic messages will be replaced by real ones when they arrive via real-time
-          return dedupeAndSort([...prev, ...normalized]);
+          result = dedupeAndSort([...prev, ...normalized]);
         }
+        
+        // #region agent log
+        DEBUG_LOG('useMiniLeagueChat.ts:fetchPage:after-merge', 'After merging fetched messages', {
+          resultCount: result.length,
+          resultLatestId: result[result.length - 1]?.id,
+          resultLatestCreatedAt: result[result.length - 1]?.created_at,
+          addedCount: result.length - prev.length,
+          removedCount: prev.length + normalized.length - result.length
+        }, 'H7');
+        // #endregion
+        
+        return result;
       });
 
       if ((data ?? []).length < PAGE_SIZE) {
@@ -360,6 +415,18 @@ export function useMiniLeagueChat(
     // Otherwise check cache again (in case cache was populated after component mount)
     const hasInitialMessages = messages.length > 0;
     const cachedMessages = getCached<MiniLeagueChatMessage[]>(`chat:messages:${miniLeagueId}`);
+    
+    // #region agent log
+    DEBUG_LOG('useMiniLeagueChat.ts:useEffect:cache-check', 'Checking cache on mount', {
+      hasInitialMessages,
+      initialMessageCount: messages.length,
+      cachedMessageCount: cachedMessages?.length || 0,
+      cachedLatestMessageId: cachedMessages?.[cachedMessages.length - 1]?.id,
+      cachedLatestMessageContent: cachedMessages?.[cachedMessages.length - 1]?.content?.slice(0, 50),
+      cachedLatestMessageCreatedAt: cachedMessages?.[cachedMessages.length - 1]?.created_at,
+      cacheKey: `chat:messages:${miniLeagueId}`
+    }, 'H7');
+    // #endregion
     
     if (hasInitialMessages || (cachedMessages && cachedMessages.length > 0)) {
       // We have messages (from initial state or cache) - no loading state needed
@@ -490,6 +557,16 @@ export function useMiniLeagueChat(
           if (!active) return;
           console.log('[useMiniLeagueChat] Received real-time message:', payload.new.id);
           
+          // #region agent log
+          DEBUG_LOG('useMiniLeagueChat.ts:realtime:received', 'Real-time message received', {
+            messageId: payload.new.id,
+            content: payload.new.content?.slice(0, 50),
+            createdAt: payload.new.created_at,
+            refreshInProgress: refreshInProgressRef.current,
+            currentMessageCount: messages.length
+          }, 'H8');
+          // #endregion
+          
           // Skip if refresh is in progress (to avoid race conditions)
           // The refresh will pick up this message when it completes
           if (refreshInProgressRef.current) {
@@ -531,6 +608,16 @@ export function useMiniLeagueChat(
               }
               
               const incoming = normalizeMessage(fullMessage);
+              
+              // #region agent log
+              DEBUG_LOG('useMiniLeagueChat.ts:realtime:adding', 'Adding real-time message', {
+                messageId: incoming.id,
+                content: incoming.content?.slice(0, 50),
+                createdAt: incoming.created_at,
+                currentMessageCount: messages.length
+              }, 'H8');
+              // #endregion
+              
               applyMessages((prev) => {
                 // Check if message already exists (deduplication)
                 const exists = prev.some((msg) => msg.id === incoming.id || (msg.client_msg_id && msg.client_msg_id === incoming.client_msg_id));
@@ -582,6 +669,14 @@ export function useMiniLeagueChat(
       )
       .subscribe((status) => {
         console.log('[useMiniLeagueChat] Subscription status:', status);
+        
+        // #region agent log
+        DEBUG_LOG('useMiniLeagueChat.ts:subscription:status', 'Subscription status changed', {
+          status,
+          miniLeagueId,
+          currentMessageCount: messages.length
+        }, 'H8');
+        // #endregion
         
         if (status === 'SUBSCRIBED') {
           console.log('[useMiniLeagueChat] Successfully subscribed to real-time updates');
@@ -741,6 +836,17 @@ export function useMiniLeagueChat(
         const finalized = normalizeMessage(data);
         finalized.client_msg_id = clientId;
         finalized.status = "sent";
+        
+        // #region agent log
+        DEBUG_LOG('useMiniLeagueChat.ts:sendMessage:success', 'Message sent successfully', {
+          messageId: finalized.id,
+          clientMsgId: clientId,
+          contentLength: finalized.content.length,
+          contentPreview: finalized.content.slice(0, 50),
+          createdAt: finalized.created_at,
+          hasReply: !!finalized.reply_to_message_id
+        }, 'H11');
+        // #endregion
         
         applyMessages((prev) => {
           // Find and replace optimistic message by ID or client_msg_id
