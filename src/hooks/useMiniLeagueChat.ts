@@ -381,52 +381,53 @@ export function useMiniLeagueChat(
           const latestTimestamp = latestTimestampRef.current;
           if (latestTimestamp) {
             // Only fetch messages newer than our latest
-            supabase
-              .from("league_messages")
-              .select("id, league_id, user_id, content, created_at, reply_to_message_id")
-              .eq("league_id", miniLeagueId)
-              .gt("created_at", latestTimestamp)
-              .order("created_at", { ascending: true })
-              .then(({ data, error }) => {
-                if (!active || error) return;
-                if (data && data.length > 0) {
-                  // Fetch reply data for any messages with replies
-                  const messagesWithReply = data.filter((row: any) => row.reply_to_message_id);
-                  const replyMessageIds = [...new Set(messagesWithReply.map((row: any) => row.reply_to_message_id))];
+            (async () => {
+              try {
+                const { data, error } = await supabase
+                  .from("league_messages")
+                  .select("id, league_id, user_id, content, created_at, reply_to_message_id")
+                  .eq("league_id", miniLeagueId)
+                  .gt("created_at", latestTimestamp)
+                  .order("created_at", { ascending: true });
+                
+                if (!active || error || !data || data.length === 0) return;
+                
+                // Fetch reply data for any messages with replies
+                const messagesWithReply = data.filter((row: any) => row.reply_to_message_id);
+                const replyMessageIds = [...new Set(messagesWithReply.map((row: any) => row.reply_to_message_id))];
+                
+                if (replyMessageIds.length > 0) {
+                  const { data: replyMessages } = await supabase
+                    .from("league_messages")
+                    .select("id, content, user_id")
+                    .in("id", replyMessageIds);
                   
-                  if (replyMessageIds.length > 0) {
-                    supabase
-                      .from("league_messages")
-                      .select("id, content, user_id")
-                      .in("id", replyMessageIds)
-                      .then(({ data: replyMessages }) => {
-                        if (!active || !replyMessages) return;
-                        const replyDataMap = new Map<string, any>();
-                        replyMessages.forEach((msg: any) => {
-                          replyDataMap.set(msg.id, msg);
-                        });
-                        
-                        const enriched = data.map((row: any) => {
-                          if (row.reply_to_message_id && replyDataMap.has(row.reply_to_message_id)) {
-                            row.reply_to = replyDataMap.get(row.reply_to_message_id);
-                          }
-                          return normalizeMessage(row);
-                        });
-                        
-                        applyMessages((prev) => dedupeAndSort([...prev, ...enriched]));
-                      });
-                  } else {
-                    const normalized = data.map((row: any) => normalizeMessage(row));
-                    applyMessages((prev) => dedupeAndSort([...prev, ...normalized]));
-                  }
+                  if (!active || !replyMessages) return;
+                  
+                  const replyDataMap = new Map<string, any>();
+                  replyMessages.forEach((msg: any) => {
+                    replyDataMap.set(msg.id, msg);
+                  });
+                  
+                  const enriched = data.map((row: any) => {
+                    if (row.reply_to_message_id && replyDataMap.has(row.reply_to_message_id)) {
+                      row.reply_to = replyDataMap.get(row.reply_to_message_id);
+                    }
+                    return normalizeMessage(row);
+                  });
+                  
+                  applyMessages((prev) => dedupeAndSort([...prev, ...enriched]));
+                } else {
+                  const normalized = data.map((row: any) => normalizeMessage(row));
+                  applyMessages((prev) => dedupeAndSort([...prev, ...normalized]));
                 }
-              })
-              .catch((err) => {
+              } catch (err: any) {
                 console.warn('[useMiniLeagueChat] Periodic refresh failed:', err);
-              });
+              }
+            })();
           } else {
             // No latest timestamp, do full refresh
-            refresh().catch((err) => {
+            refresh().catch((err: any) => {
               console.warn('[useMiniLeagueChat] Periodic refresh failed:', err);
             });
           }
