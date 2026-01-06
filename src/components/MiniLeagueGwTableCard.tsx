@@ -517,9 +517,30 @@ export default function MiniLeagueGwTableCard({
         unicorns: 0,
       }));
     
-    // Debug logging for empty rows
-    if (calculatedRows.length === 0 && fixtures.length > 0 && displayGw) {
-      console.warn(`[MiniLeagueGwTableCard] No rows calculated for GW ${displayGw} - members: ${members.length}, submitted: ${submittedUserIds.size}, fixtures: ${fixtures.length}, picks: ${picks.length}, results: ${results.length}`);
+    // Debug logging for empty rows - more detailed
+    if (calculatedRows.length === 0 && displayGw) {
+      const memberIdsList = members.map(m => m.id).slice(0, 3); // First 3 for logging
+      const submittedIdsList = Array.from(submittedUserIds).slice(0, 3);
+      console.warn(`[MiniLeagueGwTableCard] No rows calculated for GW ${displayGw}:`, {
+        displayGw,
+        currentGw,
+        fixturesCount: fixtures.length,
+        fixturesForGwCount: fixturesForGw.length,
+        picksCount: picks.length,
+        resultsCount: results.length,
+        outcomesCount: outcomes.size,
+        membersCount: members.length,
+        submittedCount: submittedUserIds.size,
+        memberIds: memberIdsList,
+        submittedIds: submittedIdsList,
+        hasLiveScores,
+        isLiveState: displayGw === currentGw && hasLiveScores
+      });
+      
+      // If we have fixtures but no submissions, that's the issue
+      if (fixtures.length > 0 && submittedUserIds.size === 0) {
+        console.error(`[MiniLeagueGwTableCard] CRITICAL: Have fixtures for GW ${displayGw} but NO members have submitted!`);
+      }
     }
 
     const picksByFixture = new Map<number, Array<{ user_id: string; pick: "H" | "D" | "A" }>>();
