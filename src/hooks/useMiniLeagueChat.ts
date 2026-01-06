@@ -218,18 +218,10 @@ export function useMiniLeagueChat(
           // Append older messages (for pagination)
           return dedupeAndSort([...normalized, ...prev]);
         } else {
-          // For refresh: merge with existing to preserve any real-time messages that arrived during fetch
-          // Only replace if we got a full page (50 messages), otherwise merge to preserve newer messages
-          const gotFullPage = (data ?? []).length >= PAGE_SIZE;
-          if (gotFullPage && prev.length === 0) {
-            // Full page fetch AND no existing messages - safe to replace (initial load)
-            return dedupeAndSort(normalized);
-          } else {
-            // Merge: combine existing and fetched messages, keeping all unique messages
-            // This preserves real-time messages that arrived during fetch
-            const merged = [...prev, ...normalized];
-            return dedupeAndSort(merged);
-          }
+          // For refresh: always merge to preserve optimistic messages and real-time updates
+          // Never completely replace - always merge to ensure no messages are lost
+          const merged = [...prev, ...normalized];
+          return dedupeAndSort(merged);
         }
       });
 
@@ -265,11 +257,19 @@ export function useMiniLeagueChat(
     setError(null);
     
     try {
+      // Preserve any optimistic messages that are still sending
+      // These will be replaced when the real message arrives via real-time or when sendMessage completes
+      const currentOptimisticMessages = messages.filter(msg => 
+        msg.id.startsWith('optimistic-') && msg.status === 'sending'
+      );
+      
       // Check cache first (pre-loaded during initial data load)
       const cachedMessages = getCached<MiniLeagueChatMessage[]>(`chat:messages:${miniLeagueId}`);
       if (cachedMessages && cachedMessages.length > 0 && !hasMessages) {
         // Use cached messages immediately only if we don't have messages yet
-        applyMessages(() => cachedMessages);
+        // Include any optimistic messages
+        const messagesToSet = [...cachedMessages, ...currentOptimisticMessages];
+        applyMessages(() => dedupeAndSort(messagesToSet));
         // Set earliest timestamp for pagination
         if (cachedMessages.length > 0) {
           earliestTimestampRef.current = cachedMessages[0].created_at;
@@ -285,6 +285,23 @@ export function useMiniLeagueChat(
       console.log('[useMiniLeagueChat] Refreshing messages from database');
       await fetchPage({ append: false });
       
+      // After fetch, ensure optimistic messages are still present
+      if (currentOptimisticMessages.length > 0) {
+        applyMessages((prev) => {
+          // Add back any optimistic messages that might have been removed
+          const existingOptimisticIds = new Set(
+            prev.filter(msg => msg.id.startsWith('optimistic-')).map(msg => msg.id)
+          );
+          const missingOptimistic = currentOptimisticMessages.filter(
+            msg => !existingOptimisticIds.has(msg.id)
+          );
+          if (missingOptimistic.length > 0) {
+            return dedupeAndSort([...prev, ...missingOptimistic]);
+          }
+          return prev;
+        });
+      }
+      
       if (!hasMessages && cachedMessages && cachedMessages.length > 0) {
         // If we used cache, loading was already set to false above
         // But fetchPage might have updated messages, so we're good
@@ -298,7 +315,7 @@ export function useMiniLeagueChat(
         setLoading(false);
       }
     }
-  }, [miniLeagueId, enabled, fetchPage, applyMessages, messages.length]);
+  }, [miniLeagueId, enabled, fetchPage, applyMessages, messages]);
 
   useEffect(() => {
     if (!miniLeagueId || !enabled) {
@@ -702,17 +719,30 @@ export function useMiniLeagueChat(
         finalized.status = "sent";
         
         applyMessages((prev) => {
-          // Find and replace optimistic message
-          const optimisticIndex = prev.findIndex(msg => msg.id === optimisticId);
+          // Find and replace optimistic message by ID or client_msg_id
+          const optimisticIndex = prev.findIndex(msg => 
+            msg.id === optimisticId || 
+            (msg.client_msg_id === clientId && msg.id.startsWith('optimistic-'))
+          );
+          
           if (optimisticIndex >= 0) {
+            // Replace optimistic message with real one
             const updated = [...prev];
             updated[optimisticIndex] = finalized;
             return dedupeAndSort(updated);
           } else {
-            // Optimistic message not found, just add the finalized one
-            return dedupeAndSort([...prev, finalized]);
+            // Optimistic message not found - check if real message already exists
+            const exists = prev.some(msg => msg.id === finalized.id || (msg.client_msg_id === clientId && !msg.id.startsWith('optimistic-')));
+            if (!exists) {
+              // Add the finalized message if it doesn't exist
+              return dedupeAndSort([...prev, finalized]);
+            }
+            // Message already exists, return as-is
+            return prev;
           }
         });
+        
+        // Cache will be updated automatically by applyMessages debounce logic
       }
     },
     [miniLeagueId, userId, applyMessages]
