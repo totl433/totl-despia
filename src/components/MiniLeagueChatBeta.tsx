@@ -39,10 +39,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   
   const {
     messages,
-    loadingMore,
-    hasMore,
     error,
-    loadMore,
     sendMessage,
   } = useMiniLeagueChat(miniLeagueId, {
     userId: user?.id,
@@ -359,14 +356,12 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         setInputBottom(keyboardHeight);
         if (listRef.current) {
           const newPadding = `${totalBottomSpace + 8}px`;
-          const oldPadding = listRef.current.style.paddingBottom;
           listRef.current.style.paddingBottom = newPadding;
         }
       } else {
         setInputBottom(0);
         if (listRef.current) {
           const newPadding = `${inputAreaHeight + 8}px`;
-          const oldPadding = listRef.current.style.paddingBottom;
           listRef.current.style.paddingBottom = newPadding;
         }
       }
@@ -455,30 +450,11 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   // This runs on mount to ensure padding is set before first paint
   useEffect(() => {
     if (listRef.current && inputAreaRef.current) {
-      const currentPadding = listRef.current.style.paddingBottom;
       const inputAreaHeight = inputAreaRef.current.offsetHeight || 72;
-      const inputAreaTop = inputAreaRef.current.offsetTop;
-      const inputAreaBottom = inputAreaRef.current.offsetTop + inputAreaRef.current.offsetHeight;
       const correctPadding = `${inputAreaHeight + 8}px`;
       
       // Set padding immediately
       listRef.current.style.paddingBottom = correctPadding;
-      
-      
-      // Check if layout shifts after a delay
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-    if (listRef.current && inputAreaRef.current) {
-            const newInputAreaTop = inputAreaRef.current.offsetTop;
-            const newInputAreaBottom = inputAreaRef.current.offsetTop + inputAreaRef.current.offsetHeight;
-            const newScrollHeight = listRef.current.scrollHeight;
-            const newClientHeight = listRef.current.clientHeight;
-            const newScrollTop = listRef.current.scrollTop;
-            const inputAreaRect = inputAreaRef.current.getBoundingClientRect();
-            
-          }
-        });
-      });
     }
   }, []);
 
@@ -677,8 +653,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     // Set padding immediately to prevent layout shift
     // Use a default value that matches typical input area height
     if (node) {
-      const initialPadding = node.style.paddingBottom;
-      
       // Measure input area first if available, otherwise use default
       if (inputAreaRef.current) {
         const inputAreaHeight = inputAreaRef.current.offsetHeight || 72;
