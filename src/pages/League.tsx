@@ -1731,18 +1731,28 @@ ${shareUrl}`;
   useEffect(() => {
     let alive = true;
     (async () => {
-      // If we already have rows loaded (from cache), skip calculation entirely
-      // Also check cache directly - if cache exists, don't recalculate
-      if (mltRows.length > 0) {
+      // If gwResultsVersion changed (results were updated), force recalculation
+      // Otherwise, if we already have rows loaded (from cache), skip calculation
+      const shouldRecalculate = gwResultsVersion > 0;
+      
+      // Check if cached data is stale (all wins/draws are 0 when there should be data)
+      // This handles the case where cache was created before wins/draws were properly calculated
+      const hasStaleCache = mltRows.length > 0 && mltRows.every(row => row.wins === 0 && row.draws === 0);
+      const shouldForceRecalc = shouldRecalculate || hasStaleCache;
+      
+      if (!shouldForceRecalc && mltRows.length > 0) {
         return;
       }
       
-      // Check cache one more time before doing anything
-      if (league?.id) {
-        const cached = getCached<MltRow[]>(`league:mltRows:${league.id}`);
-        if (cached && cached.length > 0) {
-          setMltRows(cached);
-          return;
+      // If forcing recalculation due to results change or stale cache, skip cache checks
+      if (!shouldForceRecalc) {
+        // Check cache one more time before doing anything
+        if (league?.id) {
+          const cached = getCached<MltRow[]>(`league:mltRows:${league.id}`);
+          if (cached && cached.length > 0) {
+            setMltRows(cached);
+            return;
+          }
         }
       }
       
@@ -1761,11 +1771,14 @@ ${shareUrl}`;
         return;
       }
       
-      // Check cache one more time before calculating
-      const hasCachedData = league?.id && getCached<MltRow[]>(`league:mltRows:${league.id}`);
-      if (hasCachedData && hasCachedData.length > 0) {
-        setMltRows(hasCachedData);
-        return;
+      // If forcing recalculation, skip cache check
+      if (!shouldForceRecalc) {
+        // Check cache one more time before calculating
+        const hasCachedData = league?.id && getCached<MltRow[]>(`league:mltRows:${league.id}`);
+        if (hasCachedData && hasCachedData.length > 0) {
+          setMltRows(hasCachedData);
+          return;
+        }
       }
       
       // Don't calculate until we have currentGw loaded
@@ -1833,7 +1846,7 @@ ${shareUrl}`;
         setMltRows(createEmptyMltRows(members));
         return;
       }
-
+      
       const { data: pk } = await supabase
         .from("app_picks")
         .select("user_id,gw,fixture_index,pick")
@@ -2746,6 +2759,48 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
   }
   // #endregion
 
+  // Check game state of current GW to determine which GW to show in GW Table tab
+  const { state: currentGwState } = useGameweekState(currentGw);
+
+  // Calculate which GW is shown in the GW Table tab (same logic as GwResultsTab)
+  const gwTableGw = useMemo(() => {
+    if (league?.name === 'API Test') {
+      return currentTestGw ?? 1;
+    }
+    
+    // For "gwr" tab (GW table): show previous GW until deadline passes, then show current GW
+    // If user manually selected a GW, use that
+    if (manualGwSelectedRef.current && selectedGw) {
+      return selectedGw;
+    }
+    
+    // If no currentGw, fallback to selectedGw
+    if (!currentGw) {
+      return selectedGw;
+    }
+    
+    // Determine if deadline has passed
+    // If state is LIVE or RESULTS_PRE_GW, deadline has passed - show current GW
+    // Otherwise (GW_OPEN, GW_PREDICTED, or null/unknown), show previous GW
+    const deadlinePassed = currentGwState === 'LIVE' || currentGwState === 'RESULTS_PRE_GW';
+    
+    if (deadlinePassed) {
+      // Deadline passed - show current GW
+      return currentGw;
+    } else {
+      // Deadline hasn't passed - show previous GW
+      // Use latestResultsGw if available and valid, otherwise use currentGw - 1
+      if (latestResultsGw && latestResultsGw < currentGw) {
+        return latestResultsGw;
+      }
+      // Fallback to currentGw - 1 (or currentGw if it's GW 1)
+      return currentGw > 1 ? currentGw - 1 : currentGw;
+    }
+  }, [league?.name, currentTestGw, selectedGw, currentGw, currentGwState, latestResultsGw]);
+
+  // Check if the GW shown in GW Table tab is live
+  const { state: gwTableState } = useGameweekState(gwTableGw);
+
   return (
     <div className={`${oldSchoolMode ? 'oldschool-theme' : 'bg-slate-50'}`} style={{
       position: 'fixed',
@@ -3088,18 +3143,9 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                 }
               >
                 {(() => {
-                  // Check if GW is live: first game started AND last game not finished
-                  const now = new Date();
-                  const firstFixture = fixtures[0];
-                  const firstKickoff = firstFixture?.kickoff_time ? new Date(firstFixture.kickoff_time) : null;
-                  const firstGameStarted = firstKickoff && firstKickoff <= now;
-                  
-                  const lastFixture = fixtures[fixtures.length - 1];
-                  const lastFixtureIndex = lastFixture?.fixture_index;
-                  const lastFixtureScore = lastFixtureIndex !== undefined ? liveScores[lastFixtureIndex] : null;
-                  const lastGameFinished = lastFixtureScore?.status === 'FINISHED';
-                  
-                  const isGwLive = firstGameStarted && !lastGameFinished;
+                  // Use centralized game state to check if GW Table tab's GW is live
+                  // Only show live indicator if we have a valid GW and state, and state is LIVE
+                  const isGwLive = gwTableGw !== null && gwTableGw !== undefined && gwTableState === 'LIVE';
                   
                   return (
                     <>
