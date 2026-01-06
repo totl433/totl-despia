@@ -70,9 +70,34 @@ const normalizeMessage = (row: any): MiniLeagueChatMessage => {
 
 const dedupeAndSort = (list: MiniLeagueChatMessage[]) => {
   const map = new Map<string, MiniLeagueChatMessage>();
+  
+  // First pass: collect all messages, preferring real over optimistic
   for (const msg of list) {
-    map.set(msg.id, msg);
+    if (msg.id.startsWith('optimistic-') && msg.client_msg_id) {
+      // Check if real message with same client_msg_id exists
+      const hasReal = list.some(m => 
+        !m.id.startsWith('optimistic-') && 
+        m.client_msg_id === msg.client_msg_id
+      );
+      // Only add optimistic if no real message exists
+      if (!hasReal) {
+        map.set(msg.id, msg);
+      }
+    } else {
+      // Real message - add it and remove optimistic with same client_msg_id
+      if (msg.client_msg_id) {
+        const optimisticId = Array.from(map.keys()).find(id => {
+          const m = map.get(id);
+          return m?.id.startsWith('optimistic-') && m.client_msg_id === msg.client_msg_id;
+        });
+        if (optimisticId) {
+          map.delete(optimisticId);
+        }
+      }
+      map.set(msg.id, msg);
+    }
   }
+  
   return Array.from(map.values()).sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
@@ -218,10 +243,9 @@ export function useMiniLeagueChat(
           // Append older messages (for pagination)
           return dedupeAndSort([...normalized, ...prev]);
         } else {
-          // For refresh: always merge to preserve optimistic messages and real-time updates
-          // Never completely replace - always merge to ensure no messages are lost
-          const merged = [...prev, ...normalized];
-          return dedupeAndSort(merged);
+          // For refresh: merge everything, dedupeAndSort handles duplicates
+          // Optimistic messages will be replaced by real ones when they arrive via real-time
+          return dedupeAndSort([...prev, ...normalized]);
         }
       });
 
