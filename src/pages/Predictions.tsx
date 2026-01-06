@@ -1623,21 +1623,21 @@ useEffect(() => {
  .select('league_id')
  .eq('user_id', user.id);
  
- if (userLeagues && userLeagues.length > 0) {
- // Call notifyFinalSubmission for each league (fire-and-forget)
- userLeagues.forEach(({ league_id }) => {
- fetch('/.netlify/functions/notifyFinalSubmission', {
- method: 'POST',
- headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({
- leagueId: league_id,
- gw: gwToDisplay,
- }),
- }).catch(() => {
- // Failed to check final submission (non-critical)
- });
- });
- }
+if (userLeagues && userLeagues.length > 0) {
+// Call notifyFinalSubmission for each league (fire-and-forget)
+userLeagues.forEach(({ league_id }) => {
+fetch('/.netlify/functions/notifyFinalSubmission', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({
+leagueId: league_id,
+gw: currentGw,
+}),
+}).catch(() => {
+// Failed to check final submission (non-critical)
+});
+});
+}
  } catch (err: any) {
  // Failed to fetch user leagues (non-critical)
  }
@@ -2190,13 +2190,13 @@ return null;
  <div className="flex-1 min-w-0 text-left"><span className="text-sm font-semibold text-slate-800 truncate inline-block">{fixture.away_team || fixture.away_name}</span></div>
  </div>
  <div className="grid grid-cols-3 gap-3 mt-4">
- <button 
- onClick={()=>{
- if (submitted) return;
- const np=new Map(picks);
- np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"H",matchday:gwToDisplay});
- setPicks(np);
- }} 
+<button 
+onClick={()=>{
+if (submitted) return;
+const np=new Map(picks);
+np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"H",matchday:currentGw || fixture.gw});
+setPicks(np);
+}}
  disabled={submitted}
  className={`h-16 rounded-xl border text-sm font-medium flex items-center justify-center ${
  pick?.pick==="H"
@@ -2214,13 +2214,13 @@ return null;
  >
  Home Win
  </button>
- <button 
- onClick={()=>{
- if (submitted) return;
- const np=new Map(picks);
- np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"D",matchday:gwToDisplay});
- setPicks(np);
- }} 
+<button 
+onClick={()=>{
+if (submitted) return;
+const np=new Map(picks);
+np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"D",matchday:currentGw || fixture.gw});
+setPicks(np);
+}}
  disabled={submitted}
  className={`h-16 rounded-xl border text-sm font-medium flex items-center justify-center ${
  pick?.pick==="D"
@@ -2238,13 +2238,13 @@ return null;
  >
  Draw
  </button>
- <button 
- onClick={()=>{
- if (submitted) return;
- const np=new Map(picks);
- np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"A",matchday:gwToDisplay});
- setPicks(np);
- }} 
+<button 
+onClick={()=>{
+if (submitted) return;
+const np=new Map(picks);
+np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"A",matchday:currentGw || fixture.gw});
+setPicks(np);
+}}
  disabled={submitted}
  className={`h-16 rounded-xl border text-sm font-medium flex items-center justify-center ${
  pick?.pick==="A"
