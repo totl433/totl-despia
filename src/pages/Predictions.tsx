@@ -89,82 +89,14 @@ export default function PredictionsPage() {
  const { user } = useAuth();
  const navigate = useNavigate();
 
- const [currentTestGw, setCurrentTestGw] = useState<number | null>(null);
+ const [currentGw, setCurrentGw] = useState<number | null>(null);
  const [currentIndex, setCurrentIndex] = useState(0);
  
  // Initialize state from cache synchronously to prevent loading flash
+ // CRITICAL: Don't load from cache here - it might be for the wrong GW
+ // The useEffect will load from cache immediately after determining the correct GW
+ // This prevents showing stale data for a different GW
  const loadInitialStateFromCache = () => {
- if (typeof window === 'undefined' || !user?.id) {
- return {
- fixtures: [],
- picks: new Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>(),
- submitted: false,
- results: new Map<number, "H" | "D" | "A">(),
- loading: true,
- picksChecked: false,
- submissionChecked: false,
- };
- }
- 
-  try {
-    // CRITICAL: Check user's viewing GW preference FIRST (same as HomePage)
-    // This ensures we load picks for the GW the user is actually viewing
-    let userViewingGw: number | null = null;
-    try {
-      const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
-      userViewingGw = prefsCache?.current_viewing_gw ?? null;
-    } catch (e) {
-      // Ignore cache errors
-    }
-    
-    // Get current GW from cache (will be updated by useCurrentGameweek hook)
-    const metaCache = getCached<{ current_gw: number }>('app_meta:current_gw');
-    const dbCurrentGw = metaCache?.current_gw || 14;
-    
-    // Determine which GW to display (user's viewing GW, or current GW if not set)
-    // CRITICAL: If userViewingGw is set, use it (even if it's greater than dbCurrentGw)
-    // This handles the case where user moved on to a new GW but cache hasn't updated yet
-    const gwToDisplay = userViewingGw !== null ? userViewingGw : dbCurrentGw;
-
-    const cacheKey = `predictions:${user.id}:${gwToDisplay}`;
- const cached = getCached<{
- fixtures: Fixture[];
- picks: Array<{ fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>;
- submitted: boolean;
- results: Array<{ fixture_index: number; result: "H" | "D" | "A" }>;
- }>(cacheKey);
- 
- if (cached && cached.fixtures && Array.isArray(cached.fixtures) && cached.fixtures.length > 0) {
- // Restore picks from cache
- const picksMap = new Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>();
- if (cached.picks && Array.isArray(cached.picks)) {
- cached.picks.forEach(p => {
-   picksMap.set(p.fixture_index, p);
- });
- }
- 
- // Restore results from cache
- const resultsMap = new Map<number, "H" | "D" | "A">();
- if (cached.results && Array.isArray(cached.results)) {
- cached.results.forEach(r => {
- resultsMap.set(r.fixture_index, r.result);
- });
- }
- 
- return {
- fixtures: cached.fixtures,
- picks: picksMap,
- submitted: cached.submitted || false,
- results: resultsMap,
- loading: false, // Data available, no loading needed
- picksChecked: true,
- submissionChecked: true,
- };
- }
- } catch (error) {
- // Error loading from cache (non-critical)
- }
- 
  return {
  fixtures: [],
  picks: new Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>(),
@@ -181,10 +113,19 @@ export default function PredictionsPage() {
  // Initialize fixtures, picks, and results from cache
  const [fixtures, setFixtures] = useState<Fixture[]>(initialState.fixtures);
  
+ // Track when fixtures change to debug flash of old data
+ useEffect(() => {
+   // #region agent log
+   if (fixtures.length > 0) {
+     fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Predictions.tsx:115',message:'Fixtures state updated',data:{fixturesLength:fixtures.length,firstFixtureGw:fixtures[0]?.gw,currentGw},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'Q'})}).catch(()=>{});
+   }
+   // #endregion
+ }, [fixtures, currentGw]);
+
  // Use centralized game state system (PR.md rule 10)
  // LIVE state means: first kickoff happened AND last game hasn't finished (FT)
  // Pass userId to get user-specific state (includes GW_PREDICTED)
- const { state: gameState, loading: gameStateLoading } = useGameweekState(currentTestGw, user?.id);
+ const { state: gameState, loading: gameStateLoading } = useGameweekState(currentGw, user?.id);
  const [picks, setPicks] = useState<Map<number, { fixture_index: number; pick: "H" | "D" | "A"; matchday: number }>>(initialState.picks);
  const [results, setResults] = useState<Map<number, "H" | "D" | "A">>(initialState.results);
  const [teamForms, setTeamForms] = useState<Map<string, string>>(new Map()); // Map<teamCode, formString>
@@ -219,14 +160,14 @@ export default function PredictionsPage() {
  }
  };
 
- // Fetch team forms when currentTestGw changes
+ // Fetch team forms when currentGw changes
  useEffect(() => {
- if (currentTestGw) {
- fetchTeamForms(currentTestGw);
+ if (currentGw) {
+ fetchTeamForms(currentGw);
  } else {
  setTeamForms(new Map()); // Clear forms if no GW
  }
- }, [currentTestGw]);
+ }, [currentGw]);
 
  
  // Initialize viewMode - check sessionStorage synchronously to prevent flash
@@ -237,7 +178,7 @@ export default function PredictionsPage() {
  // This prevents the flash even if we don't know the exact GW or user ID yet
  for (let i = 0; i < sessionStorage.length; i++) {
  const key = sessionStorage.key(i);
- if (key && key.startsWith(`test_api_submitted_`)) {
+ if (key && key.startsWith(`gw_submitted_`)) {
  const value = sessionStorage.getItem(key);
  if (value === 'true') {
  // If user ID is available, check if it matches
@@ -293,13 +234,13 @@ export default function PredictionsPage() {
  
  // Helper function to check sessionStorage for submission (defined early to avoid hoisting issues)
  const getHasEverBeenSubmitted = () => {
- if (typeof window === 'undefined' || !currentTestGw || !user?.id) return false;
- const key = `test_api_submitted_${currentTestGw}_${user.id}`;
+ if (typeof window === 'undefined' || !currentGw || !user?.id) return false;
+ const key = `gw_submitted_${currentGw}_${user.id}`;
  return sessionStorage.getItem(key) === 'true';
  };
  const setHasEverBeenSubmitted = (value: boolean) => {
- if (typeof window === 'undefined' || !currentTestGw || !user?.id) return;
- const key = `test_api_submitted_${currentTestGw}_${user?.id}`;
+ if (typeof window === 'undefined' || !currentGw || !user?.id) return;
+ const key = `test_api_submitted_${currentGw}_${user?.id}`;
  if (value) {
  sessionStorage.setItem(key, 'true');
  } else {
@@ -336,12 +277,12 @@ export default function PredictionsPage() {
  return false;
  });
  
- // Check sessionStorage immediately when currentTestGw and user are available
+ // Check sessionStorage immediately when currentGw and user are available
  // to prevent swipe cards from showing even briefly
  useEffect(() => {
- if (currentTestGw && user?.id && typeof window !== 'undefined') {
+ if (currentGw && user?.id && typeof window !== 'undefined') {
  try {
- const key = `test_api_submitted_${currentTestGw}_${user.id}`;
+ const key = `gw_submitted_${currentGw}_${user.id}`;
  const hasSubmitted = sessionStorage.getItem(key) === 'true';
  if (hasSubmitted) {
  // Set both state values synchronously to prevent any flash
@@ -353,7 +294,7 @@ export default function PredictionsPage() {
  // Ignore errors
  }
  }
- }, [currentTestGw, user?.id]);
+ }, [currentGw, user?.id]);
  
  // Set viewMode to "list" immediately when submitted is detected
  useEffect(() => {
@@ -373,13 +314,12 @@ export default function PredictionsPage() {
  const [allMembersSubmitted, setAllMembersSubmitted] = useState(false);
  const [leagueMembers, setLeagueMembers] = useState<Array<{ id: string; name: string }>>([]);
  const [submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new Set());
- const [apiTestLeagueId, setApiTestLeagueId] = useState<string | null>(null);
  const [apiMatchIds, setApiMatchIds] = useState<number[]>([]);
  const [deadlineTime, setDeadlineTime] = useState<Date | null>(null);
  const [pickPercentages, setPickPercentages] = useState<Map<number, { H: number; D: number; A: number }>>(new Map());
  
  // Subscribe to real-time live scores using the hook
- const { liveScores: liveScoresMap } = useLiveScores(currentTestGw || undefined, apiMatchIds.length > 0 ? apiMatchIds : undefined);
+ const { liveScores: liveScoresMap } = useLiveScores(currentGw || undefined, apiMatchIds.length > 0 ? apiMatchIds : undefined);
  
  // Convert liveScoresMap to the format expected by the component
  const liveScores = useMemo(() => {
@@ -423,7 +363,7 @@ export default function PredictionsPage() {
  // Check all sessionStorage for any submission
  for (let i = 0; i < sessionStorage.length; i++) {
  const key = sessionStorage.key(i);
- if (key && key.startsWith(`test_api_submitted_`)) {
+ if (key && key.startsWith(`gw_submitted_`)) {
  const value = sessionStorage.getItem(key);
  if (value === 'true') {
  // Found a submission - don't show cards
@@ -604,6 +544,10 @@ export default function PredictionsPage() {
  const isResettingRef = useRef(false);
 
  // Load fixtures and picks from database
+ // Track previous GW to detect changes
+ const prevGwRef = useRef<number | null>(null);
+ const fixturesGwRef = useRef<number | null>(null); // Track GW for fixtures to handle async state updates
+ 
  useEffect(() => {
  let alive = true;
  (async () => {
@@ -638,9 +582,9 @@ export default function PredictionsPage() {
  // Determine which GW to display
  // If user hasn't transitioned to new GW, show their viewing GW (previous GW)
  // Otherwise show the current GW
- const currentGw = userViewingGw < dbCurrentGwNum ? userViewingGw : dbCurrentGwNum;
+ const gwToDisplay = userViewingGw < dbCurrentGwNum ? userViewingGw : dbCurrentGwNum;
  
- if (!currentGw) {
+ if (!gwToDisplay) {
  // Always set state, even if component appears to be unmounting
  setFixtures([]);
  setLoading(false);
@@ -650,11 +594,24 @@ export default function PredictionsPage() {
  return;
  }
  
- setCurrentTestGw(currentGw);
+ // CRITICAL: Clear fixtures BEFORE setting new GW to prevent flash of old data
+ // Only clear if GW actually changed (not on initial load)
+ if (prevGwRef.current !== null && prevGwRef.current !== gwToDisplay) {
+   // GW changed - clear fixtures immediately to prevent flash
+   setFixtures([]);
+   setLoading(true);
+ }
+ prevGwRef.current = gwToDisplay;
  
+ setCurrentGw(gwToDisplay);
+
  // 1. Load from cache immediately (if available)
- const cacheKey = `predictions:${user?.id}:${currentGw}`;
+ const cacheKey = `predictions:${user?.id}:${gwToDisplay}`;
  let loadedFromCache = false;
+ 
+ // #region agent log
+ fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Predictions.tsx:656',message:'useEffect determining GW and loading cache',data:{currentGw,userId:user?.id,cacheKey,prevGw:prevGwRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'L'})}).catch(()=>{});
+ // #endregion
  
  try {
  const cached = getCached<{
@@ -664,8 +621,20 @@ export default function PredictionsPage() {
  results: Array<{ fixture_index: number; result: "H" | "D" | "A" }>;
  }>(cacheKey);
  
+ // #region agent log
+ fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Predictions.tsx:667',message:'Cache check result',data:{hasCache:!!cached,cachedFixturesLength:cached?.fixtures?.length || 0,cachedGw:cached?.fixtures?.[0]?.gw},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'M'})}).catch(()=>{});
+ // #endregion
+ 
  if (cached && cached.fixtures && Array.isArray(cached.fixtures) && cached.fixtures.length > 0) {
+ // #region agent log
+ fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Predictions.tsx:670',message:'Setting fixtures from cache',data:{fixturesLength:cached.fixtures.length,firstFixtureGw:cached.fixtures[0]?.gw,currentGw},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'N'})}).catch(()=>{});
+ // #endregion
  // INSTANT RENDER from cache!
+ // #region agent log
+ fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Predictions.tsx:633',message:'About to set fixtures from cache',data:{fixturesLength:cached.fixtures.length,firstFixtureGw:cached.fixtures[0]?.gw,currentGw,prevGw:prevGwRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'R'})}).catch(()=>{});
+ // #endregion
+ // Track that fixtures are being set for this GW
+ fixturesGwRef.current = gwToDisplay;
  setFixtures(cached.fixtures);
  setLoading(false);
  
@@ -677,7 +646,7 @@ export default function PredictionsPage() {
               picksMap.set(p.fixture_index, {
                 fixture_index: p.fixture_index,
                 pick: p.pick,
-                matchday: p.matchday || currentGw
+                matchday: p.matchday || gwToDisplay
               });
             }
           });
@@ -702,7 +671,7 @@ export default function PredictionsPage() {
    const { data: pk, error: pkErr } = await supabase
      .from("app_picks")
      .select("gw,fixture_index,pick")
-     .eq("gw", currentGw)
+     .eq("gw", gwToDisplay)
      .eq("user_id", user.id);
    
    if (!pkErr && pk && pk.length > 0) {
@@ -716,7 +685,7 @@ export default function PredictionsPage() {
            picksMap.set(p.fixture_index, {
              fixture_index: p.fixture_index,
              pick: p.pick,
-             matchday: p.gw || currentGw
+             matchday: p.gw || gwToDisplay
            });
          }
        });
@@ -843,13 +812,13 @@ export default function PredictionsPage() {
  const { data: savedFixtures, error: fixturesError } = await supabase
  .from("app_fixtures")
  .select("*")
- .eq("gw", currentGw)
+ .eq("gw", gwToDisplay)
  .order("fixture_index", { ascending: true });
-
+ 
  if (fixturesError) {
- throw new Error(`Failed to load test fixtures: ${fixturesError.message}`);
+ throw new Error(`Failed to load fixtures: ${fixturesError.message}`);
  }
-
+ 
  if (!savedFixtures || savedFixtures.length === 0) {
  // Always set state, even if component appears to be unmounting
  setFixtures([]);
@@ -863,7 +832,7 @@ export default function PredictionsPage() {
  // Convert saved fixtures to our format
  const fixturesData: Fixture[] = savedFixtures.map((f: any) => ({
  id: f.id || String(f.api_match_id || f.fixture_index),
- gw: currentGw!,
+ gw: gwToDisplay,
  fixture_index: f.fixture_index,
  home_team: f.home_team,
  away_team: f.away_team,
@@ -896,6 +865,8 @@ export default function PredictionsPage() {
  // Always set fixtures and loading state, even if component appears to be unmounting
  // React will safely handle state updates even if component unmounts
  // This prevents infinite loading when useEffect restarts
+ // Track that fixtures are being set for this GW
+ fixturesGwRef.current = gwToDisplay;
  setFixtures(fixturesData);
  // Set loading to false as soon as fixtures are loaded - show page immediately
  setLoading(false);
@@ -980,7 +951,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
  const { data: submission } = await supabase
  .from("app_gw_submissions")
  .select("submitted_at")
- .eq("gw", currentGw!)
+ .eq("gw", gwToDisplay)
  .eq("user_id", user.id)
  .maybeSingle();
  
@@ -1023,14 +994,14 @@ if (alive && fixturesData.length > 0 && currentGw) {
  }
  }
 
- // Fetch user's picks from TEST API table
+ // Fetch user's picks
  let hasPicks = false;
  if (user?.id && fixturesData.length > 0 && !isSubmitted) {
  // Only fetch picks if not submitted (optimization)
  const { data: pk, error: pkErr } = await supabase
  .from("app_picks")
  .select("gw,fixture_index,pick")
- .eq("gw", currentGw!)
+ .eq("gw", gwToDisplay)
  .eq("user_id", user.id);
 
  if (!pkErr && pk && pk.length > 0) {
@@ -1057,7 +1028,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
               picksMap.set(p.fixture_index, {
                 fixture_index: p.fixture_index,
                 pick: p.pick,
-                matchday: p.gw || currentGw! // Use gw instead of matchday
+                matchday: p.gw || gwToDisplay // Use gw instead of matchday
               });
             }
           });
@@ -1075,7 +1046,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
             await supabase
               .from("app_picks")
               .delete()
-              .eq("gw", currentGw!)
+              .eq("gw", gwToDisplay)
               .eq("user_id", user.id);
             setPicks(new Map());
             hasPicks = false;
@@ -1087,7 +1058,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
                 picksMap.set(p.fixture_index, {
                   fixture_index: p.fixture_index,
                   pick: p.pick,
-                  matchday: p.gw || currentGw!
+                  matchday: p.gw || gwToDisplay
                 });
               }
             });
@@ -1105,7 +1076,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
  const { data: pk, error: pkErr } = await supabase
  .from("app_picks")
  .select("gw,fixture_index,pick")
- .eq("gw", currentGw!)
+ .eq("gw", gwToDisplay)
  .eq("user_id", user.id);
 
  if (!pkErr && pk && pk.length > 0) {
@@ -1119,7 +1090,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
               picksMap.set(p.fixture_index, {
                 fixture_index: p.fixture_index,
                 pick: p.pick,
-                matchday: p.gw || currentGw!
+                matchday: p.gw || gwToDisplay
               });
             }
           });
@@ -1164,29 +1135,26 @@ if (alive && fixturesData.length > 0 && currentGw) {
  await supabase
  .from("app_gw_submissions")
  .delete()
- .eq("gw", currentGw!)
+ .eq("gw", gwToDisplay)
  .eq("user_id", user.id);
  }
  }
  
- // Check if all members have submitted (for API Test league)
+ // Check if all members have submitted
  if (alive && fixturesData.length > 0 && user?.id) {
- // Get API Test league members
- const { data: apiTestLeague } = await supabase
- .from("leagues")
- .select("id")
- .eq("name", "API Test")
- .maybeSingle();
+ // Get user's leagues and their members
+ const { data: userLeagues } = await supabase
+ .from("league_members")
+ .select("league_id")
+ .eq("user_id", user.id);
  
- if (apiTestLeague) {
- if (alive) {
- setApiTestLeagueId(apiTestLeague.id);
- }
- // Get all members of API Test league
+ if (userLeagues && userLeagues.length > 0) {
+ const leagueIds = userLeagues.map(l => l.league_id);
+ // Get all members of user's leagues
  const { data: membersData } = await supabase
  .from("league_members")
  .select("user_id, profiles!inner(id, name)")
- .eq("league_id", apiTestLeague.id);
+ .in("league_id", leagueIds);
  
  if (membersData) {
  const members = membersData.map((m: any) => ({
@@ -1204,7 +1172,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
  const { data: allSubmissions } = await supabase
  .from("app_gw_submissions")
  .select("user_id, submitted_at")
- .eq("gw", currentGw!)
+ .eq("gw", gwToDisplay)
  .in("user_id", memberIds)
  .not("submitted_at", "is", null);
  
@@ -1212,7 +1180,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
  const { data: allPicks } = await supabase
  .from("app_picks")
  .select("user_id, fixture_index")
- .eq("gw", currentGw!)
+ .eq("gw", gwToDisplay)
  .in("user_id", memberIds);
  
  const currentFixtureIndicesSet = new Set(fixturesData.map(f => f.fixture_index));
@@ -1349,7 +1317,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
  // Fetch pick percentages for all fixtures after deadline has passed
  useEffect(() => {
  const deadlineHasPassed = gameState === 'DEADLINE_PASSED' || gameState === 'RESULTS_PRE_GW' || gameState === 'LIVE';
- if (!currentTestGw || !deadlineHasPassed || fixtures.length === 0) {
+ if (!currentGw || !deadlineHasPassed || fixtures.length === 0) {
  setPickPercentages(new Map());
  return;
  }
@@ -1360,7 +1328,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
  const { data: allPicks, error: picksError } = await supabase
  .from("app_picks")
  .select("fixture_index, pick")
- .eq("gw", currentTestGw);
+ .eq("gw", currentGw);
 
  if (picksError) {
  return;
@@ -1399,13 +1367,13 @@ if (alive && fixturesData.length > 0 && currentGw) {
  setPickPercentages(new Map());
  }
  })();
- }, [currentTestGw, gameState, fixtures]);
+ }, [currentGw, gameState, fixtures]);
 
 // Calculate top percentage when we have results and picks
 // Use app_v_gw_points view for consistency with other components (UserPicksModal, LeaderboardCard)
 // Note: Can calculate even without results if we have picks and fixtures (for live games)
 useEffect(() => {
-  if (!currentTestGw || !user?.id || fixtures.length === 0) {
+  if (!currentGw || !user?.id || fixtures.length === 0) {
     setTopPercent(null);
     return;
   }
@@ -1424,7 +1392,7 @@ useEffect(() => {
  const { data: gwPointsData, error: gwPointsError } = await supabase
  .from('app_v_gw_points')
  .select('user_id, points')
- .eq('gw', currentTestGw);
+ .eq('gw', currentGw);
 
  if (gwPointsError) {
  setTopPercent(null);
@@ -1459,7 +1427,7 @@ useEffect(() => {
  setTopPercent(null);
  }
  })();
- }, [results, picks, fixtures, currentTestGw, user?.id]);
+ }, [results, picks, fixtures, currentGw, user?.id]);
 
 
  const currentFixture = fixtures[currentIndex];
@@ -1545,14 +1513,14 @@ useEffect(() => {
  };
  
  const savePick = (pick: "H" | "D" | "A") => {
- if (!currentFixture || !currentTestGw) return;
+ if (!currentFixture || !currentGw) return;
  
  // Only update local state - don't save to database until confirmed
  const newPicks = new Map(picks);
  newPicks.set(currentFixture.fixture_index, { 
  fixture_index: currentFixture.fixture_index, 
  pick, 
- matchday: currentTestGw // Keep matchday for Pick type compatibility
+ matchday: currentGw // Keep matchday for Pick type compatibility
  });
  setPicks(newPicks);
  };
@@ -1564,7 +1532,7 @@ useEffect(() => {
  return;
  }
  
- if (!user?.id || !currentTestGw) return;
+ if (!user?.id || !currentGw) return;
 
  try {
  // CRITICAL: Ensure we're not already submitted (safety check)
@@ -1572,7 +1540,7 @@ useEffect(() => {
  .from('app_gw_submissions')
  .select('submitted_at')
  .eq('user_id', user.id)
- .eq('gw', currentTestGw)
+ .eq('gw', currentGw)
  .maybeSingle();
  
  if (existingSubmission?.submitted_at) {
@@ -1582,10 +1550,10 @@ useEffect(() => {
  
  // Save all picks - CRITICAL: Only save picks that match current fixtures
  const picksArray = Array.from(picks.values())
- .filter(pick => pick.matchday === currentTestGw) // Safety: only current GW
+ .filter(pick => pick.matchday === currentGw) // Safety: only current GW
  .map(pick => ({
  user_id: user.id,
- gw: currentTestGw,
+ gw: currentGw,
  fixture_index: pick.fixture_index,
  pick: pick.pick
  }));
@@ -1611,7 +1579,7 @@ useEffect(() => {
  .from('app_gw_submissions')
  .upsert({
  user_id: user.id,
- gw: currentTestGw,
+ gw: currentGw,
  submitted_at: new Date().toISOString()
  }, {
  onConflict: 'user_id,gw'
@@ -1647,23 +1615,7 @@ useEffect(() => {
  }, 1000);
 
  // Check if all members have submitted and notify (fire-and-forget)
- // Check for API Test league (if applicable)
- if (apiTestLeagueId && currentTestGw) {
- fetch('/.netlify/functions/notifyFinalSubmission', {
- method: 'POST',
- headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({
- leagueId: apiTestLeagueId,
- matchday: currentTestGw,
- isTestApi: true,
- }),
- }).catch(() => {
- // Failed to check final submission (non-critical)
- });
- }
- 
- // Also check all regular mini-leagues
- if (user?.id && currentTestGw) {
+ if (user?.id && currentGw) {
  (async () => {
  try {
  const { data: userLeagues } = await supabase
@@ -1674,15 +1626,12 @@ useEffect(() => {
  if (userLeagues && userLeagues.length > 0) {
  // Call notifyFinalSubmission for each league (fire-and-forget)
  userLeagues.forEach(({ league_id }) => {
- // Skip API Test league if we already handled it above
- if (apiTestLeagueId && league_id === apiTestLeagueId) return;
- 
  fetch('/.netlify/functions/notifyFinalSubmission', {
  method: 'POST',
  headers: { 'Content-Type': 'application/json' },
  body: JSON.stringify({
  leagueId: league_id,
- gw: currentTestGw,
+ gw: gwToDisplay,
  }),
  }).catch(() => {
  // Failed to check final submission (non-critical)
@@ -1744,16 +1693,10 @@ useEffect(() => {
  return (
  <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
  <div className="text-center px-4 max-w-md">
- <div className="text-red-600 font-semibold mb-2">No Test Fixtures Found</div>
+ <div className="text-red-600 font-semibold mb-2">No Fixtures Found</div>
  <div className="text-sm text-slate-600 mb-4">
- Please create a test gameweek in the Test API Admin page first.
+ No fixtures available for this gameweek yet.
  </div>
- <button
- onClick={() => navigate("/test-admin-api")}
- className="px-4 py-2 bg-purple-600 text-white rounded-lg"
- >
- Go to Test API Admin
- </button>
  </div>
  </div>
  );
@@ -1790,7 +1733,7 @@ useEffect(() => {
  ✕
  </button>
  <span className="text-lg font-extrabold text-slate-700">
- Gameweek {currentTestGw}
+ Gameweek {currentGw}
  </span>
  </div>
  </div>
@@ -1866,7 +1809,7 @@ useEffect(() => {
  ✕
  </button>
  <span className="text-lg font-extrabold text-slate-700">
- Gameweek {currentTestGw}
+ Gameweek {currentGw}
  </span>
  </div>
  </div>
@@ -2021,7 +1964,7 @@ if (fixtures.length > 0 && (hasAnyLiveOrFinished || hasStartingSoon || deadlineP
       total={fixtures.length}
       topPercent={topPercent}
       state={state}
-      gameweek={currentTestGw}
+      gameweek={currentGw}
       gameStateLoading={gameStateLoading}
     />
   );
@@ -2032,9 +1975,26 @@ return null;
  
  <div className="space-y-6 [&>div:first-child]:mt-0">
  {(() => {
+ // Use ref for GW check since state updates are async - ref updates synchronously
+ const gwToRender = currentGw || fixturesGwRef.current;
+ // CRITICAL: Don't render fixtures until we have a valid GW and fixtures match it
+ // This prevents flash of old data from previous renders
+ if (!gwToRender || fixtures.length === 0) {
+   return null;
+ }
+ 
+ // CRITICAL: Filter fixtures to only include those matching current GW BEFORE grouping
+ // This prevents flash of old data from previous renders
+ const filteredFixtures = fixtures.filter(f => f.gw === gwToRender);
+ 
+ // If no fixtures match the current GW, don't render anything (prevents flash)
+ if (filteredFixtures.length === 0) {
+   return null;
+ }
+ 
  const grouped: Array<{ label: string; items: typeof fixtures }>=[];
  let currentDate=''; let currentGroup: typeof fixtures = [];
- fixtures.forEach((fixture)=>{
+ filteredFixtures.forEach((fixture)=>{
  const fixtureDate = fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) : 'No date';
  if (fixtureDate!==currentDate){ if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); } currentDate=fixtureDate; currentGroup=[fixture]; } else { currentGroup.push(fixture); }
  });
@@ -2048,6 +2008,17 @@ return null;
  {group.items.map((fixture, index)=>{
  const pick = picks.get(fixture.fixture_index);
  const liveScore = liveScores[fixture.fixture_index];
+
+ // #region agent log
+ if (index === 0) {
+   fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Predictions.tsx:2091',message:'Rendering fixtures in list view',data:{fixturesLength:fixtures.length,currentGw,firstFixtureGw:fixture.gw,firstFixtureIndex:fixture.fixture_index,picksSize:picks.size},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'P'})}).catch(()=>{});
+ }
+ // #endregion
+
+ // CRITICAL: Only render fixtures that match the current GW to prevent flash of old data
+ if (fixture.gw !== currentGw) {
+   return null;
+ }
 
  // Convert fixture to FixtureCard format
  const fixtureCardFixture: FixtureCardFixture = {
@@ -2087,7 +2058,7 @@ return null;
  fixture={fixtureCardFixture}
  pick={pick?.pick}
  liveScore={fixtureCardLiveScore}
- isTestApi={true}
+ isTestApi={false}
  showPickButtons={canMakePicks}
  pickPercentages={percentagesForFixture}
  />
@@ -2223,7 +2194,7 @@ return null;
  onClick={()=>{
  if (submitted) return;
  const np=new Map(picks);
- np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"H",matchday:currentTestGw!});
+ np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"H",matchday:gwToDisplay});
  setPicks(np);
  }} 
  disabled={submitted}
@@ -2247,7 +2218,7 @@ return null;
  onClick={()=>{
  if (submitted) return;
  const np=new Map(picks);
- np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"D",matchday:currentTestGw!});
+ np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"D",matchday:gwToDisplay});
  setPicks(np);
  }} 
  disabled={submitted}
@@ -2271,7 +2242,7 @@ return null;
  onClick={()=>{
  if (submitted) return;
  const np=new Map(picks);
- np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"A",matchday:currentTestGw!});
+ np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"A",matchday:gwToDisplay});
  setPicks(np);
  }} 
  disabled={submitted}
@@ -2307,7 +2278,7 @@ return null;
  <div className="text-center py-6">
  <div className="text-lg font-bold text-slate-800 mb-2">Predictions Submitted (TEST)</div>
  <div className="text-sm text-slate-600">
- Your test predictions for Test GW {currentTestGw} have been confirmed.
+ Your test predictions for Test GW {currentGw} have been confirmed.
  </div>
  {myScore > 0 && (
  <div className="mt-4 text-2xl font-bold text-purple-700">{myScore}/{fixtures.length}</div>
@@ -2338,7 +2309,7 @@ return null;
 
  // Never show swipe view if submitted - check state, ref, and sessionStorage
  const sessionStorageSubmitted = getHasEverBeenSubmitted();
- // Check all sessionStorage keys for this user (in case currentTestGw isn't set yet)
+ // Check all sessionStorage keys for this user (in case currentGw isn't set yet)
  const checkAllSessionStorage = (): boolean => {
  if (typeof window === 'undefined' || !user?.id) return false;
  try {
@@ -2422,7 +2393,7 @@ return null;
  <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
  <div className="text-center px-4 max-w-md">
  <div className="text-lg font-semibold text-slate-700 mb-2">No fixtures available</div>
- <div className="text-sm text-slate-500">Check back later for Test GW {currentTestGw} fixtures.</div>
+ <div className="text-sm text-slate-500">Check back later for GW {currentGw} fixtures.</div>
  </div>
  </div>
  );
@@ -2458,7 +2429,7 @@ return null;
  >
  ✕
  </button>
- <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">Gameweek {currentTestGw}</span>
+ <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">Gameweek {currentGw}</span>
  {!shouldBlockSwipePredictions && effectiveViewMode === "cards" && canShowSwipePredictions && (
  <button
  onClick={() => setCurrentIndex(fixtures.length)}
@@ -2526,7 +2497,7 @@ return null;
  >
  ✕
  </button>
- <div className="text-center"><h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Test API Predictions</h1><div className="mt-0 mb-4 text-base text-slate-500">Call every game, lock in your results.<br />This is a TEST game.</div></div>
+ <div className="text-center"><h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Predictions</h1><div className="mt-0 mb-4 text-base text-slate-500">Call every game, lock in your results.</div></div>
  </div>
  {!shouldBlockSwipePredictions && canShowSwipePredictions && (
  <div className="flex justify-center mt-4">

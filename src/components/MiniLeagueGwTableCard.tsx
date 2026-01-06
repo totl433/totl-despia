@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useGameweekState } from '../hooks/useGameweekState';
@@ -79,8 +79,15 @@ export default function MiniLeagueGwTableCard({
   mockData,
 }: MiniLeagueGwTableCardProps) {
   // Initialize displayGw immediately from cache (optimistic - assume currentGw, will adjust if needed)
+  // CRITICAL FIX: Don't initialize from currentGw if it's suspicious (1 or very low)
   const [displayGw, setDisplayGw] = useState<number | null>(() => {
-    if (!currentGw) return null;
+    if (!currentGw || currentGw < 1) return null;
+    // DEFENSIVE: If currentGw is 1, it might be stale - don't trust it
+    // Will be determined properly in useEffect
+    if (currentGw === 1) {
+      console.warn(`[MiniLeagueGwTableCard] Suspicious currentGw (1) on init, will determine properly`);
+      return null; // Let useEffect determine it
+    }
     // For now, default to currentGw - will be adjusted based on game state
     return currentGw;
   });
@@ -131,7 +138,19 @@ export default function MiniLeagueGwTableCard({
   const [error, setError] = useState<string | null>(null);
 
   // Determine which GW to display based on game state
-  const { state: currentGwState } = useGameweekState(currentGw);
+  // DEFENSIVE CHECK: Only use currentGw if it's valid
+  const validatedCurrentGw = currentGw && currentGw >= 1 ? currentGw : null;
+  const { state: currentGwState } = useGameweekState(validatedCurrentGw);
+  
+  // Debug logging
+  useEffect(() => {
+    if (currentGw !== displayGw) {
+      console.log(`[MiniLeagueGwTableCard] GW mismatch - currentGw: ${currentGw}, displayGw: ${displayGw}, validatedCurrentGw: ${validatedCurrentGw}, state: ${currentGwState}`);
+    }
+    if (displayGw && fixtures.length === 0 && !loading) {
+      console.warn(`[MiniLeagueGwTableCard] No fixtures loaded for displayGw ${displayGw} - this might cause "No results" message`);
+    }
+  }, [currentGw, displayGw, currentGwState, validatedCurrentGw, fixtures.length, loading]);
   
   // Get live scores for the display GW
   const { liveScores: liveScoresMap } = useLiveScores(displayGw ?? undefined, undefined);
@@ -176,8 +195,29 @@ export default function MiniLeagueGwTableCard({
     let alive = true;
 
     async function determineDisplayGw() {
+      // DEFENSIVE CHECK: Validate currentGw is reasonable
+      if (!currentGw || currentGw < 1) {
+        console.error(`[MiniLeagueGwTableCard] Invalid currentGw: ${currentGw}, cannot determine display GW`);
+        setDisplayGw(null);
+        return;
+      }
+      
+      // CRITICAL FIX: Check state using the validated currentGw
+      console.log(`[MiniLeagueGwTableCard] Determining display GW - currentGw: ${currentGw}, validatedCurrentGw: ${validatedCurrentGw}, state: ${currentGwState}`);
+      
       if (currentGwState === 'LIVE' || currentGwState === 'RESULTS_PRE_GW') {
-        setDisplayGw(currentGw);
+        // DEFENSIVE CHECK: Even for LIVE/RESULTS_PRE_GW, validate currentGw is reasonable
+        if (validatedCurrentGw && validatedCurrentGw >= 1) {
+          console.log(`[MiniLeagueGwTableCard] Using validatedCurrentGw (${validatedCurrentGw}) for LIVE/RESULTS_PRE_GW state`);
+          setDisplayGw(validatedCurrentGw);
+        } else if (currentGw >= 1) {
+          // Fallback to currentGw if validatedCurrentGw is null but currentGw is valid
+          console.log(`[MiniLeagueGwTableCard] Using currentGw (${currentGw}) as fallback for LIVE/RESULTS_PRE_GW state`);
+          setDisplayGw(currentGw);
+        } else {
+          console.error(`[MiniLeagueGwTableCard] Invalid currentGw for LIVE state: ${currentGw}`);
+          setDisplayGw(null);
+        }
         return;
       }
 
@@ -185,41 +225,48 @@ export default function MiniLeagueGwTableCard({
       let lastCompletedGw: number | null = null;
       try {
         const cachedLastGw = getCached<number>(LAST_COMPLETED_GW_CACHE_KEY);
-        if (cachedLastGw) {
-          lastCompletedGw = cachedLastGw;
-          setDisplayGw(lastCompletedGw);
-          
-          // Verify in background (non-blocking)
-          (async () => {
-            const { data: resultsData } = await supabase
-              .from('app_gw_results')
-              .select('gw')
-              .order('gw', { ascending: false })
-              .limit(1);
+        if (cachedLastGw && cachedLastGw >= 1) {
+          // DEFENSIVE CHECK: Validate cached GW is reasonable
+          // If cached GW is much lower than currentGw, it might be stale
+          if (cachedLastGw < currentGw - 2) {
+            console.warn(`[MiniLeagueGwTableCard] Cached last GW (${cachedLastGw}) is much lower than currentGw (${currentGw}), validating...`);
+            // Don't use cached value, fetch fresh
+          } else {
+            lastCompletedGw = cachedLastGw;
+            setDisplayGw(lastCompletedGw);
             
-            if (!alive) return;
-            
-            const dbLastGw = resultsData && resultsData.length > 0 
-              ? (resultsData[0] as any).gw 
-              : null;
-            
-            // Update cache if different
-            if (dbLastGw !== lastCompletedGw) {
-              // Cache update handled by initial data loader, just update local state if needed
-              // We're already in a block where currentGwState is not LIVE or RESULTS_PRE_GW
-              if (dbLastGw && currentGwState) {
-                setDisplayGw(dbLastGw);
+            // Verify in background (non-blocking)
+            (async () => {
+              const { data: resultsData } = await supabase
+                .from('app_gw_results')
+                .select('gw')
+                .order('gw', { ascending: false })
+                .limit(1);
+              
+              if (!alive) return;
+              
+              const dbLastGw = resultsData && resultsData.length > 0 
+                ? (resultsData[0] as any).gw 
+                : null;
+              
+              // Update cache if different and reasonable
+              if (dbLastGw && dbLastGw !== lastCompletedGw && dbLastGw >= 1) {
+                // Cache update handled by initial data loader, just update local state if needed
+                // We're already in a block where currentGwState is not LIVE or RESULTS_PRE_GW
+                if (currentGwState) {
+                  setDisplayGw(dbLastGw);
+                }
               }
-            }
-          })();
-          
-          return;
+            })();
+            
+            return;
+          }
         }
       } catch {
         // Cache error - continue to DB query
       }
 
-      // No cache - fetch from DB
+      // No cache or cache invalid - fetch from DB
       const { data: resultsData } = await supabase
         .from('app_gw_results')
         .select('gw')
@@ -232,7 +279,17 @@ export default function MiniLeagueGwTableCard({
         ? (resultsData[0] as any).gw 
         : null;
 
-      setDisplayGw(lastCompletedGw || currentGw);
+      // DEFENSIVE CHECK: Validate lastCompletedGw before using
+      if (lastCompletedGw && lastCompletedGw >= 1) {
+        setDisplayGw(lastCompletedGw);
+      } else if (currentGw >= 1) {
+        // Fallback to currentGw if it's valid
+        console.warn(`[MiniLeagueGwTableCard] No valid last completed GW found, using currentGw: ${currentGw}`);
+        setDisplayGw(currentGw);
+      } else {
+        console.error(`[MiniLeagueGwTableCard] Cannot determine display GW - lastCompletedGw: ${lastCompletedGw}, currentGw: ${currentGw}`);
+        setDisplayGw(null);
+      }
     }
 
     determineDisplayGw();
@@ -240,8 +297,11 @@ export default function MiniLeagueGwTableCard({
     return () => {
       alive = false;
     };
-  }, [currentGw, currentGwState, mockData]);
+  }, [currentGw, currentGwState, mockData, validatedCurrentGw]);
 
+  // Track previous displayGw to detect changes
+  const prevDisplayGwRef = useRef<number | null>(null);
+  
   // Update data when displayGw changes (and re-check cache)
   useEffect(() => {
     if (mockData) {
@@ -252,6 +312,22 @@ export default function MiniLeagueGwTableCard({
       setLoading(false);
       return;
     }
+
+    // CRITICAL: Clear stale data when displayGw changes to a different GW
+    // This prevents showing wrong GW data while loading correct GW data
+    if (prevDisplayGwRef.current !== null && prevDisplayGwRef.current !== displayGw) {
+      console.log(`[MiniLeagueGwTableCard] displayGw changed from ${prevDisplayGwRef.current} to ${displayGw}, clearing stale data`);
+      // Clear fixtures/picks/results that might be from wrong GW
+      setFixtures([]);
+      setPicks([]);
+      setResults([]);
+      setSubmittedUserIds(new Set());
+    }
+    prevDisplayGwRef.current = displayGw;
+
+    // CRITICAL: Always re-check cache when displayGw changes, even if we already have data
+    // This ensures we load the correct GW data when displayGw changes from wrong GW to correct GW
+    console.log(`[MiniLeagueGwTableCard] Loading data for GW ${displayGw}...`);
 
     // If members is empty, we can still load fixtures/results from cache
     // Only picks require members, so we can show partial data
@@ -351,11 +427,12 @@ export default function MiniLeagueGwTableCard({
       }
     }
     
-    // Check cache immediately for current displayGw (synchronous)
-    // Can load fixtures/results even without members
+    // CRITICAL FIX: Always check cache for the CURRENT displayGw (not the initial one)
+    // This ensures we load the correct GW data when displayGw changes
     const cacheData = loadInitialDataFromCache(displayGw, leagueId);
-    if (cacheData.found) {
-      // Update state from cache (already loaded on mount, but update if displayGw changed)
+    if (cacheData.found && cacheData.fixtures.length > 0) {
+      console.log(`[MiniLeagueGwTableCard] Found cache for GW ${displayGw} - ${cacheData.fixtures.length} fixtures, ${cacheData.picks.length} picks, ${cacheData.results.length} results`);
+      // Update state from cache (this handles both initial load and displayGw changes)
       setFixtures(cacheData.fixtures);
       setPicks(cacheData.picks);
       setResults(cacheData.results);
@@ -370,6 +447,8 @@ export default function MiniLeagueGwTableCard({
       }
       
       return () => { alive = false; };
+    } else {
+      console.log(`[MiniLeagueGwTableCard] No cache found for GW ${displayGw} (found: ${cacheData.found}, fixtures: ${cacheData.fixtures.length})`);
     }
     
     // No cache - fetch from DB (only if we have members, otherwise wait)
@@ -437,6 +516,11 @@ export default function MiniLeagueGwTableCard({
         score: 0,
         unicorns: 0,
       }));
+    
+    // Debug logging for empty rows
+    if (calculatedRows.length === 0 && fixtures.length > 0 && displayGw) {
+      console.warn(`[MiniLeagueGwTableCard] No rows calculated for GW ${displayGw} - members: ${members.length}, submitted: ${submittedUserIds.size}, fixtures: ${fixtures.length}, picks: ${picks.length}, results: ${results.length}`);
+    }
 
     const picksByFixture = new Map<number, Array<{ user_id: string; pick: "H" | "D" | "A" }>>();
     picks.forEach((p) => {

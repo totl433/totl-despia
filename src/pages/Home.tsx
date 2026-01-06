@@ -112,9 +112,43 @@ export default function HomePage() {
       
       // Determine which GW to display (user's viewing GW, or current GW if not set)
       const dbCurrentGw = cached?.currentGw ?? 1;
-      const gwToDisplay = userViewingGw !== null && userViewingGw < dbCurrentGw 
-        ? userViewingGw 
+      
+      // DEFENSIVE CHECK: Validate dbCurrentGw is reasonable
+      // If cached GW is 1 or very low, it might be stale - don't trust it blindly
+      if (dbCurrentGw <= 1) {
+        console.warn(`[Home] Suspicious cached currentGw: ${dbCurrentGw}, this might be stale cache`);
+      }
+      
+      // DEFENSIVE CHECK: Ensure userViewingGw is not unreasonably old
+      const validatedUserViewingGw = userViewingGw !== null && userViewingGw < dbCurrentGw - 2 
+        ? dbCurrentGw 
+        : userViewingGw;
+      
+      const gwToDisplay = validatedUserViewingGw !== null && validatedUserViewingGw < dbCurrentGw 
+        ? validatedUserViewingGw 
         : dbCurrentGw;
+      
+      // FINAL VALIDATION: Ensure gwToDisplay is reasonable
+      if (gwToDisplay < 1) {
+        console.error(`[Home] Invalid gwToDisplay calculated: ${gwToDisplay}, falling back to 1`);
+        return {
+          gw: 1,
+          latestGw: null,
+          gwPoints: [],
+          allGwPoints: [],
+          overall: [],
+          lastGwRank: null,
+          fiveGwRank: null,
+          tenGwRank: null,
+          seasonRank: null,
+          fixtures: [],
+          userPicks: {},
+          liveScores: {},
+          leagueData: {},
+          leagueSubmissions: {},
+          hasCache: false,
+        };
+      }
       
       if (cached && dbCurrentGw) {
         // Load fixtures from cache for the GW the user is viewing (not necessarily current GW)
@@ -355,13 +389,51 @@ export default function HomePage() {
   useEffect(() => {
     if (!user?.id || !dbCurrentGw) return;
     
+    // DEFENSIVE CHECK: Validate dbCurrentGw is reasonable (positive number, not unreasonably low)
+    // If dbCurrentGw is 1 or very low, it might be stale cache - validate against latest results
+    if (dbCurrentGw <= 1) {
+      console.warn(`[Home] Suspicious dbCurrentGw value: ${dbCurrentGw}, validating...`);
+      // Check latest results GW as a sanity check
+      (async () => {
+        try {
+          const { data: latestResult } = await supabase
+            .from('app_gw_results')
+            .select('gw')
+            .order('gw', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          
+          if (latestResult?.gw && latestResult.gw > dbCurrentGw) {
+            console.warn(`[Home] dbCurrentGw (${dbCurrentGw}) is lower than latest results GW (${latestResult.gw}), using latest results GW`);
+            // Don't update here - let the hook handle it, but log the issue
+          }
+        } catch (e) {
+          console.error('[Home] Error validating GW:', e);
+        }
+      })();
+    }
+    
     // Check user's viewing GW preference
     const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
     const userViewingGw = prefsCache?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
-    const gwToDisplay = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
     
-    // Only update if different
-    if (gw !== gwToDisplay) {
+    // DEFENSIVE CHECK: Ensure userViewingGw is not unreasonably old (more than 2 GWs behind)
+    const validatedUserViewingGw = userViewingGw < dbCurrentGw - 2 ? dbCurrentGw : userViewingGw;
+    const gwToDisplay = validatedUserViewingGw < dbCurrentGw ? validatedUserViewingGw : dbCurrentGw;
+    
+    // DEFENSIVE CHECK: Ensure gwToDisplay is reasonable (positive, not unreasonably low)
+    if (gwToDisplay < 1) {
+      console.error(`[Home] Invalid gwToDisplay calculated: ${gwToDisplay}, using dbCurrentGw instead`);
+      const safeGw = dbCurrentGw;
+      if (gw !== safeGw) {
+        setGw(safeGw);
+      }
+      return;
+    }
+    
+    // Only update if different and reasonable
+    if (gw !== gwToDisplay && gwToDisplay >= 1) {
+      console.log(`[Home] Updating displayed GW from ${gw} to ${gwToDisplay} (dbCurrentGw: ${dbCurrentGw}, userViewingGw: ${userViewingGw})`);
       setGw(gwToDisplay);
     }
   }, [user?.id, dbCurrentGw, gw]);
@@ -372,6 +444,20 @@ export default function HomePage() {
       if (!user?.id) return;
       
       const { oldGw, newGw } = event.detail;
+      
+      // DEFENSIVE CHECK: Validate new GW is reasonable
+      if (!newGw || newGw < 1) {
+        console.error(`[Home] Invalid new GW received: ${newGw}, ignoring GW change event`);
+        return;
+      }
+      
+      // DEFENSIVE CHECK: If new GW is much lower than old GW, something is wrong
+      if (oldGw && newGw < oldGw - 1) {
+        console.error(`[Home] Suspicious GW change: ${oldGw} -> ${newGw} (decreased by more than 1), validating...`);
+        // Don't update immediately - let the hook re-fetch
+        return;
+      }
+      
       console.log(`[Home] GW changed from ${oldGw} to ${newGw}, invalidating caches`);
       
       // Invalidate related caches
@@ -383,11 +469,21 @@ export default function HomePage() {
       removeCached(`home:fixtures:${user.id}:${newGw}`);
       setGwResultsVersion(prev => prev + 1);
       
-      // Update displayed GW
+      // Update displayed GW with validation
       const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
       const userViewingGw = prefsCache?.current_viewing_gw ?? (newGw > 1 ? newGw - 1 : newGw);
-      const gwToDisplay = userViewingGw < newGw ? userViewingGw : newGw;
-      setGw(gwToDisplay);
+      
+      // DEFENSIVE CHECK: Ensure userViewingGw is not unreasonably old
+      const validatedUserViewingGw = userViewingGw < newGw - 2 ? newGw : userViewingGw;
+      const gwToDisplay = validatedUserViewingGw < newGw ? validatedUserViewingGw : newGw;
+      
+      // Final validation before setting
+      if (gwToDisplay >= 1) {
+        setGw(gwToDisplay);
+      } else {
+        console.error(`[Home] Invalid gwToDisplay calculated: ${gwToDisplay}, using newGw instead`);
+        setGw(newGw);
+      }
     };
     
     window.addEventListener('currentGwChanged', handleGwChange as EventListener);

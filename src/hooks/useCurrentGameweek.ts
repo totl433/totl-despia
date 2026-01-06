@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { getCached, setCached, CACHE_TTL } from '../lib/cache';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -30,6 +30,10 @@ export function useCurrentGameweek() {
   });
   
   const [error, setError] = useState<string | null>(null);
+  
+  // Use ref to track previous value for comparison without causing re-renders
+  const currentGwRef = useRef<number | null>(currentGw);
+  currentGwRef.current = currentGw;
 
   useEffect(() => {
     let alive = true;
@@ -39,7 +43,7 @@ export function useCurrentGameweek() {
       if (!alive) return;
       
       // If we already have cached value, refresh in background but don't block
-      const hasCached = currentGw !== null;
+      const hasCached = currentGwRef.current !== null;
       if (!hasCached) {
         setLoading(true);
       }
@@ -65,18 +69,20 @@ export function useCurrentGameweek() {
         const newCurrentGw = data?.current_gw ?? null;
         
         if (newCurrentGw !== null && typeof newCurrentGw === 'number') {
-          // Update state if different
-          if (currentGw !== newCurrentGw) {
+          // Update state if different (using ref for comparison to avoid stale closure)
+          const prevGw = currentGwRef.current;
+          if (prevGw !== newCurrentGw) {
             setCurrentGw(newCurrentGw);
             
             // Invalidate related caches when GW changes
             // This ensures components fetch fresh data for the new GW
-            if (currentGw !== null) {
-              console.log(`[useCurrentGameweek] GW changed from ${currentGw} to ${newCurrentGw}, invalidating caches`);
+            if (prevGw !== null) {
+              console.log(`[useCurrentGameweek] GW changed from ${prevGw} to ${newCurrentGw}, invalidating caches`);
               
-              // Clear user-specific caches (they'll be repopulated with new GW data)
-              // Note: We can't clear all user caches here since we don't have userId
-              // Components should handle cache invalidation when they detect GW change
+              // Dispatch custom event so components can react to GW change
+              window.dispatchEvent(new CustomEvent('currentGwChanged', { 
+                detail: { oldGw: prevGw, newGw: newCurrentGw } 
+              }));
             }
           }
           
@@ -85,7 +91,8 @@ export function useCurrentGameweek() {
         } else {
           // Fallback to 1 if current_gw is null/undefined
           const fallbackGw = 1;
-          if (currentGw !== fallbackGw) {
+          const prevGw = currentGwRef.current;
+          if (prevGw !== fallbackGw) {
             setCurrentGw(fallbackGw);
             setCached(`app_meta:current_gw`, { current_gw: fallbackGw }, CACHE_TTL.HOME);
           }
@@ -101,12 +108,12 @@ export function useCurrentGameweek() {
       }
     };
 
-    // Initial fetch
-    if (currentGw === null) {
+    // Initial fetch - only if we don't have cached value
+    if (currentGwRef.current === null) {
       // No cached value - fetch immediately (blocking)
       fetchCurrentGw();
     } else {
-      // We have cached value - refresh in background
+      // We have cached value - refresh in background (non-blocking)
       fetchCurrentGw();
     }
 
@@ -123,14 +130,15 @@ export function useCurrentGameweek() {
         },
         (payload) => {
           const newCurrentGw = (payload.new as any)?.current_gw;
-          if (newCurrentGw !== null && typeof newCurrentGw === 'number' && newCurrentGw !== currentGw) {
+          const prevGw = currentGwRef.current;
+          if (newCurrentGw !== null && typeof newCurrentGw === 'number' && newCurrentGw !== prevGw) {
             console.log(`[useCurrentGameweek] 🔔 Real-time update: GW changed to ${newCurrentGw}`);
             setCurrentGw(newCurrentGw);
             setCached(`app_meta:current_gw`, { current_gw: newCurrentGw }, CACHE_TTL.HOME);
             
             // Dispatch custom event so components can react to GW change
             window.dispatchEvent(new CustomEvent('currentGwChanged', { 
-              detail: { oldGw: currentGw, newGw: newCurrentGw } 
+              detail: { oldGw: prevGw, newGw: newCurrentGw } 
             }));
           }
         }
@@ -143,7 +151,7 @@ export function useCurrentGameweek() {
         supabase.removeChannel(channel);
       }
     };
-  }, [currentGw]);
+  }, []); // CRITICAL FIX: Empty dependency array - effect runs once on mount, subscription handles updates
 
   return { currentGw, loading, error };
 }
