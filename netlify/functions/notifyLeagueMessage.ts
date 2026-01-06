@@ -216,13 +216,19 @@ export const handler: Handler = async (event) => {
       const body = await resp.json().catch(() => ({}));
       lastResp = { endpoint, auth, status: resp.status, body };
       
-      console.log(`[notifyLeagueMessage] OneSignal API response:`, {
+      // Log full response to understand structure
+      console.log(`[notifyLeagueMessage] OneSignal API full response:`, JSON.stringify(body, null, 2));
+      
+      console.log(`[notifyLeagueMessage] OneSignal API response summary:`, {
         endpoint,
         status: resp.status,
         ok: resp.ok,
         recipients: body.recipients,
         errors: body.errors,
-        id: body.id
+        id: body.id,
+        // Check for alternative response structures
+        result: body.result,
+        success: body.success
       });
       
       // OneSignal often returns HTTP 200 even with errors in the body
@@ -239,8 +245,19 @@ export const handler: Handler = async (event) => {
         }
         
         // Success - check recipients count
-        const recipients = body.recipients || 0;
-        if (recipients > 0 || !body.errors) {
+        // OneSignal v2 API might return recipients in different structure
+        const recipients = body.recipients ?? body.result?.recipients ?? 0;
+        const hasErrors = body.errors && body.errors.length > 0;
+        
+        // If we got an ID and no errors, consider it successful even if recipients is 0
+        // (OneSignal might not return recipients count in v2 API)
+        if (body.id && !hasErrors) {
+          console.log(`[notifyLeagueMessage] Success! Notification ID: ${body.id}, recipients: ${recipients}`);
+          return json(200, { ok: true, result: body, sent: playerIds.length, recipients, notificationId: body.id });
+        }
+        
+        // If recipients > 0, definitely success
+        if (recipients > 0) {
           console.log(`[notifyLeagueMessage] Success! Sent to ${recipients} recipients`);
           return json(200, { ok: true, result: body, sent: playerIds.length, recipients });
         }
