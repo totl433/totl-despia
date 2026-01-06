@@ -449,6 +449,20 @@ export function useMiniLeagueChat(
       // This ensures we catch new messages even when cache exists
       initializingLeagueIdRef.current = null;
       // Continue to set up subscriptions - don't return early
+      
+      // If coming from notification (tab=chat in URL), force refresh to get latest messages
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const isFromNotification = urlParams.get('tab') === 'chat';
+        if (isFromNotification) {
+          // Force immediate refresh when coming from notification to ensure latest messages
+          setTimeout(() => {
+            if (miniLeagueId === initializingLeagueIdRef.current) {
+              refresh().catch(() => {});
+            }
+          }, 200); // Small delay to ensure subscriptions are set up first
+        }
+      }
     } else {
       // No cache and no initial messages - need to fetch (this is the only case where loading should be true)
       let active = true;

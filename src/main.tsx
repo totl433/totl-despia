@@ -94,6 +94,7 @@ function AppContent() {
   useLayoutEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const leagueCode = searchParams.get('leagueCode');
+    const tab = searchParams.get('tab');
     
     // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat)
     if (leagueCode && !location.pathname.startsWith('/league/')) {
@@ -102,14 +103,21 @@ function AppContent() {
     }
     
     // For direct URLs like /league/ABC12?tab=chat from OneSignal web_url
-    // If we're not already on that exact path, navigate to it
-    if (location.pathname.startsWith('/league/')) {
-      const tab = searchParams.get('tab');
-      if (tab === 'chat') {
-        // Already on the correct path with tab=chat
-        // League page will handle opening the chat tab
-        // No navigation needed - React Router already matched the route
+    // Ensure we're on the correct path - if we're on home page but URL has league path, navigate
+    if (tab === 'chat' && location.pathname === '/' && window.location.pathname.startsWith('/league/')) {
+      // Extract league code from window.location (not React Router location yet)
+      const pathMatch = window.location.pathname.match(/^\/league\/([^/]+)$/);
+      if (pathMatch) {
+        navigate(window.location.pathname + window.location.search, { replace: true });
+        return;
       }
+    }
+    
+    // If we're on league page with tab=chat, ensure it's preserved
+    if (location.pathname.startsWith('/league/') && tab === 'chat') {
+      // Already on the correct path with tab=chat
+      // League page will handle opening the chat tab
+      // No navigation needed - React Router already matched the route
     }
   }, [navigate, location.pathname, location.search]);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
