@@ -99,6 +99,15 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     return () => {
       isActive = false;
       clearInterval(interval);
+      // Delete presence when component unmounts so user is immediately eligible for notifications
+      if (miniLeagueId && user?.id) {
+        supabase
+          .from('chat_presence')
+          .delete()
+          .eq('league_id', miniLeagueId)
+          .eq('user_id', user.id)
+          .catch(() => {}); // Silently fail - presence cleanup is best effort
+      }
     };
   }, [miniLeagueId, user?.id]);
 
