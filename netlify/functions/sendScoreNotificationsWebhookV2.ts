@@ -346,28 +346,20 @@ export const handler: Handler = async (event, context) => {
           const sortedNewGoals = newGoals.sort((a: any, b: any) => (a.minute ?? 0) - (b.minute ?? 0));
           
           // Calculate score from goals array (database score can be stale)
-          // For own goals: the goal counts for the OPPOSITE team
+          // Note: For own goals, pollLiveScores already flipped the team before storing,
+          // so determineScoringTeam returns the benefiting team (the team that scored)
           let calculatedHomeScore = 0;
           let calculatedAwayScore = 0;
           
           for (const goal of goals) {
             const { isHomeTeam } = determineScoringTeam(goal, liveHomeTeam, liveAwayTeam, homeTeamId, awayTeamId);
-            const isOwnGoal = goal.isOwnGoal === true;
-            
-            if (isOwnGoal) {
-              // Own goal: flip the team (home player's own goal counts for away team)
-              if (isHomeTeam) {
-                calculatedAwayScore++;
-              } else {
-                calculatedHomeScore++;
-              }
+            // Note: For own goals, pollLiveScores already flipped the team before storing,
+            // so determineScoringTeam returns the benefiting team (the team that scored)
+            // Count the goal for the team returned by determineScoringTeam
+            if (isHomeTeam) {
+              calculatedHomeScore++;
             } else {
-              // Regular goal: count for the scoring team
-              if (isHomeTeam) {
-                calculatedHomeScore++;
-              } else {
-                calculatedAwayScore++;
-              }
+              calculatedAwayScore++;
             }
           }
           
@@ -379,13 +371,9 @@ export const handler: Handler = async (event, context) => {
             const scorer = goal.scorer || 'Unknown';
             const goalMinute = goal.minute ?? 0;
             const isOwnGoal = goal.isOwnGoal === true;
-            const { isHomeTeam: goalPlayerTeamIsHome, teamName: goalPlayerTeamName } = determineScoringTeam(goal, liveHomeTeam, liveAwayTeam, homeTeamId, awayTeamId);
-            
-            // For own goals: flip the team (the goal counts for the opposite team)
-            const isHomeTeam = isOwnGoal ? !goalPlayerTeamIsHome : goalPlayerTeamIsHome;
-            const teamName = isOwnGoal 
-              ? (isHomeTeam ? liveHomeTeam : liveAwayTeam)
-              : goalPlayerTeamName;
+            // Note: For own goals, pollLiveScores already flipped the team before storing,
+            // so determineScoringTeam returns the benefiting team (the team that scored)
+            const { isHomeTeam, teamName } = determineScoringTeam(goal, liveHomeTeam, liveAwayTeam, homeTeamId, awayTeamId);
             
             // Check if we've already sent a notification for this match/minute (scorer-only change suppression)
             const usersWithExisting = await hasGoalNotificationForMinute(apiMatchId, goalMinute, userIds);

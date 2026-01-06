@@ -749,21 +749,37 @@ export function useMiniLeagueChat(
             (msg.client_msg_id === clientId && msg.id.startsWith('optimistic-'))
           );
           
+          let result: MiniLeagueChatMessage[];
           if (optimisticIndex >= 0) {
             // Replace optimistic message with real one
             const updated = [...prev];
             updated[optimisticIndex] = finalized;
-            return dedupeAndSort(updated);
+            result = dedupeAndSort(updated);
           } else {
             // Optimistic message not found - check if real message already exists
             const exists = prev.some(msg => msg.id === finalized.id || (msg.client_msg_id === clientId && !msg.id.startsWith('optimistic-')));
             if (!exists) {
               // Add the finalized message if it doesn't exist
-              return dedupeAndSort([...prev, finalized]);
+              result = dedupeAndSort([...prev, finalized]);
+            } else {
+              // Message already exists, return as-is
+              result = prev;
             }
-            // Message already exists, return as-is
-            return prev;
           }
+          
+          // Immediately update cache when message is finalized (bypass debounce)
+          // This ensures the new message is in cache before any navigation
+          if (miniLeagueId && result.length > 0) {
+            const realMessages = result.filter(msg => !msg.id.startsWith('optimistic-'));
+            if (realMessages.length > 0) {
+              const cacheKey = `chat:messages:${miniLeagueId}`;
+              // Bypass debounce - update cache immediately
+              lastCacheUpdateRef.current = Date.now();
+              setCached(cacheKey, realMessages, CACHE_TTL.HOME);
+            }
+          }
+          
+          return result;
         });
         
         // Cache will be updated automatically by applyMessages debounce logic

@@ -7,6 +7,7 @@ import imageCompression from "browser-image-compression";
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { useGameweekState } from "../hooks/useGameweekState";
+import { getGameweekState } from "../lib/gameweekState";
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import { invalidateLeagueCache } from "../api/leagues";
@@ -1409,14 +1410,34 @@ ${shareUrl}`;
         if (manualGwSelectedRef.current && selectedGw) {
           gwForData = selectedGw;
         } else if (currentGw) {
-          // For data fetching, we'll use latestResultsGw if it exists and is less than currentGw
-          // This ensures we fetch data for the previous GW when deadline hasn't passed
-          // The actual display logic in resGwMemo will use game state to be more precise
-          if (latestResultsGw && latestResultsGw < currentGw) {
-            gwForData = latestResultsGw;
-          } else {
-            // Fallback to currentGw - 1 if latestResultsGw not available
-            gwForData = currentGw > 1 ? currentGw - 1 : currentGw;
+          // Check game state to determine if deadline has passed (same logic as resGwMemo)
+          // If state is LIVE or RESULTS_PRE_GW, deadline has passed - load fixtures for current GW
+          // Otherwise (GW_OPEN, GW_PREDICTED, or null/unknown), load fixtures for previous GW
+          try {
+            const currentGwState = await getGameweekState(currentGw);
+            const deadlinePassed = currentGwState === 'LIVE' || currentGwState === 'RESULTS_PRE_GW';
+            
+            if (deadlinePassed) {
+              // Deadline passed - load fixtures for current GW
+              gwForData = currentGw;
+            } else {
+              // Deadline hasn't passed - load fixtures for previous GW
+              // Use latestResultsGw if available and valid, otherwise use currentGw - 1
+              if (latestResultsGw && latestResultsGw < currentGw) {
+                gwForData = latestResultsGw;
+              } else {
+                // Fallback to currentGw - 1 (or currentGw if it's GW 1)
+                gwForData = currentGw > 1 ? currentGw - 1 : currentGw;
+              }
+            }
+          } catch (error) {
+            // If game state check fails, fall back to previous logic
+            console.error('[League] Error checking game state for fixtures loading:', error);
+            if (latestResultsGw && latestResultsGw < currentGw) {
+              gwForData = latestResultsGw;
+            } else {
+              gwForData = currentGw > 1 ? currentGw - 1 : currentGw;
+            }
           }
         } else {
           gwForData = selectedGw;

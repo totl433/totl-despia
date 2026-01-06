@@ -2080,6 +2080,7 @@ return null;
  const canMakePicks = !gameStateLoading && gameState !== null && 
    (gameState === 'GW_OPEN' || gameState === 'GW_PREDICTED');
  
+ const percentagesForFixture = pickPercentages.get(fixture.fixture_index) || null;
  return (
  <li key={fixture.id} className={index > 0 ? "border-t" : ""}>
  <FixtureCard
@@ -2088,7 +2089,7 @@ return null;
  liveScore={fixtureCardLiveScore}
  isTestApi={true}
  showPickButtons={canMakePicks}
- pickPercentages={pickPercentages.get(fixture.fixture_index) || null}
+ pickPercentages={percentagesForFixture}
  />
  </li>
  );
