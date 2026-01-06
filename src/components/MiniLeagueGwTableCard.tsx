@@ -136,6 +136,9 @@ export default function MiniLeagueGwTableCard({
   // Start with loading false if we have cache data, true otherwise
   const [loading, setLoading] = useState(!initialCacheData.found);
   const [error, setError] = useState<string | null>(null);
+  
+  // Track which GW we've already warned about to prevent duplicate warnings
+  const warnedAboutGwRef = useRef<number | null>(null);
 
   // Determine which GW to display based on game state
   // DEFENSIVE CHECK: Only use currentGw if it's valid
@@ -421,7 +424,16 @@ export default function MiniLeagueGwTableCard({
       } catch (err: any) {
         console.error('[MiniLeagueGwTableCard] Error fetching data from DB:', err);
         if (alive && setLoadingState) {
-          setError(err?.message || 'Failed to load data');
+          // Provide more helpful error messages for common issues
+          let errorMessage = 'Failed to load data';
+          if (err?.message?.includes('502') || err?.message?.includes('Bad Gateway')) {
+            errorMessage = 'Supabase is temporarily unavailable. Please try again in a moment.';
+          } else if (err?.message?.includes('CORS') || err?.code === 'ERR_NETWORK') {
+            errorMessage = 'Network error. Please check your connection.';
+          } else if (err?.message) {
+            errorMessage = err.message;
+          }
+          setError(errorMessage);
           setLoading(false);
         }
       }
@@ -431,7 +443,7 @@ export default function MiniLeagueGwTableCard({
     // This ensures we load the correct GW data when displayGw changes
     const cacheData = loadInitialDataFromCache(displayGw, leagueId);
     if (cacheData.found && cacheData.fixtures.length > 0) {
-      console.log(`[MiniLeagueGwTableCard] Found cache for GW ${displayGw} - ${cacheData.fixtures.length} fixtures, ${cacheData.picks.length} picks, ${cacheData.results.length} results`);
+      console.log(`[MiniLeagueGwTableCard] Found cache for GW ${displayGw} - ${cacheData.fixtures.length} fixtures, ${cacheData.picks.length} picks, ${cacheData.results.length} results, ${cacheData.submissions.size} submissions`);
       // Update state from cache (this handles both initial load and displayGw changes)
       setFixtures(cacheData.fixtures);
       setPicks(cacheData.picks);
@@ -439,11 +451,22 @@ export default function MiniLeagueGwTableCard({
       setSubmittedUserIds(cacheData.submissions);
       setLoading(false);
       
-      // Background refresh (non-blocking, silent on error) - only if we have members
-      if (hasMembers) {
-        fetchDataFromDb(false).catch(() => {
-          // Silently fail - we already have cached data displayed
-        });
+      // If cache has no submissions but we have members, that's suspicious - log it
+      if (cacheData.submissions.size === 0 && hasMembers && members.length > 0) {
+        console.warn(`[MiniLeagueGwTableCard] Cache for GW ${displayGw} has NO submissions but we have ${members.length} members - cache might be stale or incomplete, will refresh from DB`);
+        // Force a DB refresh to get submissions
+        if (hasMembers) {
+          fetchDataFromDb(false).catch(() => {
+            // Silently fail - we already have cached data displayed
+          });
+        }
+      } else {
+        // Background refresh (non-blocking, silent on error) - only if we have members
+        if (hasMembers) {
+          fetchDataFromDb(false).catch(() => {
+            // Silently fail - we already have cached data displayed
+          });
+        }
       }
       
       return () => { alive = false; };
@@ -518,29 +541,56 @@ export default function MiniLeagueGwTableCard({
       }));
     
     // Debug logging for empty rows - more detailed
-    if (calculatedRows.length === 0 && displayGw) {
+    // Only warn once per GW to avoid console spam from re-renders
+    if (calculatedRows.length === 0 && displayGw && warnedAboutGwRef.current !== displayGw) {
+      warnedAboutGwRef.current = displayGw;
       const memberIdsList = members.map(m => m.id).slice(0, 3); // First 3 for logging
       const submittedIdsList = Array.from(submittedUserIds).slice(0, 3);
+      const picksForGw = picks.filter(p => p.gw === displayGw);
+      const resultsForGw = results.filter(r => r.gw === displayGw);
+      
       console.warn(`[MiniLeagueGwTableCard] No rows calculated for GW ${displayGw}:`, {
         displayGw,
         currentGw,
         fixturesCount: fixtures.length,
         fixturesForGwCount: fixturesForGw.length,
         picksCount: picks.length,
+        picksForGwCount: picksForGw.length,
         resultsCount: results.length,
+        resultsForGwCount: resultsForGw.length,
         outcomesCount: outcomes.size,
         membersCount: members.length,
         submittedCount: submittedUserIds.size,
         memberIds: memberIdsList,
         submittedIds: submittedIdsList,
         hasLiveScores,
-        isLiveState: displayGw === currentGw && hasLiveScores
+        isLiveState: displayGw === currentGw && hasLiveScores,
+        leagueId: leagueId.slice(0, 8) // First 8 chars for privacy
       });
       
       // If we have fixtures but no submissions, that's the issue
       if (fixtures.length > 0 && submittedUserIds.size === 0) {
-        console.error(`[MiniLeagueGwTableCard] CRITICAL: Have fixtures for GW ${displayGw} but NO members have submitted!`);
+        console.error(`[MiniLeagueGwTableCard] CRITICAL: Have ${fixtures.length} fixtures for GW ${displayGw} but NO members have submitted!`);
+        console.error(`[MiniLeagueGwTableCard] This could mean:`);
+        console.error(`  1. Submissions query failed or returned empty`);
+        console.error(`  2. Members haven't actually submitted for GW ${displayGw}`);
+        console.error(`  3. Cache has wrong GW data`);
+        
+        // Try to help diagnose - check if we have picks but no submissions
+        if (picksForGw.length > 0) {
+          console.error(`[MiniLeagueGwTableCard] BUT we have ${picksForGw.length} picks for GW ${displayGw} - submissions query might be wrong!`);
+        }
       }
+      
+      // If we have no fixtures, that's a different issue
+      if (fixtures.length === 0) {
+        console.error(`[MiniLeagueGwTableCard] CRITICAL: No fixtures loaded for GW ${displayGw}!`);
+      }
+    }
+    
+    // Reset warning ref if we successfully calculated rows (for a different GW)
+    if (calculatedRows.length > 0 && warnedAboutGwRef.current === displayGw) {
+      warnedAboutGwRef.current = null;
     }
 
     const picksByFixture = new Map<number, Array<{ user_id: string; pick: "H" | "D" | "A" }>>();
