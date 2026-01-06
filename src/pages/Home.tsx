@@ -290,7 +290,17 @@ export default function HomePage() {
   // Initialize ALL state synchronously from cache (happens before first render - zero loading if cache exists)
   const initialState = loadInitialStateFromCache();
   
-  const [gw, setGw] = useState<number>(initialState.gw);
+  // CRITICAL FIX: Don't trust cached GW if it's suspicious (1 or very low)
+  // Initialize gw as null if cached value is suspicious, let useCurrentGameweek hook set it properly
+  const [gw, setGw] = useState<number>(() => {
+    const cachedGw = initialState.gw;
+    // If cached GW is 1 or suspiciously low, don't trust it - wait for hook
+    if (cachedGw <= 1) {
+      console.warn(`[Home] Suspicious cached GW (${cachedGw}) on init, waiting for useCurrentGameweek hook`);
+      return 1; // Still use 1 as fallback, but will be updated by hook
+    }
+    return cachedGw;
+  });
   const [latestGw, setLatestGw] = useState<number | null>(initialState.latestGw);
   const [gwPoints, setGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>(initialState.gwPoints);
   const [lastGwRank, setLastGwRank] = useState<{ rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null>(initialState.lastGwRank);
@@ -383,35 +393,28 @@ export default function HomePage() {
     return () => window.removeEventListener('leagueBadgeUpdated', handleBadgeUpdate);
   }, [refreshLeagues]);
   
-  // Validate cached GW (respects user's current_viewing_gw)
-  // CRITICAL: Only run if fixtures are missing (cache miss) - don't run if we have cache
-  // Update displayed GW when dbCurrentGw changes (from useCurrentGameweek hook)
+  // CRITICAL FIX: Sync gw with dbCurrentGw IMMEDIATELY when hook loads
+  // This ensures we use the correct GW from the hook, not stale cache
   useEffect(() => {
-    if (!user?.id || !dbCurrentGw) return;
+    if (!dbCurrentGw || dbCurrentGw < 1) return;
     
-    // DEFENSIVE CHECK: Validate dbCurrentGw is reasonable (positive number, not unreasonably low)
-    // If dbCurrentGw is 1 or very low, it might be stale cache - validate against latest results
-    if (dbCurrentGw <= 1) {
-      console.warn(`[Home] Suspicious dbCurrentGw value: ${dbCurrentGw}, validating...`);
-      // Check latest results GW as a sanity check
-      (async () => {
-        try {
-          const { data: latestResult } = await supabase
-            .from('app_gw_results')
-            .select('gw')
-            .order('gw', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          
-          if (latestResult?.gw && latestResult.gw > dbCurrentGw) {
-            console.warn(`[Home] dbCurrentGw (${dbCurrentGw}) is lower than latest results GW (${latestResult.gw}), using latest results GW`);
-            // Don't update here - let the hook handle it, but log the issue
-          }
-        } catch (e) {
-          console.error('[Home] Error validating GW:', e);
-        }
-      })();
+    // DEFENSIVE CHECK: If current gw is suspiciously low and dbCurrentGw is higher, update immediately
+    if (gw <= 1 && dbCurrentGw > 1) {
+      console.log(`[Home] Updating GW from suspicious cached value (${gw}) to hook value (${dbCurrentGw})`);
+      // Check user's viewing GW preference
+      if (user?.id) {
+        const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
+        const userViewingGw = prefsCache?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
+        const validatedUserViewingGw = userViewingGw < dbCurrentGw - 2 ? dbCurrentGw : userViewingGw;
+        const gwToDisplay = validatedUserViewingGw < dbCurrentGw ? validatedUserViewingGw : dbCurrentGw;
+        setGw(gwToDisplay);
+      } else {
+        setGw(dbCurrentGw);
+      }
+      return;
     }
+    
+    if (!user?.id) return;
     
     // Check user's viewing GW preference
     const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
