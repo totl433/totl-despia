@@ -171,6 +171,10 @@ export const handler: Handler = async (event) => {
     console.log('[notifyLeagueMessage] No registered devices found for recipients');
     return json(200, { ok: true, message: 'No devices' });
   }
+  
+  // Note: Having player IDs in database doesn't guarantee devices are subscribed in OneSignal
+  // OneSignal may accept notifications but not deliver them if devices aren't subscribed
+  // Check OneSignal dashboard or use Message History API to verify actual delivery
 
   // Build message: title = sender, body = content (trim to reasonable length)
   const title = senderName || 'New message';
@@ -267,8 +271,15 @@ export const handler: Handler = async (event) => {
         
         // If we got an ID and no errors, consider it successful even if recipients is 0
         // (OneSignal might not return recipients count in v2 API)
+        // However, if recipients is 0, devices might not be subscribed - log a warning
         if (body.id && !hasErrors) {
-          console.log(`[notifyLeagueMessage] Success! Notification ID: ${body.id}, recipients: ${recipients}`);
+          if (recipients === 0) {
+            console.warn(`[notifyLeagueMessage] Notification queued (ID: ${body.id}) but recipients count is 0. Devices may not be subscribed in OneSignal.`);
+            console.warn(`[notifyLeagueMessage] Player IDs sent: ${playerIds.slice(0, 3).join(', ')}${playerIds.length > 3 ? '...' : ''}`);
+            console.warn(`[notifyLeagueMessage] Check OneSignal dashboard or use Message History API to verify delivery status.`);
+          } else {
+            console.log(`[notifyLeagueMessage] Success! Notification ID: ${body.id}, recipients: ${recipients}`);
+          }
           return json(200, { ok: true, result: body, sent: playerIds.length, recipients, notificationId: body.id });
         }
         
