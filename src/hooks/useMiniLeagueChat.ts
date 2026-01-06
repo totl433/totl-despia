@@ -218,7 +218,7 @@ export function useMiniLeagueChat(
     // Only set loading if we don't already have messages (from cache)
     const hasMessages = messages.length > 0;
     if (!hasMessages) {
-      setLoading(true);
+    setLoading(true);
     }
     setError(null);
     earliestTimestampRef.current = null;
@@ -250,7 +250,7 @@ export function useMiniLeagueChat(
       setError(err?.message ?? "Failed to load chat");
     } finally {
       if (!hasMessages) {
-        setLoading(false);
+      setLoading(false);
       }
     }
   }, [miniLeagueId, enabled, fetchPage, applyMessages, messages.length]);

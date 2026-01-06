@@ -1452,12 +1452,12 @@ useEffect(() => {
  // Find user's rank (handling ties - same rank for same points)
  let userRank = 1;
  for (let i = 0; i < sorted.length; i++) {
-   if (i > 0 && sorted[i - 1].points !== sorted[i].points) {
-     userRank = i + 1;
-   }
-   if (sorted[i].user_id === user.id) {
-     break;
-   }
+ if (i > 0 && sorted[i - 1].points !== sorted[i].points) {
+ userRank = i + 1;
+ }
+ if (sorted[i].user_id === user.id) {
+ break;
+ }
  }
 
  // Calculate rank percentage: (rank / total_users) * 100

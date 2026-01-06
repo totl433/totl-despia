@@ -9,11 +9,11 @@ let supabaseClient;
 
 // Only log Supabase initialization in development
 if (import.meta.env.DEV) {
-  console.log('[Supabase] Initializing client...', {
-    hasUrl: !!url,
-    hasAnon: !!anon,
-    urlPreview: url ? url.substring(0, 30) + '...' : 'missing',
-  });
+console.log('[Supabase] Initializing client...', {
+  hasUrl: !!url,
+  hasAnon: !!anon,
+  urlPreview: url ? url.substring(0, 30) + '...' : 'missing',
+});
 }
 
 if (!url || !anon) {
@@ -38,8 +38,8 @@ if (!url || !anon) {
   })
 } else {
   if (import.meta.env.DEV) {
-    console.log('[Supabase] Creating client with valid credentials');
-    console.log('[Supabase] URL:', url.substring(0, 40) + '...');
+  console.log('[Supabase] Creating client with valid credentials');
+  console.log('[Supabase] URL:', url.substring(0, 40) + '...');
   }
   supabaseClient = createClient(url, anon, {
     auth: {
@@ -51,7 +51,7 @@ if (!url || !anon) {
     },
   })
   if (import.meta.env.DEV) {
-    console.log('[Supabase] Client created successfully');
+  console.log('[Supabase] Client created successfully');
   }
   
   // Test the client immediately (only log errors)

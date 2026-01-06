@@ -1867,7 +1867,7 @@ export default function HomeExperimental() {
           <img 
             src="/assets/Animation/Volley-Keepy-Uppies.gif" 
             alt="Loading..." 
-            className="w-20 h-20 mx-auto mb-4"
+            className="w-24 h-24 mx-auto mb-4"
           />
           <div className="text-slate-500 text-sm">Loading...</div>
         </div>

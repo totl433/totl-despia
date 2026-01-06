@@ -29,18 +29,16 @@ const initials = (text?: string) => {
 const resolveName = (id: string, memberNames?: MemberNames) => {
   if (!memberNames) return "";
   if (memberNames instanceof Map) {
-    const name = memberNames.get(id);
-    return name ?? "";
+    return memberNames.get(id) ?? "";
   }
   return memberNames[id] ?? "";
 };
 
-
 function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLeagueChatBetaProps) {
   const { user } = useAuth();
+  
   const {
     messages,
-    loading,
     loadingMore,
     hasMore,
     error,
@@ -57,14 +55,20 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   const [replyingTo, setReplyingTo] = useState<{ id: string; content: string; authorName?: string } | null>(null);
   const [uiErrors, setUiErrors] = useState<Array<{ id: string; message: string; timestamp: number }>>([]);
   
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const inputAreaRef = useRef<HTMLDivElement | null>(null);
+  const [inputBottom, setInputBottom] = useState(0);
+  // Track if content is scrollable to determine justifyContent
+  const [isContentScrollable, setIsContentScrollable] = useState(false);
+  
   // Track presence: mark user as active in chat to suppress notifications
   useEffect(() => {
     if (!miniLeagueId || !user?.id) return;
     
-    // Update presence every 10 seconds while user is viewing chat
     const updatePresence = async () => {
       try {
-        const { error } = await supabase
+        await supabase
           .from('chat_presence')
           .upsert({
             league_id: miniLeagueId,
@@ -73,58 +77,36 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
           }, {
             onConflict: 'league_id,user_id'
           });
-        if (error) {
-          console.error('[MiniLeagueChatBeta] Failed to update presence:', error);
-        }
       } catch (err) {
         // Silently fail - presence is best effort
-        console.error('[MiniLeagueChatBeta] Failed to update presence:', err);
       }
     };
     
-    // Update immediately and then every 10 seconds
     updatePresence();
     const interval = setInterval(updatePresence, 10000);
-    
-    // Cleanup: remove presence when component unmounts or user leaves
-    return () => {
-      clearInterval(interval);
-      // Note: We don't delete the presence record here because the notification function
-      // will filter by last_seen timestamp (only exclude if seen in last 30 seconds)
-    };
+    return () => clearInterval(interval);
   }, [miniLeagueId, user?.id]);
-  // Force re-render when memberNames loads by tracking a version
-  const [memberNamesVersion, setMemberNamesVersion] = useState(0);
-  const hasInitiallyScrolledRef = useRef(false);
-  const initialScrollDoneRef = useRef(false);
-  const initialLoadCompleteRef = useRef(false);
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const inputAreaRef = useRef<HTMLDivElement | null>(null);
-  const [inputBottom, setInputBottom] = useState(0);
 
+  // Ref callback: set scroll position IMMEDIATELY when node is available
+  // This happens synchronously before React finishes rendering, eliminating timing issues
+  // Reset scroll when league changes
+  useEffect(() => {
+    hasScrolledRef.current = false;
+  }, [miniLeagueId]);
+  
+  // Scroll to show newest messages (for new messages after initial load)
+  // With normal column, newest messages are at bottom, so scroll to max
   const scrollToBottom = useCallback(() => {
     if (listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
+      const maxScrollTop = listRef.current.scrollHeight - listRef.current.clientHeight;
+      listRef.current.scrollTop = maxScrollTop;
     }
   }, []);
-
-  const scrollToBottomWithRetries = useCallback(
-    (delays: number[] = [0, 100, 300, 500, 700]) => {
-      requestAnimationFrame(() => {
-        delays.forEach((delay) => {
-          setTimeout(() => scrollToBottom(), delay);
-        });
-      });
-    },
-    [scrollToBottom]
-  );
 
   // Load reactions for all messages
   useEffect(() => {
     if (messages.length === 0 || !user?.id) return;
     
-    // Filter out optimistic message IDs (they start with "optimistic-")
     const messageIds = messages
       .map(m => m.id)
       .filter(id => !id.startsWith('optimistic-'));
@@ -138,8 +120,11 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
           .in('message_id', messageIds);
         
         if (error) {
-          console.error('[MiniLeagueChatBeta] Error loading reactions:', error);
-          setUiErrors(prev => [...prev, { id: `reactions-${Date.now()}`, message: `Failed to load reactions: ${error.message}`, timestamp: Date.now() }]);
+          setUiErrors(prev => [...prev, { 
+            id: `reactions-${Date.now()}`, 
+            message: `Failed to load reactions: ${error.message}`, 
+            timestamp: Date.now() 
+          }]);
           return;
         }
         
@@ -171,8 +156,11 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         
         setReactions(formattedReactions);
       } catch (err: any) {
-        console.error('[MiniLeagueChatBeta] Error in loadReactions:', err);
-        setUiErrors(prev => [...prev, { id: `reactions-load-${Date.now()}`, message: `Error loading reactions: ${err?.message || String(err)}`, timestamp: Date.now() }]);
+        setUiErrors(prev => [...prev, { 
+          id: `reactions-load-${Date.now()}`, 
+          message: `Error loading reactions: ${err?.message || String(err)}`, 
+          timestamp: Date.now() 
+        }]);
       }
     };
     
@@ -183,13 +171,11 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   useEffect(() => {
     if (messages.length === 0 || !user?.id) return;
     
-    // Filter out optimistic message IDs (they start with "optimistic-")
     const messageIds = messages
       .map(m => m.id)
       .filter(id => !id.startsWith('optimistic-'));
     if (messageIds.length === 0) return;
     
-    // Subscribe to all reaction changes and reload when any change occurs
     const channel = supabase
       .channel('message-reactions-mlcb')
       .on(
@@ -199,20 +185,15 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
           schema: 'public',
           table: 'league_message_reactions',
         },
-        () => {
+        async () => {
           // Reload reactions when they change
-          const loadReactions = async () => {
             try {
               const { data, error } = await supabase
                 .from('league_message_reactions')
                 .select('message_id, emoji, user_id')
                 .in('message_id', messageIds);
               
-              if (error) {
-                console.error('[MiniLeagueChatBeta] Error reloading reactions:', error);
-                setUiErrors(prev => [...prev, { id: `reactions-reload-${Date.now()}`, message: `Failed to reload reactions: ${error.message}`, timestamp: Date.now() }]);
-                return;
-              }
+            if (error) return;
               
               const reactionsByMessage: Record<string, Record<string, { count: number; hasUserReacted: boolean }>> = {};
               
@@ -239,13 +220,9 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
               });
               
               setReactions(formattedReactions);
-            } catch (err: any) {
-              console.error('[MiniLeagueChatBeta] Error in reaction subscription handler:', err);
-              setUiErrors(prev => [...prev, { id: `reactions-sub-${Date.now()}`, message: `Error updating reactions: ${err?.message || String(err)}`, timestamp: Date.now() }]);
+          } catch (err) {
+            // Silently fail
             }
-          };
-          
-          loadReactions();
         }
       )
       .subscribe();
@@ -259,17 +236,16 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   const handleReactionClick = useCallback(async (messageId: string, emoji: string) => {
     if (!user?.id) return;
     
-    // Check if user already reacted with this emoji
     const messageReactions = reactions[messageId] || [];
     const existingReaction = messageReactions.find(r => r.emoji === emoji && r.hasUserReacted);
     
-    // Optimistically update local state immediately
+    // Optimistically update local state
     setReactions((prev) => {
       const newReactions = { ...prev };
       const currentReactions = newReactions[messageId] || [];
       
       if (existingReaction) {
-        // Remove reaction optimistically
+        // Remove reaction
         const updatedReactions = currentReactions.map(r => {
           if (r.emoji === emoji) {
             return {
@@ -287,17 +263,15 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
           newReactions[messageId] = updatedReactions;
         }
       } else {
-        // Add reaction optimistically
+        // Add reaction
         const existingEmojiReaction = currentReactions.find(r => r.emoji === emoji);
         if (existingEmojiReaction) {
-          // Emoji already exists, increment count and mark as reacted
           newReactions[messageId] = currentReactions.map(r => 
             r.emoji === emoji 
               ? { ...r, count: r.count + 1, hasUserReacted: true }
               : r
           );
         } else {
-          // New emoji reaction
           newReactions[messageId] = [...currentReactions, { emoji, count: 1, hasUserReacted: true }];
         }
       }
@@ -305,9 +279,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
       return newReactions;
     });
     
-    // Then update database
+    // Update database
     if (existingReaction) {
-      // Remove reaction
       const { error } = await supabase
         .from('league_message_reactions')
         .delete()
@@ -316,7 +289,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         .eq('emoji', emoji);
       
       if (error) {
-        // Revert optimistic update on error
+        // Revert optimistic update
         setReactions((prev) => {
           const reverted = { ...prev };
           const currentReactions = reverted[messageId] || [];
@@ -334,7 +307,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         });
       }
     } else {
-      // Add reaction
       const { error } = await supabase
         .from('league_message_reactions')
         .upsert({
@@ -344,9 +316,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         });
       
       if (error) {
-        console.error('[MiniLeagueChatBeta] Error adding reaction:', error);
-        setUiErrors(prev => [...prev, { id: `reaction-add-${Date.now()}`, message: `Failed to add reaction: ${error.message}`, timestamp: Date.now() }]);
-        // Revert optimistic update on error
+        // Revert optimistic update
         setReactions((prev) => {
           const reverted = { ...prev };
           const currentReactions = reverted[messageId] || [];
@@ -372,15 +342,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     }
   }, [user?.id, reactions]);
 
-  // Reset scroll ref when league changes
-  useEffect(() => {
-    // #region agent log
-    console.log('[Chat Scroll] League changed: resetting scroll refs', { miniLeagueId, timestamp: Date.now() });
-    // #endregion
-    hasInitiallyScrolledRef.current = false;
-    initialScrollDoneRef.current = false;
-  }, [miniLeagueId]);
-
+  // Auto-resize textarea
   useEffect(() => {
     if (!draft && inputRef.current) {
       inputRef.current.style.height = "auto";
@@ -388,97 +350,99 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     }
   }, [draft]);
 
+  // Keyboard detection and layout adjustment
   const applyKeyboardLayout = useCallback(
-    (keyboardHeight: number, scrollDelays: number[] = [0, 100, 300, 500, 700]) => {
-      // Always calculate input area height dynamically
+    (keyboardHeight: number) => {
       const inputAreaHeight = inputAreaRef.current?.offsetHeight || 72;
       
       if (keyboardHeight > 0) {
-        // Calculate the total height needed for input area (including safe area)
         const totalBottomSpace = keyboardHeight + inputAreaHeight;
-        
         setInputBottom(keyboardHeight);
         if (listRef.current) {
-          // Set padding to account for input area height, ensuring messages are never hidden
-          // The accessory view space is already included in keyboardHeight from visualViewport
-          listRef.current.style.paddingBottom = `${totalBottomSpace + 8}px`;
+          const newPadding = `${totalBottomSpace + 8}px`;
+          const oldPadding = listRef.current.style.paddingBottom;
+          listRef.current.style.paddingBottom = newPadding;
+          
+          // Keyboard open
+            keyboardHeight,
+            inputAreaHeight,
+            oldPadding,
+            newPadding,
+            changed: oldPadding !== newPadding,
+            scrollHeight: listRef.current.scrollHeight,
+            clientHeight: listRef.current.clientHeight,
+          }, 'MiniLeagueChatBeta.tsx:410', 'C');
         }
       } else {
         setInputBottom(0);
         if (listRef.current) {
-          // When keyboard is hidden, use normal padding for input area
-          listRef.current.style.paddingBottom = `${inputAreaHeight + 8}px`;
+          const newPadding = `${inputAreaHeight + 8}px`;
+          const oldPadding = listRef.current.style.paddingBottom;
+          listRef.current.style.paddingBottom = newPadding;
         }
       }
 
-      scrollToBottomWithRetries(scrollDelays);
+      // Scroll to bottom after keyboard adjustment
+      requestAnimationFrame(() => {
+        scrollToBottom();
+      });
     },
-    [scrollToBottomWithRetries]
+    [scrollToBottom]
   );
 
-  // Reliable keyboard detection - works on both desktop and mobile
+  // Keyboard detection
   useEffect(() => {
     const visualViewport = (window as any).visualViewport;
+    if (!visualViewport) return;
+
     let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
     let lastKeyboardHeight = 0;
-    let isInputFocused = false;
+    let initialLoadComplete = false;
+    
+    // Wait a bit before allowing keyboard detection to prevent initial jump
+    setTimeout(() => {
+      initialLoadComplete = true;
+    }, 500);
 
     const detectKeyboardHeight = (): number => {
-      if (visualViewport) {
-        // Use visualViewport API (best for mobile)
         const windowHeight = window.innerHeight;
         const viewportHeight = visualViewport.height;
         const viewportBottom = visualViewport.offsetTop + viewportHeight;
-        const keyboardHeight = Math.max(0, windowHeight - viewportBottom);
-        return keyboardHeight;
-      } else {
-        // Fallback: detect via window resize (works on desktop too)
-        // On desktop, this will be 0, which is correct
-        return 0;
-      }
+      return Math.max(0, windowHeight - viewportBottom);
     };
 
     const updateLayout = () => {
       if (resizeTimeout) {
         clearTimeout(resizeTimeout);
-        resizeTimeout = null;
       }
 
       resizeTimeout = setTimeout(() => {
         const keyboardHeight = detectKeyboardHeight();
 
-        // Only update if keyboard height changed significantly (avoid jitter)
-        // On desktop, keyboardHeight will be 0, which is fine
-        if (Math.abs(keyboardHeight - lastKeyboardHeight) < 10 && keyboardHeight > 0 && !isInputFocused) {
-          return;
-        }
-        lastKeyboardHeight = keyboardHeight;
-
+        // Keyboard detection update
+          keyboardHeight,
+          lastKeyboardHeight,
+          initialLoadComplete,
+          willApply: initialLoadComplete && Math.abs(keyboardHeight - lastKeyboardHeight) > 10,
+        }, 'MiniLeagueChatBeta.tsx:460', 'D');
+        
+        // Only apply keyboard layout changes after initial load is complete
+        if (initialLoadComplete && Math.abs(keyboardHeight - lastKeyboardHeight) > 10) {
+          lastKeyboardHeight = keyboardHeight;
         applyKeyboardLayout(keyboardHeight);
+        }
       }, 50);
     };
 
-    // Use visualViewport if available (mobile/Despia)
-    if (visualViewport) {
     visualViewport.addEventListener("resize", updateLayout);
     visualViewport.addEventListener("scroll", updateLayout);
-    }
-
-    // Also listen to window resize as fallback (works everywhere)
     window.addEventListener("resize", updateLayout);
 
-    // Listen to input focus/blur for immediate response
     const handleFocus = () => {
-      isInputFocused = true;
-      // Multiple attempts to catch keyboard appearance
       setTimeout(updateLayout, 50);
-      setTimeout(updateLayout, 150);
-      setTimeout(updateLayout, 300);
-      setTimeout(updateLayout, 500);
     };
     
     const handleBlur = () => {
-      isInputFocused = false;
       setTimeout(updateLayout, 100);
     };
 
@@ -489,16 +453,14 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
       }
     }, 100);
 
-    // Initial layout update
+    
     updateLayout();
 
     return () => {
       if (resizeTimeout) clearTimeout(resizeTimeout);
       clearTimeout(focusTimeout);
-      if (visualViewport) {
       visualViewport.removeEventListener("resize", updateLayout);
       visualViewport.removeEventListener("scroll", updateLayout);
-      }
       window.removeEventListener("resize", updateLayout);
       if (inputRef.current) {
         inputRef.current.removeEventListener("focus", handleFocus);
@@ -507,63 +469,56 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     };
   }, [applyKeyboardLayout]);
 
-  // Additional resize handler as backup (handles window resizing on desktop)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleResize = () => {
-      const visualViewport = (window as any).visualViewport;
-      let keyboardHeight = 0;
-      
-      if (visualViewport) {
-        const windowHeight = window.innerHeight;
-        const viewportHeight = visualViewport.height;
-        const viewportBottom = visualViewport.offsetTop + viewportHeight;
-        keyboardHeight = Math.max(0, windowHeight - viewportBottom);
-      }
-      
-      applyKeyboardLayout(keyboardHeight);
-    };
-    
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [applyKeyboardLayout]);
-
-  // Set initial padding for messages container
+  // Set initial padding synchronously to prevent layout shift
+  // This runs on mount to ensure padding is set before first paint
   useEffect(() => {
     if (listRef.current && inputAreaRef.current) {
+      const currentPadding = listRef.current.style.paddingBottom;
       const inputAreaHeight = inputAreaRef.current.offsetHeight || 72;
-      listRef.current.style.paddingBottom = `${inputAreaHeight + 8}px`;
+      const inputAreaTop = inputAreaRef.current.offsetTop;
+      const inputAreaBottom = inputAreaRef.current.offsetTop + inputAreaRef.current.offsetHeight;
+      const correctPadding = `${inputAreaHeight + 8}px`;
+      
+      // Set padding immediately
+      listRef.current.style.paddingBottom = correctPadding;
+      
+      
+      // Check if layout shifts after a delay
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+    if (listRef.current && inputAreaRef.current) {
+            const newInputAreaTop = inputAreaRef.current.offsetTop;
+            const newInputAreaBottom = inputAreaRef.current.offsetTop + inputAreaRef.current.offsetHeight;
+            const newScrollHeight = listRef.current.scrollHeight;
+            const newClientHeight = listRef.current.clientHeight;
+            const newScrollTop = listRef.current.scrollTop;
+            const inputAreaRect = inputAreaRef.current.getBoundingClientRect();
+            
+          }
+        });
+      });
     }
   }, []);
 
   const handleInputFocus = () => {
-    // Try to remove readonly attribute if it exists (workaround for iOS accessory view)
     if (inputRef.current) {
       inputRef.current.removeAttribute('readonly');
     }
     
-    // Trigger layout update to detect keyboard (works on both desktop and mobile)
     const detectAndApply = () => {
     const visualViewport = (window as any).visualViewport;
-      let keyboardHeight = 0;
-      
     if (visualViewport) {
         const windowHeight = window.innerHeight;
         const viewportHeight = visualViewport.height;
         const viewportBottom = visualViewport.offsetTop + viewportHeight;
-        keyboardHeight = Math.max(0, windowHeight - viewportBottom);
+        const keyboardHeight = Math.max(0, windowHeight - viewportBottom);
+        applyKeyboardLayout(keyboardHeight);
       }
-      
-      applyKeyboardLayout(keyboardHeight, [0, 100, 200, 400, 600, 800]);
     };
     
-    // Multiple attempts to catch keyboard appearance (especially on mobile)
     setTimeout(detectAndApply, 50);
     setTimeout(detectAndApply, 150);
-    setTimeout(detectAndApply, 300);
-    setTimeout(detectAndApply, 500);
-
-    scrollToBottomWithRetries([100, 200, 400, 600]);
+    scrollToBottom();
   };
 
   const handleMessagesClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -587,18 +542,16 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     );
   }, [user]);
 
+  // Build chat groups from messages
   const chatGroups = useMemo<ChatThreadProps["groups"]>(() => {
     if (!messages.length) return [];
     
-    // CRITICAL FIX: Don't compute groups until memberNames is available
-    // This ensures groups are always created with correct author names from the start
+    // Wait for memberNames to be available
     const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
     if (!hasMemberNames) {
       return [];
     }
     
-    
-    // Build groups immutably using reduce to avoid mutation issues
     let lastDayKey: string | null = null;
     const groups = messages.reduce<ChatThreadProps["groups"]>((acc, msg) => {
       const isOwnMessage = msg.user_id === user?.id;
@@ -615,7 +568,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         lastDayKey = dayKey;
       }
 
-      // Resolve reply author name
       const replyAuthorName = msg.reply_to 
         ? (resolveName(msg.reply_to.user_id, memberNames) || "Unknown")
         : null;
@@ -634,8 +586,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
       };
 
       const lastGroup = acc[acc.length - 1];
-      // Check if we can append to the last group
-      // Compare by user_id, not author name, to handle case where name resolved from "Unknown"
       const lastGroupUserId = lastGroup?.messages.length > 0 && lastGroup.messages[0].messageId
         ? messages.find(m => m.id === lastGroup.messages[0].messageId)?.user_id 
         : null;
@@ -643,16 +593,11 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         lastGroup &&
         !shouldLabelDay &&
         lastGroup.isOwnMessage === isOwnMessage &&
-        lastGroupUserId === msg.user_id; // Compare by user_id, not author name
+        lastGroupUserId === msg.user_id;
 
       if (canAppendToLast) {
-        // Always update author name to ensure it's current (e.g., from "Unknown" to actual name)
-        // Extract the base message ID from the group ID (handle both formats: "msg-id" and "msg-id-Unknown")
         const baseId = lastGroup.id.includes('-') ? lastGroup.id.split('-')[0] : lastGroup.id;
-        
-        // Update all existing messages in the group to refresh their replyTo.authorName
         const updatedMessages = lastGroup.messages.map(existingMsg => {
-          // Find the original message to get reply_to data
           const originalMsg = existingMsg.messageId ? messages.find(m => m.id === existingMsg.messageId) : null;
           if (originalMsg?.reply_to) {
             const updatedReplyAuthorName = resolveName(originalMsg.reply_to.user_id, memberNames) || "Unknown";
@@ -669,17 +614,16 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         
         const updatedGroup = {
           ...lastGroup,
-          id: `${baseId}-${fallbackName}`, // Update ID to include current author name
-          author: fallbackName, // Always use the current resolved name
+          id: `${baseId}-${fallbackName}`,
+          author: fallbackName,
           avatarInitials,
           userId: msg.user_id,
-          messages: [...updatedMessages, messagePayload], // Create new array with updated messages
+          messages: [...updatedMessages, messagePayload],
         };
-        // Replace the last group with the updated one - create new array immutably
         return [...acc.slice(0, -1), updatedGroup];
       } else {
         return [...acc, {
-          id: `${msg.id}-${fallbackName}`, // Include author name in ID to force re-render when name changes
+          id: `${msg.id}-${fallbackName}`,
           author: fallbackName,
           avatarInitials,
           isOwnMessage,
@@ -690,14 +634,10 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
       }
     }, []);
 
-    // Return a new array reference to ensure React detects changes
-    // Also ensure all groups have the correct author name (in case memberNames loaded after groups were created)
-    // Create a completely new array to ensure React detects changes
-    const finalGroups: ChatThreadProps["groups"] = groups.map((group) => {
-      // Always create a new object to ensure React detects changes
+    // Update groups to ensure all names are resolved
+    return groups.map((group) => {
       const baseGroup = { ...group };
       
-      // Update all messages in the group to refresh their replyTo.authorName
       const updatedMessages = baseGroup.messages.map(msg => {
         const originalMsg = msg.messageId ? messages.find(m => m.id === msg.messageId) : null;
         if (originalMsg?.reply_to && msg.replyTo) {
@@ -715,130 +655,105 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         return msg;
       });
       
-      // If group author is "Unknown", try to resolve it from the first message
       if (baseGroup.author === "Unknown" && baseGroup.messages.length > 0 && baseGroup.messages[0].messageId) {
         const firstMessage = messages.find(m => m.id === baseGroup.messages[0].messageId);
         if (firstMessage) {
           const resolvedName = resolveName(firstMessage.user_id, memberNames);
           if (resolvedName && resolvedName !== "Unknown") {
-            // Extract the base message ID from the group ID (handle both formats: "msg-id" and "msg-id-Unknown")
             const baseId = baseGroup.id.includes('-') ? baseGroup.id.split('-')[0] : baseGroup.id;
             return {
               ...baseGroup,
-              id: `${baseId}-${resolvedName}`, // Update ID to include resolved name
+              id: `${baseId}-${resolvedName}`,
               author: resolvedName,
               avatarInitials: initials(resolvedName),
-              userId: firstMessage.user_id, // Preserve userId
-              messages: updatedMessages, // Use updated messages with refreshed replyTo.authorName
+              userId: firstMessage.user_id,
+              messages: updatedMessages,
             };
           }
         }
       }
       
-      // Always return a new object with updated messages to ensure React detects changes
       return {
         ...baseGroup,
         messages: updatedMessages,
       };
     });
-    
-    
-    return finalGroups;
-  }, [currentUserDisplayName, memberNames, messages, user?.id, memberNamesVersion]);
+  }, [currentUserDisplayName, memberNames, messages, user?.id]);
 
-  // Track when memberNames loads and increment version to force re-render
-  useEffect(() => {
-    const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
-    if (hasMemberNames && memberNamesVersion === 0) {
-      setMemberNamesVersion(1);
-    }
-  }, [memberNames, memberNamesVersion]);
-
-  // Force re-render when we detect Unknown groups but memberNames is available
-  useEffect(() => {
-    const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
-    const hasUnknownGroups = chatGroups.some(g => g.author === "Unknown");
-    
-    if (hasMemberNames && hasUnknownGroups && chatGroups.length > 0) {
-      // Use setTimeout to avoid infinite loops, and increment multiple times to force multiple re-renders
-      setTimeout(() => {
-        setMemberNamesVersion(prev => prev + 1);
-      }, 50);
-      // Also try again after a longer delay
-      setTimeout(() => {
-        setMemberNamesVersion(prev => prev + 1);
-      }, 200);
-    }
-  }, [chatGroups, memberNames]);
-
-  // Unknown groups will resolve when memberNames loads
-  
-  // Force re-render when groups change by creating a key based on group authors and memberNamesVersion
-  // This ensures React re-renders when any author name changes from "Unknown" to actual name
+  // Force re-render when memberNames loads
   const chatThreadKey = useMemo(() => {
     const authorNames = chatGroups.map(g => g.author).join(',');
     const hasUnknown = chatGroups.some(g => g.author === "Unknown");
-    return `chat-${chatGroups.length}-${hasUnknown ? 'unknown' : 'resolved'}-${memberNamesVersion}-${authorNames.slice(0, 50)}`;
-  }, [chatGroups, memberNamesVersion]);
-
-  // Set scroll to bottom immediately when container is ready
-  // Use ref callback to set scroll position as soon as element is mounted
+    return `chat-${chatGroups.length}-${hasUnknown ? 'unknown' : 'resolved'}-${authorNames.slice(0, 50)}`;
+  }, [chatGroups]);
+  
+  // Simple ref callback: just store the ref and check scrollability
+  // No scroll logic needed - CSS column-reverse handles positioning
   const setListRef = useCallback((node: HTMLDivElement | null) => {
-    // #region agent log
-    console.log('[Chat Scroll] setListRef called', { hasNode: !!node, messagesLength: messages.length, chatGroupsLength: chatGroups.length, timestamp: Date.now() });
-    // #endregion
     listRef.current = node;
-    // Set scroll to bottom immediately when element mounts AND content is ready
-    if (node && messages.length > 0 && chatGroups.length > 0) {
-      // #region agent log
-      console.log('[Chat Scroll] setListRef: scheduling scroll', { scrollHeight: node.scrollHeight, clientHeight: node.clientHeight, timestamp: Date.now() });
-      // #endregion
-      // Use double RAF for Despia - ensures layout is fully complete
+    
+    // Set padding immediately to prevent layout shift
+    // Use a default value that matches typical input area height
+    if (node) {
+      const initialPadding = node.style.paddingBottom;
+      
+      // Measure input area first if available, otherwise use default
+      if (inputAreaRef.current) {
+        const inputAreaHeight = inputAreaRef.current.offsetHeight || 72;
+        const correctPadding = `${inputAreaHeight + 8}px`;
+        node.style.paddingBottom = correctPadding;
+        
+      } else {
+        // Set to 91px default (matches typical iPhone input area height)
+        node.style.paddingBottom = '91px';
+        
+      }
+      
+      // Check if content is scrollable after layout
+      // Use double RAF to ensure content is fully rendered
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (node) {
-            // #region agent log
-            console.log('[Chat Scroll] setListRef: scrolling (double RAF)', { scrollHeight: node.scrollHeight, scrollTop: node.scrollTop, beforeScroll: node.scrollTop, timestamp: Date.now() });
-            // #endregion
-            node.scrollTop = node.scrollHeight;
-            // #region agent log
-            console.log('[Chat Scroll] setListRef: after scroll', { scrollTop: node.scrollTop, scrollHeight: node.scrollHeight, timestamp: Date.now() });
-            // #endregion
-            // Force scroll again after a tiny delay for Despia
-            setTimeout(() => {
-              if (node) {
-                // #region agent log
-                console.log('[Chat Scroll] setListRef: timeout scroll', { scrollTop: node.scrollTop, scrollHeight: node.scrollHeight, timestamp: Date.now() });
-                // #endregion
-                node.scrollTop = node.scrollHeight;
-              }
-            }, 50);
+          if (node && messages.length > 0 && chatGroups.length > 0) {
+            const scrollable = node.scrollHeight > node.clientHeight;
+            setIsContentScrollable(scrollable);
           }
         });
       });
     }
   }, [messages.length, chatGroups.length]);
   
-  // Also scroll when messages/chatGroups change (for Despia)
+  // Reset when league changes
   useEffect(() => {
-    // #region agent log
-    console.log('[Chat Scroll] useEffect scroll: messages/chatGroups changed', { messagesLength: messages.length, chatGroupsLength: chatGroups.length, hasListRef: !!listRef.current, timestamp: Date.now() });
-    // #endregion
-    if (listRef.current && messages.length > 0 && chatGroups.length > 0) {
-      // Use double RAF for Despia
+    hasScrolledRef.current = false;
+  }, [miniLeagueId]);
+
+
+  // Auto-scroll when new messages arrive (after initial load)
+  // With normal column, newest messages are at bottom, so scroll to max
+  useEffect(() => {
+    if (messages.length > 0 && listRef.current) {
+      // Mark as scrolled after first message load
+      if (!hasScrolledRef.current) {
+        hasScrolledRef.current = true;
+      }
+      // With normal column, newest messages are at bottom, so scroll to max
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (listRef.current) {
-            // #region agent log
-            console.log('[Chat Scroll] useEffect scroll: executing', { scrollTop: listRef.current.scrollTop, scrollHeight: listRef.current.scrollHeight, timestamp: Date.now() });
-            // #endregion
-            listRef.current.scrollTop = listRef.current.scrollHeight;
+        if (listRef.current) {
+          const scrollHeight = listRef.current.scrollHeight;
+          const clientHeight = listRef.current.clientHeight;
+          const maxScrollTop = scrollHeight - clientHeight;
+          const isScrollable = scrollHeight > clientHeight;
+          
+          
+          // Only scroll if content is scrollable (long threads)
+          // Short threads will naturally be at top with flex-start
+          if (isScrollable) {
+            listRef.current.scrollTop = maxScrollTop;
           }
-        });
+        }
       });
     }
-  }, [messages.length, chatGroups.length]);
-
+  }, [messages.length, messages]);
 
   const notifyRecipients = useCallback(
     async (text: string) => {
@@ -855,17 +770,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         user.email ||
         "User";
 
-      const logEntry: any = {
-        timestamp: new Date().toISOString(),
-        leagueId: miniLeagueId,
-        senderId: user.id,
-        ok: false,
-        sent: 0,
-        error: 'Unknown error',
-      };
-
       try {
-        const response = await fetch("/.netlify/functions/notifyLeagueMessage", {
+        await fetch("/.netlify/functions/notifyLeagueMessage", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -873,44 +779,11 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
             senderId: user.id,
             senderName,
             content: text,
-            activeUserIds: [user.id], // Exclude yourself from notifications when you're actively in chat
+            activeUserIds: [user.id],
           }),
         });
-
-        const result = await response.json().catch((e) => {
-          logEntry.error = `Failed to parse response: ${e?.message || String(e)}`;
-          logEntry.httpStatus = response.status;
-          return { ok: false, error: 'Failed to parse response' };
-        });
-
-        // Update log entry
-        Object.assign(logEntry, {
-          ok: result.ok,
-          sent: result.sent || 0,
-          recipients: result.recipients || 0,
-          message: result.message,
-          error: result.error,
-          details: result.details,
-          httpStatus: response.status,
-          fullResponse: result,
-        });
-
-        // Status logged to localStorage for AdminData page, but not shown to users
-      } catch (err: any) {
-        logEntry.error = err?.message || String(err);
-        logEntry.exception = true;
-      } finally {
-        // ALWAYS store log entry for AdminData page
-        try {
-          const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
-          logs.push(logEntry);
-          // Keep only last 50 logs
-          const recentLogs = logs.slice(-50);
-          localStorage.setItem('notification_logs', JSON.stringify(recentLogs));
-        } catch (e: any) {
-          console.error('[MiniLeagueChatBeta] Error storing notification log:', e);
-          setUiErrors(prev => [...prev, { id: `notif-log-${Date.now()}`, message: `Failed to log notification: ${e?.message || String(e)}`, timestamp: Date.now() }]);
-        }
+      } catch (err) {
+        // Silently fail - notifications are best effort
       }
     },
     [miniLeagueId, user?.id]
@@ -921,9 +794,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     if (!miniLeagueId || !text || sending) return;
     try {
       setSending(true);
-      // Clear draft immediately for better UX
       setDraft("");
-      // Reset textarea height
       if (inputRef.current) {
         inputRef.current.style.height = "auto";
         inputRef.current.style.height = "42px";
@@ -931,22 +802,23 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
       await sendMessage(text, replyingTo?.id || null);
       await notifyRecipients(text);
       setReplyingTo(null);
-      scrollToBottomWithRetries([0, 150, 300]);
+      scrollToBottom();
     } catch (err: any) {
-      console.error('[MiniLeagueChatBeta] Error sending message:', err);
-      setUiErrors(prev => [...prev, { id: `send-${Date.now()}`, message: `Failed to send message: ${err?.message || String(err)}`, timestamp: Date.now() }]);
-      // Restore draft on error
+      setUiErrors(prev => [...prev, { 
+        id: `send-${Date.now()}`, 
+        message: `Failed to send message: ${err?.message || String(err)}`, 
+        timestamp: Date.now() 
+      }]);
       setDraft(text);
     } finally {
       setSending(false);
     }
-  }, [draft, miniLeagueId, notifyRecipients, scrollToBottomWithRetries, sendMessage, sending, replyingTo]);
+  }, [draft, miniLeagueId, notifyRecipients, scrollToBottom, sendMessage, sending, replyingTo]);
 
-  // Add deep link error to uiErrors if present
+  // Add deep link error if present
   useEffect(() => {
     if (deepLinkError) {
       setUiErrors(prev => {
-        // Don't duplicate if already shown
         if (prev.some(e => e.message.includes('Deep Link'))) return prev;
         return [...prev, { 
           id: `deeplink-${Date.now()}`, 
@@ -966,52 +838,10 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     return () => clearTimeout(timer);
   }, [uiErrors]);
 
-  // Reset refs when league changes
-  useEffect(() => {
-    if (miniLeagueId) {
-      initialScrollDoneRef.current = false;
-      initialLoadCompleteRef.current = false;
-    }
-  }, [miniLeagueId]);
-
-  // Track when initial load is complete (loading done, messages loaded, memberNames ready)
-  useEffect(() => {
-    // #region agent log
-    console.log('[Chat Scroll] initialLoadComplete effect', { loading, messagesLength: messages.length, chatGroupsLength: chatGroups.length, timestamp: Date.now() });
-    // #endregion
-    // If we have messages already (from cache), we can show immediately
-    if (messages.length > 0) {
-      const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
-      if (hasMemberNames) {
-        // Messages are ready and memberNames are ready - show immediately
-        initialLoadCompleteRef.current = true;
-        return;
-      }
-    }
-    
-    // Otherwise wait for loading to complete
-    if (!loading && messages.length >= 0) {
-      const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
-      // Wait for memberNames if we have messages, otherwise we can show empty state
-      if (messages.length === 0 || hasMemberNames) {
-        // Small delay to ensure chatGroups is calculated
-        const timer = setTimeout(() => {
-          initialLoadCompleteRef.current = true;
-        }, 50);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [loading, messages.length, memberNames]);
-
-  // Always render the container to prevent unmount/remount glitch in Despia
-  // Only show content when messages and chatGroups are ready
-  // #region agent log
-  const isReady = messages.length > 0 && chatGroups.length > 0;
-  console.log('[Chat Scroll] Rendering chat component', { messagesLength: messages.length, chatGroupsLength: chatGroups.length, isReady, timestamp: Date.now() });
-  // #endregion
+  const hasContent = messages.length > 0 && chatGroups.length > 0;
 
   return (
-    <div className="flex flex-col h-full w-full" style={{ position: 'relative', zIndex: 1, overflowX: 'hidden' }}>
+      <div className="flex flex-col h-full w-full" style={{ position: 'relative', zIndex: 1, overflowX: 'hidden' }}>
       {/* Error display */}
       {uiErrors.length > 0 && (
         <div className="px-4 pt-2 space-y-2">
@@ -1042,35 +872,27 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
           cursor: "pointer",
           overflowX: 'hidden',
           maxWidth: '100%',
+          display: 'flex',
+          flexDirection: 'column', // Normal column - newest at bottom
+          alignItems: 'flex-start', // Ensure content aligns to start (horizontal alignment)
+          justifyContent: 'flex-start', // Always flex-start - short threads at top, long threads scrollable
+          paddingBottom: '91px', // Default padding to match typical input area height (83px + 8px), refined in ref callback
         }}
       >
-        {isReady && hasMore && miniLeagueId && (
-          <button
-            className="mx-auto mb-2 text-xs font-semibold text-[#1C8376] bg-white px-3 py-1 rounded-full shadow disabled:opacity-40"
-            onClick={loadMore}
-            disabled={loadingMore}
-          >
-            {loadingMore ? "Loading earlier…" : "Load earlier messages"}
-          </button>
-        )}
-
-        {/* Only render content when we have messages AND chatGroups ready - prevents glitchy re-renders */}
-        {isReady ? (
+        {hasContent ? (
+          <>
           <ChatThread 
             key={chatThreadKey}
             groups={chatGroups}
             reactions={reactions}
             onReactionClick={handleReactionClick}
             onMessageClick={(messageId, content, authorName) => {
-              // Find the message to get full reply data
               const message = messages.find(m => m.id === messageId);
               if (message) {
-                // Extract text content - handle both string and ReactNode
                 let messageContent = '';
                 if (typeof content === 'string') {
                   messageContent = content;
                 } else if (typeof content === 'object' && content !== null) {
-                  // Try to extract text from ReactNode
                   const textContent = (content as any)?.props?.children || String(content);
                   messageContent = typeof textContent === 'string' ? textContent : String(textContent);
                 } else {
@@ -1082,13 +904,13 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
                   content: messageContent || message.content,
                   authorName: authorName,
                 });
-                // Focus input after a short delay
                 setTimeout(() => {
                   inputRef.current?.focus();
                 }, 100);
               }
             }}
           />
+          </>
         ) : null}
       </div>
 
@@ -1108,7 +930,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
           zIndex: inputBottom > 0 ? 100 : "auto",
           boxShadow: inputBottom > 0 ? "0 -2px 8px rgba(0, 0, 0, 0.1)" : "none",
           overflowX: "hidden",
-          // Ensure input is always accessible and clickable
           pointerEvents: "auto",
         }}
       >
@@ -1149,15 +970,14 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
             autoCapitalize="sentences"
             spellCheck={true}
             inputMode="text"
+            enterKeyHint="send"
             data-1p-ignore="true"
             onKeyDown={(e) => {
-              // Cancel reply on Escape
               if (e.key === 'Escape' && replyingTo) {
                 setReplyingTo(null);
                 e.preventDefault();
                 return;
               }
-              // Send on Enter (without Shift)
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
@@ -1169,7 +989,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
                 inputRef.current.style.height = "auto";
                 inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
               }
-              // Update layout when textarea height changes
               requestAnimationFrame(() => {
                 const visualViewport = (window as any).visualViewport;
                 if (visualViewport) {
@@ -1177,7 +996,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
                   const viewportHeight = visualViewport.height;
                   const viewportBottom = visualViewport.offsetTop + viewportHeight;
                   const keyboardHeight = windowHeight - viewportBottom;
-                  applyKeyboardLayout(keyboardHeight, [0, 100]);
+                  applyKeyboardLayout(keyboardHeight);
                 }
               });
             }}
@@ -1198,7 +1017,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
               className="w-4 h-4"
               fill="none"
               stroke="currentColor"
-              strokeWidth={2}
               viewBox="0 0 24 24"
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />

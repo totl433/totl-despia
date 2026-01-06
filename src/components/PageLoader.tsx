@@ -11,7 +11,7 @@ export function PageLoader({ message }: { message?: string }) {
           <img 
             src="/assets/Animation/Volley-Keepy-Uppies.gif" 
             alt="Loading..." 
-            className="w-20 h-20 mx-auto"
+            className="w-24 h-24 mx-auto"
           />
         </div>
         

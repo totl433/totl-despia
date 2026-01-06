@@ -80,17 +80,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     bootLog.authStart();
     if (import.meta.env.DEV) {
-      console.log('[Auth] Setting up auth state listener...');
+    console.log('[Auth] Setting up auth state listener...');
     }
     
     // Set up auth state change listener - this fires on initialization and state changes
     let authStateReceived = false;
     if (import.meta.env.DEV) {
-      console.log('[Auth] Setting up onAuthStateChange listener...');
+    console.log('[Auth] Setting up onAuthStateChange listener...');
     }
     const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
       if (import.meta.env.DEV) {
-        console.log('[Auth] Auth state changed:', event, sess ? 'has session' : 'no session', sess?.user?.id);
+      console.log('[Auth] Auth state changed:', event, sess ? 'has session' : 'no session', sess?.user?.id);
       }
       authStateReceived = true;
       clearTimeout(authTimeout);
@@ -129,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Try to get session with a shorter timeout (3 seconds)
     // If it hangs, we'll rely on onAuthStateChange which should fire
     if (import.meta.env.DEV) {
-      console.log('[Auth] Attempting to get session (with 3s timeout)...');
+    console.log('[Auth] Attempting to get session (with 3s timeout)...');
     }
     Promise.race([
       supabase.auth.getSession(),
@@ -154,7 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .catch((error: any) => {
         if (authStateReceived) return; // Already got it from onAuthStateChange
         if (import.meta.env.DEV) {
-          console.log('[Auth] getSession timed out or failed, relying on onAuthStateChange:', error.message);
+        console.log('[Auth] getSession timed out or failed, relying on onAuthStateChange:', error.message);
         }
         // Don't set loading to false here - let onAuthStateChange handle it
         // If onAuthStateChange doesn't fire within 5 seconds, the timeout will handle it

@@ -1,6 +1,7 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { filterEligiblePlayerIds, loadUserNotificationPreferences } from './utils/notificationHelpers';
+import { claimIdempotencyLock, updateSendLog } from './lib/notifications/idempotency';
 
 function json(statusCode: number, body: unknown) {
   return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
@@ -77,9 +78,15 @@ export const handler: Handler = async (event) => {
     console.log(`[sendPredictionReminder] Reminder time: ${reminderTime.toISOString()}`);
     console.log(`[sendPredictionReminder] Current time: ${now.toISOString()}`);
 
-    // Check if we're within the reminder window (30 minutes before or after reminder time)
-    const reminderWindowStart = new Date(reminderTime.getTime() - (30 * 60 * 1000));
-    const reminderWindowEnd = new Date(reminderTime.getTime() + (30 * 60 * 1000));
+    // Calculate time remaining until deadline
+    const timeUntilDeadline = deadlineTime.getTime() - now.getTime();
+    const hoursUntilDeadline = Math.floor(timeUntilDeadline / (60 * 60 * 1000));
+    const minutesUntilDeadline = Math.floor((timeUntilDeadline % (60 * 60 * 1000)) / (60 * 1000));
+
+    // Check if we're within the reminder window (5 minutes before or after reminder time)
+    // This ensures we only send when very close to the exact 5-hour mark
+    const reminderWindowStart = new Date(reminderTime.getTime() - (5 * 60 * 1000));
+    const reminderWindowEnd = new Date(reminderTime.getTime() + (5 * 60 * 1000));
 
     if (now < reminderWindowStart) {
       console.log(`[sendPredictionReminder] Too early - reminder window starts at ${reminderWindowStart.toISOString()}`);
@@ -101,8 +108,21 @@ export const handler: Handler = async (event) => {
     }
 
     // Check if we've already sent reminders for this GW (prevent duplicates)
-    // We'll use a simple approach: check notification_send_log or just send and let OneSignal handle deduplication
-    // For now, we'll rely on OneSignal's deduplication via collapse_id
+    // Use idempotency system with global event_id (user_id = null)
+    const eventId = `prediction_reminder_gw${currentGw}`;
+    const idempotencyCheck = await claimIdempotencyLock('prediction-reminder', eventId, null);
+    
+    if (!idempotencyCheck.claimed) {
+      console.log(`[sendPredictionReminder] Already sent reminders for GW ${currentGw} (event_id: ${eventId})`);
+      return json(200, { 
+        ok: true, 
+        message: 'Reminders already sent for this GW',
+        sentTo: 0,
+        event_id: eventId
+      });
+    }
+
+    console.log(`[sendPredictionReminder] Claimed idempotency lock for GW ${currentGw} (log_id: ${idempotencyCheck.log_id})`);
 
     // Get all users who have submitted predictions for this GW (we don't want to remind them)
     const { data: submittedUsers, error: submittedError } = await admin
@@ -202,13 +222,24 @@ export const handler: Handler = async (event) => {
       });
     }
 
+    // Build notification message based on actual time remaining
+    let reminderMessage = '5 hours to go!';
+    if (hoursUntilDeadline < 5) {
+      // If less than 5 hours, show more precise time
+      if (hoursUntilDeadline > 0) {
+        reminderMessage = `${hoursUntilDeadline}h ${minutesUntilDeadline}m to go!`;
+      } else {
+        reminderMessage = `${minutesUntilDeadline} minutes to go!`;
+      }
+    }
+
     // Send notification via OneSignal
     const notificationPayload = {
       app_id: ONESIGNAL_APP_ID,
       include_player_ids: eligiblePlayerIds,
       headings: { en: `Gameweek ${currentGw} Predictions Due Soon!` },
-      contents: { en: `5 hours to go!` },
-      collapse_id: `prediction_reminder_gw${currentGw}`, // Prevent duplicate notifications
+      contents: { en: reminderMessage },
+      collapse_id: eventId, // Use same event_id for collapse_id
       thread_id: 'totl_predictions',
       android_group: 'totl_predictions',
       data: {
@@ -234,6 +265,16 @@ export const handler: Handler = async (event) => {
 
     if (!response.ok) {
       console.error('[sendPredictionReminder] OneSignal API error:', result);
+      // Update send log with failure
+      if (idempotencyCheck.log_id) {
+        await updateSendLog(idempotencyCheck.log_id, {
+          result: 'failed',
+          error: { response: result, status: response.status },
+          onesignal_notification_id: result.id || null,
+        }).catch(err => {
+          console.error('[sendPredictionReminder] Failed to update send log:', err);
+        });
+      }
       return json(500, { 
         error: 'Failed to send notifications', 
         details: result 
@@ -243,12 +284,33 @@ export const handler: Handler = async (event) => {
     console.log(`[sendPredictionReminder] Successfully sent reminders to ${eligiblePlayerIds.length} devices`);
     console.log(`[sendPredictionReminder] OneSignal result:`, result);
 
+    // Update send log with success
+    if (idempotencyCheck.log_id) {
+      await updateSendLog(idempotencyCheck.log_id, {
+        result: 'accepted',
+        onesignal_notification_id: result.id || null,
+        target_type: 'player_ids',
+        targeting_summary: {
+          player_count: eligiblePlayerIds.length,
+          user_count: eligibleUserIds.length,
+        },
+        payload_summary: {
+          title: `Gameweek ${currentGw} Predictions Due Soon!`,
+          body: reminderMessage,
+        },
+      }).catch(err => {
+        console.error('[sendPredictionReminder] Failed to update send log:', err);
+      });
+    }
+
     return json(200, {
       ok: true,
       sentTo: eligiblePlayerIds.length,
       gw: currentGw,
       reminderTime: reminderTime.toISOString(),
       deadline: deadlineTime.toISOString(),
+      message: reminderMessage,
+      event_id: eventId,
       result
     });
 

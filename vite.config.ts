@@ -15,7 +15,15 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     // Allow external connections (for testing on iPhone)
-    port: 5173
+    port: 5173,
+    proxy: {
+      // Proxy Netlify functions to Netlify dev server (if running) or production
+      '/.netlify/functions': {
+        target: process.env.NETLIFY_DEV ? 'http://localhost:8888' : 'https://totl-staging.netlify.app',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
   },
   optimizeDeps: {
     include: ['html2canvas']

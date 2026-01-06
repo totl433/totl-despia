@@ -125,6 +125,57 @@ textarea {
   /* Force no input accessory view */
   -webkit-user-modify: read-write-plaintext-only;
 }
+
+/* Enhanced CSS to hide iOS input accessory view - Option 1 + 3 combined */
+textarea[autocomplete="off"],
+textarea[spellcheck="false"] {
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-modify: read-write-plaintext-only;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Try inputMode="search" to reduce suggestion bar */
+textarea[inputmode="search"] {
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-user-modify: read-write-plaintext-only;
+}
+
+/* Additional attempt: try to minimize the accessory view height */
+@supports (-webkit-touch-callout: none) {
+  textarea[inputmode="search"],
+  textarea[inputmode="text"] {
+    /* Try to minimize accessory view */
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Contenteditable placeholder styling */
+[contenteditable][data-placeholder]:empty:before {
+  content: attr(data-placeholder);
+  color: rgb(148 163 184);
+  pointer-events: none;
+  display: block;
+}
+
+[contenteditable][data-placeholder]:empty:focus:before {
+  color: rgb(148 163 184);
+}
+
+[contenteditable]:empty {
+  color: rgb(148 163 184);
+}
+
+/* Try to hide suggestion bar for contenteditable */
+[contenteditable="true"] {
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-user-modify: read-write-plaintext-only;
+  -webkit-touch-callout: none;
+  -webkit-user-select: text;
+}
 body {
   @apply text-slate-800 antialiased font-sans;
   background-color: #f5f7f6;

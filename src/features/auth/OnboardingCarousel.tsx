@@ -7,6 +7,11 @@ import { useSwipe } from'./useSwipe';
 
 const ONBOARDING_SLIDES = [
  {
+ title:'Welcome to TOTL',
+ description:'The group chat\'s ultimate football game is here. Predict what you think will happen each Premier League gameweek, join Mini Leagues with friends, and see who comes out on top. No hassle — just predict and play. Gamify your gamedays.',
+ imageUrl:'/assets/onboarding-0.png',
+ },
+ {
  title:'Predict every gameweek',
  description:'Ten fixtures. Three outcomes. Score out of 10 depending on how often you\'re right, or confidently wrong.',
  imageUrl:'/assets/onboarding-1.png',

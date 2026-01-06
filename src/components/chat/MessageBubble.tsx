@@ -71,8 +71,8 @@ export function MessageBubble({
  onMessageClick,
 }: MessageBubbleProps) {
   const textAlignment = "text-left";
-  const bubbleClasses = isOwnMessage ? "bg-[#1C8376] text-white" : "bg-white text-slate-900";
-  const shapeClasses = isOwnMessage ? outgoingShape : incomingShape;
+ const bubbleClasses = isOwnMessage ? "bg-[#1C8376] text-white" : "bg-white text-slate-900";
+ const shapeClasses = isOwnMessage ? outgoingShape : incomingShape;
   const maxWidth = "max-w-[85%]";
  const [showReactionPicker, setShowReactionPicker] = useState(false);
  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -118,11 +118,11 @@ export function MessageBubble({
  }
  };
 
-  return (
+ return (
     <div className={`inline-block ${maxWidth} min-w-0 relative`} style={{ width: 'fit-content', maxWidth: '85%' }}>
-      <div
+ <div
         className={`px-2.5 py-1.5 text-sm leading-relaxed shadow-sm whitespace-pre-wrap break-words ${textAlignment} ${bubbleClasses} ${shapeClasses[shape]} ${onMessageClick ? 'cursor-pointer' : ''}`}
-        onClick={handleBubbleClick}
+ onClick={handleBubbleClick}
         style={{ 
           wordBreak: 'break-word', 
           overflowWrap: 'anywhere',
@@ -131,17 +131,17 @@ export function MessageBubble({
           maxWidth: '100%',
           overflow: 'hidden'
         }}
-      >
-        {author && !isOwnMessage && (
+ >
+ {author && !isOwnMessage && (
           <div className="text-[11px] font-semibold text-slate-600 mb-1 break-words" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{author}</div>
-        )}
-        {/* Reply preview - WhatsApp style */}
-        {replyTo && (
-          <div
-            className={`mb-2 pb-2 border-l-2 ${
-              isOwnMessage
-                ? "border-white/30 text-white/90"
-                : "border-[#1C8376] text-slate-600"
+ )}
+ {/* Reply preview - WhatsApp style */}
+ {replyTo && (
+ <div
+ className={`mb-2 pb-2 border-l-2 ${
+ isOwnMessage
+ ? "border-white/30 text-white/90"
+ : "border-[#1C8376] text-slate-600"
             } pl-2 text-xs`}
             style={{ 
               wordBreak: 'break-word', 
@@ -149,7 +149,7 @@ export function MessageBubble({
               overflow: 'hidden',
               maxWidth: '100%'
             }}
-          >
+ >
             <div className="font-medium text-[10px] mb-0.5 break-words" style={{ 
               wordBreak: 'break-word', 
               overflowWrap: 'anywhere',
@@ -157,8 +157,8 @@ export function MessageBubble({
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap'
             }}>
-              {replyTo.authorName || "Unknown"}
-            </div>
+ {replyTo.authorName || "Unknown"}
+ </div>
             <div className="text-[10px] break-words" style={{ 
               wordBreak: 'break-word', 
               overflowWrap: 'anywhere',
@@ -169,10 +169,10 @@ export function MessageBubble({
               lineHeight: '1.3',
               maxHeight: '2.6em'
             }}>
-              {replyTo.content}
-            </div>
-          </div>
-        )}
+ {replyTo.content}
+ </div>
+ </div>
+ )}
         <div style={{ 
           wordBreak: 'break-word', 
           overflowWrap: 'anywhere',
@@ -190,7 +190,7 @@ export function MessageBubble({
             marginLeft: '12px'
           }}>{time}</span>
         </div>
-      </div>
+ </div>
  {/* Reaction button and picker - positioned on the right of the bubble (only for other users' messages) */}
  {messageId && !isOwnMessage && (
  <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 flex items-center gap-1">

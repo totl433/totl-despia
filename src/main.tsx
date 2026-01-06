@@ -128,14 +128,14 @@ function AppContent() {
     ];
     
     if (import.meta.env.DEV) {
-      console.log('[App] Preloading Volley images for Despia...');
+    console.log('[App] Preloading Volley images for Despia...');
     }
     volleyImages.forEach((src) => {
       const img = new Image();
       img.src = src;
       img.onload = () => {
         if (import.meta.env.DEV) {
-          console.log(`[App] Preloaded Volley image: ${src}`);
+        console.log(`[App] Preloaded Volley image: ${src}`);
         }
       };
       img.onerror = (error) => {
@@ -187,7 +187,7 @@ function AppContent() {
   // Load initial data if feature flag is enabled
   useEffect(() => {
     if (import.meta.env.DEV) {
-      console.log(`[Pre-loading] Effect triggered - flag: ${loadEverythingFirst}, authLoading: ${authLoading}, userId: ${user?.id || 'null'}, loaded: ${initialDataLoaded}`);
+    console.log(`[Pre-loading] Effect triggered - flag: ${loadEverythingFirst}, authLoading: ${authLoading}, userId: ${user?.id || 'null'}, loaded: ${initialDataLoaded}`);
     }
     
     if (!loadEverythingFirst || authLoading || !user?.id) {
@@ -204,7 +204,7 @@ function AppContent() {
     // If we've already loaded, don't load again
     if (initialDataLoaded) {
       if (import.meta.env.DEV) {
-        console.log('[Pre-loading] Already loaded, skipping');
+      console.log('[Pre-loading] Already loaded, skipping');
       }
       return;
     }
@@ -212,7 +212,7 @@ function AppContent() {
     // ALWAYS block and pre-load ALL data before showing page
     // This ensures all data is ready instantly
     if (import.meta.env.DEV) {
-      console.log('[Pre-loading] Starting initial data load for user:', user.id);
+    console.log('[Pre-loading] Starting initial data load for user:', user.id);
     }
     bootLog.initialDataStart(user.id);
     const startTime = Date.now();
@@ -228,14 +228,14 @@ function AppContent() {
     
     // Load all data
     if (import.meta.env.DEV) {
-      console.log('[Pre-loading] Calling loadInitialData...');
+    console.log('[Pre-loading] Calling loadInitialData...');
     }
     loadInitialData(user.id)
       .then(() => {
         clearTimeout(timeoutId);
         const duration = Date.now() - startTime;
         if (import.meta.env.DEV) {
-          console.log('[Pre-loading] Initial data loaded successfully');
+        console.log('[Pre-loading] Initial data loaded successfully');
         }
         bootLog.initialDataSuccess(duration);
         setInitialDataLoaded(true);
@@ -503,7 +503,7 @@ function AppContent() {
       const timeout = setTimeout(() => {
         // Only show timeout warning if data hasn't loaded yet
         if (!initialDataLoaded) {
-          console.warn('[Pre-loading] Maximum loading timeout reached (15s), forcing app to show');
+        console.warn('[Pre-loading] Maximum loading timeout reached (15s), forcing app to show');
         }
         setMaxLoadingTimeout(true);
       }, 15000);

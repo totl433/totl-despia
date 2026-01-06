@@ -1244,22 +1244,22 @@ ${shareUrl}`;
       // If we already have league from cache, use it immediately
       const cachedLeague = league;
       let lg = cachedLeague;
-      
+
       if (!lg) {
         // Fetch league if not in cache
         const { data } = await supabase
-          .from("leagues")
-          .select("id,name,code,created_at,avatar")
-          .eq("code", code)
-          .maybeSingle();
+        .from("leagues")
+        .select("id,name,code,created_at,avatar")
+        .eq("code", code)
+        .maybeSingle();
 
-        if (!alive) return;
+      if (!alive) return;
         if (!data) {
-          setLeague(null);
-          setMembers([]);
-          setLoading(false);
-          return;
-        }
+        setLeague(null);
+        setMembers([]);
+        setLoading(false);
+        return;
+      }
         lg = data as League;
         setLeague(lg);
       }
@@ -1278,17 +1278,17 @@ ${shareUrl}`;
         setLoading(false); // Clear loading immediately when we have cache
       } else {
         // No cache - need to fetch
-        const { data: mm } = await supabase
-          .from("league_members")
-          .select("users(id,name),created_at")
+      const { data: mm } = await supabase
+        .from("league_members")
+        .select("users(id,name),created_at")
           .eq("league_id", lg.id)
-          .order("created_at", { ascending: true });
+        .order("created_at", { ascending: true });
 
         mem =
-          (mm as any[])?.map((r) => ({
-            id: r.users.id,
-            name: r.users.name ?? "(no name)",
-          })) ?? [];
+        (mm as any[])?.map((r) => ({
+          id: r.users.id,
+          name: r.users.name ?? "(no name)",
+        })) ?? [];
         setLoading(false); // Clear loading after fetch
       }
 
@@ -1749,7 +1749,7 @@ ${shareUrl}`;
       if (!members.length) {
         // If we have cached data, keep it; otherwise clear
         if (!getCached<MltRow[]>(`league:mltRows:${league?.id || ''}`)) {
-          setMltRows([]);
+        setMltRows([]);
         }
         return;
       }
@@ -1970,17 +1970,17 @@ ${shareUrl}`;
     // No need to read cache again - state is the source of truth
     const rowsStart = performance.now();
     const rows = mltRows.length > 0 
-      ? mltRows 
+      ? mltRows
       : members.length > 0
         ? members.map((m) => ({
-            user_id: m.id,
-            name: m.name,
-            mltPts: 0,
-            ocp: 0,
-            unicorns: 0,
-            wins: 0,
-            draws: 0,
-            form: [] as ("W" | "D" | "L")[],
+          user_id: m.id,
+          name: m.name,
+          mltPts: 0,
+          ocp: 0,
+          unicorns: 0,
+          wins: 0,
+          draws: 0,
+          form: [] as ("W" | "D" | "L")[],
           }))
         : [];
     const rowsEnd = performance.now();
@@ -3141,7 +3141,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
               onClick={() => {
                 console.log('[League] GW Table tab clicked, setting tab to mlt');
                 manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                setTab("mlt");
+                        setTab("mlt");
                 console.log('[League] Tab set to mlt, mltRows.length:', mltRows.length);
               }}
               className={

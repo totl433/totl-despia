@@ -125,17 +125,17 @@ export default function MiniLeagueTable({
                   }}>
                     {i + 1}
                   </td>
-                  <td className="py-4 truncate whitespace-nowrap" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</td>
+                  <td className="py-4 truncate whitespace-nowrap bg-slate-50 pl-2 pr-4 overflow-hidden text-ellipsis">{r.name}</td>
                   {showForm ? (
-                    <td className="px-4 py-4" style={{ backgroundColor: '#f8fafc' }}>
+                    <td className="px-4 py-4 bg-slate-50">
                       <FormDisplay form={r.form} />
                     </td>
                   ) : (
                     <>
-                      <td className="py-4 text-center tabular-nums" style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.wins}</td>
-                      <td className="py-4 text-center tabular-nums" style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.draws}</td>
-                      <td className="py-4 text-center tabular-nums" style={{ width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.ocp}</td>
-                      {members.length >= 3 && <td className="py-4 text-center tabular-nums" style={{ width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', backgroundColor: '#f8fafc' }}>{r.unicorns}</td>}
+                      <td className="py-4 text-center tabular-nums bg-slate-50 w-[35px] pl-1 pr-1">{r.wins}</td>
+                      <td className="py-4 text-center tabular-nums bg-slate-50 w-[35px] pl-1 pr-1">{r.draws}</td>
+                      <td className="py-4 text-center tabular-nums bg-slate-50 w-10 pl-1 pr-1">{r.ocp}</td>
+                      {members.length >= 3 && <td className="py-4 text-center tabular-nums bg-slate-50 w-[35px] pl-1 pr-1">{r.unicorns}</td>}
                       <td className="py-4 text-center tabular-nums font-bold text-[#1C8376] bg-slate-50 w-10 pl-1 pr-1">{r.mltPts}</td>
                     </>
                   )}

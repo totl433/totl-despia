@@ -1,6 +1,8 @@
 /**
  * Email confirmation screen shown after signup
  */
+import { useState } from 'react';
+import { resendConfirmationEmail } from './useSupabaseAuth';
 
 interface EmailConfirmationProps {
  email: string;
@@ -8,6 +10,25 @@ interface EmailConfirmationProps {
 }
 
 export default function EmailConfirmation({ email, onBackToSignUp }: EmailConfirmationProps) {
+ const [isResending, setIsResending] = useState(false);
+ const [resendSuccess, setResendSuccess] = useState(false);
+ const [resendError, setResendError] = useState<string | null>(null);
+
+ const handleResend = async () => {
+   setIsResending(true);
+   setResendError(null);
+   setResendSuccess(false);
+   
+   try {
+     await resendConfirmationEmail(email);
+     setResendSuccess(true);
+   } catch (err: any) {
+     setResendError(err?.message || 'Failed to resend email. Please try again.');
+   } finally {
+     setIsResending(false);
+   }
+ };
+
  return (
  <div className="min-h-screen flex flex-col bg-white px-6 pt-16">
  <h1 className="text-2xl font-bold text-slate-900 mb-4">Check Your Email</h1>
@@ -19,13 +40,34 @@ export default function EmailConfirmation({ email, onBackToSignUp }: EmailConfir
  <p className="text-sm text-slate-500 mb-6">
  Click the link in your email to activate your account and start playing TOTL!
  </p>
+
+ {resendSuccess && (
+   <p className="text-sm text-green-600 mb-4">
+     Confirmation email sent! Please check your inbox.
+   </p>
+ )}
+
+ {resendError && (
+   <p className="text-sm text-red-600 mb-4">
+     {resendError}
+   </p>
+ )}
+
+ <button
+   type="button"
+   onClick={handleResend}
+   disabled={isResending}
+   className="w-full py-3 bg-[#1C8376] text-white font-semibold rounded-full mb-4 disabled:opacity-50 disabled:cursor-not-allowed"
+ >
+   {isResending ? 'Sending...' : 'Resend Confirmation Email'}
+ </button>
  
  <button
- type="button"
- onClick={onBackToSignUp}
- className="text-[#1C8376] text-sm"
+   type="button"
+   onClick={onBackToSignUp}
+   className="text-[#1C8376] text-sm"
  >
- Back to signup
+   Back to signup
  </button>
  </div>);
 }

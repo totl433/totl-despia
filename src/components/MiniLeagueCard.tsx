@@ -63,6 +63,9 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
   hidePlayerChips = false,
   showSeasonLeader = false,
 }: MiniLeagueCardProps) {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueCard.tsx:54',message:'MiniLeagueCard render',data:{leagueId:row.id,leagueName:row.name,hidePlayerChips,hasData:!!data,dataMembersLength:data?.members?.length,leagueDataLoading,currentGw},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   const members = data?.members ?? [];
   const userPosition = data?.userPosition;
   const badge = unread > 0 ? Math.min(unread, 99) : 0;
@@ -76,16 +79,32 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
   const prevCurrentGwStateRef = useRef<GameweekState | null>(null);
   
   const memberChips = useMemo(() => {
-    if (leagueDataLoading || !data) {
-      if (prevMemberChipsRef.current.length === 0) return prevMemberChipsRef.current;
-      prevMemberChipsRef.current = [];
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueCard.tsx:78',message:'memberChips useMemo entry',data:{leagueId:row.id,leagueName:row.name,hidePlayerChips,leagueDataLoading,hasData:!!data,dataMembersLength:data?.members?.length,prevChipsLength:prevMemberChipsRef.current.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    // If no data, return empty array (chips will appear when data loads)
+    if (!data) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueCard.tsx:86',message:'Early return: no data',data:{leagueId:row.id,leagueDataLoading},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       return [];
     }
     
     const baseMembers = data.members ?? [];
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueCard.tsx:86',message:'Base members check',data:{leagueId:row.id,baseMembersLength:baseMembers.length,members:baseMembers.map(m=>({id:m.id,name:m.name}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     if (!baseMembers.length) {
-      if (prevMemberChipsRef.current.length === 0) return prevMemberChipsRef.current;
-      prevMemberChipsRef.current = [];
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueCard.tsx:87',message:'No base members - returning empty or prev',data:{leagueId:row.id,prevChipsLength:prevMemberChipsRef.current.length,returningEmpty:prevMemberChipsRef.current.length===0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      // If no members, clear chips only if we had chips before (league might have been emptied)
+      // Otherwise keep previous chips to prevent flash
+      if (prevMemberChipsRef.current.length > 0) {
+        // Only clear if we're sure this league should be empty (not just loading)
+        // For now, keep previous chips to be safe
+        return prevMemberChipsRef.current;
+      }
       return [];
     }
 
@@ -122,6 +141,9 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
     // Check if this is API Test league
     const isApiTestLeague = row.name === "API Test";
     
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueCard.tsx:130',message:'Creating chips from ordered members',data:{leagueId:row.id,orderedMembersLength:orderedMembers.length,orderedMemberIds:orderedMembers.map(m=>m.id),submittedCount:submittedSet.size,winnersCount:winnersSet.size,webUsersCount:webUserSet.size},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     const result = orderedMembers.slice(0, 8).map((member, index) => {
       const hasSubmitted = submittedSet.has(member.id);
       const isLatestWinner = winnersSet.has(member.id);
@@ -184,6 +206,9 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
     prevDataKeyRef.current = dataKey;
     prevCurrentGwStateRef.current = currentGwState;
     prevMemberChipsRef.current = result;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueCard.tsx:192',message:'memberChips useMemo exit - returning result',data:{leagueId:row.id,resultLength:result.length,chipKeys:result.map((r:any)=>r.key)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
     return result;
   }, [data, leagueDataLoading, row.name, currentGw, currentGwState]);
 
@@ -363,6 +388,12 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
             {/* Player Chips - ordered by ML table position (1st to last) */}
             {!hidePlayerChips && (
               <div className="flex items-center mt-1 py-0.5">
+                {/* #region agent log */}
+                {(() => {
+                  fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueCard.tsx:369',message:'Rendering chips container',data:{leagueId:row.id,hidePlayerChips,memberChipsLength:memberChips.length,hasMemberChips:memberChips.length>0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+                  return null;
+                })()}
+                {/* #endregion */}
                 {memberChips}
                 {extraMembers > 0 && (
                   <div

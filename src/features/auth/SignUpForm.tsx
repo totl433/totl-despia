@@ -19,12 +19,26 @@ export default function SignUpForm({
  const [displayName, setDisplayName] = useState('');
  const [email, setEmail] = useState('');
  const [password, setPassword] = useState('');
+ const [confirmPassword, setConfirmPassword] = useState('');
  const [error, setError] = useState<string | null>(null);
  const [isLoading, setIsLoading] = useState(false);
 
  async function handleSubmit(e: React.FormEvent) {
  e.preventDefault();
  setError(null);
+ 
+ // Validate passwords match
+ if (password !== confirmPassword) {
+ setError('Passwords do not match');
+ return;
+ }
+ 
+ // Validate password length
+ if (password.length < 6) {
+ setError('Password must be at least 6 characters');
+ return;
+ }
+ 
  setIsLoading(true);
  
  try {
@@ -84,6 +98,19 @@ export default function SignUpForm({
  value={password}
  onChange={(e) => setPassword(e.target.value)}
  placeholder="Password"
+ className="w-full px-4 py-3 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-transparent"
+ required
+ autoComplete="new-password"
+ minLength={6}
+ />
+ </div>
+
+ <div>
+ <input
+ type="password"
+ value={confirmPassword}
+ onChange={(e) => setConfirmPassword(e.target.value)}
+ placeholder="Confirm Password"
  className="w-full px-4 py-3 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-transparent"
  required
  autoComplete="new-password"

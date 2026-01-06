@@ -12,8 +12,7 @@ export default function AuthLoading() {
       <img 
         src={LOADING_GIF} 
         alt="Loading..." 
-        style={{ height: 108, width: 'auto' }}
-        className="mb-4"
+        className="w-24 h-24 mb-4"
       />
       <p className="text-sm text-slate-500">Loading...</p>
     </div>
