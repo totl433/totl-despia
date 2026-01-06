@@ -210,13 +210,14 @@ export const handler: Handler = async (event) => {
     oneSignalPayload.web_url = fallbackUrl;
   }
 
-  // Try endpoints and headers similar to original working version
+  // Try v1 API first (returns recipients count), then v2 API (faster but less info)
+  // v1 API uses Basic auth, v2 API uses Bearer auth
   const isV2 = ONESIGNAL_REST_API_KEY.startsWith('os_');
   const endpoints = isV2
-    ? ['https://api.onesignal.com/notifications', 'https://onesignal.com/api/v1/notifications']
+    ? ['https://onesignal.com/api/v1/notifications', 'https://api.onesignal.com/notifications']
     : ['https://onesignal.com/api/v1/notifications', 'https://api.onesignal.com/notifications'];
   const headersList = isV2
-    ? [`Bearer ${ONESIGNAL_REST_API_KEY}`, ONESIGNAL_REST_API_KEY, `Basic ${ONESIGNAL_REST_API_KEY}`]
+    ? [`Basic ${ONESIGNAL_REST_API_KEY}`, `Bearer ${ONESIGNAL_REST_API_KEY}`, ONESIGNAL_REST_API_KEY]
     : [`Basic ${ONESIGNAL_REST_API_KEY}`, `Bearer ${ONESIGNAL_REST_API_KEY}`, ONESIGNAL_REST_API_KEY];
 
   let lastResp: any = null;
