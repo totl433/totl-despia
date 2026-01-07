@@ -19,6 +19,7 @@ interface MiniLeaguesSectionProps {
   hideLiveTables?: boolean; // If true, always show default card view, never show live tables
   hidePlayerChips?: boolean; // If true, hide player chips on mini league cards
   showSeasonLeader?: boolean; // If true, show season leader name with trophy (default: false)
+  onCreateJoinClick?: () => void; // Callback for "Create or Join" button in empty state
 }
 
 export function MiniLeaguesSection({
@@ -34,6 +35,7 @@ export function MiniLeaguesSection({
   hideLiveTables = false,
   hidePlayerChips = false,
   showSeasonLeader = false,
+  onCreateJoinClick,
 }: MiniLeaguesSectionProps) {
   // Determine if we should show toggle buttons (LIVE or RESULTS_PRE_GW states)
   const isLive = gameState === 'LIVE';
@@ -218,12 +220,21 @@ How To Play →`}
       >
         <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
           <div className="text-slate-600 mb-3">You don't have any mini leagues yet.</div>
-          <Link 
-            to="/create-league" 
-            className="inline-block px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg no-underline"
-          >
-            Create one now!
-          </Link>
+          {onCreateJoinClick ? (
+            <button
+              onClick={onCreateJoinClick}
+              className="w-full px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg no-underline border-0 cursor-pointer"
+            >
+              Create or Join
+            </button>
+          ) : (
+            <Link 
+              to="/create-league" 
+              className="inline-block px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg no-underline"
+            >
+              Create one now!
+            </Link>
+          )}
         </div>
       </Section>
     );
