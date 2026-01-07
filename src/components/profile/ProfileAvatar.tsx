@@ -69,10 +69,10 @@ export const ProfileAvatar = React.memo(function ProfileAvatar({
           }`}
           style={{
             transform: size === 'sm' 
-              ? 'translate(-15%, -15%)' 
+              ? 'translate(-10%, -10%)' 
               : size === 'md'
-              ? 'translate(-12%, -12%)'
-              : 'translate(-10%, -10%)'
+              ? 'translate(-8%, -8%)'
+              : 'translate(-6%, -6%)'
           }}
         >
           <svg 
