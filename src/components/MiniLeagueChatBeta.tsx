@@ -471,9 +471,12 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   const currentUserDisplayName = useMemo(() => {
     if (!user) return "";
     const metadata = user.user_metadata ?? {};
+    const first = (metadata.first_name as string | undefined) || "";
+    const last = (metadata.last_name as string | undefined) || "";
+    const full = [first, last].filter(Boolean).join(" ").trim();
     return (
+      full ||
       (metadata.display_name as string | undefined) ||
-      (metadata.full_name as string | undefined) ||
       user.email ||
       ""
     );
@@ -746,9 +749,12 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         return;
       }
 
+      const first = (user.user_metadata?.first_name as string | undefined) || "";
+      const last = (user.user_metadata?.last_name as string | undefined) || "";
+      const full = [first, last].filter(Boolean).join(" ").trim();
       const senderName =
+        full ||
         (user.user_metadata?.display_name as string | undefined) ||
-        (user.user_metadata?.full_name as string | undefined) ||
         user.email ||
         "User";
 

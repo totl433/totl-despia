@@ -120,14 +120,18 @@ function normalizeEmail(email: string): string {
 export async function signUpWithPassword(
   email: string,
   password: string,
-  displayName: string
+  displayName: string,
+  firstName: string,
+  lastName: string
 ) {
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useSupabaseAuth.ts:93',message:'signUpWithPassword ENTRY',data:{email,displayName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useSupabaseAuth.ts:93',message:'signUpWithPassword ENTRY',data:{email,displayName,firstName,lastName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
   // #endregion
   
   const trimmedEmail = normalizeEmail(email);
   const trimmedName = displayName.trim();
+  const trimmedFirstName = firstName.trim();
+  const trimmedLastName = lastName.trim();
   
   // #region agent log
   fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useSupabaseAuth.ts:99',message:'BEFORE username check',data:{trimmedEmail,trimmedName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
@@ -328,7 +332,7 @@ export async function signUpWithPassword(
     email: trimmedEmail,
     password,
     options: {
-      data: { display_name: trimmedName },
+      data: { display_name: trimmedName, first_name: trimmedFirstName, last_name: trimmedLastName },
       emailRedirectTo: window.location.origin,
     },
   });
@@ -363,11 +367,17 @@ export async function signUpWithPassword(
   // Upsert profile (note: users table doesn't have email column, only name)
   const user = data.user ?? (await supabase.auth.getUser()).data.user;
   if (user) {
-    await supabase.from('users').upsert({ 
+    const { error: profileError } = await supabase.from('users').upsert({ 
       id: user.id, 
-      name: trimmedName
+      name: trimmedName,
+      first_name: trimmedFirstName,
+      last_name: trimmedLastName
       // Note: email column doesn't exist in users table - email is stored in auth.users only
     });
+
+    if (profileError) {
+      console.error('[signUpWithPassword] Failed to upsert profile:', profileError);
+    }
 
     // Generate default avatar for new user (non-blocking)
     // Don't await - let it happen in background so signup doesn't slow down

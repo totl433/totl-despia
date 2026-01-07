@@ -8,6 +8,7 @@ import SignInForm from './SignInForm';
 import SignUpForm from './SignUpForm';
 import ResetPasswordForm from './ResetPasswordForm';
 import EmailConfirmation from './EmailConfirmation';
+import { hasConsents } from './consentStorage';
 
 export type GuestStep = 'onboarding' | 'signIn' | 'signUp' | 'reset' | 'emailConfirmation';
 
@@ -47,10 +48,13 @@ export default function AuthFlow({ initialStep = 'onboarding', onAuthSuccess }: 
   // Check for reset query param (for testing)
   const urlParams = new URLSearchParams(window.location.search);
   const forceOnboarding = urlParams.get('onboarding') === '1';
+  const consentsCompleted = hasConsents();
   
   // Check for persisted step (survives parent re-renders)
   const storedStep = forceOnboarding ? null : getStoredStep();
-  const effectiveInitialStep = storedStep || initialStep;
+  const consentAwareInitialStep =
+    !consentsCompleted || forceOnboarding ? 'onboarding' : storedStep || initialStep || 'signIn';
+  const effectiveInitialStep = consentAwareInitialStep;
   
   const [guestStep, setGuestStep] = useState<GuestStep>(effectiveInitialStep);
   const [confirmationEmail, setConfirmationEmail] = useState('');
@@ -131,6 +135,7 @@ export default function AuthFlow({ initialStep = 'onboarding', onAuthSuccess }: 
         <EmailConfirmation
           email={confirmationEmail}
           onBackToSignUp={goToSignUp}
+          onGoToSignIn={goToSignIn}
         />
       );
 

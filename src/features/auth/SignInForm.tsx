@@ -43,7 +43,7 @@ export default function SignInForm({
 
  return (
  <div className="min-h-screen flex flex-col bg-white px-6 pt-5">
- <h1 className="text-4xl font-semibold text-[#1C8376] leading-[1.2] tracking-tight mt-12 mb-10">Sign in</h1>
+ <h1 className="text-4xl font-normal text-[#1C8376] leading-[1.2] tracking-tight mt-12 mb-10">Sign in</h1>
  
  <form onSubmit={handleSubmit} className="space-y-4">
  <div>
@@ -83,7 +83,7 @@ export default function SignInForm({
  
  <div className="mt-6 text-center space-y-2">
  <p className="text-sm text-slate-500">
- Forgot password?{''}
+ Forgot password?{' '}
      <button 
      type="button"
      onClick={onSwitchToReset}
@@ -93,7 +93,7 @@ export default function SignInForm({
      </button>
  </p>
  <p className="text-sm text-slate-500">
- New to Totl?{''}
+ New to Totl?{' '}
      <button 
      type="button"
      onClick={onSwitchToSignUp}

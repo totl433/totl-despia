@@ -5,11 +5,16 @@ import { useState } from 'react';
 import { resendConfirmationEmail } from './useSupabaseAuth';
 
 interface EmailConfirmationProps {
- email: string;
- onBackToSignUp: () => void;
+  email: string;
+  onBackToSignUp: () => void;
+  onGoToSignIn: () => void;
 }
 
-export default function EmailConfirmation({ email, onBackToSignUp }: EmailConfirmationProps) {
+export default function EmailConfirmation({
+  email,
+  onBackToSignUp,
+  onGoToSignIn,
+}: EmailConfirmationProps) {
  const [isResending, setIsResending] = useState(false);
  const [resendSuccess, setResendSuccess] = useState(false);
  const [resendError, setResendError] = useState<string | null>(null);
@@ -62,12 +67,21 @@ export default function EmailConfirmation({ email, onBackToSignUp }: EmailConfir
    {isResending ? 'Sending...' : 'Resend Confirmation Email'}
  </button>
  
- <button
-   type="button"
-   onClick={onBackToSignUp}
-   className="text-[#1C8376] text-sm"
- >
-   Back to signup
- </button>
+<div className="flex flex-col gap-3 items-center sm:items-start">
+  <button
+    type="button"
+    onClick={onBackToSignUp}
+    className="text-[#1C8376] text-sm"
+  >
+    Back to signup
+  </button>
+  <button
+    type="button"
+    onClick={onGoToSignIn}
+    className="text-[#1C8376] text-sm"
+  >
+    Sign in
+  </button>
+</div>
  </div>);
 }
