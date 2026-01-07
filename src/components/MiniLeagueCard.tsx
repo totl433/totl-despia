@@ -4,6 +4,7 @@ import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
 import { ordinal, initials, toStringSet } from '../lib/helpers';
 import { useGameweekState } from '../hooks/useGameweekState';
 import type { GameweekState } from '../lib/gameweekState';
+import UserAvatar from './UserAvatar';
 
 export type LeagueRow = {
   id: string;
@@ -197,7 +198,13 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
           title={member.name}
           style={chipStyle}
         >
-          {initials(member.name)}
+          <UserAvatar
+            userId={member.id}
+            name={member.name}
+            size={24}
+            className="border-0"
+            fallbackToInitials={true}
+          />
         </div>
       );
     });
@@ -370,7 +377,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                   </svg>
                   <span className="text-sm font-semibold text-slate-900">{ordinal(userPosition)}</span>
-                  {data?.positionChange === "up" && <span className="text-green-600 text-xs">▲</span>}
+                  {data?.positionChange === "up" && <span className="text-emerald-600 text-xs">▲</span>}
                   {data?.positionChange === "down" && <span className="text-red-600 text-xs">▼</span>}
                   {data?.positionChange === "same" && <span className="text-slate-400 text-xs">—</span>}
                 </div>

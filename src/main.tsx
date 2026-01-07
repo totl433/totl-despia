@@ -22,6 +22,7 @@ const CreateLeaguePage = lazy(() => import("./pages/CreateLeague"));
 const HowToPlayPage = lazy(() => import("./pages/HowToPlay"));
 const ApiAdmin = lazy(() => import("./pages/ApiAdmin"));
 const ProfilePage = lazy(() => import("./pages/Profile"));
+const EditAvatarPage = lazy(() => import("./pages/EditAvatar"));
 const NotificationCentrePage = lazy(() => import("./pages/NotificationCentre"));
 const EmailPreferencesPage = lazy(() => import("./pages/EmailPreferences"));
 const StatsPage = lazy(() => import("./pages/Stats"));
@@ -730,6 +731,7 @@ function AppContent() {
               <Route path="/temp-global" element={<RequireAuth><TempGlobalPage /></RequireAuth>} />
               <Route path="/home-experimental" element={<RequireAuth><ErrorBoundary><HomeExperimental /></ErrorBoundary></RequireAuth>} />
               <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+              <Route path="/profile/edit-avatar" element={<RequireAuth><EditAvatarPage /></RequireAuth>} />
               <Route path="/profile/notifications" element={<RequireAuth><NotificationCentrePage /></RequireAuth>} />
               <Route path="/profile/email-preferences" element={<RequireAuth><EmailPreferencesPage /></RequireAuth>} />
               <Route path="/profile/stats" element={<RequireAuth><StatsPage /></RequireAuth>} />

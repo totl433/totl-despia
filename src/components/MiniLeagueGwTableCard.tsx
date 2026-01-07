@@ -7,6 +7,7 @@ import { useLiveScores } from '../hooks/useLiveScores';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
 import { getCached, setCached, CACHE_TTL } from '../lib/cache';
 import type { Fixture } from './FixtureCard';
+import UserAvatar from './UserAvatar';
 
 // Cache key for last completed GW (to avoid DB query)
 const LAST_COMPLETED_GW_CACHE_KEY = 'app:lastCompletedGw';
@@ -917,7 +918,16 @@ export default function MiniLeagueGwTableCard({
                               {i + 1}
                             </td>
                             <td className="py-2 truncate whitespace-nowrap bg-white pl-2 pr-2 text-xs">
-                              <span>{r.name}</span>
+                              <div className="flex items-center gap-2">
+                                <UserAvatar
+                                  userId={r.user_id}
+                                  name={r.name}
+                                  size={20}
+                                  className="border-0 flex-shrink-0"
+                                  fallbackToInitials={true}
+                                />
+                                <span className="truncate">{r.name}</span>
+                              </div>
                             </td>
                             <td className={`py-2 text-center tabular-nums font-bold text-[#1C8376] text-xs bg-white w-10 pl-1 pr-1 ${isLive ? 'pulse-live-score' : ''}`}>{r.score}</td>
                             {members.length >= 3 && <td className={`py-2 text-center tabular-nums text-xs bg-white w-8 pl-1 pr-1 ${isLive ? 'pulse-live-score' : ''}`}>{r.unicorns}</td>}

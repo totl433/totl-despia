@@ -118,7 +118,6 @@ export default function LeagueFixtureCard({
   // Render chips for a specific pick type (H/D/A)
   const toChips = (want: "H" | "D" | "A") => {
     const filtered = picks.filter((p) => p.pick === want);
-    const allPicked = picks.length === members.length && filtered.length === members.length;
     
     // Group chips into rows of maximum 4
     const chipsPerRow = 4;
@@ -128,6 +127,9 @@ export default function LeagueFixtureCard({
       const rowChips = filtered.slice(i, i + chipsPerRow);
       rows.push(rowChips);
     }
+    
+    // Overlap amount for larger avatars (36px)
+    const overlapAmount = 12;
     
     return (
       <div className="flex flex-col gap-1">
@@ -139,43 +141,29 @@ export default function LeagueFixtureCard({
               const hasSubmitted = submittedMap.has(`${p.user_id}:${picksGw}`);
               const isCorrect = actualResult && actualResult === want ? true : null;
               
-              if (allPicked) {
-                // Stack effect - use relative positioning with negative margins
-                const overlapAmount = 8;
-                return (
-                  <span 
-                    key={p.user_id}
-                    className="inline-block"
-                    style={{
-                      marginLeft: idx > 0 ? `-${overlapAmount}px` : '0',
-                      position: 'relative',
-                      zIndex: idx
-                    }}
-                  >
-                    <PickChip 
-                      letter={letter} 
-                      correct={isCorrect} 
-                      unicorn={isCorrect === true} 
-                      hasSubmitted={hasSubmitted} 
-                      isLive={isLive} 
-                      isOngoing={isOngoing} 
-                      isFinished={isFinished} 
-                    />
-                  </span>
-                );
-              }
-              
+              // Always apply overlapping effect
               return (
-                <PickChip 
-                  key={p.user_id} 
-                  letter={letter} 
-                  correct={isCorrect} 
-                  unicorn={isCorrect === true} 
-                  hasSubmitted={hasSubmitted} 
-                  isLive={isLive} 
-                  isOngoing={isOngoing} 
-                  isFinished={isFinished} 
-                />
+                <span 
+                  key={p.user_id}
+                  className="inline-block"
+                  style={{
+                    marginLeft: idx > 0 ? `-${overlapAmount}px` : '0',
+                    position: 'relative',
+                    zIndex: idx
+                  }}
+                >
+                  <PickChip 
+                    letter={letter}
+                    userId={p.user_id}
+                    userName={m?.name}
+                    correct={isCorrect} 
+                    unicorn={isCorrect === true} 
+                    hasSubmitted={hasSubmitted} 
+                    isLive={isLive} 
+                    isOngoing={isOngoing} 
+                    isFinished={isFinished} 
+                  />
+                </span>
               );
             })}
           </div>
@@ -245,17 +233,17 @@ export default function LeagueFixtureCard({
         
         {/* Pips underneath */}
         <div className="mt-2 grid grid-cols-3">
-          <div className="relative min-h-6">
+          <div className="relative min-h-[48px]">
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
               {toChips("H")}
             </div>
           </div>
-          <div className="relative min-h-6">
+          <div className="relative min-h-[48px]">
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
               {toChips("D")}
             </div>
           </div>
-          <div className="relative min-h-6">
+          <div className="relative min-h-[48px]">
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
               {toChips("A")}
             </div>
