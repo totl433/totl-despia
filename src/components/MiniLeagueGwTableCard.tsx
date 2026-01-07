@@ -469,26 +469,15 @@ export default function MiniLeagueGwTableCard({
           picksData = picksDataResult ?? [];
           setPicks(picksData as PickRow[]);
 
-          // Fetch submissions to filter out members who didn't submit
-          const { data: submissionsData, error: submissionsError } = await supabase
+          // Fetch submissions to filter out members who didn't submit (simple query like LeaguePage)
+          const { data: submissionsData } = await supabase
             .from('app_gw_submissions')
             .select('user_id')
             .eq('gw', displayGw)
             .in('user_id', memberIds)
             .not('submitted_at', 'is', null);
 
-          if (submissionsError) {
-            console.error('[MiniLeagueGwTableCard] Error fetching submissions:', submissionsError);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:398',message:'Submissions query error',data:{error:submissionsError.message,displayGw,leagueId,memberIdsLength:memberIds.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
-          }
-          if (!alive) {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:401',message:'Early return: !alive after submissions',data:{displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
-            return;
-          }
+          if (!alive) return;
 
           // Create Set of user IDs who submitted
           if (submissionsData) {
@@ -496,10 +485,18 @@ export default function MiniLeagueGwTableCard({
               submitted.add(s.user_id);
             });
           }
-          
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:455',message:'Setting submittedUserIds from DB',data:{submittedCount:submitted.size,submittedIds:Array.from(submitted).slice(0,5),submissionsDataLength:submissionsData?.length,picksDataLength:picksData?.length,memberIdsLength:memberIds.length,displayGw,leagueId,setLoadingState,alive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
+
+          // Simple fallback: If no submissions but picks exist, derive from picks
+          // This handles cases where submissions query returns empty but picks exist
+          if (submitted.size === 0 && picksData.length > 0) {
+            const picksForGw = picksData.filter(p => p.gw === displayGw);
+            picksForGw.forEach(p => {
+              if (memberIds.includes(p.user_id)) {
+                submitted.add(p.user_id);
+              }
+            });
+          }
+
           if (alive) {
             setSubmittedUserIds(submitted);
           }
@@ -550,55 +547,25 @@ export default function MiniLeagueGwTableCard({
       setPicks(cacheData.picks);
       setResults(cacheData.results);
       
-      // CRITICAL FIX: Determine if we need to fetch submissions from DB BEFORE setting submittedUserIds
-      // This prevents setting empty submittedUserIds and triggering "no results" before DB fetch completes
-      const needsSubmissionsFetch = cacheData.submissions.size === 0 && hasMembers && members.length > 0;
-      const waitingForMembers = cacheData.submissions.size === 0 && !hasMembers;
-      
-      // CRITICAL FIX: Only set submittedUserIds from cache if it has submissions
-      // If cache has empty submissions, DON'T set it - this prevents rows calculation from running
-      // with empty submittedUserIds before DB fetch completes
-      if (cacheData.submissions.size > 0) {
-        setSubmittedUserIds(cacheData.submissions);
-      } else {
-        // Cache has empty submissions - clear submittedUserIds to prevent stale data
-        // It will be set when DB fetch completes
-        setSubmittedUserIds(new Set());
-      }
-      
-      if (needsSubmissionsFetch) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:511',message:'Cache has no submissions but we have members - fetching from DB',data:{displayGw,leagueId,membersLength:members.length,cacheSubmissionsSize:cacheData.submissions.size},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
-        console.warn(`[MiniLeagueGwTableCard] Cache for GW ${displayGw} has NO submissions but we have ${members.length} members - cache might be stale or incomplete, refreshing from DB before showing results`);
-        // Keep loading state and wait for DB refresh to complete
-        setLoading(true);
-        fetchDataFromDb(true).catch((err: any) => {
-          console.error('[MiniLeagueGwTableCard] Error refreshing submissions from DB:', err);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:519',message:'Error refreshing submissions',data:{error:err?.message,displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
-          // On error, still show what we have (might be partial data)
-          setLoading(false);
+      // Simple: Use cache submissions, or derive from picks if empty
+      let submittedFromCache = cacheData.submissions;
+      if (submittedFromCache.size === 0 && cacheData.picks.length > 0) {
+        // Derive from picks if cache has no submissions
+        const picksForGw = cacheData.picks.filter(p => p.gw === displayGw);
+        picksForGw.forEach(p => {
+          if (members.some(m => m.id === p.user_id)) {
+            submittedFromCache.add(p.user_id);
+          }
         });
-      } else if (waitingForMembers) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:527',message:'Cache exists but no members - waiting for members',data:{submissionsCount:cacheData.submissions.size,hasMembers,membersLength:members?.length,displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
-        // Keep loading state - will re-run when members arrive (effect dependency includes members)
-        setLoading(true);
-      } else {
-        // Cache has submissions AND we have members - safe to show immediately
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:533',message:'Cache has submissions and members - showing immediately',data:{submissionsCount:cacheData.submissions.size,hasMembers,membersLength:members?.length,displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
-        setLoading(false);
-        // Background refresh (non-blocking, silent on error) - only if we have members
-        if (hasMembers) {
-          fetchDataFromDb(false).catch(() => {
-            // Silently fail - we already have cached data displayed
-          });
-        }
+      }
+      setSubmittedUserIds(submittedFromCache);
+      
+      setLoading(false);
+      // Background refresh (non-blocking)
+      if (hasMembers) {
+        fetchDataFromDb(false).catch(() => {
+          // Silently fail - we already have cached data displayed
+        });
       }
       
       return () => { alive = false; };
@@ -688,13 +655,7 @@ export default function MiniLeagueGwTableCard({
       });
     }
 
-    // CRITICAL: Only include members who have submitted for this GW
-    // Filter out members who didn't submit (like Steve in the user's example)
-    // #region agent log
-    const memberIdsSnapshot = members?.map(m => m.id) || [];
-    const submittedIdsSnapshot = Array.from(submittedUserIds);
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:628',message:'Before filtering rows',data:{membersLength:members?.length,submittedUserIdsSize:submittedUserIds.size,submittedIds:submittedIdsSnapshot.slice(0,5),memberIds:memberIdsSnapshot.slice(0,5),picksCount:picks.length,fixturesCount:fixtures.length,displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
+    // Only include members who have submitted for this GW (simple filter like LeaguePage)
     const calculatedRows: ResultRow[] = members
       .filter((m) => submittedUserIds.has(m.id))
       .map((m) => ({
@@ -703,9 +664,6 @@ export default function MiniLeagueGwTableCard({
         score: 0,
         unicorns: 0,
       }));
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:638',message:'After filtering rows - setting rows',data:{calculatedRowsLength:calculatedRows.length,membersLength:members?.length,submittedUserIdsSize:submittedUserIds.size,displayGw,leagueId,willShowNoResults:calculatedRows.length===0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     
     // Debug logging for empty rows - more detailed
     // Only warn once per GW to avoid console spam from re-renders
@@ -737,15 +695,11 @@ export default function MiniLeagueGwTableCard({
       
       // If we have fixtures but no submissions, that's the issue
       if (fixtures.length > 0 && submittedUserIds.size === 0) {
-        console.error(`[MiniLeagueGwTableCard] CRITICAL: Have ${fixtures.length} fixtures for GW ${displayGw} but NO members have submitted!`);
-        console.error(`[MiniLeagueGwTableCard] This could mean:`);
-        console.error(`  1. Submissions query failed or returned empty`);
-        console.error(`  2. Members haven't actually submitted for GW ${displayGw}`);
-        console.error(`  3. Cache has wrong GW data`);
-        
-        // Try to help diagnose - check if we have picks but no submissions
+        const picksForGw = picks.filter(p => p.gw === displayGw);
         if (picksForGw.length > 0) {
-          console.error(`[MiniLeagueGwTableCard] BUT we have ${picksForGw.length} picks for GW ${displayGw} - submissions query might be wrong!`);
+          console.warn(`[MiniLeagueGwTableCard] Have ${picksForGw.length} picks for GW ${displayGw} but no submissions - this should have been derived from picks`);
+        } else {
+          console.warn(`[MiniLeagueGwTableCard] Have ${fixtures.length} fixtures for GW ${displayGw} but no members have submitted`);
         }
       }
       
