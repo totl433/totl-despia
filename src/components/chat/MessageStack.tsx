@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import MessageBubble from "./MessageBubble";
 import { VOLLEY_USER_ID, VOLLEY_AVATAR_PATH } from "../../lib/volley";
+import UserAvatar from "../UserAvatar";
 
 type Message = {
   id: string;
@@ -53,6 +54,16 @@ export function MessageStack({
               className="w-8 h-8 rounded-full object-cover"
             />
           </div>
+        ) : userId ? (
+          <div className="flex-shrink-0">
+            <UserAvatar
+              userId={userId}
+              name={author}
+              size={32}
+              className="border border-slate-200"
+              fallbackToInitials={true}
+            />
+          </div>
         ) : (
           <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500 flex-shrink-0">
             {(avatarInitials || author.charAt(0)).toUpperCase()}
@@ -101,7 +112,7 @@ export function MessageStack({
                 />
                 {message.status && (
                   <div
-                    className={`text-[11px] ml-2 ${
+                    className={`text-xs ml-2 ${
                       message.status === "error" ? "text-red-500" : "text-slate-400"
                     }`}
                   >

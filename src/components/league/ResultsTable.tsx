@@ -1,3 +1,4 @@
+import UserAvatar from '../UserAvatar';
 
 export type ResultRow = {
   user_id: string;
@@ -108,8 +109,8 @@ export default function ResultsTable({
             display: 'table-header-group'
           } as any}>
             <tr style={{ backgroundColor: '#f8fafc', borderBottom: 'none' }}>
-              <th className="py-4 text-left font-normal" style={{ backgroundColor: '#f8fafc', width: '30px', paddingLeft: '0.75rem', paddingRight: '0.5rem', color: '#94a3b8' }}>#</th>
-              <th className="py-4 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem' }}>
+              <th className="py-4 text-left font-normal" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.5rem', paddingRight: '0.25rem', color: '#94a3b8' }}>#</th>
+              <th className="py-4 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem', width: 'auto' }}>
                 <div className="flex items-center gap-2">
                   Player
                   {isApiTestLeague && hasLiveFixtures && (
@@ -131,7 +132,7 @@ export default function ResultsTable({
                 </div>
               </th>
               <th className="py-4 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '50px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8' }}>Score</th>
-              {members.length >= 3 && <th className="py-4 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '1rem' }}>🦄</th>}
+              {members.length >= 3 && <th className="py-4 text-center font-normal text-base" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8' }}>🦄</th>}
             </tr>
           </thead>
           <tbody>
@@ -150,15 +151,15 @@ export default function ResultsTable({
                   }}
                 >
                   <td className="py-4 text-left tabular-nums whitespace-nowrap relative" style={{ 
-                    paddingLeft: '0.75rem', 
-                    paddingRight: '0.5rem',
+                    paddingLeft: '0.5rem', 
+                    paddingRight: '0.25rem',
                     backgroundColor: '#f8fafc',
-                    width: '30px'
+                    width: '35px'
                   }}>
                     {i + 1}
                   </td>
-                  <td className="py-4 truncate whitespace-nowrap" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    <div className="flex items-center gap-2">
+                  <td className="py-4" style={{ backgroundColor: '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem' }}>
+                    <div className="flex items-center gap-1.5">
                       {isApiTestLeague && hasLiveFixtures && (
                         <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse flex-shrink-0" style={{ minWidth: '8px', minHeight: '8px' }}></div>
                       )}
@@ -167,7 +168,18 @@ export default function ResultsTable({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       )}
-                      <span>{r.name}</span>
+                      <div className="flex-shrink-0">
+                        <UserAvatar
+                          userId={r.user_id}
+                          name={r.name}
+                          size={24}
+                          className="border border-slate-200"
+                          fallbackToInitials={true}
+                        />
+                      </div>
+                      <span className="text-xs truncate min-w-0 whitespace-nowrap font-normal" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {r.name}
+                      </span>
                     </div>
                   </td>
                   <td className={`py-4 text-center tabular-nums font-bold text-[#1C8376] bg-slate-50 w-[50px] pl-1 pr-1 ${isApiTestLeague && hasLiveFixtures ? 'pulse-live-score' : ''}`}>{r.score}</td>

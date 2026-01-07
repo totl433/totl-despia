@@ -1,4 +1,5 @@
 import FormDisplay from './FormDisplay';
+import UserAvatar from '../UserAvatar';
 
 export type MltRow = {
   user_id: string;
@@ -88,17 +89,17 @@ export default function MiniLeagueTable({
             display: 'table-header-group'
           } as any}>
             <tr style={{ backgroundColor: '#f8fafc', borderBottom: 'none' }}>
-              <th className="py-3 text-left font-normal" style={{ backgroundColor: '#f8fafc', width: '30px', paddingLeft: '0.75rem', paddingRight: '0.5rem', color: '#94a3b8' }}>#</th>
-              <th className="py-3 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem' }}>Player</th>
+              <th className="py-3 text-left font-normal" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.5rem', paddingRight: '0.25rem', color: '#94a3b8' }}>#</th>
+              <th className="py-3 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem', width: 'auto' }}>Player</th>
               {showForm ? (
                 <th className="px-4 py-3 text-left font-normal text-xs" style={{ backgroundColor: '#f8fafc', color: '#94a3b8' }}>Form</th>
               ) : (
                 <>
-                  <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '0.75rem' }}>W</th>
-                  <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '0.75rem' }}>D</th>
-                  <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '0.75rem' }}>{isLateStartingLeague ? 'CP' : 'OCP'}</th>
-                  {members.length >= 3 && <th className="py-3 text-center font-normal" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '1rem' }}>🦄</th>}
-                  <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8', fontSize: '0.75rem' }}>PTS</th>
+                  <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8' }}>W</th>
+                  <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8' }}>D</th>
+                  <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8' }}>{isLateStartingLeague ? 'CP' : 'OCP'}</th>
+                  {members.length >= 3 && <th className="py-3 text-center font-normal text-base" style={{ backgroundColor: '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8' }}>🦄</th>}
+                  <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: '#f8fafc', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: '#94a3b8' }}>PTS</th>
                 </>
               )}
             </tr>
@@ -118,14 +119,29 @@ export default function MiniLeagueTable({
                   }}
                 >
                   <td className="py-4 text-left tabular-nums whitespace-nowrap relative" style={{ 
-                    paddingLeft: '0.75rem', 
-                    paddingRight: '0.5rem',
+                    paddingLeft: '0.5rem', 
+                    paddingRight: '0.25rem',
                     backgroundColor: '#f8fafc',
-                    width: '30px'
+                    width: '35px'
                   }}>
                     {i + 1}
                   </td>
-                  <td className="py-4 truncate whitespace-nowrap bg-slate-50 pl-2 pr-4 overflow-hidden text-ellipsis">{r.name}</td>
+                  <td className="py-4 bg-slate-50 pl-0 pr-4" style={{ backgroundColor: '#f8fafc' }}>
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex-shrink-0">
+                        <UserAvatar
+                          userId={r.user_id}
+                          name={r.name}
+                          size={24}
+                          className="border border-slate-200"
+                          fallbackToInitials={true}
+                        />
+                      </div>
+                      <span className="text-xs truncate min-w-0 whitespace-nowrap font-normal" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {r.name}
+                      </span>
+                    </div>
+                  </td>
                   {showForm ? (
                     <td className="px-4 py-4 bg-slate-50">
                       <FormDisplay form={r.form} />
