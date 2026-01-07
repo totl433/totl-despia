@@ -58,21 +58,76 @@ function AppShell() {
   // This prevents the home page from ever rendering if we have a notification deep link
   const searchParams = new URLSearchParams(window.location.search);
   const leagueCode = searchParams.get('leagueCode');
+  const tab = searchParams.get('tab');
+  const currentPath = window.location.pathname;
+  const currentSearch = window.location.search;
+  const currentHref = window.location.href;
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      location: 'main.tsx:AppShell:entry',
+      message: 'AppShell deep link check',
+      data: {
+        currentPath,
+        currentSearch,
+        currentHref,
+        leagueCode,
+        tab,
+        hasLeagueCode: !!leagueCode,
+        hasTab: !!tab,
+        isLeaguePath: currentPath.startsWith('/league/')
+      },
+      timestamp: Date.now(),
+      sessionId: 'debug-session',
+      hypothesisId: 'H6'
+    })
+  }).catch(() => {});
+  // #endregion
   
   // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat)
   if (leagueCode && !window.location.pathname.startsWith('/league/')) {
     const targetUrl = `/league/${leagueCode}?tab=chat`;
     window.history.replaceState(null, '', targetUrl);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location: 'main.tsx:AppShell:legacy-conversion',
+        message: 'Converted legacy leagueCode format',
+        data: { leagueCode, targetUrl, from: currentHref },
+        timestamp: Date.now(),
+        sessionId: 'debug-session',
+        hypothesisId: 'H6'
+      })
+    }).catch(() => {});
+    // #endregion
   }
   
   // Also handle direct league URLs with tab=chat (from OneSignal web_url)
   // Ensure the URL is preserved correctly
   const pathMatch = window.location.pathname.match(/^\/league\/([^/]+)$/);
   if (pathMatch) {
-    const tab = searchParams.get('tab');
     if (tab === 'chat') {
       // URL is already correct, just ensure it stays that way
       // React Router will handle it
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'main.tsx:AppShell:direct-url',
+          message: 'Direct league URL with tab=chat detected',
+          data: { path: currentPath, tab, leagueCode: pathMatch[1] },
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          hypothesisId: 'H6'
+        })
+      }).catch(() => {});
+      // #endregion
     }
   }
   
@@ -95,10 +150,53 @@ function AppContent() {
     const searchParams = new URLSearchParams(window.location.search);
     const leagueCode = searchParams.get('leagueCode');
     const tab = searchParams.get('tab');
+    const windowPath = window.location.pathname;
+    const windowSearch = window.location.search;
+    const windowHref = window.location.href;
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location: 'main.tsx:AppContent:useLayoutEffect:entry',
+        message: 'Deep link handling in AppContent',
+        data: {
+          reactRouterPath: location.pathname,
+          reactRouterSearch: location.search,
+          windowPath,
+          windowSearch,
+          windowHref,
+          leagueCode,
+          tab,
+          hasLeagueCode: !!leagueCode,
+          hasTab: !!tab
+        },
+        timestamp: Date.now(),
+        sessionId: 'debug-session',
+        hypothesisId: 'H6'
+      })
+    }).catch(() => {});
+    // #endregion
     
     // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat)
     if (leagueCode && !location.pathname.startsWith('/league/')) {
-      navigate(`/league/${leagueCode}?tab=chat`, { replace: true });
+      const targetPath = `/league/${leagueCode}?tab=chat`;
+      navigate(targetPath, { replace: true });
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'main.tsx:AppContent:useLayoutEffect:legacy-navigate',
+          message: 'Navigating to legacy format',
+          data: { leagueCode, targetPath, from: location.pathname },
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          hypothesisId: 'H6'
+        })
+      }).catch(() => {});
+      // #endregion
       return;
     }
     
@@ -108,7 +206,22 @@ function AppContent() {
       // Extract league code from window.location (not React Router location yet)
       const pathMatch = window.location.pathname.match(/^\/league\/([^/]+)$/);
       if (pathMatch) {
-        navigate(window.location.pathname + window.location.search, { replace: true });
+        const targetPath = window.location.pathname + window.location.search;
+        navigate(targetPath, { replace: true });
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'main.tsx:AppContent:useLayoutEffect:direct-navigate',
+            message: 'Navigating to direct URL from window.location',
+            data: { targetPath, windowPath, windowSearch, leagueCode: pathMatch[1] },
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            hypothesisId: 'H6'
+          })
+        }).catch(() => {});
+        // #endregion
         return;
       }
     }
@@ -118,6 +231,20 @@ function AppContent() {
       // Already on the correct path with tab=chat
       // League page will handle opening the chat tab
       // No navigation needed - React Router already matched the route
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'main.tsx:AppContent:useLayoutEffect:already-on-path',
+          message: 'Already on league path with tab=chat',
+          data: { path: location.pathname, tab, search: location.search },
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          hypothesisId: 'H6'
+        })
+      }).catch(() => {});
+      // #endregion
     }
   }, [navigate, location.pathname, location.search]);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
@@ -250,6 +377,11 @@ function AppContent() {
         setInitialDataLoading(false);
         // Mark pre-load as complete so HomePage knows cache is ready
         sessionStorage.setItem('preload:complete', 'true');
+        
+        // Dispatch event so components can react immediately (no polling delay)
+        window.dispatchEvent(new CustomEvent('preloadComplete', {
+          detail: { userId: user.id }
+        }));
       })
       .catch((error) => {
         clearTimeout(timeoutId);
