@@ -603,27 +603,38 @@ export default function MiniLeagueGwTableCard({
 
   // Calculate rows from picks and results/live scores
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:502',message:'Calculate rows effect entry',data:{displayGw,fixturesLength:fixtures.length,submittedUserIdsSize:submittedUserIds.size,membersLength:members?.length,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     if (!displayGw || fixtures.length === 0) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:503',message:'Early return: no displayGw or fixtures',data:{displayGw,fixturesLength:fixtures.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       setRows([]);
       return;
     }
     
-    // CRITICAL FIX: Don't calculate rows if members haven't loaded yet
-    // This prevents showing "No results" when we're still waiting for members to arrive
-    // The effect will re-run when members arrive (members is in dependency array)
+    // Don't calculate rows if members haven't loaded yet
     if (!members || members.length === 0) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:512',message:'Early return: waiting for members',data:{displayGw,fixturesLength:fixtures.length,submittedUserIdsSize:submittedUserIds.size,membersLength:members?.length,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      // Don't set rows to empty - keep current state (might be from cache)
-      // This will re-run when members arrive
       return;
+    }
+
+    // Wait for picks to load before calculating rows (if we have no submissions yet)
+    // This prevents showing "No results" before data is loaded
+    if (submittedUserIds.size === 0 && picks.length === 0 && loading) {
+      return; // Still loading, wait for picks to arrive
+    }
+
+    // Simple fallback: If submissions are empty but picks exist, derive from picks
+    // This handles cases where submissions query hasn't completed yet or returned empty
+    let effectiveSubmittedUserIds = submittedUserIds;
+    if (submittedUserIds.size === 0 && picks.length > 0) {
+      const picksForGw = picks.filter(p => p.gw === displayGw);
+      const derivedSubmittedIds = new Set<string>();
+      picksForGw.forEach(p => {
+        if (members.some(m => m.id === p.user_id)) {
+          derivedSubmittedIds.add(p.user_id);
+        }
+      });
+      if (derivedSubmittedIds.size > 0) {
+        effectiveSubmittedUserIds = derivedSubmittedIds;
+        // Update state so future renders use the derived value
+        setSubmittedUserIds(derivedSubmittedIds);
+      }
     }
 
     const outcomes = new Map<number, "H" | "D" | "A">();
@@ -657,7 +668,7 @@ export default function MiniLeagueGwTableCard({
 
     // Only include members who have submitted for this GW (simple filter like LeaguePage)
     const calculatedRows: ResultRow[] = members
-      .filter((m) => submittedUserIds.has(m.id))
+      .filter((m) => effectiveSubmittedUserIds.has(m.id))
       .map((m) => ({
         user_id: m.id,
         name: m.name,
@@ -693,13 +704,13 @@ export default function MiniLeagueGwTableCard({
         leagueId: leagueId.slice(0, 8) // First 8 chars for privacy
       });
       
-      // If we have fixtures but no submissions, that's the issue
-      if (fixtures.length > 0 && submittedUserIds.size === 0) {
+      // If we have fixtures but no submissions (even after deriving from picks), that's the issue
+      if (fixtures.length > 0 && effectiveSubmittedUserIds.size === 0) {
         const picksForGw = picks.filter(p => p.gw === displayGw);
         if (picksForGw.length > 0) {
-          console.warn(`[MiniLeagueGwTableCard] Have ${picksForGw.length} picks for GW ${displayGw} but no submissions - this should have been derived from picks`);
+          console.warn(`[MiniLeagueGwTableCard] Have ${picksForGw.length} picks for GW ${displayGw} but couldn't derive submissions - members might not match`);
         } else {
-          console.warn(`[MiniLeagueGwTableCard] Have ${fixtures.length} fixtures for GW ${displayGw} but no members have submitted`);
+          console.warn(`[MiniLeagueGwTableCard] Have ${fixtures.length} fixtures for GW ${displayGw} but no picks loaded yet - waiting for data`);
         }
       }
       
@@ -718,7 +729,7 @@ export default function MiniLeagueGwTableCard({
     picks.forEach((p) => {
       if (p.gw !== displayGw) return;
       // Also filter picks to only include from users who submitted
-      if (!submittedUserIds.has(p.user_id)) return;
+      if (!effectiveSubmittedUserIds.has(p.user_id)) return;
       const arr = picksByFixture.get(p.fixture_index) ?? [];
       arr.push({ user_id: p.user_id, pick: p.pick });
       picksByFixture.set(p.fixture_index, arr);
@@ -734,7 +745,7 @@ export default function MiniLeagueGwTableCard({
       });
 
       // Unicorns: only one person got it right AND at least 3 members submitted
-      if (correctIds.length === 1 && submittedUserIds.size >= 3) {
+      if (correctIds.length === 1 && effectiveSubmittedUserIds.size >= 3) {
         const r = calculatedRows.find((x) => x.user_id === correctIds[0]);
         if (r) r.unicorns += 1;
       }
@@ -755,7 +766,7 @@ export default function MiniLeagueGwTableCard({
       return outcomes.has(f.fixture_index);
     });
     setAllFixturesFinished(allFinished);
-  }, [displayGw, fixtures, picks, results, members, liveScores, currentGw, submittedUserIds]);
+  }, [displayGw, fixtures, picks, results, members, liveScores, currentGw, submittedUserIds, loading]);
 
   // Determine if GW is live - show LIVE badge for entire duration of LIVE state
   // (from when games start until GW ends, not just when fixtures are currently IN_PLAY)
