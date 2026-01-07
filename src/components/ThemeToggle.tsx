@@ -11,7 +11,7 @@ import { useTheme } from '../hooks/useTheme';
  * Can be added to settings/profile page or header for manual theme switching.
  */
 export default function ThemeToggle() {
-  const { theme, toggleTheme, isDark } = useTheme();
+  const { toggleTheme, isDark } = useTheme();
 
   return (
     <button

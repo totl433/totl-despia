@@ -932,13 +932,12 @@ export default function MiniLeagueGwTableCard({
                         return (
                           <tr 
                             key={r.user_id} 
-                            className={isMe ? 'flash-user-row' : ''}
+                            className={`bg-white dark:bg-slate-800 ${isMe ? 'flash-user-row' : ''}`}
                             style={{
                               position: 'relative',
                               backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#ffffff',
                               ...(i < rows.length - 1 ? { borderBottom: document.documentElement.classList.contains('dark') ? '1px solid #334155' : '1px solid #e2e8f0' } : {})
                             }}
-                            className="bg-white dark:bg-slate-800"
                           >
                             <td className="py-2 text-left tabular-nums whitespace-nowrap bg-white dark:bg-slate-800 w-6 pl-2 pr-1 text-xs text-slate-900 dark:text-slate-100">
                               {i + 1}
