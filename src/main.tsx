@@ -5,6 +5,8 @@ import React, { Suspense, lazy, useState, useEffect, useLayoutEffect } from "rea
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
 
+// Removed addEventListener interceptor - it was breaking all button clicks
+
 // Eagerly load BottomNav pages for instant navigation (no Suspense delay)
 import HomePage from "./pages/Home";
 import TablesPage from "./pages/Tables";

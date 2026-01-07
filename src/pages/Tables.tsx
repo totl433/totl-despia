@@ -9,6 +9,8 @@ import { getCached, setCached, getCacheTimestamp, CACHE_TTL, invalidateUserCache
 import { useLeagues } from "../hooks/useLeagues";
 import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import { PageHeader } from "../components/PageHeader";
+import { fetchUserLeagues } from "../services/userLeagues";
+import CreateJoinTray from "../components/CreateJoinTray";
 
 /**
  * Tables.tsx - Mini Leagues Page
@@ -208,10 +210,9 @@ export default function TablesPage() {
   const [memberCounts, setMemberCounts] = useState<Record<string, number>>(initialState.memberCounts);
   const [leagueDataLoading, setLeagueDataLoading] = useState(initialState.leagueDataLoading);
   const [hasCache, setHasCache] = useState(initialState.hasCache);
-  const [creating, setCreating] = useState(false);
   const [joinCode, setJoinCode] = useState("");
-  const [leagueName, setLeagueName] = useState("");
   const [error, setError] = useState("");
+  const [isCreateJoinTrayOpen, setIsCreateJoinTrayOpen] = useState(false);
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>(initialState.leagueSubmissions);
   const [leagueData, setLeagueData] = useState<Record<string, LeagueData>>(initialState.leagueData);
   const [currentGw, setCurrentGw] = useState<number | null>(initialState.currentGw);
@@ -1015,39 +1016,6 @@ export default function TablesPage() {
     setLeagueData(leagueDataMap);
   }, [user?.id, leagues, picksData, membersByLeagueId, leagueStartGwMap, allFixturesData, outcomeByGwIdx, currentGw, submittedUserIdsSet]);
 
-  const createLeague = useCallback(async () => {
-    if (!leagueName.trim() || !user?.id) return;
-    setCreating(true);
-    setError("");
-    try {
-      const name = leagueName.trim();
-      const code = await genCode();
-      const { data, error } = await supabase
-        .from("leagues")
-        .insert({ name, code })
-        .select("id,code")
-        .single();
-      if (error) throw error;
-
-      const avatar = getDeterministicLeagueAvatar(data!.id);
-      await supabase.from("leagues").update({ avatar }).eq("id", data!.id);
-      await supabase.from("league_members").insert({
-        league_id: data!.id,
-        user_id: user.id,
-      });
-
-      setLeagueName("");
-      // Invalidate cache and refresh leagues
-      if (user?.id) {
-        invalidateUserCache(user.id);
-        refreshLeagues();
-      }
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to create league.");
-    } finally {
-      setCreating(false);
-    }
-  }, [leagueName, user?.id, refreshLeagues]);
 
   const joinLeague = useCallback(async () => {
     const code = joinCode.trim().toUpperCase();
@@ -1056,13 +1024,37 @@ export default function TablesPage() {
     try {
       const { data, error } = await supabase
         .from("leagues")
-        .select("id, name")
+        .select("id, name, created_at")
         .eq("code", code)
         .maybeSingle();
       if (error) throw error;
       if (!data) {
         setError("League code not found.");
         return;
+      }
+
+      // Check if user is already in 20 mini-leagues (max limit)
+      const userLeagues = await fetchUserLeagues(user.id);
+      if (userLeagues.length >= 20) {
+        setError("You're already in 20 mini-leagues, which is the maximum. Leave a league before joining another.");
+        return;
+      }
+
+      // Check if league has been running for more than 4 gameweeks
+      const currentGw = dbCurrentGwFromHook;
+      if (currentGw !== null) {
+        // Calculate league start GW
+        const leagueStartGw = await resolveLeagueStartGw(
+          { id: data.id, name: data.name, created_at: data.created_at },
+          currentGw
+        );
+
+        // Check if league has been running for 4+ gameweeks
+        // If current_gw - league_start_gw >= 4, the league is locked
+        if (currentGw - leagueStartGw >= 4) {
+          setError("This league has been running for more than 4 gameweeks. New members can only be added during the first 4 gameweeks.");
+          return;
+        }
       }
 
       const { data: members, error: membersError } = await supabase
@@ -1119,6 +1111,7 @@ export default function TablesPage() {
         }
       
       setJoinCode("");
+      setIsCreateJoinTrayOpen(false);
       // Invalidate cache and refresh leagues
       if (user?.id) {
         invalidateUserCache(user.id);
@@ -1127,36 +1120,29 @@ export default function TablesPage() {
     } catch (e: any) {
       setError(e?.message ?? "Failed to join league.");
     }
-  }, [joinCode, user?.id, refreshLeagues]);
+  }, [joinCode, user?.id, refreshLeagues, dbCurrentGwFromHook]);
 
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-6xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 py-4 pb-16">
         <div className="flex items-center justify-between">
           <PageHeader title="Mini Leagues" as="h2" />
-          {rows.length > 4 && (
-            <button
-              onClick={() => {
-                const createSection = document.getElementById('create-join-section');
-                if (createSection) {
-                  createSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-              }}
-              className="text-[#1C8376] font-semibold text-sm no-underline flex items-center gap-1"
-            >
-              Create League
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-          )}
+          <button
+            onClick={() => setIsCreateJoinTrayOpen(true)}
+            className="w-10 h-10 rounded-full bg-[#1C8376] text-white flex items-center justify-center hover:bg-[#156b60] transition-colors touch-manipulation"
+            aria-label="Create League"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
         </div>
         <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
-          Create or join a private league and battle it out with your friends.
+          Create or join a private league with friends. Let the rivalry begin.
         </p>
 
         {error && (
-          <div className="mt-4 rounded border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2 text-sm">
+          <div className="mt-4 rounded border border-red-200 bg-red-50 text-red-700 px-3 py-2 text-sm">
             {error}
           </div>
         )}
@@ -1169,7 +1155,15 @@ export default function TablesPage() {
           <>
             <div className="mt-6">
               {rows.length === 0 ? (
-                <div className="px-4 py-4 text-sm">No leagues yet.</div>
+                <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
+                  <div className="text-slate-600 mb-3">You aren't in any mini-leagues yet.</div>
+                  <button
+                    onClick={() => setIsCreateJoinTrayOpen(true)}
+                    className="w-full px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg no-underline border-0 cursor-pointer"
+                  >
+                    Create or Join
+                  </button>
+                </div>
               ) : (
                 <div className={rows.length >= 2 ? "grid grid-cols-1 lg:grid-cols-2 gap-3" : "space-y-3"}>
                   {rows.map((r) => {
@@ -1193,111 +1187,33 @@ export default function TablesPage() {
               )}
             </div>
 
-            <div id="create-join-section" className="mt-10 mb-3 text-xl font-extrabold text-slate-900">Create or Join</div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <CreateLeagueForm
-                leagueName={leagueName}
-                setLeagueName={setLeagueName}
-                creating={creating}
-                onCreate={createLeague}
-              />
-              <JoinLeagueForm
-                joinCode={joinCode}
-                setJoinCode={setJoinCode}
-                onJoin={joinLeague}
-              />
-            </div>
+            {rows.length > 0 && (
+              <div id="create-join-section" className="mt-10 mb-3">
+                <button
+                  onClick={() => setIsCreateJoinTrayOpen(true)}
+                  className="w-full px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg"
+                >
+                  Create or Join
+                </button>
+              </div>
+            )}
           </>
         )}
+
+        {/* Create/Join Tray */}
+        <CreateJoinTray
+          isOpen={isCreateJoinTrayOpen}
+          onClose={() => {
+            setIsCreateJoinTrayOpen(false);
+            setJoinCode('');
+            setError('');
+          }}
+          joinCode={joinCode}
+          setJoinCode={setJoinCode}
+          onJoin={joinLeague}
+          joinError={error}
+        />
       </div>
     </div>
   );
-}
-
-function CreateLeagueForm({
-  leagueName,
-  setLeagueName,
-  creating,
-  onCreate,
-}: {
-  leagueName: string;
-  setLeagueName: (name: string) => void;
-  creating: boolean;
-  onCreate: () => void;
-}) {
-  return (
-    <div className="border rounded-2xl p-4 bg-white">
-      <div className="text-sm font-medium mb-2">Create a league</div>
-      <input
-        className="border rounded px-3 py-2 w-full bg-white"
-        placeholder="League name"
-        value={leagueName}
-        onChange={(e) => setLeagueName(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !creating && leagueName.trim()) {
-            onCreate();
-          }
-        }}
-      />
-      <button
-        className="mt-3 px-3 py-2 rounded bg-slate-900 text-white disabled:opacity-50"
-        onClick={onCreate}
-        disabled={creating || !leagueName.trim()}
-      >
-        {creating ? "Creating…" : "Create"}
-      </button>
-    </div>
-  );
-}
-
-function JoinLeagueForm({
-  joinCode,
-  setJoinCode,
-  onJoin,
-}: {
-  joinCode: string;
-  setJoinCode: (code: string) => void;
-  onJoin: () => void;
-}) {
-  return (
-    <div className="border rounded-2xl p-4 bg-white">
-      <div className="text-sm font-medium mb-2">Join with code</div>
-      <input
-        className="border rounded px-3 py-2 w-full uppercase tracking-widest bg-white"
-        placeholder="ABCDE"
-        value={joinCode}
-        onChange={(e) => setJoinCode(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && joinCode.trim()) {
-            onJoin();
-          }
-        }}
-      />
-      <button
-        className="mt-3 px-3 py-2 rounded border"
-        onClick={onJoin}
-      >
-        Join
-      </button>
-    </div>
-  );
-}
-
-
-async function genCode(): Promise<string> {
-  const alphabet = "ABCDEFGHJKLMPQRSTVWXYZ23456789";
-  for (let t = 0; t < 6; t++) {
-    let code = "";
-    for (let i = 0; i < 5; i++) {
-      code += alphabet[Math.floor(Math.random() * alphabet.length)];
-    }
-    const { data } = await supabase
-      .from("leagues")
-      .select("id")
-      .eq("code", code)
-      .maybeSingle();
-    if (!data) return code;
-  }
-  return Math.random().toString(36).slice(2, 7).toUpperCase();
 }

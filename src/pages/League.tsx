@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import { createPortal } from "react-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { resolveLeagueStartGw as getLeagueStartGw, shouldIncludeGwForLeague } from "../lib/leagueStart";
@@ -7,6 +8,7 @@ import imageCompression from "browser-image-compression";
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { useGameweekState } from "../hooks/useGameweekState";
+import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import { getGameweekState } from "../lib/gameweekState";
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -22,6 +24,7 @@ import ResultsTable from "../components/league/ResultsTable";
 import SubmissionStatusTable from "../components/league/SubmissionStatusTable";
 import LeagueFixtureSection from "../components/league/LeagueFixtureSection";
 import { VOLLEY_USER_ID, VOLLEY_NAME } from "../lib/volley";
+import { fetchUserLeagues } from "../services/userLeagues";
 
 const MAX_MEMBERS = 8;
 
@@ -95,18 +98,35 @@ function rowToOutcome(r: ResultRowRaw): "H" | "D" | "A" | null {
    Page
    ========================= */
 export default function LeaguePage() {
+  // Track hook call count for debugging - must be first hook
+  const hookCallCountRef = useRef(0);
+  hookCallCountRef.current = 0;
+  
   const { code = "" } = useParams();
+  hookCallCountRef.current++;
   const [searchParams, setSearchParams] = useSearchParams();
+  hookCallCountRef.current++;
   const { user } = useAuth();
+  hookCallCountRef.current++;
+  const { currentGw: hookCurrentGw } = useCurrentGameweek();
+  hookCallCountRef.current++;
+  
+  // #region agent log
+  useEffect(() => {
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'League.tsx:after-all-hooks',message:'All hooks called',data:{code,hasCode:!!code,hasUser:!!user,hookCurrentGw,hookCallCount:hookCallCountRef.current,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+  }, [code, user, hookCurrentGw]);
+  // #endregion
   const [oldSchoolMode] = useState(() => {
     const saved = localStorage.getItem('oldSchoolMode');
     return saved ? JSON.parse(saved) : false;
   });
+  hookCallCountRef.current++;
 
   // Save to localStorage when changed
   useEffect(() => {
     localStorage.setItem('oldSchoolMode', JSON.stringify(oldSchoolMode));
   }, [oldSchoolMode]);
+  hookCallCountRef.current++;
 
   // Prevent body/html scrolling and keep header fixed
   useEffect(() => {
@@ -259,7 +279,9 @@ export default function LeaguePage() {
   const [league, setLeague] = useState<League | null>(() => {
     return getInitialLeague();
   });
+  hookCallCountRef.current++;
   const [showBadgeModal, setShowBadgeModal] = useState(false);
+  hookCallCountRef.current++;
   
   // Initialize members from cache synchronously
   const getInitialMembers = (): Member[] => {
@@ -280,27 +302,35 @@ export default function LeaguePage() {
   };
   
   const [members, setMembers] = useState<Member[]>(getInitialMembers);
+  hookCallCountRef.current++;
   // Start with false if we have cached league, true otherwise
   const [loading, setLoading] = useState(() => {
     const initialLeague = getInitialLeague();
     return !initialLeague;
   });
+  hookCallCountRef.current++;
 
   // tabs: Chat / Mini League Table / GW Picks / GW Results
   // CHAT is always the default tab (never auto-switch to GW Table during live)
   // Only exception: tab=chat in URL from notification deep links (handled by useEffect below)
   const initialTab: "chat" | "mlt" | "gw" | "gwr" = 'chat'; // Always default to chat
   const [tab, setTab] = useState<"chat" | "mlt" | "gw" | "gwr">(initialTab);
+  hookCallCountRef.current++;
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
+  hookCallCountRef.current++;
   const tabRef = useRef(tab);
+  hookCallCountRef.current++;
   
   // Keep ref in sync with state
   useEffect(() => {
     tabRef.current = tab;
   }, [tab]);
+  hookCallCountRef.current++;
   // Use ref to track manual tab selection immediately (synchronously) to prevent race conditions
   const manualTabSelectedRef = useRef(false);
+  hookCallCountRef.current++;
   const manualGwSelectedRef = useRef(false);
+  hookCallCountRef.current++;
   
   // Handle deep link from notifications - open chat tab when tab=chat is in URL
   // This runs on mount and when URL changes (e.g., from notification click on iOS)
@@ -427,8 +457,18 @@ export default function LeaguePage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const [showInvite, setShowInvite] = useState(false);
+  hookCallCountRef.current++;
+  const [showLeagueLockedError, setShowLeagueLockedError] = useState(false);
+  hookCallCountRef.current++;
   const [showJoinConfirm, setShowJoinConfirm] = useState(false);
+  hookCallCountRef.current++;
   const [joining, setJoining] = useState(false);
+  hookCallCountRef.current++;
+  
+  // Log final hook count after all hooks are declared
+  useEffect(() => {
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'League.tsx:final-hook-count',message:'Final hook count logged',data:{finalHookCount:hookCallCountRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+  }, []);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [showEndLeagueConfirm, setShowEndLeagueConfirm] = useState(false);
@@ -511,6 +551,38 @@ ${shareUrl}`;
     if (!league?.id || !user?.id) return;
     setJoining(true);
     try {
+      // Check if user is already in 20 mini-leagues (max limit)
+      const userLeagues = await fetchUserLeagues(user.id);
+      if (userLeagues.length >= 20) {
+        if (typeof window !== "undefined") {
+          window.alert?.("You're already in 20 mini-leagues, which is the maximum. Leave a league before joining another.");
+        }
+        setShowJoinConfirm(false);
+        setJoining(false);
+        return;
+      }
+
+      // Check if league has been running for more than 4 gameweeks
+      const currentGw = hookCurrentGw;
+      if (currentGw !== null) {
+        // Calculate league start GW
+        const leagueStartGw = await getLeagueStartGw(
+          { id: league.id, name: league.name, created_at: league.created_at },
+          currentGw
+        );
+
+        // Check if league has been running for 4+ gameweeks
+        // If current_gw - league_start_gw >= 4, the league is locked
+        if (currentGw - leagueStartGw >= 4) {
+          if (typeof window !== "undefined") {
+            window.alert?.("This league has been running for more than 4 gameweeks. New members can only be added during the first 4 gameweeks.");
+          }
+          setShowJoinConfirm(false);
+          setJoining(false);
+          return;
+        }
+      }
+
       if (members.length >= MAX_MEMBERS) {
         if (typeof window !== "undefined") {
           window.alert?.("League is full (max 8 members).");
@@ -562,7 +634,7 @@ ${shareUrl}`;
     } finally {
       setJoining(false);
     }
-  }, [league?.id, user?.id, members.length]);
+  }, [league?.id, league?.name, league?.created_at, user?.id, members.length, hookCurrentGw]);
 
   const removeMember = useCallback(async () => {
     if (!memberToRemove || !league?.id || !user?.id) return;
@@ -946,9 +1018,76 @@ ${shareUrl}`;
   const memberIdsKey = useMemo(() => members.map((m) => m.id).sort().join(','), [members]);
   const memberIds = useMemo(() => members.map((m) => m.id), [memberIdsKey]);
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
+  hookCallCountRef.current++;
   const [picks, setPicks] = useState<PickRow[]>([]);
+  hookCallCountRef.current++;
   const [subs, setSubs] = useState<SubmissionRow[]>([]);
+  hookCallCountRef.current++;
   const [results, setResults] = useState<ResultRowRaw[]>([]);
+  hookCallCountRef.current++;
+  
+  // Scroll to top when tab changes - MUST be before any conditional returns
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, [tab]);
+  hookCallCountRef.current++;
+  
+  // Check game state of current GW to determine which GW to show in GW Table tab
+  // MUST be before conditional returns to follow Rules of Hooks
+  const { state: currentGwState } = useGameweekState(currentGw);
+  hookCallCountRef.current++;
+  
+  // Declare currentTestGw before useMemo that uses it (to avoid temporal dead zone error)
+  const isApiTestLeague = useMemo(() => league?.name === 'API Test', [league?.name]);
+  const [currentTestGw, setCurrentTestGw] = useState<number | null>(null);
+  hookCallCountRef.current++;
+  
+  // Calculate which GW is shown in the GW Table tab (same logic as GwResultsTab)
+  // MUST be before conditional returns to follow Rules of Hooks
+  const gwTableGw = useMemo(() => {
+    if (!league) return currentGw || selectedGw || null;
+    if (league.name === 'API Test') {
+      return currentTestGw ?? 1;
+    }
+    
+    // For "gwr" tab (GW table): show previous GW until deadline passes, then show current GW
+    // If user manually selected a GW, use that
+    if (manualGwSelectedRef.current && selectedGw) {
+      return selectedGw;
+    }
+    
+    // If no currentGw, fallback to selectedGw
+    if (!currentGw) {
+      return selectedGw;
+    }
+    
+    // Determine if deadline has passed
+    // If state is LIVE or RESULTS_PRE_GW, deadline has passed - show current GW
+    // Otherwise (GW_OPEN, GW_PREDICTED, or null/unknown), show previous GW
+    const deadlinePassed = currentGwState === 'LIVE' || currentGwState === 'RESULTS_PRE_GW';
+    
+    if (deadlinePassed) {
+      // Deadline passed - show current GW
+      return currentGw;
+    } else {
+      // Deadline hasn't passed - show previous GW
+      // Use latestResultsGw if available and valid, otherwise use currentGw - 1
+      if (latestResultsGw && latestResultsGw < currentGw) {
+        return latestResultsGw;
+      }
+      // Fallback to currentGw - 1 (or currentGw if it's GW 1)
+      return currentGw > 1 ? currentGw - 1 : currentGw;
+    }
+  }, [league?.name, currentTestGw, selectedGw, currentGw, currentGwState, latestResultsGw]);
+  hookCallCountRef.current++;
+  
+  // Check if the GW shown in GW Table tab is live
+  // MUST be before conditional returns to follow Rules of Hooks
+  // Handle null gwTableGw (can happen when league is not loaded yet)
+  const { state: gwTableState } = useGameweekState(gwTableGw ?? null);
+  hookCallCountRef.current++;
 
   // Get api_match_ids from fixtures for real-time subscription
   // Memoize with stable reference - only change when IDs actually change
@@ -987,8 +1126,7 @@ ${shareUrl}`;
   // apiMatchIds computed but not used directly - apiMatchIdsForHook is used instead
 
   // Subscribe to real-time live scores updates (replaces polling)
-  const isApiTestLeague = useMemo(() => league?.name === 'API Test', [league?.name]);
-  const [currentTestGw, setCurrentTestGw] = useState<number | null>(null);
+  // Note: isApiTestLeague and currentTestGw are now declared earlier (before gwTableGw useMemo)
   
   // Fetch current test GW for API Test league
   // Use current_test_gw from meta as primary source (supports GW T2, T3, etc.)
@@ -2014,6 +2152,384 @@ ${shareUrl}`;
      Renderers
      ========================= */
 
+  const handleShareLeagueCode = useCallback(async () => {
+    if (!league || !hookCurrentGw) {
+      setShowInvite(true);
+      return;
+    }
+
+    try {
+      // Check if league has been running for more than 4 gameweeks
+      const leagueStartGw = await getLeagueStartGw(
+        { id: league.id, name: league.name, created_at: league.created_at },
+        hookCurrentGw
+      );
+
+      // Check if league has been running for 4+ gameweeks
+      // If current_gw - league_start_gw >= 4, the league is locked
+      if (hookCurrentGw - leagueStartGw >= 4) {
+        setShowLeagueLockedError(true);
+        return;
+      }
+
+      // League is not locked, show the share modal
+      setShowInvite(true);
+    } catch (error) {
+      // If there's an error checking, allow sharing (fail open)
+      console.error('[League] Error checking league lock status:', error);
+      setShowInvite(true);
+    }
+  }, [league, hookCurrentGw]);
+
+  function InviteMessage() {
+    return (
+      <div className="text-center p-8 bg-white rounded-xl border border-slate-200 shadow-sm">
+        <img 
+          src="/assets/Volley/volley-with-ball.png" 
+          alt="Volley" 
+          className="w-24 h-24 mx-auto mb-4 object-contain"
+        />
+        <p className="text-slate-600 mb-4 font-bold">
+          Share your league code with friends to kick things off.
+        </p>
+        <button
+          onClick={handleShareLeagueCode}
+          className="px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg"
+        >
+          Share League Code
+        </button>
+      </div>
+    );
+  }
+
+  function LeagueLockedErrorModal() {
+    const backdropRef = useRef<HTMLDivElement>(null);
+
+    // Close on escape key
+    useEffect(() => {
+      if (!showLeagueLockedError) return;
+
+      const handleEscape = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          setShowLeagueLockedError(false);
+        }
+      };
+
+      document.addEventListener('keydown', handleEscape);
+      return () => document.removeEventListener('keydown', handleEscape);
+    }, [showLeagueLockedError]);
+
+    // Prevent body scroll when open
+    useEffect(() => {
+      if (showLeagueLockedError) {
+        document.body.style.overflow = 'hidden';
+      } else {
+        document.body.style.overflow = '';
+      }
+      return () => {
+        document.body.style.overflow = '';
+      };
+    }, [showLeagueLockedError]);
+
+    if (!showLeagueLockedError) return null;
+
+    const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.target === e.currentTarget) {
+        setShowLeagueLockedError(false);
+      }
+    };
+
+    return createPortal(
+      <>
+        {/* Backdrop */}
+        <div
+          ref={backdropRef}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+          onClick={handleBackdropClick}
+          aria-hidden="true"
+          style={{
+            animation: 'fadeIn 200ms ease-out',
+            zIndex: 999999,
+          }}
+        />
+
+        {/* Modal */}
+        <div
+          className="fixed inset-0 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="league-locked-error-title"
+          onClick={handleBackdropClick}
+          style={{
+            zIndex: 1000000,
+          }}
+        >
+          <div className="relative overflow-hidden rounded-3xl bg-white px-8 py-8 text-center shadow-2xl max-w-sm w-full">
+            {/* Decorative background blurs */}
+            <div className="absolute -top-16 -left-10 h-32 w-32 rounded-full bg-red-200/40 blur-2xl" />
+            <div className="absolute -bottom-14 -right-12 h-32 w-32 rounded-full bg-amber-200/40 blur-2xl" />
+            
+            <div className="relative z-10 space-y-4">
+              {/* Icon */}
+              <svg
+                className="w-16 h-16 mx-auto text-amber-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+
+              {/* Title */}
+              <h2
+                id="league-locked-error-title"
+                className="text-2xl font-extrabold text-amber-600"
+              >
+                League Locked
+              </h2>
+
+              {/* Message */}
+              <p className="text-sm text-slate-600 leading-relaxed">
+                This league has been running for more than 4 gameweeks. New members can only be added during the first 4 gameweeks.
+              </p>
+
+              {/* Close Button */}
+              <button
+                onClick={() => setShowLeagueLockedError(false)}
+                className="mt-4 px-6 py-2.5 bg-[#1C8376] text-white rounded-lg font-semibold hover:bg-[#156d63] transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      </>,
+      document.body
+    );
+  }
+
+  function ShareLeagueCodeTray() {
+    const [toast, setToast] = useState("");
+    const backdropRef = useRef<HTMLDivElement>(null);
+    const sheetRef = useRef<HTMLDivElement>(null);
+
+    // Close on escape key
+    useEffect(() => {
+      if (!showInvite) return;
+
+      const handleEscape = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          setShowInvite(false);
+        }
+      };
+
+      document.addEventListener('keydown', handleEscape);
+      return () => document.removeEventListener('keydown', handleEscape);
+    }, [showInvite]);
+
+    // Handle backdrop clicks using React's synthetic events (avoids passive listener warnings)
+    const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+      // Only close if clicking directly on backdrop, not on sheet or its children
+      if (e.target === e.currentTarget) {
+        setShowInvite(false);
+      }
+    };
+
+    // Prevent body scroll when open
+    useEffect(() => {
+      if (showInvite) {
+        document.body.style.overflow = 'hidden';
+      } else {
+        document.body.style.overflow = '';
+      }
+      return () => {
+        document.body.style.overflow = '';
+      };
+    }, [showInvite]);
+
+    if (!showInvite || !league) return null;
+
+    const showToast = (msg: string) => {
+      setToast(msg);
+      window.clearTimeout((showToast as any)._t);
+      (showToast as any)._t = window.setTimeout(() => setToast(""), 1600);
+    };
+
+    const handleCopy = async () => {
+      try {
+        await navigator.clipboard.writeText(league.code);
+        showToast("Code copied");
+      } catch (err) {
+        // Fallback for older browsers
+        try {
+          const textArea = document.createElement('textarea');
+          textArea.value = league.code;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+          showToast("Code copied");
+        } catch (fallbackErr) {
+          showToast("Couldn't copy");
+        }
+      }
+    };
+
+    const handleShare = async () => {
+      if (!league?.code) return;
+      if (typeof window === "undefined" || typeof navigator === "undefined") return;
+
+      const shareText = `Join my mini league "${league.name}" on TotL!`;
+      const shareUrl = `${window.location.origin}/league/${league.code}`;
+      const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
+      
+      if (typeof nav.share === "function") {
+        try {
+          await nav.share({ title: `Join ${league.name}`, text: shareText, url: shareUrl });
+          // Share sheet opened successfully (user can cancel/share from there)
+          return;
+        } catch (err) {
+          // Share cancelled or failed (non-critical) - don't show error
+          return;
+        }
+      }
+
+      // Fallback: copy share text to clipboard (for browsers without Web Share API)
+      const fallbackText = `${shareText}\n${shareUrl}`;
+      try {
+        await navigator.clipboard.writeText(fallbackText);
+        showToast("Share text copied");
+      } catch (err) {
+        showToast("Couldn't share");
+      }
+    };
+
+    const content = (
+      <>
+        {/* Backdrop */}
+        <div
+          ref={backdropRef}
+          className="fixed inset-0 bg-black/50"
+          onClick={handleBackdropClick}
+          aria-hidden="true"
+          style={{
+            animation: 'fadeIn 200ms ease-out',
+            zIndex: 999999,
+            touchAction: 'manipulation',
+          }}
+        />
+
+        {/* Sheet */}
+        <div
+          ref={sheetRef}
+          className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="share-league-code-tray-title"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            animation: 'slideUp 300ms ease-out',
+            zIndex: 1000000,
+            touchAction: 'manipulation',
+          }}
+        >
+          {/* Top handle */}
+          <div className="flex justify-center pt-3 pb-2">
+            <div className="w-12 h-1 bg-slate-300 rounded-full" />
+          </div>
+
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 pb-4">
+            <h2
+              id="share-league-code-tray-title"
+              className="text-lg font-medium text-slate-900 uppercase tracking-wide"
+              style={{ fontFamily: '"Gramatika", sans-serif', fontWeight: 700 }}
+            >
+              Share League Code
+            </h2>
+            <button
+              onClick={() => setShowInvite(false)}
+              className="w-8 h-8 flex items-center justify-center rounded-full"
+              aria-label="Close"
+            >
+              <svg
+                className="w-5 h-5 text-slate-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="px-6 pb-8 max-h-[70vh] overflow-y-auto">
+            <div className="space-y-6">
+              <div>
+                <p className="text-slate-600 text-sm mb-3">
+                  Share this code (up to {MAX_MEMBERS} members):
+                </p>
+                <div className="flex items-center gap-3 mb-4">
+                  <code className="flex-1 font-mono text-2xl font-bold text-center py-3 px-4 bg-slate-50 rounded-lg border border-slate-200">
+                    {league.code}
+                  </code>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleCopy}
+                    className="flex-1 px-4 py-3 rounded-lg border border-slate-300 bg-white text-slate-900 font-semibold hover:bg-slate-50 transition-colors"
+                  >
+                    Copy
+                  </button>
+                  <button
+                    onClick={handleShare}
+                    className="flex-1 px-4 py-3 rounded-lg bg-[#1C8376] text-white font-semibold hover:bg-[#156b60] transition-colors"
+                  >
+                    Share
+                  </button>
+                </div>
+                {/* Toast message */}
+                <div
+                  className={`mt-3 text-xs rounded bg-slate-900 text-white px-3 py-2 text-center transition-opacity ${
+                    toast ? "opacity-100" : "opacity-0 pointer-events-none"
+                  }`}
+                >
+                  {toast || "…"}
+                </div>
+                <div className="mt-4 text-xs text-slate-500 text-center">
+                  {members.length}/{MAX_MEMBERS} members
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom handle */}
+          <div className="flex justify-center pb-3">
+            <div className="w-12 h-1 bg-slate-300 rounded-full" />
+          </div>
+        </div>
+      </>
+    );
+
+    // Render to document.body using portal to ensure it's above everything
+    if (typeof document !== 'undefined' && document.body) {
+      return createPortal(content, document.body);
+    }
+
+    return content;
+  }
+
   function MltTab() {
     const renderStart = performance.now();
     console.log('[MltTab] ⚡ RENDERING START', { 
@@ -2063,19 +2579,7 @@ ${shareUrl}`;
     const isLateStartingLeague = !!(league && !specialLeagues.includes(league.name) && !gw7StartLeagues.includes(league.name) && !gw8StartLeagues.includes(league.name));
 
     if (members.length === 1) {
-      return (
-        <div className="text-center p-8 bg-white rounded-xl border border-slate-200 shadow-sm">
-          <div className="text-6xl mb-4">👥</div>
-          <h3 className="text-xl font-semibold text-slate-900 mb-2">Invite at least one more user to make the ML start</h3>
-          <p className="text-slate-600 mb-4">Share your league code with friends to get the competition going!</p>
-          <button
-            onClick={() => setShowInvite(true)}
-            className="px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg"
-          >
-            Share League Code
-          </button>
-        </div>
-      );
+      return <InviteMessage />;
     }
 
     return (
@@ -2136,6 +2640,10 @@ ${shareUrl}`;
     // Use centralized game state system for deadline checks
     // Always pass a number or null (never undefined) to ensure consistent hook calls
     const { state: picksGwState } = useGameweekState(picksGw);
+    
+    if (members.length === 1) {
+      return <InviteMessage />;
+    }
     
     if (!picksGw) {
       return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No current gameweek available.</div>;
@@ -2452,6 +2960,10 @@ ${shareUrl}`;
     // UNLESS the user has manually selected a GW, in which case use selectedGw
     // For other tabs, use selectedGw
     const resGw = resGwMemo;
+    
+    if (members.length === 1) {
+      return <InviteMessage />;
+    }
     
     if (!resGw || (availableGws.length === 0 && league?.name !== 'API Test')) {
       return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No gameweek selected.</div>;
@@ -2775,14 +3287,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
 
     </div>
   );
-}
-
-  // Scroll to top when tab changes - MUST be before any conditional returns
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'auto' });
-    }
-  }, [tab]);
+  }
 
   /* ---------- page chrome ---------- */
   if (loading) {
@@ -2810,48 +3315,6 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
     return null; // Still loading
   }
   // #endregion
-
-  // Check game state of current GW to determine which GW to show in GW Table tab
-  const { state: currentGwState } = useGameweekState(currentGw);
-
-  // Calculate which GW is shown in the GW Table tab (same logic as GwResultsTab)
-  const gwTableGw = useMemo(() => {
-    if (league?.name === 'API Test') {
-      return currentTestGw ?? 1;
-    }
-    
-    // For "gwr" tab (GW table): show previous GW until deadline passes, then show current GW
-    // If user manually selected a GW, use that
-    if (manualGwSelectedRef.current && selectedGw) {
-      return selectedGw;
-    }
-    
-    // If no currentGw, fallback to selectedGw
-    if (!currentGw) {
-      return selectedGw;
-    }
-    
-    // Determine if deadline has passed
-    // If state is LIVE or RESULTS_PRE_GW, deadline has passed - show current GW
-    // Otherwise (GW_OPEN, GW_PREDICTED, or null/unknown), show previous GW
-    const deadlinePassed = currentGwState === 'LIVE' || currentGwState === 'RESULTS_PRE_GW';
-    
-    if (deadlinePassed) {
-      // Deadline passed - show current GW
-      return currentGw;
-    } else {
-      // Deadline hasn't passed - show previous GW
-      // Use latestResultsGw if available and valid, otherwise use currentGw - 1
-      if (latestResultsGw && latestResultsGw < currentGw) {
-        return latestResultsGw;
-      }
-      // Fallback to currentGw - 1 (or currentGw if it's GW 1)
-      return currentGw > 1 ? currentGw - 1 : currentGw;
-    }
-  }, [league?.name, currentTestGw, selectedGw, currentGw, currentGwState, latestResultsGw]);
-
-  // Check if the GW shown in GW Table tab is live
-  const { state: gwTableState } = useGameweekState(gwTableGw);
 
   return (
     <div className={`${oldSchoolMode ? 'oldschool-theme' : 'bg-slate-50'}`} style={{
@@ -3049,7 +3512,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                 )}
               </button>
               <div className="flex-1 min-w-0">
-                <h1 className="text-lg font-normal text-slate-900 truncate">
+                <h1 className="text-lg font-semibold text-slate-900 truncate">
                   {league.name}
                 </h1>
                 {selectedGw && (
@@ -3093,7 +3556,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                         setShowAdminMenu(true);
                         setShowHeaderMenu(false);
                       }}
-                      className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
+                      className="w-full text-left px-0 py-2.5 text-base font-semibold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
                     >
                       <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -3112,7 +3575,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                       setShowBadgeUpload(true);
                       setShowHeaderMenu(false);
                     }}
-                    className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
+                    className="w-full text-left px-0 py-2.5 text-base font-semibold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
                   >
                     <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -3121,11 +3584,11 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                   </button>
                 )}
                 <button
-                  onClick={() => {
-                    setShowInvite(true);
+                  onClick={async () => {
                     setShowHeaderMenu(false);
+                    await handleShareLeagueCode();
                   }}
-                  className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
+                  className="w-full text-left px-0 py-2.5 text-base font-semibold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
                 >
                   <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -3137,7 +3600,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                     shareLeague();
                     setShowHeaderMenu(false);
                   }}
-                  className="w-full text-left px-0 py-2.5 text-base font-bold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
+                  className="w-full text-left px-0 py-2.5 text-base font-semibold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
                 >
                   <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -3149,7 +3612,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                     setShowLeaveConfirm(true);
                     setShowHeaderMenu(false);
                   }}
-                  className="w-full text-left px-0 py-2.5 text-base font-bold text-red-600 active:bg-red-100 rounded-lg flex items-center gap-2 touch-manipulation"
+                  className="w-full text-left px-0 py-2.5 text-base font-semibold text-red-600 active:bg-red-100 rounded-lg flex items-center gap-2 touch-manipulation"
                 >
                   <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -3289,7 +3752,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
             {/* Close button */}
             <button
               onClick={() => setShowAdminMenu(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600"
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -3298,7 +3761,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
 
             {/* Modal content */}
             <div className="p-6 pt-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">League Management</h2>
+              <h2 className="text-2xl font-semibold text-slate-900 mb-6">League Management</h2>
               
               <div className="space-y-4">
                 <div>
@@ -3315,7 +3778,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                               setShowRemoveConfirm(true);
                               setShowAdminMenu(false);
                             }}
-                            className="px-3 py-1.5 text-xs bg-red-100 text-red-700 rounded-md font-medium"
+                            className="px-3 py-1.5 text-xs bg-red-100 text-red-700 rounded-md font-semibold"
                           >
                             Remove
                           </button>
@@ -3334,7 +3797,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                       setShowEndLeagueConfirm(true);
                       setShowAdminMenu(false);
                     }}
-                    className="w-full px-4 py-3 text-sm bg-red-600 text-white rounded-lg font-medium flex items-center justify-center gap-2"
+                    className="w-full px-4 py-3 text-sm bg-red-600 text-white rounded-lg font-semibold flex items-center justify-center gap-2"
                   >
                     🗑️ End League
                   </button>
@@ -3379,8 +3842,8 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
 
             {/* Modal content */}
             <div className="p-4 pt-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-1">League Badge</h2>
-              <p className="text-xs text-gray-600 mb-4">Upload and customize your mini-league badge</p>
+              <h2 className="text-xl font-semibold text-slate-900 mb-1">League Badge</h2>
+              <p className="text-xs text-slate-600 mb-4">Upload and customize your mini-league badge</p>
               
               {!cropImage ? (
                 <>
@@ -3403,7 +3866,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                         <button
                           onClick={handleRemoveBadge}
                           disabled={uploadingBadge}
-                          className="px-4 py-2 text-xs bg-red-100 text-red-700 active:bg-red-200 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation min-h-[36px]"
+                          className="px-4 py-2 text-xs bg-red-100 text-red-700 active:bg-red-200 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation min-h-[36px]"
                         >
                           Remove
                         </button>
@@ -3458,7 +3921,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
 
                     {/* Success message */}
                     {badgeUploadSuccess && (
-                      <div className="p-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800">
+                      <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800">
                         ✓ Badge uploaded successfully!
                       </div>
                     )}
@@ -3596,35 +4059,11 @@ Lose – 0 points
 If two or more players are tied on Points in the table, the player with the most overall Unicorns in the mini league is ranked higher.${league && (['The Bird league'].includes(league.name) || ['gregVjofVcarl', 'Let Down'].includes(league.name)) ? '\n\nNote: This mini league started after GW1, so the "CP" column shows correct predictions since this mini league began.' : ''}`}
       />
 
-      {/* Invite Modal */}
-      {showInvite && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md mx-4">
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">Invite players</h3>
-            <p className="text-slate-600 text-sm">Share this code (up to {MAX_MEMBERS} members):</p>
-            <div className="mt-3 flex items-center gap-2">
-              <code className="font-mono text-lg font-bold">{league.code}</code>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(league.code);
-                }}
-                className="px-3 py-1.5 border rounded-md text-sm"
-              >
-                Copy
-              </button>
-              <button onClick={shareLeague} className="px-3 py-1.5 border rounded-md text-sm">
-                Share
-              </button>
-            </div>
-            <div className="mt-3 text-xs text-slate-500">{members.length}/{MAX_MEMBERS} members</div>
-            <div className="mt-6 flex justify-end">
-              <button onClick={() => setShowInvite(false)} className="px-4 py-2 border border-slate-300 rounded-md">
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Share League Code Tray */}
+      <ShareLeagueCodeTray />
+
+      {/* League Locked Error Modal */}
+      <LeagueLockedErrorModal />
 
       {/* Leave League Confirmation */}
       {showLeaveConfirm && (
