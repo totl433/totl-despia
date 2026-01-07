@@ -64,15 +64,15 @@ export const ProfileAvatar = React.memo(function ProfileAvatar({
       />
       {editable && (
         <div
-          className={`absolute bottom-0 right-0 z-10 rounded-full bg-white shadow-lg flex items-center justify-center border-2 border-slate-400 ${
-            size === 'sm' ? 'w-5 h-5' : size === 'md' ? 'w-6 h-6 sm:w-7 sm:h-7' : 'w-8 h-8 sm:w-9 sm:h-9'
+          className={`absolute bottom-0 right-0 z-20 rounded-full bg-white shadow-lg flex items-center justify-center border-2 border-slate-600 ${
+            size === 'sm' ? 'w-6 h-6' : size === 'md' ? 'w-7 h-7 sm:w-8 sm:h-8' : 'w-9 h-9 sm:w-10 sm:h-10'
           }`}
           style={{
             transform: size === 'sm' 
-              ? 'translate(-25%, -25%)' 
+              ? 'translate(-15%, -15%)' 
               : size === 'md'
-              ? 'translate(-20%, -20%)'
-              : 'translate(-15%, -15%)'
+              ? 'translate(-12%, -12%)'
+              : 'translate(-10%, -10%)'
           }}
         >
           <svg 
