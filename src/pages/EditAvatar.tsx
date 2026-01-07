@@ -66,7 +66,6 @@ export default function EditAvatarPage() {
         }
         
         const [, userIdFromUrl, fileName] = urlMatch;
-        const filePath = `${userIdFromUrl}/${fileName}`;
         
         // Check if file exists in storage and get metadata
         const { data: fileData, error: fileError } = await supabase.storage

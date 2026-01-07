@@ -1,7 +1,7 @@
 import { useMemo, memo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
-import { ordinal, initials, toStringSet } from '../lib/helpers';
+import { ordinal, toStringSet } from '../lib/helpers';
 import { useGameweekState } from '../hooks/useGameweekState';
 import type { GameweekState } from '../lib/gameweekState';
 import UserAvatar from './UserAvatar';

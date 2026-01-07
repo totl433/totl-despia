@@ -126,9 +126,6 @@ export async function generateAndUploadDefaultAvatar(
   userId: string,
   userName: string | null | undefined
 ): Promise<string> {
-  // Check authentication state before upload
-  const { data: { session } } = await supabase.auth.getSession();
-  
   try {
     // Get initials and color
     const initials = getInitials(userName);
