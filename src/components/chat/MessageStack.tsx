@@ -47,7 +47,7 @@ export function MessageStack({
     <div className={`flex items-end gap-2 w-full ${alignment}`}>
       {!isOwnMessage ? (
         isVolley ? (
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 border border-slate-200 flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 border border-slate-200 dark:border-slate-700 flex items-center justify-center flex-shrink-0 overflow-hidden">
             <img 
               src={VOLLEY_AVATAR_PATH}
               alt="Volley" 
@@ -60,12 +60,12 @@ export function MessageStack({
               userId={userId}
               name={author}
               size={32}
-              className="border border-slate-200"
+              className="border border-slate-200 dark:border-slate-700"
               fallbackToInitials={true}
             />
           </div>
         ) : (
-          <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-500 flex-shrink-0">
+          <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-xs font-semibold text-slate-500 dark:text-slate-400 flex-shrink-0">
             {(avatarInitials || author.charAt(0)).toUpperCase()}
           </div>
         )
@@ -113,7 +113,7 @@ export function MessageStack({
                 {message.status && (
                   <div
                     className={`text-xs ml-2 ${
-                      message.status === "error" ? "text-red-500" : "text-slate-400"
+                      message.status === "error" ? "text-red-500" : "text-slate-400 dark:text-slate-500"
                     }`}
                   >
                     {message.status === "error" ? "Failed" : "Sending…"}

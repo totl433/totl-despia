@@ -1123,7 +1123,7 @@ export default function TablesPage() {
   }, [joinCode, user?.id, refreshLeagues, dbCurrentGwFromHook]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <div className="max-w-6xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 py-4 pb-16">
         <div className="flex items-center justify-between">
           <PageHeader title="Mini Leagues" as="h2" />
@@ -1137,12 +1137,12 @@ export default function TablesPage() {
             </svg>
           </button>
         </div>
-        <p className="mt-2 mb-6 text-sm text-slate-600 w-full">
+        <p className="mt-2 mb-6 text-sm text-slate-600 dark:text-slate-400 w-full">
           Create or join a private league with friends. Let the rivalry begin.
         </p>
 
         {error && (
-          <div className="mt-4 rounded border border-red-200 bg-red-50 text-red-700 px-3 py-2 text-sm">
+          <div className="mt-4 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 px-3 py-2 text-sm">
             {error}
           </div>
         )}
@@ -1155,8 +1155,8 @@ export default function TablesPage() {
           <>
             <div className="mt-6">
               {rows.length === 0 ? (
-                <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
-                  <div className="text-slate-600 mb-3">You aren't in any mini-leagues yet.</div>
+                <div className="p-6 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-center">
+                  <div className="text-slate-600 dark:text-slate-400 mb-3">You aren't in any mini-leagues yet.</div>
                   <button
                     onClick={() => setIsCreateJoinTrayOpen(true)}
                     className="w-full px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg no-underline border-0 cursor-pointer"

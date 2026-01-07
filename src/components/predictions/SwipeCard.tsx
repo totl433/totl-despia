@@ -205,10 +205,10 @@ export default function SwipeCard({
   const awayAngle = awayHasStripes ? 35 : (diagonalAngle + 45);
 
   return (
-    <div className="bg-white rounded-3xl shadow-2xl overflow-hidden select-none flex flex-col" style={{ pointerEvents: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', width: '100%', height: '100%', position: 'relative' }}>
+    <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl overflow-hidden select-none flex flex-col" style={{ pointerEvents: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', width: '100%', height: '100%', position: 'relative' }}>
       <div className="pt-2 px-8 pb-8 relative flex-shrink-0 pointer-events-none" style={{ pointerEvents: 'none' }}>
         {showSwipeHint && (
-          <div className="absolute top-2 right-4 flex items-center gap-2 text-slate-400 text-xs font-semibold pointer-events-none" style={{ pointerEvents: 'none' }}>
+          <div className="absolute top-2 right-4 flex items-center gap-2 text-slate-400 dark:text-slate-500 text-xs font-semibold pointer-events-none" style={{ pointerEvents: 'none' }}>
             <img
               src="https://cdn-icons-png.flaticon.com/512/4603/4603384.png"
               alt="Swipe gesture icon"
@@ -220,10 +220,10 @@ export default function SwipeCard({
         {/* Date and Time together */}
         {(kickoffDate || kickoffTime) && (
           <div className="text-center mb-6 pointer-events-none" style={{ pointerEvents: 'none' }}>
-            <div className="text-sm text-slate-500 font-medium pointer-events-none" style={{ pointerEvents: 'none' }}>
+            <div className="text-sm text-slate-500 dark:text-slate-400 font-medium pointer-events-none" style={{ pointerEvents: 'none' }}>
               {kickoffDate}
               {kickoffDate && kickoffTime && <span className="mx-2 pointer-events-none" style={{ pointerEvents: 'none' }}>•</span>}
-              {kickoffTime && <span className="text-slate-700 pointer-events-none" style={{ pointerEvents: 'none' }}>{kickoffTime}</span>}
+              {kickoffTime && <span className="text-slate-700 dark:text-slate-200 pointer-events-none" style={{ pointerEvents: 'none' }}>{kickoffTime}</span>}
             </div>
           </div>
         )}
@@ -236,7 +236,7 @@ export default function SwipeCard({
                 size={120}
               />
             </div>
-            <div className="text-sm font-bold text-slate-700 mt-2 text-center max-w-[120px] pointer-events-none" style={{ pointerEvents: 'none' }}>
+            <div className="text-sm font-bold text-slate-700 dark:text-slate-200 mt-2 text-center max-w-[120px] pointer-events-none" style={{ pointerEvents: 'none' }}>
               {fixture.home_team || fixture.home_name}
             </div>
             {/* Form dots */}
@@ -252,7 +252,7 @@ export default function SwipeCard({
                 size={120}
               />
             </div>
-            <div className="text-sm font-bold text-slate-700 mt-2 text-center max-w-[120px] pointer-events-none" style={{ pointerEvents: 'none' }}>
+            <div className="text-sm font-bold text-slate-700 dark:text-slate-200 mt-2 text-center max-w-[120px] pointer-events-none" style={{ pointerEvents: 'none' }}>
               {fixture.away_team || fixture.away_name}
             </div>
             {/* Form dots */}

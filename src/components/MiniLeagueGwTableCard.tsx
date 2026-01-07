@@ -847,7 +847,7 @@ export default function MiniLeagueGwTableCard({
         }
       `}</style>
       {/* Compact Header */}
-      <div className="px-4 py-3 bg-white rounded-t-xl">
+      <div className="px-4 py-3 bg-white dark:bg-slate-800 rounded-t-xl">
         <div className="flex items-start gap-2">
           <img
             src={getLeagueAvatarUrl({ id: leagueId, avatar })}
@@ -864,7 +864,7 @@ export default function MiniLeagueGwTableCard({
             }}
           />
           <div className="flex-1 min-w-0 flex flex-col gap-1">
-            <h3 className="text-base font-bold text-black truncate">
+            <h3 className="text-base font-bold text-black dark:text-slate-100 truncate">
               {leagueName}
             </h3>
             {/* Small winner indicator - only show for completed GWs, not live ones */}
@@ -899,14 +899,14 @@ export default function MiniLeagueGwTableCard({
           </div>
         ) : !displayGw ? (
           <div className="text-center py-8 flex-1">
-            <div className="text-xs text-slate-500">No gameweek available</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">No gameweek available</div>
           </div>
         ) : (
           <>
             {/* Table */}
             {rows.length > 0 ? (
               <div className="overflow-visible flex-1 -mx-4">
-                <div className="bg-white px-4">
+                <div className="bg-white dark:bg-slate-800 px-4">
                   <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: '#ffffff', width: '100%' }}>
                     <thead className="sticky top-0" style={{ 
                       position: 'sticky', 
@@ -915,15 +915,15 @@ export default function MiniLeagueGwTableCard({
                       backgroundColor: '#ffffff', 
                       display: 'table-header-group'
                     } as any}>
-                      <tr className="bg-white border-b border-slate-200">
-                        <th className="py-2 text-left font-semibold text-xs uppercase tracking-wide bg-white w-6 pl-2 pr-1 text-[#1C8376]"></th>
-                        <th className="py-2 text-left font-semibold text-xs text-slate-300 bg-white pl-2 pr-2">
+                      <tr className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                        <th className="py-2 text-left font-semibold text-xs uppercase tracking-wide bg-white dark:bg-slate-800 w-6 pl-2 pr-1 text-[#1C8376]"></th>
+                        <th className="py-2 text-left font-semibold text-xs text-slate-300 dark:text-slate-400 bg-white dark:bg-slate-800 pl-2 pr-2">
                           Player
                         </th>
-                        <th className="py-2 text-center font-semibold text-xs text-slate-300 bg-white w-10 pl-1 pr-1">
+                        <th className="py-2 text-center font-semibold text-xs text-slate-300 dark:text-slate-400 bg-white dark:bg-slate-800 w-10 pl-1 pr-1">
                           Score
                         </th>
-                        {members.length >= 3 && <th className="py-2 text-center font-semibold text-xs bg-white w-8 pl-1 pr-1 text-[#1C8376] text-base">🦄</th>}
+                        {members.length >= 3 && <th className="py-2 text-center font-semibold text-xs bg-white dark:bg-slate-800 w-8 pl-1 pr-1 text-[#1C8376] text-base">🦄</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -935,14 +935,15 @@ export default function MiniLeagueGwTableCard({
                             className={isMe ? 'flash-user-row' : ''}
                             style={{
                               position: 'relative',
-                              backgroundColor: '#ffffff',
-                              ...(i < rows.length - 1 ? { borderBottom: '1px solid #e2e8f0' } : {})
+                              backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#ffffff',
+                              ...(i < rows.length - 1 ? { borderBottom: document.documentElement.classList.contains('dark') ? '1px solid #334155' : '1px solid #e2e8f0' } : {})
                             }}
+                            className="bg-white dark:bg-slate-800"
                           >
-                            <td className="py-2 text-left tabular-nums whitespace-nowrap bg-white w-6 pl-2 pr-1 text-xs">
+                            <td className="py-2 text-left tabular-nums whitespace-nowrap bg-white dark:bg-slate-800 w-6 pl-2 pr-1 text-xs text-slate-900 dark:text-slate-100">
                               {i + 1}
                             </td>
-                            <td className="py-2 truncate whitespace-nowrap bg-white pl-2 pr-2 text-xs">
+                            <td className="py-2 truncate whitespace-nowrap bg-white dark:bg-slate-800 pl-2 pr-2 text-xs text-slate-900 dark:text-slate-100">
                               <div className="flex items-center gap-2">
                                 <UserAvatar
                                   userId={r.user_id}
@@ -954,8 +955,8 @@ export default function MiniLeagueGwTableCard({
                                 <span className="truncate">{r.name}</span>
                               </div>
                             </td>
-                            <td className={`py-2 text-center tabular-nums font-bold text-[#1C8376] text-xs bg-white w-10 pl-1 pr-1 ${isLive ? 'pulse-live-score' : ''}`}>{r.score}</td>
-                            {members.length >= 3 && <td className={`py-2 text-center tabular-nums text-xs bg-white w-8 pl-1 pr-1 ${isLive ? 'pulse-live-score' : ''}`}>{r.unicorns}</td>}
+                            <td className={`py-2 text-center tabular-nums font-bold text-[#1C8376] text-xs bg-white dark:bg-slate-800 w-10 pl-1 pr-1 ${isLive ? 'pulse-live-score' : ''}`}>{r.score}</td>
+                            {members.length >= 3 && <td className={`py-2 text-center tabular-nums text-xs bg-white dark:bg-slate-800 w-8 pl-1 pr-1 text-slate-900 dark:text-slate-100 ${isLive ? 'pulse-live-score' : ''}`}>{r.unicorns}</td>}
                           </tr>
                         );
                       })}
@@ -965,7 +966,7 @@ export default function MiniLeagueGwTableCard({
               </div>
             ) : (
               <div className="text-center py-6 flex-1">
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-slate-500 dark:text-slate-400">
                   No results for GW {displayGw}
                 </div>
               </div>
@@ -979,7 +980,7 @@ export default function MiniLeagueGwTableCard({
   return (
     <Link
       to={`/league/${leagueCode}`}
-      className="w-[320px] flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden block no-underline relative"
+      className="w-[320px] flex-shrink-0 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden block no-underline relative"
       style={{ 
         minHeight: `${cardHeight}px`,
         height: 'auto', // Use auto to allow card to grow to fit all rows

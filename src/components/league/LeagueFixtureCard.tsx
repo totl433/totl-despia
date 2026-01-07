@@ -174,7 +174,7 @@ export default function LeagueFixtureCard({
 
   return (
     <li className="border-t first:border-t-0">
-      <div className="p-4 bg-white relative">
+      <div className="p-4 bg-white dark:bg-slate-800 relative">
         {/* LIVE indicator - red dot top left for live games */}
         {(isLive || isHalfTime) && (
           <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
@@ -185,14 +185,14 @@ export default function LeagueFixtureCard({
         {/* FT indicator for finished games */}
         {isFinished && !isLive && !isHalfTime && (
           <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
-            <span className="text-xs font-semibold text-slate-500">FT</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">FT</span>
           </div>
         )}
         
         {/* Fixture display */}
         <div className={`grid grid-cols-3 items-center ${isOngoing ? 'pt-4' : ''}`}>
           <div className="flex items-center justify-center">
-            <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{homeName}</span>
+            <span className="text-sm sm:text-base font-medium text-slate-900 dark:text-slate-100 truncate">{homeName}</span>
           </div>
           <div className="flex items-center justify-center gap-2">
             <TeamBadge 
@@ -201,9 +201,9 @@ export default function LeagueFixtureCard({
               size={24}
               className="h-6 w-6"
             />
-            <div className="text-[15px] sm:text-base font-semibold text-slate-600">
+            <div className="text-[15px] sm:text-base font-semibold text-slate-600 dark:text-slate-300">
               {liveScore && (isLive || isHalfTime || isFinished) ? (
-                <span className="font-bold text-base text-slate-900">
+                <span className="font-bold text-base text-slate-900 dark:text-slate-100">
                   {liveScore.homeScore} - {liveScore.awayScore}
                 </span>
               ) : (
@@ -218,14 +218,14 @@ export default function LeagueFixtureCard({
             />
           </div>
           <div className="flex items-center justify-center">
-            <span className="text-sm sm:text-base font-medium text-slate-900 truncate">{awayName}</span>
+            <span className="text-sm sm:text-base font-medium text-slate-900 dark:text-slate-100 truncate">{awayName}</span>
           </div>
         </div>
         
         {/* Score indicator */}
         {liveScore && (isOngoing || isFinished) && (
           <div className="flex justify-center mt-1">
-            <span className={`text-[10px] font-semibold ${isOngoing ? 'text-red-600' : 'text-slate-500'}`}>
+            <span className={`text-[10px] font-semibold ${isOngoing ? 'text-red-600' : 'text-slate-500 dark:text-slate-400'}`}>
               {formatMinuteDisplay(liveScore.status, liveScore.minute)}
             </span>
           </div>

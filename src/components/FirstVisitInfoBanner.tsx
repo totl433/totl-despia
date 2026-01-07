@@ -104,7 +104,7 @@ export default function FirstVisitInfoBanner({
  
  {/* Popup */}
  <div
- className={`fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-2xl max-w-md w-[90%] mx-auto ${className}`}
+ className={`fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-[90%] mx-auto ${className}`}
  role="dialog"
  aria-modal="true"
  aria-labelledby="first-visit-title"
@@ -147,8 +147,8 @@ export default function FirstVisitInfoBanner({
             className="w-20 h-20 object-contain flex-shrink-0"
             style={{ imageRendering: 'pixelated' }}
           />
- <p id="first-visit-title" className="text-sm text-slate-700 leading-relaxed">
- <span className="font-semibold text-slate-900">Quick tip:</span> {message}
+ <p id="first-visit-title" className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+ <span className="font-semibold text-slate-900 dark:text-slate-100">Quick tip:</span> {message}
  </p>
  </div>
  
@@ -163,7 +163,7 @@ export default function FirstVisitInfoBanner({
  
  <button
  onClick={handleDontShowAgain}
- className="text-sm text-slate-600 underline text-center"
+ className="text-sm text-slate-600 dark:text-slate-400 underline text-center"
  >
  Don't show this again
  </button>

@@ -6,6 +6,7 @@ import { fetchUserLeagues } from '../services/userLeagues';
 import { ProfileHeader } from '../components/profile/ProfileHeader';
 import { AccountMenu } from '../components/profile/AccountMenu';
 import { PageHeader } from '../components/PageHeader';
+import ThemeToggle from '../components/ThemeToggle';
 
 // Profile page with push notification diagnostics
 
@@ -115,7 +116,7 @@ export default function Profile() {
     {
       to: '/profile/notifications',
       icon: (
-        <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
         </svg>
       ),
@@ -124,7 +125,7 @@ export default function Profile() {
     {
       to: '/profile/email-preferences',
       icon: (
-        <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
         </svg>
       ),
@@ -133,7 +134,7 @@ export default function Profile() {
     {
       to: '/how-to-play',
       icon: (
-        <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       ),
@@ -142,7 +143,7 @@ export default function Profile() {
     {
       to: 'mailto:hello@playtotl.com',
       icon: (
-        <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
         </svg>
       ),
@@ -151,7 +152,7 @@ export default function Profile() {
     {
       to: '/cookie-policy',
       icon: (
-        <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
         </svg>
       ),
@@ -160,7 +161,7 @@ export default function Profile() {
     {
       to: '/privacy-policy',
       icon: (
-        <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
         </svg>
       ),
@@ -169,7 +170,7 @@ export default function Profile() {
     {
       to: '/terms-and-conditions',
       icon: (
-        <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
       ),
@@ -178,7 +179,7 @@ export default function Profile() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 overflow-x-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 overflow-x-hidden">
       <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 py-6 sm:p-6">
         {/* Page Title */}
         <PageHeader title="Profile" as="h1" className="mb-6" />
@@ -191,6 +192,12 @@ export default function Profile() {
           loading={loading}
         />
 
+        {/* Theme Toggle */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 mt-6">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Appearance</h2>
+          <ThemeToggle />
+        </div>
+
         {/* Account Menu */}
         <AccountMenu
           email={user.email || ''}
@@ -202,7 +209,7 @@ export default function Profile() {
 
         {/* Admin Link - Separate section */}
           {isAdmin && (
-          <div className="bg-white rounded-xl shadow-md p-6 mt-6">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 mt-6">
                 <Link
               to="/admin-data"
                   className="block w-full py-3 bg-[#1C8376] text-white font-semibold rounded-xl text-center"

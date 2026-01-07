@@ -750,7 +750,7 @@ export default function GlobalLeaderboardPage() {
   }, [loading, user?.id, activeTab, rowsFiltered, form5Rows, form10Rows, lastGwRows]);
 
   return (
-    <div className="fixed inset-0 bg-slate-50 overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-slate-50 dark:bg-slate-900 overflow-hidden flex flex-col">
       <style>{`
         @keyframes sparkle {
           0%, 100% {
@@ -787,10 +787,13 @@ export default function GlobalLeaderboardPage() {
           background-color: #cbd5e1;
           z-index: 1;
         }
+        .dark .full-width-header-border::after {
+          background-color: #475569;
+        }
       `}</style>
       <div className="max-w-6xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 pb-0 flex-1 flex flex-col overflow-hidden">
         {/* Fixed Header Section */}
-        <div className="flex-shrink-0 bg-slate-50 border-b border-slate-200">
+        <div className="flex-shrink-0 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
           {/* Title Row */}
           <div className="py-4">
             <div className="flex items-center gap-3">
@@ -826,13 +829,13 @@ export default function GlobalLeaderboardPage() {
 
           {/* Tabs */}
           <div className="flex justify-center pb-4 lg:pt-4">
-            <div className="flex rounded-full bg-slate-100 p-1.5 border border-slate-200 shadow-sm w-full max-w-md">
+            <div className="flex rounded-full bg-slate-100 dark:bg-slate-800 p-1.5 border border-slate-200 dark:border-slate-700 shadow-sm w-full max-w-md">
               <button
                 onClick={() => handleTabChange("lastgw")}
                 className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
                   activeTab === "lastgw"
                     ? "bg-[#1C8376] text-white shadow-md"
-                    : "text-slate-600"
+                    : "text-slate-600 dark:text-slate-400"
                 }`}
               >
                 GW
@@ -842,7 +845,7 @@ export default function GlobalLeaderboardPage() {
                 className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
                   activeTab === "form5"
                     ? "bg-[#1C8376] text-white shadow-md"
-                    : "text-slate-600"
+                    : "text-slate-600 dark:text-slate-400"
                 }`}
               >
                 5
@@ -852,7 +855,7 @@ export default function GlobalLeaderboardPage() {
                 className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
                   activeTab === "form10"
                     ? "bg-[#1C8376] text-white shadow-md"
-                    : "text-slate-600"
+                    : "text-slate-600 dark:text-slate-400"
                 }`}
               >
                 10
@@ -862,7 +865,7 @@ export default function GlobalLeaderboardPage() {
                 className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all flex items-center justify-center ${
                   activeTab === "overall"
                     ? "bg-[#1C8376] text-white shadow-md"
-                    : "text-slate-600"
+                    : "text-slate-600 dark:text-slate-400"
                 }`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="w-5 h-5">
@@ -886,7 +889,7 @@ export default function GlobalLeaderboardPage() {
           {/* Tab Subtitles */}
           {activeTab === "overall" && (
             <div className="text-center pb-3">
-              <div className="text-sm text-slate-600">
+              <div className="text-sm text-slate-600 dark:text-slate-400">
                 All Players since the start of the season
               </div>
             </div>
@@ -895,7 +898,7 @@ export default function GlobalLeaderboardPage() {
           {activeTab === "form5" && (
             <div className="text-center pb-3">
               {latestGw && latestGw >= 5 ? (
-                <div className="text-sm text-slate-600">
+                <div className="text-sm text-slate-600 dark:text-slate-400">
                   All Players who completed the last 5 Gameweeks
                 </div>
               ) : (
@@ -909,7 +912,7 @@ export default function GlobalLeaderboardPage() {
           {activeTab === "form10" && (
             <div className="text-center pb-3">
               {latestGw && latestGw >= 10 ? (
-                <div className="text-sm text-slate-600">
+                <div className="text-sm text-slate-600 dark:text-slate-400">
                   All Players who completed the last 10 Gameweeks
                 </div>
               ) : (
@@ -922,7 +925,7 @@ export default function GlobalLeaderboardPage() {
           
           {activeTab === "lastgw" && (
             <div className="text-center pb-3">
-              <div className="text-sm text-slate-600">
+              <div className="text-sm text-slate-600 dark:text-slate-400">
                 All players who submitted for GW{isCurrentGwLive && currentGwFromMeta ? currentGwFromMeta : latestGw}
               </div>
             </div>
@@ -931,7 +934,7 @@ export default function GlobalLeaderboardPage() {
 
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         {err && (
-            <div className="mb-6 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 flex-shrink-0">
+            <div className="mb-6 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/30 px-3 py-2 text-sm text-red-700 dark:text-red-400 flex-shrink-0">
             {err}
           </div>
         )}
@@ -941,27 +944,27 @@ export default function GlobalLeaderboardPage() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
           </div>
         ) : activeTab === "form5" && latestGw && latestGw < 5 ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center">
-            <div className="text-lg font-semibold text-slate-700 mb-2">5 Week Form Leaderboard Coming Soon</div>
-            <div className="text-slate-600">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-12 text-center">
+            <div className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-2">5 Week Form Leaderboard Coming Soon</div>
+            <div className="text-slate-600 dark:text-slate-400">
               Complete 5 gameweeks in a row to unlock the 5 Week Form Leaderboard and see who's in the best form!
             </div>
           </div>
         ) : activeTab === "form10" && latestGw && latestGw < 10 ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center">
-            <div className="text-lg font-semibold text-slate-700 mb-2">10 Week Form Leaderboard Coming Soon</div>
-            <div className="text-slate-600">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-12 text-center">
+            <div className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-2">10 Week Form Leaderboard Coming Soon</div>
+            <div className="text-slate-600 dark:text-slate-400">
               Complete 10 gameweeks in a row to unlock the 10 Week Form Leaderboard and see who's in the best form!
             </div>
           </div>
         ) : (activeTab === "overall" ? rowsFiltered : activeTab === "form5" ? form5Rows : activeTab === "form10" ? form10Rows : lastGwRows).length === 0 ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-600">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 text-slate-600 dark:text-slate-400">
             No leaderboard data yet.
           </div>
         ) : (
           <div 
             ref={tableContainerRef}
-            className="flex-1 overflow-y-auto overflow-x-hidden -mx-4 sm:mx-0 rounded-none sm:rounded-2xl border-x-0 sm:border-x border-b border-slate-200 bg-slate-50 shadow-sm"
+            className="flex-1 overflow-y-auto overflow-x-hidden -mx-4 sm:mx-0 rounded-none sm:rounded-2xl border-x-0 sm:border-x border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 shadow-sm"
             style={{ 
               overscrollBehavior: 'contain',
               WebkitOverflowScrolling: 'touch',
@@ -970,21 +973,21 @@ export default function GlobalLeaderboardPage() {
               paddingBottom: '100px',
               paddingLeft: '1rem',
               paddingRight: '1rem',
-              backgroundColor: '#f8fafc',
+              backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc',
               touchAction: 'pan-y'
             }}
           >
-            <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: '#f8fafc' }}>
-              <thead className="sticky top-0 z-[25] full-width-header-border bg-slate-50" style={{ 
+            <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc' }}>
+              <thead className="sticky top-0 z-[25] full-width-header-border bg-slate-50 dark:bg-slate-800" style={{ 
                 display: 'table-header-group'
               } as any}>
-                <tr className="border-b border-slate-200">
-                  <th className="py-3 text-left font-normal bg-slate-50" style={{ width: '35px', paddingLeft: '0.5rem', paddingRight: '0.25rem', color: '#64748b' }}>#</th>
-                  <th className="px-4 py-3 text-left font-normal text-xs bg-slate-50" style={{ color: '#64748b', width: 'auto' }}>Player</th>
+                <tr className="border-b border-slate-200 dark:border-slate-700">
+                  <th className="py-3 text-left font-normal bg-slate-50 dark:bg-slate-800" style={{ width: '35px', paddingLeft: '0.5rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#64748b' }}>#</th>
+                  <th className="px-4 py-3 text-left font-normal text-xs bg-slate-50 dark:bg-slate-800" style={{ color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#64748b', width: 'auto' }}>Player</th>
                   {activeTab === "overall" && (
                     <>
-                      <th className="px-4 py-3 text-center font-semibold bg-slate-50" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
-                      <th className="px-1 py-3 text-center font-normal bg-slate-50 text-slate-500" style={{ width: '55px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
+                      <th className="px-4 py-3 text-center font-semibold bg-slate-50 dark:bg-slate-800" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
+                      <th className="px-1 py-3 text-center font-normal bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400" style={{ width: '55px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
                         <div className="flex items-center justify-center gap-1">
                           GW{isCurrentGwLive && currentGwFromMeta ? currentGwFromMeta : latestGw || '?'}
                           {isCurrentGwLive && currentGwFromMeta && (
@@ -995,7 +998,7 @@ export default function GlobalLeaderboardPage() {
                           )}
                         </div>
                       </th>
-                      <th className="py-3 text-center font-normal bg-slate-50 text-slate-500" style={{ width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
+                      <th className="py-3 text-center font-normal bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400" style={{ width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
                         <div className="flex items-center justify-center gap-1">
                           OCP
                           {isCurrentGwLive && currentGwFromMeta && (
@@ -1010,14 +1013,14 @@ export default function GlobalLeaderboardPage() {
                   )}
                   {(activeTab === "form5" || activeTab === "form10") && (
                     <>
-                      <th className="px-4 py-3 text-center font-semibold bg-slate-50" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
-                      <th className="py-3 text-center font-normal bg-slate-50 text-slate-500" style={{ width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>PTS</th>
+                      <th className="px-4 py-3 text-center font-semibold bg-slate-50 dark:bg-slate-800" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
+                      <th className="py-3 text-center font-normal bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400" style={{ width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>PTS</th>
                     </>
                   )}
                   {activeTab === "lastgw" && (
                     <>
-                      <th className="px-4 py-3 text-center font-semibold bg-slate-50" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
-                      <th className="py-3 text-center font-normal bg-slate-50 text-slate-500" style={{ width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
+                      <th className="px-4 py-3 text-center font-semibold bg-slate-50 dark:bg-slate-800" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
+                      <th className="py-3 text-center font-normal bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400" style={{ width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
                         <div className="flex items-center justify-center gap-1">
                           GW{(isCurrentGwLive && currentGwFromMeta) ? currentGwFromMeta : (latestGw || '?')}
                           {isCurrentGwLive && currentGwFromMeta && (
@@ -1074,7 +1077,10 @@ export default function GlobalLeaderboardPage() {
                   }
 
                   // Highlight entire row for current user - make it very obvious
-                  const rowBgColor = isMe ? '#a7f3d0' : '#f8fafc';
+                  const isDark = document.documentElement.classList.contains('dark');
+                  const rowBgColor = isMe 
+                    ? (isDark ? '#065f46' : '#a7f3d0')
+                    : (isDark ? '#0f172a' : '#f8fafc');
                   
                   return (
                     <tr 
@@ -1084,14 +1090,14 @@ export default function GlobalLeaderboardPage() {
                       className={`cursor-pointer ${isMe ? 'border-l-4 border-emerald-600 shadow-sm' : ''}`}
                       style={{
                         ...(i > 0 ? { 
-                          borderTop: '1px solid #e2e8f0',
+                          borderTop: isDark ? '1px solid #334155' : '1px solid #e2e8f0',
                           position: 'relative',
                           backgroundColor: rowBgColor
                         } : { position: 'relative', backgroundColor: rowBgColor })
                       }}
                     >
                       {/* Rank number only */}
-                      <td className="py-3 text-left tabular-nums whitespace-nowrap relative" style={{ 
+                      <td className="py-3 text-left tabular-nums whitespace-nowrap relative text-slate-900 dark:text-slate-100" style={{ 
                         width: '35px',
                         paddingLeft: '0.5rem', 
                         paddingRight: '0.25rem',
@@ -1116,7 +1122,7 @@ export default function GlobalLeaderboardPage() {
                               userId={r.user_id}
                               name={r.name}
                               size={24}
-                              className="border border-slate-200"
+                              className="border border-slate-200 dark:border-slate-700"
                               fallbackToInitials={true}
                             />
                           </div>
@@ -1129,7 +1135,7 @@ export default function GlobalLeaderboardPage() {
                               </svg>
                             </span>
                           )}
-                          <span className={`text-xs truncate min-w-0 whitespace-nowrap ${isMe ? 'font-bold text-emerald-900' : 'font-normal'}`} style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <span className={`text-xs truncate min-w-0 whitespace-nowrap ${isMe ? 'font-bold text-emerald-900 dark:text-emerald-300' : 'font-normal text-slate-900 dark:text-slate-100'}`} style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {r.name}
                           </span>
                         </div>
@@ -1138,11 +1144,11 @@ export default function GlobalLeaderboardPage() {
                       {/* Overall tab columns */}
                       {activeTab === "overall" && (
                         <>
-                          <td className="px-4 py-3 text-center tabular-nums font-bold" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: rowBgColor }}></td>
-                          <td className="px-1 py-3 text-center tabular-nums font-bold" style={{ width: '55px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: rowBgColor }}>
+                          <td className="px-4 py-3 text-center tabular-nums font-bold text-slate-900 dark:text-slate-100" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: rowBgColor }}></td>
+                          <td className="px-1 py-3 text-center tabular-nums font-bold text-slate-900 dark:text-slate-100" style={{ width: '55px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: rowBgColor }}>
                             {'this_gw' in r ? r.this_gw : 0}
                           </td>
-                          <td className="py-3 text-center tabular-nums font-bold" style={{ 
+                          <td className="py-3 text-center tabular-nums font-bold text-slate-900 dark:text-slate-100" style={{ 
                             width: '60px',
                             paddingLeft: '0.5rem', 
                             paddingRight: '0.5rem',
@@ -1156,23 +1162,23 @@ export default function GlobalLeaderboardPage() {
                       {/* Form tab columns (both 5 Week and 10 Week) */}
                       {(activeTab === "form5" || activeTab === "form10") && (
                         <>
-                          <td className="px-4 py-3 text-center tabular-nums font-bold" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: rowBgColor }}></td>
-                          <td className="py-3 text-center tabular-nums font-bold" style={{ 
+                          <td className="px-4 py-3 text-center tabular-nums font-bold text-slate-900 dark:text-slate-100" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: rowBgColor }}></td>
+                          <td className="py-3 text-center tabular-nums font-bold text-slate-900 dark:text-slate-100" style={{ 
                             width: '60px',
                             paddingLeft: '0.5rem', 
                             paddingRight: '0.5rem',
                             backgroundColor: rowBgColor
                           }}>
                             {'formPoints' in r ? r.formPoints : 0}
-                        </td>
+                          </td>
                         </>
                       )}
                       
                       {/* Last GW tab columns */}
                       {activeTab === "lastgw" && (
                         <>
-                          <td className="px-4 py-3 text-center tabular-nums font-bold" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: rowBgColor }}></td>
-                          <td className="py-3 text-center tabular-nums font-bold" style={{ 
+                          <td className="px-4 py-3 text-center tabular-nums font-bold text-slate-900 dark:text-slate-100" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: rowBgColor }}></td>
+                          <td className="py-3 text-center tabular-nums font-bold text-slate-900 dark:text-slate-100" style={{ 
                             width: '60px',
                             paddingLeft: '0.5rem', 
                             paddingRight: '0.5rem',

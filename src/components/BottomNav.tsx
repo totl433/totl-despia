@@ -367,7 +367,7 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
         }
       `}</style>
       <div className={`bottom-nav-absolute lg:hidden flex items-center justify-center px-4 pb-8 ${shouldHide ? 'bottom-nav-slide-out' : 'bottom-nav-slide-in'}`}>
-        <div ref={containerRef} className="bg-white border border-[#E5E7EB] flex items-center relative overflow-hidden" style={{ width: '360px', height: '70px', borderRadius: '60px', marginBottom: '1.5rem' }}>
+        <div ref={containerRef} className="bg-white dark:bg-slate-800 border border-[#E5E7EB] dark:border-slate-700 flex items-center relative overflow-hidden" style={{ width: '360px', height: '70px', borderRadius: '60px', marginBottom: '1.5rem' }}>
           {/* Active state indicator */}
           {indicatorStyle && (
             <div 
@@ -406,7 +406,7 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
                   style={{ 
                     height: '26px',
                     padding: '4px',
-                    ...(shouldShine ? {} : { color: isActive ? '#1C8376' : '#353536' }),
+                    ...(shouldShine ? {} : { color: isActive ? '#1C8376' : document.documentElement.classList.contains('dark') ? '#e2e8f0' : '#353536' }),
                   }}
                 >
                   <div className={`flex items-center justify-center ${shouldShine ? 'predictions-shiny-icon-wrapper' : ''}`} style={{ height: '21px', width: 'auto', position: 'relative' }}>
@@ -431,7 +431,7 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
                     className={`relative z-10 font-medium whitespace-nowrap text-[8px] ${shouldShine ? 'predictions-shiny-text' : ''}`}
                     style={{ 
                       lineHeight: '10px',
-                      color: isActive ? '#1C8376' : '#353536',
+                      color: isActive ? '#1C8376' : document.documentElement.classList.contains('dark') ? '#e2e8f0' : '#353536',
                       textAlign: 'center',
                       maxWidth: '100%',
                     }}

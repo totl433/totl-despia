@@ -142,39 +142,39 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
 
   // Button styling helper
   const getButtonClass = (state: { isPicked: boolean; isCorrectResult: boolean; isCorrect: boolean; isWrong: boolean }) => {
-    const base = "h-16 rounded-xl border text-sm font-medium transition-all select-none";
+    const base = "h-16 rounded-xl text-sm font-medium transition-all select-none border-0";
     if (isLive || isOngoing) {
       // Game is live or ongoing
       if (state.isCorrect) {
-        return `${base} bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-lg shadow-emerald-500/50`;
+        return `${base} bg-emerald-600 text-white animate-pulse shadow-lg shadow-emerald-500/50`;
       } else if (state.isWrong) {
-        return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+        return `${base} bg-[#1C8376] text-white`;
       } else if (state.isPicked) {
-        return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+        return `${base} bg-[#1C8376] text-white`;
       } else if (state.isCorrectResult && !state.isPicked) {
-        return `${base} bg-slate-50 text-slate-600 border-2 border-slate-300 animate-pulse`;
+        return `${base} bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-2 border-emerald-600 animate-pulse`;
       } else {
-        return `${base} bg-slate-50 text-slate-600 border-slate-200`;
+        return `${base} bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300`;
       }
     } else if (isFinished) {
       // Game is finished
       if (state.isCorrect) {
         return `${base} bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-2xl shadow-yellow-400/40 transform scale-110 rotate-1 relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]`;
       } else if (state.isWrong) {
-        return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+        return `${base} bg-[#1C8376] text-white`;
       } else if (state.isCorrectResult && !state.isPicked) {
-        return `${base} bg-slate-50 text-slate-600 border-4 border-emerald-600`;
+        return `${base} bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-4 border-emerald-600`;
       } else if (state.isPicked) {
-        return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+        return `${base} bg-[#1C8376] text-white`;
       } else {
-        return `${base} bg-slate-50 text-slate-600 border-slate-200`;
+        return `${base} bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300`;
       }
     } else {
       // Game hasn't started yet
       if (state.isPicked) {
-        return `${base} bg-[#1C8376] text-white border-[#1C8376]`;
+        return `${base} bg-[#1C8376] text-white`;
       } else {
-        return `${base} bg-slate-50 text-slate-600 border-slate-200`;
+        return `${base} bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300`;
       }
     }
   };
@@ -494,7 +494,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
             g.isOwnGoal ? `${g.minute}' (OG)` : `${g.minute}'`
           ).join(', ');
           return (
-            <span key={idx} className="text-xs text-slate-600">
+            <span key={idx} className="text-xs text-slate-600 dark:text-slate-300">
               {surname} {minutesDisplay}
             </span>
           );
@@ -504,7 +504,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
   };
 
   return (
-    <div className="p-4 !bg-white relative z-0">
+    <div className="p-4 !bg-white dark:!bg-slate-800 relative z-0 border-0">
       {/* LIVE indicator */}
       {showLiveIndicator && (
         <div className="absolute top-3 left-3 flex items-center gap-2 z-10 pb-6">
@@ -520,7 +520,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
           {/* Home Team */}
           <div className="flex-1 flex flex-col items-end">
             <div className="flex items-center gap-1 relative">
-              <div className={`break-words ${homeIsWinning ? 'font-bold' : 'font-medium'}`}>
+              <div className={`break-words text-slate-900 dark:text-slate-100 ${homeIsWinning ? 'font-bold' : 'font-medium'}`}>
                 {homeName}
               </div>
               <div className="relative flex flex-col items-center">
@@ -547,27 +547,27 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
                     {showRedCards && getRedCardCount(homeName, true) > 0 && (
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-1.5 h-2.5 bg-red-600 rounded-sm z-10"></div>
                     )}
-                    <span className="font-bold text-base text-slate-900">
+                    <span className="font-bold text-base text-slate-900 dark:text-slate-100">
                       {liveScore!.homeScore}
                     </span>
                   </div>
-                  <span className="font-bold text-base text-slate-900">-</span>
+                  <span className="font-bold text-base text-slate-900 dark:text-slate-100">-</span>
                   {/* Away score with red card */}
                   <div className="relative flex flex-col items-center">
                     {showRedCards && getRedCardCount(awayName, false) > 0 && (
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-1.5 h-2.5 bg-red-600 rounded-sm z-10"></div>
                     )}
-                    <span className="font-bold text-base text-slate-900">
+                    <span className="font-bold text-base text-slate-900 dark:text-slate-100">
                       {liveScore!.awayScore}
                     </span>
                   </div>
                 </div>
-                <span className={`text-[10px] font-semibold mt-0.5 ${isOngoing ? 'text-red-600' : 'text-slate-500'}`}>
+                <span className={`text-[10px] font-semibold mt-0.5 ${isOngoing ? 'text-red-600' : 'text-slate-500 dark:text-slate-400'}`}>
                   {formatMinuteDisplay(liveScore!.status, liveScore!.minute)}
                 </span>
               </>
             ) : (
-              showKickoff && <span className="text-slate-500 text-sm">{kickoff}</span>
+              showKickoff && <span className="text-slate-500 dark:text-slate-400 text-sm">{kickoff}</span>
             )}
           </div>
 
@@ -584,7 +584,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
                   }}
                 />
               </div>
-              <div className={`break-words ${awayIsWinning ? 'font-bold' : 'font-medium'}`}>
+              <div className={`break-words text-slate-900 dark:text-slate-100 ${awayIsWinning ? 'font-bold' : 'font-medium'}`}>
                 {awayName}
               </div>
             </div>

@@ -245,36 +245,36 @@ export default function NotificationCentre() {
  }
 
  if (!user) {
- return (
- <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
- <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6">
- <div className="bg-white rounded-xl shadow-md p-6 text-center">
- <p className="text-slate-600">Please sign in to view your notification preferences.</p>
- </div>
- </div>
- </div>
- );
- }
+    return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6">
+    <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6">
+    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 text-center">
+    <p className="text-slate-600 dark:text-slate-300">Please sign in to view your notification preferences.</p>
+    </div>
+    </div>
+    </div>
+    );
+  }
 
- if (loading) {
- return (
- <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
- <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6">
- <div className="bg-white rounded-xl shadow-md p-6 text-center">
- <p className="text-slate-600">Loading notification preferences...</p>
- </div>
- </div>
- </div>
- );
- }
+  if (loading) {
+    return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6">
+    <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6">
+    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 text-center">
+    <p className="text-slate-600 dark:text-slate-300">Loading notification preferences...</p>
+    </div>
+    </div>
+    </div>
+    );
+  }
 
- return (
- <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
- <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 py-6">
- <Link
- to="/profile"
- className="inline-flex items-center gap-2 text-slate-600 mb-4"
- >
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+    <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 py-6">
+    <Link
+    to="/profile"
+    className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-400 mb-4"
+    >
  <svg
  className="w-5 h-5"
  fill="none"
@@ -295,48 +295,48 @@ export default function NotificationCentre() {
 
  {/* Push Notification Status Banner */}
  {pushState && (
- <div className={`rounded-xl p-4 mb-6 ${
- pushState.effectiveState === 'allowed' 
- ? 'bg-emerald-50 border border-emerald-200' 
- : pushState.effectiveState === 'muted_by_os'
- ? 'bg-amber-50 border border-amber-200'
- : 'bg-slate-50 border border-slate-200'
- }`}>
- <div className="flex items-start gap-3">
- {pushState.effectiveState === 'allowed' ? (
- <svg className="w-6 h-6 text-emerald-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
- <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
- </svg>
- ) : pushState.effectiveState === 'muted_by_os' ? (
- <svg className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
- <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
- </svg>
- ) : (
- <svg className="w-6 h-6 text-slate-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
- <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
- </svg>
- )}
- <div className="flex-1">
- <h3 className={`font-semibold ${
- pushState.effectiveState === 'allowed' 
- ? 'text-emerald-800' 
- : pushState.effectiveState === 'muted_by_os'
- ? 'text-amber-800'
- : 'text-slate-700'
- }`}>
- {pushState.effectiveState === 'allowed' 
- ? 'Push Notifications Enabled' 
- : pushState.effectiveState === 'muted_by_os'
- ? 'Push Notifications Blocked'
- : 'Push Notifications Unavailable'}
- </h3>
- <p className={`text-sm mt-1 ${
- pushState.effectiveState === 'allowed' 
- ? 'text-emerald-700' 
- : pushState.effectiveState === 'muted_by_os'
- ? 'text-amber-700'
- : 'text-slate-600'
- }`}>
+    <div className={`rounded-xl p-4 mb-6 ${
+    pushState.effectiveState === 'allowed' 
+    ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800' 
+    : pushState.effectiveState === 'muted_by_os'
+    ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800'
+    : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+    }`}>
+    <div className="flex items-start gap-3">
+    {pushState.effectiveState === 'allowed' ? (
+    <svg className="w-6 h-6 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    ) : pushState.effectiveState === 'muted_by_os' ? (
+    <svg className="w-6 h-6 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+    ) : (
+    <svg className="w-6 h-6 text-slate-500 dark:text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    )}
+    <div className="flex-1">
+    <h3 className={`font-semibold ${
+    pushState.effectiveState === 'allowed' 
+    ? 'text-emerald-800 dark:text-emerald-300' 
+    : pushState.effectiveState === 'muted_by_os'
+    ? 'text-amber-800 dark:text-amber-300'
+    : 'text-slate-700 dark:text-slate-300'
+    }`}>
+    {pushState.effectiveState === 'allowed' 
+    ? 'Push Notifications Enabled' 
+    : pushState.effectiveState === 'muted_by_os'
+    ? 'Push Notifications Blocked'
+    : 'Push Notifications Unavailable'}
+    </h3>
+    <p className={`text-sm mt-1 ${
+    pushState.effectiveState === 'allowed' 
+    ? 'text-emerald-700 dark:text-emerald-300' 
+    : pushState.effectiveState === 'muted_by_os'
+    ? 'text-amber-700 dark:text-amber-300'
+    : 'text-slate-600 dark:text-slate-400'
+    }`}>
  {pushState.effectiveState === 'allowed' 
  ? 'You will receive push notifications based on your preferences below.' 
  : pushState.effectiveState === 'muted_by_os'
@@ -371,11 +371,11 @@ export default function NotificationCentre() {
  />
  </div>
 
- {saving && (
- <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
- <p className="text-sm text-blue-800">Saving preferences...</p>
- </div>
- )}
+    {saving && (
+    <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 text-center">
+    <p className="text-sm text-blue-800 dark:text-blue-300">Saving preferences...</p>
+    </div>
+    )}
  </div>
  </div>
  );

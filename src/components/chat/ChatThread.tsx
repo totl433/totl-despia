@@ -46,7 +46,7 @@ export function ChatThread({ groups, reactions, onReactionClick, onMessageClick 
       {groups.map((group, index) => (
         <div key={`${group.id}-${group.author}-${index}`} className="flex flex-col gap-3">
           {group.dayLabel && (
-            <div className="text-center text-xs uppercase tracking-wide text-slate-400">
+            <div className="text-center text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">
               {group.dayLabel}
             </div>
           )}

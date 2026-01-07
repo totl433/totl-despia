@@ -7,10 +7,12 @@ import './index.css'
  * This story documents all design system tokens including:
  * - Font families and weights
  * - Complete color palette (Tailwind + custom colors)
+ * - Dark mode color mappings
  * - Typography scale and usage patterns
  * - Gradients used throughout the app
  * 
  * Note: This is an app-first design - no hover states are used anywhere in the application.
+ * Dark mode uses Tailwind's `dark:` variant classes and respects system preference by default.
  */
 
 const meta: Meta = {
@@ -90,45 +92,94 @@ export const Fonts: Story = {
  */
 export const Colors: Story = {
   render: () => (
-    <div className="p-8 space-y-12 bg-white">
+    <div className="p-8 space-y-12 bg-white dark:bg-slate-900">
       <div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-6">Color Palette</h2>
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-6">Color Palette</h2>
+        
+        {/* Dark Mode Info */}
+        <div className="mb-8 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-2">Dark Mode Support</h3>
+          <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
+            TOTL Web supports dark mode using Tailwind CSS's <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">dark:</code> variant classes.
+          </p>
+          <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
+            <strong>Implementation:</strong> Uses class-based dark mode (<code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">darkMode: 'class'</code>) with system preference detection.
+          </p>
+          <p className="text-sm text-blue-800 dark:text-blue-200">
+            <strong>Usage:</strong> Add <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">dark:</code> variants to your classes, e.g., <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">bg-white dark:bg-slate-800</code>
+          </p>
+        </div>
+
+        {/* Dark Mode Color Mappings */}
+        <div className="mb-12 p-6 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-4">Dark Mode Color Mappings</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Light Mode → Dark Mode</p>
+              <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-1">
+                <li><code className="bg-white dark:bg-slate-700 px-1 rounded">bg-white</code> → <code className="bg-white dark:bg-slate-700 px-1 rounded">dark:bg-slate-800</code></li>
+                <li><code className="bg-white dark:bg-slate-700 px-1 rounded">bg-[#f5f7f6]</code> → <code className="bg-white dark:bg-slate-700 px-1 rounded">dark:bg-slate-900</code></li>
+                <li><code className="bg-white dark:bg-slate-700 px-1 rounded">text-slate-900</code> → <code className="bg-white dark:bg-slate-700 px-1 rounded">dark:text-slate-100</code></li>
+                <li><code className="bg-white dark:bg-slate-700 px-1 rounded">text-slate-600</code> → <code className="bg-white dark:bg-slate-700 px-1 rounded">dark:text-slate-400</code></li>
+                <li><code className="bg-white dark:bg-slate-700 px-1 rounded">border-slate-200</code> → <code className="bg-white dark:bg-slate-700 px-1 rounded">dark:border-slate-700</code></li>
+              </ul>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Example Usage</p>
+              <div className="text-xs text-slate-600 dark:text-slate-400 space-y-1 font-mono">
+                <div className="bg-white dark:bg-slate-700 p-2 rounded">
+                  <div className="text-slate-500 dark:text-slate-400">Card:</div>
+                  <div>bg-white dark:bg-slate-800</div>
+                </div>
+                <div className="bg-white dark:bg-slate-700 p-2 rounded mt-2">
+                  <div className="text-slate-500 dark:text-slate-400">Text:</div>
+                  <div>text-slate-900 dark:text-slate-100</div>
+                </div>
+                <div className="bg-white dark:bg-slate-700 p-2 rounded mt-2">
+                  <div className="text-slate-500 dark:text-slate-400">Border:</div>
+                  <div>border-slate-200 dark:border-slate-700</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Primary/Brand Colors */}
         <div className="mb-12">
-          <h3 className="text-xl font-bold text-slate-800 mb-4">Primary/Brand Colors</h3>
+          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-4">Primary/Brand Colors</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
               <div className="h-24 bg-[#1C8376]"></div>
-              <div className="p-4 bg-white">
-                <p className="font-semibold text-slate-900">Primary Teal</p>
-                <p className="text-sm text-slate-600 font-mono">#1C8376</p>
-                <p className="text-xs text-slate-500 mt-2">Main brand color - buttons, links, highlights</p>
-                <p className="text-xs text-slate-500 mt-1">Tailwind: <code className="bg-slate-100 px-1 rounded">bg-[#1C8376]</code></p>
+              <div className="p-4 bg-white dark:bg-slate-800">
+                <p className="font-semibold text-slate-900 dark:text-slate-100">Primary Teal</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 font-mono">#1C8376</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Main brand color - buttons, links, highlights</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Tailwind: <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">bg-[#1C8376]</code></p>
               </div>
             </div>
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
               <div className="h-24 bg-[#156b60]"></div>
-              <div className="p-4 bg-white">
-                <p className="font-semibold text-slate-900">Primary Dark</p>
-                <p className="text-sm text-slate-600 font-mono">#156b60</p>
-                <p className="text-xs text-slate-500 mt-2">Darker variant of primary color (available but not commonly used)</p>
+              <div className="p-4 bg-white dark:bg-slate-800">
+                <p className="font-semibold text-slate-900 dark:text-slate-100">Primary Dark</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 font-mono">#156b60</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Darker variant of primary color (available but not commonly used)</p>
               </div>
             </div>
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
               <div className="h-24 bg-[#1C8376]/90"></div>
-              <div className="p-4 bg-white">
-                <p className="font-semibold text-slate-900">Primary 90% Opacity</p>
-                <p className="text-sm text-slate-600 font-mono">#1C8376/90</p>
-                <p className="text-xs text-slate-500 mt-2">Semi-transparent variant for overlays and subtle backgrounds</p>
+              <div className="p-4 bg-white dark:bg-slate-800">
+                <p className="font-semibold text-slate-900 dark:text-slate-100">Primary 90% Opacity</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 font-mono">#1C8376/90</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Semi-transparent variant for overlays and subtle backgrounds</p>
               </div>
             </div>
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <div className="h-24 bg-[#f5f7f6]"></div>
-              <div className="p-4 bg-white">
-                <p className="font-semibold text-slate-900">Background</p>
-                <p className="text-sm text-slate-600 font-mono">#f5f7f6</p>
-                <p className="text-xs text-slate-500 mt-2">Page background color</p>
+            <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+              <div className="h-24 bg-[#f5f7f6] dark:bg-slate-900"></div>
+              <div className="p-4 bg-white dark:bg-slate-800">
+                <p className="font-semibold text-slate-900 dark:text-slate-100">Background</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 font-mono">#f5f7f6 / #0f172a</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Page background color (light/dark)</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Tailwind: <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">bg-[#f5f7f6] dark:bg-slate-900</code></p>
               </div>
             </div>
           </div>
@@ -136,7 +187,7 @@ export const Colors: Story = {
 
         {/* Tailwind Slate Colors */}
         <div className="mb-12">
-          <h3 className="text-xl font-bold text-slate-800 mb-4">Slate Colors (Neutrals)</h3>
+          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-4">Slate Colors (Neutrals)</h3>
           <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-4">
             {[
               { name: 'Slate 50', class: 'bg-slate-50', hex: '#f8fafc' },
@@ -150,17 +201,18 @@ export const Colors: Story = {
               { name: 'Slate 800', class: 'bg-slate-800', hex: '#1e293b' },
               { name: 'Slate 900', class: 'bg-slate-900', hex: '#0f172a' },
             ].map((color) => (
-              <div key={color.name} className="border border-slate-200 rounded-lg overflow-hidden">
+              <div key={color.name} className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
                 <div className={`h-16 ${color.class}`}></div>
-                <div className="p-3 bg-white">
-                  <p className="text-xs font-semibold text-slate-900">{color.name}</p>
-                  <p className="text-xs text-slate-600 font-mono">{color.hex}</p>
+                <div className="p-3 bg-white dark:bg-slate-800">
+                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">{color.name}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 font-mono">{color.hex}</p>
                 </div>
               </div>
             ))}
           </div>
-          <p className="text-sm text-slate-600 mt-4">
-            Usage: Body text (800), secondary text (600, 700), borders (200, 300), backgrounds (50, 100)
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-4">
+            Usage: Body text (800), secondary text (600, 700), borders (200, 300), backgrounds (50, 100). 
+            In dark mode: Use slate-800/900 for backgrounds, slate-100/200 for text.
           </p>
         </div>
 
@@ -177,16 +229,16 @@ export const Colors: Story = {
               { name: 'Emerald 800', class: 'bg-emerald-800', hex: '#065f46' },
               { name: 'Emerald 900', class: 'bg-emerald-900', hex: '#064e3b' },
             ].map((color) => (
-              <div key={color.name} className="border border-slate-200 rounded-lg overflow-hidden">
+              <div key={color.name} className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
                 <div className={`h-16 ${color.class}`}></div>
-                <div className="p-3 bg-white">
-                  <p className="text-xs font-semibold text-slate-900">{color.name}</p>
-                  <p className="text-xs text-slate-600 font-mono">{color.hex}</p>
+                <div className="p-3 bg-white dark:bg-slate-800">
+                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">{color.name}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 font-mono">{color.hex}</p>
                 </div>
               </div>
             ))}
           </div>
-          <p className="text-sm text-slate-600 mt-4">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-4">
             Usage: Success states, positive indicators, form validation, secondary buttons, accents. Note: Primary brand color #1C8376 is similar but distinct from emerald-600.
           </p>
         </div>
@@ -205,17 +257,17 @@ export const Colors: Story = {
               { name: 'Red 700', class: 'bg-red-700', hex: '#b91c1c', usage: 'Text for error messages' },
               { name: 'Red 800', class: 'bg-red-800', hex: '#991b1b', usage: 'Text for error messages' },
             ].map((color) => (
-              <div key={color.name} className="border border-slate-200 rounded-lg overflow-hidden">
+              <div key={color.name} className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
                 <div className={`h-16 ${color.class}`}></div>
-                <div className="p-3 bg-white">
-                  <p className="text-xs font-semibold text-slate-900">{color.name}</p>
-                  <p className="text-xs text-slate-600 font-mono">{color.hex}</p>
-                  <p className="text-xs text-slate-500 mt-1">{color.usage}</p>
+                <div className="p-3 bg-white dark:bg-slate-800">
+                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">{color.name}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 font-mono">{color.hex}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{color.usage}</p>
                 </div>
               </div>
             ))}
           </div>
-          <p className="text-sm text-slate-600 mt-4">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-4">
             <strong>Usage:</strong> Live indicators, error states, danger actions, delete buttons, incorrect picks, position down indicators. All rose colors have been standardized to red equivalents.
           </p>
         </div>
@@ -230,16 +282,16 @@ export const Colors: Story = {
               { name: 'Amber 700', class: 'bg-amber-700', hex: '#b45309' },
               { name: 'Amber 800', class: 'bg-amber-800', hex: '#92400e' },
             ].map((color) => (
-              <div key={color.name} className="border border-slate-200 rounded-lg overflow-hidden">
+              <div key={color.name} className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
                 <div className={`h-16 ${color.class}`}></div>
-                <div className="p-3 bg-white">
-                  <p className="text-xs font-semibold text-slate-900">{color.name}</p>
-                  <p className="text-xs text-slate-600 font-mono">{color.hex}</p>
+                <div className="p-3 bg-white dark:bg-slate-800">
+                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">{color.name}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 font-mono">{color.hex}</p>
                 </div>
               </div>
             ))}
           </div>
-          <p className="text-sm text-slate-600 mt-4">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-4">
             Usage: Warning states, info banners, starting soon indicators
           </p>
         </div>
@@ -255,16 +307,16 @@ export const Colors: Story = {
               { name: 'Blue 600/20', class: 'bg-blue-600/20', hex: '#2563eb/20' },
               { name: 'Blue 600/50', class: 'bg-blue-600/50', hex: '#2563eb/50' },
             ].map((color) => (
-              <div key={color.name} className="border border-slate-200 rounded-lg overflow-hidden">
+              <div key={color.name} className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
                 <div className={`h-16 ${color.class}`}></div>
-                <div className="p-3 bg-white">
-                  <p className="text-xs font-semibold text-slate-900">{color.name}</p>
-                  <p className="text-xs text-slate-600 font-mono">{color.hex}</p>
+                <div className="p-3 bg-white dark:bg-slate-800">
+                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">{color.name}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 font-mono">{color.hex}</p>
                 </div>
               </div>
             ))}
           </div>
-          <p className="text-sm text-slate-600 mt-4">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-4">
             Usage: Info states, links, secondary actions. All blue colors use blue-600 as the base with opacity variants for backgrounds and borders.
           </p>
         </div>
@@ -280,32 +332,32 @@ export const Colors: Story = {
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Primary/Button Gradient */}
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
                   <div className="h-24 bg-gradient-to-r from-emerald-500 to-teal-600"></div>
-                  <div className="p-4 bg-white">
-                    <p className="font-semibold text-slate-900">Primary Button Gradient</p>
-                    <p className="text-xs text-slate-600 font-mono mt-1">bg-gradient-to-r from-emerald-500 to-teal-600</p>
-                    <p className="text-xs text-slate-500 mt-2">Usage: Gameweek results buttons, primary CTAs</p>
+                  <div className="p-4 bg-white dark:bg-slate-800">
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">Primary Button Gradient</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 font-mono mt-1">bg-gradient-to-r from-emerald-500 to-teal-600</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Usage: Gameweek results buttons, primary CTAs</p>
                   </div>
                 </div>
 
                 {/* Banner Background Gradient */}
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
                   <div className="h-24 bg-gradient-to-br from-[#1C8376]/10 to-blue-600/10"></div>
-                  <div className="p-4 bg-white">
-                    <p className="font-semibold text-slate-900">Banner Background Gradient</p>
-                    <p className="text-xs text-slate-600 font-mono mt-1">bg-gradient-to-br from-[#1C8376]/10 to-blue-600/10</p>
-                    <p className="text-xs text-slate-500 mt-2">Usage: Subtle background gradients for banners</p>
+                  <div className="p-4 bg-white dark:bg-slate-800">
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">Banner Background Gradient</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 font-mono mt-1">bg-gradient-to-br from-[#1C8376]/10 to-blue-600/10</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Usage: Subtle background gradients for banners</p>
                   </div>
                 </div>
 
                 {/* Shiny/Unicorn Gradient */}
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
                   <div className="h-24 bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600"></div>
-                  <div className="p-4 bg-white">
-                    <p className="font-semibold text-slate-900">Shiny/Unicorn Gradient</p>
-                    <p className="text-xs text-slate-600 font-mono mt-1">bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600</p>
-                    <p className="text-xs text-slate-500 mt-2">Usage: Special badges, unicorn indicators</p>
+                  <div className="p-4 bg-white dark:bg-slate-800">
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">Shiny/Unicorn Gradient</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 font-mono mt-1">bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Usage: Special badges, unicorn indicators</p>
                   </div>
                 </div>
               </div>
@@ -315,30 +367,31 @@ export const Colors: Story = {
 
         {/* Base Colors */}
         <div className="mb-12">
-          <h3 className="text-xl font-bold text-slate-800 mb-4">Base Colors</h3>
+          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-4">Base Colors</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="border border-slate-200 rounded-lg overflow-hidden">
-              <div className="h-16 bg-white border border-slate-200"></div>
-              <div className="p-3 bg-white">
-                <p className="text-xs font-semibold text-slate-900">White</p>
-                <p className="text-xs text-slate-600 font-mono">#ffffff</p>
-                <p className="text-xs text-slate-500 mt-1">Card backgrounds, content areas</p>
+            <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+              <div className="h-16 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"></div>
+              <div className="p-3 bg-white dark:bg-slate-800">
+                <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">White / Slate-800</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 font-mono">#ffffff / #1e293b</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Card backgrounds, content areas</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Dark: <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">dark:bg-slate-800</code></p>
               </div>
             </div>
-            <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
               <div className="h-16 bg-black"></div>
-              <div className="p-3 bg-white">
-                <p className="text-xs font-semibold text-slate-900">Black</p>
-                <p className="text-xs text-slate-600 font-mono">#000000</p>
-                <p className="text-xs text-slate-500 mt-1">Text, borders (Old School Mode)</p>
+              <div className="p-3 bg-white dark:bg-slate-800">
+                <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">Black</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 font-mono">#000000</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Text, borders (Old School Mode)</p>
               </div>
             </div>
-            <div className="border border-slate-200 rounded-lg overflow-hidden">
-              <div className="h-16 bg-[#DCDCDD]"></div>
-              <div className="p-3 bg-white">
-                <p className="text-xs font-semibold text-slate-900">Light Gray</p>
-                <p className="text-xs text-slate-600 font-mono">#DCDCDD</p>
-                <p className="text-xs text-slate-500 mt-1">Timestamps, subtle text</p>
+            <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+              <div className="h-16 bg-[#DCDCDD] dark:bg-slate-600"></div>
+              <div className="p-3 bg-white dark:bg-slate-800">
+                <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">Light Gray / Slate-600</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 font-mono">#DCDCDD / #475569</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Timestamps, subtle text</p>
               </div>
             </div>
           </div>
@@ -353,13 +406,13 @@ export const Colors: Story = {
  */
 export const Typography: Story = {
   render: () => (
-    <div className="p-8 space-y-12 bg-white">
+    <div className="p-8 space-y-12 bg-white dark:bg-slate-900">
       <div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-6">Typography Scale</h2>
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-6">Typography Scale</h2>
         
         <div className="space-y-8">
-          <div className="border border-slate-200 rounded-xl p-6 bg-slate-50">
-            <h3 className="text-xl font-bold text-slate-800 mb-4">Font Sizes</h3>
+          <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-6 bg-slate-50 dark:bg-slate-800">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-4">Font Sizes</h3>
             <div className="space-y-6">
               {[
                 { name: 'text-[9px]', size: '0.5625rem', usage: 'Very small labels, chips (intentional for specific UI elements)' },
@@ -375,24 +428,24 @@ export const Typography: Story = {
                 { name: 'text-5xl', size: '3rem', usage: 'Hero headings' },
                 { name: 'text-6xl', size: '3.75rem', usage: 'Extra large displays' },
               ].map((item) => (
-                <div key={item.name} className="border-b border-slate-200 pb-4 last:border-0">
+                <div key={item.name} className="border-b border-slate-200 dark:border-slate-700 pb-4 last:border-0">
                   <div className="flex items-baseline gap-4 mb-2">
-                    <code className="text-sm font-mono bg-slate-100 px-2 py-1 rounded text-slate-700">
+                    <code className="text-sm font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-slate-700 dark:text-slate-300">
                       {item.name}
                     </code>
-                    <span className="text-sm text-slate-500 font-mono">{item.size}</span>
+                    <span className="text-sm text-slate-500 dark:text-slate-400 font-mono">{item.size}</span>
                   </div>
-                  <p className={`${item.name} font-sans text-slate-900 mb-1`}>
+                  <p className={`${item.name} font-sans text-slate-900 dark:text-slate-100 mb-1`}>
                     The quick brown fox jumps over the lazy dog
                   </p>
-                  <p className="text-xs text-slate-500">{item.usage}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{item.usage}</p>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="border border-slate-200 rounded-xl p-6 bg-slate-50">
-            <h3 className="text-xl font-bold text-slate-800 mb-4">Font Weights</h3>
+          <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-6 bg-slate-50 dark:bg-slate-800">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-4">Font Weights</h3>
             <div className="space-y-4">
               {[
                 { name: 'font-normal', weight: '400', usage: 'Default text' },
@@ -400,62 +453,62 @@ export const Typography: Story = {
                 { name: 'font-semibold', weight: '600', usage: 'Primary buttons, headings (H1, H2, H3), tabs' },
                 { name: 'font-bold', weight: '700', usage: 'Strong emphasis, special cases' },
               ].map((item) => (
-                <div key={item.name} className="border-b border-slate-200 pb-4 last:border-0">
+                <div key={item.name} className="border-b border-slate-200 dark:border-slate-700 pb-4 last:border-0">
                   <div className="flex items-baseline gap-4 mb-2">
-                    <code className="text-sm font-mono bg-slate-100 px-2 py-1 rounded text-slate-700">
+                    <code className="text-sm font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-slate-700 dark:text-slate-300">
                       {item.name}
                     </code>
-                    <span className="text-sm text-slate-500 font-mono">{item.weight}</span>
+                    <span className="text-sm text-slate-500 dark:text-slate-400 font-mono">{item.weight}</span>
                   </div>
-                  <p className={`text-lg ${item.name} font-sans text-slate-900 mb-1`}>
+                  <p className={`text-lg ${item.name} font-sans text-slate-900 dark:text-slate-100 mb-1`}>
                     The quick brown fox jumps over the lazy dog
                   </p>
-                  <p className="text-xs text-slate-500">{item.usage}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{item.usage}</p>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="border border-slate-200 rounded-xl p-6 bg-slate-50">
-            <h3 className="text-xl font-bold text-slate-800 mb-4">Common Typography Patterns</h3>
+          <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-6 bg-slate-50 dark:bg-slate-800">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-4">Common Typography Patterns</h3>
             <div className="space-y-6">
               <div>
-                <p className="text-xs font-medium text-slate-500 mb-2">Page Heading</p>
-                <h1 className="text-4xl font-semibold text-slate-900 mb-2">Page Title</h1>
-                <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">text-4xl font-semibold text-slate-900</code>
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Page Heading</p>
+                <h1 className="text-4xl font-semibold text-slate-900 dark:text-slate-100 mb-2">Page Title</h1>
+                <code className="text-xs font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-slate-700 dark:text-slate-300">text-4xl font-semibold text-slate-900 dark:text-slate-100</code>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 mb-2">Section Heading</p>
-                <h2 className="text-2xl font-semibold text-slate-800 mb-2">Section Title</h2>
-                <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">text-2xl font-semibold text-slate-800</code>
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Section Heading</p>
+                <h2 className="text-2xl font-semibold text-slate-800 dark:text-slate-200 mb-2">Section Title</h2>
+                <code className="text-xs font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-slate-700 dark:text-slate-300">text-2xl font-semibold text-slate-800 dark:text-slate-200</code>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 mb-2">Body Text</p>
-                <p className="text-base text-slate-800 mb-2">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Body Text</p>
+                <p className="text-base text-slate-800 dark:text-slate-200 mb-2">
                   This is regular body text that should be used for most content throughout the application.
                 </p>
-                <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">text-base text-slate-800</code>
+                <code className="text-xs font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-slate-700 dark:text-slate-300">text-base text-slate-800 dark:text-slate-200</code>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 mb-2">Secondary Text</p>
-                <p className="text-sm text-slate-600 mb-2">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Secondary Text</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
                   This is secondary text used for captions, metadata, and less important information.
                 </p>
-                <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">text-sm text-slate-600</code>
+                <code className="text-xs font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-slate-700 dark:text-slate-300">text-sm text-slate-600 dark:text-slate-400</code>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 mb-2">Muted Text</p>
-                <p className="text-sm text-slate-500 mb-2">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Muted Text</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">
                   This is muted text for even less emphasis, like hints or disabled states.
                 </p>
-                <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">text-sm text-slate-500</code>
+                <code className="text-xs font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-slate-700 dark:text-slate-300">text-sm text-slate-500 dark:text-slate-400</code>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 mb-2">Button Text</p>
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Button Text</p>
                 <button className="px-4 py-2 bg-[#1C8376] text-white font-medium rounded-lg mb-2">
                   Button Text
                 </button>
-                <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded block">font-medium text-white</code>
+                <code className="text-xs font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded block text-slate-700 dark:text-slate-300">font-medium text-white</code>
               </div>
             </div>
           </div>

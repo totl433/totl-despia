@@ -198,24 +198,24 @@ export default function EmailPreferences() {
  }
 
  if (!user) {
- return (
- <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
- <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6">
- <div className="bg-white rounded-xl shadow-md p-6 text-center">
- <p className="text-slate-600">Please sign in to view your email preferences.</p>
- </div>
- </div>
- </div>
- );
- }
+    return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6">
+    <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6">
+    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 text-center">
+    <p className="text-slate-600 dark:text-slate-300">Please sign in to view your email preferences.</p>
+    </div>
+    </div>
+    </div>
+    );
+  }
 
- return (
- <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
- <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 py-6">
- <Link
- to="/profile"
- className="inline-flex items-center gap-2 text-slate-600 mb-4"
- >
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+    <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 py-6">
+    <Link
+    to="/profile"
+    className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-400 mb-4"
+    >
  <svg
  className="w-5 h-5"
  fill="none"
@@ -235,23 +235,23 @@ export default function EmailPreferences() {
  <PageHeader title="Email Preferences" as="h1" className="mb-6" />
 
  <div className="space-y-6">
- {loading ? (
- <div className="bg-white rounded-xl shadow-md p-6 text-center">
- <p className="text-slate-600">Loading preferences...</p>
- </div>
- ) : (
- <NotificationSection
- title="Email Preferences"
- description="Choose which emails you'd like to receive from TOTL"
- options={emailPreferences}
- onToggle={handleToggle}
- />
- )}
- {saving && (
- <div className="text-sm text-slate-500 text-center">
- Saving preferences...
- </div>
- )}
+    {loading ? (
+    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 text-center">
+    <p className="text-slate-600 dark:text-slate-300">Loading preferences...</p>
+    </div>
+    ) : (
+    <NotificationSection
+    title="Email Preferences"
+    description="Choose which emails you'd like to receive from TOTL"
+    options={emailPreferences}
+    onToggle={handleToggle}
+    />
+    )}
+    {saving && (
+    <div className="text-sm text-slate-500 dark:text-slate-400 text-center">
+    Saving preferences...
+    </div>
+    )}
  </div>
  </div>
  </div>

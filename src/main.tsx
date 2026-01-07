@@ -49,6 +49,7 @@ import ScrollToTop from "./components/ScrollToTop";
 import { loadInitialData } from "./services/initialDataLoader";
 import { bootLog } from "./lib/logEvent";
 import { supabase } from "./lib/supabase";
+import { useTheme } from "./hooks/useTheme";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -146,6 +147,9 @@ function AppContent() {
   const navigate = useNavigate();
   const { showWelcome, dismissWelcome, user, loading: authLoading } = useAuth();
   const [initialDataLoading, setInitialDataLoading] = useState(false);
+  
+  // Initialize theme on app load
+  useTheme();
   
   // Handle deep links from notifications (iOS native)
   // Check URL immediately - AppShell already updated window.location, but ensure React Router sees it

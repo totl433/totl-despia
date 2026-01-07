@@ -1480,7 +1480,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="max-w-6xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 pt-2 pb-4 min-h-screen relative">
+    <div className="max-w-6xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 pt-2 pb-4 min-h-screen relative bg-[#f5f7f6] dark:bg-slate-900">
       {/* Logo header */}
       <div ref={logoContainerRef} className="relative mb-4 lg:hidden">
         <ScrollLogo />

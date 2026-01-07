@@ -99,7 +99,7 @@ export default function LeagueFixtureSection({
           </>
         )}
       </div>
-      <div className="rounded-2xl border bg-slate-50 overflow-hidden">
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 overflow-hidden">
         <ul>
           {fixtures.map((f) => {
             try {
@@ -130,7 +130,7 @@ export default function LeagueFixtureSection({
             }
           })}
           {!fixtures.length && (
-            <li className="p-4 text-slate-500">
+            <li className="p-4 text-slate-500 dark:text-slate-400">
               No fixtures.
             </li>
           )}

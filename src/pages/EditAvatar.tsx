@@ -294,18 +294,18 @@ export default function EditAvatarPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
       <div className="max-w-2xl mx-auto px-4 py-6">
         <PageHeader title="Edit Avatar" as="h1" className="mb-6" />
 
-        <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-6">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-4 sm:p-6">
           {!cropImage ? (
             <>
               {/* Current avatar preview */}
               <div className="mb-6">
-                <div className="text-xs text-slate-600 mb-2 font-medium">Current Avatar:</div>
+                <div className="text-xs text-slate-600 dark:text-slate-400 mb-2 font-medium">Current Avatar:</div>
                 <div className="flex items-center gap-3">
-                  <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center border-2 border-slate-200">
+                  <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700 flex items-center justify-center border-2 border-slate-200 dark:border-slate-600">
                     <UserAvatar
                       userId={user.id}
                       name={user.user_metadata?.display_name || user.email || undefined}
@@ -318,7 +318,7 @@ export default function EditAvatarPage() {
               {/* Upload section */}
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-2">
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Choose Image
                   </label>
                   <input
@@ -337,16 +337,16 @@ export default function EditAvatarPage() {
                   />
                   <label
                     htmlFor="avatar-upload-input"
-                    className="block w-full border-2 border-dashed border-slate-300 rounded-lg p-6 text-center active:bg-slate-50 active:border-[#1C8376] touch-manipulation cursor-pointer"
+                    className="block w-full border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg p-6 text-center active:bg-slate-50 dark:active:bg-slate-700 active:border-[#1C8376] touch-manipulation cursor-pointer"
                   >
                     <div className="flex flex-col items-center gap-2">
-                      <svg className="w-10 h-10 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-10 h-10 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
                       <div className="text-sm">
-                        <span className="text-[#1C8376] font-semibold">Tap to choose image</span>
+                        <span className="text-[#1C8376] dark:text-emerald-400 font-semibold">Tap to choose image</span>
                       </div>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         PNG, JPG, or WebP (up to 20MB - will be optimized automatically)
                       </p>
                     </div>
@@ -355,22 +355,22 @@ export default function EditAvatarPage() {
 
                 {/* Upload progress */}
                 {uploading && (
-                  <div className="flex items-center gap-2 text-xs text-slate-600">
-                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-[#1C8376]"></div>
+                  <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-[#1C8376] dark:border-emerald-400"></div>
                     <span>Processing and uploading...</span>
                   </div>
                 )}
 
                 {/* Success message */}
                 {success && (
-                  <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800">
+                  <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs text-emerald-800 dark:text-emerald-300">
                     ✓ Avatar uploaded successfully!
                   </div>
                 )}
 
                 {/* Error message */}
                 {error && (
-                  <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800">
+                  <div className="p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-800 dark:text-red-300">
                     {error}
                   </div>
                 )}
@@ -381,7 +381,7 @@ export default function EditAvatarPage() {
                 <button
                   onClick={handleCancel}
                   disabled={uploading}
-                  className="flex-1 px-4 py-2 border border-slate-300 rounded-lg text-slate-700 font-medium disabled:opacity-50"
+                  className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 font-medium disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -389,7 +389,7 @@ export default function EditAvatarPage() {
                   <button
                     onClick={handleRemoveAvatar}
                     disabled={uploading}
-                    className="px-4 py-2 bg-red-100 text-red-700 rounded-lg font-medium disabled:opacity-50"
+                    className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg font-medium disabled:opacity-50"
                   >
                     Remove Avatar
                   </button>
@@ -400,9 +400,9 @@ export default function EditAvatarPage() {
             <>
               {/* Crop view */}
               <div className="space-y-3">
-                <div className="text-xs text-slate-600">
+                <div className="text-xs text-slate-600 dark:text-slate-400">
                   <p className="font-medium">Position your image</p>
-                  <p className="text-xs text-slate-500">Drag to position, use slider to zoom</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-500">Drag to position, use slider to zoom</p>
                 </div>
                 
                 <div className="relative w-full" style={{ height: '280px' }}>
@@ -429,7 +429,7 @@ export default function EditAvatarPage() {
                 {/* Zoom control and Preview in one row */}
                 <div className="flex items-center gap-4">
                   <div className="flex-1 space-y-1">
-                    <label className="block text-xs font-medium text-slate-700">
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
                       Zoom: {Math.round(zoom * 100)}%
                     </label>
                     <input
@@ -439,13 +439,13 @@ export default function EditAvatarPage() {
                       step={0.1}
                       value={zoom}
                       onChange={(e) => setZoom(Number(e.target.value))}
-                      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#1C8376] touch-manipulation"
+                      className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-[#1C8376] dark:accent-emerald-500 touch-manipulation"
                       style={{ WebkitTapHighlightColor: 'transparent' }}
                     />
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="text-xs font-medium text-slate-700">Preview:</div>
-                    <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 border-2 border-slate-300 flex items-center justify-center flex-shrink-0">
+                    <div className="text-xs font-medium text-slate-700 dark:text-slate-300">Preview:</div>
+                    <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 flex items-center justify-center flex-shrink-0">
                       {previewUrl ? (
                         <img
                           src={previewUrl}
@@ -453,7 +453,7 @@ export default function EditAvatarPage() {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="w-full h-full bg-slate-200" />
+                        <div className="w-full h-full bg-slate-200 dark:bg-slate-600" />
                       )}
                     </div>
                   </div>
@@ -461,7 +461,7 @@ export default function EditAvatarPage() {
 
                 {/* Error message */}
                 {error && (
-                  <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800">
+                  <div className="p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-800 dark:text-red-300">
                     {error}
                   </div>
                 )}
@@ -478,7 +478,7 @@ export default function EditAvatarPage() {
                       setError(null);
                     }}
                     disabled={uploading}
-                    className="flex-1 px-4 py-2 border border-slate-300 rounded-lg text-slate-700 font-medium disabled:opacity-50"
+                    className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 font-medium disabled:opacity-50"
                   >
                     Cancel
                   </button>

@@ -81,16 +81,16 @@ export default function TermsAndConditions() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#f5f7f6] p-4">
+    <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-900 p-4">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6 text-[#1C8376]">Terms and Conditions</h1>
+        <h1 className="text-2xl font-bold mb-6 text-[#1C8376] dark:text-emerald-400">Terms and Conditions</h1>
         
         {/* Termly embed - this div will be populated by Termly's script */}
         <div 
           ref={embedRef}
           {...({ name: 'termly-embed' } as any)}
           data-id="0f0acfaf-b38e-4b95-a69f-e65904264f60"
-          className="bg-white rounded-xl p-6 shadow-sm min-h-[200px]"
+          className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm min-h-[200px]"
         />
       </div>
     </div>

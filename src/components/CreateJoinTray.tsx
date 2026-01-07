@@ -99,7 +99,7 @@ export default function CreateJoinTray({
       {/* Sheet */}
       <div
         ref={sheetRef}
-        className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl"
+        className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 rounded-t-3xl shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-join-tray-title"
@@ -126,14 +126,14 @@ export default function CreateJoinTray({
       >
         {/* Top handle */}
         <div className="flex justify-center pt-3 pb-2">
-          <div className="w-12 h-1 bg-slate-300 rounded-full" />
+          <div className="w-12 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
         </div>
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 pb-4">
           <h2
             id="create-join-tray-title"
-            className="text-lg font-medium text-slate-900 uppercase tracking-wide"
+            className="text-lg font-medium text-slate-900 dark:text-slate-100 uppercase tracking-wide"
             style={{ fontFamily: '"Gramatika", sans-serif', fontWeight: 700 }}
           >
             Create or Join
@@ -144,7 +144,7 @@ export default function CreateJoinTray({
             aria-label="Close"
           >
             <svg
-              className="w-5 h-5 text-slate-600"
+              className="w-5 h-5 text-slate-600 dark:text-slate-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -164,7 +164,7 @@ export default function CreateJoinTray({
           <div className="space-y-6">
             {/* Create Section */}
             <div>
-              <h3 className="text-sm font-medium text-slate-900 mb-3">Create a league</h3>
+              <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-3">Create a league</h3>
               <Link
                 to="/create-league"
                 onClick={() => {
@@ -178,11 +178,11 @@ export default function CreateJoinTray({
 
             {/* Join Section */}
             <div>
-              <h3 className="text-sm font-medium text-slate-900 mb-3">Join with code</h3>
+              <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-3">Join with code</h3>
               <div className="space-y-2">
                 <input
                   type="text"
-                  className="border rounded-lg px-3 py-2 w-full uppercase tracking-widest bg-white"
+                  className="border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 w-full uppercase tracking-widest bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
                   placeholder="ABCDE"
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value)}
@@ -194,14 +194,14 @@ export default function CreateJoinTray({
                   maxLength={5}
                 />
                 {joinError && (
-                  <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+                  <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded px-3 py-2">
                     {joinError}
                   </div>
                 )}
                 <button
                   onClick={onJoin}
                   disabled={!joinCode.trim()}
-                  className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-slate-900 font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors touch-manipulation"
+                  className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors touch-manipulation"
                 >
                   Join
                 </button>
@@ -212,7 +212,7 @@ export default function CreateJoinTray({
 
         {/* Bottom handle */}
         <div className="flex justify-center pb-3">
-          <div className="w-12 h-1 bg-slate-300 rounded-full" />
+          <div className="w-12 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
         </div>
       </div>
     </>

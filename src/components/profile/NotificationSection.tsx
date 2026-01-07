@@ -23,12 +23,12 @@ export const NotificationSection = React.memo(function NotificationSection({
   onToggle,
 }: NotificationSectionProps) {
   return (
-    <div className="bg-white rounded-xl shadow-md p-6">
-      <h3 className="text-lg font-bold text-slate-800 mb-1">{title}</h3>
+    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6">
+      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-1">{title}</h3>
       {description && (
-        <p className="text-sm text-slate-600 mb-4">{description}</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">{description}</p>
       )}
-      <div className="space-y-0 border-t border-slate-200">
+      <div className="space-y-0 border-t border-slate-200 dark:border-slate-700">
         {options.map((option) => (
           <NotificationToggle
             key={option.id}

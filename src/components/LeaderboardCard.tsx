@@ -373,7 +373,7 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
     
     return (
       <>
-        <Link to={linkTo} className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block">
+        <Link to={linkTo} className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm overflow-hidden cursor-pointer block">
           <div className="p-3 h-full flex flex-col relative">
             <div className="flex items-start justify-between mb-2">
               <div className="flex items-baseline gap-[3px]" style={{ marginTop: '-4px' }}>
@@ -381,15 +381,15 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
                   <>
                     <span className="text-[#1C8376] text-4xl font-normal leading-none">{score}</span>
                     <div className="flex items-baseline gap-[4px]">
-                      <span className="text-slate-500 text-lg font-normal leading-none">/</span>
-                      <span className="text-slate-500 text-lg font-normal leading-none">{totalFixtures}</span>
+                      <span className="text-slate-500 dark:text-slate-400 text-lg font-normal leading-none">/</span>
+                      <span className="text-slate-500 dark:text-slate-400 text-lg font-normal leading-none">{totalFixtures}</span>
                     </div>
                   </>
                 ) : (
-                  <span className="leading-none text-slate-900">—</span>
+                  <span className="leading-none text-slate-900 dark:text-slate-100">—</span>
                 )}
               </div>
-              <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-slate-400 dark:text-slate-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </div>
@@ -400,11 +400,11 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
               </div>
             )}
             <div className="mt-auto">
-              <div className="text-xs text-slate-500 mb-2">
+              <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">
                 <span>Gameweek {gw ?? '—'}</span>
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-xs font-semibold text-slate-900">
+                <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
                   {displayText}
                 </span>
               </div>
@@ -491,7 +491,7 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
 
   // Default variant
   return (
-    <Link to={linkTo} className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden cursor-pointer block">
+    <Link to={linkTo} className="flex-shrink-0 w-[148px] h-[148px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm overflow-hidden cursor-pointer block">
       <div className="p-3 h-full flex flex-col relative">
         {isActiveLive && (
           <div className="absolute bottom-3 right-3 flex items-center gap-1.5">
@@ -501,16 +501,16 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
         )}
         <div className="flex items-start justify-between mb-2">
           {badgeSrc && <img src={badgeSrc} alt={badgeAlt || title} className="w-[32px] h-[32px]" />}
-          <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-slate-400 dark:text-slate-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </div>
         <div className="mt-auto">
-          <div className="text-xs text-slate-500 mb-2 flex items-center gap-1.5">
+          <div className="text-xs text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1.5">
             {subtitle || title}
           </div>
           <div className="flex items-center gap-1">
-            <span className="text-xs font-semibold text-slate-900">
+            <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
               {displayText}
             </span>
           </div>

@@ -24,9 +24,9 @@ export const TeamStatCard = React.memo(function TeamStatCard({
 }: TeamStatCardProps) {
   if (loading) {
     return (
-      <div className={`bg-white rounded-xl shadow-md p-6 ${className}`}>
-        <div className="text-sm text-slate-500 mb-2">{label}</div>
-        <div className="h-8 bg-slate-200 rounded animate-pulse"></div>
+      <div className={`bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 ${className}`}>
+        <div className="text-sm text-slate-500 dark:text-slate-400 mb-2">{label}</div>
+        <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
       </div>
     );
   }
@@ -37,21 +37,21 @@ export const TeamStatCard = React.memo(function TeamStatCard({
     : percentage.toFixed(2);
 
   return (
-    <div className={`bg-white rounded-xl shadow-md p-6 ${className}`}>
-      <div className="text-sm font-medium text-slate-600 mb-3">{label}</div>
+    <div className={`bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 ${className}`}>
+      <div className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-3">{label}</div>
       <div className="flex items-center gap-3">
         <TeamBadge code={teamCode} size={32} />
         <div className="flex-1 min-w-0">
-          <div className="text-lg font-bold text-slate-800 truncate">
+          <div className="text-lg font-bold text-slate-800 dark:text-slate-100 truncate">
             {teamName}
           </div>
-          <div className={`text-base font-semibold ${isCorrect ? 'text-emerald-600' : 'text-red-600'}`}>
+          <div className={`text-base font-semibold ${isCorrect ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
             {formattedPercentage}% {isCorrect ? 'correct' : 'incorrect'}
           </div>
         </div>
       </div>
       {subcopy && (
-        <div className="text-sm text-slate-500 mt-3 italic">"{subcopy}"</div>
+        <div className="text-sm text-slate-500 dark:text-slate-400 mt-3 italic">"{subcopy}"</div>
       )}
     </div>
   );

@@ -169,7 +169,7 @@ export default function ScrollLogo() {
             src="/assets/badges/totl-logo1.svg" 
             alt="TOTL" 
             className="h-[88px] sm:h-[110px]"
-            style={{ filter: 'brightness(0)', display: 'block' }}
+            style={{ filter: 'brightness(0) invert(1)', display: 'block' }}
           />
         </div>
         

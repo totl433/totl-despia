@@ -2183,13 +2183,13 @@ ${shareUrl}`;
 
   function InviteMessage() {
     return (
-      <div className="text-center p-8 bg-white rounded-xl border border-slate-200 shadow-sm">
+      <div className="text-center p-8 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
         <img 
           src="/assets/Volley/volley-with-ball.png" 
           alt="Volley" 
           className="w-24 h-24 mx-auto mb-4 object-contain"
         />
-        <p className="text-slate-600 mb-4 font-bold">
+        <p className="text-slate-600 dark:text-slate-300 mb-4 font-bold">
           Share your league code with friends to kick things off.
         </p>
         <button
@@ -2264,7 +2264,7 @@ ${shareUrl}`;
             zIndex: 1000000,
           }}
         >
-          <div className="relative overflow-hidden rounded-3xl bg-white px-8 py-8 text-center shadow-2xl max-w-sm w-full">
+          <div className="relative overflow-hidden rounded-3xl bg-white dark:bg-slate-800 px-8 py-8 text-center shadow-2xl max-w-sm w-full">
             {/* Decorative background blurs */}
             <div className="absolute -top-16 -left-10 h-32 w-32 rounded-full bg-red-200/40 blur-2xl" />
             <div className="absolute -bottom-14 -right-12 h-32 w-32 rounded-full bg-amber-200/40 blur-2xl" />
@@ -2294,7 +2294,7 @@ ${shareUrl}`;
               </h2>
 
               {/* Message */}
-              <p className="text-sm text-slate-600 leading-relaxed">
+              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                 This league has been running for more than 4 gameweeks. New members can only be added during the first 4 gameweeks.
               </p>
 
@@ -2427,7 +2427,7 @@ ${shareUrl}`;
         {/* Sheet */}
         <div
           ref={sheetRef}
-          className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl"
+          className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 rounded-t-3xl shadow-2xl"
           role="dialog"
           aria-modal="true"
           aria-labelledby="share-league-code-tray-title"
@@ -2440,14 +2440,14 @@ ${shareUrl}`;
         >
           {/* Top handle */}
           <div className="flex justify-center pt-3 pb-2">
-            <div className="w-12 h-1 bg-slate-300 rounded-full" />
+            <div className="w-12 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
           </div>
 
           {/* Header */}
           <div className="flex items-center justify-between px-6 pb-4">
             <h2
               id="share-league-code-tray-title"
-              className="text-lg font-medium text-slate-900 uppercase tracking-wide"
+              className="text-lg font-medium text-slate-900 dark:text-slate-100 uppercase tracking-wide"
               style={{ fontFamily: '"Gramatika", sans-serif', fontWeight: 700 }}
             >
               Share League Code
@@ -2458,7 +2458,7 @@ ${shareUrl}`;
               aria-label="Close"
             >
               <svg
-                className="w-5 h-5 text-slate-600"
+                className="w-5 h-5 text-slate-600 dark:text-slate-400"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -2477,18 +2477,18 @@ ${shareUrl}`;
           <div className="px-6 pb-8 max-h-[70vh] overflow-y-auto">
             <div className="space-y-6">
               <div>
-                <p className="text-slate-600 text-sm mb-3">
+                <p className="text-slate-600 dark:text-slate-300 text-sm mb-3">
                   Share this code (up to {MAX_MEMBERS} members):
                 </p>
                 <div className="flex items-center gap-3 mb-4">
-                  <code className="flex-1 font-mono text-2xl font-bold text-center py-3 px-4 bg-slate-50 rounded-lg border border-slate-200">
+                  <code className="flex-1 font-mono text-2xl font-bold text-center py-3 px-4 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100">
                     {league.code}
                   </code>
                 </div>
                 <div className="flex gap-3">
                   <button
                     onClick={handleCopy}
-                    className="flex-1 px-4 py-3 rounded-lg border border-slate-300 bg-white text-slate-900 font-semibold hover:bg-slate-50 transition-colors"
+                    className="flex-1 px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-semibold hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
                   >
                     Copy
                   </button>
@@ -2507,7 +2507,7 @@ ${shareUrl}`;
                 >
                   {toast || "…"}
                 </div>
-                <div className="mt-4 text-xs text-slate-500 text-center">
+                <div className="mt-4 text-xs text-slate-500 dark:text-slate-400 text-center">
                   {members.length}/{MAX_MEMBERS} members
                 </div>
               </div>
@@ -2516,7 +2516,7 @@ ${shareUrl}`;
 
           {/* Bottom handle */}
           <div className="flex justify-center pb-3">
-            <div className="w-12 h-1 bg-slate-300 rounded-full" />
+            <div className="w-12 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
           </div>
         </div>
       </>
@@ -2598,7 +2598,7 @@ ${shareUrl}`;
             <PointsFormToggle showForm={showForm} onToggle={setShowForm} />
             <button
               onClick={() => setShowTableModal(true)}
-              className="flex items-center justify-center gap-1.5 bg-white border-2 border-slate-300 rounded-full text-slate-600 cursor-help flex-shrink-0 px-3 py-2"
+              className="flex items-center justify-center gap-1.5 bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 rounded-full text-slate-600 dark:text-slate-300 cursor-help flex-shrink-0 px-3 py-2"
             >
               <img 
                 src="/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png" 
@@ -2646,15 +2646,15 @@ ${shareUrl}`;
     }
     
     if (!picksGw) {
-      return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No current gameweek available.</div>;
+      return <div className="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm p-4 text-slate-600 dark:text-slate-400">No current gameweek available.</div>;
     }
 
     // Check if this specific GW should be shown for this league
     if (!shouldIncludeGwForLeague(league, picksGw, gwDeadlines)) {
       return (
-        <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">
+        <div className="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm p-4 text-slate-600 dark:text-slate-400">
           <div className="text-center">
-            <div className="text-lg font-semibold mb-2">No Predictions Available</div>
+            <div className="text-lg font-semibold mb-2 text-slate-900 dark:text-slate-100">No Predictions Available</div>
             <div className="text-sm">This league started from a later gameweek.</div>
             <div className="text-sm">GW{picksGw} predictions are not included in this league.</div>
           </div>
@@ -2955,7 +2955,7 @@ ${shareUrl}`;
         })()}
 
         {!sections.length && !showSubmissionStatus && (
-          <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-500">No fixtures for GW {picksGw}.</div>
+          <div className="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm p-4 text-slate-500 dark:text-slate-400">No fixtures for GW {picksGw}.</div>
         )}
 
       </div>
@@ -3022,15 +3022,15 @@ ${shareUrl}`;
     }
     
     if (!resGw || (availableGws.length === 0 && league?.name !== 'API Test')) {
-      return <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">No gameweek selected.</div>;
+      return <div className="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm p-4 text-slate-600 dark:text-slate-400">No gameweek selected.</div>;
     }
 
     // Check if this specific GW should be shown for this league
     if (!shouldIncludeGwForLeague(league, resGw, gwDeadlines)) {
       return (
-        <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-600">
+        <div className="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm p-4 text-slate-600 dark:text-slate-400">
           <div className="text-center">
-            <div className="text-lg font-semibold mb-2">No Results Available</div>
+            <div className="text-lg font-semibold mb-2 text-slate-900 dark:text-slate-100">No Results Available</div>
             <div className="text-sm">This league started from a later gameweek.</div>
             <div className="text-sm">GW{resGw} results are not included in this league.</div>
           </div>
@@ -3312,7 +3312,7 @@ ${shareUrl}`;
               />
               <button
                 onClick={() => setShowScoringModal(true)}
-                className="flex items-center justify-center gap-1.5 bg-white border-2 border-slate-300 rounded-full text-slate-600 cursor-help flex-shrink-0 px-3 py-2"
+                className="flex items-center justify-center gap-1.5 bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 rounded-full text-slate-600 dark:text-slate-300 cursor-help flex-shrink-0 px-3 py-2"
               >
                 <img 
                   src="/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png" 
@@ -3349,7 +3349,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
   if (loading) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-10">
-        <div className="text-slate-500">Loading…</div>
+        <div className="text-slate-500 dark:text-slate-400">Loading…</div>
       </div>
     );
   }
@@ -3357,9 +3357,9 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
   if (!league && !loading) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-10">
-        <div className="rounded border bg-white p-6">
-          <div className="font-semibold mb-2">League not found</div>
-          <Link to="/leagues" className="text-slate-600 underline">
+        <div className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6">
+          <div className="font-semibold mb-2 text-slate-900 dark:text-slate-100">League not found</div>
+          <Link to="/leagues" className="text-slate-600 dark:text-slate-400 underline">
             Back to Mini Leagues
           </Link>
         </div>
@@ -3373,7 +3373,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
   // #endregion
 
   return (
-    <div className={`${oldSchoolMode ? 'oldschool-theme' : 'bg-slate-50'}`} style={{
+    <div className={`${oldSchoolMode ? 'oldschool-theme' : 'bg-slate-50 dark:bg-slate-900'}`} style={{
       position: 'fixed',
       top: 0,
       left: 0,
@@ -3523,14 +3523,14 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
         }
       `}</style>
       {/* Sticky iOS-style header */}
-      <div ref={headerRef} className="league-header-fixed bg-white border-b border-slate-200 shadow-sm">
+      <div ref={headerRef} className="league-header-fixed bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shadow-sm">
         <div className="max-w-6xl mx-auto px-4">
           {/* Compact header bar */}
           <div className="flex items-center justify-between h-16">
             {/* Back button */}
             <Link 
               to="/leagues" 
-              className="flex items-center text-slate-600 -ml-2 px-2 py-1"
+              className="flex items-center text-slate-600 dark:text-slate-400 -ml-2 px-2 py-1"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -3544,7 +3544,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                 onClick={() => {
                   setShowBadgeModal(true);
                 }}
-                className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 border border-slate-200 flex-shrink-0 relative cursor-pointer"
+                className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex-shrink-0 relative cursor-pointer"
               >
                 {league ? (
                   <img
@@ -3568,11 +3568,11 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                 )}
               </button>
               <div className="flex-1 min-w-0">
-                <h1 className="text-lg font-semibold text-slate-900 truncate">
+                <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100 truncate">
                   {league.name}
                 </h1>
                 {selectedGw && (
-                  <p className="text-sm text-slate-500 truncate">
+                  <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
                     Gameweek {selectedGw}
                   </p>
                 )}
@@ -3586,7 +3586,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                 className="flex items-center justify-center w-8 h-8 rounded-full -mr-2"
                 aria-label="Menu"
               >
-                <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                 </svg>
                     </button>
@@ -3595,16 +3595,16 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
 
           {/* Slide-down menu panel */}
           <div 
-            className={`bg-white border-b border-slate-200 transition-all duration-300 ease-in-out overflow-hidden ${
+            className={`bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 transition-all duration-300 ease-in-out overflow-hidden ${
               showHeaderMenu ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
             }`}
           >
             <div className="px-4 py-3">
               {isAdmin && (
                 <>
-                  <div className="mb-3 pb-3 border-b border-slate-200 px-0">
-                    <div className="text-xs text-slate-500 mb-1">Admin</div>
-                    <div className="text-sm font-semibold text-slate-800">{adminName}</div>
+                  <div className="mb-3 pb-3 border-b border-slate-200 dark:border-slate-700 px-0">
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Admin</div>
+                    <div className="text-sm font-semibold text-slate-800 dark:text-white">{adminName}</div>
                   </div>
                   <div className="space-y-1">
                     <button
@@ -3612,16 +3612,16 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                         setShowAdminMenu(true);
                         setShowHeaderMenu(false);
                       }}
-                      className="w-full text-left px-0 py-2.5 text-base font-semibold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
+                      className="w-full text-left px-0 py-2.5 text-base font-semibold text-slate-700 dark:text-white active:bg-slate-100 dark:active:bg-slate-700 rounded-lg flex items-center gap-2 touch-manipulation"
                     >
-                      <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
                       <span>Manage</span>
                     </button>
                   </div>
-                  <div className="my-3 border-b border-slate-200"></div>
+                  <div className="my-3 border-b border-slate-200 dark:border-slate-700"></div>
                 </>
               )}
               <div className="space-y-1">
@@ -3631,9 +3631,9 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                       setShowBadgeUpload(true);
                       setShowHeaderMenu(false);
                     }}
-                    className="w-full text-left px-0 py-2.5 text-base font-semibold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
+                    className="w-full text-left px-0 py-2.5 text-base font-semibold text-slate-700 dark:text-white active:bg-slate-100 dark:active:bg-slate-700 rounded-lg flex items-center gap-2 touch-manipulation"
                   >
-                    <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
                     <span>Edit League Badge</span>
@@ -3644,9 +3644,9 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                     setShowHeaderMenu(false);
                     await handleShareLeagueCode();
                   }}
-                  className="w-full text-left px-0 py-2.5 text-base font-semibold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
+                  className="w-full text-left px-0 py-2.5 text-base font-semibold text-slate-700 dark:text-white active:bg-slate-100 dark:active:bg-slate-700 rounded-lg flex items-center gap-2 touch-manipulation"
                 >
-                  <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                   <span>Invite players</span>
@@ -3656,9 +3656,9 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                     shareLeague();
                     setShowHeaderMenu(false);
                   }}
-                  className="w-full text-left px-0 py-2.5 text-base font-semibold text-slate-700 active:bg-slate-100 rounded-lg flex items-center gap-2 touch-manipulation"
+                  className="w-full text-left px-0 py-2.5 text-base font-semibold text-slate-700 dark:text-white active:bg-slate-100 dark:active:bg-slate-700 rounded-lg flex items-center gap-2 touch-manipulation"
                 >
-                  <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                   </svg>
                   <span>Share league code</span>
@@ -3668,9 +3668,9 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                     setShowLeaveConfirm(true);
                     setShowHeaderMenu(false);
                   }}
-                  className="w-full text-left px-0 py-2.5 text-base font-semibold text-red-600 active:bg-red-100 rounded-lg flex items-center gap-2 touch-manipulation"
+                  className="w-full text-left px-0 py-2.5 text-base font-semibold text-red-600 dark:text-red-400 active:bg-red-100 dark:active:bg-red-900/30 rounded-lg flex items-center gap-2 touch-manipulation"
                 >
-                  <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                   </svg>
                   <span>Leave</span>
@@ -3680,7 +3680,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           </div>
 
           {/* Tabs */}
-          <div className={`flex border-b border-slate-200 bg-white gap-2 transition-all duration-300 ease-in-out ${
+          <div className={`flex border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 gap-2 transition-all duration-300 ease-in-out ${
             showHeaderMenu ? 'max-h-0 opacity-0 overflow-hidden' : 'max-h-20 opacity-100'
           }`}>
             <button
@@ -3690,7 +3690,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
               }}
               className={
                 "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold relative leading-tight " +
-                (tab === "chat" ? "text-[#1C8376]" : "text-slate-400")
+                (tab === "chat" ? "text-[#1C8376]" : "text-slate-400 dark:text-slate-500")
               }
             >
               <span className="hidden sm:inline">Chat</span>

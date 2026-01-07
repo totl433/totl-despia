@@ -14,11 +14,11 @@ export default function HowToPlayPage() {
 
 
  return (
- <div className="min-h-screen bg-slate-50">
+ <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
  <div className="mx-auto max-w-6xl lg:max-w-[1024px] px-4 lg:px-6 py-4 pb-16">
  {/* Header */}
  <PageHeader title="How To Play" as="h2" />
- <p className="mt-2 mb-2 lg:mb-6 text-sm text-slate-600 w-full">
+ <p className="mt-2 mb-2 lg:mb-6 text-sm text-slate-600 dark:text-slate-300 w-full">
  Welcome to TOTL (Top of the League) — the game of quick Predictions and friendly rivalries. Here's how it all works.
  </p>
  <div className="flex justify-center mb-2 lg:hidden">
@@ -34,21 +34,21 @@ export default function HowToPlayPage() {
  <div className="space-y-4">
  <Section id="predictions" title="Predictions" icon="🎯" collapsible defaultOpen={openSections.predictions} onToggle={(isOpen: boolean) => setOpenSections(prev => ({ ...prev, predictions: isOpen }))}>
  <div className="space-y-4">
- <p className="text-base leading-relaxed">
+ <p className="text-base leading-relaxed text-slate-900 dark:text-slate-100">
  Before each Premier League Gameweek, head to <strong>Predictions</strong> and make your
  predictions for every match — <strong>Home Win</strong>, <strong>Draw</strong>, or <strong>Away Win</strong>.
  </p>
  
- <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
- <h3 className="font-semibold text-amber-800 mb-2">⚠️ Important</h3>
- <p className="text-amber-700">
+ <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+ <h3 className="font-semibold text-amber-800 dark:text-amber-300 mb-2">⚠️ Important</h3>
+ <p className="text-amber-700 dark:text-amber-300">
  Once the first match kicks off, predictions are locked, so make sure you get them in before the deadline.
  </p>
  </div>
 
- <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
- <h3 className="font-semibold text-emerald-800 mb-2">📊 Scoring</h3>
- <p className="text-emerald-700">
+ <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4">
+ <h3 className="font-semibold text-emerald-800 dark:text-emerald-300 mb-2">📊 Scoring</h3>
+ <p className="text-emerald-700 dark:text-emerald-300">
  Each correct Prediction adds <strong>1</strong> to your <strong>Overall Correct Predictions (OCP)</strong> — that's your running total for the season.
  </p>
  </div>
@@ -57,14 +57,14 @@ export default function HowToPlayPage() {
 
  <Section id="mini-leagues" title="Mini-Leagues" icon="🏆" collapsible defaultOpen={openSections['mini-leagues']} onToggle={(isOpen: boolean) => setOpenSections(prev => ({ ...prev, 'mini-leagues': isOpen }))}>
  <div className="space-y-4">
- <p className="text-base leading-relaxed">
+ <p className="text-base leading-relaxed text-slate-900 dark:text-slate-100">
  Want to play with your friends? Create a <strong>Mini-League</strong> and invite up to <strong>8 players</strong> to join.
  Share your league code, get everyone predicting, and battle it out week by week.
  </p>
 
- <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
- <h3 className="font-semibold text-slate-800 mb-2">How it works:</h3>
- <p className="text-slate-700">
+ <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-4">
+ <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">How it works:</h3>
+ <p className="text-slate-700 dark:text-slate-300">
  Each Gameweek, whoever gets the <strong>most correct Predictions</strong> wins that week.
  </p>
  </div>
@@ -73,23 +73,23 @@ export default function HowToPlayPage() {
  <h3 className="font-semibold text-emerald-800 mb-3">League Points:</h3>
  <div className="space-y-2">
  <div className="flex items-center gap-3">
- <span className="text-emerald-600 font-bold">■</span>
- <span className="text-emerald-700"><strong>Win the week</strong> – 3 points</span>
+ <span className="text-emerald-600 dark:text-emerald-400 font-bold">■</span>
+ <span className="text-emerald-700 dark:text-emerald-300"><strong>Win the week</strong> – 3 points</span>
  </div>
  <div className="flex items-center gap-3">
- <span className="text-emerald-600 font-bold">■</span>
- <span className="text-emerald-700"><strong>Draw</strong> – 1 point</span>
+ <span className="text-emerald-600 dark:text-emerald-400 font-bold">■</span>
+ <span className="text-emerald-700 dark:text-emerald-300"><strong>Draw</strong> – 1 point</span>
  </div>
  <div className="flex items-center gap-3">
- <span className="text-emerald-600 font-bold">■</span>
- <span className="text-emerald-700"><strong>Lose</strong> – 0 points</span>
+ <span className="text-emerald-600 dark:text-emerald-400 font-bold">■</span>
+ <span className="text-emerald-700 dark:text-emerald-300"><strong>Lose</strong> – 0 points</span>
  </div>
  </div>
  </div>
 
- <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
- <h3 className="font-semibold text-blue-800 mb-2">🤝 Ties</h3>
- <p className="text-blue-700">
+ <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+ <h3 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">🤝 Ties</h3>
+ <p className="text-blue-700 dark:text-blue-300">
  If two or more players finish with the same number of correct Predictions, the player with
  the most <strong>Unicorns</strong> wins the week. Still tied? It's a draw.
  </p>
@@ -99,14 +99,14 @@ export default function HowToPlayPage() {
 
  <Section id="unicorns" title="Unicorns" icon="🦄" collapsible defaultOpen={openSections.unicorns} onToggle={(isOpen: boolean) => setOpenSections(prev => ({ ...prev, unicorns: isOpen }))}>
  <div className="space-y-4">
- <p className="text-base leading-relaxed">
+ <p className="text-base leading-relaxed text-slate-900 dark:text-slate-100">
  In Mini-Leagues with <strong>3 or more players</strong>, if you're the <strong>only person</strong> to correctly predict a
  fixture, that's a <strong>Unicorn</strong>.
  </p>
  
- <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
- <h3 className="font-semibold text-purple-800 mb-2">💡 Strategy Tip</h3>
- <p className="text-purple-700">
+ <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+ <h3 className="font-semibold text-purple-800 dark:text-purple-300 mb-2">💡 Strategy Tip</h3>
+ <p className="text-purple-700 dark:text-purple-300">
  They can make all the difference in tight weeks — so sometimes
  it's worth backing the surprise result nobody else will.
  </p>
@@ -116,7 +116,7 @@ export default function HowToPlayPage() {
 
  <Section id="leaderboard" title="Leaderboard" icon="📈" collapsible defaultOpen={openSections.leaderboard} onToggle={(isOpen: boolean) => setOpenSections(prev => ({ ...prev, leaderboard: isOpen }))}>
  <div className="space-y-4">
- <p className="text-base leading-relaxed">
+ <p className="text-base leading-relaxed text-slate-900 dark:text-slate-100">
  The <strong>Leaderboard</strong> shows how you stack up against everyone else playing TOTL.
  </p>
  
@@ -131,7 +131,7 @@ export default function HowToPlayPage() {
 
  <Section id="form" title="Form Leaderboards" icon="⚡" collapsible defaultOpen={openSections.form} onToggle={(isOpen: boolean) => setOpenSections(prev => ({ ...prev, form: isOpen }))}>
  <div className="space-y-4">
- <p className="text-base leading-relaxed">
+ <p className="text-base leading-relaxed text-slate-900 dark:text-slate-100">
  <strong>Form Leaderboards</strong> focus on how you're performing <strong>right now</strong>, not over the whole season.
  </p>
 
@@ -151,16 +151,16 @@ export default function HowToPlayPage() {
  </div>
  </div>
 
- <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
- <h3 className="font-semibold text-slate-800 mb-2">📊 How They Work</h3>
- <p className="text-slate-700">
+ <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-4">
+ <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">📊 How They Work</h3>
+ <p className="text-slate-700 dark:text-slate-300">
  Both update each week and show the players in top form. To appear on the <strong>10-Week Form Table</strong>, make sure you've played 10 Gameweeks in a row — <strong>consistency is key</strong>!
  </p>
  </div>
 
- <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
- <h3 className="font-semibold text-amber-800 mb-2">💡 Don't worry if you joined TOTL late</h3>
- <p className="text-amber-700">
+ <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+ <h3 className="font-semibold text-amber-800 dark:text-amber-300 mb-2">💡 Don't worry if you joined TOTL late</h3>
+ <p className="text-amber-700 dark:text-amber-300">
  Once you've played enough weeks, you'll automatically show up in these tables.
  </p>
  </div>
@@ -169,9 +169,9 @@ export default function HowToPlayPage() {
 
  <Section id="summary" title="That's It" icon="🎉" collapsible defaultOpen={openSections.summary} onToggle={(isOpen: boolean) => setOpenSections(prev => ({ ...prev, summary: isOpen }))}>
  <div className="space-y-4">
- <div className="bg-gradient-to-r from-emerald-50 to-blue-50 border border-emerald-200 rounded-lg p-4">
- <h3 className="font-semibold text-emerald-800 mb-2">🏆 Your Mission</h3>
- <p className="text-emerald-700">
+ <div className="bg-gradient-to-r from-emerald-50 to-blue-50 dark:from-emerald-900/20 dark:to-blue-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4">
+ <h3 className="font-semibold text-emerald-800 dark:text-emerald-300 mb-2">🏆 Your Mission</h3>
+ <p className="text-emerald-700 dark:text-emerald-300">
  Predict each week. Beat your mates. Climb the Leaderboard — or rise up the Form
  Tables. Stay sharp and see who's truly <strong>Top of the League</strong>.
  </p>
@@ -182,9 +182,9 @@ export default function HowToPlayPage() {
 
  {/* Footer */}
  <div className="mt-12 text-center">
- <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
- <h3 className="text-lg font-semibold text-slate-800 mb-2">Ready to Start Playing?</h3>
- <p className="text-slate-600 mb-4">
+ <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-6 shadow-sm">
+ <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-2">Ready to Start Playing?</h3>
+ <p className="text-slate-600 dark:text-slate-300 mb-4">
  Head to the Predictions page and make your first picks!
  </p>
  <a

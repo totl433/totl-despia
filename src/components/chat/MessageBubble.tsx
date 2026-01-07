@@ -71,7 +71,7 @@ export function MessageBubble({
  onMessageClick,
 }: MessageBubbleProps) {
   const textAlignment = "text-left";
- const bubbleClasses = isOwnMessage ? "bg-[#1C8376] text-white" : "bg-white text-slate-900";
+ const bubbleClasses = isOwnMessage ? "bg-[#1C8376] text-white" : "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100";
  const shapeClasses = isOwnMessage ? outgoingShape : incomingShape;
   const maxWidth = "max-w-[85%]";
  const [showReactionPicker, setShowReactionPicker] = useState(false);
@@ -141,8 +141,8 @@ export function MessageBubble({
  className={`mb-2 pb-2 border-l-2 ${
  isOwnMessage
  ? "border-white/30 text-white/90"
- : "border-[#1C8376] text-slate-600"
-            } pl-2 text-xs`}
+ : "border-[#1C8376] dark:border-emerald-400 text-slate-600 dark:text-slate-300"
+            } pl-2 text-xs dark:text-slate-300`}
             style={{ 
               wordBreak: 'break-word', 
               overflowWrap: 'anywhere',
@@ -183,7 +183,7 @@ export function MessageBubble({
             overflowWrap: 'anywhere',
             display: 'inline'
           }}>{text}</span>
-          <span className={`text-xs relative top-1 ${isOwnMessage ? 'text-[#DCDCDD]' : 'text-slate-400'}`} style={{ 
+          <span className={`text-xs relative top-1 ${isOwnMessage ? 'text-[#DCDCDD]' : 'text-slate-400 dark:text-slate-500'}`} style={{ 
             whiteSpace: 'nowrap',
             float: 'right',
             clear: 'right',
@@ -196,7 +196,7 @@ export function MessageBubble({
  <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 flex items-center gap-1">
  {/* Quick reaction buttons - appear when SVG is clicked */}
  {showReactionPicker && (
- <div ref={reactionPickerRef} className="flex items-center gap-1 bg-white rounded-full px-1 py-1 shadow-lg border border-slate-200 z-50">
+ <div ref={reactionPickerRef} className="flex items-center gap-1 bg-white dark:bg-slate-800 rounded-full px-1 py-1 shadow-lg border border-slate-200 dark:border-slate-700 z-50">
  {QUICK_REACTIONS.map((emoji) => (
  <button
  key={emoji}
@@ -238,7 +238,7 @@ export function MessageBubble({
  {/* SVG button - always visible */}
  <button
  onClick={() => setShowReactionPicker(!showReactionPicker)}
- className="w-7 h-7 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center shadow-sm"
+                className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 flex items-center justify-center shadow-sm"
  title="Add reaction"
  >
  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -256,14 +256,14 @@ export function MessageBubble({
  onClick={() => setShowEmojiPicker(false)}
  />
  {/* Bottom sheet */}
- <div className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-2xl border-t border-slate-200 overflow-x-hidden" style={{ animation: 'slideUp 0.3s ease-out' }}>
+ <div className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-slate-800 rounded-t-2xl shadow-2xl border-t border-slate-200 dark:border-slate-700 overflow-x-hidden" style={{ animation: 'slideUp 0.3s ease-out' }}>
  <div className="px-4 pt-3 pb-4 overflow-x-hidden">
  {/* Header with handle bar and close button */}
  <div className="flex items-center justify-between mb-3">
- <div className="w-12 h-1 bg-slate-300 rounded-full" />
+            <div className="w-12 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
  <button
  onClick={() => setShowEmojiPicker(false)}
- className="px-4 py-1.5 text-sm font-medium text-slate-600 rounded-lg"
+                className="px-4 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-300 rounded-lg"
  >
  Close
  </button>
@@ -280,7 +280,7 @@ export function MessageBubble({
  }
  setShowEmojiPicker(false);
  }}
- className="w-10 h-10 rounded-lg active:bg-slate-200 flex items-center justify-center text-2xl"
+                className="w-10 h-10 rounded-lg active:bg-slate-200 dark:active:bg-slate-700 flex items-center justify-center text-2xl"
  title={emoji}
  >
  {emoji}
@@ -301,7 +301,7 @@ export function MessageBubble({
      className={`px-2 py-0.5 rounded-full text-sm flex items-center gap-1 ${
      reaction.hasUserReacted
      ? 'bg-[#1C8376] text-white'
-     : 'bg-slate-100 text-slate-700'
+     : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
      }`}
  >
  <span className="text-base">{reaction.emoji}</span>

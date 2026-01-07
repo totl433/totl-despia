@@ -48,7 +48,15 @@ const preview: Preview = {
       // 'error' - fail CI on a11y violations
       // 'off' - skip a11y checks entirely
       test: 'todo'
-    }
+    },
+
+    themes: {
+      default: 'light',
+      list: [
+        { name: 'light', class: '', color: '#f5f7f6' },
+        { name: 'dark', class: 'dark', color: '#0f172a' },
+      ],
+    },
   },
 };
 

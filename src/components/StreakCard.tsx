@@ -19,7 +19,7 @@ export const StreakCard = React.memo(function StreakCard({
  const graphHeight = 60;
 
  return (
- <div className="flex-shrink-0 w-[340px] sm:w-[400px] lg:w-[352px] h-[148px] rounded-xl border bg-white shadow-sm overflow-hidden relative">
+ <div className="flex-shrink-0 w-[340px] sm:w-[400px] lg:w-[352px] h-[148px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm overflow-hidden relative">
  <div className="p-3 h-full flex flex-col">
  <div className="flex-1"></div>
  
@@ -40,7 +40,7 @@ export const StreakCard = React.memo(function StreakCard({
  {isPlayed && (
  <div
  className={`text-xs font-bold mb-0.5 leading-none ${
- isLatest ? 'text-[#1C8376]' : 'text-slate-700'
+ isLatest ? 'text-[#1C8376]' : 'text-slate-700 dark:text-slate-300'
  }`}
  >
  {score}
@@ -52,8 +52,8 @@ export const StreakCard = React.memo(function StreakCard({
  isPlayed
  ? isLatest
  ? 'bg-[#1C8376]'
- : 'bg-slate-400'
- : 'bg-slate-200'
+ : 'bg-slate-400 dark:bg-slate-500'
+ : 'bg-slate-200 dark:bg-slate-600'
  }`}
  style={{
  height: `${barHeight}px`,
@@ -67,8 +67,8 @@ export const StreakCard = React.memo(function StreakCard({
  isPlayed
  ? isLatest
  ? 'text-[#1C8376] font-bold'
- : 'text-slate-700'
- : 'text-slate-400'
+ : 'text-slate-700 dark:text-slate-300'
+ : 'text-slate-400 dark:text-slate-500'
  }`}
  >
  GW{gwData.gw}
@@ -82,7 +82,7 @@ export const StreakCard = React.memo(function StreakCard({
  
  <div className="flex items-center justify-between">
  <div className="flex items-center gap-1">
- <span className="text-sm font-semibold text-slate-900">
+ <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
  Your Streak{' '}
  <span className="font-bold text-orange-500">
  {streak > 0 
@@ -91,7 +91,7 @@ export const StreakCard = React.memo(function StreakCard({
  </span>
  </span>
  </div>
- <span className="text-[10px] font-medium text-slate-400">Last 10</span>
+ <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">Last 10</span>
  </div>
  </div>
  </div>

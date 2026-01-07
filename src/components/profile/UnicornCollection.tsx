@@ -181,43 +181,43 @@ export default function UnicornCollection({ userId, loading: externalLoading }: 
  return null;
  }
 
- if (isLoading) {
- return (
- <div className="bg-white rounded-xl p-6 desktop-constrained-unicorn" style={{ marginRight: '-100vw', paddingRight: '100vw' }}>
- <div className="text-sm font-medium text-slate-600 mb-4 flex items-center gap-2">
- <h2 className="text-lg font-bold text-slate-800">Your Unicorns</h2>
- </div>
- <div className="h-8 bg-slate-200 rounded animate-pulse" />
- </div>
- );
- }
+  if (isLoading) {
+    return (
+      <div className="bg-white dark:bg-slate-800 rounded-xl p-6 desktop-constrained-unicorn" style={{ marginRight: '-100vw', paddingRight: '100vw' }}>
+        <div className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-4 flex items-center gap-2">
+          <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Your Unicorns</h2>
+        </div>
+        <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+      </div>
+    );
+  }
 
- if (unicorns.length === 0) {
- return (
- <div className="bg-white rounded-xl p-6">
- <div className="text-sm font-medium text-slate-600 mb-2">
- Your Unicorns
- </div>
- <div className="text-slate-500 text-sm">
- You have <span className="font-semibold">0 unicorns</span> overall. Keep predicting to earn your first unicorn!
- </div>
- </div>
- );
- }
+  if (unicorns.length === 0) {
+    return (
+      <div className="bg-white dark:bg-slate-800 rounded-xl p-6">
+        <div className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">
+          Your Unicorns
+        </div>
+        <div className="text-slate-500 dark:text-slate-400 text-sm">
+          You have <span className="font-semibold">0 unicorns</span> overall. Keep predicting to earn your first unicorn!
+        </div>
+      </div>
+    );
+  }
 
- return (
- <div className="bg-white rounded-xl p-6 desktop-constrained-unicorn" style={{ marginRight: '-100vw', paddingRight: '100vw' }}>
- <div className="text-sm font-medium text-slate-600 mb-4 flex items-center gap-2" style={{ paddingLeft: '1.5rem', marginLeft: '-1.5rem' }}>
- <h2 className="text-lg font-bold text-slate-800">Your Unicorns</h2>
- <div 
- className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center cursor-pointer"
- onClick={() => setIsInfoOpen(true)}
- role="button"
- aria-label="Information about Unicorns"
- >
- <span className="text-[10px] text-slate-500 font-bold">i</span>
- </div>
- </div>
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 desktop-constrained-unicorn" style={{ marginRight: '-100vw', paddingRight: '100vw' }}>
+      <div className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-4 flex items-center gap-2" style={{ paddingLeft: '1.5rem', marginLeft: '-1.5rem' }}>
+        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Your Unicorns</h2>
+        <div 
+          className="w-4 h-4 rounded-full border border-slate-400 dark:border-slate-500 flex items-center justify-center cursor-pointer"
+          onClick={() => setIsInfoOpen(true)}
+          role="button"
+          aria-label="Information about Unicorns"
+        >
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">i</span>
+        </div>
+      </div>
  
  <div 
  ref={containerRef}
@@ -253,9 +253,9 @@ export default function UnicornCollection({ userId, loading: externalLoading }: 
  ))}
  </div>
  
- <div className="text-sm font-bold text-slate-800 mt-4 text-center">
- {unicorns.length} {unicorns.length === 1 ? 'unicorn' : 'unicorns'} overall
- </div>
+      <div className="text-sm font-bold text-slate-800 dark:text-slate-100 mt-4 text-center">
+        {unicorns.length} {unicorns.length === 1 ? 'unicorn' : 'unicorns'} overall
+      </div>
  
  <InfoSheet
  isOpen={isInfoOpen}

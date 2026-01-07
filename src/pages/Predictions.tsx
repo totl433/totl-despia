@@ -1679,7 +1679,7 @@ gw: currentGw,
  if (needsMoreData) {
  // Show loading spinner - don't render any content until ready
  return (
- <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+ <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
  </div>
  );
@@ -1694,10 +1694,10 @@ gw: currentGw,
 
  if (fixtures.length === 0) {
  return (
- <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+ <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
  <div className="text-center px-4 max-w-md">
- <div className="text-red-600 font-semibold mb-2">No Fixtures Found</div>
- <div className="text-sm text-slate-600 mb-4">
+ <div className="text-red-600 dark:text-red-400 font-semibold mb-2">No Fixtures Found</div>
+ <div className="text-sm text-slate-600 dark:text-slate-400 mb-4">
  No fixtures available for this gameweek yet.
  </div>
  </div>
@@ -1714,7 +1714,7 @@ if (isUserSubmitted || deadlinePassed) {
 // Always show user's predictions - don't show league member status here
 // (League member status belongs in League page, not PredictionsPage)
 return (
- <div className="min-h-screen bg-slate-50 flex flex-col">
+ <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
  {showConfetti && windowSize.width > 0 && windowSize.height > 0 && (
  <Confetti
  width={windowSize.width}
@@ -1730,23 +1730,23 @@ return (
  {!isUserSubmitted && (
  <button 
  onClick={() => navigate("/")} 
- className="absolute left-0 text-slate-600 text-3xl font-bold w-10 h-10 flex items-center justify-center"
+ className="absolute left-0 text-slate-600 dark:text-slate-400 text-3xl font-bold w-10 h-10 flex items-center justify-center"
  >
  ✕
  </button>
  )}
- <span className="text-lg font-extrabold text-slate-700">
+ <span className="text-lg font-extrabold text-slate-700 dark:text-slate-200">
  Gameweek {currentGw}
  </span>
  </div>
  </div>
  </div>
- <div className="flex-1 overflow-y-auto p-4 pb-4">
+ <div className="flex-1 overflow-y-auto p-4 pb-4 bg-slate-50 dark:bg-slate-900">
  <div className="max-w-2xl mx-auto">
  {/* Show deadline banner only for DEADLINE_PASSED state when user hasn't submitted */}
  {gameState === 'DEADLINE_PASSED' && !isUserSubmitted && (
  <div className="mb-4">
- <div className="rounded-xl border bg-slate-200 border-slate-300 px-6 py-4 text-center">
+ <div className="rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-700 px-6 py-4 text-center">
  <div className="flex items-center justify-center mb-3 relative">
  <img 
  src="/assets/Volley/Volley-sad.png" 
@@ -1754,11 +1754,11 @@ return (
  className="w-16 h-16 flex-shrink-0 object-contain absolute -left-8 -top-2"
  style={{ imageRendering: 'pixelated' }}
  />
- <div className="text-slate-900 font-semibold text-base text-center">
+ <div className="text-slate-900 dark:text-slate-100 font-semibold text-base text-center">
  THE DEADLINE HAS PASSED
  </div>
  </div>
- <div className="text-slate-900 text-sm">
+ <div className="text-slate-900 dark:text-slate-200 text-sm">
  Predictions are no longer available.
  {deadlineTime && (
  <div className="text-xs opacity-80">
@@ -1930,7 +1930,7 @@ return null;
  return (
  <div key={groupIdx} className={groupIdx > 0 ? "mt-6" : ""}>
  <DateHeader date={group.label} />
- <div className="rounded-2xl border bg-slate-50 overflow-hidden">
+ <div className="rounded-2xl bg-slate-50 dark:bg-slate-800 overflow-hidden border-0">
  <ul>
  {group.items.map((fixture, index)=>{
    const pick = picks.get(fixture.fixture_index);
@@ -2036,7 +2036,7 @@ return null;
  {!isUserSubmitted && (
  <button 
  onClick={() => navigate("/")} 
- className="absolute left-0 text-slate-600 text-3xl font-bold w-10 h-10 flex items-center justify-center"
+ className="absolute left-0 text-slate-600 dark:text-slate-400 text-3xl font-bold w-10 h-10 flex items-center justify-center"
  >
  ✕
  </button>
@@ -2054,7 +2054,7 @@ return null;
  ) : picks.size > 0 ? (
  <button
  onClick={handleConfirmClick}
- className="absolute right-0 inline-flex items-center gap-2 rounded-full bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 shadow-inner"
+ className="absolute right-0 inline-flex items-center gap-2 rounded-full bg-slate-200 dark:bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 shadow-inner"
  >
  Confirm
  </button>
@@ -2068,14 +2068,14 @@ return null;
  )}
  </div>
  <div className="mt-4 flex items-center justify-center">
- <div className="relative rounded-3xl border border-emerald-100 bg-white px-5 py-3 shadow-sm max-w-md w-full flex items-center gap-3 text-left">
- <div className="flex h-8 w-8 items-center justify-center text-emerald-700">
+ <div className="relative rounded-3xl border border-emerald-100 dark:border-emerald-900 bg-white dark:bg-slate-800 px-5 py-3 shadow-sm max-w-md w-full flex items-center gap-3 text-left">
+ <div className="flex h-8 w-8 items-center justify-center text-emerald-700 dark:text-emerald-400">
  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01" />
  <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
  </svg>
  </div>
- <div className="text-sm text-slate-600">
+ <div className="text-sm text-slate-600 dark:text-slate-300">
  {submitted 
  ? "Your predictions are locked in. This is a TEST game and does not affect the main game."
  : "Need to tweak something? Tap a prediction to adjust it. Everything locks in once you hit confirm."}
@@ -2084,7 +2084,7 @@ return null;
  </div>
  </div>
  </div>
- <div className="flex-1 overflow-y-auto p-4 pb-4">
+ <div className="flex-1 overflow-y-auto p-4 pb-4 bg-slate-50 dark:bg-slate-900">
  <div className="max-w-2xl mx-auto space-y-6">
  {(() => {
  const grouped: Array<{ label: string; items: typeof fixtures }>=[];
@@ -2096,21 +2096,21 @@ return null;
  if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); }
  return grouped.map((group,groupIdx)=>(
  <div key={groupIdx}>
- <div className="text-lg font-semibold text-slate-800 mb-4">{group.label}</div>
+ <div className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-4">{group.label}</div>
  <div className="space-y-4">
  {group.items.map((fixture)=>{
    const pick = picks.get(fixture.fixture_index);
    const result = results.get(fixture.fixture_index);
    return (
- <div key={fixture.id} className="bg-white rounded-xl shadow-sm p-6">
+ <div key={fixture.id} className="bg-white dark:bg-slate-800 rounded-xl p-6">
  <div className="flex items-center justify-between gap-2 mb-4">
- <div className="flex-1 min-w-0 text-right"><span className="text-sm font-semibold text-slate-800 truncate inline-block">{fixture.home_team || fixture.home_name}</span></div>
+ <div className="flex-1 min-w-0 text-right"><span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate inline-block">{fixture.home_team || fixture.home_name}</span></div>
  <div className="flex items-center gap-2 flex-shrink-0">
  <TeamBadge code={fixture.home_code} crest={fixture.home_crest} size={28} />
- <div className="text-slate-400 font-medium text-sm">{fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : ''}</div>
+ <div className="text-slate-400 dark:text-slate-500 font-medium text-sm">{fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : ''}</div>
  <TeamBadge code={fixture.away_code} crest={fixture.away_crest} size={28} />
  </div>
- <div className="flex-1 min-w-0 text-left"><span className="text-sm font-semibold text-slate-800 truncate inline-block">{fixture.away_team || fixture.away_name}</span></div>
+ <div className="flex-1 min-w-0 text-left"><span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate inline-block">{fixture.away_team || fixture.away_name}</span></div>
  </div>
  <div className="grid grid-cols-3 gap-3 mt-4">
 <button 
@@ -2121,18 +2121,18 @@ np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"H",match
 setPicks(np);
 }}
  disabled={submitted}
- className={`h-16 rounded-xl border text-sm font-medium flex items-center justify-center ${
+ className={`h-16 rounded-xl text-sm font-medium flex items-center justify-center border-0 ${
  pick?.pick==="H"
  ? result && result === "H" && pick.pick === result
- ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white border-yellow-300 shadow-xl"
+ ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl"
  : result && (result === "D" || result === "A")
- ? "bg-red-500 text-white border-red-400"
- : "bg-purple-600 text-white border-purple-600"
+ ? "bg-red-500 text-white"
+ : "bg-purple-600 text-white"
  : result === "H"
- ? "bg-slate-300 text-slate-700 border-slate-400"
+ ? "bg-slate-300 dark:bg-slate-600 text-slate-700 dark:text-slate-200"
  : submitted
- ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
- : "bg-slate-50 text-slate-600 border-slate-200"
+ ? "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed"
+ : "bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
  }`}
  >
  Home Win
@@ -2145,18 +2145,18 @@ np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"D",match
 setPicks(np);
 }}
  disabled={submitted}
- className={`h-16 rounded-xl border text-sm font-medium flex items-center justify-center ${
+ className={`h-16 rounded-xl text-sm font-medium flex items-center justify-center border-0 ${
  pick?.pick==="D"
  ? result && result === "D" && pick.pick === result
- ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white border-yellow-300 shadow-xl"
+ ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl"
  : result && (result === "H" || result === "A")
- ? "bg-red-500 text-white border-red-400"
- : "bg-purple-600 text-white border-purple-600"
+ ? "bg-red-500 text-white"
+ : "bg-purple-600 text-white"
  : result === "D"
- ? "bg-slate-300 text-slate-700 border-slate-400"
+ ? "bg-slate-300 dark:bg-slate-600 text-slate-700 dark:text-slate-200"
  : submitted
- ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
- : "bg-slate-50 text-slate-600 border-slate-200"
+ ? "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed"
+ : "bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
  }`}
  >
  Draw
@@ -2169,18 +2169,18 @@ np.set(fixture.fixture_index,{fixture_index:fixture.fixture_index,pick:"A",match
 setPicks(np);
 }}
  disabled={submitted}
- className={`h-16 rounded-xl border text-sm font-medium flex items-center justify-center ${
+ className={`h-16 rounded-xl text-sm font-medium flex items-center justify-center border-0 ${
  pick?.pick==="A"
  ? result && result === "A" && pick.pick === result
- ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white border-yellow-300 shadow-xl"
+ ? "bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl"
  : result && (result === "H" || result === "D")
- ? "bg-red-500 text-white border-red-400"
- : "bg-purple-600 text-white border-purple-600"
+ ? "bg-red-500 text-white"
+ : "bg-purple-600 text-white"
  : result === "A"
- ? "bg-slate-300 text-slate-700 border-slate-400"
+ ? "bg-slate-300 dark:bg-slate-600 text-slate-700 dark:text-slate-200"
  : submitted
- ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
- : "bg-slate-50 text-slate-600 border-slate-200"
+ ? "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed"
+ : "bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
  }`}
  >
  Away Win
@@ -2195,12 +2195,12 @@ setPicks(np);
  })()}
  </div>
  </div>
- <div className="p-6 bg-white shadow-lg">
+ <div className="p-6 bg-white dark:bg-slate-800 shadow-lg">
  <div className="max-w-2xl mx-auto space-y-4">
  {submitted ? (
  <div className="text-center py-6">
- <div className="text-lg font-bold text-slate-800 mb-2">Predictions Submitted (TEST)</div>
- <div className="text-sm text-slate-600">
+ <div className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-2">Predictions Submitted (TEST)</div>
+ <div className="text-sm text-slate-600 dark:text-slate-400">
  Your test predictions for Test GW {currentGw} have been confirmed.
  </div>
  {myScore > 0 && (
@@ -2209,7 +2209,7 @@ setPicks(np);
  </div>
  ) : (
  <>
- {!allPicksMade && (<div className="text-center text-sm text-amber-600 mb-2">You haven't made all your predictions yet</div>)}
+ {!allPicksMade && (<div className="text-center text-sm text-amber-600 dark:text-amber-400 mb-2">You haven't made all your predictions yet</div>)}
  <div className="grid gap-3">
  <button 
  onClick={handleConfirmClick} 
@@ -2219,7 +2219,7 @@ setPicks(np);
  {allPicksMade ? "SUBMIT YOUR PREDICTIONS" : "Complete All Predictions First"}
  </button>
  {!allPicksMade && (
- <button onClick={()=>navigate("/")} className="w-full py-3 text-slate-600 font-medium">Cancel</button>
+ <button onClick={()=>navigate("/")} className="w-full py-3 text-slate-600 dark:text-slate-400 font-medium">Cancel</button>
  )}
  </div>
  </>
@@ -2291,7 +2291,7 @@ setPicks(np);
  } else if (viewMode === "cards") {
  // Only block if deadline hasn't passed and we're in cards mode
  return (
- <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+ <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
  </div>
  );
@@ -2304,7 +2304,7 @@ setPicks(np);
  if (!currentFixture && fixtures.length > 0) {
  setCurrentIndex(0);
  return (
- <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+ <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
  </div>
  );
@@ -2313,10 +2313,10 @@ setPicks(np);
  // If no fixtures, show empty state
  if (fixtures.length === 0) {
  return (
- <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+ <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
  <div className="text-center px-4 max-w-md">
- <div className="text-lg font-semibold text-slate-700 mb-2">No fixtures available</div>
- <div className="text-sm text-slate-500">Check back later for GW {currentGw} fixtures.</div>
+ <div className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-2">No fixtures available</div>
+ <div className="text-sm text-slate-500 dark:text-slate-400">Check back later for GW {currentGw} fixtures.</div>
  </div>
  </div>
  );
@@ -2336,23 +2336,23 @@ setPicks(np);
  }
  }
  `}</style>
- <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col overflow-hidden">
+ <div className="h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex flex-col overflow-hidden">
  {/* CRITICAL: Only render cards if NOT submitted AND GW is open/predicted - use ref for immediate check */}
  {/* Also add inline style to hide immediately if submitted or GW finished/live (CSS failsafe) */}
  {shouldShowCardsRef.current && !shouldBlockSwipePredictions && !submitted && effectiveViewMode === "cards" && viewMode === "cards" && canShowSwipePredictions && (
  <div 
- className="sticky top-0 z-40 px-4 pt-4 pb-2 bg-gradient-to-br from-slate-50 to-slate-100"
+ className="sticky top-0 z-40 px-4 pt-4 pb-2 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800"
  style={{ display: shouldBlockSwipePredictions ? 'none' : 'block' }}
  >
  <div className="max-w-md mx-auto">
  <div className="relative flex items-center justify-between mb-4">
  <button 
  onClick={() => navigate("/")} 
- className="text-slate-600 text-3xl font-bold w-10 h-10 flex items-center justify-center"
+ className="text-slate-600 dark:text-slate-400 text-3xl font-bold w-10 h-10 flex items-center justify-center"
  >
  ✕
  </button>
- <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700">Gameweek {currentGw}</span>
+ <span className="absolute left-1/2 -translate-x-1/2 text-lg font-extrabold text-slate-700 dark:text-slate-200">Gameweek {currentGw}</span>
  {!shouldBlockSwipePredictions && effectiveViewMode === "cards" && canShowSwipePredictions && (
  <button
  onClick={() => setCurrentIndex(fixtures.length)}
@@ -2380,7 +2380,7 @@ setPicks(np);
  ? "bg-[#116f59]" 
  : isComplete 
  ? "bg-[#116f59]" 
- : "bg-white";
+ : "bg-white dark:bg-slate-700";
  return (
  <div
  key={idx}
@@ -2411,18 +2411,18 @@ setPicks(np);
  {/* CRITICAL: If submitted or GW finished/live, ONLY render list view - cards section is completely separate and never evaluated */}
  {/* But if deadline has passed, we show the submitted view instead (handled above) */}
  {(shouldBlockSwipePredictions || effectiveViewMode === "list") && !deadlinePassed && (
- <div className="flex-1 overflow-y-auto">
+ <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900">
  <div className="max-w-2xl mx-auto px-4 py-4">
  <div className="relative flex items-center justify-center mb-4">
  {!isUserSubmitted && (
  <button 
  onClick={() => navigate("/")} 
- className="absolute left-0 text-slate-600 text-3xl font-bold w-10 h-10 flex items-center justify-center"
+ className="absolute left-0 text-slate-600 dark:text-slate-400 text-3xl font-bold w-10 h-10 flex items-center justify-center"
  >
  ✕
  </button>
  )}
- <div className="text-center"><h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-slate-900 mt-0 mb-2">Predictions</h1><div className="mt-0 mb-4 text-base text-slate-500">Call every game, lock in your results.</div></div>
+ <div className="text-center"><h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 mt-0 mb-2">Predictions</h1><div className="mt-0 mb-4 text-base text-slate-500 dark:text-slate-400">Call every game, lock in your results.</div></div>
  </div>
  {!shouldBlockSwipePredictions && canShowSwipePredictions && (
  <div className="flex justify-center mt-4">

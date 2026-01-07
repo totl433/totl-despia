@@ -81,16 +81,16 @@ export default function CookiePolicy() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#f5f7f6] p-4">
+    <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-900 p-4">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-semibold mb-6 text-[#1C8376]">Cookie Policy</h1>
+        <h1 className="text-2xl font-semibold mb-6 text-[#1C8376] dark:text-emerald-400">Cookie Policy</h1>
         
         {/* Termly embed - this div will be populated by Termly's script */}
         <div 
           ref={embedRef}
           {...({ name: 'termly-embed' } as any)}
           data-id="006d16a3-069f-425a-9e1d-2faa395510ac"
-          className="bg-white rounded-xl p-6 shadow-sm min-h-[200px]"
+          className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm min-h-[200px]"
         />
       </div>
     </div>

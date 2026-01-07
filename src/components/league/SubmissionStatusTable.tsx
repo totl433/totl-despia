@@ -91,7 +91,7 @@ export default function SubmissionStatusTable({
  return (
  <div className="mt-2 pt-2">
  <div className="mb-3 flex items-center justify-between">
- <div className="text-sm font-medium text-slate-700">
+ <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
  <>Waiting for <span className="font-semibold">{remaining}</span> of {members.length} to submit.</>
  </div>
  {!allSubmitted && (
@@ -113,19 +113,19 @@ export default function SubmissionStatusTable({
  </div>
 
  {deadlineStr && (
- <div className={`mb-3 text-xs font-medium ${deadlinePassed ?'text-orange-600' :'text-slate-600'} flex items-center gap-1.5`}>
+ <div className={`mb-3 text-xs font-medium ${deadlinePassed ?'text-orange-600 dark:text-orange-400' :'text-slate-600 dark:text-slate-400'} flex items-center gap-1.5`}>
  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
  </svg>
  {deadlinePassed ?'Deadline Passed:' :'Deadline:'}{deadlineStr}
  </div>)}
 
- <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+ <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
  <table className="w-full text-sm" style={{ tableLayout:'fixed' }}>
- <thead className="bg-slate-50">
+ <thead className="bg-slate-50 dark:bg-slate-800">
  <tr>
- <th className="text-left px-4 py-3 w-2/3 font-semibold text-slate-600">Player</th>
- <th className="text-left px-4 py-3 font-semibold text-slate-600">Status</th>
+ <th className="text-left px-4 py-3 w-2/3 font-semibold text-slate-600 dark:text-slate-400">Player</th>
+ <th className="text-left px-4 py-3 font-semibold text-slate-600 dark:text-slate-400">Status</th>
  </tr>
  </thead>
  <tbody>
@@ -136,7 +136,7 @@ export default function SubmissionStatusTable({
  const key = `${m.id}:${picksGw}`;
  const submitted = !!submittedMap.get(key);
  return (
- <tr key={m.id} className="border-t border-slate-200">
+ <tr key={m.id} className="border-t border-slate-200 dark:border-slate-700">
  <td className="px-4 py-3">
  <div className="flex items-center gap-2">
  <UserAvatar
@@ -146,7 +146,7 @@ export default function SubmissionStatusTable({
  className="flex-shrink-0"
  fallbackToInitials={true}
  />
- <span className="font-bold text-slate-900 truncate whitespace-nowrap" style={{ overflow:'hidden', textOverflow:'ellipsis' }}>{m.name}</span>
+ <span className="font-bold text-slate-900 dark:text-slate-100 truncate whitespace-nowrap" style={{ overflow:'hidden', textOverflow:'ellipsis' }}>{m.name}</span>
  </div>
  </td>
  <td className="px-4 py-3">
@@ -174,7 +174,7 @@ export default function SubmissionStatusTable({
 
  // Full variant
  return (
- <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-700">
+ <div className="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm p-4 text-slate-700 dark:text-slate-300">
  <div className="mb-3 flex items-center justify-between">
  <div>
  {allSubmitted ? (
@@ -200,16 +200,16 @@ export default function SubmissionStatusTable({
  </div>
 
  {deadlineStr && (
- <div className={`mb-3 text-sm ${deadlinePassed ?'text-orange-600 font-semibold' :'text-slate-600'}`}>
+ <div className={`mb-3 text-sm ${deadlinePassed ?'text-orange-600 dark:text-orange-400 font-semibold' :'text-slate-600 dark:text-slate-400'}`}>
  {deadlinePassed ?'⏰ Deadline Passed:' :'⏰ Deadline:'}{deadlineStr}
  </div>)}
 
- <div className="overflow-hidden rounded-lg border">
+ <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
  <table className="w-full text-sm" style={{ tableLayout:'fixed' }}>
- <thead className="bg-slate-50">
+ <thead className="bg-slate-50 dark:bg-slate-800">
  <tr>
- <th className="text-left px-4 py-3 w-2/3 font-semibold text-slate-600">Player</th>
- <th className="text-left px-4 py-3 font-semibold text-slate-600">Status</th>
+ <th className="text-left px-4 py-3 w-2/3 font-semibold text-slate-600 dark:text-slate-400">Player</th>
+ <th className="text-left px-4 py-3 font-semibold text-slate-600 dark:text-slate-400">Status</th>
  </tr>
  </thead>
  <tbody>
@@ -220,7 +220,7 @@ export default function SubmissionStatusTable({
  const key = `${m.id}:${picksGw}`;
  const submitted = !!submittedMap.get(key);
  return (
- <tr key={m.id} className="border-t border-slate-200">
+ <tr key={m.id} className="border-t border-slate-200 dark:border-slate-700">
  <td className="px-4 py-3">
  <div className="flex items-center gap-2">
  <UserAvatar
@@ -230,7 +230,7 @@ export default function SubmissionStatusTable({
  className="flex-shrink-0"
  fallbackToInitials={true}
  />
- <span className="font-bold text-slate-900 truncate whitespace-nowrap" style={{ overflow:'hidden', textOverflow:'ellipsis' }}>{m.name}</span>
+ <span className="font-bold text-slate-900 dark:text-slate-100 truncate whitespace-nowrap" style={{ overflow:'hidden', textOverflow:'ellipsis' }}>{m.name}</span>
  </div>
  </td>
  <td className="px-4 py-3">

@@ -230,14 +230,14 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
   }, [data]);
 
   return (
-    <div className="rounded-xl border bg-white overflow-hidden shadow-sm w-full relative">
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden shadow-sm w-full relative">
       <Link
         to={`/league/${row.code}`}
-        className="block p-6 !bg-white no-underline relative z-20"
+        className="block p-6 !bg-white dark:!bg-slate-800 no-underline relative z-20"
       >
         <div className="flex items-center gap-3 relative">
           {/* League Avatar Badge */}
-          <div className="flex-shrink-0 w-14 h-14 rounded-full flex items-center justify-center overflow-hidden bg-slate-100">
+          <div className="flex-shrink-0 w-14 h-14 rounded-full flex items-center justify-center overflow-hidden bg-slate-100 dark:bg-slate-700">
             <img
               src={getLeagueAvatarUrl(row)}
               alt={`${row.name} avatar`}
@@ -297,16 +297,16 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
               </button>
             )}
             {/* Line 1: League Name */}
-            <div className="text-base font-semibold text-slate-900 truncate pr-12">{row.name}</div>
+            <div className="text-base font-semibold text-slate-900 dark:text-slate-100 truncate pr-12">{row.name}</div>
 
             {/* Line 2: Season Leader - EXPERIMENTAL ONLY - only show if showSeasonLeader prop is true */}
             {showSeasonLeader && data?.seasonLeaderName && (
-              <div className="flex items-center gap-1.5 text-sm text-slate-400">
+              <div className="flex items-center gap-1.5 text-sm text-slate-400 dark:text-slate-500">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   fill="currentColor"
                   viewBox="0 0 24 24"
-                  className="w-4 h-4 text-slate-400"
+                  className="w-4 h-4 text-slate-400 dark:text-slate-500"
                 >
                   <g>
                     <path fill="currentColor" d="M16 3c1.1046 0 2 0.89543 2 2h2c1.1046 0 2 0.89543 2 2v1c0 2.695 -2.1323 4.89 -4.8018 4.9941 -0.8777 1.5207 -2.4019 2.6195 -4.1982 2.9209V19h3c0.5523 0 1 0.4477 1 1s-0.4477 1 -1 1H8c-0.55228 0 -1 -0.4477 -1 -1s0.44772 -1 1 -1h3v-3.085c-1.7965 -0.3015 -3.32148 -1.4 -4.19922 -2.9209C4.13175 12.8895 2 10.6947 2 8V7c0 -1.10457 0.89543 -2 2 -2h2c0 -1.10457 0.89543 -2 2 -2zm-8 7c0 2.2091 1.79086 4 4 4 2.2091 0 4 -1.7909 4 -4V5H8zM4 8c0 1.32848 0.86419 2.4532 2.06055 2.8477C6.02137 10.5707 6 10.2878 6 10V7H4zm14 2c0 0.2878 -0.0223 0.5706 -0.0615 0.8477C19.1353 10.4535 20 9.32881 20 8V7h-2z" strokeWidth="1"></path>
@@ -327,7 +327,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
               {/* Member Count */}
               <div className="flex items-center gap-1">
                 <svg
-                  className="w-4 h-4 text-slate-500"
+                  className="w-4 h-4 text-slate-500 dark:text-slate-400"
                   width="16"
                   height="16"
                   viewBox="0 0 16 16"
@@ -367,7 +367,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
                     </clipPath>
                   </defs>
                 </svg>
-                <span className="text-sm font-semibold text-slate-900">{members.length}</span>
+                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{members.length}</span>
               </div>
 
               {/* User Position - ML Ranking */}
@@ -376,17 +376,17 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
                   <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                   </svg>
-                  <span className="text-sm font-semibold text-slate-900">{ordinal(userPosition)}</span>
+                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{ordinal(userPosition)}</span>
                   {data?.positionChange === "up" && <span className="text-emerald-600 text-xs">▲</span>}
                   {data?.positionChange === "down" && <span className="text-red-600 text-xs">▼</span>}
-                  {data?.positionChange === "same" && <span className="text-slate-400 text-xs">—</span>}
+                  {data?.positionChange === "same" && <span className="text-slate-400 dark:text-slate-500 text-xs">—</span>}
                 </div>
               ) : (
                 <div className="flex items-center gap-1">
                   <svg className="w-4 h-4 text-[#1C8376]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                   </svg>
-                  <span className="text-sm font-semibold text-slate-400">—</span>
+                  <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">—</span>
                 </div>
               )}
             </div>
@@ -427,7 +427,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
               {badge}
             </span>
           )}
-          <svg className="w-5 h-5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-slate-400 dark:text-slate-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </div>

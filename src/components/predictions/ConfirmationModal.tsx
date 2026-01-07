@@ -11,7 +11,7 @@ export default function ConfirmationModal({
 }: ConfirmationModalProps) {
  return (
  <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
- <div className="relative overflow-hidden rounded-3xl bg-white px-10 py-8 text-center shadow-2xl max-w-sm mx-4">
+ <div className="relative overflow-hidden rounded-3xl bg-white dark:bg-slate-800 px-10 py-8 text-center shadow-2xl max-w-sm mx-4">
  <div className="absolute -top-16 -left-10 h-32 w-32 rounded-full bg-emerald-200/40 blur-2xl" />
  <div className="absolute -bottom-14 -right-12 h-32 w-32 rounded-full bg-cyan-200/40 blur-2xl" />
  <div className="relative z-10 space-y-4">
@@ -49,7 +49,7 @@ export default function ConfirmationModal({
  >
  {success ?'Good Luck!' :'Not Quite Yet!'}
  </div>
- <p className="text-sm text-slate-600">{message}</p>
+ <p className="text-sm text-slate-600 dark:text-slate-300">{message}</p>
  {onClose && (
  <button
  onClick={onClose}

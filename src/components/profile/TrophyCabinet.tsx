@@ -27,37 +27,37 @@ export const TrophyCabinet = React.memo(function TrophyCabinet({
 
  const totalTrophies = lastGw + form5 + form10 + overall;
 
- if (loading) {
- return (
- <div className="bg-white rounded-xl shadow-md p-6">
- <div className="text-sm text-slate-500 mb-4">Leaderboard Trophy Cabinet</div>
- <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
- {[1, 2, 3, 4].map((i) => (
- <div key={i} className="h-24 bg-slate-200 rounded animate-pulse"></div>))}
- </div>
- </div>);
- }
+  if (loading) {
+    return (
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6">
+        <div className="text-sm text-slate-500 dark:text-slate-400 mb-4">Leaderboard Trophy Cabinet</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-24 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>))}
+        </div>
+      </div>);
+    }
 
- return (
- <div className="bg-white rounded-xl shadow-md p-6">
- <div className="mb-4 flex items-center gap-2">
- <h2 className="text-lg font-bold text-slate-800">Leaderboard Trophy Cabinet</h2>
- <div 
- className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center cursor-pointer"
- onClick={() => setIsInfoOpen(true)}
- role="button"
- aria-label="Information about Trophy Cabinet"
- >
- <span className="text-[10px] text-slate-500 font-bold">i</span>
- </div>
- </div>
- 
- <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
- {trophies.map((trophy, index) => (
- <div
- key={index}
- className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-lg border border-slate-200"
- >
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6">
+      <div className="mb-4 flex items-center gap-2">
+        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Leaderboard Trophy Cabinet</h2>
+        <div 
+          className="w-4 h-4 rounded-full border border-slate-400 dark:border-slate-500 flex items-center justify-center cursor-pointer"
+          onClick={() => setIsInfoOpen(true)}
+          role="button"
+          aria-label="Information about Trophy Cabinet"
+        >
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">i</span>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {trophies.map((trophy, index) => (
+          <div
+            key={index}
+            className="flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600"
+          >
  <div className="relative mb-2">
  <svg 
  xmlns="http://www.w3.org/2000/svg" 
@@ -74,16 +74,16 @@ export const TrophyCabinet = React.memo(function TrophyCabinet({
  {trophy.count}
  </div>)}
  </div>
- <div className="text-xs font-medium text-slate-600 text-center">
- {trophy.label}
- </div>
- </div>))}
- </div>
- 
- {totalTrophies > 0 && (
- <div className="mt-4 text-sm font-semibold text-slate-600 text-center">
- You have {totalTrophies} {totalTrophies === 1 ?'trophy' :'trophies'}
- </div>)}
+            <div className="text-xs font-medium text-slate-600 dark:text-slate-300 text-center">
+              {trophy.label}
+            </div>
+          </div>))}
+      </div>
+      
+      {totalTrophies > 0 && (
+        <div className="mt-4 text-sm font-semibold text-slate-600 dark:text-slate-300 text-center">
+          You have {totalTrophies} {totalTrophies === 1 ?'trophy' :'trophies'}
+        </div>)}
  
  <InfoSheet
  isOpen={isInfoOpen}

@@ -32,7 +32,7 @@ export const ParChart = React.memo(function ParChart({
 
   return (
     <div 
-      className="flex-shrink-0 h-[168px] bg-white relative"
+      className="flex-shrink-0 h-[168px] bg-white dark:bg-slate-800 relative"
       style={{ width: `${chartWidth}px`, minWidth: `${chartWidth}px` }}
     >
       <div className="pt-3 pb-2 h-full flex flex-col" style={{ paddingLeft: '0', paddingRight: '12px' }}>
@@ -74,10 +74,10 @@ export const ParChart = React.memo(function ParChart({
                         >
                           <div
                             className={`text-xs font-bold leading-none ${
-                              isLatest ? 'text-[#1C8376]' :
-                              isAbovePar ? 'text-emerald-600' :
-                              isBelowPar ? 'text-red-600' :
-                              'text-slate-700'
+                              isLatest ? 'text-[#1C8376] dark:text-emerald-400' :
+                              isAbovePar ? 'text-emerald-600 dark:text-emerald-400' :
+                              isBelowPar ? 'text-red-600 dark:text-red-400' :
+                              'text-slate-700 dark:text-slate-300'
                             }`}
                           >
                             {userPoints}
@@ -88,7 +88,7 @@ export const ParChart = React.memo(function ParChart({
                         // Above average: average section at bottom (gray), your extra points on top (colored)
                         <>
                           <div
-                            className="absolute bottom-0 w-full bg-slate-300 opacity-60"
+                            className="absolute bottom-0 w-full bg-slate-300 dark:bg-slate-600 opacity-60"
                             style={{
                               height: `${parBarHeight}px`,
                               minHeight: parBarHeight > 0 ? '2px' : '0',
@@ -98,7 +98,7 @@ export const ParChart = React.memo(function ParChart({
                             title={`Par: ${averagePoints.toFixed(1)}`}
                           />
                           <div
-                            className="absolute w-full transition-all bg-emerald-500"
+                            className="absolute w-full transition-all bg-emerald-500 dark:bg-emerald-600"
                             style={{
                               bottom: `${parBarHeight}px`,
                               height: `${userBarHeight - parBarHeight}px`,
@@ -113,7 +113,7 @@ export const ParChart = React.memo(function ParChart({
                         // Below average: your score at bottom (colored), missing points on top (gray)
                         <>
                           <div
-                            className="absolute bottom-0 w-full transition-all bg-red-500"
+                            className="absolute bottom-0 w-full transition-all bg-red-500 dark:bg-red-600"
                             style={{
                               height: `${userBarHeight}px`,
                               minHeight: userBarHeight > 0 ? '2px' : '0',
@@ -123,7 +123,7 @@ export const ParChart = React.memo(function ParChart({
                             title={`Your score: ${userPoints}`}
                           />
                           <div
-                            className="absolute w-full bg-slate-300 opacity-60"
+                            className="absolute w-full bg-slate-300 dark:bg-slate-600 opacity-60"
                             style={{
                               bottom: `${userBarHeight}px`,
                               height: `${parBarHeight - userBarHeight}px`,
@@ -137,7 +137,7 @@ export const ParChart = React.memo(function ParChart({
                       ) : (
                         // At par: single bar showing both are equal
                         <div
-                          className="absolute bottom-0 w-full rounded-t bg-slate-400 transition-all"
+                          className="absolute bottom-0 w-full rounded-t bg-slate-400 dark:bg-slate-500 transition-all"
                           style={{
                             height: `${userBarHeight}px`,
                             minHeight: userBarHeight > 0 ? '4px' : '0',
@@ -155,7 +155,7 @@ export const ParChart = React.memo(function ParChart({
                         >
                           <div
                             className={`text-sm leading-none ${
-                              isAbovePar ? 'text-emerald-600' : 
+                              isAbovePar ? 'text-emerald-600 dark:text-emerald-400' : 
                               isBelowPar ? 'text-white' : 
                               'text-white'
                             }`}
@@ -174,13 +174,13 @@ export const ParChart = React.memo(function ParChart({
                       <div
                         className={`text-[10px] font-medium leading-tight ${
                           isLatest
-                            ? 'text-[#1C8376] font-bold'
-                            : 'text-slate-700'
+                            ? 'text-[#1C8376] dark:text-emerald-400 font-bold'
+                            : 'text-slate-700 dark:text-slate-300'
                         }`}
                       >
                         GW{gw}
                       </div>
-                      <div className="text-[9px] font-medium text-slate-400 leading-none" style={{ visibility: showInfo ? 'visible' : 'hidden', height: '12px' }}>
+                      <div className="text-[9px] font-medium text-slate-400 dark:text-slate-500 leading-none" style={{ visibility: showInfo ? 'visible' : 'hidden', height: '12px' }}>
                         av. {averagePoints.toFixed(1)}
                       </div>
                     </div>

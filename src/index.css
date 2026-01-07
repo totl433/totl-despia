@@ -63,15 +63,27 @@
 html {
   overflow-y: auto !important;
   background-color: #f5f7f6;
+  transition: background-color 0.2s ease;
+}
+html.dark {
+  background-color: #0f172a; /* slate-900 */
 }
 body {
   overflow-y: auto !important;
   padding-bottom: 80px; /* Space for bottom nav */
   background-color: #f5f7f6;
+  transition: background-color 0.2s ease;
+}
+html.dark body {
+  background-color: #0f172a; /* slate-900 */
 }
 #root {
   overflow-y: auto !important;
   background-color: #f5f7f6;
+  transition: background-color 0.2s ease;
+}
+html.dark #root {
+  background-color: #0f172a; /* slate-900 */
 }
 
 /* Prevent mobile zoom on input focus */
@@ -79,6 +91,9 @@ html {
   -webkit-text-size-adjust: 100%;
   -ms-text-size-adjust: 100%;
   background-color: #f5f7f6;
+}
+html.dark {
+  background-color: #0f172a; /* slate-900 */
 }
 
 /* Prevent zoom on input focus */

@@ -17,12 +17,12 @@ export const AccountMenu = React.memo(function AccountMenu({
   onLogout,
 }: AccountMenuProps) {
   return (
-    <div className="bg-white rounded-xl shadow-md p-4 sm:p-6 overflow-hidden">
-      <h2 className="text-xl font-bold text-slate-800 mb-4">Your Account</h2>
+    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 sm:p-6 overflow-hidden">
+      <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-4">Your Account</h2>
       
       {/* Email Display */}
-      <div className="mb-4 pb-4 border-b border-slate-200">
-        <div className="text-base text-slate-800 break-all">{email}</div>
+      <div className="mb-4 pb-4 border-b border-slate-200 dark:border-slate-700">
+        <div className="text-base text-slate-800 dark:text-slate-200 break-all">{email}</div>
       </div>
       
       <div className="space-y-0">
@@ -54,7 +54,7 @@ export const AccountMenu = React.memo(function AccountMenu({
             window.location.href = '/auth';
           }, 500);
         }}
-        className="w-full mt-6 py-3 text-red-600 font-semibold underline"
+        className="w-full mt-6 py-3 text-red-600 dark:text-red-400 font-semibold underline"
       >
         Log out
       </button>

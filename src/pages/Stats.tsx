@@ -167,23 +167,23 @@ export default function Stats() {
  return () => { alive = false; };
  }, [user, currentGw, currentGwState]);
 
- if (!user) {
- return (
- <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
- <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6">
- <div className="bg-white rounded-xl shadow-md p-6 text-center">
- <p className="text-slate-600">Please sign in to view your stats.</p>
- </div>
- </div>
- </div>
- );
- }
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6">
+        <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 text-center">
+            <p className="text-slate-600 dark:text-slate-300">Please sign in to view your stats.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
  // Check if user has enough data
  const hasEnoughData = stats && (stats.lastCompletedGw !== null || stats.overallPercentile !== null);
 
- return (
- <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 overflow-x-hidden">
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 overflow-x-hidden">
  <style>{`
  @keyframes sparkle {
  0%, 100% {
@@ -226,10 +226,10 @@ export default function Stats() {
  }
  `}</style>
  <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 py-6">
- <Link
- to="/profile"
- className="inline-flex items-center gap-2 text-slate-600 mb-4"
- >
+      <Link
+        to="/profile"
+        className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-400 mb-4"
+      >
  <svg
  className="w-5 h-5"
  fill="none"
@@ -263,7 +263,7 @@ export default function Stats() {
  setShowResultsModal(true);
  setResultsModalLoading(true);
  }}
- className="w-full mb-6 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-semibold py-3 px-4 rounded-xl shadow-md duration-200 transform active:scale-[0.98] disabled:opacity-75 disabled:cursor-not-allowed"
+        className="w-full mb-6 bg-gradient-to-r from-emerald-500 to-teal-600 dark:from-emerald-600 dark:to-teal-700 text-white font-semibold py-3 px-4 rounded-xl shadow-md duration-200 transform active:scale-[0.98] disabled:opacity-75 disabled:cursor-not-allowed"
  disabled={resultsModalLoading}
  >
  <div className="flex items-center justify-between">
@@ -290,16 +290,16 @@ export default function Stats() {
  );
  })()}
 
- {!hasEnoughData && !loading ? (
- <div className="bg-white rounded-xl shadow-md p-8 text-center">
- <p className="text-slate-600 text-lg">
- Not enough games yet — check back after a few Gameweeks.
- </p>
- <p className="text-slate-500 text-sm mt-2">
- The numbers will start to tell a story soon.
- </p>
- </div>
- ) : (
+    {!hasEnoughData && !loading ? (
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-8 text-center">
+        <p className="text-slate-600 dark:text-slate-300 text-lg">
+          Not enough games yet — check back after a few Gameweeks.
+        </p>
+        <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">
+          The numbers will start to tell a story soon.
+        </p>
+      </div>
+    ) : (
  <div className="space-y-6 lg:grid lg:grid-cols-2 lg:gap-6 lg:space-y-0">
  {/* 1. Last completed Gameweek percentile */}
  {stats && stats.lastCompletedGw !== null && stats.lastCompletedGwPercentile !== null && (() => {
@@ -420,11 +420,11 @@ export default function Stats() {
  const aboveAveragePercent = ((aboveAverageCount / stats.weeklyParData.length) * 100).toFixed(0);
  
  return (
- <div className="lg:col-span-2 desktop-constrained-section bg-white rounded-l-xl lg:rounded-xl shadow-md lg:overflow-hidden" style={{ marginRight: '-100vw', paddingRight: '100vw', paddingTop: '1.5rem', paddingBottom: '1.5rem', paddingLeft: '1.5rem' }}>
- <div className="flex items-center justify-between mb-2">
- <div className="text-sm font-medium text-slate-600">
- Weekly Performance vs Average
- </div>
+      <div className="lg:col-span-2 desktop-constrained-section bg-white dark:bg-slate-800 rounded-l-xl lg:rounded-xl shadow-md lg:overflow-hidden" style={{ marginRight: '-100vw', paddingRight: '100vw', paddingTop: '1.5rem', paddingBottom: '1.5rem', paddingLeft: '1.5rem' }}>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-sm font-medium text-slate-600 dark:text-slate-300">
+            Weekly Performance vs Average
+          </div>
  <div className="pr-2">
  <LiveGamesToggle 
  value={showParChartInfo} 
@@ -456,9 +456,9 @@ export default function Stats() {
  showInfo={showParChartInfo}
  />
  </div>
- <div className="text-sm font-bold text-slate-700 mt-2">
- You perform above average {aboveAveragePercent}% of the time.
- </div>
+        <div className="text-sm font-bold text-slate-700 dark:text-slate-200 mt-2">
+          You perform above average {aboveAveragePercent}% of the time.
+        </div>
  </div>
  );
  })()}
@@ -510,8 +510,8 @@ export default function Stats() {
  label="Best single Gameweek"
  value={
  <span>
- <span className="text-2xl font-bold text-slate-800">{stats.bestSingleGw.points}</span>
- <span className="text-sm text-slate-600 ml-2">on GW{stats.bestSingleGw.gw}</span>
+            <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">{stats.bestSingleGw.points}</span>
+            <span className="text-sm text-slate-600 dark:text-slate-400 ml-2">on GW{stats.bestSingleGw.gw}</span>
  </span>
  }
  loading={loading}
@@ -524,8 +524,8 @@ export default function Stats() {
  label="Lowest single Gameweek"
  value={
  <span>
- <span className="text-2xl font-bold text-slate-800">{stats.lowestSingleGw.points}</span>
- <span className="text-sm text-slate-600 ml-2">on GW{stats.lowestSingleGw.gw}</span>
+            <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">{stats.lowestSingleGw.points}</span>
+            <span className="text-sm text-slate-600 dark:text-slate-400 ml-2">on GW{stats.lowestSingleGw.gw}</span>
  </span>
  }
  loading={loading}

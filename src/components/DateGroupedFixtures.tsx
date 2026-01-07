@@ -58,11 +58,11 @@ export default function DateGroupedFixtures({
       {groupedByDate.map(({ date, cards }, dateIdx) => (
         <div key={date} className={dateIdx > 0 ? 'mt-4' : ''}>
           <DateHeader date={date} rightElement={dateIdx === 0 ? headerRightElement : undefined} />
-          <div className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm">
+          <div className="flex flex-col rounded-xl bg-white dark:bg-slate-800 overflow-hidden border-0">
             {cards.map(({ fixture, liveScore, pick }, cardIdx) => (
               <div key={fixture.id} className={cardIdx < cards.length - 1 ? 'relative' : ''}>
                 {cardIdx < cards.length - 1 && (
-                  <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-10" />
+                  <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 dark:bg-slate-700 z-10" />
                 )}
                 <FixtureCard
                   fixture={fixture}

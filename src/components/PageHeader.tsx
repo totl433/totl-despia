@@ -15,7 +15,7 @@ export const PageHeader = React.memo(function PageHeader({
   as: Component = 'h1',
   className = '',
 }: PageHeaderProps) {
-  const baseClasses = 'text-xl font-medium text-slate-900 uppercase tracking-wide';
+  const baseClasses = 'text-xl font-medium text-slate-900 dark:text-slate-100 uppercase tracking-wide';
   const combinedClasses = `${baseClasses} ${className}`.trim();
   
   return (

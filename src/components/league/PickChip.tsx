@@ -51,7 +51,7 @@ export default function PickChip({
     tone = "bg-emerald-600 text-white border-emerald-600";
   } else {
     // Grey when not submitted
-    tone = "bg-slate-100 text-slate-600 border-slate-200";
+    tone = "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600";
   }
 
   // Use avatar if userId is provided, otherwise fallback to letter

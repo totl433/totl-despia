@@ -9,7 +9,7 @@ interface DateHeaderProps {
 export default function DateHeader({ date, className = "", rightElement }: DateHeaderProps) {
   return (
     <div className={`flex items-center justify-between mb-2 px-1 ${className}`}>
-      <span className="text-sm font-semibold text-slate-700">{date}</span>
+      <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{date}</span>
       {rightElement && <div>{rightElement}</div>}
     </div>
   );
