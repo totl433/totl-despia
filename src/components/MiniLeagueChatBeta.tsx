@@ -390,6 +390,12 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         if (listRef.current) {
           const newPadding = `${totalBottomSpace + 8}px`;
           listRef.current.style.paddingBottom = newPadding;
+          // FIX: Force scroll after padding is set with double RAF for better timing
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              scrollToBottom();
+            });
+          });
         }
       } else {
         setInputBottom(0);
@@ -398,11 +404,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
           listRef.current.style.paddingBottom = newPadding;
         }
       }
-
-      // Scroll to bottom after keyboard adjustment
-      requestAnimationFrame(() => {
-        scrollToBottom();
-      });
     },
     [scrollToBottom]
   );
@@ -417,9 +418,10 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     let initialLoadComplete = false;
     
     // Wait a bit before allowing keyboard detection to prevent initial jump
+    // FIX: Reduced delay from 500ms to 200ms for faster keyboard response
     setTimeout(() => {
       initialLoadComplete = true;
-    }, 500);
+    }, 200);
 
     const detectKeyboardHeight = (): number => {
         const windowHeight = window.innerHeight;
@@ -547,10 +549,19 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     const groups = messages.reduce<ChatThreadProps["groups"]>((acc, msg) => {
       const isOwnMessage = msg.user_id === user?.id;
       const resolvedName = resolveName(msg.user_id, memberNames);
-      const authorName = resolvedName || (isOwnMessage ? currentUserDisplayName : "");
-      const fallbackName = authorName || (isOwnMessage ? "You" : "Unknown");
+      // FIX: Don't treat empty string as falsy - check explicitly
+      const authorName = resolvedName || (isOwnMessage ? currentUserDisplayName : null);
+      // FIX: Only use "Unknown" if we truly don't have a name AND it's not our own message
+      const fallbackName = authorName || (isOwnMessage ? "You" : null);
       
-      const avatarInitials = !isOwnMessage ? initials(fallbackName) : undefined;
+      // FIX: Skip messages where we can't resolve the author (they'll appear once memberNames loads)
+      if (!fallbackName && !isOwnMessage) {
+        return acc; // Skip this message until we have member names
+      }
+      
+      const finalAuthorName = fallbackName || "Unknown"; // Only use Unknown as last resort
+      
+      const avatarInitials = !isOwnMessage ? initials(finalAuthorName) : undefined;
 
       const createdDate = new Date(msg.created_at);
       const dayKey = createdDate.toDateString();
@@ -605,8 +616,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         
         const updatedGroup = {
           ...lastGroup,
-          id: `${baseId}-${fallbackName}`,
-          author: fallbackName,
+          id: `${baseId}-${finalAuthorName}`,
+          author: finalAuthorName,
           avatarInitials,
           userId: msg.user_id,
           messages: [...updatedMessages, messagePayload],
@@ -614,8 +625,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         return [...acc.slice(0, -1), updatedGroup];
       } else {
         return [...acc, {
-          id: `${msg.id}-${fallbackName}`,
-          author: fallbackName,
+          id: `${msg.id}-${finalAuthorName}`,
+          author: finalAuthorName,
           avatarInitials,
           isOwnMessage,
           userId: msg.user_id,

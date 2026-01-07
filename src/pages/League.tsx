@@ -312,7 +312,7 @@ export default function LeaguePage() {
     setDeepLinkError(null);
     
     // Check if we have a deep link
-    if (urlTab === 'chat' || urlLeagueCode) {
+    if (urlTab === 'chat' || urlTab === 'gw' || urlLeagueCode) {
       // Verify we're on the correct league page
       if (urlLeagueCode && code !== urlLeagueCode) {
         setDeepLinkError(`Deep link mismatch: URL has leagueCode=${urlLeagueCode} but we're on league ${code}. Current URL: ${window.location.href}`);
@@ -322,11 +322,42 @@ export default function LeaguePage() {
       // Check if tab should be chat
       if (urlTab === 'chat') {
         if (tab !== 'chat') {
-          setTab('chat');
+          // FIX: Use functional update to ensure state change
+          setTab(prevTab => {
+            if (prevTab !== 'chat') {
+              return 'chat';
+            }
+            return prevTab;
+          });
           // Verify tab actually changed after a short delay
           setTimeout(() => {
             if (tabRef.current !== 'chat') {
               setDeepLinkError(`Failed to open chat tab. Current tab: ${tabRef.current}, Expected: chat. URL: ${window.location.href}`);
+            }
+          }, 300);
+        }
+        
+        // Clear the parameter after a brief delay
+        const timer = setTimeout(() => {
+          setSearchParams({}, { replace: true });
+        }, 200);
+        return () => clearTimeout(timer);
+      }
+      
+      // Check if tab should be predictions (gw)
+      if (urlTab === 'gw') {
+        if (tab !== 'gw') {
+          // FIX: Use functional update to ensure state change
+          setTab(prevTab => {
+            if (prevTab !== 'gw') {
+              return 'gw';
+            }
+            return prevTab;
+          });
+          // Verify tab actually changed after a short delay
+          setTimeout(() => {
+            if (tabRef.current !== 'gw') {
+              setDeepLinkError(`Failed to open predictions tab. Current tab: ${tabRef.current}, Expected: gw. URL: ${window.location.href}`);
             }
           }, 300);
         }
