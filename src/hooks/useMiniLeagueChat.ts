@@ -144,11 +144,16 @@ export function useMiniLeagueChat(
   const refreshInProgressRef = useRef<boolean>(false);
   const latestTimestampRef = useRef<string | null>(null);
   const lastCacheUpdateRef = useRef<number>(0);
+  // CRITICAL FIX: Use ref to track messages to avoid recreating refresh callback
+  // This prevents subscription from closing/reopening when messages change
+  const messagesRef = useRef<MiniLeagueChatMessage[]>(messages);
 
   const applyMessages = useCallback(
     (updater: (prev: MiniLeagueChatMessage[]) => MiniLeagueChatMessage[]) => {
       setMessages((prev) => {
         const next = updater(prev);
+        // CRITICAL FIX: Update ref whenever messages change
+        messagesRef.current = next;
         earliestTimestampRef.current = next.length ? next[0].created_at : null;
         latestTimestampRef.current = next.length ? next[next.length - 1].created_at : null;
         
@@ -172,6 +177,16 @@ export function useMiniLeagueChat(
     },
     [miniLeagueId]
   );
+  
+  // CRITICAL FIX: Store refresh and applyMessages in refs so they don't cause subscription to close
+  // Define refs with generic types first, will be properly typed after callbacks are defined
+  const refreshRef = useRef<((...args: any[]) => Promise<void>) | null>(null);
+  const applyMessagesRef = useRef<((updater: (prev: MiniLeagueChatMessage[]) => MiniLeagueChatMessage[]) => void) | null>(null);
+  
+  // CRITICAL FIX: Sync messagesRef on mount and when messages change
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const fetchPage = useCallback(
     async ({ before, append }: { before?: string; append: boolean }) => {
@@ -328,8 +343,10 @@ export function useMiniLeagueChat(
     
     refreshInProgressRef.current = true;
     
-    // Only set loading if we don't already have messages (from cache)
-    const hasMessages = messages.length > 0;
+    // CRITICAL FIX: Use ref instead of messages state to avoid dependency on messages
+    // This prevents refresh from being recreated when messages change, which would close/reopen subscription
+    const currentMessages = messagesRef.current;
+    const hasMessages = currentMessages.length > 0;
     if (!hasMessages) {
       setLoading(true);
     }
@@ -338,7 +355,7 @@ export function useMiniLeagueChat(
     try {
       // Preserve any optimistic messages that are still sending
       // These will be replaced when the real message arrives via real-time or when sendMessage completes
-      const currentOptimisticMessages = messages.filter(msg => 
+      const currentOptimisticMessages = currentMessages.filter(msg => 
         msg.id.startsWith('optimistic-') && msg.status === 'sending'
       );
       
@@ -394,9 +411,60 @@ export function useMiniLeagueChat(
         setLoading(false);
       }
     }
-  }, [miniLeagueId, enabled, fetchPage, applyMessages, messages]);
+  }, [miniLeagueId, enabled, fetchPage, applyMessages]); // CRITICAL FIX: Removed messages dependency - use messagesRef.current instead
 
+  // CRITICAL FIX: Sync refresh and applyMessages refs AFTER they're defined
+  // This ensures the refs always have the latest versions without causing subscription to close
   useEffect(() => {
+    refreshRef.current = refresh;
+    applyMessagesRef.current = applyMessages;
+  }, [refresh, applyMessages]);
+
+  // Track previous values to detect what changed
+  const prevDepsRef = useRef<{
+    miniLeagueId?: string | null;
+    enabled?: boolean;
+    autoSubscribe?: boolean;
+    refreshId?: string;
+    applyMessagesId?: string;
+  }>({});
+  
+  useEffect(() => {
+    // #region agent log
+    const currentDeps = {
+      miniLeagueId,
+      enabled,
+      autoSubscribe
+    };
+    const prevDeps = prevDepsRef.current;
+    const changed = Object.keys(currentDeps).filter(key => 
+      currentDeps[key as keyof typeof currentDeps] !== prevDeps[key as keyof typeof prevDeps]
+    );
+    if (changed.length > 0) {
+      DEBUG_LOG('useMiniLeagueChat.ts:useEffect:deps-changed', 'Subscription effect dependencies changed', {
+        changed,
+        prevMiniLeagueId: prevDeps.miniLeagueId,
+        currentMiniLeagueId: currentDeps.miniLeagueId,
+        prevEnabled: prevDeps.enabled,
+        currentEnabled: currentDeps.enabled,
+        prevAutoSubscribe: prevDeps.autoSubscribe,
+        currentAutoSubscribe: currentDeps.autoSubscribe,
+        stackTrace: new Error().stack?.split('\n').slice(0,8).join('|')
+      }, 'DEPS');
+    }
+    prevDepsRef.current = currentDeps;
+    // #endregion
+    
+    // #region agent log
+    DEBUG_LOG('useMiniLeagueChat.ts:useEffect:entry', 'Subscription effect running', {
+      miniLeagueId,
+      enabled,
+      autoSubscribe,
+      hasMiniLeagueId: !!miniLeagueId,
+      stackTrace: new Error().stack?.split('\n').slice(0,5).join('|')
+    }, 'EFFECT');
+    // #endregion
+    
     if (!miniLeagueId || !enabled) {
       setMessages([]);
       setHasMore(true);
@@ -458,7 +526,7 @@ export function useMiniLeagueChat(
           // Force immediate refresh when coming from notification to ensure latest messages
           setTimeout(() => {
             if (miniLeagueId === initializingLeagueIdRef.current) {
-              refresh().catch(() => {});
+              refreshRef.current?.().catch(() => {});
             }
           }, 200); // Small delay to ensure subscriptions are set up first
         }
@@ -466,7 +534,7 @@ export function useMiniLeagueChat(
     } else {
       // No cache and no initial messages - need to fetch (this is the only case where loading should be true)
       let active = true;
-      refresh().finally(() => {
+      refreshRef.current?.().finally(() => {
         // Clear flag after refresh completes (allows re-initialization if league changes)
         if (active && initializingLeagueIdRef.current === miniLeagueId) {
           initializingLeagueIdRef.current = null;
@@ -481,6 +549,11 @@ export function useMiniLeagueChat(
     }
     
     let active = true;
+
+    // CRITICAL FIX: Refs are already defined at top level - just update them here
+    // This ensures we always have the latest versions without causing subscription to close
+    refreshRef.current = refresh;
+    applyMessagesRef.current = applyMessages;
 
     // Periodic refresh fallback to catch missed messages (every 30 seconds)
     // This ensures messages appear even if real-time subscription fails
@@ -538,10 +611,10 @@ export function useMiniLeagueChat(
                     return normalizeMessage(row);
                   });
                   
-                  applyMessages((prev) => dedupeAndSort([...prev, ...enriched]));
+                  applyMessagesRef.current?.((prev) => dedupeAndSort([...prev, ...enriched]));
                 } else {
                   const normalized = data.map((row: any) => normalizeMessage(row));
-                  applyMessages((prev) => dedupeAndSort([...prev, ...normalized]));
+                  applyMessagesRef.current?.((prev) => dedupeAndSort([...prev, ...normalized]));
                 }
               } catch (err: any) {
                 console.warn('[useMiniLeagueChat] Periodic refresh failed:', err);
@@ -549,7 +622,7 @@ export function useMiniLeagueChat(
             })();
           } else {
             // No latest timestamp, do full refresh
-            refresh().catch((err: any) => {
+            refreshRef.current?.().catch((err: any) => {
               console.warn('[useMiniLeagueChat] Periodic refresh failed:', err);
             });
           }
@@ -632,7 +705,7 @@ export function useMiniLeagueChat(
               }, 'H8');
               // #endregion
               
-              applyMessages((prev) => {
+              applyMessagesRef.current?.((prev) => {
                 // Check if message already exists (deduplication)
                 const exists = prev.some((msg) => msg.id === incoming.id || (msg.client_msg_id && msg.client_msg_id === incoming.client_msg_id));
                 if (exists) {
@@ -655,7 +728,7 @@ export function useMiniLeagueChat(
               // Fallback to basic normalization if fetch fails
               console.warn('[useMiniLeagueChat] Failed to fetch full message, using payload data:', payload.new.id);
               const incoming = normalizeMessage(payload.new);
-              applyMessages((prev) => {
+              applyMessagesRef.current?.((prev) => {
                 const exists = prev.some((msg) => msg.id === incoming.id);
                 if (exists) {
                   return prev;
@@ -668,7 +741,7 @@ export function useMiniLeagueChat(
             // Fallback: try to add message from payload
             try {
               const incoming = normalizeMessage(payload.new);
-              applyMessages((prev) => {
+              applyMessagesRef.current?.((prev) => {
                 const exists = prev.some((msg) => msg.id === incoming.id);
                 if (exists) {
                   return prev;
@@ -720,8 +793,23 @@ export function useMiniLeagueChat(
             }
           }, 5000);
         } else if (status === 'CLOSED') {
-          console.warn('[useMiniLeagueChat] Subscription closed - will rely on periodic refresh');
-          startPeriodicRefresh();
+          // #region agent log
+          DEBUG_LOG('useMiniLeagueChat.ts:subscription:CLOSED', 'Subscription closed', {
+            miniLeagueId,
+            active,
+            isInitializing: initializingLeagueIdRef.current,
+            channelName: `league-messages:${miniLeagueId}`,
+            stackTrace: new Error().stack?.split('\n').slice(0,8).join('|')
+          }, 'SUBSCRIPTION');
+          // #endregion
+          // Only log warning if subscription closed unexpectedly (not during cleanup)
+          // If active is false, we're cleaning up, so this is expected
+          if (active) {
+            console.warn('[useMiniLeagueChat] Subscription closed unexpectedly - will rely on periodic refresh');
+            startPeriodicRefresh();
+          } else {
+            console.log('[useMiniLeagueChat] Subscription closed during cleanup (expected)');
+          }
         }
       });
 
@@ -731,7 +819,7 @@ export function useMiniLeagueChat(
       if (document.visibilityState === 'visible' && !refreshInProgressRef.current) {
         // Refresh to catch any messages missed while backgrounded
         lastRefreshTime = Date.now();
-        refresh();
+        refreshRef.current?.();
       }
     };
 
@@ -741,6 +829,15 @@ export function useMiniLeagueChat(
     startPeriodicRefresh();
 
     return () => {
+      // #region agent log
+      DEBUG_LOG('useMiniLeagueChat.ts:cleanup', 'Cleanup function called', {
+        miniLeagueId,
+        enabled,
+        active,
+        hasChannel: !!channel,
+        stackTrace: new Error().stack?.split('\n').slice(0,8).join('|')
+      }, 'CLEANUP');
+      // #endregion
       active = false;
       // Don't clear isInitializingRef here - let it clear after refresh completes
       // This prevents the second StrictMode run from executing
@@ -749,9 +846,18 @@ export function useMiniLeagueChat(
         clearInterval(refreshInterval);
         refreshInterval = null;
       }
-      supabase.removeChannel(channel);
+      if (channel) {
+        // #region agent log
+        DEBUG_LOG('useMiniLeagueChat.ts:cleanup:removeChannel', 'Removing channel', {
+          miniLeagueId,
+          channelName: `league-messages:${miniLeagueId}`,
+          stackTrace: new Error().stack?.split('\n').slice(0,8).join('|')
+        }, 'CLEANUP');
+        // #endregion
+        supabase.removeChannel(channel);
+      }
     };
-  }, [miniLeagueId, enabled, autoSubscribe, refresh, applyMessages]);
+  }, [miniLeagueId, enabled, autoSubscribe]); // CRITICAL FIX: Removed refresh and applyMessages from dependencies - use refs instead
 
   const loadMore = useCallback(async () => {
     if (!miniLeagueId || !enabled || !hasMore || loadingMore) return;

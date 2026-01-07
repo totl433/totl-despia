@@ -13,6 +13,7 @@ import { useLeagues } from "../hooks/useLeagues";
 import { fireConfettiCannon } from "../lib/confettiCannon";
 import { useGameweekState } from "../hooks/useGameweekState";
 import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
+import { useDisplayGameweek } from "../hooks/useDisplayGameweek";
 import type { GameweekState } from "../lib/gameweekState";
 import GameweekResultsModal from "../components/GameweekResultsModal";
 import { loadHomePageData } from "../lib/loadHomePageData";
@@ -59,6 +60,17 @@ type Fixture = {
  * - All data sources use cache-first approach
  */
 export default function HomePage() {
+  // Track component mount/unmount
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Home.tsx:mount',message:'HomePage MOUNTED',data:{userId:user?.id,stackTrace:new Error().stack?.split('\n').slice(0,5).join('|')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'LIFECYCLE'})}).catch(()=>{});
+    // #endregion
+    return () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Home.tsx:unmount',message:'HomePage UNMOUNTED',data:{userId:user?.id,stackTrace:new Error().stack?.split('\n').slice(0,5).join('|')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'LIFECYCLE'})}).catch(()=>{});
+      // #endregion
+    };
+  }, []);
   const { user } = useAuth();
   
   // Load initial state from cache synchronously (happens before first render)
@@ -108,43 +120,72 @@ export default function HomePage() {
         fiveGwRank?: { rank: number; total: number; isTied: boolean } | null;
         tenGwRank?: { rank: number; total: number; isTied: boolean } | null;
         seasonRank?: { rank: number; total: number; isTied: boolean } | null;
+        leagueData?: Record<string, any>;
       }>(cacheKey);
       
       // Determine which GW to display (user's viewing GW, or current GW if not set)
-      const dbCurrentGw = cached?.currentGw ?? 1;
+      const dbCurrentGw = cached?.currentGw ?? null;
+      
+      // CRITICAL FIX: Don't trust cached GW if it's suspiciously old or if preload hasn't completed
+      // If cache has GW20 but we're on GW21, the cache is stale
+      // Wait for loadInitialData to complete and use hook value instead
+      const preloadComplete = typeof window !== 'undefined' && sessionStorage.getItem('preload:complete') === 'true';
+      const isSuspiciouslyOld = dbCurrentGw !== null && dbCurrentGw < 10;
+      const shouldWaitForHook = isSuspiciouslyOld || !preloadComplete;
+      
+      if (shouldWaitForHook) {
+        console.warn(`[Home] Not trusting cached currentGw (${dbCurrentGw}) - suspiciously old (${isSuspiciouslyOld}) or preload not complete (${!preloadComplete}), will wait for hook`);
+        // Return null for gw - let useEffect sync with hook value
+        return {
+          gw: null, // Let hook determine correct GW
+          latestGw: cached?.latestGw ?? null,
+          gwPoints: cached?.allGwPoints ?? [],
+          allGwPoints: cached?.allGwPoints ?? [],
+          overall: cached?.overall ?? [],
+          lastGwRank: cached?.lastGwRank ?? null,
+          fiveGwRank: cached?.fiveGwRank ?? null,
+          tenGwRank: cached?.tenGwRank ?? null,
+          seasonRank: cached?.seasonRank ?? null,
+          fixtures: [],
+          userPicks: {},
+          liveScores: {},
+          leagueData: cached?.leagueData ?? {},
+          leagueSubmissions: {},
+          hasCache: false, // Mark as no cache so we don't use stale fixtures
+        };
+      }
       
       // DEFENSIVE CHECK: Validate dbCurrentGw is reasonable
-      // If cached GW is 1 or very low, it might be stale - don't trust it blindly
-      if (dbCurrentGw <= 1) {
+      if (dbCurrentGw !== null && dbCurrentGw <= 1) {
         console.warn(`[Home] Suspicious cached currentGw: ${dbCurrentGw}, this might be stale cache`);
       }
       
       // DEFENSIVE CHECK: Ensure userViewingGw is not unreasonably old
-      const validatedUserViewingGw = userViewingGw !== null && userViewingGw < dbCurrentGw - 2 
+      const validatedUserViewingGw = userViewingGw !== null && dbCurrentGw !== null && userViewingGw < dbCurrentGw - 2 
         ? dbCurrentGw 
         : userViewingGw;
       
-      const gwToDisplay = validatedUserViewingGw !== null && validatedUserViewingGw < dbCurrentGw 
+      const gwToDisplay = validatedUserViewingGw !== null && dbCurrentGw !== null && validatedUserViewingGw < dbCurrentGw 
         ? validatedUserViewingGw 
         : dbCurrentGw;
       
       // FINAL VALIDATION: Ensure gwToDisplay is reasonable
-      if (gwToDisplay < 1) {
-        console.error(`[Home] Invalid gwToDisplay calculated: ${gwToDisplay}, falling back to 1`);
+      if (gwToDisplay === null || gwToDisplay < 1) {
+        console.warn(`[Home] Invalid gwToDisplay calculated: ${gwToDisplay}, will wait for hook`);
         return {
-          gw: 1,
-          latestGw: null,
-          gwPoints: [],
-          allGwPoints: [],
-          overall: [],
-          lastGwRank: null,
-          fiveGwRank: null,
-          tenGwRank: null,
-          seasonRank: null,
+          gw: null, // Let hook determine correct GW
+          latestGw: cached?.latestGw ?? null,
+          gwPoints: cached?.allGwPoints ?? [],
+          allGwPoints: cached?.allGwPoints ?? [],
+          overall: cached?.overall ?? [],
+          lastGwRank: cached?.lastGwRank ?? null,
+          fiveGwRank: cached?.fiveGwRank ?? null,
+          tenGwRank: cached?.tenGwRank ?? null,
+          seasonRank: cached?.seasonRank ?? null,
           fixtures: [],
           userPicks: {},
           liveScores: {},
-          leagueData: {},
+          leagueData: cached?.leagueData ?? {},
           leagueSubmissions: {},
           hasCache: false,
         };
@@ -292,12 +333,17 @@ export default function HomePage() {
   
   // CRITICAL FIX: Don't trust cached GW if it's suspicious (1 or very low)
   // Initialize gw as null if cached value is suspicious, let useCurrentGameweek hook set it properly
-  const [gw, setGw] = useState<number>(() => {
+  const [gw, setGw] = useState<number | null>(() => {
     const cachedGw = initialState.gw;
-    // If cached GW is 1 or suspiciously low, don't trust it - wait for hook
-    if (cachedGw <= 1) {
-      console.warn(`[Home] Suspicious cached GW (${cachedGw}) on init, waiting for useCurrentGameweek hook`);
-      return 1; // Still use 1 as fallback, but will be updated by hook
+    // CRITICAL FIX: Don't trust cached GW if it's null, suspiciously low, or preload hasn't completed
+    // This prevents using stale cache (like GW20) when we're on GW21
+    if (cachedGw === null || cachedGw < 1) {
+      console.warn(`[Home] Invalid cached GW (${cachedGw}) on init, waiting for useDisplayGameweek hook`);
+      return null; // Wait for hook to provide correct value
+    }
+    if (cachedGw < 10) {
+      console.warn(`[Home] Suspicious cached GW (${cachedGw}) on init, waiting for useDisplayGameweek hook`);
+      return null; // Wait for hook to provide correct value
     }
     return cachedGw;
   });
@@ -321,9 +367,20 @@ export default function HomePage() {
     result?: "H" | "D" | "A" | null;
   }>>(initialState.liveScores || {});
   const [leagueData, setLeagueData] = useState<Record<string, LeagueDataInternal>>(initialState.leagueData);
+  const prevLeagueDataRef = useRef(leagueData);
   // #region agent log
   useEffect(() => {
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Home.tsx:287',message:'leagueData state changed',data:{leagueDataKeys:Object.keys(leagueData),leagueDataCount:Object.keys(leagueData).length,initialStateKeys:Object.keys(initialState.leagueData),initialStateCount:Object.keys(initialState.leagueData).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    const prevKeys = Object.keys(prevLeagueDataRef.current);
+    const currentKeys = Object.keys(leagueData);
+    const prevCount = prevKeys.length;
+    const currentCount = currentKeys.length;
+    const wasEmpty = prevCount === 0;
+    const isEmpty = currentCount === 0;
+    
+    if (prevCount !== currentCount || wasEmpty !== isEmpty) {
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Home.tsx:287',message:'leagueData state changed',data:{prevCount,currentCount,wasEmpty,isEmpty,prevKeys:prevKeys.slice(0,3),currentKeys:currentKeys.slice(0,3),initialStateKeys:Object.keys(initialState.leagueData).length,initialStateCount:Object.keys(initialState.leagueData).length,stackTrace:new Error().stack?.split('\n').slice(0,8).join('|')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      prevLeagueDataRef.current = leagueData;
+    }
   }, [leagueData]);
   // #endregion
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>(initialState.leagueSubmissions);
@@ -340,6 +397,10 @@ export default function HomePage() {
   
   // Use centralized hook for current gameweek (single source of truth)
   const { currentGw: dbCurrentGw } = useCurrentGameweek();
+  
+  // ROCK-SOLID: Use centralized hook to determine display GW
+  // This ensures we always know the correct GW and whether user has moved on
+  const { displayGw: displayGwFromHook, currentGw: currentGwFromHook, userViewingGw, hasMovedOn } = useDisplayGameweek();
   
   // Use centralized hooks
   // Skip initial fetch if we have cache (leagues are pre-loaded)
@@ -393,53 +454,37 @@ export default function HomePage() {
     return () => window.removeEventListener('leagueBadgeUpdated', handleBadgeUpdate);
   }, [refreshLeagues]);
   
-  // CRITICAL FIX: Sync gw with dbCurrentGw IMMEDIATELY when hook loads
-  // This ensures we use the correct GW from the hook, not stale cache
+  // ROCK-SOLID: Sync gw with displayGwFromHook IMMEDIATELY when hook loads
+  // This ensures we use the correct GW from the centralized hook, not stale cache
   useEffect(() => {
-    if (!dbCurrentGw || dbCurrentGw < 1) return;
-    
-    // DEFENSIVE CHECK: If current gw is suspiciously low and dbCurrentGw is higher, update immediately
-    if (gw <= 1 && dbCurrentGw > 1) {
-      console.log(`[Home] Updating GW from suspicious cached value (${gw}) to hook value (${dbCurrentGw})`);
-      // Check user's viewing GW preference
-      if (user?.id) {
-        const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
-        const userViewingGw = prefsCache?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
-        const validatedUserViewingGw = userViewingGw < dbCurrentGw - 2 ? dbCurrentGw : userViewingGw;
-        const gwToDisplay = validatedUserViewingGw < dbCurrentGw ? validatedUserViewingGw : dbCurrentGw;
-        setGw(gwToDisplay);
-      } else {
+    if (!displayGwFromHook || displayGwFromHook < 1) {
+      // Hook hasn't loaded yet or returned invalid value
+      // If gw is null (waiting for hook), keep waiting
+      if (gw === null) {
+        return; // Keep waiting for hook
+      }
+      // If we have a gw but hook isn't ready, only update if dbCurrentGw is clearly better
+      if (dbCurrentGw && dbCurrentGw >= 10 && gw !== dbCurrentGw && (gw < 10 || gw < dbCurrentGw)) {
+        console.log(`[Home] Hook not ready, updating from suspicious GW (${gw}) to dbCurrentGw: ${dbCurrentGw}`);
         setGw(dbCurrentGw);
       }
       return;
     }
     
-    if (!user?.id) return;
-    
-    // Check user's viewing GW preference
-    const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
-    const userViewingGw = prefsCache?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
-    
-    // DEFENSIVE CHECK: Ensure userViewingGw is not unreasonably old (more than 2 GWs behind)
-    const validatedUserViewingGw = userViewingGw < dbCurrentGw - 2 ? dbCurrentGw : userViewingGw;
-    const gwToDisplay = validatedUserViewingGw < dbCurrentGw ? validatedUserViewingGw : dbCurrentGw;
-    
-    // DEFENSIVE CHECK: Ensure gwToDisplay is reasonable (positive, not unreasonably low)
-    if (gwToDisplay < 1) {
-      console.error(`[Home] Invalid gwToDisplay calculated: ${gwToDisplay}, using dbCurrentGw instead`);
-      const safeGw = dbCurrentGw;
-      if (gw !== safeGw) {
-        setGw(safeGw);
-      }
+    // CRITICAL FIX: Always update if gw is null (waiting for hook) or if current gw is suspiciously old
+    // This fixes the issue where stale cache (GW20) stays until refresh
+    if (gw === null || gw < 10 || (gw < displayGwFromHook && displayGwFromHook >= 10)) {
+      console.log(`[Home] Updating GW from ${gw} to hook value (${displayGwFromHook}) - was null or suspiciously old`);
+      setGw(displayGwFromHook);
       return;
     }
     
-    // Only update if different and reasonable
-    if (gw !== gwToDisplay && gwToDisplay >= 1) {
-      console.log(`[Home] Updating displayed GW from ${gw} to ${gwToDisplay} (dbCurrentGw: ${dbCurrentGw}, userViewingGw: ${userViewingGw})`);
-      setGw(gwToDisplay);
+    // Only update if different and hook value is reasonable
+    if (gw !== displayGwFromHook && displayGwFromHook >= 1) {
+      console.log(`[Home] Updating displayed GW from ${gw} to ${displayGwFromHook} (currentGw: ${currentGwFromHook}, userViewingGw: ${userViewingGw}, hasMovedOn: ${hasMovedOn})`);
+      setGw(displayGwFromHook);
     }
-  }, [user?.id, dbCurrentGw, gw]);
+  }, [displayGwFromHook, currentGwFromHook, userViewingGw, hasMovedOn, dbCurrentGw, gw]);
   
   // Listen for GW changes from useCurrentGameweek hook
   useEffect(() => {
@@ -472,19 +517,12 @@ export default function HomePage() {
       removeCached(`home:fixtures:${user.id}:${newGw}`);
       setGwResultsVersion(prev => prev + 1);
       
-      // Update displayed GW with validation
-      const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
-      const userViewingGw = prefsCache?.current_viewing_gw ?? (newGw > 1 ? newGw - 1 : newGw);
-      
-      // DEFENSIVE CHECK: Ensure userViewingGw is not unreasonably old
-      const validatedUserViewingGw = userViewingGw < newGw - 2 ? newGw : userViewingGw;
-      const gwToDisplay = validatedUserViewingGw < newGw ? validatedUserViewingGw : newGw;
-      
-      // Final validation before setting
-      if (gwToDisplay >= 1) {
-        setGw(gwToDisplay);
+      // ROCK-SOLID: Use displayGwFromHook if available, otherwise calculate from newGw
+      // The hook will handle the logic, but if it hasn't updated yet, use newGw
+      if (displayGwFromHook && displayGwFromHook >= 1) {
+        setGw(displayGwFromHook);
       } else {
-        console.error(`[Home] Invalid gwToDisplay calculated: ${gwToDisplay}, using newGw instead`);
+        // Fallback: use newGw (hook will update shortly)
         setGw(newGw);
       }
     };
@@ -493,7 +531,7 @@ export default function HomePage() {
     return () => {
       window.removeEventListener('currentGwChanged', handleGwChange as EventListener);
     };
-  }, [user?.id]);
+  }, [user?.id, displayGwFromHook]);
 
   // Confetti check
   useEffect(() => {
@@ -573,7 +611,7 @@ export default function HomePage() {
 
   // Subscribe to real-time live scores
   const { liveScores: liveScoresMapFromHook } = useLiveScores(
-    gw,
+    gw ?? undefined,
     apiMatchIds.length > 0 ? apiMatchIds : undefined
   );
 
@@ -801,16 +839,20 @@ export default function HomePage() {
   }, [liveScoresFromCache, liveScoresMap, fixtures, gwResults, cachedLiveScoresMap.size]);
 
   // Only load data if we don't have cache (fixtures.length === 0 means no cache)
+  // CRITICAL FIX: Also check if leagueData is empty - it might not be loaded even if fixtures exist
   useEffect(() => {
     if (!user?.id || !gw) return;
     
-    // If we already have fixtures from cache, we're done - pre-loader completed
-    if (fixtures.length > 0) {
+    // If we already have fixtures AND leagueData from cache, we're done - pre-loader completed
+    const hasFixtures = fixtures.length > 0;
+    const hasLeagueData = Object.keys(leagueData).length > 0;
+    
+    if (hasFixtures && hasLeagueData) {
       setBasicDataLoading(false);
       return;
     }
     
-    // No cache - need to load data
+    // Need to load data if fixtures or leagueData is missing
     setBasicDataLoading(true);
     let alive = true;
     (async () => {
@@ -846,7 +888,7 @@ export default function HomePage() {
     })();
     
     return () => { alive = false; };
-  }, [user?.id, gw, fixtures.length, leagues.length]);
+  }, [user?.id, gw, fixtures.length, leagues.length, Object.keys(leagueData).length]);
 
   // Background refresh is now handled by loadHomePageData (checks cache freshness internally)
 

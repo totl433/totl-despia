@@ -285,7 +285,18 @@ How To Play →`}
             {leagues.map((league) => {
               const cardData = memoizedCardData[league.id];
               const members = cardData?.members || [];
-              
+              // CRITICAL FIX: Only skip rendering if we're NOT loading AND members are empty
+              // If we're loading, render the card so it can show its own loading state
+              // This prevents tables from disappearing completely when navigating back to Home
+              if (!leagueDataLoading && (!cardData || !members.length)) {
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeaguesSection.tsx:285',message:'Skipping MiniLeagueGwTableCard - no data and not loading',data:{leagueId:league.id,leagueName:league.name,hasCardData:!!cardData,membersLength:members.length,leagueDataKeys:Object.keys(leagueData).length,memoizedKeys:Object.keys(memoizedCardData).length,leagueDataLoading},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                // #endregion
+                return null; // Don't render if we're not loading and have no data
+              }
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeaguesSection.tsx:285',message:'Rendering MiniLeagueGwTableCard',data:{leagueId:league.id,leagueName:league.name,hasCardData:!!cardData,membersLength:members.length,showLiveTables,currentGw,leagueDataKeys:Object.keys(leagueData).length,memoizedKeys:Object.keys(memoizedCardData).length,leagueDataLoading,willRender:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+              // #endregion
               return (
                 <MiniLeagueGwTableCard
                   key={league.id}
