@@ -53,7 +53,6 @@ export function useCacheReady() {
     const maxPolls = 50; // Stop polling after 5 seconds (50 * 100ms)
     const interval = setInterval(() => {
       pollCount++;
-      const wasReady = isReady;
       checkReady();
       
       // Stop polling if ready or max polls reached
