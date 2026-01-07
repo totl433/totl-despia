@@ -26,9 +26,9 @@
 # Notifications are now handled by sendScoreNotificationsWebhook (triggered by database webhook)
 # The scheduled version was removed as it was redundant and less reliable than webhook-triggered notifications
 
-# Ignore secrets scanning for helper scripts and .env file
+# Ignore secrets scanning for helper scripts, .env file, and debug logs
 [build.environment]
-  SECRETS_SCAN_OMIT_PATHS = "register-devices.sh,check-*.sh,*.sh,.env"
+  SECRETS_SCAN_OMIT_PATHS = "register-devices.sh,check-*.sh,*.sh,.env,.cursor/**"
 
 # Cache headers to prevent Despia WebView from serving stale HTML
 # HTML: no-cache to ensure fresh bundles are loaded after deployments

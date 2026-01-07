@@ -297,8 +297,6 @@ export const handler: Handler = async (event) => {
         leagueCode, // Make this easy to find
         senderId,
         url: fullDeepLinkUrl, // Include full URL in data for badge clicks
-        // Also add as top-level for easier access (matching old working version)
-        leagueCode: leagueCode,
         navigateTo: fullDeepLinkUrl,
       },
       url: fullDeepLinkUrl, // Use full URL for notification clicks (iOS needs full URL for web_url)
