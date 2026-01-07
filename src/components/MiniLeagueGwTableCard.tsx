@@ -367,7 +367,13 @@ export default function MiniLeagueGwTableCard({
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:315',message:'Early return: missing displayGw or leagueId',data:{displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
       // #endregion
-      setLoading(false);
+      // If displayGw is null, we're waiting for it - keep loading if we have no data
+      // If we have fixtures from cache, we can show them even without displayGw
+      if (fixtures.length === 0) {
+        setLoading(true);
+      } else {
+        setLoading(false);
+      }
       return;
     }
 
@@ -561,16 +567,19 @@ export default function MiniLeagueGwTableCard({
       }
       setSubmittedUserIds(submittedFromCache);
       
-      // CRITICAL FIX: If we have members but cache picks might be incomplete, fetch picks
-      // This handles the case where cache was loaded before members arrived
+      // CRITICAL FIX: Always set loading to false when we have cache data (fixtures/results)
+      // We can show fixtures/results even without members - picks will load when members arrive
+      setLoading(false);
+      
+      // If we have members, check if picks are complete and fetch if needed
       if (hasMembers) {
-        // Check if we have picks for all members - if not, fetch from DB
+        // Check if we have picks for all members - if not, fetch picks from DB
         const memberIds = members.map(m => m.id);
         const cachedPickUserIds = new Set(cacheData.picks.map(p => p.user_id));
         const allMembersHavePicks = memberIds.every(id => cachedPickUserIds.has(id));
         
         if (!allMembersHavePicks || cacheData.picks.length === 0) {
-          // Cache is incomplete - fetch picks from DB
+          // Cache is incomplete - fetch picks from DB in background
           console.log(`[MiniLeagueGwTableCard] Cache incomplete - fetching picks for ${memberIds.length} members`);
           fetchDataFromDb(false).catch(() => {
             // Silently fail - we already have cached fixtures/results displayed
@@ -581,11 +590,8 @@ export default function MiniLeagueGwTableCard({
             // Silently fail - we already have cached data displayed
           });
         }
-        setLoading(false);
-      } else {
-        // No members yet - keep loading state, will retry when members arrive
-        setLoading(true);
       }
+      // If no members, we'll retry when members arrive (useEffect will run again)
       
       return () => { alive = false; };
     } else {
