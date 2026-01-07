@@ -29,7 +29,6 @@ export default function GwSelector({
           onChange(newGw);
         }}
         className="gw-selector w-full bg-white rounded-full border-2 border-slate-300 px-3 py-2 text-xs font-normal text-slate-600 text-center focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-[#1C8376] active:bg-slate-50 transition-colors"
-        className="text-xs"
         style={{
           minHeight: '40px',
           WebkitAppearance: 'none',

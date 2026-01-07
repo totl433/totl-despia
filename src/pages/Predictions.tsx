@@ -305,10 +305,10 @@ export default function PredictionsPage() {
  }
  }, [loading, submitted, fixtures.length, currentIndex]);
  
- const [topPercent, setTopPercent] = useState<number | null>(null);
- const [allMembersSubmitted, setAllMembersSubmitted] = useState(false);
- const [leagueMembers, setLeagueMembers] = useState<Array<{ id: string; name: string }>>([]);
- const [submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new Set());
+const [topPercent, setTopPercent] = useState<number | null>(null);
+const [_allMembersSubmitted, setAllMembersSubmitted] = useState(false);
+const [_leagueMembers, setLeagueMembers] = useState<Array<{ id: string; name: string }>>([]);
+const [_submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new Set());
  const [apiMatchIds, setApiMatchIds] = useState<number[]>([]);
  const [deadlineTime, setDeadlineTime] = useState<Date | null>(null);
  const [pickPercentages, setPickPercentages] = useState<Map<number, { H: number; D: number; A: number }>>(new Map());
@@ -1935,7 +1935,6 @@ return null;
  {group.items.map((fixture, index)=>{
    const pick = picks.get(fixture.fixture_index);
    const liveScore = liveScores[fixture.fixture_index];
-   const result = results.get(fixture.fixture_index);
 
  // CRITICAL: Only render fixtures that match the current GW to prevent flash of old data
  if (fixture.gw !== currentGw) {

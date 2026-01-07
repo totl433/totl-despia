@@ -27,7 +27,7 @@ export function sortLeagues<T extends { name: string; unreadCount?: number }>(
  */
 export function sortLeaguesWithUnreadMap<T extends { id: string; name: string }>(
   leagues: T[],
-  unreadByLeague: Record<string, number> | undefined
+  _unreadByLeague: Record<string, number> | undefined
 ): T[] {
   return [...leagues].sort((a, b) => {
     // Simple alphabetical sort by name (stable, predictable order)

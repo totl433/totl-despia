@@ -18,7 +18,7 @@ export interface AvatarEditorProps {
  */
 export default function AvatarEditor({
   currentAvatarUrl,
-  userName,
+  userName: _userName,
   onAvatarUpdated,
   onClose,
 }: AvatarEditorProps) {

@@ -1,1 +1,0 @@
-import{a as n}from"./index-BXZWcz4C.js";async function l(a){if(!a)return[];const{data:s,error:r}=await n.from("league_members").select("leagues(id,name,code)").eq("user_id",a);if(r)throw r;const o=(s??[]).map(e=>e.leagues).filter(Boolean);return o.sort((e,t)=>e.name.localeCompare(t.name)),o}export{l as f};

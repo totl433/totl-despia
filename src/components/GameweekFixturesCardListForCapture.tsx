@@ -441,8 +441,7 @@ export default function GameweekFixturesCardListForCapture({
                           </div>
                         ) : (
                           <span 
-                            className="font-black" 
-                            className="text-[10px]"
+                            className="font-black text-[10px]"
                             style={{ 
                               fontWeight: '900',
                               whiteSpace: 'nowrap',

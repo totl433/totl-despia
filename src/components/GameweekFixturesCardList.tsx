@@ -311,10 +311,9 @@ export default function GameweekFixturesCardList({
  </span>
  </div>
  ) : (
- <span 
- className={`font-black ${isFinished && pick && pickCorrect !== null ? (pickCorrect ? 'text-emerald-600' : 'text-red-600') : isOngoing ? 'text-red-600' : 'text-slate-500'}`}
-            className={`${isFinished && pick && pickCorrect !== null ? 'text-2xl' : 'text-[10px]'}`}
-            style={{ 
+<span 
+className={`font-black ${isFinished && pick && pickCorrect !== null ? (pickCorrect ? 'text-emerald-600 text-2xl' : 'text-red-600 text-2xl') : isOngoing ? 'text-red-600 text-[10px]' : 'text-slate-500 text-[10px]'}`}
+            style={{
               lineHeight: '1',
               WebkitTextStroke: isFinished && pick && pickCorrect !== null ? (pickCorrect ? '1.5px' : '0.5px') : '0px',
  WebkitTextStrokeColor: isFinished && pick && pickCorrect !== null ? (pickCorrect ? '#15803d' : '#991b1b') : 'transparent',
