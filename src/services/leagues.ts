@@ -95,6 +95,16 @@ export async function joinLeague(code: string, userId: string): Promise<{ succes
       return { success: false, error: "League is full" };
     }
 
+    // Check if user is already a member (before upsert)
+    const { data: existingMember } = await supabase
+      .from("league_members")
+      .select("user_id")
+      .eq("league_id", league.id)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const isNewMember = !existingMember;
+
     const { error } = await supabase
       .from("league_members")
       .upsert(
@@ -104,6 +114,37 @@ export async function joinLeague(code: string, userId: string): Promise<{ succes
 
     if (error) {
       return { success: false, error: error.message };
+    }
+
+    // Send notification to other members if this is a new join (not just an upsert of existing member)
+    if (isNewMember) {
+      try {
+        // Get user's name from users table
+        const { data: userData } = await supabase
+          .from("users")
+          .select("name, email")
+          .eq("id", userId)
+          .maybeSingle();
+
+        const userName = userData?.name || userData?.email || 'Someone';
+
+        // Send notification asynchronously (don't block the join)
+        fetch('/.netlify/functions/notifyLeagueMemberJoin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            leagueId: league.id,
+            userId: userId,
+            userName: userName,
+          }),
+        }).catch((notifError) => {
+          // Log error but don't fail the join if notification fails
+          console.error('[joinLeague] Failed to send join notification:', notifError);
+        });
+      } catch (notifError) {
+        // Log error but don't fail the join if notification fails
+        console.error('[joinLeague] Error sending notification:', notifError);
+      }
     }
 
     return { success: true };

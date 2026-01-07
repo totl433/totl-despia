@@ -1610,41 +1610,7 @@ export default function HomePage() {
           setJoinError(undefined);
           const result = await joinLeague(joinCode.trim(), user.id);
           if (result.success) {
-            // Get league ID for notification
-            const { data: league } = await supabase
-              .from("leagues")
-              .select("id")
-              .eq("code", joinCode.trim().toUpperCase())
-              .maybeSingle();
-            
-            // Send notification to other members
-            if (league?.id) {
-              const userName = user.user_metadata?.display_name || user.email || 'Someone';
-              try {
-                const response = await fetch('/.netlify/functions/notifyLeagueMemberJoin', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    leagueId: league.id,
-                    userId: user.id,
-                    userName: userName,
-                  }),
-                });
-                
-                // Check if response has content before trying to parse JSON
-                const text = await response.text();
-                try {
-                  // Parse JSON to validate response (result not used, just validating)
-                  text ? JSON.parse(text) : { error: 'Empty response body' };
-                } catch (parseError) {
-                  // Invalid JSON response (non-critical)
-                }
-              } catch (notifError) {
-                // Notification failure is non-critical - don't block join
-                console.error('[Home] Failed to send join notification:', notifError);
-              }
-            }
-            
+            // Notification is now handled by joinLeague service function
             setIsCreateJoinTrayOpen(false);
             setJoinCode('');
             refreshLeagues();
