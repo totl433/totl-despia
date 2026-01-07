@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTheme } from '../hooks/useTheme';
 
 export default function ScrollLogo() {
+  const { isDark } = useTheme();
   const [hasLoaded, setHasLoaded] = useState(false);
   const logoRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -169,7 +171,7 @@ export default function ScrollLogo() {
             src="/assets/badges/totl-logo1.svg" 
             alt="TOTL" 
             className="h-[88px] sm:h-[110px]"
-            style={{ filter: 'brightness(0) invert(1)', display: 'block' }}
+            style={{ filter: isDark ? 'brightness(0) invert(1)' : 'brightness(0)', display: 'block' }}
           />
         </div>
         
