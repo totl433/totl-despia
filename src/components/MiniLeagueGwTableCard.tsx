@@ -550,8 +550,8 @@ export default function MiniLeagueGwTableCard({
       
       // Simple: Use cache submissions, or derive from picks if empty
       let submittedFromCache = cacheData.submissions;
-      if (submittedFromCache.size === 0 && cacheData.picks.length > 0) {
-        // Derive from picks if cache has no submissions
+      if (submittedFromCache.size === 0 && cacheData.picks.length > 0 && hasMembers) {
+        // Derive from picks if cache has no submissions and we have members
         const picksForGw = cacheData.picks.filter(p => p.gw === displayGw);
         picksForGw.forEach(p => {
           if (members.some(m => m.id === p.user_id)) {
@@ -561,12 +561,30 @@ export default function MiniLeagueGwTableCard({
       }
       setSubmittedUserIds(submittedFromCache);
       
-      setLoading(false);
-      // Background refresh (non-blocking)
+      // CRITICAL FIX: If we have members but cache picks might be incomplete, fetch picks
+      // This handles the case where cache was loaded before members arrived
       if (hasMembers) {
-        fetchDataFromDb(false).catch(() => {
-          // Silently fail - we already have cached data displayed
-        });
+        // Check if we have picks for all members - if not, fetch from DB
+        const memberIds = members.map(m => m.id);
+        const cachedPickUserIds = new Set(cacheData.picks.map(p => p.user_id));
+        const allMembersHavePicks = memberIds.every(id => cachedPickUserIds.has(id));
+        
+        if (!allMembersHavePicks || cacheData.picks.length === 0) {
+          // Cache is incomplete - fetch picks from DB
+          console.log(`[MiniLeagueGwTableCard] Cache incomplete - fetching picks for ${memberIds.length} members`);
+          fetchDataFromDb(false).catch(() => {
+            // Silently fail - we already have cached fixtures/results displayed
+          });
+        } else {
+          // Cache is complete - just background refresh
+          fetchDataFromDb(false).catch(() => {
+            // Silently fail - we already have cached data displayed
+          });
+        }
+        setLoading(false);
+      } else {
+        // No members yet - keep loading state, will retry when members arrive
+        setLoading(true);
       }
       
       return () => { alive = false; };
@@ -581,6 +599,7 @@ export default function MiniLeagueGwTableCard({
       // #endregion
       // No members yet - keep loading state, will retry when members arrive
       // Don't set error - members might arrive soon
+      setLoading(true);
       return () => { alive = false; };
     }
     

@@ -1544,7 +1544,7 @@ export default function HomePage() {
                 leagueData={leagueData}
                 leagueSubmissions={leagueSubmissions}
                 unreadByLeague={unreadByLeague}
-            leagueDataLoading={false}
+            leagueDataLoading={basicDataLoading || Object.keys(leagueData).length === 0}
                 currentGw={gw}
                 currentUserId={user?.id}
             gameState={effectiveGameState}
