@@ -923,13 +923,13 @@ export default function TestApiPredictions() {
             // Get all members of API Test league
             const { data: membersData } = await supabase
               .from("league_members")
-              .select("user_id, profiles!inner(id, name)")
+              .select("user_id, users!inner(id, name)")
               .eq("league_id", apiTestLeague.id);
             
             if (membersData) {
               const members = membersData.map((m: any) => ({
                 id: m.user_id,
-                name: m.profiles?.name || "Unknown"
+                name: m.users?.name || "Unknown"
               }));
               
               if (alive) {

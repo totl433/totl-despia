@@ -596,7 +596,7 @@ export default function ApiAdmin() {
  {checkingFinished ? (
  <span className="text-sm text-slate-500">Checking status...</span>
  ) : currentGwFinished === true ? (
- <span className="text-sm font-medium text-green-700">✅ GW {currentGw} finished - Ready to publish GW {nextGw}</span>
+ <span className="text-sm font-medium text-emerald-700">✅ GW {currentGw} finished - Ready to publish GW {nextGw}</span>
  ) : currentGwFinished === false ? (
  <span className="text-sm font-medium text-amber-700">⏳ GW {currentGw} still in progress - Cannot publish GW {nextGw} yet</span>
  ) : (
@@ -644,7 +644,7 @@ export default function ApiAdmin() {
  )}
 
  {ok && (
- <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+ <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm">
  {ok}
  </div>
  )}
@@ -662,7 +662,7 @@ export default function ApiAdmin() {
  <div className="text-sm text-slate-600 mb-1">Next Gameweek</div>
  <div className="text-2xl font-bold text-slate-900">GW {nextGw}</div>
  {isPublished && (
- <div className="mt-2 inline-block px-3 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
+ <div className="mt-2 inline-block px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-semibold rounded-full">
  ✅ PUBLISHED (Current GW)
  </div>
  )}

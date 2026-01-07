@@ -21,9 +21,12 @@ export class ErrorBoundary extends Component<Props, State> {
  return { hasError: true, error };
  }
 
- componentDidCatch(error: Error, errorInfo: ErrorInfo) {
- console.error('[ErrorBoundary] Caught error:', error, errorInfo);
- }
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('[ErrorBoundary] Caught error:', error, errorInfo);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ErrorBoundary:componentDidCatch',message:'Error boundary caught error',data:{errorMessage:error?.message,errorStack:error?.stack,componentStack:errorInfo?.componentStack},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H6'})}).catch(()=>{});
+    // #endregion
+  }
 
  render() {
  if (this.state.hasError) {
@@ -35,7 +38,7 @@ export class ErrorBoundary extends Component<Props, State> {
  <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
  <div className="max-w-md w-full bg-white rounded-xl border border-slate-200 shadow-sm p-6 text-center">
  <div className="text-4xl mb-4">⚠️</div>
- <h1 className="text-xl font-bold text-slate-900 mb-2">Something went wrong</h1>
+ <h1 className="text-xl font-semibold text-slate-900 mb-2">Something went wrong</h1>
  <p className="text-slate-600 mb-4">
  The app encountered an error. Please try refreshing.
  </p>

@@ -283,9 +283,9 @@ export default function GameweekFixturesCardListForCapture({
                 ></div>
               )}
               <span className="flex items-baseline" style={{ display: 'flex', alignItems: 'baseline', gap: '2.09px' }}>
-                <span className="font-extrabold" style={{ fontSize: '18.81px', fontWeight: '800' }}>{score}</span>
-                <span className="font-medium opacity-90" style={{ fontSize: '14.63px', fontWeight: '500', opacity: 0.9 }}>/</span>
-                <span className="font-semibold opacity-80" style={{ fontSize: '16.72px', fontWeight: '600', opacity: 0.8 }}>{totalFixturesWithPicks}</span>
+                <span className="font-extrabold text-lg" style={{ fontWeight: '800' }}>{score}</span>
+                <span className="font-medium opacity-90 text-sm" style={{ opacity: 0.9 }}>/</span>
+                <span className="font-semibold opacity-80 text-base" style={{ opacity: 0.8 }}>{totalFixturesWithPicks}</span>
               </span>
             </div>
           )}
@@ -302,8 +302,8 @@ export default function GameweekFixturesCardListForCapture({
               alignItems: 'center'
             }}
           >
-            <div style={{ fontSize: '14px', fontWeight: '500', color: '#1C8376', whiteSpace: 'nowrap', marginBottom: '2px' }}>Gameweek {gw}</div>
-            <div className="username-responsive font-bold text-slate-700 truncate leading-tight" style={{ fontSize: '18px', fontWeight: '700', color: '#334155', lineHeight: '1.25', display: 'block' }}>{displayUserName}</div>
+            <div className="text-sm" style={{ fontWeight: '500', color: '#1C8376', whiteSpace: 'nowrap', marginBottom: '2px' }}>Gameweek {gw}</div>
+            <div className="username-responsive font-bold text-slate-700 truncate leading-tight text-lg" style={{ fontWeight: '700', color: '#334155', lineHeight: '1.25', display: 'block' }}>{displayUserName}</div>
           </div>
           {/* GW Rank pill - right */}
           {gwRankPercent !== undefined && (() => {
@@ -338,8 +338,8 @@ export default function GameweekFixturesCardListForCapture({
                   backgroundColor: '#475569'
                 }}
               >
-                <span style={{ fontSize: '14.63px', fontWeight: '500', opacity: 0.9 }}>{label}</span>
-                <span className="font-extrabold" style={{ fontSize: '18.81px', fontWeight: '800' }}>{percent}</span>
+                <span className="text-sm" style={{ fontWeight: '500', opacity: 0.9 }}>{label}</span>
+                <span className="font-extrabold text-lg" style={{ fontWeight: '800' }}>{percent}</span>
               </div>
             );
           })()}
@@ -442,8 +442,8 @@ export default function GameweekFixturesCardListForCapture({
                         ) : (
                           <span 
                             className="font-black" 
+                            className="text-[10px]"
                             style={{ 
-                              fontSize: '10px',
                               fontWeight: '900',
                               whiteSpace: 'nowrap',
                               lineHeight: '1',
@@ -462,9 +462,8 @@ export default function GameweekFixturesCardListForCapture({
                   {/* Home team - right aligned */}
                   <div className="flex-1 flex items-center justify-end gap-1.5 pr-0.5" style={{ height: '32px', minWidth: 0, maxWidth: '50%', flexShrink: 1, paddingLeft: '4px', gap: '6px', overflow: 'hidden' }}>
                     <span 
-                      className={`team-name-small-mobile text-xs text-slate-700 ${homeIsWinning ? 'font-bold' : 'font-medium'}`}
+                      className={`team-name-small-mobile text-xs text-slate-700 text-sm ${homeIsWinning ? 'font-bold' : 'font-medium'}`}
                       style={{ 
-                        fontSize: '14px', 
                         textOverflow: 'ellipsis', 
                         overflow: 'hidden', 
                         whiteSpace: 'nowrap', 
@@ -504,9 +503,8 @@ export default function GameweekFixturesCardListForCapture({
                       <TeamBadge code={fixture.away_code} size={badgeSize} />
                     </div>
                     <span 
-                      className={`team-name-small-mobile text-xs text-slate-700 ${awayIsWinning ? 'font-bold' : 'font-medium'}`}
+                      className={`team-name-small-mobile text-xs text-slate-700 text-sm ${awayIsWinning ? 'font-bold' : 'font-medium'}`}
                       style={{ 
-                        fontSize: '14px', 
                         textOverflow: 'ellipsis', 
                         overflow: 'hidden', 
                         whiteSpace: 'nowrap', 
@@ -541,7 +539,6 @@ export default function GameweekFixturesCardListForCapture({
                           paddingLeft: '8px',
                           paddingRight: '8px',
                           borderRadius: '9999px',
-                          fontSize: '12px',
                           fontWeight: '800',
                           whiteSpace: 'nowrap',
                           color: 'white',
@@ -569,7 +566,7 @@ export default function GameweekFixturesCardListForCapture({
         {/* Empty state */}
         {fixtures.length === 0 && (
           <div className="text-center py-8 text-slate-400" style={{ textAlign: 'center', paddingTop: '32px', paddingBottom: '32px', color: '#cbd5e1' }}>
-            <p className="text-sm" style={{ fontSize: '14px' }}>No fixtures available</p>
+            <p className="text-sm">No fixtures available</p>
           </div>
         )}
         </div>

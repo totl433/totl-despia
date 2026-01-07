@@ -29,8 +29,8 @@ export default function GwSelector({
           onChange(newGw);
         }}
         className="gw-selector w-full bg-white rounded-full border-2 border-slate-300 px-3 py-2 text-xs font-normal text-slate-600 text-center focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-[#1C8376] active:bg-slate-50 transition-colors"
+        className="text-xs"
         style={{
-          fontSize: '12px',
           minHeight: '40px',
           WebkitAppearance: 'none',
           MozAppearance: 'none',
@@ -43,7 +43,7 @@ export default function GwSelector({
         }}
       >
         {availableGws.map((gw) => (
-          <option key={gw} value={gw} style={{ fontSize: '12px', padding: '0.5rem', fontWeight: 'normal', color: '#64748b' }}>
+          <option key={gw} value={gw} className="text-xs" style={{ padding: '0.5rem', fontWeight: 'normal', color: '#64748b' }}>
             Gameweek {gw}
           </option>
         ))}

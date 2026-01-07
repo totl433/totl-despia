@@ -58,63 +58,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   const hasScrolledRef = useRef<boolean>(false);
   const [inputBottom, setInputBottom] = useState(0);
   
-  // Track presence: mark user as active in chat to suppress notifications
-  useEffect(() => {
-    if (!miniLeagueId || !user?.id) return;
-    
-    let isActive = true;
-    
-    const updatePresence = async () => {
-      if (!isActive) return;
-      try {
-        const { error } = await supabase
-          .from('chat_presence')
-          .upsert({
-            league_id: miniLeagueId,
-            user_id: user.id,
-            last_seen: new Date().toISOString(),
-          }, {
-            onConflict: 'league_id,user_id'
-          });
-        
-        if (error) {
-          console.warn('[MiniLeagueChatBeta] Failed to update presence:', error);
-        }
-      } catch (err) {
-        // Silently fail - presence is best effort, but log for debugging
-        console.warn('[MiniLeagueChatBeta] Error updating presence:', err);
-      }
-    };
-    
-    // Update immediately on mount
-    updatePresence();
-    
-    // Update every 10 seconds while component is mounted
-    const interval = setInterval(() => {
-      if (isActive) {
-        updatePresence();
-      }
-    }, 10000);
-    
-    return () => {
-      isActive = false;
-      clearInterval(interval);
-      // Delete presence when component unmounts so user is immediately eligible for notifications
-      if (miniLeagueId && user?.id) {
-        (async () => {
-          try {
-            await supabase
-              .from('chat_presence')
-              .delete()
-              .eq('league_id', miniLeagueId)
-              .eq('user_id', user.id);
-          } catch (err) {
-            // Silently fail - presence cleanup is best effort
-          }
-        })();
-      }
-    };
-  }, [miniLeagueId, user?.id]);
+  // REMOVED: Presence tracking system - was causing flaky notifications
 
   // Ref callback: set scroll position IMMEDIATELY when node is available
   // This happens synchronously before React finishes rendering, eliminating timing issues

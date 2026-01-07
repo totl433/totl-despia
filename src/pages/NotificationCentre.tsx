@@ -297,14 +297,14 @@ export default function NotificationCentre() {
  {pushState && (
  <div className={`rounded-xl p-4 mb-6 ${
  pushState.effectiveState === 'allowed' 
- ? 'bg-green-50 border border-green-200' 
+ ? 'bg-emerald-50 border border-emerald-200' 
  : pushState.effectiveState === 'muted_by_os'
  ? 'bg-amber-50 border border-amber-200'
  : 'bg-slate-50 border border-slate-200'
  }`}>
  <div className="flex items-start gap-3">
  {pushState.effectiveState === 'allowed' ? (
- <svg className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+ <svg className="w-6 h-6 text-emerald-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
  </svg>
  ) : pushState.effectiveState === 'muted_by_os' ? (
@@ -319,7 +319,7 @@ export default function NotificationCentre() {
  <div className="flex-1">
  <h3 className={`font-semibold ${
  pushState.effectiveState === 'allowed' 
- ? 'text-green-800' 
+ ? 'text-emerald-800' 
  : pushState.effectiveState === 'muted_by_os'
  ? 'text-amber-800'
  : 'text-slate-700'
@@ -332,7 +332,7 @@ export default function NotificationCentre() {
  </h3>
  <p className={`text-sm mt-1 ${
  pushState.effectiveState === 'allowed' 
- ? 'text-green-700' 
+ ? 'text-emerald-700' 
  : pushState.effectiveState === 'muted_by_os'
  ? 'text-amber-700'
  : 'text-slate-600'

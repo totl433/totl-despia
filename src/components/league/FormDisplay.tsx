@@ -21,7 +21,7 @@ export default function FormDisplay({ form }: FormDisplayProps) {
           key={i}
           className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${
             result === "W"
-              ? "bg-green-100 text-green-700"
+              ? "bg-emerald-100 text-emerald-700"
               : result === "D"
               ? "bg-yellow-100 text-yellow-700"
               : "bg-red-100 text-red-700"

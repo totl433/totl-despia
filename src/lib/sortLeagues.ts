@@ -3,51 +3,34 @@
  * This is the ONLY place where league sort order is defined.
  * 
  * Sort order:
- * 1. Primary: unreadCount descending (leagues with unread messages first)
- * 2. Secondary: name ascending (alphabetical)
+ * Simple alphabetical by name (stable, predictable order)
  */
 
 import type { League, LeagueWithUnread } from '../types/league';
 
 /**
- * Sort leagues by unread count (desc) then by name (asc).
+ * Sort leagues alphabetically by name.
  * Does NOT mutate the input array.
  */
 export function sortLeagues<T extends { name: string; unreadCount?: number }>(
   leagues: T[]
 ): T[] {
   return [...leagues].sort((a, b) => {
-    const unreadA = a.unreadCount ?? 0;
-    const unreadB = b.unreadCount ?? 0;
-    
-    // Primary sort: unread count descending
-    if (unreadB !== unreadA) {
-      return unreadB - unreadA;
-    }
-    
-    // Secondary sort: name ascending (alphabetical)
     return a.name.localeCompare(b.name);
   });
 }
 
 /**
- * Sort leagues using an external unread counts map.
+ * Sort leagues alphabetically by name (ignores unread counts for ordering).
  * Useful when leagues don't have unreadCount property but you have a separate map.
+ * Unread counts are kept for display purposes but don't affect sort order.
  */
 export function sortLeaguesWithUnreadMap<T extends { id: string; name: string }>(
   leagues: T[],
   unreadByLeague: Record<string, number> | undefined
 ): T[] {
   return [...leagues].sort((a, b) => {
-    const unreadA = unreadByLeague?.[a.id] ?? 0;
-    const unreadB = unreadByLeague?.[b.id] ?? 0;
-    
-    // Primary sort: unread count descending
-    if (unreadB !== unreadA) {
-      return unreadB - unreadA;
-    }
-    
-    // Secondary sort: name ascending (alphabetical)
+    // Simple alphabetical sort by name (stable, predictable order)
     return a.name.localeCompare(b.name);
   });
 }

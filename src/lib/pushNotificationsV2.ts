@@ -360,7 +360,8 @@ export async function updateHeartbeat(
   
   // CRITICAL: Re-set external_user_id on every heartbeat
   // This ensures the device stays linked even if OneSignal clears it
-  if (userId) {
+  // Only attempt if Despia is available (native app)
+  if (userId && isDespiaAvailable()) {
     const externalIdSet = setOneSignalExternalUserId(userId);
     if (externalIdSet) {
       console.log('[PushV2] Heartbeat: External user ID re-linked');

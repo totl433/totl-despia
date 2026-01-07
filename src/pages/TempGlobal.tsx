@@ -525,7 +525,7 @@ export default function GlobalLeaderboardPage() {
 
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           {err && (
-            <div className="mb-6 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 flex-shrink-0">
+            <div className="mb-6 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 flex-shrink-0">
               {err}
             </div>
           )}

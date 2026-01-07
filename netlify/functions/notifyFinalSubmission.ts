@@ -31,6 +31,19 @@ function json(statusCode: number, body: unknown) {
 }
 
 /**
+ * Get base URL for building full deep link URLs
+ * Matches pattern used in notifyLeagueMessageV2
+ */
+function getBaseUrl(): string {
+  // Netlify provides URL env var in production
+  if (process.env.URL || process.env.SITE_URL) {
+    return (process.env.URL || process.env.SITE_URL || '').trim();
+  }
+  // Fallback for local dev
+  return 'https://totl-staging.netlify.app';
+}
+
+/**
  * Check if all members have submitted and notify league members
  * Works for all mini-leagues by checking all pick tables
  */
@@ -95,6 +108,11 @@ async function checkAndNotifyFinalSubmission(
       return { success: false, error: 'Failed to format event ID' };
     }
 
+    // Build deep link URL with tab parameter (matching chat notification pattern)
+    const baseUrl = getBaseUrl();
+    const relativeUrl = leagueCode ? `/league/${leagueCode}?tab=gw` : undefined;
+    const fullUrl = relativeUrl ? `${baseUrl}${relativeUrl}` : undefined;
+
     // Dispatch via unified system
     const result = await dispatchNotification({
       notification_key: 'final-submission',
@@ -108,7 +126,7 @@ async function checkAndNotifyFinalSubmission(
         league_code: leagueCode,
         gw,
       },
-      url: leagueCode ? `/league/${leagueCode}` : undefined,
+      url: fullUrl, // Use full URL like chat notifications do
       league_id: leagueId,
     });
 

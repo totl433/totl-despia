@@ -312,11 +312,11 @@ export default function GameweekFixturesCardList({
  </div>
  ) : (
  <span 
- className={`font-black ${isFinished && pick && pickCorrect !== null ? (pickCorrect ? 'text-green-600' : 'text-red-600') : isOngoing ? 'text-red-600' : 'text-slate-500'}`}
- style={{ 
- fontSize: isFinished && pick && pickCorrect !== null ? '24px' : '10px', 
- lineHeight: '1',
- WebkitTextStroke: isFinished && pick && pickCorrect !== null ? (pickCorrect ? '1.5px' : '0.5px') : '0px',
+ className={`font-black ${isFinished && pick && pickCorrect !== null ? (pickCorrect ? 'text-emerald-600' : 'text-red-600') : isOngoing ? 'text-red-600' : 'text-slate-500'}`}
+            className={`${isFinished && pick && pickCorrect !== null ? 'text-2xl' : 'text-[10px]'}`}
+            style={{ 
+              lineHeight: '1',
+              WebkitTextStroke: isFinished && pick && pickCorrect !== null ? (pickCorrect ? '1.5px' : '0.5px') : '0px',
  WebkitTextStrokeColor: isFinished && pick && pickCorrect !== null ? (pickCorrect ? '#15803d' : '#991b1b') : 'transparent',
  } as React.CSSProperties}
  >

@@ -115,11 +115,6 @@ export default function PredictionsPage() {
  
  // Track when fixtures change to debug flash of old data
  useEffect(() => {
-   // #region agent log
-   if (fixtures.length > 0) {
-     fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Predictions.tsx:115',message:'Fixtures state updated',data:{fixturesLength:fixtures.length,firstFixtureGw:fixtures[0]?.gw,currentGw},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'Q'})}).catch(()=>{});
-   }
-   // #endregion
  }, [fixtures, currentGw]);
 
  // Use centralized game state system (PR.md rule 10)
@@ -609,10 +604,6 @@ export default function PredictionsPage() {
  const cacheKey = `predictions:${user?.id}:${gwToDisplay}`;
  let loadedFromCache = false;
  
- // #region agent log
- fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Predictions.tsx:656',message:'useEffect determining GW and loading cache',data:{currentGw,userId:user?.id,cacheKey,prevGw:prevGwRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'L'})}).catch(()=>{});
- // #endregion
- 
  try {
  const cached = getCached<{
  fixtures: Fixture[];
@@ -621,18 +612,8 @@ export default function PredictionsPage() {
  results: Array<{ fixture_index: number; result: "H" | "D" | "A" }>;
  }>(cacheKey);
  
- // #region agent log
- fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Predictions.tsx:667',message:'Cache check result',data:{hasCache:!!cached,cachedFixturesLength:cached?.fixtures?.length || 0,cachedGw:cached?.fixtures?.[0]?.gw},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'M'})}).catch(()=>{});
- // #endregion
- 
  if (cached && cached.fixtures && Array.isArray(cached.fixtures) && cached.fixtures.length > 0) {
- // #region agent log
- fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Predictions.tsx:670',message:'Setting fixtures from cache',data:{fixturesLength:cached.fixtures.length,firstFixtureGw:cached.fixtures[0]?.gw,currentGw},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'N'})}).catch(()=>{});
- // #endregion
  // INSTANT RENDER from cache!
- // #region agent log
- fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Predictions.tsx:633',message:'About to set fixtures from cache',data:{fixturesLength:cached.fixtures.length,firstFixtureGw:cached.fixtures[0]?.gw,currentGw,prevGw:prevGwRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'R'})}).catch(()=>{});
- // #endregion
  // Track that fixtures are being set for this GW
  fixturesGwRef.current = gwToDisplay;
  setFixtures(cached.fixtures);
@@ -716,14 +697,14 @@ export default function PredictionsPage() {
    }
  }
  
- // Restore results from cache FIRST
- if (cached.results && Array.isArray(cached.results)) {
- const resultsMap = new Map<number, "H" | "D" | "A">();
- cached.results.forEach(r => {
- resultsMap.set(r.fixture_index, r.result);
- });
- setResults(resultsMap);
- }
+// Restore results from cache FIRST
+if (cached.results && Array.isArray(cached.results)) {
+const resultsMap = new Map<number, "H" | "D" | "A">();
+cached.results.forEach(r => {
+resultsMap.set(r.fixture_index, r.result);
+});
+setResults(resultsMap);
+}
  
  // CRITICAL: If results aren't in cache, load them from DB immediately (like HomePage does)
  // This ensures score calculation works even if cache is missing
@@ -1153,18 +1134,26 @@ if (alive && fixturesData.length > 0 && currentGw) {
  // Get all members of user's leagues
  const { data: membersData } = await supabase
  .from("league_members")
- .select("user_id, profiles!inner(id, name)")
+ .select("user_id, users!inner(id, name)")
  .in("league_id", leagueIds);
  
- if (membersData) {
- const members = membersData.map((m: any) => ({
- id: m.user_id,
- name: m.profiles?.name || "Unknown"
- }));
- 
- if (alive) {
- setLeagueMembers(members);
- }
+if (membersData) {
+// Deduplicate members by user ID (user can be in multiple leagues)
+const membersMap = new Map<string, { id: string; name: string }>();
+membersData.forEach((m: any) => {
+const userId = m.user_id;
+if (!membersMap.has(userId)) {
+membersMap.set(userId, {
+id: userId,
+name: m.users?.name || "Unknown"
+});
+}
+});
+const members = Array.from(membersMap.values());
+
+if (alive) {
+setLeagueMembers(members);
+}
  
  const memberIds = members.map((m: any) => m.id);
  
@@ -1291,28 +1280,42 @@ if (alive && fixturesData.length > 0 && currentGw) {
 
  // Live scores are now handled by useLiveScores hook via Supabase real-time
 
- // Update results map based on live scores
- useEffect(() => {
- const newResults = new Map<number, "H" | "D" | "A">();
+// Update results map based on live scores
+// CRITICAL: Preserve existing results from app_gw_results and only update/add from live scores
+// This prevents clearing final results when live scores are empty or incomplete
+useEffect(() => {
+ // Start with existing results (preserve final results from app_gw_results)
+ const updatedResults = new Map<number, "H" | "D" | "A">(results);
+ let hasChanges = false;
  
- // Check live scores for first 3 fixtures
+ // Update/add results from live scores for fixtures that have live score data
  const fixturesToCheck = fixtures;
  fixturesToCheck.forEach((f) => {
  const liveScore = liveScores[f.fixture_index];
  if (liveScore && (liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED' || liveScore.status === 'FINISHED')) {
  // Determine outcome from live score
+ let newResult: "H" | "D" | "A";
  if (liveScore.homeScore > liveScore.awayScore) {
- newResults.set(f.fixture_index, 'H');
+ newResult = 'H';
  } else if (liveScore.awayScore > liveScore.homeScore) {
- newResults.set(f.fixture_index, 'A');
+ newResult = 'A';
  } else {
- newResults.set(f.fixture_index, 'D');
+ newResult = 'D';
+ }
+ // Only update if result is different (prevents unnecessary updates)
+ const existingResult = updatedResults.get(f.fixture_index);
+ if (existingResult !== newResult) {
+ updatedResults.set(f.fixture_index, newResult);
+ hasChanges = true;
  }
  }
  });
  
- setResults(newResults);
- }, [liveScores, fixtures]);
+ // Only update state if there are actual changes (prevents infinite loops)
+ if (hasChanges) {
+ setResults(updatedResults);
+ }
+ }, [liveScores, fixtures, results]);
 
  // Fetch pick percentages for all fixtures after deadline has passed
  useEffect(() => {
@@ -1702,17 +1705,15 @@ gw: currentGw,
  );
  }
 
- // Confirmed Predictions View (after submission OR when deadline has passed)
- // Check both state and sessionStorage for maximum safety
- const sessionStorageCheck = getHasEverBeenSubmitted();
- const isUserSubmitted = submitted || (!submissionChecked && sessionStorageCheck);
- // If deadline has passed, show the same view as submitted users (but with empty predictions)
- if (isUserSubmitted || deadlinePassed) {
- // If not all members have submitted, show "Who's submitted" view (similar to League page)
- if (!allMembersSubmitted && leagueMembers.length > 0) {
- const remaining = leagueMembers.filter(m => !submittedMemberIds.has(m.id)).length;
- 
- return (
+// Confirmed Predictions View (after submission OR when deadline has passed)
+// Check both state and sessionStorage for maximum safety
+const sessionStorageCheck = getHasEverBeenSubmitted();
+const isUserSubmitted = submitted || (!submissionChecked && sessionStorageCheck);
+// If deadline has passed, show the same view as submitted users (but with empty predictions)
+if (isUserSubmitted || deadlinePassed) {
+// Always show user's predictions - don't show league member status here
+// (League member status belongs in League page, not PredictionsPage)
+return (
  <div className="min-h-screen bg-slate-50 flex flex-col">
  {showConfetti && windowSize.width > 0 && windowSize.height > 0 && (
  <Confetti
@@ -1726,88 +1727,14 @@ gw: currentGw,
  <div className="p-4">
  <div className="max-w-2xl mx-auto">
  <div className="relative flex items-center justify-center">
+ {!isUserSubmitted && (
  <button 
  onClick={() => navigate("/")} 
  className="absolute left-0 text-slate-600 text-3xl font-bold w-10 h-10 flex items-center justify-center"
  >
  ✕
  </button>
- <span className="text-lg font-extrabold text-slate-700">
- Gameweek {currentGw}
- </span>
- </div>
- </div>
- </div>
- <div className="flex-1 overflow-y-auto p-4">
- <div className="max-w-2xl mx-auto">
- <div className="rounded-2xl border bg-white p-4 mb-4">
- <div className="text-sm font-semibold text-slate-700 mb-3">
- Waiting for <span className="font-bold">{remaining}</span> of {leagueMembers.length} to submit...
- </div>
- <div className="text-xs text-slate-500 mb-4">
- Your predictions have been confirmed. Once all members have submitted, you'll be able to see everyone's picks.
- </div>
- <div className="overflow-hidden rounded-lg border">
- <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
- <thead className="bg-slate-50">
- <tr>
- <th className="text-left px-4 py-3 w-2/3 font-semibold text-slate-600">Player</th>
- <th className="text-left px-4 py-3 font-semibold text-slate-600">Status</th>
- </tr>
- </thead>
- <tbody>
- {leagueMembers
- .slice()
- .sort((a, b) => a.name.localeCompare(b.name))
- .map((member) => {
- const isSubmitted = submittedMemberIds.has(member.id);
- return (
- <tr key={member.id} className="border-t border-slate-200">
- <td className="px-4 py-3 font-bold text-slate-900 truncate whitespace-nowrap" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.name}</td>
- <td className="px-4 py-3">
- {isSubmitted ? (
- <span className="inline-flex items-center justify-center rounded-full bg-[#1C8376]/10 text-[#1C8376]/90 text-xs px-2 py-1 border border-emerald-300 font-bold shadow-sm whitespace-nowrap w-24">
- Submitted
- </span>
- ) : (
- <span className="inline-flex items-center justify-center rounded-full bg-amber-50 text-amber-700 text-xs px-2 py-1 border border-amber-200 font-semibold whitespace-nowrap w-24">
- Not yet
- </span>
  )}
- </td>
- </tr>
- );
- })}
- </tbody>
- </table>
- </div>
- </div>
- </div>
- </div>
- </div>
- );
- }
-
- return (
- <div className="min-h-screen bg-slate-50 flex flex-col">
- {showConfetti && windowSize.width > 0 && windowSize.height > 0 && (
- <Confetti
- width={windowSize.width}
- height={windowSize.height}
- recycle={false}
- numberOfPieces={500}
- gravity={0.3}
- />
- )}
- <div className="p-4">
- <div className="max-w-2xl mx-auto">
- <div className="relative flex items-center justify-center">
- <button 
- onClick={() => navigate("/")} 
- className="absolute left-0 text-slate-600 text-3xl font-bold w-10 h-10 flex items-center justify-center"
- >
- ✕
- </button>
  <span className="text-lg font-extrabold text-slate-700">
  Gameweek {currentGw}
  </span>
@@ -2006,14 +1933,9 @@ return null;
  <div className="rounded-2xl border bg-slate-50 overflow-hidden">
  <ul>
  {group.items.map((fixture, index)=>{
- const pick = picks.get(fixture.fixture_index);
- const liveScore = liveScores[fixture.fixture_index];
-
- // #region agent log
- if (index === 0) {
-   fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Predictions.tsx:2091',message:'Rendering fixtures in list view',data:{fixturesLength:fixtures.length,currentGw,firstFixtureGw:fixture.gw,firstFixtureIndex:fixture.fixture_index,picksSize:picks.size},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'P'})}).catch(()=>{});
- }
- // #endregion
+   const pick = picks.get(fixture.fixture_index);
+   const liveScore = liveScores[fixture.fixture_index];
+   const result = results.get(fixture.fixture_index);
 
  // CRITICAL: Only render fixtures that match the current GW to prevent flash of old data
  if (fixture.gw !== currentGw) {
@@ -2112,12 +2034,14 @@ return null;
  <div className="p-4">
  <div className="max-w-2xl mx-auto">
  <div className="relative flex items-center justify-center">
+ {!isUserSubmitted && (
  <button 
  onClick={() => navigate("/")} 
  className="absolute left-0 text-slate-600 text-3xl font-bold w-10 h-10 flex items-center justify-center"
  >
  ✕
  </button>
+ )}
  <span className="text-lg font-extrabold text-slate-700">Review Mode</span>
  {allPicksMade && !submitted ? (
  <button
@@ -2127,7 +2051,7 @@ return null;
  Confirm
  </button>
  ) : submitted ? (
- <span className="absolute right-0 text-sm text-green-600 font-semibold">✓ Submitted</span>
+ <span className="absolute right-0 text-sm text-emerald-600 font-semibold">✓ Submitted</span>
  ) : picks.size > 0 ? (
  <button
  onClick={handleConfirmClick}
@@ -2176,9 +2100,9 @@ return null;
  <div className="text-lg font-semibold text-slate-800 mb-4">{group.label}</div>
  <div className="space-y-4">
  {group.items.map((fixture)=>{
- const pick = picks.get(fixture.fixture_index);
- const result = results.get(fixture.fixture_index);
- return (
+   const pick = picks.get(fixture.fixture_index);
+   const result = results.get(fixture.fixture_index);
+   return (
  <div key={fixture.id} className="bg-white rounded-xl shadow-sm p-6">
  <div className="flex items-center justify-between gap-2 mb-4">
  <div className="flex-1 min-w-0 text-right"><span className="text-sm font-semibold text-slate-800 truncate inline-block">{fixture.home_team || fixture.home_name}</span></div>
@@ -2206,7 +2130,7 @@ setPicks(np);
  ? "bg-red-500 text-white border-red-400"
  : "bg-purple-600 text-white border-purple-600"
  : result === "H"
- ? "bg-gray-300 text-slate-700 border-gray-400"
+ ? "bg-slate-300 text-slate-700 border-slate-400"
  : submitted
  ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
  : "bg-slate-50 text-slate-600 border-slate-200"
@@ -2230,7 +2154,7 @@ setPicks(np);
  ? "bg-red-500 text-white border-red-400"
  : "bg-purple-600 text-white border-purple-600"
  : result === "D"
- ? "bg-gray-300 text-slate-700 border-gray-400"
+ ? "bg-slate-300 text-slate-700 border-slate-400"
  : submitted
  ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
  : "bg-slate-50 text-slate-600 border-slate-200"
@@ -2254,7 +2178,7 @@ setPicks(np);
  ? "bg-red-500 text-white border-red-400"
  : "bg-purple-600 text-white border-purple-600"
  : result === "A"
- ? "bg-gray-300 text-slate-700 border-gray-400"
+ ? "bg-slate-300 text-slate-700 border-slate-400"
  : submitted
  ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
  : "bg-slate-50 text-slate-600 border-slate-200"
@@ -2291,7 +2215,7 @@ setPicks(np);
  <button 
  onClick={handleConfirmClick} 
  disabled={!allPicksMade}
- className="w-full py-4 bg-green-600 text-white rounded-2xl font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+ className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
  >
  {allPicksMade ? "SUBMIT YOUR PREDICTIONS" : "Complete All Predictions First"}
  </button>
@@ -2491,13 +2415,15 @@ setPicks(np);
  <div className="flex-1 overflow-y-auto">
  <div className="max-w-2xl mx-auto px-4 py-4">
  <div className="relative flex items-center justify-center mb-4">
+ {!isUserSubmitted && (
  <button 
  onClick={() => navigate("/")} 
  className="absolute left-0 text-slate-600 text-3xl font-bold w-10 h-10 flex items-center justify-center"
  >
  ✕
  </button>
- <div className="text-center"><h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-0 mb-2">Predictions</h1><div className="mt-0 mb-4 text-base text-slate-500">Call every game, lock in your results.</div></div>
+ )}
+ <div className="text-center"><h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-slate-900 mt-0 mb-2">Predictions</h1><div className="mt-0 mb-4 text-base text-slate-500">Call every game, lock in your results.</div></div>
  </div>
  {!shouldBlockSwipePredictions && canShowSwipePredictions && (
  <div className="flex justify-center mt-4">

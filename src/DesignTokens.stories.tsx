@@ -79,39 +79,6 @@ export const Fonts: Story = {
               </p>
             </div>
           </div>
-
-          {/* PressStart2P - Old School Mode */}
-          <div className="border border-slate-200 rounded-xl p-6 bg-slate-50">
-            <h3 className="text-xl font-bold text-slate-800 mb-4">PressStart2P</h3>
-            <p className="text-sm text-slate-600 mb-4">
-              Pixelated retro font used exclusively in "Old School Mode" theme. Self-hosted for reliability.
-            </p>
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs font-medium text-slate-500 mb-2">Regular (400)</p>
-                <p className="text-lg" style={{ fontFamily: 'PressStart2P', fontWeight: 400 }}>
-                  THE QUICK BROWN FOX
-                </p>
-                <p className="text-sm text-slate-600 mt-2">Usage: Old School Mode theme only</p>
-              </div>
-            </div>
-          </div>
-
-          {/* DxLactos - Available but not commonly used */}
-          <div className="border border-slate-200 rounded-xl p-6 bg-slate-50">
-            <h3 className="text-xl font-bold text-slate-800 mb-4">DxLactos</h3>
-            <p className="text-sm text-slate-600 mb-4">
-              Defined in CSS but not commonly used in the application. Medium weight (500) available.
-            </p>
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs font-medium text-slate-500 mb-2">Medium (500)</p>
-                <p className="text-2xl" style={{ fontFamily: 'DxLactos', fontWeight: 500 }}>
-                  The quick brown fox jumps over the lazy dog
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -220,34 +187,36 @@ export const Colors: Story = {
             ))}
           </div>
           <p className="text-sm text-slate-600 mt-4">
-            Usage: Success states, secondary buttons, accents. Note: Primary brand color #1C8376 is similar but distinct from emerald-600.
+            Usage: Success states, positive indicators, form validation, secondary buttons, accents. Note: Primary brand color #1C8376 is similar but distinct from emerald-600.
           </p>
         </div>
 
         {/* Red Colors */}
         <div className="mb-12">
           <h3 className="text-xl font-bold text-slate-800 mb-4">Red Colors (Error/Danger/Live)</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-7 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
             {[
-              { name: 'Red 50', class: 'bg-red-50', hex: '#fef2f2' },
-              { name: 'Red 100', class: 'bg-red-100', hex: '#fee2e2' },
-              { name: 'Red 200', class: 'bg-red-200', hex: '#fecaca' },
-              { name: 'Red 400', class: 'bg-red-400', hex: '#f87171' },
-              { name: 'Red 500', class: 'bg-red-500', hex: '#ef4444' },
-              { name: 'Red 600', class: 'bg-red-600', hex: '#dc2626' },
-              { name: 'Red 700', class: 'bg-red-700', hex: '#b91c1c' },
+              { name: 'Red 50', class: 'bg-red-50', hex: '#fef2f2', usage: 'Light backgrounds for error messages' },
+              { name: 'Red 100', class: 'bg-red-100', hex: '#fee2e2', usage: 'Light backgrounds, active states' },
+              { name: 'Red 200', class: 'bg-red-200', hex: '#fecaca', usage: 'Borders, active states' },
+              { name: 'Red 400', class: 'bg-red-400', hex: '#f87171', usage: 'Animation pings' },
+              { name: 'Red 500', class: 'bg-red-500', hex: '#ef4444', usage: 'Main red - indicators, buttons, dots' },
+              { name: 'Red 600', class: 'bg-red-600', hex: '#dc2626', usage: 'Main red - buttons, text, live indicators' },
+              { name: 'Red 700', class: 'bg-red-700', hex: '#b91c1c', usage: 'Text for error messages' },
+              { name: 'Red 800', class: 'bg-red-800', hex: '#991b1b', usage: 'Text for error messages' },
             ].map((color) => (
               <div key={color.name} className="border border-slate-200 rounded-lg overflow-hidden">
                 <div className={`h-16 ${color.class}`}></div>
                 <div className="p-3 bg-white">
                   <p className="text-xs font-semibold text-slate-900">{color.name}</p>
                   <p className="text-xs text-slate-600 font-mono">{color.hex}</p>
+                  <p className="text-xs text-slate-500 mt-1">{color.usage}</p>
                 </div>
               </div>
             ))}
           </div>
           <p className="text-sm text-slate-600 mt-4">
-            Usage: Live indicators, error states, danger actions, delete buttons
+            <strong>Usage:</strong> Live indicators, error states, danger actions, delete buttons, incorrect picks, position down indicators. All rose colors have been standardized to red equivalents.
           </p>
         </div>
 
@@ -275,42 +244,16 @@ export const Colors: Story = {
           </p>
         </div>
 
-        {/* Green Colors */}
-        <div className="mb-12">
-          <h3 className="text-xl font-bold text-slate-800 mb-4">Green Colors (Success/Positive)</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-            {[
-              { name: 'Green 50', class: 'bg-green-50', hex: '#f0fdf4' },
-              { name: 'Green 100', class: 'bg-green-100', hex: '#dcfce7' },
-              { name: 'Green 200', class: 'bg-green-200', hex: '#bbf7d0' },
-              { name: 'Green 500', class: 'bg-green-500', hex: '#22c55e' },
-              { name: 'Green 600', class: 'bg-green-600', hex: '#16a34a' },
-              { name: 'Green 700', class: 'bg-green-700', hex: '#15803d' },
-              { name: 'Green 800', class: 'bg-green-800', hex: '#166534' },
-            ].map((color) => (
-              <div key={color.name} className="border border-slate-200 rounded-lg overflow-hidden">
-                <div className={`h-16 ${color.class}`}></div>
-                <div className="p-3 bg-white">
-                  <p className="text-xs font-semibold text-slate-900">{color.name}</p>
-                  <p className="text-xs text-slate-600 font-mono">{color.hex}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="text-sm text-slate-600 mt-4">
-            Usage: Success indicators, positive changes, form validation
-          </p>
-        </div>
 
         {/* Blue Colors */}
         <div className="mb-12">
           <h3 className="text-xl font-bold text-slate-800 mb-4">Blue Colors</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-4">
             {[
-              { name: 'Blue 500', class: 'bg-blue-500', hex: '#3b82f6' },
               { name: 'Blue 600', class: 'bg-blue-600', hex: '#2563eb' },
-              { name: 'Blue 700', class: 'bg-blue-700', hex: '#1d4ed8' },
-              { name: 'Blue 800', class: 'bg-blue-800', hex: '#1e40af' },
+              { name: 'Blue 600/10', class: 'bg-blue-600/10', hex: '#2563eb/10' },
+              { name: 'Blue 600/20', class: 'bg-blue-600/20', hex: '#2563eb/20' },
+              { name: 'Blue 600/50', class: 'bg-blue-600/50', hex: '#2563eb/50' },
             ].map((color) => (
               <div key={color.name} className="border border-slate-200 rounded-lg overflow-hidden">
                 <div className={`h-16 ${color.class}`}></div>
@@ -322,35 +265,10 @@ export const Colors: Story = {
             ))}
           </div>
           <p className="text-sm text-slate-600 mt-4">
-            Usage: Info states, links, secondary actions
+            Usage: Info states, links, secondary actions. All blue colors use blue-600 as the base with opacity variants for backgrounds and borders.
           </p>
         </div>
 
-        {/* Gray Colors */}
-        <div className="mb-12">
-          <h3 className="text-xl font-bold text-slate-800 mb-4">Gray Colors</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-6 gap-4">
-            {[
-              { name: 'Gray 50', class: 'bg-gray-50', hex: '#f9fafb' },
-              { name: 'Gray 100', class: 'bg-gray-100', hex: '#f3f4f6' },
-              { name: 'Gray 200', class: 'bg-gray-200', hex: '#e5e7eb' },
-              { name: 'Gray 300', class: 'bg-gray-300', hex: '#d1d5db' },
-              { name: 'Gray 400', class: 'bg-gray-400', hex: '#9ca3af' },
-              { name: 'Gray 500', class: 'bg-gray-500', hex: '#6b7280' },
-            ].map((color) => (
-              <div key={color.name} className="border border-slate-200 rounded-lg overflow-hidden">
-                <div className={`h-16 ${color.class}`}></div>
-                <div className="p-3 bg-white">
-                  <p className="text-xs font-semibold text-slate-900">{color.name}</p>
-                  <p className="text-xs text-slate-600 font-mono">{color.hex}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="text-sm text-slate-600 mt-4">
-            Usage: Modal backgrounds, button backgrounds, disabled states, dividers. Note: Slate colors are preferred for text and UI elements; gray is used for specific components.
-          </p>
-        </div>
 
         {/* Gradients */}
         <div className="mb-12">
@@ -373,10 +291,10 @@ export const Colors: Story = {
 
                 {/* Banner Background Gradient */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="h-24 bg-gradient-to-br from-[#1C8376]/10 to-blue-50/50"></div>
+                  <div className="h-24 bg-gradient-to-br from-[#1C8376]/10 to-blue-600/10"></div>
                   <div className="p-4 bg-white">
                     <p className="font-semibold text-slate-900">Banner Background Gradient</p>
-                    <p className="text-xs text-slate-600 font-mono mt-1">bg-gradient-to-br from-[#1C8376]/10 to-blue-50/50</p>
+                    <p className="text-xs text-slate-600 font-mono mt-1">bg-gradient-to-br from-[#1C8376]/10 to-blue-600/10</p>
                     <p className="text-xs text-slate-500 mt-2">Usage: Subtle background gradients for banners</p>
                   </div>
                 </div>
@@ -444,6 +362,8 @@ export const Typography: Story = {
             <h3 className="text-xl font-bold text-slate-800 mb-4">Font Sizes</h3>
             <div className="space-y-6">
               {[
+                { name: 'text-[9px]', size: '0.5625rem', usage: 'Very small labels, chips (intentional for specific UI elements)' },
+                { name: 'text-[10px]', size: '0.625rem', usage: 'Small chips, compact labels, bottom nav text (intentional for specific UI elements)' },
                 { name: 'text-xs', size: '0.75rem', usage: 'Labels, timestamps, small text' },
                 { name: 'text-sm', size: '0.875rem', usage: 'Body text, captions, secondary info' },
                 { name: 'text-base', size: '1rem', usage: 'Default body text' },
@@ -476,9 +396,9 @@ export const Typography: Story = {
             <div className="space-y-4">
               {[
                 { name: 'font-normal', weight: '400', usage: 'Default text' },
-                { name: 'font-medium', weight: '500', usage: 'Medium emphasis, buttons' },
-                { name: 'font-semibold', weight: '600', usage: 'Strong emphasis' },
-                { name: 'font-bold', weight: '700', usage: 'Headings, strong emphasis' },
+                { name: 'font-medium', weight: '500', usage: 'Secondary buttons, labels' },
+                { name: 'font-semibold', weight: '600', usage: 'Primary buttons, headings (H1, H2, H3), tabs' },
+                { name: 'font-bold', weight: '700', usage: 'Strong emphasis, special cases' },
               ].map((item) => (
                 <div key={item.name} className="border-b border-slate-200 pb-4 last:border-0">
                   <div className="flex items-baseline gap-4 mb-2">
@@ -501,13 +421,13 @@ export const Typography: Story = {
             <div className="space-y-6">
               <div>
                 <p className="text-xs font-medium text-slate-500 mb-2">Page Heading</p>
-                <h1 className="text-4xl font-bold text-slate-900 mb-2">Page Title</h1>
-                <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">text-4xl font-bold text-slate-900</code>
+                <h1 className="text-4xl font-semibold text-slate-900 mb-2">Page Title</h1>
+                <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">text-4xl font-semibold text-slate-900</code>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-500 mb-2">Section Heading</p>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">Section Title</h2>
-                <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">text-2xl font-bold text-slate-800</code>
+                <h2 className="text-2xl font-semibold text-slate-800 mb-2">Section Title</h2>
+                <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">text-2xl font-semibold text-slate-800</code>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-500 mb-2">Body Text</p>

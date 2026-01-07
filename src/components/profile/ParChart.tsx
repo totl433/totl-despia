@@ -75,7 +75,7 @@ export const ParChart = React.memo(function ParChart({
                           <div
                             className={`text-xs font-bold leading-none ${
                               isLatest ? 'text-[#1C8376]' :
-                              isAbovePar ? 'text-green-600' :
+                              isAbovePar ? 'text-emerald-600' :
                               isBelowPar ? 'text-red-600' :
                               'text-slate-700'
                             }`}
@@ -98,7 +98,7 @@ export const ParChart = React.memo(function ParChart({
                             title={`Par: ${averagePoints.toFixed(1)}`}
                           />
                           <div
-                            className="absolute w-full transition-all bg-green-500"
+                            className="absolute w-full transition-all bg-emerald-500"
                             style={{
                               bottom: `${parBarHeight}px`,
                               height: `${userBarHeight - parBarHeight}px`,
@@ -154,8 +154,8 @@ export const ParChart = React.memo(function ParChart({
                           style={{ height: '16px' }}
                         >
                           <div
-                            className={`text-[13px] leading-none ${
-                              isAbovePar ? 'text-green-600' : 
+                            className={`text-sm leading-none ${
+                              isAbovePar ? 'text-emerald-600' : 
                               isBelowPar ? 'text-white' : 
                               'text-white'
                             }`}

@@ -31,7 +31,7 @@ export default function EmailConfirmation({ email, onBackToSignUp }: EmailConfir
 
  return (
  <div className="min-h-screen flex flex-col bg-white px-6 pt-16">
- <h1 className="text-2xl font-bold text-slate-900 mb-4">Check Your Email</h1>
+ <h1 className="text-2xl font-semibold text-slate-900 mb-4">Check Your Email</h1>
  
  <p className="text-slate-600 mb-2">
  We've sent you a confirmation link at <strong>{email}</strong>
@@ -42,7 +42,7 @@ export default function EmailConfirmation({ email, onBackToSignUp }: EmailConfir
  </p>
 
  {resendSuccess && (
-   <p className="text-sm text-green-600 mb-4">
+   <p className="text-sm text-emerald-600 mb-4">
      Confirmation email sent! Please check your inbox.
    </p>
  )}

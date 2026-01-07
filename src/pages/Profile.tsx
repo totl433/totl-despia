@@ -67,7 +67,7 @@ export default function Profile() {
           .eq('user_id', user.id)
           .order('gw', { ascending: false }),
         supabase
-          .from('app_submissions')
+          .from('gw_submissions')
           .select('gw')
           .eq('user_id', user.id)
           .order('gw', { ascending: false })

@@ -1,6 +1,8 @@
 import { supabase } from "../lib/supabase";
 import { getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
 import { VOLLEY_USER_ID } from "../lib/volley";
+import { resolveLeagueStartGw } from "../lib/leagueStart";
+import { fetchUserLeagues } from "./userLeagues";
 
 export type League = {
   id: string;
@@ -50,6 +52,42 @@ export async function joinLeague(code: string, userId: string): Promise<{ succes
     const league = await getLeagueByCode(code);
     if (!league) {
       return { success: false, error: "League not found" };
+    }
+
+    // Check if user is already in 20 mini-leagues (max limit)
+    const userLeagues = await fetchUserLeagues(userId);
+    if (userLeagues.length >= 20) {
+      return { 
+        success: false, 
+        error: "You're already in 20 mini-leagues, which is the maximum. Leave a league before joining another." 
+      };
+    }
+
+    // Check if league has been running for more than 4 gameweeks
+    // Get current gameweek
+    const { data: metaData } = await supabase
+      .from("app_meta")
+      .select("current_gw")
+      .eq("id", 1)
+      .maybeSingle();
+
+    const currentGw = metaData?.current_gw ?? null;
+    
+    if (currentGw !== null) {
+      // Calculate league start GW
+      const leagueStartGw = await resolveLeagueStartGw(
+        { id: league.id, name: league.name, created_at: league.created_at },
+        currentGw
+      );
+
+      // Check if league has been running for 4+ gameweeks
+      // If current_gw - league_start_gw >= 4, the league is locked
+      if (currentGw - leagueStartGw >= 4) {
+        return {
+          success: false,
+          error: "This league has been running for more than 4 gameweeks. New members can only be added during the first 4 gameweeks."
+        };
+      }
     }
 
     const members = await getLeagueMembers(league.id);

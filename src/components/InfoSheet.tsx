@@ -111,7 +111,7 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
  
  if (isCategoryHeader) {
  return (
- <h3 key={index} className={`font-bold text-slate-900 ${index === 0 ?'' :'mt-6'}`} style={{ fontSize:'0.95rem' }}>
+          <h3 key={index} className={`font-bold text-slate-900 text-base ${index === 0 ?'' :'mt-6'}`}>
  {paragraph}
  </h3>);
  }

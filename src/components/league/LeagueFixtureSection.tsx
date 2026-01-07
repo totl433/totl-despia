@@ -76,7 +76,12 @@ export default function LeagueFixtureSection({
             )}
             
             {/* Regular league badges */}
-            {!isApiTestLeague && allSubmitted && resultsPublished && (
+            {!isApiTestLeague && (() => {
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'LeagueFixtureSection.tsx:79',message:'Checking Round Complete conditions',data:{isApiTestLeague,allSubmitted,resultsPublished,allGamesFinished,shouldShow:allSubmitted && resultsPublished && allGamesFinished},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+              // #endregion
+              return allSubmitted && resultsPublished && allGamesFinished;
+            })() && (
               <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#1C8376]/10 text-[#1C8376]/90 text-sm font-bold border border-emerald-300 shadow-sm" style={{ marginTop: '-2px' }}>
                 Round Complete!
               </span>

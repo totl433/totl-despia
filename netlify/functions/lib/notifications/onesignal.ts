@@ -78,8 +78,8 @@ export function buildPayload(
   
   // Add deep link URL
   if (url) {
-    payload.url = url;
-    // For iOS native apps, also set web_url (OneSignal uses this for deep linking)
+    // For native apps (Despia), use web_url for deep linking
+    // Don't set both url and web_url - OneSignal doesn't allow it
     payload.web_url = url;
   }
   

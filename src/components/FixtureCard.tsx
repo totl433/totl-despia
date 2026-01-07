@@ -494,7 +494,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
             g.isOwnGoal ? `${g.minute}' (OG)` : `${g.minute}'`
           ).join(', ');
           return (
-            <span key={idx} className="text-[11px] text-slate-600">
+            <span key={idx} className="text-xs text-slate-600">
               {surname} {minutesDisplay}
             </span>
           );
@@ -601,7 +601,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
               Home Win
             </span>
             {pickPercentages !== null && (
-              <span className="text-[11px] font-bold opacity-80 mt-0.5">{pickPercentages.H}%</span>
+              <span className="text-xs font-bold opacity-80 mt-0.5">{pickPercentages.H}%</span>
             )}
           </div>
           <div className={`${getButtonClass(drawState)} flex flex-col items-center justify-center`}>
@@ -609,7 +609,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
               Draw
             </span>
             {pickPercentages !== null && (
-              <span className="text-[11px] font-bold opacity-80 mt-0.5">{pickPercentages.D}%</span>
+              <span className="text-xs font-bold opacity-80 mt-0.5">{pickPercentages.D}%</span>
             )}
           </div>
           <div className={`${getButtonClass(awayState)} flex flex-col items-center justify-center`}>
@@ -617,7 +617,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
               Away Win
             </span>
             {pickPercentages !== null && (
-              <span className="text-[11px] font-bold opacity-80 mt-0.5">{pickPercentages.A}%</span>
+              <span className="text-xs font-bold opacity-80 mt-0.5">{pickPercentages.A}%</span>
             )}
           </div>
         </div>
@@ -629,19 +629,19 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
             <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>
               Home Win
             </span>
-            <span className="text-[11px] font-bold opacity-80 mt-0.5">{pickPercentages.H}%</span>
+            <span className="text-xs font-bold opacity-80 mt-0.5">{pickPercentages.H}%</span>
           </div>
           <div className={`${getButtonClass(drawState)} flex flex-col items-center justify-center`}>
             <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>
               Draw
             </span>
-            <span className="text-[11px] font-bold opacity-80 mt-0.5">{pickPercentages.D}%</span>
+            <span className="text-xs font-bold opacity-80 mt-0.5">{pickPercentages.D}%</span>
           </div>
           <div className={`${getButtonClass(awayState)} flex flex-col items-center justify-center`}>
             <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>
               Away Win
             </span>
-            <span className="text-[11px] font-bold opacity-80 mt-0.5">{pickPercentages.A}%</span>
+            <span className="text-xs font-bold opacity-80 mt-0.5">{pickPercentages.A}%</span>
           </div>
         </div>
       )}

@@ -379,7 +379,7 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
               <div className="flex items-baseline gap-[3px]" style={{ marginTop: '-4px' }}>
                 {score !== undefined && totalFixtures !== undefined ? (
                   <>
-                    <span className="text-[#1C8376] text-[38px] font-normal leading-none">{score}</span>
+                    <span className="text-[#1C8376] text-4xl font-normal leading-none">{score}</span>
                     <div className="flex items-baseline gap-[4px]">
                       <span className="text-slate-500 text-lg font-normal leading-none">/</span>
                       <span className="text-slate-500 text-lg font-normal leading-none">{totalFixtures}</span>

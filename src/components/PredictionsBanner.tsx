@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useGameweekState } from "../hooks/useGameweekState";
 import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
+import { useDisplayGameweek } from "../hooks/useDisplayGameweek";
 import { getCached } from "../lib/cache";
 import GameweekBanner from "./ComingSoonBanner";
 
@@ -16,18 +17,9 @@ import GameweekBanner from "./ComingSoonBanner";
 export default function PredictionsBanner() {
   const { user } = useAuth();
   
-  // Use centralized hook for current gameweek (single source of truth)
+  // Use centralized hooks for gameweek (single source of truth)
   const { currentGw } = useCurrentGameweek();
-  
-  const [viewingGw, setViewingGw] = React.useState<number | null>(() => {
-    if (user?.id) {
-      const cached = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
-      if (cached?.current_viewing_gw !== undefined) {
-        return cached.current_viewing_gw;
-      }
-    }
-    return null;
-  });
+  const { displayGw, userViewingGw, hasMovedOn } = useDisplayGameweek();
   
   const [visible, setVisible] = React.useState(false);
   const [bannerType, setBannerType] = React.useState<"predictions" | "watch-space" | "gw-ready" | null>(null);
@@ -36,22 +28,15 @@ export default function PredictionsBanner() {
   const [newGwNumber, setNewGwNumber] = React.useState<number | null>(null);
   
   // Get game state for the GW the user is viewing (user-specific)
-  // Use currentGw as fallback if viewingGw is not set yet
-  // Only call useGameweekState if we have a valid GW number
-  const effectiveViewingGw = viewingGw ?? currentGw;
+  // Use displayGw from hook (which handles the logic for user viewing GW vs current GW)
+  const effectiveViewingGw = displayGw ?? currentGw;
   const { state: viewingGwState } = useGameweekState(
     effectiveViewingGw && typeof effectiveViewingGw === 'number' ? effectiveViewingGw : null,
     user?.id
   );
   
-  // Calculate effective viewing GW (default to currentGw - 1 if not set, matching refreshBanner logic)
-  const effectiveViewingGwCalculated = React.useMemo(() => {
-    if (user?.id && viewingGw === null && currentGw !== null) {
-      // User hasn't set current_viewing_gw, default to previous GW (currentGw - 1)
-      return currentGw > 1 ? currentGw - 1 : currentGw;
-    }
-    return viewingGw ?? currentGw;
-  }, [user?.id, viewingGw, currentGw]);
+  // Use displayGw as the effective viewing GW (hook handles all the logic)
+  const effectiveViewingGwCalculated = displayGw ?? currentGw;
   
   // Get cached game state immediately (pre-loaded during initial data load)
   const cachedViewingGwState = React.useMemo(() => {
@@ -108,33 +93,14 @@ export default function PredictionsBanner() {
         return;
       }
       
-      const gw = currentGw;
-      
-      // Get user's current_viewing_gw (check cache first, then fetch)
-      const cached = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
-      let userViewingGw: number | null = cached?.current_viewing_gw ?? null;
-      
-      // If not in cache, fetch from DB
-      if (userViewingGw === null) {
-        const { data: prefs } = await supabase
-          .from("user_notification_preferences")
-          .select("current_viewing_gw")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        userViewingGw = prefs?.current_viewing_gw ?? null;
-      }
-      
-      // If user hasn't set current_viewing_gw, default to previous GW (currentGw - 1)
-      // This ensures users stay on the previous GW's results when a new GW is published
-      // and see the "GW ready" banner to transition
-      const effectiveViewingGw = userViewingGw ?? (gw > 1 ? gw - 1 : gw);
-      setViewingGw(effectiveViewingGw);
+      // No need to manually fetch or set viewingGw - useDisplayGameweek hook handles this
+      // The hook will automatically update when user_notification_preferences changes
       
     } catch (error) {
       console.error('[PredictionsBanner] Error in refreshBanner:', error);
       setVisible(false);
     }
-  }, [user?.id, currentGw]);
+  }, [user?.id, currentGw, displayGw, userViewingGw, hasMovedOn]);
   
   // Determine banner based on game state of the viewing GW
   // Use cached data immediately, then refresh in background
@@ -160,8 +126,10 @@ export default function PredictionsBanner() {
     
     (async () => {
       // Check if new GW is published but user hasn't transitioned
-      const userViewingGw = effectiveViewingGwCalculated ?? currentGw;
-      if (userViewingGw < currentGw) {
+      // Use userViewingGw from hook (or hasMovedOn) to determine if user has moved on
+      // If userViewingGw is null or >= currentGw, user has moved on (no banner)
+      // If userViewingGw < currentGw, user hasn't moved on (show banner)
+      if (!hasMovedOn && userViewingGw !== null && userViewingGw < currentGw) {
         // New GW published - show "GW ready" banner
         if (alive) {
           setNewGwNumber(currentGw);
@@ -271,8 +239,10 @@ export default function PredictionsBanner() {
         
         if (nextGw <= currentGw) {
           // Next GW is published in app_meta - check if user has transitioned
-          const userViewingGwForTransition = effectiveViewingGwCalculated ?? currentGw;
-          if (userViewingGwForTransition < nextGw) {
+          // Use userViewingGw from hook to check if user has moved on to next GW
+          // If userViewingGw is null or >= nextGw, user has moved on (hide banner)
+          // If userViewingGw < nextGw, user hasn't moved on (show banner)
+          if (userViewingGw !== null && userViewingGw < nextGw) {
             // User hasn't transitioned - show "GW ready" banner
             if (alive) {
               setNewGwNumber(nextGw);
@@ -294,7 +264,7 @@ export default function PredictionsBanner() {
     })();
     
     return () => { alive = false; };
-  }, [currentGw, viewingGw, effectiveViewingGwCalculated, effectiveViewingGwState, cachedViewingGwState, user?.id]);
+  }, [currentGw, displayGw, userViewingGw, hasMovedOn, effectiveViewingGwCalculated, effectiveViewingGwState, cachedViewingGwState, user?.id]);
   
   // Set up subscriptions and initial check
   React.useEffect(() => {
@@ -450,7 +420,7 @@ export default function PredictionsBanner() {
   // GW Ready banner (new GW published, user needs to transition)
   if (bannerType === "gw-ready" && newGwNumber) {
     return (
-      <div className="w-full px-4 lg:px-6 py-3 relative gameweek-banner z-40 bg-gradient-to-br from-[#1C8376]/10 to-blue-50/50" data-banner-height>
+      <div className="w-full px-4 lg:px-6 py-3 relative gameweek-banner z-40 bg-gradient-to-br from-[#1C8376]/10 to-blue-600/10" data-banner-height>
         <div className="mx-auto max-w-6xl lg:max-w-[1024px] flex items-center justify-between gap-4">
           <div className="flex flex-col gap-0 flex-1 min-w-0">
             <div className="flex items-center gap-2">

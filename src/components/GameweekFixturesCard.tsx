@@ -252,7 +252,8 @@ export const MiniFixtureCard: React.FC<MiniFixtureCardProps> = ({
             <span 
               ref={minuteTextRef}
               className={`font-semibold leading-none ${isOngoing ? 'text-red-600' : 'text-slate-500'}`}
-              style={{ fontSize: '10px', marginTop: '2px' }}
+              className="text-[10px]"
+              style={{ marginTop: '2px' }}
             >
               {formatMinute()}
             </span>

@@ -133,7 +133,7 @@ export default function SwipeCard({
       
       const upperResult = result.toUpperCase();
       if (upperResult === 'W') {
-        color = 'bg-green-500'; // Lighter green for win (#22c55e)
+        color = 'bg-emerald-500'; // Lighter green for win (#22c55e)
       } else if (upperResult === 'L') {
         color = 'bg-red-600'; // Brighter red for loss (#dc2626)
       } else if (upperResult === 'D') {

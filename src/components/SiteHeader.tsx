@@ -30,7 +30,7 @@ export default function SiteHeader() {
   return (
     <header className="relative">
       {/* Gradient bar */}
-      <div className="bg-gradient-to-r from-violet-700 via-fuchsia-600 to-rose-500 text-white">
+      <div className="bg-gradient-to-r from-violet-700 via-fuchsia-600 to-red-500 text-white">
         <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2 flex items-center justify-between gap-2 sm:gap-4">
           {/* Brand */}
           <Link to="/" className="font-bold tracking-wide text-lg sm:text-xl select-none flex-shrink-0">TOTL</Link>
@@ -103,7 +103,7 @@ export default function SiteHeader() {
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => setMenuOpen(false)}
-              className="px-3 py-2 rounded text-green-600 flex items-center gap-2"
+              className="px-3 py-2 rounded text-emerald-600 flex items-center gap-2"
             >
               <span>📱</span>
               Join WhatsApp Community

@@ -387,7 +387,7 @@ export default function AdminPage() {
  <div className="mt-1 text-xs text-slate-500">nativePushEnabled: {String(nativePushEnabled)}</div>
  )}
  {registerResult && (
- <div className={`mt-1 text-xs ${registerResult.includes('Success') ? 'text-green-600' : 'text-red-600'}`}>{registerResult}</div>
+ <div className={`mt-1 text-xs ${registerResult.includes('Success') ? 'text-emerald-600' : 'text-red-600'}`}>{registerResult}</div>
  )}
  </div>
  <div className="flex gap-2">
@@ -516,7 +516,7 @@ export default function AdminPage() {
  
  {/* banners */}
  {error && (
- <div className="mb-4 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+ <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
  {error}
  </div>
  )}
@@ -581,7 +581,7 @@ export default function AdminPage() {
  <button
  onClick={cancelGameweek}
  disabled={saving}
-     className="rounded bg-rose-600 px-4 py-3 text-white font-semibold"
+     className="rounded bg-red-600 px-4 py-3 text-white font-semibold"
      >
      Cancel Upload
  </button>

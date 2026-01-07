@@ -368,6 +368,15 @@ export async function signUpWithPassword(
       name: trimmedName
       // Note: email column doesn't exist in users table - email is stored in auth.users only
     });
+
+    // Generate default avatar for new user (non-blocking)
+    // Don't await - let it happen in background so signup doesn't slow down
+    import('../../lib/userAvatars').then(({ generateAndUploadDefaultAvatar }) => {
+      generateAndUploadDefaultAvatar(user.id, trimmedName).catch((err) => {
+        console.error('[signUpWithPassword] Failed to generate avatar:', err);
+        // Non-critical - avatar will be generated on first access
+      });
+    });
   }
   
   return data;

@@ -15,7 +15,7 @@ export default function OnboardingSlide({ title, imageUrl }: OnboardingSlideProp
   return (
     <div className="flex flex-col h-full px-6 gap-12">
       {/* Title */}
-      <h1 className="text-[40px] font-normal text-[#1C8376] leading-[1.2]">
+      <h1 className="text-4xl font-normal text-[#1C8376] leading-[1.2]">
         {title}
       </h1>
       

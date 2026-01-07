@@ -136,7 +136,7 @@ export default function AdminDataPage() {
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-800">Admin Data</h1>
+            <h1 className="text-2xl sm:text-3xl font-semibold text-slate-800">Admin Data</h1>
             <Link
               to="/profile"
               className="text-slate-600"
@@ -152,7 +152,7 @@ export default function AdminDataPage() {
         </div>
 
         {/* Activate Carl's Devices */}
-        <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
+        <div className="mb-6 p-4 bg-blue-600/10 rounded-xl border border-blue-600/20">
           <h4 className="text-md font-semibold text-slate-800 mb-3">Carl's Device Diagnostics</h4>
           <p className="text-sm text-slate-600 mb-3">
             Carl's device has <code className="bg-white px-1 rounded">notification_types: null</code> in OneSignal, which means OneSignal SDK hasn't properly initialized. This prevents notifications from being delivered even though OneSignal accepts the request.
@@ -176,7 +176,7 @@ export default function AdminDataPage() {
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-800' 
                 : carlActivationResult.includes('⚠️')
                 ? 'border-amber-200 bg-amber-50 text-amber-800'
-                : 'border-rose-200 bg-rose-50 text-rose-700'
+                : 'border-red-200 bg-red-50 text-red-700'
             }`}>
               {carlActivationResult}
             </div>
@@ -287,7 +287,7 @@ export default function AdminDataPage() {
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-800' 
                 : carlForceResult.includes('⚠️')
                 ? 'border-amber-200 bg-amber-50 text-amber-800'
-                : 'border-rose-200 bg-rose-50 text-rose-700'
+                : 'border-red-200 bg-red-50 text-red-700'
             }`}>
               {carlForceResult}
             </div>
@@ -385,7 +385,7 @@ export default function AdminDataPage() {
             <div className={`mt-3 rounded border px-3 py-2 text-sm whitespace-pre-wrap break-words max-h-96 overflow-y-auto font-mono ${
               oneSignalApiResult.startsWith('✅') 
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-800' 
-                : 'border-rose-200 bg-rose-50 text-rose-700'
+                : 'border-red-200 bg-red-50 text-red-700'
             }`}>
               {oneSignalApiResult}
             </div>
@@ -483,7 +483,7 @@ export default function AdminDataPage() {
             <div className={`mt-3 rounded border px-3 py-2 text-sm whitespace-pre-wrap break-words max-h-96 overflow-y-auto font-mono ${
               oneSignalApiResultJof.startsWith('✅') 
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-800' 
-                : 'border-rose-200 bg-rose-50 text-rose-700'
+                : 'border-red-200 bg-red-50 text-red-700'
             }`}>
               {oneSignalApiResultJof}
             </div>
@@ -527,7 +527,7 @@ export default function AdminDataPage() {
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-800' 
                   : notificationResult.startsWith('⚠️')
                   ? 'border-amber-200 bg-amber-50 text-amber-800'
-                  : 'border-rose-200 bg-rose-50 text-rose-700'
+                  : 'border-red-200 bg-red-50 text-red-700'
               }`}>
                 {notificationResult}
               </div>
@@ -775,7 +775,7 @@ export default function AdminDataPage() {
                 
                 if (foundGlobals.length > 0) {
                   return (
-                    <div className="mt-2 text-green-600">
+                    <div className="mt-2 text-emerald-600">
                       ✅ Found global properties: {foundGlobals.join(', ')}
                     </div>
                   );
@@ -898,7 +898,7 @@ export default function AdminDataPage() {
                 }
               }}
               disabled={registering || !session?.access_token}
-              className="w-full py-3 bg-white border border-slate-300 disabled:bg-gray-100 disabled:opacity-50 text-slate-600 font-medium rounded-xl"
+              className="w-full py-3 bg-white border border-slate-300 disabled:bg-slate-100 disabled:opacity-50 text-slate-600 font-medium rounded-xl"
             >
               {registering ? 'Enabling...' : 'Enable Notifications'}
             </button>
@@ -968,7 +968,7 @@ export default function AdminDataPage() {
                 }
               }}
               disabled={checkingSubscription || !session?.access_token}
-              className="w-full py-3 bg-white border border-slate-300 disabled:bg-gray-100 disabled:opacity-50 text-slate-600 font-medium rounded-xl"
+              className="w-full py-3 bg-white border border-slate-300 disabled:bg-slate-100 disabled:opacity-50 text-slate-600 font-medium rounded-xl"
             >
               {checkingSubscription ? 'Checking...' : 'Check Subscription Status'}
             </button>
@@ -1005,7 +1005,7 @@ export default function AdminDataPage() {
 
           {registerResult && (
             <div className={`mt-3 p-3 rounded-lg text-sm ${
-              registerResult.includes('✅') ? 'bg-green-50 text-green-800 border border-green-200' :
+              registerResult.includes('✅') ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
               registerResult.includes('⚠️') ? 'bg-amber-50 text-amber-800 border border-amber-200' :
               'bg-red-50 text-red-800 border border-red-200'
             }`}>
@@ -1046,9 +1046,9 @@ export default function AdminDataPage() {
                 return (
                   <>
                     {debugInfo && (
-                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-xs">
-                        <div className="font-semibold text-blue-800 mb-2">Last Check:</div>
-                        <pre className="text-blue-700 whitespace-pre-wrap break-all">
+                      <div className="p-3 bg-blue-600/10 rounded-lg border border-blue-600/20 text-xs">
+                        <div className="font-semibold text-blue-600 mb-2">Last Check:</div>
+                        <pre className="text-blue-600 whitespace-pre-wrap break-all">
                           {JSON.stringify(JSON.parse(debugInfo), null, 2)}
                         </pre>
                       </div>
@@ -1056,16 +1056,16 @@ export default function AdminDataPage() {
                     {result && (
                       <div className={`p-3 rounded-lg border text-xs ${
                         JSON.parse(result).success 
-                          ? 'bg-green-50 border-green-200' 
+                          ? 'bg-emerald-50 border-emerald-200' 
                           : 'bg-red-50 border-red-200'
                       }`}>
                         <div className={`font-semibold mb-2 ${
-                          JSON.parse(result).success ? 'text-green-800' : 'text-red-800'
+                          JSON.parse(result).success ? 'text-emerald-800' : 'text-red-800'
                         }`}>
                           {JSON.parse(result).success ? '✅ Success' : '❌ Failed'}:
                         </div>
                         <pre className={`whitespace-pre-wrap break-all ${
-                          JSON.parse(result).success ? 'text-green-700' : 'text-red-700'
+                          JSON.parse(result).success ? 'text-emerald-700' : 'text-red-700'
                         }`}>
                           {JSON.stringify(JSON.parse(result), null, 2)}
                         </pre>
@@ -1116,7 +1116,7 @@ export default function AdminDataPage() {
                         {logs.slice(-10).reverse().map((log: any, idx: number) => (
                           <div key={idx} className={`p-3 rounded-lg border text-xs ${
                             log.ok 
-                              ? (log.sent > 0 ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200')
+                              ? (log.sent > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200')
                               : 'bg-red-50 border-red-200'
                           }`}>
                             <div className="font-semibold mb-1">

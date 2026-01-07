@@ -1,3 +1,4 @@
+import React from 'react';
 import FormDisplay from './FormDisplay';
 import UserAvatar from '../UserAvatar';
 
@@ -33,6 +34,12 @@ export default function MiniLeagueTable({
   loading,
   isLateStartingLeague,
 }: MiniLeagueTableProps) {
+  // #region agent log
+  React.useEffect(() => {
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueTable.tsx:36',message:'MiniLeagueTable render',data:{rowsLength:rows.length,membersLength:members.length,loading,rowUserIds:rows.map(r=>r.user_id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+  }, [rows, members, loading]);
+  // #endregion
+
   return (
     <div className="pt-4">
       <style>{`

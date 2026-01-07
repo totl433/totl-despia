@@ -45,7 +45,7 @@ export const TeamStatCard = React.memo(function TeamStatCard({
           <div className="text-lg font-bold text-slate-800 truncate">
             {teamName}
           </div>
-          <div className={`text-base font-semibold ${isCorrect ? 'text-green-600' : 'text-red-600'}`}>
+          <div className={`text-base font-semibold ${isCorrect ? 'text-emerald-600' : 'text-red-600'}`}>
             {formattedPercentage}% {isCorrect ? 'correct' : 'incorrect'}
           </div>
         </div>

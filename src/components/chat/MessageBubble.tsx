@@ -133,7 +133,7 @@ export function MessageBubble({
         }}
  >
  {author && !isOwnMessage && (
-          <div className="text-[11px] font-semibold text-slate-600 mb-1 break-words" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{author}</div>
+          <div className="text-xs font-semibold text-slate-600 mb-1 break-words" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{author}</div>
  )}
  {/* Reply preview - WhatsApp style */}
  {replyTo && (
@@ -183,7 +183,7 @@ export function MessageBubble({
             overflowWrap: 'anywhere',
             display: 'inline'
           }}>{text}</span>
-          <span className={`text-[11px] relative top-1 ${isOwnMessage ? 'text-[#DCDCDD]' : 'text-slate-400'}`} style={{ 
+          <span className={`text-xs relative top-1 ${isOwnMessage ? 'text-[#DCDCDD]' : 'text-slate-400'}`} style={{ 
             whiteSpace: 'nowrap',
             float: 'right',
             clear: 'right',

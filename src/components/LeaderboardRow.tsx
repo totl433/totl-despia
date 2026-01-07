@@ -43,7 +43,7 @@ export const LeaderboardRow = forwardRef<HTMLTableRowElement, LeaderboardRowProp
  if (curr && prev) {
  if (curr < prev) {
  indicator ="▲";
- indicatorClass ="bg-green-500 text-white";
+ indicatorClass ="bg-emerald-500 text-white";
  } else if (curr > prev) {
  indicator ="▼";
  indicatorClass ="bg-red-500 text-white";

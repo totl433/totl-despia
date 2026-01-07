@@ -39,7 +39,7 @@ export const ParChartCard = React.memo(function ParChartCard({
  <div
  className={`text-xs font-bold mb-0.5 leading-none ${
  isLatest ?'text-[#1C8376]' : 
- isAbovePar ?'text-green-600' : 
+ isAbovePar ?'text-emerald-600' : 
  isBelowPar ?'text-red-600' :'text-slate-700'
  }`}
  >
@@ -65,7 +65,7 @@ export const ParChartCard = React.memo(function ParChartCard({
  className={`absolute w-full ${
  isLatest
  ?'bg-[#1C8376]'
- :'bg-green-500'
+ :'bg-emerald-500'
  }`}
  style={{
  bottom: `${parBarHeight}px`,
@@ -131,7 +131,7 @@ export const ParChartCard = React.memo(function ParChartCard({
  <div className="flex items-center justify-between">
  <div className="flex items-center gap-1">
  <div className={`text-xs font-semibold ${
- isAbovePar ?'text-green-600' : 
+ isAbovePar ?'text-emerald-600' : 
  isBelowPar ?'text-red-600' :'text-slate-600'
  }`}>
  {isAbovePar ? `+${diff.toFixed(1)}` : 

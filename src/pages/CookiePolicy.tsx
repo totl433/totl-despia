@@ -83,7 +83,7 @@ export default function CookiePolicy() {
   return (
     <div className="min-h-screen bg-[#f5f7f6] p-4">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6 text-[#1C8376]">Cookie Policy</h1>
+        <h1 className="text-2xl font-semibold mb-6 text-[#1C8376]">Cookie Policy</h1>
         
         {/* Termly embed - this div will be populated by Termly's script */}
         <div 

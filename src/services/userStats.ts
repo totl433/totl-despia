@@ -613,6 +613,7 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
         }
 
         let sampleLogged = false;
+        const missingFixtures: string[] = [];
         allPicks.forEach((userPick: any) => {
           const key = `${userPick.gw}:${userPick.fixture_index}`;
           const counts = pickCounts.get(key);
@@ -644,9 +645,14 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
             }
           } else {
             // No counts found for this fixture - might not have enough data
-            console.warn(`[userStats] Chaos Index: No pick counts found for ${key}`);
+            missingFixtures.push(key);
           }
         });
+
+        // Log missing fixtures once if any were found
+        if (missingFixtures.length > 0) {
+          console.log(`[userStats] Chaos Index: ${missingFixtures.length} fixtures with no pick counts (skipped from calculation): ${missingFixtures.slice(0, 10).join(', ')}${missingFixtures.length > 10 ? ` ... and ${missingFixtures.length - 10} more` : ''}`);
+        }
 
         if (totalPicks > 0) {
           stats.chaosIndex = (chaosPicks / totalPicks) * 100;

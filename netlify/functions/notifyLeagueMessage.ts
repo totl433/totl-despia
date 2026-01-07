@@ -319,7 +319,6 @@ export const handler: Handler = async (event) => {
 
   // Track exclusion values for logging
   let afterActiveExclusion: number | undefined;
-  let afterPresenceExclusion: number | undefined;
 
   // Optional: exclude currently active chat users (if provided)
   if (Array.isArray(activeUserIds)) {
@@ -344,61 +343,7 @@ export const handler: Handler = async (event) => {
     // #endregion
   }
 
-  // Also exclude users who are actively viewing the chat (presence tracking)
-  // Users are considered "active" if they've been seen in the last 30 seconds
-  const presenceThreshold = new Date(Date.now() - 30000).toISOString();
-  const { data: activeViewers, error: presenceErr } = await admin
-    .from('chat_presence')
-    .select('user_id, last_seen')
-    .eq('league_id', leagueId)
-    .gte('last_seen', presenceThreshold);
-  
-  // #region agent log
-  await fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      location: 'notifyLeagueMessage.ts:handler:presence-query',
-      message: 'Presence query result',
-      data: {
-        hasError: !!presenceErr,
-        error: presenceErr?.message,
-        activeViewersCount: activeViewers?.length || 0,
-        activeViewers: activeViewers?.map((v: any) => ({ user_id: v.user_id, last_seen: v.last_seen })),
-        presenceThreshold,
-        currentTime: new Date().toISOString()
-      },
-      timestamp: Date.now(),
-      sessionId: 'debug-session',
-      hypothesisId: 'H1'
-    })
-  }).catch(() => {});
-  // #endregion
-  
-  if (!presenceErr && activeViewers) {
-    const presenceCount = activeViewers.length;
-    const presenceUserIds = activeViewers.map((v: any) => v.user_id);
-    for (const viewer of activeViewers) {
-      recipientIds.delete(viewer.user_id);
-    }
-    afterPresenceExclusion = recipientIds.size;
-    console.log(`[notifyLeagueMessage] After excluding ${presenceCount} active viewers (presence): ${afterPresenceExclusion} recipients`);
-    
-    // #region agent log
-    await fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'notifyLeagueMessage.ts:handler:after-presence-exclusion',
-        message: 'After excluding presence viewers',
-        data: { presenceCount, presenceUserIds, afterPresenceExclusion },
-        timestamp: Date.now(),
-        sessionId: 'debug-session',
-        hypothesisId: 'H1'
-      })
-    }).catch(() => {});
-    // #endregion
-  }
+  // REMOVED: Presence-based exclusion - was causing flaky notifications
 
   if (recipientIds.size === 0) {
     console.log('[notifyLeagueMessage] No eligible recipients (all excluded: sender, muted, or active)');
@@ -413,8 +358,7 @@ export const handler: Handler = async (event) => {
           beforeExclusions,
           afterSenderExclusion,
           afterMuteExclusion,
-          afterActiveExclusion,
-          afterPresenceExclusion
+          afterActiveExclusion
         },
         timestamp: Date.now(),
         sessionId: 'debug-session',

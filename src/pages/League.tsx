@@ -2748,6 +2748,10 @@ ${shareUrl}`;
       });
     }
     const resultsPublished = latestResultsGw !== null && latestResultsGw >= picksGw;
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'League.tsx:2750',message:'resultsPublished calculated',data:{picksGw,latestResultsGw,resultsPublished},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
     const remaining = members.filter((m) => !submittedMap.get(`${m.id}:${picksGw}`)).length;
     const whoDidntSubmit = members.filter((m) => !submittedMap.get(`${m.id}:${picksGw}`)).map(m => m.name);
     
@@ -2874,29 +2878,81 @@ ${shareUrl}`;
         })()}
 
         {/* Regular league predictions view - NEVER show for API Test league (it has its own view above) */}
-        {sections.length > 0 && league?.name !== 'API Test' && (
-          <div className="mt-3 space-y-6">
-            {sections.map((sec, si) => (
-              <LeagueFixtureSection
-                key={si}
-                label={sec.label}
-                fixtures={sec.items}
-                picksByFixture={picksByFixture}
-                members={members}
-                outcomes={outcomes}
-                liveScores={liveScores}
-                submittedMap={submittedMap}
-                picksGw={picksGw}
-                isApiTestLeague={false}
-                isFirstSection={si === 0}
-                allSubmitted={allSubmitted}
-                resultsPublished={resultsPublished}
-                deadlinePassed={deadlinePassed}
-                whoDidntSubmit={whoDidntSubmit}
-              />
-            ))}
-          </div>
-        )}
+        {sections.length > 0 && league?.name !== 'API Test' && (() => {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'League.tsx:2877',message:'Calculating allGamesFinished',data:{picksGw,resultsLength:results.length,resultsGwValues:results.map(r=>({gw:r.gw,fixture_index:r.fixture_index})),sectionsLength:sections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+          // #endregion
+          
+          // Check if all games have finished for regular leagues
+          // Create a Set of fixture indices that have database results (definitely finished)
+          const filteredResults = results.filter(r => r.gw === picksGw);
+          const fixturesWithResults = new Set(
+            filteredResults.map(r => r.fixture_index)
+          );
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'League.tsx:2883',message:'fixturesWithResults calculated',data:{picksGw,filteredResultsLength:filteredResults.length,fixturesWithResultsArray:Array.from(fixturesWithResults)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+          // #endregion
+          
+          const fixturesToCheck = sections.flatMap(sec => sec.items);
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'League.tsx:2888',message:'fixturesToCheck prepared',data:{picksGw,fixturesToCheckLength:fixturesToCheck.length,fixtureIndices:fixturesToCheck.map(f=>f.fixture_index)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
+          // #endregion
+          
+          const fixtureStatusChecks = fixturesToCheck.map(f => {
+            const hasDbResult = fixturesWithResults.has(f.fixture_index);
+            const liveScore = liveScores[f.fixture_index];
+            const liveScoreStatus = liveScore?.status;
+            const isFinished = hasDbResult || (liveScore && liveScore.status === 'FINISHED');
+            return {
+              fixture_index: f.fixture_index,
+              hasDbResult,
+              liveScoreStatus,
+              isFinished
+            };
+          });
+          
+          const allGamesFinished = fixturesToCheck.length > 0 && fixturesToCheck.every(f => {
+            // If fixture has database results, it's definitely finished
+            if (fixturesWithResults.has(f.fixture_index)) {
+              return true;
+            }
+            
+            // Otherwise, check live score status - must be FINISHED
+            const liveScore = liveScores[f.fixture_index];
+            return liveScore && liveScore.status === 'FINISHED';
+          });
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'League.tsx:2910',message:'allGamesFinished calculated',data:{picksGw,allGamesFinished,fixturesToCheckLength:fixturesToCheck.length,fixtureStatusChecks,resultsPublished,allSubmitted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+          // #endregion
+          
+          return (
+            <div className="mt-3 space-y-6">
+              {sections.map((sec, si) => (
+                <LeagueFixtureSection
+                  key={si}
+                  label={sec.label}
+                  fixtures={sec.items}
+                  picksByFixture={picksByFixture}
+                  members={members}
+                  outcomes={outcomes}
+                  liveScores={liveScores}
+                  submittedMap={submittedMap}
+                  picksGw={picksGw}
+                  isApiTestLeague={false}
+                  isFirstSection={si === 0}
+                  allSubmitted={allSubmitted}
+                  resultsPublished={resultsPublished}
+                  allGamesFinished={allGamesFinished}
+                  deadlinePassed={deadlinePassed}
+                  whoDidntSubmit={whoDidntSubmit}
+                />
+              ))}
+            </div>
+          );
+        })()}
 
         {!sections.length && !showSubmissionStatus && (
           <div className="mt-3 rounded-2xl border bg-white shadow-sm p-4 text-slate-500">No fixtures for GW {picksGw}.</div>
