@@ -64,7 +64,7 @@ export const ProfileAvatar = React.memo(function ProfileAvatar({
       />
       {editable && (
         <div
-          className={`absolute bottom-0 right-0 rounded-full bg-white shadow-lg flex items-center justify-center border-2 border-slate-400 ${
+          className={`absolute bottom-0 right-0 z-10 rounded-full bg-white shadow-lg flex items-center justify-center border-2 border-slate-400 ${
             size === 'sm' ? 'w-5 h-5' : size === 'md' ? 'w-6 h-6 sm:w-7 sm:h-7' : 'w-8 h-8 sm:w-9 sm:h-9'
           }`}
           style={{

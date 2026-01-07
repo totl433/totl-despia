@@ -11,6 +11,7 @@ import { PageHeader } from "../components/PageHeader";
 import SegmentedToggle from "../components/SegmentedToggle";
 import UserPicksModal from "../components/UserPicksModal";
 import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
+import UserAvatar from "../components/UserAvatar";
 
 type OverallRow = {
   user_id: string;
@@ -930,7 +931,7 @@ export default function GlobalLeaderboardPage() {
 
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         {err && (
-            <div className="mb-6 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 flex-shrink-0">
+            <div className="mb-6 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 flex-shrink-0">
             {err}
           </div>
         )}
@@ -978,8 +979,8 @@ export default function GlobalLeaderboardPage() {
                 display: 'table-header-group'
               } as any}>
                 <tr className="border-b border-slate-200">
-                  <th className="py-3 text-left font-normal bg-slate-50" style={{ width: '45px', paddingLeft: '0.5rem', paddingRight: '0.5rem', color: '#64748b' }}>#</th>
-                  <th className="px-4 py-3 text-left font-normal text-xs bg-slate-50" style={{ color: '#64748b' }}>Player</th>
+                  <th className="py-3 text-left font-normal bg-slate-50" style={{ width: '35px', paddingLeft: '0.5rem', paddingRight: '0.25rem', color: '#64748b' }}>#</th>
+                  <th className="px-4 py-3 text-left font-normal text-xs bg-slate-50" style={{ color: '#64748b', width: 'auto' }}>Player</th>
                   {activeTab === "overall" && (
                     <>
                       <th className="px-4 py-3 text-center font-semibold bg-slate-50" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
@@ -1057,7 +1058,7 @@ export default function GlobalLeaderboardPage() {
                     if (curr && prev) {
                       if (curr < prev) {
                         indicator = "▲"; // moved up
-                        indicatorClass = "bg-green-500 text-white";
+                        indicatorClass = "bg-emerald-500 text-white";
                       } else if (curr > prev) {
                         indicator = "▼"; // moved down
                         indicatorClass = "bg-red-500 text-white";
@@ -1091,17 +1092,17 @@ export default function GlobalLeaderboardPage() {
                     >
                       {/* Rank number only */}
                       <td className="py-3 text-left tabular-nums whitespace-nowrap relative" style={{ 
-                        width: '45px',
+                        width: '35px',
                         paddingLeft: '0.5rem', 
-                        paddingRight: '0.5rem',
+                        paddingRight: '0.25rem',
                         backgroundColor: rowBgColor
                       }}>
                           <span>{currentRank}{isTied ? '=' : ''}</span>
                       </td>
 
                       {/* Player name with color-coded indicator */}
-                      <td className="px-4 py-3" style={{ backgroundColor: rowBgColor }}>
-                        <div className="flex items-center gap-2">
+                      <td className="pl-0 pr-4 py-3" style={{ backgroundColor: rowBgColor }}>
+                        <div className="flex items-center gap-1.5">
                           {(indicator || indicatorClass) && activeTab === "overall" && (
                             <span
                               className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-xs font-bold ${indicatorClass} align-middle flex-shrink-0`}
@@ -1110,6 +1111,15 @@ export default function GlobalLeaderboardPage() {
                               {indicator}
                             </span>
                           )}
+                          <div className="flex-shrink-0">
+                            <UserAvatar
+                              userId={r.user_id}
+                              name={r.name}
+                              size={24}
+                              className="border border-slate-200"
+                              fallbackToInitials={true}
+                            />
+                          </div>
                           {isTopRank && (
                             <span className="inline-flex items-center sparkle-trophy flex-shrink-0">
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="w-4 h-4 text-yellow-500">
@@ -1119,7 +1129,7 @@ export default function GlobalLeaderboardPage() {
                               </svg>
                             </span>
                           )}
-                          <span className={`text-sm truncate min-w-0 whitespace-nowrap ${isMe ? 'font-bold text-emerald-900' : 'font-normal'}`} style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <span className={`text-xs truncate min-w-0 whitespace-nowrap ${isMe ? 'font-bold text-emerald-900' : 'font-normal'}`} style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {r.name}
                           </span>
                         </div>
