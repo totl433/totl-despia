@@ -1,8 +1,9 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useGameweekState } from '../hooks/useGameweekState';
+import { useLeagues } from '../hooks/useLeagues';
 
   const navItems = [
     {
@@ -61,6 +62,17 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
     activeIndex: number;
   } | null>(null);
   const [hasPredictionsToDo, setHasPredictionsToDo] = useState(false);
+  
+  // Get unread chat message counts
+  const { unreadByLeague } = useLeagues({ pageName: 'bottomNav', skipInitialFetch: false });
+  
+  // Calculate total unread count across all leagues
+  const totalUnreadCount = useMemo(() => {
+    if (!unreadByLeague) return 0;
+    return Object.values(unreadByLeague).reduce((sum, count) => sum + count, 0);
+  }, [unreadByLeague]);
+  
+  const badgeCount = totalUnreadCount > 0 ? Math.min(totalUnreadCount, 99) : 0;
 
   useEffect(() => {
     const updateIndicator = () => {
@@ -378,7 +390,9 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
           {navItems.map((item, index) => {
           const isActive = location.pathname === item.path;
           const isPredictions = item.name === 'Predictions';
+          const isMiniLeagues = item.name === 'Mini Leagues';
           const shouldShine = isPredictions && hasPredictionsToDo && !isActive;
+          const hasUnreadMessages = isMiniLeagues && badgeCount > 0 && !isActive;
           return (
             <button
               key={item.name}
@@ -395,8 +409,13 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
                     ...(shouldShine ? {} : { color: isActive ? '#1C8376' : '#353536' }),
                   }}
                 >
-                  <div className={`flex items-center justify-center ${shouldShine ? 'predictions-shiny-icon-wrapper' : ''}`} style={{ height: '21px', width: 'auto', fontSize: '20px', position: 'relative' }}>
+                  <div className={`flex items-center justify-center ${shouldShine ? 'predictions-shiny-icon-wrapper' : ''}`} style={{ height: '21px', width: 'auto', position: 'relative' }}>
                 {item.icon}
+                {hasUnreadMessages && (
+                  <span className="absolute -top-1 -right-2 inline-flex items-center justify-center min-w-[14px] h-[14px] px-0.5 rounded-full bg-[#1C8376] text-white text-[9px] font-bold leading-none">
+                    {badgeCount}
+                  </span>
+                )}
               </div>
                 </div>
                 <div 
@@ -409,9 +428,8 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
                   }}
                 >
                   <span 
-                    className={`relative z-10 font-medium whitespace-nowrap ${shouldShine ? 'predictions-shiny-text' : ''}`}
+                    className={`relative z-10 font-medium whitespace-nowrap text-[8px] ${shouldShine ? 'predictions-shiny-text' : ''}`}
                     style={{ 
-                      fontSize: '8px',
                       lineHeight: '10px',
                       color: isActive ? '#1C8376' : '#353536',
                       textAlign: 'center',
