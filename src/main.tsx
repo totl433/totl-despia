@@ -455,7 +455,7 @@ function AppContent() {
     
     // Not on league page - clear the processed ref
     processedLeaguePageRef.current = null;
-  }, [navigate, location.pathname, location.search]);
+  }, [navigate, location.pathname]); // Removed location.search - only check it inside effect, don't re-run when it changes
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [maxLoadingTimeout, setMaxLoadingTimeout] = useState(false);
   const [isSwipeMode, setIsSwipeMode] = useState(false);
