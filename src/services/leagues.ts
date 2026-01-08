@@ -202,9 +202,9 @@ export async function joinLeague(code: string, userId: string): Promise<{ succes
             console.error('[joinLeague] Failed to parse notification response:', parseError);
           }
         }
-      } catch (notifError) {
+      } catch (notifError: any) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:exception',message:'Exception sending notification',data:{error:String(notifError),stack:notifError?.stack?.substring(0,200),leagueId:league.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:exception',message:'Exception sending notification',data:{error:String(notifError),stack:notifError instanceof Error ? notifError.stack?.substring(0,200) : undefined,leagueId:league.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
         // #endregion
         // Log error but don't fail the join if notification fails
         console.error('[joinLeague] Error sending notification:', notifError);
