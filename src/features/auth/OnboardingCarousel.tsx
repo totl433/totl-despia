@@ -6,7 +6,6 @@ import {
   getPrivacyAccepted,
   setCookieConsent,
   setPrivacyAccepted,
-  setPushScreenCompleted,
   type CookieChoice,
   type CookiePreferences,
   type StoredCookieConsent,
@@ -118,10 +117,6 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
     []
   );
 
-  const handlePushAttempt = useCallback(() => {
-    setPushScreenCompleted(true);
-  }, []);
-
   const goToNext = useCallback(
     (opts?: { nextCookieChoice?: CookieChoice }) => {
       const effectiveCookieChoice = opts?.nextCookieChoice ?? cookieChoice;
@@ -195,25 +190,6 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
     persistCookies(choice, prefs);
     setShowManage(false);
     goToNext({ nextCookieChoice: choice });
-  };
-
-  const triggerPushPrompt = useCallback(() => {
-    try {
-      const despiaFn =
-        (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
-      if (despiaFn && typeof despiaFn === 'function') {
-        despiaFn('registerpush://');
-      }
-    } catch (e) {
-      console.warn('[Onboarding] Could not trigger push registration', e);
-    }
-    handlePushAttempt();
-    goToNext();
-  }, [goToNext, handlePushAttempt]);
-
-  const handlePushNotNow = () => {
-    handlePushAttempt();
-    goToNext();
   };
 
   const renderContent = () => {
