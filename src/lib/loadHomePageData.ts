@@ -8,6 +8,7 @@ import { supabase } from './supabase';
 import { getCached, setCached, getCacheTimestamp, CACHE_TTL } from './cache';
 import { resolveLeagueStartGw } from './leagueStart';
 import { APP_ONLY_USER_IDS } from './appOnlyUsers';
+import { logDataFetch } from './dataFetchLogger';
 
 type LeagueMember = { id: string; name: string };
 type PickRow = { user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" };
@@ -206,6 +207,15 @@ export async function loadHomePageData(
     supabase.from("app_picks").select("user_id, gw, created_at").limit(10000),
   ]);
   
+  // Log critical queries for debugging
+  logDataFetch('loadHomePageData', 'Fetch league members', 'league_members', membersResult, { leagueIds: leagueIds.length, userId });
+  logDataFetch('loadHomePageData', 'Fetch fixtures', 'app_fixtures', fixturesResult, { gw: currentGw, userId });
+  logDataFetch('loadHomePageData', 'Fetch user picks', 'app_picks', picksResult, { gw: currentGw, userId });
+  if (fixturesResult.error || membersResult.error) {
+    logDataFetch('loadHomePageData', 'Fetch meta', 'app_meta', metaResult, { userId });
+    logDataFetch('loadHomePageData', 'Fetch overall standings', 'app_v_ocp_overall', overallResult, { userId });
+  }
+  
   const gw = metaResult.data?.current_gw ?? currentGw;
   const latestGw = latestGwResult.data?.gw ?? gw;
   const allGwPoints = (allGwPointsResult.data as Array<{user_id: string, gw: number, points: number}>) ?? [];
@@ -289,18 +299,22 @@ export async function loadHomePageData(
   // Fetch picks per league
   const picksPromises = leagues.map(async (league) => {
     const memberIds = (membersByLeague[league.id] ?? []).map(m => m.id);
-    if (memberIds.length === 0) return { leagueId: league.id, picks: [] };
-    const { data } = await supabase
+    if (memberIds.length === 0) return { leagueId: league.id, picks: [], result: null };
+    const result = await supabase
       .from("app_picks")
       .select("user_id, gw, fixture_index, pick")
       .in("user_id", memberIds);
-    return { leagueId: league.id, picks: (data ?? []) as PickRow[] };
+    
+    // Log picks query for this league
+    logDataFetch('loadHomePageData', `Fetch picks for league ${league.id}`, 'app_picks', result, { leagueId: league.id, memberCount: memberIds.length, gw: currentGw });
+    
+    return { leagueId: league.id, picks: (result.data ?? []) as PickRow[], result };
   });
   
   const picksResults = await Promise.all(picksPromises);
   const picksByLeague = new Map<string, PickRow[]>();
   picksResults.forEach(({ leagueId, picks }) => {
-    picksByLeague.set(leagueId, picks);
+    picksByLeague.set(leagueId, picks || []);
   });
   
   // Calculate league start GWs

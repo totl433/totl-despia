@@ -23,6 +23,29 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('[ErrorBoundary] Caught error:', error, errorInfo);
+    
+    // Store crash in localStorage for AdminData page
+    try {
+      const crashLog = {
+        timestamp: Date.now(),
+        errorMessage: error?.message || 'Unknown error',
+        errorStack: error?.stack || 'No stack trace',
+        componentStack: errorInfo?.componentStack || 'No component stack',
+        url: typeof window !== 'undefined' ? window.location.href : 'Unknown',
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
+      };
+      
+      const existingCrashes = localStorage.getItem('app_crashes');
+      const crashes = existingCrashes ? JSON.parse(existingCrashes) : [];
+      crashes.push(crashLog);
+      
+      // Keep only last 50 crashes
+      const recentCrashes = crashes.slice(-50);
+      localStorage.setItem('app_crashes', JSON.stringify(recentCrashes));
+    } catch (e) {
+      console.error('[ErrorBoundary] Failed to store crash in localStorage:', e);
+    }
+    
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ErrorBoundary:componentDidCatch',message:'Error boundary caught error',data:{errorMessage:error?.message,errorStack:error?.stack,componentStack:errorInfo?.componentStack},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H6'})}).catch(()=>{});
     // #endregion
