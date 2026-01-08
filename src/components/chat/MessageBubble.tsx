@@ -118,8 +118,8 @@ export function MessageBubble({
  }
  };
 
- return (
-    <div className={`inline-block ${maxWidth} min-w-0 relative`} style={{ width: 'fit-content', maxWidth: '85%' }}>
+  return (
+    <div className={`inline-block ${maxWidth} min-w-0 relative`} style={{ width: 'fit-content', maxWidth: '85%' }} data-message-id={messageId}>
  <div
         className={`px-2.5 py-1.5 text-sm leading-relaxed shadow-sm whitespace-pre-wrap break-words ${textAlignment} ${bubbleClasses} ${shapeClasses[shape]} ${onMessageClick ? 'cursor-pointer' : ''}`}
  onClick={handleBubbleClick}

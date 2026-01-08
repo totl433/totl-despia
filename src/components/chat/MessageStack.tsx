@@ -36,10 +36,6 @@ export function MessageStack({
   onReactionClick,
   onMessageClick,
 }: MessageStackProps) {
-  // CRITICAL DEBUG: Log what author we're receiving
-  if (author === "Unknown") {
-    console.error('[MessageStack] Received "Unknown" as author prop!', 'isOwnMessage:', isOwnMessage, 'messages:', messages.length);
-  }
   const alignment = isOwnMessage ? "justify-end" : "justify-start";
   const isVolley = userId === VOLLEY_USER_ID;
 

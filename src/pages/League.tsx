@@ -111,11 +111,6 @@ export default function LeaguePage() {
   const { currentGw: hookCurrentGw } = useCurrentGameweek();
   hookCallCountRef.current++;
   
-  // #region agent log
-  useEffect(() => {
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'League.tsx:after-all-hooks',message:'All hooks called',data:{code,hasCode:!!code,hasUser:!!user,hookCurrentGw,hookCallCount:hookCallCountRef.current,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
-  }, [code, user, hookCurrentGw]);
-  // #endregion
   const [oldSchoolMode] = useState(() => {
     const saved = localStorage.getItem('oldSchoolMode');
     return saved ? JSON.parse(saved) : false;
@@ -465,10 +460,6 @@ export default function LeaguePage() {
   const [joining, setJoining] = useState(false);
   hookCallCountRef.current++;
   
-  // Log final hook count after all hooks are declared
-  useEffect(() => {
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'League.tsx:final-hook-count',message:'Final hook count logged',data:{finalHookCount:hookCallCountRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
-  }, []);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [showEndLeagueConfirm, setShowEndLeagueConfirm] = useState(false);
@@ -1488,28 +1479,7 @@ ${shareUrl}`;
     // The individual tab components will show appropriate messages if the GW shouldn't be visible
   }, [league, tab]);
 
-  /* ---------- mark-as-read when viewing Chat or Chat Beta ---------- */
-  useEffect(() => {
-    if (tab !== "chat" || !league?.id || !user?.id) return;
-    const mark = async () => {
-      // Update last_read_at in database
-      await supabase
-        .from("league_message_reads")
-        .upsert(
-          { league_id: league.id, user_id: user.id, last_read_at: new Date().toISOString() },
-          { onConflict: "league_id,user_id" }
-        );
-      
-      // Invalidate unread cache so badges clear immediately
-      invalidateLeagueCache(user.id);
-      
-      // Dispatch event to trigger immediate unread count refresh on pages using useLeagues
-      window.dispatchEvent(new CustomEvent('leagueMessagesRead', { 
-        detail: { leagueId: league.id, userId: user.id } 
-      }));
-    };
-    mark();
-  }, [tab, league?.id, user?.id]);
+  /* ---------- mark-as-read handled by useMarkMessagesRead hook in MiniLeagueChatBeta ---------- */
 
   // Chat loading removed - MiniLeagueChatBeta handles its own state via useMiniLeagueChat hook
 
@@ -2748,10 +2718,6 @@ ${shareUrl}`;
       });
     }
     const resultsPublished = latestResultsGw !== null && latestResultsGw >= picksGw;
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'League.tsx:2750',message:'resultsPublished calculated',data:{picksGw,latestResultsGw,resultsPublished},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
     const remaining = members.filter((m) => !submittedMap.get(`${m.id}:${picksGw}`)).length;
     const whoDidntSubmit = members.filter((m) => !submittedMap.get(`${m.id}:${picksGw}`)).map(m => m.name);
     
@@ -2879,10 +2845,6 @@ ${shareUrl}`;
 
         {/* Regular league predictions view - NEVER show for API Test league (it has its own view above) */}
         {sections.length > 0 && league?.name !== 'API Test' && (() => {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'League.tsx:2877',message:'Calculating allGamesFinished',data:{picksGw,resultsLength:results.length,resultsGwValues:results.map(r=>({gw:r.gw,fixture_index:r.fixture_index})),sectionsLength:sections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-          // #endregion
-          
           // Check if all games have finished for regular leagues
           // Create a Set of fixture indices that have database results (definitely finished)
           const filteredResults = results.filter(r => r.gw === picksGw);
@@ -2890,28 +2852,7 @@ ${shareUrl}`;
             filteredResults.map(r => r.fixture_index)
           );
           
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'League.tsx:2883',message:'fixturesWithResults calculated',data:{picksGw,filteredResultsLength:filteredResults.length,fixturesWithResultsArray:Array.from(fixturesWithResults)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-          // #endregion
-          
           const fixturesToCheck = sections.flatMap(sec => sec.items);
-          
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'League.tsx:2888',message:'fixturesToCheck prepared',data:{picksGw,fixturesToCheckLength:fixturesToCheck.length,fixtureIndices:fixturesToCheck.map(f=>f.fixture_index)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
-          // #endregion
-          
-          const fixtureStatusChecks = fixturesToCheck.map(f => {
-            const hasDbResult = fixturesWithResults.has(f.fixture_index);
-            const liveScore = liveScores[f.fixture_index];
-            const liveScoreStatus = liveScore?.status;
-            const isFinished = hasDbResult || (liveScore && liveScore.status === 'FINISHED');
-            return {
-              fixture_index: f.fixture_index,
-              hasDbResult,
-              liveScoreStatus,
-              isFinished
-            };
-          });
           
           const allGamesFinished = fixturesToCheck.length > 0 && fixturesToCheck.every(f => {
             // If fixture has database results, it's definitely finished
@@ -2923,10 +2864,6 @@ ${shareUrl}`;
             const liveScore = liveScores[f.fixture_index];
             return liveScore && liveScore.status === 'FINISHED';
           });
-          
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'League.tsx:2910',message:'allGamesFinished calculated',data:{picksGw,allGamesFinished,fixturesToCheckLength:fixturesToCheck.length,fixtureStatusChecks,resultsPublished,allSubmitted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-          // #endregion
           
           return (
             <div className="mt-3 space-y-6">
@@ -3686,7 +3623,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
             <button
               onClick={() => {
                 manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                        setTab("chat");
+                setTab("chat");
               }}
               className={
                 "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold relative leading-tight " +
@@ -3706,7 +3643,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
               <button
                 onClick={() => {
                   manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                            setTab("gwr");
+                  setTab("gwr");
                 }}
                 className={
                   "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold relative leading-tight flex items-center justify-center gap-1.5 " +
@@ -3740,7 +3677,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
               <button
                 onClick={() => {
                   manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                            setTab("gw");
+                  setTab("gw");
                 }}
                 className={
                   "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold relative leading-tight " +
@@ -3756,10 +3693,8 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
             )}
             <button
               onClick={() => {
-                console.log('[League] GW Table tab clicked, setting tab to mlt');
                 manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                        setTab("mlt");
-                console.log('[League] Tab set to mlt, mltRows.length:', mltRows.length);
+                setTab("mlt");
               }}
               className={
                 "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold relative leading-tight " +
@@ -3775,31 +3710,35 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
       </div>
       </div>
 
-      {tab === "chat" ? (
-        <div className="chat-tab-wrapper">
-          <MiniLeagueChatBeta
-            miniLeagueId={league?.id ?? null}
-            memberNames={memberNameById}
-            deepLinkError={deepLinkError}
-          />
-        </div>
-      ) : (
-        <div className={`league-content-wrapper ${showHeaderMenu ? 'menu-open' : ''}`}>
-          <div className="px-1 sm:px-2">
-            {tab === "mlt" && (() => {
-              const startTime = performance.now();
-              console.log('[League] Rendering MltTab, tab is mlt', { tab, mltRowsLength: mltRows.length, leagueId: league?.id, timestamp: startTime });
-              const result = <MltTab />;
-              const endTime = performance.now();
-              console.log('[League] MltTab JSX created', { duration: endTime - startTime });
-              return result;
-            })()}
-            {tab === "gw" && <GwPicksTab />}
-            {tab === "gwr" && <GwResultsTab />}
+      {(() => {
+        if (tab === "chat") {
+          return (
+            <div className="chat-tab-wrapper">
+              <MiniLeagueChatBeta
+                miniLeagueId={league?.id ?? null}
+                memberNames={memberNameById}
+                deepLinkError={deepLinkError}
+              />
+            </div>
+          );
+        }
+        return (
+          <div className={`league-content-wrapper ${showHeaderMenu ? 'menu-open' : ''}`}>
+            <div className="px-1 sm:px-2">
+              {tab === "mlt" && (() => {
+                const startTime = performance.now();
+                console.log('[League] Rendering MltTab, tab is mlt', { tab, mltRowsLength: mltRows.length, leagueId: league?.id, timestamp: startTime });
+                const result = <MltTab />;
+                const endTime = performance.now();
+                console.log('[League] MltTab JSX created', { duration: endTime - startTime });
+                return result;
+              })()}
+              {tab === "gw" && <GwPicksTab />}
+              {tab === "gwr" && <GwResultsTab />}
+            </div>
           </div>
-
-      </div>
-      )}
+        );
+      })()}
 
       {/* Admin Menu Modal */}
       {isAdmin && showAdminMenu && (
