@@ -205,9 +205,35 @@ function AppContent() {
   // Handle deep links from notifications (iOS native)
   // Check URL immediately - AppShell already updated window.location, but ensure React Router sees it
   useLayoutEffect(() => {
+    // CRITICAL: If we're already on a league page and pathname hasn't changed, skip entirely
+    // This prevents the effect from running when React Router remounts the route component
+    const isOnLeaguePage = location.pathname.startsWith('/league/');
+    const pathnameChanged = prevLocationRef.current?.pathname !== location.pathname;
+    
+    if (isOnLeaguePage && !pathnameChanged) {
+      // Already on league page and pathname hasn't changed - skip effect entirely
+      // This prevents remount loops when League.tsx clears search params
+      try {
+        const existingLogs = localStorage.getItem('message_subscription_logs');
+        const logs = existingLogs ? JSON.parse(existingLogs) : [];
+        logs.push({
+          timestamp: Date.now(),
+          leagueId: null,
+          status: 'DEEP_LINK_SKIP_ON_LEAGUE',
+          channel: 'main.tsx',
+          pathname: location.pathname,
+          reason: 'Already on league page and pathname unchanged - skipping effect to prevent remount',
+        });
+        const recentLogs = logs.slice(-50);
+        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+      } catch (e) {
+        console.error('[AppContent] Failed to log skip:', e);
+      }
+      return; // Skip effect entirely
+    }
+    
     // Log what triggered the effect
     const navigateChanged = prevNavigateRef.current !== navigate;
-    const pathnameChanged = prevLocationRef.current?.pathname !== location.pathname;
     
     if (navigateChanged || pathnameChanged) {
       try {
