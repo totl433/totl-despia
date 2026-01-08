@@ -419,7 +419,7 @@ export function useMiniLeagueChat(
         supabase.removeChannel(channel);
       }
     };
-  }, [miniLeagueId, enabled, autoSubscribe, refresh, applyMessages]);
+  }, [miniLeagueId, enabled, autoSubscribe]); // Removed refresh and applyMessages - they're accessed via refs
 
   const loadMore = useCallback(async () => {
     if (!miniLeagueId || !enabled || !hasMore || loadingMore) return;
