@@ -446,6 +446,21 @@ export default function HomePage() {
     skipInitialFetch: hasLeaguesCache // Skip fetch if cache exists - data already loaded synchronously
   });
   
+  // Fallback: If we expected cache but leagues are empty, trigger a fetch
+  // This handles the case where cache exists but is empty or invalid
+  useEffect(() => {
+    if (hasLeaguesCache && leagues.length === 0 && !leaguesLoading && user?.id) {
+      console.warn('[Home] Cache exists but leagues are empty - triggering fetch');
+      // Give it a moment in case cache is still loading, then fetch
+      const timeout = setTimeout(() => {
+        if (leagues.length === 0) {
+          refreshLeagues().catch(() => {});
+        }
+      }, 100);
+      return () => clearTimeout(timeout);
+    }
+  }, [hasLeaguesCache, leagues.length, leaguesLoading, user?.id, refreshLeagues]);
+  
   // Load game state from cache immediately for instant LIVE detection
   const cachedGameState = useMemo(() => {
     if (!gw) return null;
