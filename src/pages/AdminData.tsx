@@ -22,6 +22,7 @@ export default function AdminDataPage() {
   const [checkingDataHealth, setCheckingDataHealth] = useState(false);
   const [fetchLogs, setFetchLogs] = useState<any[]>([]);
   const [copiedAllLogs, setCopiedAllLogs] = useState(false);
+  const [messageSubscriptionLogs, setMessageSubscriptionLogs] = useState<any[]>([]);
 
   // Redirect if not admin
   useEffect(() => {
@@ -74,6 +75,15 @@ export default function AdminDataPage() {
       setFetchLogs(logs);
     } catch (e) {
       console.error('[AdminData] Failed to load fetch logs:', e);
+    }
+
+    try {
+      const subLogs = localStorage.getItem('message_subscription_logs');
+      if (subLogs) {
+        setMessageSubscriptionLogs(JSON.parse(subLogs));
+      }
+    } catch (e) {
+      console.error('[AdminData] Failed to load subscription logs:', e);
     }
   }, []);
 
@@ -180,6 +190,13 @@ export default function AdminDataPage() {
           error: log.error,
         })),
         
+        messageSubscriptions: messageSubscriptionLogs.slice(-20).reverse().map((log: any) => ({
+          timestamp: new Date(log.timestamp).toISOString(),
+          leagueId: log.leagueId,
+          status: log.status,
+          channel: log.channel,
+        })),
+        
         deepLink: (() => {
           try {
             const debugInfo = localStorage.getItem('deepLink_debug');
@@ -222,7 +239,13 @@ ${report.dataFetches.map((log: any) => `[${log.timestamp}] ${log.location} - ${l
 ${report.deepLink ? JSON.stringify(report.deepLink, null, 2) : 'No deep link attempts'}
 
 === NOTIFICATION LOGS ===
-${report.notifications.length > 0 ? report.notifications.map((log: any) => `[${new Date(log.timestamp).toISOString()}] ${log.ok ? 'OK' : 'Failed'} - Sent: ${log.sent || 0}`).join('\n') : 'No notification attempts'}`;
+${report.notifications.length > 0 ? report.notifications.map((log: any) => `[${new Date(log.timestamp).toISOString()}] ${log.ok ? 'OK' : 'Failed'} - Sent: ${log.sent || 0}`).join('\n') : 'No notification attempts'}
+
+=== MESSAGE SUBSCRIPTION LOGS ===
+${report.messageSubscriptions && report.messageSubscriptions.length > 0 ? report.messageSubscriptions.map((log: any) => `[${log.timestamp}] League ${log.leagueId?.slice(0, 8)}... - Status: ${log.status} - Channel: ${log.channel}`).join('\n') : 'No subscription logs'}
+
+=== MESSAGE FETCHES (from Data Fetch Logs) ===
+${report.dataFetches.filter((log: any) => log.table === 'league_messages' || log.query?.toLowerCase().includes('message')).map((log: any) => `[${log.timestamp}] ${log.location} - ${log.query}\n  Table: ${log.table}\n  Result: ${log.result} ${log.rowCount !== undefined ? `(${log.rowCount} rows)` : ''}${log.error ? `\n  Error: ${log.error}` : ''}`).join('\n\n') || 'No message-related fetches yet'}`;
 
       await navigator.clipboard.writeText(reportText);
       setCopiedAllLogs(true);
@@ -411,6 +434,80 @@ ${report.notifications.length > 0 ? report.notifications.map((log: any) => `[${n
             ) : (
               <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-600">
                 No data fetch logs yet. Data fetches will appear here as you use the app.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Message Debug */}
+        <div className="mb-6 bg-white rounded-xl shadow-md p-6">
+          <h3 className="text-lg font-semibold text-slate-800 mb-3">💬 Message Debug</h3>
+          <div className="space-y-3">
+            <div className="text-sm text-slate-600 mb-2">
+              Message fetch logs from Data Fetch Logs (filtered for messages):
+            </div>
+            {fetchLogs.filter((log: any) => log.table === 'league_messages' || log.query?.toLowerCase().includes('message')).length > 0 ? (
+              <div className="space-y-2">
+                {fetchLogs.filter((log: any) => log.table === 'league_messages' || log.query?.toLowerCase().includes('message')).slice(-10).reverse().map((log: any, idx: number) => (
+                  <div key={idx} className={`p-3 rounded-lg border text-xs ${
+                    log.result === 'error' 
+                      ? 'bg-red-50 border-red-200' 
+                      : log.result === 'empty'
+                      ? 'bg-amber-50 border-amber-200'
+                      : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div className="font-semibold mb-1">
+                      {new Date(log.timestamp).toLocaleString()} - {log.query}
+                    </div>
+                    <div className="text-slate-600 mb-1">
+                      League: {log.filters?.leagueId || 'N/A'} | Result: {log.result === 'error' ? '❌ Error' : log.result === 'empty' ? '⚠️ Empty' : '✅ Success'} ({log.rowCount || 0} rows)
+                    </div>
+                    {log.error && (
+                      <div className="text-red-600 text-xs">Error: {log.error}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-600">
+                No message fetch logs yet. Open a league chat to see message queries.
+              </div>
+            )}
+            
+            <div className="text-sm text-slate-600 mb-2 mt-4">
+              Real-time subscription status (last 10):
+            </div>
+            {messageSubscriptionLogs.length > 0 ? (
+              <div className="space-y-2">
+                {messageSubscriptionLogs.slice(-10).reverse().map((log: any, idx: number) => (
+                  <div key={idx} className={`p-3 rounded-lg border text-xs ${
+                    log.status === 'SUBSCRIBED' 
+                      ? 'bg-emerald-50 border-emerald-200' 
+                      : log.status === 'CHANNEL_ERROR' || log.status === 'TIMED_OUT'
+                      ? 'bg-red-50 border-red-200'
+                      : 'bg-amber-50 border-amber-200'
+                  }`}>
+                    <div className="font-semibold mb-1">
+                      {new Date(log.timestamp).toLocaleString()} - {log.status}
+                    </div>
+                    <div className="text-slate-600 text-xs">
+                      League: {log.leagueId?.slice(0, 8)}... | Channel: {log.channel}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('message_subscription_logs');
+                    setMessageSubscriptionLogs([]);
+                  }}
+                  className="w-full py-2 bg-slate-200 text-slate-700 font-medium rounded-lg text-sm"
+                >
+                  Clear Subscription Logs
+                </button>
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-600">
+                No subscription logs yet. Open a league chat to see subscription status.
               </div>
             )}
           </div>

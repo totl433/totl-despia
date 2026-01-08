@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { supabase } from "../lib/supabase";
 import { getCached, setCached, CACHE_TTL } from "../lib/cache";
+import { logDataFetch } from "../lib/dataFetchLogger";
 
 const PAGE_SIZE = 50;
 
@@ -151,6 +152,10 @@ export function useMiniLeagueChat(
       }
 
       const { data, error } = await query;
+      
+      // Log the message fetch for debugging
+      logDataFetch('useMiniLeagueChat', 'Fetch messages page', 'league_messages', { data, error }, { leagueId: miniLeagueId, before, pageSize: PAGE_SIZE });
+      
       if (error) {
         console.error('[useMiniLeagueChat] Error fetching messages:', error);
         throw error;
@@ -169,6 +174,9 @@ export function useMiniLeagueChat(
           .from("league_messages")
           .select("id, content, user_id")
           .in("id", replyMessageIds);
+        
+        // Log reply messages fetch
+        logDataFetch('useMiniLeagueChat', 'Fetch reply messages', 'league_messages', { data: replyMessages, error: replyError }, { leagueId: miniLeagueId, replyMessageIds: replyMessageIds.length });
         
         if (replyError) {
           console.error('[useMiniLeagueChat] Error fetching reply messages:', replyError);
@@ -333,6 +341,9 @@ export function useMiniLeagueChat(
               .eq("id", payload.new.id)
               .single();
             
+            // Log real-time message fetch
+            logDataFetch('useMiniLeagueChat', 'Fetch real-time message', 'league_messages', { data: fullMessage, error: fetchError }, { leagueId: miniLeagueId, messageId: payload.new.id, fromSubscription: true });
+            
             if (fetchError) {
               console.error('[useMiniLeagueChat] Error fetching full message:', fetchError);
               // Fallback to payload data
@@ -389,6 +400,22 @@ export function useMiniLeagueChat(
       )
       .subscribe((status) => {
         subscriptionStatusRef.current = status === 'SUBSCRIBED' ? 'subscribed' : status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' ? 'failed' : 'idle';
+        
+        // Log subscription status changes
+        try {
+          const existingLogs = localStorage.getItem('message_subscription_logs');
+          const logs = existingLogs ? JSON.parse(existingLogs) : [];
+          logs.push({
+            timestamp: Date.now(),
+            leagueId: miniLeagueId,
+            status,
+            channel: `league-messages:${miniLeagueId}`,
+          });
+          const recentLogs = logs.slice(-50); // Keep last 50
+          localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+        } catch (e) {
+          console.error('[useMiniLeagueChat] Failed to log subscription status:', e);
+        }
         
         if (status === 'SUBSCRIBED') {
           // Clear safety fallback since subscription succeeded
@@ -486,6 +513,9 @@ export function useMiniLeagueChat(
           reply_to:league_messages!reply_to_message_id(id, content, user_id)
         `)
         .single();
+
+      // Log message insert
+      logDataFetch('useMiniLeagueChat', 'Insert message', 'league_messages', { data, error }, { leagueId: miniLeagueId, userId, hasReplyTo: !!replyToMessageId });
 
       if (error) {
         const { handleChatError } = await import('../lib/chatErrors');
