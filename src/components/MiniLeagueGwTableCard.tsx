@@ -438,7 +438,7 @@ export default function MiniLeagueGwTableCard({
         // #endregion
         
         // Retry wrapper for picks query
-        const fetchWithRetry = async (queryFn: () => Promise<any>, maxRetries = 3, queryType?: string) => {
+        const fetchWithRetry = async (queryFn: () => Promise<any>, maxRetries = 3) => {
           let lastError: any = null;
           for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
@@ -464,7 +464,7 @@ export default function MiniLeagueGwTableCard({
             .in('user_id', memberIds);
           if (error) throw error;
           return data;
-        }, 3, 'fetchPicks');
+        }, 3);
         
         if (!alive) {
           // #region agent log
@@ -486,7 +486,7 @@ export default function MiniLeagueGwTableCard({
             .not('submitted_at', 'is', null);
           if (error) throw error;
           return data;
-        }, 3, 'fetchSubmissions');
+        }, 3);
 
         if (!alive) return;
 

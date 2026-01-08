@@ -47,8 +47,7 @@ const getResultsCacheKey = (gw: number) => `shared:results:${gw}`;
 async function fetchWithRetry<T>(
   queryFn: () => Promise<T>,
   maxRetries: number = 3,
-  baseDelay: number = 1000,
-  queryType?: string
+  baseDelay: number = 1000
 ): Promise<T> {
   let lastError: Error | null = null;
   
@@ -92,7 +91,7 @@ async function fetchFixtures(gw: number): Promise<Fixture[]> {
     
     if (error) throw error;
     return (data ?? []) as Fixture[];
-  }, 3, 1000, 'fetchFixtures');
+  }, 3, 1000);
 }
 
 /**
@@ -107,7 +106,7 @@ async function fetchResults(gw: number): Promise<ResultRow[]> {
     
     if (error) throw error;
     return (data ?? []) as ResultRow[];
-  }, 3, 1000, 'fetchResults');
+  }, 3, 1000);
 }
 
 /**
