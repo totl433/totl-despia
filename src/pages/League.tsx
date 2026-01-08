@@ -401,7 +401,7 @@ export default function LeaguePage() {
       try {
         const existingLogs = localStorage.getItem('message_subscription_logs');
         const logs = existingLogs ? JSON.parse(existingLogs) : [];
-        logs.push({
+        const unmountLog = {
           timestamp: Date.now(),
           leagueId: league?.id,
           status: 'LEAGUE_PAGE_UNMOUNT',
@@ -409,9 +409,24 @@ export default function LeaguePage() {
           pageId,
           tab,
           reason: 'LeaguePage component unmounting',
-        });
+        };
+        logs.push(unmountLog);
         const recentLogs = logs.slice(-50);
         localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+        
+        // Also write to debug.log file so agent can read it
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'League.tsx:useEffect:unmount',
+            message: 'LeaguePage unmounting',
+            data: unmountLog,
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            hypothesisId: 'H7'
+          })
+        }).catch(() => {});
       } catch (e) {
         console.error('[LeaguePage] Failed to log unmount:', e);
       }
