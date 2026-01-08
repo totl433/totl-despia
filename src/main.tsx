@@ -209,7 +209,34 @@ function AppContent() {
     // This prevents the effect from running when React Router remounts the route component
     const isOnLeaguePage = location.pathname.startsWith('/league/');
     const hasPrevLocation = prevLocationRef.current !== null;
-    const pathnameChanged = hasPrevLocation && prevLocationRef.current?.pathname !== location.pathname;
+    const prevPathname = prevLocationRef.current?.pathname;
+    const currentPathname = location.pathname;
+    const pathnameChanged = hasPrevLocation && prevPathname !== currentPathname;
+    
+    // Log skip check for debugging
+    if (isOnLeaguePage) {
+      try {
+        const existingLogs = localStorage.getItem('message_subscription_logs');
+        const logs = existingLogs ? JSON.parse(existingLogs) : [];
+        logs.push({
+          timestamp: Date.now(),
+          leagueId: null,
+          status: 'DEEP_LINK_SKIP_CHECK',
+          channel: 'main.tsx',
+          isOnLeaguePage: true,
+          hasPrevLocation,
+          pathnameChanged,
+          prevPathname,
+          currentPathname,
+          willSkip: isOnLeaguePage && hasPrevLocation && !pathnameChanged,
+          reason: `Skip check: isOnLeaguePage=${isOnLeaguePage}, hasPrevLocation=${hasPrevLocation}, pathnameChanged=${pathnameChanged}`,
+        });
+        const recentLogs = logs.slice(-50);
+        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+      } catch (e) {
+        console.error('[AppContent] Failed to log skip check:', e);
+      }
+    }
     
     if (isOnLeaguePage && hasPrevLocation && !pathnameChanged) {
       // Already on league page, we have a previous location, and pathname hasn't changed - skip effect entirely
