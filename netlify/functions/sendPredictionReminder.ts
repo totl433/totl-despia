@@ -30,6 +30,23 @@ export const handler: Handler = async (event) => {
     return json(500, { error: 'Missing OneSignal environment variables' });
   }
 
+  // Get base URL for constructing absolute URLs (OneSignal requires http:// or https://)
+  const getBaseUrl = () => {
+    // Try to extract from event headers
+    if (event.headers.host) {
+      const protocol = event.headers['x-forwarded-proto'] || 'https';
+      const url = `${protocol}://${event.headers.host}`;
+      return url;
+    }
+    // Fallback to environment variable
+    if (process.env.URL || process.env.SITE_URL) {
+      return (process.env.URL || process.env.SITE_URL || '').trim();
+    }
+    // Default fallback
+    return 'https://totl-staging.netlify.app';
+  };
+  const baseUrl = getBaseUrl();
+
   try {
     // Initialize Supabase admin client
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -233,6 +250,9 @@ export const handler: Handler = async (event) => {
       }
     }
 
+    // Construct absolute URL for deep linking (OneSignal requires absolute URLs)
+    const predictionsUrl = `${baseUrl}/predictions`;
+
     // Send notification via OneSignal
     const notificationPayload = {
       app_id: ONESIGNAL_APP_ID,
@@ -242,11 +262,12 @@ export const handler: Handler = async (event) => {
       collapse_id: eventId, // Use same event_id for collapse_id
       thread_id: 'totl_predictions',
       android_group: 'totl_predictions',
+      web_url: predictionsUrl, // Deep link URL (must be absolute for OneSignal)
       data: {
         type: 'prediction-reminder',
         gw: currentGw,
         deadline: deadlineTime.toISOString(),
-        url: '/predictions'
+        url: predictionsUrl // Also include in data for app to use
       },
       ios_badgeType: 'Increase',
       ios_badgeCount: 1,
