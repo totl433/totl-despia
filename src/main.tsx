@@ -199,10 +199,41 @@ function AppContent() {
   const prevLocationRef = useRef<{ pathname: string; search: string } | null>(null);
   // Track if we've already processed deep link for current league page (prevents remount loops)
   const processedLeaguePageRef = useRef<string | null>(null);
+  // Track navigate function reference to detect if it's changing
+  const prevNavigateRef = useRef<typeof navigate | null>(null);
   
   // Handle deep links from notifications (iOS native)
   // Check URL immediately - AppShell already updated window.location, but ensure React Router sees it
   useLayoutEffect(() => {
+    // Log what triggered the effect
+    const navigateChanged = prevNavigateRef.current !== navigate;
+    const pathnameChanged = prevLocationRef.current?.pathname !== location.pathname;
+    
+    if (navigateChanged || pathnameChanged) {
+      try {
+        const existingLogs = localStorage.getItem('message_subscription_logs');
+        const logs = existingLogs ? JSON.parse(existingLogs) : [];
+        logs.push({
+          timestamp: Date.now(),
+          leagueId: null,
+          status: 'DEEP_LINK_EFFECT_TRIGGER',
+          channel: 'main.tsx',
+          trigger: {
+            navigateChanged,
+            pathnameChanged,
+            prevPathname: prevLocationRef.current?.pathname,
+            currentPathname: location.pathname,
+          },
+          reason: `Effect triggered: navigateChanged=${navigateChanged}, pathnameChanged=${pathnameChanged}`,
+        });
+        const recentLogs = logs.slice(-50);
+        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+      } catch (e) {
+        console.error('[AppContent] Failed to log trigger:', e);
+      }
+    }
+    
+    prevNavigateRef.current = navigate;
     const searchParams = new URLSearchParams(window.location.search);
     const leagueCode = searchParams.get('leagueCode');
     const tab = searchParams.get('tab');
