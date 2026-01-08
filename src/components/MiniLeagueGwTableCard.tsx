@@ -634,7 +634,18 @@ export default function MiniLeagueGwTableCard({
     const effectiveFixtures = mockData?.fixtures ?? fixtures;
     const effectiveResults = mockData?.results ?? results;
     
-    if (!displayGw || effectiveFixtures.length === 0) {
+    if (!displayGw) {
+      setRows([]);
+      return;
+    }
+    
+    // Don't set empty rows if still loading - wait for data
+    // This prevents empty tables from showing while data is being fetched
+    if (effectiveFixtures.length === 0 && loading) {
+      return; // Still loading, don't set empty rows yet
+    }
+    
+    if (effectiveFixtures.length === 0) {
       setRows([]);
       return;
     }

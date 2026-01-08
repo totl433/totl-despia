@@ -41,8 +41,10 @@ export function useSharedGwData(gw: number | null | undefined): UseSharedGwDataR
     const cachedFixtures = getCached<Fixture[]>(getFixturesCacheKey(gw));
     const cachedResults = getCached<ResultRow[]>(getResultsCacheKey(gw));
     
-    if (cachedFixtures && cachedResults && cachedFixtures.length > 0 && cachedResults.length > 0) {
-      return { fixtures: cachedFixtures, results: cachedResults };
+    // Allow partial cache - if fixtures exist, use them even if results are empty
+    // This prevents empty tables when results haven't loaded yet
+    if (cachedFixtures && cachedFixtures.length > 0) {
+      return { fixtures: cachedFixtures, results: cachedResults || [] };
     }
     
     return { fixtures: null, results: null };

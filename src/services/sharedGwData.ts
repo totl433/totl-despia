@@ -140,9 +140,11 @@ export async function getSharedGwData(gw: number): Promise<SharedGwData> {
   const cachedFixtures = getCached<Fixture[]>(fixturesCacheKey);
   const cachedResults = getCached<ResultRow[]>(resultsCacheKey);
   
-  if (cachedFixtures && cachedResults) {
+  // Allow partial cache - if fixtures exist, use them even if results are empty
+  // This prevents empty tables when results haven't loaded yet
+  if (cachedFixtures && cachedFixtures.length > 0) {
     // Return cached data immediately
-    return { fixtures: cachedFixtures, results: cachedResults };
+    return { fixtures: cachedFixtures, results: cachedResults || [] };
   }
   
   // Create new request promise
