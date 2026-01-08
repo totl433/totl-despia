@@ -441,7 +441,7 @@ export default function HomePage() {
       return false;
     }
   })();
-  const { leagues, unreadByLeague, refresh: refreshLeagues } = useLeagues({ 
+  const { leagues, unreadByLeague, refresh: refreshLeagues, loading: leaguesLoading } = useLeagues({ 
     pageName: 'home',
     skipInitialFetch: hasLeaguesCache // Skip fetch if cache exists - data already loaded synchronously
   });
@@ -870,6 +870,12 @@ export default function HomePage() {
   useEffect(() => {
     if (!user?.id || !gw) return;
     
+    // Wait for leagues to finish loading before calling loadHomePageData
+    // Otherwise we'll call it with an empty leagues array and get no league data
+    if (leaguesLoading) {
+      return;
+    }
+    
     // If we already have fixtures AND leagueData from cache, we're done - pre-loader completed
     const hasFixtures = fixtures.length > 0;
     const hasLeagueData = Object.keys(leagueData).length > 0;
@@ -915,7 +921,7 @@ export default function HomePage() {
     })();
     
     return () => { alive = false; };
-  }, [user?.id, gw, fixtures.length, leagues.length, Object.keys(leagueData).length]);
+  }, [user?.id, gw, fixtures.length, leagues.length, Object.keys(leagueData).length, leaguesLoading]);
 
   // Background refresh is now handled by loadHomePageData (checks cache freshness internally)
 
