@@ -120,7 +120,7 @@ export function useMiniLeagueChat(
     [miniLeagueId]
   );
   
-  const refreshRef = useRef<(() => Promise<void>) | null>(null);
+  const refreshRef = useRef<((skipCache?: boolean) => Promise<void>) | null>(null);
   const applyMessagesRef = useRef<((updater: (prev: MiniLeagueChatMessage[]) => MiniLeagueChatMessage[]) => void) | null>(null);
   
   useEffect(() => {
@@ -219,7 +219,7 @@ export function useMiniLeagueChat(
     [miniLeagueId, enabled, applyMessages]
   );
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (skipCache: boolean = false) => {
     if (!miniLeagueId || !enabled) {
       setMessages([]);
       setHasMore(true);
@@ -233,8 +233,8 @@ export function useMiniLeagueChat(
     setError(null);
     
     try {
-      // Check cache first if no messages
-      if (!hasMessages) {
+      // Check cache first if no messages AND not skipping cache
+      if (!hasMessages && !skipCache) {
         const cachedMessages = getCached<MiniLeagueChatMessage[]>(`chat:messages:${miniLeagueId}`);
         if (cachedMessages && cachedMessages.length > 0) {
           applyMessages(() => cachedMessages);
@@ -265,54 +265,18 @@ export function useMiniLeagueChat(
     applyMessagesRef.current = applyMessages;
   }, [refresh, applyMessages]);
   
+  // FIRST: Subscription effect (separate from cache logic to prevent constant recreation)
   useEffect(() => {
-    if (!miniLeagueId || !enabled) {
-      setMessages([]);
-      setHasMore(true);
+    if (!miniLeagueId || !enabled || !autoSubscribe) {
       return;
     }
 
-    // Check cache first
-    const hasInitialMessages = messages.length > 0;
-    const cachedMessages = getCached<MiniLeagueChatMessage[]>(`chat:messages:${miniLeagueId}`);
-    
-    if (hasInitialMessages || (cachedMessages && cachedMessages.length > 0)) {
-      if (!hasInitialMessages && cachedMessages) {
-        applyMessages(() => cachedMessages);
-        if (cachedMessages.length > 0) {
-          earliestTimestampRef.current = cachedMessages[0].created_at;
-          latestTimestampRef.current = cachedMessages[cachedMessages.length - 1].created_at;
-        }
-        setHasMore(cachedMessages.length >= 50);
-      } else if (hasInitialMessages && messages.length > 0) {
-        earliestTimestampRef.current = messages[0].created_at;
-        latestTimestampRef.current = messages[messages.length - 1].created_at;
-        setHasMore(messages.length >= 50);
-      }
-      
-      // If coming from notification, force refresh
-      if (typeof window !== 'undefined') {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('tab') === 'chat') {
-          setTimeout(() => {
-            refreshRef.current?.().catch(() => {});
-          }, 200);
-        }
-      }
-    } else {
-      // No cache - fetch on mount
-      refreshRef.current?.().catch(() => {});
-    }
-
-    if (!autoSubscribe) {
-      return;
-    }
-    
     let active = true;
     let safetyFallbackTimeout: ReturnType<typeof setTimeout> | null = null;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
     subscriptionStatusRef.current = 'subscribing';
-    const channel = supabase
+    channel = supabase
       .channel(`league-messages:${miniLeagueId}`)
       .on(
         "postgres_changes",
@@ -324,6 +288,12 @@ export function useMiniLeagueChat(
         },
         async (payload) => {
           if (!active) return;
+          
+          // CRITICAL FIX: Skip own messages - they're handled by sendMessage
+          // This prevents race condition where real-time and sendMessage both try to add the same message
+          if (payload.new.user_id === userId) {
+            return; // Don't process own messages via subscription - sendMessage handles them
+          }
           
           try {
             // Use payload.new directly - it already has all message data (INSTANT!)
@@ -349,6 +319,7 @@ export function useMiniLeagueChat(
             // Normalize and add message immediately
             const incoming = normalizeMessage(incomingMessage);
             applyMessagesRef.current?.((prev) => {
+              // Check if message already exists (double safety check)
               if (!prev.some(msg => msg.id === incoming.id)) {
                 return dedupeAndSort([...prev, incoming]);
               }
@@ -404,7 +375,7 @@ export function useMiniLeagueChat(
           safetyFallbackTimeout = setTimeout(() => {
             if (active && subscriptionStatusRef.current !== 'subscribed') {
               console.warn('[useMiniLeagueChat] Subscription failed, triggering safety refresh');
-              refreshRef.current?.().catch(() => {});
+              refreshRef.current?.(false).catch(() => {});
             }
           }, 2000);
         }
@@ -419,7 +390,55 @@ export function useMiniLeagueChat(
         supabase.removeChannel(channel);
       }
     };
-  }, [miniLeagueId, enabled, autoSubscribe]); // Removed refresh and applyMessages - they're accessed via refs
+  }, [miniLeagueId, enabled, autoSubscribe, userId]); // Stable dependencies only - userId needed to check own messages
+
+  // SECOND: Separate effect for cache/refresh (won't trigger subscription recreation)
+  useEffect(() => {
+    if (!miniLeagueId || !enabled) {
+      setMessages([]);
+      setHasMore(true);
+      return;
+    }
+
+    // Check if coming from notification - if yes, skip cache and fetch fresh immediately
+    const comingFromNotification = typeof window !== 'undefined' && 
+      new URLSearchParams(window.location.search).get('tab') === 'chat';
+
+    if (comingFromNotification) {
+      // Coming from notification - skip cache, fetch fresh immediately
+      // This ensures we get the message that triggered the notification
+      refreshRef.current?.(true).catch(() => {});
+      return;
+    }
+
+    // Normal flow - check cache
+    const currentMessages = messagesRef.current;
+    const cachedMessages = getCached<MiniLeagueChatMessage[]>(`chat:messages:${miniLeagueId}`);
+    
+    if (currentMessages.length > 0) {
+      // Already have messages, verify timestamps
+      if (currentMessages.length > 0) {
+        earliestTimestampRef.current = currentMessages[0].created_at;
+        latestTimestampRef.current = currentMessages[currentMessages.length - 1].created_at;
+        setHasMore(currentMessages.length >= 50);
+      }
+      // Still refresh in background to get latest (but don't block UI)
+      refreshRef.current?.(false).catch(() => {});
+    } else if (cachedMessages && cachedMessages.length > 0) {
+      // Load from cache
+      applyMessages(() => cachedMessages);
+      if (cachedMessages.length > 0) {
+        earliestTimestampRef.current = cachedMessages[0].created_at;
+        latestTimestampRef.current = cachedMessages[cachedMessages.length - 1].created_at;
+      }
+      setHasMore(cachedMessages.length >= 50);
+      // Refresh in background to get latest
+      refreshRef.current?.(false).catch(() => {});
+    } else {
+      // No cache - fetch on mount
+      refreshRef.current?.(false).catch(() => {});
+    }
+  }, [miniLeagueId, enabled]); // Only re-run if league or enabled changes, not when messages change
 
   const loadMore = useCallback(async () => {
     if (!miniLeagueId || !enabled || !hasMore || loadingMore) return;
