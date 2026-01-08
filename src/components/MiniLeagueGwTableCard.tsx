@@ -847,19 +847,8 @@ export default function MiniLeagueGwTableCard({
             background-color: rgb(167, 243, 208);
           }
         }
-        @keyframes pulse-score {
-          0%, 100% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0.7;
-          }
-        }
         .flash-user-row {
           animation: flash 1.5s ease-in-out 3;
-        }
-        .pulse-live-score {
-          animation: pulse-score 2s ease-in-out infinite;
         }
       `}</style>
       {/* Compact Header */}
@@ -970,8 +959,8 @@ export default function MiniLeagueGwTableCard({
                                 <span className="truncate">{r.name}</span>
                               </div>
                             </td>
-                            <td className={`py-2 text-center tabular-nums font-bold text-[#1C8376] text-xs bg-white dark:bg-slate-800 w-10 pl-1 pr-1 ${isLive ? 'pulse-live-score' : ''}`}>{r.score}</td>
-                            {members.length >= 3 && <td className={`py-2 text-center tabular-nums text-xs bg-white dark:bg-slate-800 w-8 pl-1 pr-1 text-slate-900 dark:text-slate-100 ${isLive ? 'pulse-live-score' : ''}`}>{r.unicorns}</td>}
+                            <td className="py-2 text-center tabular-nums font-bold text-[#1C8376] text-xs bg-white dark:bg-slate-800 w-10 pl-1 pr-1">{r.score}</td>
+                            {members.length >= 3 && <td className="py-2 text-center tabular-nums text-xs bg-white dark:bg-slate-800 w-8 pl-1 pr-1 text-slate-900 dark:text-slate-100">{r.unicorns}</td>}
                           </tr>
                         );
                       })}
