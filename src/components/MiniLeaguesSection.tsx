@@ -170,7 +170,7 @@ export function MiniLeaguesSection({
       {showLiveTables ? (
         <button
           onClick={() => setShowLiveTables(false)}
-          className="px-3 py-1.5 text-xs font-medium rounded-full bg-slate-100 text-slate-600"
+          className="px-3 py-1.5 text-xs font-medium rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
         >
           Default View
         </button>
