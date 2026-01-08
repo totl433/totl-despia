@@ -98,6 +98,8 @@ export function useMiniLeagueChat(
   const subscriptionStatusRef = useRef<'idle' | 'subscribing' | 'subscribed' | 'failed'>('idle');
   // CRITICAL: Use ref for userId to prevent subscription recreation when user object changes
   const userIdRef = useRef<string | null | undefined>(userId);
+  // Track reconnection attempts to force effect re-run when subscription closes unexpectedly
+  const [reconnectTrigger, setReconnectTrigger] = useState(0);
   
   // Keep userIdRef in sync with userId
   useEffect(() => {
@@ -447,6 +449,40 @@ export function useMiniLeagueChat(
               refreshRef.current?.(false).catch(() => {});
             }
           }, 2000);
+        } else if (status === 'CLOSED') {
+          // Subscription closed unexpectedly - force reconnection by triggering effect re-run
+          // Only reconnect if component is still active (not during cleanup)
+          // If active is false, the component is unmounting and we shouldn't reconnect
+          if (active && subscriptionStatusRef.current !== 'subscribed') {
+            console.warn('[useMiniLeagueChat] Subscription closed unexpectedly, forcing reconnection');
+            // Trigger effect re-run by updating reconnectTrigger
+            // Use setTimeout to avoid state update during render
+            setTimeout(() => {
+              // Double-check active flag after timeout (component might have unmounted)
+              if (active) {
+                setReconnectTrigger(prev => prev + 1);
+              }
+            }, 100);
+            // Also trigger refresh to get latest messages immediately
+            if (safetyFallbackTimeout) {
+              clearTimeout(safetyFallbackTimeout);
+            }
+            safetyFallbackTimeout = setTimeout(() => {
+              if (active && subscriptionStatusRef.current !== 'subscribed') {
+                refreshRef.current?.(false).catch(() => {});
+              }
+            }, 1000);
+          } else {
+            // CLOSED during cleanup is expected - don't reconnect
+            if (!active) {
+              console.log('[useMiniLeagueChat] CLOSED during cleanup (expected)');
+            } else {
+              console.warn('[useMiniLeagueChat] CLOSED detected but not reconnecting:', {
+                active,
+                currentStatus: subscriptionStatusRef.current
+              });
+            }
+          }
         }
       });
 
@@ -506,7 +542,7 @@ export function useMiniLeagueChat(
         }
       }
     };
-  }, [miniLeagueId, enabled, autoSubscribe]); // Stable dependencies only - userId accessed via ref to prevent recreation
+  }, [miniLeagueId, enabled, autoSubscribe, reconnectTrigger]); // reconnectTrigger forces reconnection on CLOSED
 
   // SECOND: Separate effect for cache/refresh (won't trigger subscription recreation)
   useEffect(() => {

@@ -111,48 +111,10 @@ function AppShell() {
   const currentSearch = window.location.search;
   const currentHref = window.location.href;
   
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      location: 'main.tsx:AppShell:entry',
-      message: 'AppShell deep link check',
-      data: {
-        currentPath,
-        currentSearch,
-        currentHref,
-        leagueCode,
-        tab,
-        hasLeagueCode: !!leagueCode,
-        hasTab: !!tab,
-        isLeaguePath: currentPath.startsWith('/league/')
-      },
-      timestamp: Date.now(),
-      sessionId: 'debug-session',
-      hypothesisId: 'H6'
-    })
-  }).catch(() => {});
-  // #endregion
-  
   // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat)
   if (leagueCode && !window.location.pathname.startsWith('/league/')) {
     const targetUrl = `/league/${leagueCode}?tab=chat`;
     window.history.replaceState(null, '', targetUrl);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'main.tsx:AppShell:legacy-conversion',
-        message: 'Converted legacy leagueCode format',
-        data: { leagueCode, targetUrl, from: currentHref },
-        timestamp: Date.now(),
-        sessionId: 'debug-session',
-        hypothesisId: 'H6'
-      })
-    }).catch(() => {});
-    // #endregion
   }
   
   // Also handle direct league URLs with tab=chat (from OneSignal web_url)
@@ -162,20 +124,6 @@ function AppShell() {
     if (tab === 'chat') {
       // URL is already correct, just ensure it stays that way
       // React Router will handle it
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'main.tsx:AppShell:direct-url',
-          message: 'Direct league URL with tab=chat detected',
-          data: { path: currentPath, tab, leagueCode: pathMatch[1] },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId: 'H6'
-        })
-      }).catch(() => {});
-      // #endregion
     }
   }
   
@@ -234,27 +182,26 @@ function AppContent() {
         logs.push(skipCheckLog);
         const recentLogs = logs.slice(-50);
         localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
-        
-        // Also write to debug.log file so agent can read it
-        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'main.tsx:useLayoutEffect:skipCheck',
-            message: 'Deep link skip check',
-            data: skipCheckLog,
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            hypothesisId: 'H7'
-          })
-        }).catch(() => {});
       } catch (e) {
         console.error('[AppContent] Failed to log skip check:', e);
       }
     }
     
-    if (isOnLeaguePage && hasPrevLocation && !pathnameChanged) {
-      // Already on league page, we have a previous location, and pathname hasn't changed - skip effect entirely
+    // Skip effect if we're on a league page and pathname hasn't changed
+    // This prevents remount loops - we check multiple cases:
+    // 1. If we have a previous location and pathname hasn't changed (normal case)
+    // 2. If we're on a league page and there's no leagueCode in the URL (already navigated, no deep link)
+    // 3. If we're on a league page and only have ?tab=chat (already navigated, just tab param)
+    const searchParamsForSkip = new URLSearchParams(window.location.search);
+    const hasLeagueCode = searchParamsForSkip.get('leagueCode');
+    const hasTab = searchParamsForSkip.get('tab');
+    const shouldSkip = isOnLeaguePage && (
+      (hasPrevLocation && !pathnameChanged) || // Normal case: pathname unchanged
+      (!hasLeagueCode && (hasTab === 'chat' || !hasTab)) // Already on league page, no deep link params (or just tab=chat)
+    );
+    
+    if (shouldSkip) {
+      // Already on league page and pathname hasn't changed - skip effect entirely
       // This prevents remount loops when League.tsx clears search params
       try {
         const existingLogs = localStorage.getItem('message_subscription_logs');
@@ -266,6 +213,10 @@ function AppContent() {
           channel: 'main.tsx',
           pathname: location.pathname,
           prevPathname: prevLocationRef.current?.pathname,
+          hasPrevLocation,
+          pathnameChanged,
+          hasLeagueCode: !!hasLeagueCode,
+          hasTab: !!hasTab,
           reason: 'Already on league page and pathname unchanged - skipping effect to prevent remount',
         });
         const recentLogs = logs.slice(-50);
@@ -273,6 +224,8 @@ function AppContent() {
       } catch (e) {
         console.error('[AppContent] Failed to log skip:', e);
       }
+      // Update prevLocationRef before returning to track that we've seen this location
+      prevLocationRef.current = { pathname: location.pathname, search: location.search };
       return; // Skip effect entirely
     }
     
@@ -301,20 +254,6 @@ function AppContent() {
         logs.push(triggerLog);
         const recentLogs = logs.slice(-50);
         localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
-        
-        // Also write to debug.log file so agent can read it
-        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'main.tsx:useLayoutEffect:trigger',
-            message: 'Deep link effect trigger',
-            data: triggerLog,
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            hypothesisId: 'H7'
-          })
-        }).catch(() => {});
       } catch (e) {
         console.error('[AppContent] Failed to log trigger:', e);
       }
@@ -365,32 +304,6 @@ function AppContent() {
       console.error('[AppContent] Failed to log deep link effect:', e);
     }
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'main.tsx:AppContent:useLayoutEffect:entry',
-        message: 'Deep link handling in AppContent',
-        data: {
-          reactRouterPath: location.pathname,
-          reactRouterSearch: location.search,
-          windowPath,
-          windowSearch,
-          windowHref,
-          leagueCode,
-          tab,
-          hasLeagueCode: !!leagueCode,
-          hasTab: !!tab,
-          changedFields,
-        },
-        timestamp: Date.now(),
-        sessionId: 'debug-session',
-        hypothesisId: 'H6'
-      })
-    }).catch(() => {});
-    // #endregion
-    
     // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat)
     if (leagueCode && !location.pathname.startsWith('/league/')) {
       const targetPath = `/league/${leagueCode}?tab=chat`;
@@ -424,21 +337,6 @@ function AppContent() {
         leagueCode,
         targetUrl: targetPath
       });
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'main.tsx:AppContent:useLayoutEffect:legacy-navigate',
-          message: 'Navigating to legacy format',
-          data: { leagueCode, targetPath, from: location.pathname },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId: 'H6'
-        })
-      }).catch(() => {});
-      // #endregion
       return;
     }
     
@@ -479,21 +377,6 @@ function AppContent() {
           leagueCode: pathMatch[1],
           targetUrl: targetPath
         });
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'main.tsx:AppContent:useLayoutEffect:direct-navigate',
-            message: 'Navigating to direct URL from window.location',
-            data: { targetPath, windowPath, windowSearch, leagueCode: pathMatch[1] },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            hypothesisId: 'H6'
-          })
-        }).catch(() => {});
-        // #endregion
         return;
       }
     }
@@ -553,21 +436,6 @@ function AppContent() {
       } catch (e) {
         console.error('[AppContent] Failed to log early return:', e);
       }
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'main.tsx:AppContent:useLayoutEffect:already-on-league',
-          message: 'Already on league path - skipping navigation',
-          data: { path: location.pathname, tab, search: location.search, changedFields },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId: 'H6'
-        })
-      }).catch(() => {});
-      // #endregion
       return; // CRITICAL: Exit early to prevent any navigation when already on league page
     }
     
