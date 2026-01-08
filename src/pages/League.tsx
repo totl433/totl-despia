@@ -310,6 +310,98 @@ export default function LeaguePage() {
   // Only exception: tab=chat in URL from notification deep links (handled by useEffect below)
   const initialTab: "chat" | "mlt" | "gw" | "gwr" = 'chat'; // Always default to chat
   const [tab, setTab] = useState<"chat" | "mlt" | "gw" | "gwr">(initialTab);
+  
+  // Track tab changes to debug component remounting
+  const prevTabRef = useRef<"chat" | "mlt" | "gw" | "gwr" | null>(null);
+  useEffect(() => {
+    if (prevTabRef.current !== null && prevTabRef.current !== tab) {
+      try {
+        const existingLogs = localStorage.getItem('message_subscription_logs');
+        const logs = existingLogs ? JSON.parse(existingLogs) : [];
+        logs.push({
+          timestamp: Date.now(),
+          leagueId: league?.id,
+          status: 'TAB_CHANGED',
+          channel: `league-messages:${league?.id}`,
+          from: prevTabRef.current,
+          to: tab,
+          reason: `Tab changed from "${prevTabRef.current}" to "${tab}"`,
+        });
+        const recentLogs = logs.slice(-50);
+        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+      } catch (e) {
+        console.error('[LeaguePage] Failed to log tab change:', e);
+      }
+    }
+    prevTabRef.current = tab;
+  }, [tab, league?.id]);
+  
+  // Track league.id changes
+  const prevLeagueIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevLeagueIdRef.current !== null && prevLeagueIdRef.current !== league?.id) {
+      try {
+        const existingLogs = localStorage.getItem('message_subscription_logs');
+        const logs = existingLogs ? JSON.parse(existingLogs) : [];
+        logs.push({
+          timestamp: Date.now(),
+          leagueId: league?.id,
+          status: 'LEAGUE_ID_CHANGED',
+          channel: `league-messages:${league?.id}`,
+          from: prevLeagueIdRef.current,
+          to: league?.id,
+          reason: `League ID changed from "${prevLeagueIdRef.current}" to "${league?.id}"`,
+        });
+        const recentLogs = logs.slice(-50);
+        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+      } catch (e) {
+        console.error('[LeaguePage] Failed to log league ID change:', e);
+      }
+    }
+    prevLeagueIdRef.current = league?.id ?? null;
+  }, [league?.id]);
+  
+  // Track LeaguePage mount/unmount
+  useEffect(() => {
+    const pageId = Date.now();
+    try {
+      const existingLogs = localStorage.getItem('message_subscription_logs');
+      const logs = existingLogs ? JSON.parse(existingLogs) : [];
+      logs.push({
+        timestamp: Date.now(),
+        leagueId: league?.id,
+        status: 'LEAGUE_PAGE_MOUNT',
+        channel: `league-messages:${league?.id}`,
+        pageId,
+        tab,
+        reason: 'LeaguePage component mounted',
+      });
+      const recentLogs = logs.slice(-50);
+      localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+    } catch (e) {
+      console.error('[LeaguePage] Failed to log mount:', e);
+    }
+    
+    return () => {
+      try {
+        const existingLogs = localStorage.getItem('message_subscription_logs');
+        const logs = existingLogs ? JSON.parse(existingLogs) : [];
+        logs.push({
+          timestamp: Date.now(),
+          leagueId: league?.id,
+          status: 'LEAGUE_PAGE_UNMOUNT',
+          channel: `league-messages:${league?.id}`,
+          pageId,
+          tab,
+          reason: 'LeaguePage component unmounting',
+        });
+        const recentLogs = logs.slice(-50);
+        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+      } catch (e) {
+        console.error('[LeaguePage] Failed to log unmount:', e);
+      }
+    };
+  }, []); // Only on mount/unmount
   hookCallCountRef.current++;
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   hookCallCountRef.current++;
