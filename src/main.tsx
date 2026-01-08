@@ -1,7 +1,7 @@
 // src/main.tsx
 import "./index.css";
 import "react-chat-elements/dist/main.css";
-import React, { Suspense, lazy, useState, useEffect, useLayoutEffect } from "react";
+import React, { Suspense, lazy, useState, useEffect, useLayoutEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
 
@@ -50,6 +50,50 @@ import { loadInitialData } from "./services/initialDataLoader";
 import { bootLog } from "./lib/logEvent";
 import { supabase } from "./lib/supabase";
 import { useTheme } from "./hooks/useTheme";
+
+// Helper function to log deep link attempts to history
+function logDeepLinkAttempt(entry: {
+  success: boolean;
+  method: string;
+  originalPath?: string;
+  leagueCode?: string;
+  targetUrl?: string;
+  reason?: string;
+  [key: string]: any;
+}) {
+  try {
+    const historyKey = 'deepLink_history';
+    const existingHistory = localStorage.getItem(historyKey);
+    const history = existingHistory ? JSON.parse(existingHistory) : [];
+    
+    const logEntry = {
+      ...entry,
+      timestamp: new Date().toISOString()
+    };
+    
+    history.push(logEntry);
+    // Keep only last 50 attempts
+    const trimmedHistory = history.slice(-50);
+    localStorage.setItem(historyKey, JSON.stringify(trimmedHistory));
+    
+    // Also update last check/result for backward compatibility
+    if (entry.success && entry.targetUrl) {
+      localStorage.setItem('deepLink_debug', JSON.stringify({
+        method: entry.method,
+        originalPath: entry.originalPath,
+        leagueCode: entry.leagueCode,
+        targetUrl: entry.targetUrl,
+        timestamp: logEntry.timestamp
+      }));
+      localStorage.setItem('deepLink_result', JSON.stringify(logEntry));
+    } else if (!entry.success) {
+      localStorage.setItem('deepLink_result', JSON.stringify(logEntry));
+    }
+  } catch (e) {
+    // Ignore storage errors
+    console.warn('[DeepLink] Failed to log attempt:', e);
+  }
+}
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -151,6 +195,9 @@ function AppContent() {
   // Initialize theme on app load
   useTheme();
   
+  // Track previous location to detect changes
+  const prevLocationRef = useRef<{ pathname: string; search: string } | null>(null);
+  
   // Handle deep links from notifications (iOS native)
   // Check URL immediately - AppShell already updated window.location, but ensure React Router sees it
   useLayoutEffect(() => {
@@ -160,6 +207,43 @@ function AppContent() {
     const windowPath = window.location.pathname;
     const windowSearch = window.location.search;
     const windowHref = window.location.href;
+    
+    // Detect what changed
+    const prevLocation = prevLocationRef.current;
+    let changedFields: string[] = [];
+    if (prevLocation) {
+      if (prevLocation.pathname !== location.pathname) changedFields.push(`pathname: "${prevLocation.pathname}" → "${location.pathname}"`);
+      if (prevLocation.search !== location.search) changedFields.push(`search: "${prevLocation.search}" → "${location.search}"`);
+    } else {
+      changedFields.push('initial run');
+    }
+    prevLocationRef.current = { pathname: location.pathname, search: location.search };
+    
+    // Log to subscription logs for visibility
+    try {
+      const existingLogs = localStorage.getItem('message_subscription_logs');
+      const logs = existingLogs ? JSON.parse(existingLogs) : [];
+      logs.push({
+        timestamp: Date.now(),
+        leagueId: null,
+        status: 'DEEP_LINK_EFFECT_RUN',
+        channel: 'main.tsx',
+        changedFields,
+        location: {
+          pathname: location.pathname,
+          search: location.search,
+          windowPath,
+          windowSearch,
+        },
+        leagueCode,
+        tab,
+        reason: changedFields.length > 0 ? `Deep link effect ran - changed: ${changedFields.join(', ')}` : 'Deep link effect ran',
+      });
+      const recentLogs = logs.slice(-50);
+      localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+    } catch (e) {
+      console.error('[AppContent] Failed to log deep link effect:', e);
+    }
     
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
@@ -177,7 +261,8 @@ function AppContent() {
           leagueCode,
           tab,
           hasLeagueCode: !!leagueCode,
-          hasTab: !!tab
+          hasTab: !!tab,
+          changedFields,
         },
         timestamp: Date.now(),
         sessionId: 'debug-session',
@@ -189,7 +274,37 @@ function AppContent() {
     // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat)
     if (leagueCode && !location.pathname.startsWith('/league/')) {
       const targetPath = `/league/${leagueCode}?tab=chat`;
+      
+      // Log navigation attempt
+      try {
+        const existingLogs = localStorage.getItem('message_subscription_logs');
+        const logs = existingLogs ? JSON.parse(existingLogs) : [];
+        logs.push({
+          timestamp: Date.now(),
+          leagueId: null,
+          status: 'NAVIGATE_CALLED',
+          channel: 'main.tsx',
+          from: location.pathname + location.search,
+          to: targetPath,
+          reason: 'Legacy leagueCode format - navigating',
+        });
+        const recentLogs = logs.slice(-50);
+        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+      } catch (e) {
+        console.error('[AppContent] Failed to log navigate:', e);
+      }
+      
       navigate(targetPath, { replace: true });
+      
+      // Log successful deep link
+      logDeepLinkAttempt({
+        success: true,
+        method: 'legacy_leagueCode_param',
+        originalPath: location.pathname,
+        leagueCode,
+        targetUrl: targetPath
+      });
+      
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
         method: 'POST',
@@ -214,7 +329,37 @@ function AppContent() {
       const pathMatch = window.location.pathname.match(/^\/league\/([^/]+)$/);
       if (pathMatch) {
         const targetPath = window.location.pathname + window.location.search;
+        
+        // Log navigation attempt
+        try {
+          const existingLogs = localStorage.getItem('message_subscription_logs');
+          const logs = existingLogs ? JSON.parse(existingLogs) : [];
+          logs.push({
+            timestamp: Date.now(),
+            leagueId: null,
+            status: 'NAVIGATE_CALLED',
+            channel: 'main.tsx',
+            from: location.pathname + location.search,
+            to: targetPath,
+            reason: 'Direct URL from window.location - navigating',
+          });
+          const recentLogs = logs.slice(-50);
+          localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+        } catch (e) {
+          console.error('[AppContent] Failed to log navigate:', e);
+        }
+        
         navigate(targetPath, { replace: true });
+        
+        // Log successful deep link
+        logDeepLinkAttempt({
+          success: true,
+          method: 'direct_url_onesignal',
+          originalPath: location.pathname,
+          leagueCode: pathMatch[1],
+          targetUrl: targetPath
+        });
+        
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
           method: 'POST',
@@ -234,17 +379,19 @@ function AppContent() {
     }
     
     // If we're on league page with tab=chat, ensure it's preserved
-    if (location.pathname.startsWith('/league/') && tab === 'chat') {
-      // Already on the correct path with tab=chat
-      // League page will handle opening the chat tab
+    // BUT: Don't do anything if we're already on the correct league page
+    // The League page will handle opening the chat tab and clearing the param
+    // This prevents remount loops when League page clears ?tab=chat
+    if (location.pathname.startsWith('/league/')) {
+      // Already on league page - let League page handle tab opening
       // No navigation needed - React Router already matched the route
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          location: 'main.tsx:AppContent:useLayoutEffect:already-on-path',
-          message: 'Already on league path with tab=chat',
+          location: 'main.tsx:AppContent:useLayoutEffect:already-on-league',
+          message: 'Already on league path - skipping navigation',
           data: { path: location.pathname, tab, search: location.search },
           timestamp: Date.now(),
           sessionId: 'debug-session',
@@ -252,6 +399,7 @@ function AppContent() {
         })
       }).catch(() => {});
       // #endregion
+      return; // CRITICAL: Exit early to prevent any navigation when already on league page
     }
   }, [navigate, location.pathname, location.search]);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
@@ -606,37 +754,22 @@ function AppContent() {
           const targetUrl = `/league/${leagueData.code}?tab=chat`;
           navigate(targetUrl, { replace: true });
           
-          // Store debug info for fallback navigation
-          try {
-            localStorage.setItem('deepLink_debug', JSON.stringify({
-              method: 'fallback_recent_message',
-              originalPath: location.pathname,
-              leagueCode: leagueData.code,
-              targetUrl,
-              timestamp: new Date().toISOString()
-            }));
-            localStorage.setItem('deepLink_result', JSON.stringify({
-              success: true,
-              method: 'fallback_recent_message',
-              leagueCode: leagueData.code,
-              targetUrl,
-              timestamp: new Date().toISOString()
-            }));
-          } catch (e) {
-            // Ignore storage errors
-          }
+          // Store debug info for fallback navigation (with history)
+          logDeepLinkAttempt({
+            success: true,
+            method: 'fallback_recent_message',
+            originalPath: location.pathname,
+            leagueCode: leagueData.code,
+            targetUrl
+          });
         } else {
-          // Store failure if no recent message found
-          try {
-            localStorage.setItem('deepLink_result', JSON.stringify({
-              success: false,
-              method: 'fallback_recent_message',
-              reason: 'no_recent_message_found',
-              timestamp: new Date().toISOString()
-            }));
-          } catch (e) {
-            // Ignore storage errors
-          }
+          // Store failure if no recent message found (with history)
+          logDeepLinkAttempt({
+            success: false,
+            method: 'fallback_recent_message',
+            reason: 'no_recent_message_found',
+            originalPath: location.pathname
+          });
         }
       } catch (e) {
         console.warn('[DeepLink] Fallback check failed:', e);
