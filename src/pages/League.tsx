@@ -484,11 +484,10 @@ export default function LeaguePage() {
           }, 300);
         }
         
-        // Clear the parameter after a brief delay
-        const timer = setTimeout(() => {
-          setSearchParams({}, { replace: true });
-        }, 200);
-        return () => clearTimeout(timer);
+        // DON'T clear the parameter - it causes React Router to remount the route component
+        // The search param will naturally be cleared when user navigates away
+        // If we really need to clear it, do it after a longer delay (5+ seconds) to avoid remount loops
+        // For now, leave it - it doesn't cause any functional issues
       }
       
       // Check if tab should be predictions (gw)
@@ -509,11 +508,10 @@ export default function LeaguePage() {
           }, 300);
         }
         
-        // Clear the parameter after a brief delay
-        const timer = setTimeout(() => {
-          setSearchParams({}, { replace: true });
-        }, 200);
-        return () => clearTimeout(timer);
+        // DON'T clear the parameter - it causes React Router to remount the route component
+        // The search param will naturally be cleared when user navigates away
+        // If we really need to clear it, do it after a longer delay (5+ seconds) to avoid remount loops
+        // For now, leave it - it doesn't cause any functional issues
       }
     }
     
