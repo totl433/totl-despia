@@ -96,6 +96,13 @@ export function useMiniLeagueChat(
   const latestTimestampRef = useRef<string | null>(null);
   const messagesRef = useRef<MiniLeagueChatMessage[]>(messages);
   const subscriptionStatusRef = useRef<'idle' | 'subscribing' | 'subscribed' | 'failed'>('idle');
+  // CRITICAL: Use ref for userId to prevent subscription recreation when user object changes
+  const userIdRef = useRef<string | null | undefined>(userId);
+  
+  // Keep userIdRef in sync with userId
+  useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
 
   const applyMessages = useCallback(
     (updater: (prev: MiniLeagueChatMessage[]) => MiniLeagueChatMessage[]) => {
@@ -291,7 +298,8 @@ export function useMiniLeagueChat(
           
           // CRITICAL FIX: Skip own messages - they're handled by sendMessage
           // This prevents race condition where real-time and sendMessage both try to add the same message
-          if (payload.new.user_id === userId) {
+          // Use ref to avoid dependency on userId (prevents subscription recreation)
+          if (payload.new.user_id === userIdRef.current) {
             return; // Don't process own messages via subscription - sendMessage handles them
           }
           
@@ -390,7 +398,7 @@ export function useMiniLeagueChat(
         supabase.removeChannel(channel);
       }
     };
-  }, [miniLeagueId, enabled, autoSubscribe, userId]); // Stable dependencies only - userId needed to check own messages
+  }, [miniLeagueId, enabled, autoSubscribe]); // Stable dependencies only - userId accessed via ref to prevent recreation
 
   // SECOND: Separate effect for cache/refresh (won't trigger subscription recreation)
   useEffect(() => {
