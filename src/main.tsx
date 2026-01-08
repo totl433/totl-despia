@@ -218,7 +218,7 @@ function AppContent() {
       try {
         const existingLogs = localStorage.getItem('message_subscription_logs');
         const logs = existingLogs ? JSON.parse(existingLogs) : [];
-        logs.push({
+        const skipCheckLog = {
           timestamp: Date.now(),
           leagueId: null,
           status: 'DEEP_LINK_SKIP_CHECK',
@@ -230,9 +230,24 @@ function AppContent() {
           currentPathname,
           willSkip: isOnLeaguePage && hasPrevLocation && !pathnameChanged,
           reason: `Skip check: isOnLeaguePage=${isOnLeaguePage}, hasPrevLocation=${hasPrevLocation}, pathnameChanged=${pathnameChanged}`,
-        });
+        };
+        logs.push(skipCheckLog);
         const recentLogs = logs.slice(-50);
         localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+        
+        // Also write to debug.log file so agent can read it
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'main.tsx:useLayoutEffect:skipCheck',
+            message: 'Deep link skip check',
+            data: skipCheckLog,
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            hypothesisId: 'H7'
+          })
+        }).catch(() => {});
       } catch (e) {
         console.error('[AppContent] Failed to log skip check:', e);
       }
@@ -269,7 +284,7 @@ function AppContent() {
       try {
         const existingLogs = localStorage.getItem('message_subscription_logs');
         const logs = existingLogs ? JSON.parse(existingLogs) : [];
-        logs.push({
+        const triggerLog = {
           timestamp: Date.now(),
           leagueId: null,
           status: 'DEEP_LINK_EFFECT_TRIGGER',
@@ -282,9 +297,24 @@ function AppContent() {
             currentPathname: location.pathname,
           },
           reason: `Effect triggered: navigateChanged=${navigateChanged}, pathnameChanged=${actualPathnameChanged}, hasPrevLocation=${hasPrevLocation}`,
-        });
+        };
+        logs.push(triggerLog);
         const recentLogs = logs.slice(-50);
         localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+        
+        // Also write to debug.log file so agent can read it
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'main.tsx:useLayoutEffect:trigger',
+            message: 'Deep link effect trigger',
+            data: triggerLog,
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            hypothesisId: 'H7'
+          })
+        }).catch(() => {});
       } catch (e) {
         console.error('[AppContent] Failed to log trigger:', e);
       }
