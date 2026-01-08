@@ -769,6 +769,62 @@ function AppContent() {
   );
 }
 
+// Global error handlers - set up BEFORE React renders to catch all crashes
+// These save crashes to localStorage immediately so logs persist even if app crashes completely
+if (typeof window !== 'undefined') {
+  // Catch unhandled JavaScript errors
+  window.addEventListener('error', (event) => {
+    try {
+      const crashLog = {
+        timestamp: Date.now(),
+        errorMessage: event.message || 'Unknown error',
+        errorStack: event.error?.stack || 'No stack trace',
+        filename: event.filename || 'Unknown',
+        lineno: event.lineno || 0,
+        colno: event.colno || 0,
+        url: window.location.href,
+        userAgent: navigator.userAgent,
+        source: 'window.onerror',
+      };
+      
+      const existingCrashes = localStorage.getItem('app_crashes');
+      const crashes = existingCrashes ? JSON.parse(existingCrashes) : [];
+      crashes.push(crashLog);
+      
+      // Keep only last 50 crashes
+      const recentCrashes = crashes.slice(-50);
+      localStorage.setItem('app_crashes', JSON.stringify(recentCrashes));
+    } catch (e) {
+      console.error('[Global Error Handler] Failed to store crash:', e);
+    }
+  });
+  
+  // Catch unhandled promise rejections
+  window.addEventListener('unhandledrejection', (event) => {
+    try {
+      const crashLog = {
+        timestamp: Date.now(),
+        errorMessage: event.reason?.message || String(event.reason) || 'Unhandled promise rejection',
+        errorStack: event.reason?.stack || 'No stack trace',
+        url: window.location.href,
+        userAgent: navigator.userAgent,
+        source: 'unhandledrejection',
+        reason: event.reason?.toString() || 'Unknown',
+      };
+      
+      const existingCrashes = localStorage.getItem('app_crashes');
+      const crashes = existingCrashes ? JSON.parse(existingCrashes) : [];
+      crashes.push(crashLog);
+      
+      // Keep only last 50 crashes
+      const recentCrashes = crashes.slice(-50);
+      localStorage.setItem('app_crashes', JSON.stringify(recentCrashes));
+    } catch (e) {
+      console.error('[Global Error Handler] Failed to store promise rejection:', e);
+    }
+  });
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AuthProvider>
