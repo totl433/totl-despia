@@ -99,6 +99,42 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError, isChatTa
     };
   }, [isChatTabActive, miniLeagueId, user?.id]);
 
+  // Update presence in database when active state changes (non-blocking, fire-and-forget)
+  useEffect(() => {
+    if (!miniLeagueId || !user?.id) return;
+    
+    // Fire-and-forget: don't await, don't block
+    const updatePresence = async () => {
+      try {
+        if (isActive) {
+          // Mark as active
+          await supabase
+            .from('chat_presence')
+            .upsert(
+              {
+                league_id: miniLeagueId,
+                user_id: user.id,
+                last_seen: new Date().toISOString(),
+              },
+              { onConflict: 'league_id,user_id' }
+            );
+        } else {
+          // Remove presence when inactive (clean up immediately)
+          await supabase
+            .from('chat_presence')
+            .delete()
+            .eq('league_id', miniLeagueId)
+            .eq('user_id', user.id);
+        }
+      } catch (error) {
+        // Silently fail - presence is best effort, don't block UI
+        console.error('[Chat] Failed to update presence:', error);
+      }
+    };
+    
+    updatePresence();
+  }, [isActive, miniLeagueId, user?.id]);
+
   // Ref callback: set scroll position IMMEDIATELY when node is available
   // This happens synchronously before React finishes rendering, eliminating timing issues
   // Reset scroll when league changes
