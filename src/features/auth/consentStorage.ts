@@ -89,3 +89,4 @@ export function hasConsents(): boolean {
   return getPrivacyAccepted() && !!getCookieConsent();
 }
 
+

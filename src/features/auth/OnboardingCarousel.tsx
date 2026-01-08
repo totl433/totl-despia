@@ -61,7 +61,6 @@ const BASE_SLIDES: Slide[] = [
   },
   { type: 'privacy' },
   { type: 'cookies' },
-  { type: 'push' },
 ];
 
 const ONBOARDING_HEADING_CLASSES = 'text-4xl font-normal text-[#1C8376] leading-[1.2] mt-4';
@@ -123,21 +122,25 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
     setPushScreenCompleted(true);
   }, []);
 
-  const goToNext = useCallback(() => {
-    if (isAnimating) return;
-    const slide = slides[currentIndex];
+  const goToNext = useCallback(
+    (opts?: { nextCookieChoice?: CookieChoice }) => {
+      const effectiveCookieChoice = opts?.nextCookieChoice ?? cookieChoice;
+      if (isAnimating) return;
+      const slide = slides[currentIndex];
 
-    if (slide.type === 'privacy' && !privacyChecked) return;
-    if (slide.type === 'cookies' && !cookieChoice) return;
+      if (slide.type === 'privacy' && !privacyChecked) return;
+      if (slide.type === 'cookies' && !effectiveCookieChoice) return;
 
-    if (currentIndex < slides.length - 1) {
-      setIsAnimating(true);
-      setCurrentIndex((prev) => prev + 1);
-      setTimeout(() => setIsAnimating(false), 300);
-    } else {
-      onComplete();
-    }
-  }, [cookieChoice, currentIndex, isAnimating, onComplete, privacyChecked, slides]);
+      if (currentIndex < slides.length - 1) {
+        setIsAnimating(true);
+        setCurrentIndex((prev) => prev + 1);
+        setTimeout(() => setIsAnimating(false), 300);
+      } else {
+        onComplete();
+      }
+    },
+    [cookieChoice, currentIndex, isAnimating, onComplete, privacyChecked, slides]
+  );
 
   const goToPrev = useCallback(() => {
     if (isAnimating || currentIndex === 0) return;
@@ -191,7 +194,7 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
   const handleCookieChoice = (choice: CookieChoice, prefs?: CookiePreferences) => {
     persistCookies(choice, prefs);
     setShowManage(false);
-    goToNext();
+    goToNext({ nextCookieChoice: choice });
   };
 
   const triggerPushPrompt = useCallback(() => {
@@ -409,30 +412,6 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
                 className="w-full rounded-lg py-3 border border-slate-300 text-slate-800 font-semibold bg-white"
               >
                 Accept essential cookies only
-              </button>
-            </div>
-          </div>
-        );
-      case 'push':
-        return (
-          <div className="flex-1 flex flex-col px-6 gap-4">
-            <h1 className={ONBOARDING_HEADING_CLASSES}>Don’t miss the big moments</h1>
-            <p className="text-base text-slate-700">
-              Kick-off reminders, goals as they happen, mini-league messages and updates, so you never miss a moment.
-              You can change this anytime in settings.
-            </p>
-            <div className="mt-auto flex flex-col gap-3 pb-8">
-              <button
-                onClick={triggerPushPrompt}
-                className="w-full rounded-lg py-3 bg-[#1C8376] text-white font-semibold"
-              >
-                Allow notifications
-              </button>
-              <button
-                onClick={handlePushNotNow}
-                className="w-full rounded-lg py-3 border border-slate-300 text-slate-800 font-semibold bg-white"
-              >
-                Not now
               </button>
             </div>
           </div>
