@@ -12,7 +12,6 @@ type MiniLeagueChatBetaProps = {
   miniLeagueId?: string | null;
   memberNames?: MemberNames;
   deepLinkError?: string | null;
-  isChatTabActive?: boolean;
 };
 
 const formatTime = (value: string) =>
@@ -36,7 +35,7 @@ const resolveName = (id: string, memberNames?: MemberNames) => {
   return memberNames[id] ?? "";
 };
 
-function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError, isChatTabActive = false }: MiniLeagueChatBetaProps) {
+function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLeagueChatBetaProps) {
   const { user } = useAuth();
   
   const {
@@ -70,71 +69,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError, isChatTa
   const hasScrolledRef = useRef<boolean>(false);
   const [inputBottom, setInputBottom] = useState(0);
   
-  // Presence tracking: mark user as active when viewing chat to prevent notifications (client-side only)
-  const [isActive, setIsActive] = useState(false);
-  
-  // Track if user is actively viewing chat (tab active + window focused + page visible)
-  useEffect(() => {
-    if (!isChatTabActive || !miniLeagueId || !user?.id) {
-      setIsActive(false);
-      return;
-    }
-    
-    const updateActive = () => {
-      const visible = document.visibilityState === 'visible';
-      const focused = document.hasFocus();
-      const active = visible && focused && isChatTabActive;
-      setIsActive(active);
-    };
-    
-    updateActive();
-    document.addEventListener('visibilitychange', updateActive);
-    window.addEventListener('focus', updateActive);
-    window.addEventListener('blur', updateActive);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', updateActive);
-      window.removeEventListener('focus', updateActive);
-      window.removeEventListener('blur', updateActive);
-    };
-  }, [isChatTabActive, miniLeagueId, user?.id]);
-
-  // Update presence in database when active state changes (non-blocking, fire-and-forget)
-  useEffect(() => {
-    if (!miniLeagueId || !user?.id) return;
-    
-    // Fire-and-forget: don't await, don't block
-    const updatePresence = async () => {
-      try {
-        if (isActive) {
-          // Mark as active
-          await supabase
-            .from('chat_presence')
-            .upsert(
-              {
-                league_id: miniLeagueId,
-                user_id: user.id,
-                last_seen: new Date().toISOString(),
-              },
-              { onConflict: 'league_id,user_id' }
-            );
-        } else {
-          // Remove presence when inactive (clean up immediately)
-          await supabase
-            .from('chat_presence')
-            .delete()
-            .eq('league_id', miniLeagueId)
-            .eq('user_id', user.id);
-        }
-      } catch (error) {
-        // Silently fail - presence is best effort, don't block UI
-        console.error('[Chat] Failed to update presence:', error);
-      }
-    };
-    
-    updatePresence();
-  }, [isActive, miniLeagueId, user?.id]);
-
   // Ref callback: set scroll position IMMEDIATELY when node is available
   // This happens synchronously before React finishes rendering, eliminating timing issues
   // Reset scroll when league changes
@@ -806,7 +740,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError, isChatTa
             senderId: user.id,
             senderName,
             content: text,
-            activeUserIds: isActive ? [user.id] : [],
+            activeUserIds: [user.id],
           }),
         });
         
@@ -816,7 +750,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError, isChatTa
         console.error('[Chat] Failed to send notification:', err);
       }
     },
-    [miniLeagueId, user?.id, isActive]
+    [miniLeagueId, user?.id]
   );
 
   const handleSend = useCallback(async () => {

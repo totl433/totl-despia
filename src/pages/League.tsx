@@ -3718,7 +3718,6 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
                 miniLeagueId={league?.id ?? null}
                 memberNames={memberNameById}
                 deepLinkError={deepLinkError}
-                isChatTabActive={tab === "chat"}
               />
             </div>
           );

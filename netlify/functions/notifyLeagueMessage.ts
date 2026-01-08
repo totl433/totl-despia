@@ -135,45 +135,6 @@ export const handler: Handler = async (event) => {
     for (const uid of activeUserIds) recipientIds.delete(uid);
   }
 
-  // Exclude users who are actively viewing the chat (presence check)
-  // Use conservative 30-second window and fail gracefully
-  try {
-    const { data: activePresence, error: presenceErr } = await admin
-      .from('chat_presence')
-      .select('user_id')
-      .eq('league_id', leagueId)
-      .gt('last_seen', new Date(Date.now() - 30000).toISOString()); // Last 30 seconds (conservative)
-
-    if (!presenceErr && activePresence && activePresence.length > 0) {
-      const activeUserIdsFromPresence = new Set(activePresence.map((p: any) => p.user_id));
-      const beforeCount = recipientIds.size;
-      
-      for (const uid of activeUserIdsFromPresence) {
-        recipientIds.delete(uid);
-      }
-      
-      const excludedCount = beforeCount - recipientIds.size;
-      if (excludedCount > 0) {
-        console.log(`[notifyLeagueMessage] Excluded ${excludedCount} active chat viewers from notifications`);
-      }
-      
-      // Safety check: if ALL recipients were excluded, don't exclude anyone (fallback)
-      if (recipientIds.size === 0 && beforeCount > 0) {
-        console.warn('[notifyLeagueMessage] All recipients excluded by presence - resetting to include all (safety fallback)');
-        // Rebuild recipientIds from members
-        recipientIds = new Set<string>((members ?? []).map((r: any) => r.user_id).filter(Boolean));
-        recipientIds.delete(senderId);
-        for (const row of (mutes ?? [])) recipientIds.delete(row.user_id);
-        if (Array.isArray(activeUserIds)) {
-          for (const uid of activeUserIds) recipientIds.delete(uid);
-        }
-      }
-    }
-  } catch (presenceErr) {
-    // Non-critical: if presence query fails, continue without filtering
-    console.error('[notifyLeagueMessage] Failed to load chat presence (non-critical, continuing):', presenceErr);
-  }
-
   if (recipientIds.size === 0) {
     console.log('[notifyLeagueMessage] No eligible recipients (all excluded: sender, muted, or active)');
     return json(200, { ok: true, message: 'No eligible recipients' });
