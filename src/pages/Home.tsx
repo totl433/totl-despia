@@ -870,10 +870,22 @@ export default function HomePage() {
   useEffect(() => {
     if (!user?.id || !gw) return;
     
-    // Wait for leagues to finish loading before calling loadHomePageData
-    // Otherwise we'll call it with an empty leagues array and get no league data
+    // Wait for leagues to finish loading
+    // CRITICAL: If skipInitialFetch is true, leaguesLoading is false immediately, but leagues should be in cache
+    // However, if hasLeaguesCache is true, leagues should be loaded synchronously in useState
+    // So if we have cache but no leagues, something is wrong - but we should still proceed
+    // The real issue is: if leagues.length is 0, we'll call loadHomePageData with empty array
+    // But that's actually OK - it just means user has no leagues, and loadHomePageData handles that
+    // However, if leaguesLoading is true, we should definitely wait
     if (leaguesLoading) {
-      return;
+      return; // Still loading from API
+    }
+    
+    // If we have cache but leagues are still empty, the cache might be empty or invalid
+    // In this case, we should still call loadHomePageData (user might have no leagues)
+    // But log it for debugging
+    if (hasLeaguesCache && leagues.length === 0) {
+      console.warn('[Home] hasLeaguesCache is true but leagues.length is 0 - cache might be empty or invalid');
     }
     
     // If we already have fixtures AND leagueData from cache, we're done - pre-loader completed
@@ -886,11 +898,17 @@ export default function HomePage() {
     }
     
     // Need to load data if fixtures or leagueData is missing
+    // CRITICAL: Only call if we have leagues OR if we've confirmed there are no leagues
+    // If leagues.length is 0, we should still call it (user might have no leagues), but log it
+    if (leagues.length === 0) {
+      console.warn('[Home] Calling loadHomePageData with empty leagues array - user may have no leagues');
+    }
+    
     setBasicDataLoading(true);
     let alive = true;
     (async () => {
       try {
-        const data = await loadHomePageData(user.id, leagues.length > 0 ? leagues : [], gw);
+        const data = await loadHomePageData(user.id, leagues, gw);
         if (!alive) return;
         
         // Update ALL state at once - single render
@@ -921,7 +939,7 @@ export default function HomePage() {
     })();
     
     return () => { alive = false; };
-  }, [user?.id, gw, fixtures.length, leagues.length, Object.keys(leagueData).length, leaguesLoading]);
+  }, [user?.id, gw, fixtures.length, leagues.length, Object.keys(leagueData).length, leaguesLoading, hasLeaguesCache]);
 
   // Background refresh is now handled by loadHomePageData (checks cache freshness internally)
 
