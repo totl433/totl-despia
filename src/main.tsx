@@ -208,10 +208,11 @@ function AppContent() {
     // CRITICAL: If we're already on a league page and pathname hasn't changed, skip entirely
     // This prevents the effect from running when React Router remounts the route component
     const isOnLeaguePage = location.pathname.startsWith('/league/');
-    const pathnameChanged = prevLocationRef.current?.pathname !== location.pathname;
+    const hasPrevLocation = prevLocationRef.current !== null;
+    const pathnameChanged = hasPrevLocation && prevLocationRef.current?.pathname !== location.pathname;
     
-    if (isOnLeaguePage && !pathnameChanged) {
-      // Already on league page and pathname hasn't changed - skip effect entirely
+    if (isOnLeaguePage && hasPrevLocation && !pathnameChanged) {
+      // Already on league page, we have a previous location, and pathname hasn't changed - skip effect entirely
       // This prevents remount loops when League.tsx clears search params
       try {
         const existingLogs = localStorage.getItem('message_subscription_logs');
@@ -222,6 +223,7 @@ function AppContent() {
           status: 'DEEP_LINK_SKIP_ON_LEAGUE',
           channel: 'main.tsx',
           pathname: location.pathname,
+          prevPathname: prevLocationRef.current?.pathname,
           reason: 'Already on league page and pathname unchanged - skipping effect to prevent remount',
         });
         const recentLogs = logs.slice(-50);
