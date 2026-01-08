@@ -197,6 +197,8 @@ function AppContent() {
   
   // Track previous location to detect changes
   const prevLocationRef = useRef<{ pathname: string; search: string } | null>(null);
+  // Track if we've already processed deep link for current league page (prevents remount loops)
+  const processedLeaguePageRef = useRef<string | null>(null);
   
   // Handle deep links from notifications (iOS native)
   // Check URL immediately - AppShell already updated window.location, but ensure React Router sees it
