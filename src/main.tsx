@@ -378,11 +378,39 @@ function AppContent() {
       }
     }
     
-    // If we're on league page with tab=chat, ensure it's preserved
-    // BUT: Don't do anything if we're already on the correct league page
-    // The League page will handle opening the chat tab and clearing the param
-    // This prevents remount loops when League page clears ?tab=chat
+    // If we're on league page, check if we've already processed it
+    // This prevents the effect from re-running when League page clears ?tab=chat
     if (location.pathname.startsWith('/league/')) {
+      const currentLeaguePath = location.pathname;
+      
+      // If we've already processed this league page and only search changed, skip entirely
+      if (processedLeaguePageRef.current === currentLeaguePath && changedFields.some(f => f.includes('search'))) {
+        // Only search changed on a league page we've already processed - ignore it
+        // This prevents remount loops when League page clears ?tab=chat
+        try {
+          const existingLogs = localStorage.getItem('message_subscription_logs');
+          const logs = existingLogs ? JSON.parse(existingLogs) : [];
+          logs.push({
+            timestamp: Date.now(),
+            leagueId: null,
+            status: 'DEEP_LINK_SKIP_SEARCH_CHANGE',
+            channel: 'main.tsx',
+            pathname: location.pathname,
+            search: location.search,
+            changedFields,
+            reason: 'Already processed league page - ignoring search param change to prevent remount',
+          });
+          const recentLogs = logs.slice(-50);
+          localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+        } catch (e) {
+          console.error('[AppContent] Failed to log skip:', e);
+        }
+        return; // Skip entirely - don't even log or do anything
+      }
+      
+      // First time on this league page OR pathname changed - mark as processed
+      processedLeaguePageRef.current = currentLeaguePath;
+      
       // Already on league page - let League page handle tab opening
       // No navigation needed - React Router already matched the route
       
@@ -422,6 +450,9 @@ function AppContent() {
       // #endregion
       return; // CRITICAL: Exit early to prevent any navigation when already on league page
     }
+    
+    // Not on league page - clear the processed ref
+    processedLeaguePageRef.current = null;
   }, [navigate, location.pathname, location.search]);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [maxLoadingTimeout, setMaxLoadingTimeout] = useState(false);
