@@ -98,28 +98,6 @@ export const handler: Handler = async (event) => {
     leagueCodeError = e;
     console.error('[notifyLeagueMessage] Error getting league code:', e);
   }
-  
-  // #region agent log
-  await fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      location: 'notifyLeagueMessage.ts:handler:league-code-query',
-      message: 'League code query result',
-      data: {
-        leagueId,
-        leagueCode,
-        leagueUrl,
-        hasError: !!leagueCodeError,
-        error: leagueCodeError?.message || leagueCodeError?.code,
-        baseUrl
-      },
-      timestamp: Date.now(),
-      sessionId: 'debug-session',
-      hypothesisId: 'H5'
-    })
-  }).catch(() => {});
-  // #endregion
 
   // Get current league members
   const { data: members, error: memErr } = await admin
@@ -128,20 +106,6 @@ export const handler: Handler = async (event) => {
     .eq('league_id', leagueId);
 
   if (memErr) {
-    // #region agent log
-    await fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'notifyLeagueMessage.ts:handler:members-error',
-        message: 'Failed to load members',
-        data: { error: memErr.message, code: memErr.code },
-        timestamp: Date.now(),
-        sessionId: 'debug-session',
-        hypothesisId: 'H4'
-      })
-    }).catch(() => {});
-    // #endregion
     return json(500, { error: 'Failed to load members', details: memErr.message });
   }
   const totalMembers = (members ?? []).length;
@@ -204,17 +168,6 @@ export const handler: Handler = async (event) => {
   // Build message: title = sender, body = content (trim to reasonable length)
   const title = senderName || 'New message';
   const message = String(content).slice(0, 180);
-        leagueUrl,
-        baseUrl,
-        hasLeagueUrl: !!leagueUrl,
-        hasLeagueCode: !!leagueCode
-      },
-      timestamp: Date.now(),
-      sessionId: 'debug-session',
-      hypothesisId: 'H5'
-    })
-  }).catch(() => {});
-  // #endregion
 
   // Build OneSignal payload with deep link URL
   // iOS requires url and web_url at top level for deep linking
