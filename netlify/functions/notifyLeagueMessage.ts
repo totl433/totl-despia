@@ -135,27 +135,8 @@ export const handler: Handler = async (event) => {
     for (const uid of activeUserIds) recipientIds.delete(uid);
   }
 
-  // Exclude users who are actively viewing the chat (presence check)
-  // Query for users with recent presence (< 60 seconds ago)
-  const { data: activePresence, error: presenceErr } = await admin
-    .from('chat_presence')
-    .select('user_id')
-    .eq('league_id', leagueId)
-    .gt('last_seen', new Date(Date.now() - 60000).toISOString()); // Last 60 seconds
-
-  if (presenceErr) {
-    console.error('[notifyLeagueMessage] Failed to load chat presence (non-critical):', presenceErr);
-    // Don't fail - continue without presence filtering if query fails
-  } else if (activePresence && activePresence.length > 0) {
-    const activeUserIdsFromPresence = new Set(activePresence.map((p: any) => p.user_id));
-    for (const uid of activeUserIdsFromPresence) {
-      recipientIds.delete(uid);
-    }
-    console.log(`[notifyLeagueMessage] Excluded ${activeUserIdsFromPresence.size} active chat viewers from notifications`);
-  }
-
   if (recipientIds.size === 0) {
-    console.log('[notifyLeagueMessage] No eligible recipients (all excluded: sender, muted, active, or viewing chat)');
+    console.log('[notifyLeagueMessage] No eligible recipients (all excluded: sender, muted, or active)');
     return json(200, { ok: true, message: 'No eligible recipients' });
   }
 

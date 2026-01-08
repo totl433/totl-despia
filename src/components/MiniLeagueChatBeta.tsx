@@ -70,9 +70,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError, isChatTa
   const hasScrolledRef = useRef<boolean>(false);
   const [inputBottom, setInputBottom] = useState(0);
   
-  // Presence tracking: mark user as active when viewing chat to prevent notifications
+  // Presence tracking: mark user as active when viewing chat to prevent notifications (client-side only)
   const [isActive, setIsActive] = useState(false);
-  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // Track if user is actively viewing chat (tab active + window focused + page visible)
   useEffect(() => {
@@ -99,49 +98,6 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError, isChatTa
       window.removeEventListener('blur', updateActive);
     };
   }, [isChatTabActive, miniLeagueId, user?.id]);
-  
-  // Heartbeat: update presence in database every 30 seconds when active
-  useEffect(() => {
-    if (!isActive || !miniLeagueId || !user?.id) {
-      // Clear any existing heartbeat
-      if (heartbeatIntervalRef.current) {
-        clearInterval(heartbeatIntervalRef.current);
-        heartbeatIntervalRef.current = null;
-      }
-      return;
-    }
-    
-    // Update presence immediately when becoming active
-    const updatePresence = async () => {
-      try {
-        await supabase
-          .from('chat_presence')
-          .upsert(
-            {
-              league_id: miniLeagueId,
-              user_id: user.id,
-              last_seen: new Date().toISOString(),
-            },
-            { onConflict: 'league_id,user_id' }
-          );
-      } catch (error) {
-        // Silently fail - presence is best effort
-        console.error('[Chat] Failed to update presence:', error);
-      }
-    };
-    
-    updatePresence();
-    
-    // Set up heartbeat every 30 seconds
-    heartbeatIntervalRef.current = setInterval(updatePresence, 30000);
-    
-    return () => {
-      if (heartbeatIntervalRef.current) {
-        clearInterval(heartbeatIntervalRef.current);
-        heartbeatIntervalRef.current = null;
-      }
-    };
-  }, [isActive, miniLeagueId, user?.id]);
 
   // Ref callback: set scroll position IMMEDIATELY when node is available
   // This happens synchronously before React finishes rendering, eliminating timing issues
@@ -814,7 +770,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError, isChatTa
             senderId: user.id,
             senderName,
             content: text,
-            activeUserIds: [user.id],
+            activeUserIds: isActive ? [user.id] : [],
           }),
         });
         
@@ -824,7 +780,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError, isChatTa
         console.error('[Chat] Failed to send notification:', err);
       }
     },
-    [miniLeagueId, user?.id]
+    [miniLeagueId, user?.id, isActive]
   );
 
   const handleSend = useCallback(async () => {
