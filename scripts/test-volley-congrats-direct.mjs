@@ -12,7 +12,8 @@ import { createClient } from '@supabase/supabase-js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Load environment variables
+// Load environment variables (try .env.local first, then .env)
+dotenv.config({ path: join(__dirname, '../.env.local') });
 dotenv.config({ path: join(__dirname, '../.env') });
 
 // Try multiple env var names
@@ -82,17 +83,26 @@ async function testVolleyCongratulations() {
     let skipCount = 0;
     
     for (const league of leagues || []) {
+      console.log(`\n📋 Processing league: ${league.name} (${league.id})`);
+      
       // Get league members
       const { data: members, error: membersError } = await admin
         .from('league_members')
         .select('user_id')
         .eq('league_id', league.id);
 
-      if (membersError) continue;
+      if (membersError) {
+        console.log(`  ⏭️  Skipped: membersError - ${membersError.message}`);
+        skipCount++;
+        continue;
+      }
       if (!members || members.length < 2) {
+        console.log(`  ⏭️  Skipped: single-member league (${members?.length || 0} members)`);
         skipCount++;
         continue; // Skip single-member leagues
       }
+      
+      console.log(`  👥 Members: ${members.length}`);
 
       // Get user names for members
       const memberIds = members.map(m => m.user_id);
@@ -112,7 +122,12 @@ async function testVolleyCongratulations() {
       ]);
 
       const picks = [...(appPicksResult.data || []), ...(picksResult.data || [])];
-      if (picks.length === 0) continue;
+      console.log(`  🎯 Picks: ${picks.length} (${appPicksResult.data?.length || 0} from app_picks, ${picksResult.data?.length || 0} from gw_picks)`);
+      if (picks.length === 0) {
+        console.log(`  ⏭️  Skipped: no picks for GW ${gameweek}`);
+        skipCount++;
+        continue;
+      }
 
       // Get results for this gameweek
       const { data: resultsData, error: resultsError } = await admin
@@ -120,7 +135,13 @@ async function testVolleyCongratulations() {
         .select('fixture_index, result')
         .eq('gw', gameweek);
 
-      if (resultsError || !resultsData || resultsData.length === 0) continue;
+      if (resultsError || !resultsData || resultsData.length === 0) {
+        console.log(`  ⏭️  Skipped: ${resultsError ? `resultsError - ${resultsError.message}` : `no results for GW ${gameweek}`}`);
+        skipCount++;
+        continue;
+      }
+      
+      console.log(`  📊 Results: ${resultsData.length} fixtures`);
 
       // Build result map
       const resultMap = new Map();
@@ -159,6 +180,7 @@ async function testVolleyCongratulations() {
         .sort((a, b) => b.score - a.score || b.unicorns - a.unicorns);
 
       if (scoreArray.length === 0 || scoreArray[0].score === 0) {
+        console.log(`  ⏭️  Skipped: no winner (top score: ${scoreArray[0]?.score || 0})`);
         skipCount++;
         continue;
       }
@@ -168,19 +190,41 @@ async function testVolleyCongratulations() {
       const winners = scoreArray.filter(
         w => w.score === topScore && w.unicorns === topUnicorns
       );
+      
+      console.log(`  🏆 Top score: ${topScore} (${winners.length} winner(s))`);
 
-      // Check if already sent
-      const { data: existingMessage } = await admin
-        .from('league_messages')
-        .select('id')
-        .eq('league_id', league.id)
-        .eq('user_id', VOLLEY_USER_ID)
-        .or('content.ilike.%winner%,content.ilike.%round complete%,content.ilike.%winner is%,content.ilike.%belongs to%,content.ilike.%draw%,content.ilike.%shared honours%')
-        .limit(1);
+      // Check if already sent (improved idempotency check matching the function)
+      // FOR TESTING: Use --force flag to bypass idempotency check
+      const forceSend = process.argv.includes('--force');
+      
+      if (!forceSend) {
+        const twoDaysAgo = new Date();
+        twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+        
+        const { data: existingMessage } = await admin
+          .from('league_messages')
+          .select('id, content, created_at')
+          .eq('league_id', league.id)
+          .eq('user_id', VOLLEY_USER_ID)
+          .gte('created_at', twoDaysAgo.toISOString())
+          .or('content.ilike.%congrats to%,content.ilike.%take a bow%,content.ilike.%winner is…%,content.ilike.%belongs to%,content.ilike.%draw!%,content.ilike.%shared honours%,content.ilike.%well played%,content.ilike.%round complete%')
+          .limit(1);
 
-      if (existingMessage && existingMessage.length > 0) {
-        skipCount++;
-        continue;
+        if (existingMessage && existingMessage.length > 0) {
+          // Double-check: make sure it's not the welcome message
+          const content = existingMessage[0].content.toLowerCase();
+          const isWelcomeMessage = content.includes("i'm volley") || content.includes("i'll let you know") || content.includes("i'll share results") || content.includes("i'll handle the scoring") || content.includes("i'll keep track");
+          
+          if (!isWelcomeMessage) {
+            console.log(`  ⏭️  Skipped: already sent - "${existingMessage[0].content}"`);
+            skipCount++;
+            continue;
+          } else {
+            console.log(`  ℹ️  Found existing message but it's a welcome message, continuing...`);
+          }
+        }
+      } else {
+        console.log(`  🔄 Force mode: bypassing idempotency check`);
       }
 
       // Format winners list for draw messages
@@ -212,9 +256,9 @@ async function testVolleyCongratulations() {
           });
 
         if (insertError) {
-          console.error(`  ❌ ${league.name}: ${insertError.message}`);
+          console.error(`  ❌ ERROR: ${insertError.message}`);
         } else {
-          console.log(`  ✅ ${league.name}: "${message}"`);
+          console.log(`  ✅ SUCCESS: "${message}"`);
           successCount++;
         }
       } else if (winners.length > 1) {
@@ -232,12 +276,13 @@ async function testVolleyCongratulations() {
           });
 
         if (insertError) {
-          console.error(`  ❌ ${league.name}: ${insertError.message}`);
+          console.error(`  ❌ ERROR: ${insertError.message}`);
         } else {
-          console.log(`  ✅ ${league.name}: "${message}"`);
+          console.log(`  ✅ SUCCESS (draw): "${message}"`);
           successCount++;
         }
       } else {
+        console.log(`  ⏭️  Skipped: no winners (unexpected)`);
         skipCount++;
       }
     }

@@ -158,28 +158,29 @@ export const handler: Handler = async (event) => {
         results.push({ leagueId: league.id, leagueName: league.name, skipped: true, reason: 'no winner' });
         continue;
       }
-      
-      console.log(`[sendVolleyGwCongratulations] League ${league.name}: Top score is ${topScore} (${winners.length} winner(s))`);
 
       const topScore = scoreArray[0].score;
       const topUnicorns = scoreArray[0].unicorns;
       const winners = scoreArray.filter(
         w => w.score === topScore && w.unicorns === topUnicorns
       );
+      
+      console.log(`[sendVolleyGwCongratulations] League ${league.name}: Top score is ${topScore} (${winners.length} winner(s))`);
 
       // Check if we already sent a congratulations for this GW in this league
       // More specific check: look for messages containing gameweek-specific congratulations patterns
       // Exclude welcome messages by checking for specific congratulations patterns
-      // and created around the time results would be available (within last 7 days)
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      // Only check messages from the last 48 hours (when current gameweek would have completed)
+      // This prevents matching old messages from previous gameweeks
+      const twoDaysAgo = new Date();
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
       
       const { data: existingMessage } = await admin
         .from('league_messages')
         .select('id, content, created_at')
         .eq('league_id', league.id)
         .eq('user_id', VOLLEY_USER_ID)
-        .gte('created_at', sevenDaysAgo.toISOString())
+        .gte('created_at', twoDaysAgo.toISOString())
         .or('content.ilike.%congrats to%,content.ilike.%take a bow%,content.ilike.%winner is…%,content.ilike.%belongs to%,content.ilike.%draw!%,content.ilike.%shared honours%,content.ilike.%well played%,content.ilike.%round complete%')
         .limit(1);
 
