@@ -52,6 +52,8 @@ export const handler: Handler = async (event) => {
     const results = [];
     
     for (const league of leagues || []) {
+      console.log(`[sendVolleyGwCongratulations] Processing league: ${league.name} (${league.id})`);
+      
       // Get league members
       const { data: members, error: membersError } = await admin
         .from('league_members')
@@ -59,13 +61,17 @@ export const handler: Handler = async (event) => {
         .eq('league_id', league.id);
 
       if (membersError) {
-        results.push({ leagueId: league.id, skipped: true, reason: `membersError: ${membersError.message}` });
+        console.log(`[sendVolleyGwCongratulations] League ${league.name}: membersError - ${membersError.message}`);
+        results.push({ leagueId: league.id, leagueName: league.name, skipped: true, reason: `membersError: ${membersError.message}` });
         continue;
       }
       if (!members || members.length < 2) {
-        results.push({ leagueId: league.id, skipped: true, reason: 'single-member league' });
+        console.log(`[sendVolleyGwCongratulations] League ${league.name}: skipped - single-member league (${members?.length || 0} members)`);
+        results.push({ leagueId: league.id, leagueName: league.name, skipped: true, reason: 'single-member league' });
         continue; // Skip single-member leagues
       }
+      
+      console.log(`[sendVolleyGwCongratulations] League ${league.name}: ${members.length} members`);
 
       // Get user names for members
       const memberIds = members.map(m => m.user_id);
@@ -88,8 +94,10 @@ export const handler: Handler = async (event) => {
       ]);
 
       const picks = [...(appPicksResult.data || []), ...(picksResult.data || [])];
+      console.log(`[sendVolleyGwCongratulations] League ${league.name}: Found ${picks.length} picks (${appPicksResult.data?.length || 0} from app_picks, ${picksResult.data?.length || 0} from gw_picks)`);
       if (picks.length === 0) {
-        results.push({ leagueId: league.id, skipped: true, reason: 'no picks for this gameweek' });
+        console.log(`[sendVolleyGwCongratulations] League ${league.name}: skipped - no picks for GW ${gameweek}`);
+        results.push({ leagueId: league.id, leagueName: league.name, skipped: true, reason: 'no picks for this gameweek' });
         continue;
       }
 
@@ -100,9 +108,12 @@ export const handler: Handler = async (event) => {
         .eq('gw', gameweek);
 
       if (resultsError || !resultsData || resultsData.length === 0) {
-        results.push({ leagueId: league.id, skipped: true, reason: `resultsError: ${resultsError?.message || 'no results'}` });
+        console.log(`[sendVolleyGwCongratulations] League ${league.name}: skipped - ${resultsError ? `resultsError: ${resultsError.message}` : 'no results for GW ' + gameweek}`);
+        results.push({ leagueId: league.id, leagueName: league.name, skipped: true, reason: `resultsError: ${resultsError?.message || 'no results'}` });
         continue;
       }
+      
+      console.log(`[sendVolleyGwCongratulations] League ${league.name}: Found ${resultsData.length} results`);
 
       // Build result map
       const resultMap = new Map<string, 'H' | 'D' | 'A'>();
@@ -143,9 +154,12 @@ export const handler: Handler = async (event) => {
         .sort((a, b) => b.score - a.score || b.unicorns - a.unicorns);
 
       if (scoreArray.length === 0 || scoreArray[0].score === 0) {
-        results.push({ leagueId: league.id, skipped: true, reason: 'no winner' });
+        console.log(`[sendVolleyGwCongratulations] League ${league.name}: skipped - no winner (top score: ${scoreArray[0]?.score || 0})`);
+        results.push({ leagueId: league.id, leagueName: league.name, skipped: true, reason: 'no winner' });
         continue;
       }
+      
+      console.log(`[sendVolleyGwCongratulations] League ${league.name}: Top score is ${topScore} (${winners.length} winner(s))`);
 
       const topScore = scoreArray[0].score;
       const topUnicorns = scoreArray[0].unicorns;
@@ -175,8 +189,11 @@ export const handler: Handler = async (event) => {
         const isWelcomeMessage = content.includes("i'm volley") || content.includes("i'll let you know") || content.includes("i'll share results") || content.includes("i'll handle the scoring") || content.includes("i'll keep track");
         
         if (!isWelcomeMessage) {
-          results.push({ leagueId: league.id, skipped: true, reason: 'already sent', existingMessage: existingMessage[0].content });
+          console.log(`[sendVolleyGwCongratulations] League ${league.name}: skipped - already sent congratulations: "${existingMessage[0].content}"`);
+          results.push({ leagueId: league.id, leagueName: league.name, skipped: true, reason: 'already sent', existingMessage: existingMessage[0].content });
           continue;
+        } else {
+          console.log(`[sendVolleyGwCongratulations] League ${league.name}: Found existing message but it's a welcome message, continuing...`);
         }
       }
 
@@ -210,9 +227,11 @@ export const handler: Handler = async (event) => {
           });
 
         if (insertError) {
-          results.push({ leagueId: league.id, error: insertError.message });
+          console.log(`[sendVolleyGwCongratulations] League ${league.name}: ERROR inserting message - ${insertError.message}`);
+          results.push({ leagueId: league.id, leagueName: league.name, error: insertError.message });
         } else {
-          results.push({ leagueId: league.id, success: true, message });
+          console.log(`[sendVolleyGwCongratulations] League ${league.name}: SUCCESS - sent message: "${message}"`);
+          results.push({ leagueId: league.id, leagueName: league.name, success: true, message });
         }
       } else if (winners.length > 1) {
         // Handle draws
@@ -230,13 +249,16 @@ export const handler: Handler = async (event) => {
           });
 
         if (insertError) {
-          results.push({ leagueId: league.id, error: insertError.message });
+          console.log(`[sendVolleyGwCongratulations] League ${league.name}: ERROR inserting draw message - ${insertError.message}`);
+          results.push({ leagueId: league.id, leagueName: league.name, error: insertError.message });
         } else {
-          results.push({ leagueId: league.id, success: true, message });
+          console.log(`[sendVolleyGwCongratulations] League ${league.name}: SUCCESS - sent draw message: "${message}"`);
+          results.push({ leagueId: league.id, leagueName: league.name, success: true, message });
         }
       } else {
         // No winners (shouldn't happen due to earlier check, but just in case)
-        results.push({ leagueId: league.id, skipped: true, reason: 'no winner' });
+        console.log(`[sendVolleyGwCongratulations] League ${league.name}: skipped - no winners (unexpected)`);
+        results.push({ leagueId: league.id, leagueName: league.name, skipped: true, reason: 'no winner' });
       }
     }
 

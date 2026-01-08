@@ -107,10 +107,6 @@ function AppShell() {
   const searchParams = new URLSearchParams(window.location.search);
   const leagueCode = searchParams.get('leagueCode');
   const tab = searchParams.get('tab');
-  const currentPath = window.location.pathname;
-  const currentSearch = window.location.search;
-  const currentHref = window.location.href;
-  
   // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat)
   if (leagueCode && !window.location.pathname.startsWith('/league/')) {
     const targetUrl = `/league/${leagueCode}?tab=chat`;
@@ -263,9 +259,6 @@ function AppContent() {
     const searchParams = new URLSearchParams(window.location.search);
     const leagueCode = searchParams.get('leagueCode');
     const tab = searchParams.get('tab');
-    const windowPath = window.location.pathname;
-    const windowSearch = window.location.search;
-    const windowHref = window.location.href;
     
     // Detect what changed
     const prevLocation = prevLocationRef.current;
@@ -291,8 +284,6 @@ function AppContent() {
         location: {
           pathname: location.pathname,
           search: location.search,
-          windowPath,
-          windowSearch,
         },
         leagueCode,
         tab,
