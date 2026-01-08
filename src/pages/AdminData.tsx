@@ -23,6 +23,7 @@ export default function AdminDataPage() {
   const [fetchLogs, setFetchLogs] = useState<any[]>([]);
   const [copiedAllLogs, setCopiedAllLogs] = useState(false);
   const [messageSubscriptionLogs, setMessageSubscriptionLogs] = useState<any[]>([]);
+  const [copiedSubscriptionLogs, setCopiedSubscriptionLogs] = useState(false);
 
   // Redirect if not admin
   useEffect(() => {
@@ -156,6 +157,36 @@ export default function AdminDataPage() {
       });
     } finally {
       setCheckingDataHealth(false);
+    }
+  };
+
+  // Copy subscription logs to clipboard
+  const copySubscriptionLogs = async () => {
+    try {
+      if (messageSubscriptionLogs.length === 0) {
+        alert('No subscription logs to copy');
+        return;
+      }
+
+      const reportText = `=== SUBSCRIPTION STATUS LOGS ===
+Date: ${new Date().toISOString()}
+Total Logs: ${messageSubscriptionLogs.length}
+
+${messageSubscriptionLogs.slice().reverse().map((log: any, idx: number) => {
+        const date = new Date(log.timestamp).toISOString();
+        return `[${idx + 1}] ${date}
+  Status: ${log.status}
+  League ID: ${log.leagueId || 'N/A'}
+  Channel: ${log.channel || 'N/A'}
+`;
+      }).join('\n')}`;
+
+      await navigator.clipboard.writeText(reportText);
+      setCopiedSubscriptionLogs(true);
+      setTimeout(() => setCopiedSubscriptionLogs(false), 3000);
+    } catch (error: any) {
+      console.error('[AdminData] Failed to copy subscription logs:', error);
+      alert('Failed to copy subscription logs: ' + error.message);
     }
   };
 
@@ -495,15 +526,27 @@ ${report.dataFetches.filter((log: any) => log.table === 'league_messages' || log
                     </div>
                   </div>
                 ))}
-                <button
-                  onClick={() => {
-                    localStorage.removeItem('message_subscription_logs');
-                    setMessageSubscriptionLogs([]);
-                  }}
-                  className="w-full py-2 bg-slate-200 text-slate-700 font-medium rounded-lg text-sm"
-                >
-                  Clear Subscription Logs
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={copySubscriptionLogs}
+                    className={`flex-1 py-2 font-medium rounded-lg text-sm ${
+                      copiedSubscriptionLogs
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-[#1C8376] text-white hover:bg-[#156d62]'
+                    }`}
+                  >
+                    {copiedSubscriptionLogs ? '✅ Copied!' : '📋 Copy All Subscription Logs'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('message_subscription_logs');
+                      setMessageSubscriptionLogs([]);
+                    }}
+                    className="flex-1 py-2 bg-slate-200 text-slate-700 font-medium rounded-lg text-sm"
+                  >
+                    Clear Logs
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-600">
