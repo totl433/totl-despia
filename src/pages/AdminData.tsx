@@ -640,6 +640,16 @@ ${report.dataFetches.filter((log: any) => log.table === 'league_messages' || log
                           </pre>
                         </details>
                       )}
+                      {log.trigger && (
+                        <div className="text-purple-700 text-xs mt-1 font-semibold">
+                          Trigger: navigateChanged={String(log.trigger.navigateChanged)}, pathnameChanged={String(log.trigger.pathnameChanged)}
+                          {log.trigger.prevPathname && log.trigger.currentPathname && (
+                            <div className="text-purple-600 text-xs mt-0.5">
+                              Pathname: "{log.trigger.prevPathname}" → "{log.trigger.currentPathname}"
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {log.reason && (
                         <div className="text-orange-600 text-xs mt-1">
                           Reason: {log.reason}
