@@ -12,6 +12,7 @@ type MiniLeagueChatBetaProps = {
   miniLeagueId?: string | null;
   memberNames?: MemberNames;
   deepLinkError?: string | null;
+  isChatTabActive?: boolean;
 };
 
 const formatTime = (value: string) =>
@@ -35,7 +36,7 @@ const resolveName = (id: string, memberNames?: MemberNames) => {
   return memberNames[id] ?? "";
 };
 
-function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLeagueChatBetaProps) {
+function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError, isChatTabActive = false }: MiniLeagueChatBetaProps) {
   const { user } = useAuth();
   
   const {
@@ -69,7 +70,78 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   const hasScrolledRef = useRef<boolean>(false);
   const [inputBottom, setInputBottom] = useState(0);
   
-  // REMOVED: Presence tracking system - was causing flaky notifications
+  // Presence tracking: mark user as active when viewing chat to prevent notifications
+  const [isActive, setIsActive] = useState(false);
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  // Track if user is actively viewing chat (tab active + window focused + page visible)
+  useEffect(() => {
+    if (!isChatTabActive || !miniLeagueId || !user?.id) {
+      setIsActive(false);
+      return;
+    }
+    
+    const updateActive = () => {
+      const visible = document.visibilityState === 'visible';
+      const focused = document.hasFocus();
+      const active = visible && focused && isChatTabActive;
+      setIsActive(active);
+    };
+    
+    updateActive();
+    document.addEventListener('visibilitychange', updateActive);
+    window.addEventListener('focus', updateActive);
+    window.addEventListener('blur', updateActive);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', updateActive);
+      window.removeEventListener('focus', updateActive);
+      window.removeEventListener('blur', updateActive);
+    };
+  }, [isChatTabActive, miniLeagueId, user?.id]);
+  
+  // Heartbeat: update presence in database every 30 seconds when active
+  useEffect(() => {
+    if (!isActive || !miniLeagueId || !user?.id) {
+      // Clear any existing heartbeat
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+      return;
+    }
+    
+    // Update presence immediately when becoming active
+    const updatePresence = async () => {
+      try {
+        await supabase
+          .from('chat_presence')
+          .upsert(
+            {
+              league_id: miniLeagueId,
+              user_id: user.id,
+              last_seen: new Date().toISOString(),
+            },
+            { onConflict: 'league_id,user_id' }
+          );
+      } catch (error) {
+        // Silently fail - presence is best effort
+        console.error('[Chat] Failed to update presence:', error);
+      }
+    };
+    
+    updatePresence();
+    
+    // Set up heartbeat every 30 seconds
+    heartbeatIntervalRef.current = setInterval(updatePresence, 30000);
+    
+    return () => {
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+    };
+  }, [isActive, miniLeagueId, user?.id]);
 
   // Ref callback: set scroll position IMMEDIATELY when node is available
   // This happens synchronously before React finishes rendering, eliminating timing issues
