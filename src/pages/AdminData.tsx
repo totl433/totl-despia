@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { getDataFetchLogs, clearDataFetchLogs } from '../lib/dataFetchLogger';
 
 export default function AdminDataPage() {
-  const { user, session } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   
   // Admin check
@@ -108,28 +108,28 @@ export default function AdminDataPage() {
       }
 
       // Check live_scores
-      const { data: liveScores, error: liveScoresError } = await supabase.from('live_scores').select('id').limit(1);
+      const { error: liveScoresError } = await supabase.from('live_scores').select('id').limit(1);
       health.checks.live_scores = {
         exists: !liveScoresError,
         error: liveScoresError?.message,
       };
 
       // Check app_gw_results view
-      const { data: gwResults, error: gwResultsError } = await supabase.from('app_gw_results').select('*').limit(1);
+      const { error: gwResultsError } = await supabase.from('app_gw_results').select('*').limit(1);
       health.checks.app_gw_results = {
         exists: !gwResultsError,
         error: gwResultsError?.message,
       };
 
       // Check push_subscriptions
-      const { data: subscriptions, error: subsError } = await supabase.from('push_subscriptions').select('id').limit(1);
+      const { error: subsError } = await supabase.from('push_subscriptions').select('id').limit(1);
       health.checks.push_subscriptions = {
         exists: !subsError,
         error: subsError?.message,
       };
 
       // Check league_members
-      const { data: leagueMembers, error: membersError } = await supabase.from('league_members').select('id').limit(1);
+      const { error: membersError } = await supabase.from('league_members').select('id').limit(1);
       health.checks.league_members = {
         exists: !membersError,
         error: membersError?.message,
