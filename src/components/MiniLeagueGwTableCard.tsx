@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { useDisplayGameweek } from '../hooks/useDisplayGameweek';
 import { useLiveScores } from '../hooks/useLiveScores';
+import { useSharedGwData } from '../hooks/useSharedGwData';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
 import { getCached, setCached, CACHE_TTL } from '../lib/cache';
 import type { Fixture } from './FixtureCard';
@@ -127,27 +128,23 @@ export default function MiniLeagueGwTableCard({
     return null;
   });
   
-  // Load data from cache IMMEDIATELY on mount if available
-  // Note: Can load fixtures/results even without members (members only needed for picks)
+  // Load league-specific data (picks/submissions) from cache IMMEDIATELY on mount if available
+  // Note: Fixtures/results are now handled by shared data hook
   const loadInitialDataFromCache = (gwToCheck: number | null, leagueIdToCheck: string) => {
     if (!gwToCheck || !leagueIdToCheck) {
-      return { fixtures: [], picks: [], results: [], submissions: new Set<string>(), found: false };
+      return { picks: [], submissions: new Set<string>(), found: false };
     }
     
     try {
       const cacheKey = `ml_live_table:${leagueIdToCheck}:${gwToCheck}`;
       const cached = getCached<{
-        fixtures: Fixture[];
         picks: PickRow[];
         submissions: string[];
-        results: Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>;
       }>(cacheKey);
       
-      if (cached && cached.fixtures && cached.fixtures.length > 0) {
+      if (cached && cached.picks) {
         return {
-          fixtures: cached.fixtures,
           picks: cached.picks ?? [],
-          results: cached.results ?? [],
           submissions: new Set<string>(cached.submissions ?? []),
           found: true
         };
@@ -156,21 +153,29 @@ export default function MiniLeagueGwTableCard({
       // Cache error
     }
     
-    return { fixtures: [], picks: [], results: [], submissions: new Set<string>(), found: false };
+    return { picks: [], submissions: new Set<string>(), found: false };
   };
 
-  // Initialize state from cache IMMEDIATELY
+  // Use shared data hook for fixtures and results (automatically deduplicates requests)
+  const { fixtures: sharedFixtures, results: sharedResults, loading: sharedLoading, error: sharedError } = useSharedGwData(displayGw);
+  
+  // Initialize picks/submissions from cache IMMEDIATELY (league-specific data)
   const initialCacheData = loadInitialDataFromCache(displayGw, leagueId);
-  const [fixtures, setFixtures] = useState<Fixture[]>(initialCacheData.fixtures);
   const [picks, setPicks] = useState<PickRow[]>(initialCacheData.picks);
-  const [results, setResults] = useState<Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>>(initialCacheData.results);
   const [submittedUserIds, setSubmittedUserIds] = useState<Set<string>>(initialCacheData.submissions);
   const [rows, setRows] = useState<ResultRow[]>([]);
   const [allFixturesFinished, setAllFixturesFinished] = useState(false);
   
-  // Start with loading false if we have cache data, true otherwise
-  const [loading, setLoading] = useState(!initialCacheData.found);
+  // Use fixtures/results from shared hook
+  const fixtures = sharedFixtures;
+  const results = sharedResults;
+  
+  // Loading state: true if shared data is loading OR if we're fetching picks/submissions
+  const [picksLoading, setPicksLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Combined loading state
+  const loading = sharedLoading || picksLoading;
   
   // Track which GW we've already warned about to prevent duplicate warnings
   const warnedAboutGwRef = useRef<number | null>(null);
@@ -188,7 +193,12 @@ export default function MiniLeagueGwTableCard({
     if (displayGw && fixtures.length === 0 && !loading) {
       console.warn(`[MiniLeagueGwTableCard] No fixtures loaded for displayGw ${displayGw} - this might cause "No results" message`);
     }
-  }, [effectiveCurrentGw, displayGw, currentGwState, validatedCurrentGw, fixtures.length, loading]);
+    // Log shared data errors
+    if (sharedError) {
+      console.error(`[MiniLeagueGwTableCard] Shared data error for GW ${displayGw}:`, sharedError);
+      setError(sharedError);
+    }
+  }, [effectiveCurrentGw, displayGw, currentGwState, validatedCurrentGw, fixtures.length, loading, sharedError]);
   
   // Get live scores for the display GW
   const { liveScores: liveScoresMap } = useLiveScores(displayGw ?? undefined, undefined);
@@ -226,10 +236,10 @@ export default function MiniLeagueGwTableCard({
   useEffect(() => {
     if (mockData) {
       setDisplayGw(mockData.displayGw);
-      setFixtures(mockData.fixtures);
+      // Note: Fixtures/results come from shared hook, but mockData overrides them
+      // We'll handle mockData in the rows calculation effect instead
       setPicks(mockData.picks);
-      setResults(mockData.results);
-      setLoading(false);
+      setPicksLoading(false);
       return;
     }
 
@@ -367,27 +377,22 @@ export default function MiniLeagueGwTableCard({
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:315',message:'Early return: missing displayGw or leagueId',data:{displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
       // #endregion
-      // If displayGw is null, we're waiting for it - keep loading if we have no data
-      // If we have fixtures from cache, we can show them even without displayGw
-      if (fixtures.length === 0) {
-        setLoading(true);
-      } else {
-        setLoading(false);
-      }
+      // If displayGw is null, we're waiting for it - shared hook handles loading state
+      // Picks loading is separate
+      setPicksLoading(false);
       return;
     }
 
     // CRITICAL: Clear stale data when displayGw changes to a different GW
     // This prevents showing wrong GW data while loading correct GW data
+    // Note: Fixtures/results are handled by shared hook, only clear picks/submissions
     if (prevDisplayGwRef.current !== null && prevDisplayGwRef.current !== displayGw) {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:321',message:'displayGw changed - clearing stale data',data:{prevDisplayGw:prevDisplayGwRef.current,newDisplayGw:displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
       // #endregion
-      console.log(`[MiniLeagueGwTableCard] displayGw changed from ${prevDisplayGwRef.current} to ${displayGw}, clearing stale data`);
-      // Clear fixtures/picks/results that might be from wrong GW
-      setFixtures([]);
+      console.log(`[MiniLeagueGwTableCard] displayGw changed from ${prevDisplayGwRef.current} to ${displayGw}, clearing stale picks/submissions`);
+      // Clear picks/submissions that might be from wrong GW (fixtures/results handled by shared hook)
       setPicks([]);
-      setResults([]);
       setSubmittedUserIds(new Set());
     }
     prevDisplayGwRef.current = displayGw;
@@ -406,128 +411,124 @@ export default function MiniLeagueGwTableCard({
 
     let alive = true;
     
-    // Define fetchDataFromDb first so it can be called
-    async function fetchDataFromDb(setLoadingState: boolean = true) {
+    // Define fetchPicksFromDb - only fetches league-specific data (picks/submissions)
+    // Fixtures/results are handled by shared data hook
+    async function fetchPicksFromDb(setLoadingState: boolean = true) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:343',message:'fetchDataFromDb entry',data:{setLoadingState,displayGw,leagueId,membersLength:members?.length,alive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:343',message:'fetchPicksFromDb entry',data:{setLoadingState,displayGw,leagueId,membersLength:members?.length,alive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
       if (setLoadingState) {
-        setLoading(true);
+        setPicksLoading(true);
         setError(null);
       }
       
       try {
-        const { data: fixturesData, error: fixturesError } = await supabase
-          .from('app_fixtures')
-          .select('id, gw, fixture_index, home_name, away_name, home_team, away_team, home_code, away_code, kickoff_time, api_match_id')
-          .eq('gw', displayGw)
-          .order('fixture_index', { ascending: true });
-
-        if (fixturesError) throw fixturesError;
-        if (!alive) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:357',message:'Early return: !alive after fixtures',data:{displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-          // #endregion
-          return;
-        }
-
-        setFixtures((fixturesData as Fixture[]) ?? []);
-
-        // Fetch results first (doesn't require members)
-        const { data: resultsData, error: resultsError } = await supabase
-          .from('app_gw_results')
-          .select('gw, fixture_index, result')
-          .eq('gw', displayGw);
-
-        if (resultsError) throw resultsError;
-        if (!alive) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:368',message:'Early return: !alive after results',data:{displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-          // #endregion
-          return;
-        }
-
-        setResults((resultsData ?? []) as Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>);
-
         // Only fetch picks if we have members
         const memberIds = members?.map(m => m.id) || [];
         let picksData: any[] = [];
         let submitted = new Set<string>();
         
+        if (memberIds.length === 0) {
+          if (setLoadingState) setPicksLoading(false);
+          return;
+        }
+        
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:373',message:'Before fetching picks/submissions',data:{memberIdsLength:memberIds.length,memberIds:memberIds.slice(0,3),displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
         
-        if (memberIds.length > 0) {
-          const { data: picksDataResult, error: picksError } = await supabase
+        // Retry wrapper for picks query
+        const fetchWithRetry = async (queryFn: () => Promise<any>, maxRetries = 3, queryType?: string) => {
+          let lastError: any = null;
+          for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+              return await queryFn();
+            } catch (error: any) {
+              lastError = error;
+              if (attempt === maxRetries || error?.code === 'PGRST116') {
+                break;
+              }
+              const delay = 1000 * Math.pow(2, attempt);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          }
+          throw lastError;
+        };
+        
+        // Fetch picks with retry
+        const picksResult = await fetchWithRetry(async () => {
+          const { data, error } = await supabase
             .from('app_picks')
             .select('user_id, gw, fixture_index, pick')
             .eq('gw', displayGw)
             .in('user_id', memberIds);
+          if (error) throw error;
+          return data;
+        }, 3, 'fetchPicks');
+        
+        if (!alive) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:385',message:'Early return: !alive after picks',data:{displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+          // #endregion
+          return;
+        }
 
-          if (picksError) throw picksError;
-          if (!alive) {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:385',message:'Early return: !alive after picks',data:{displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
-            return;
-          }
+        picksData = picksResult ?? [];
+        setPicks(picksData as PickRow[]);
 
-          picksData = picksDataResult ?? [];
-          setPicks(picksData as PickRow[]);
-
-          // Fetch submissions to filter out members who didn't submit (simple query like LeaguePage)
-          const { data: submissionsData } = await supabase
+        // Fetch submissions with retry
+        const submissionsResult = await fetchWithRetry(async () => {
+          const { data, error } = await supabase
             .from('app_gw_submissions')
             .select('user_id')
             .eq('gw', displayGw)
             .in('user_id', memberIds)
             .not('submitted_at', 'is', null);
+          if (error) throw error;
+          return data;
+        }, 3, 'fetchSubmissions');
 
-          if (!alive) return;
+        if (!alive) return;
 
-          // Create Set of user IDs who submitted
-          if (submissionsData) {
-            submissionsData.forEach((s: any) => {
-              submitted.add(s.user_id);
-            });
-          }
-
-          // Simple fallback: If no submissions but picks exist, derive from picks
-          // This handles cases where submissions query returns empty but picks exist
-          if (submitted.size === 0 && picksData.length > 0) {
-            const picksForGw = picksData.filter(p => p.gw === displayGw);
-            picksForGw.forEach(p => {
-              if (memberIds.includes(p.user_id)) {
-                submitted.add(p.user_id);
-              }
-            });
-          }
-
-          if (alive) {
-            setSubmittedUserIds(submitted);
-          }
+        // Create Set of user IDs who submitted
+        if (submissionsResult) {
+          submissionsResult.forEach((s: any) => {
+            submitted.add(s.user_id);
+          });
         }
 
-        if (setLoadingState) setLoading(false);
+        // Simple fallback: If no submissions but picks exist, derive from picks
+        if (submitted.size === 0 && picksData.length > 0) {
+          const picksForGw = picksData.filter(p => p.gw === displayGw);
+          picksForGw.forEach(p => {
+            if (memberIds.includes(p.user_id)) {
+              submitted.add(p.user_id);
+            }
+          });
+        }
+
+        if (alive) {
+          setSubmittedUserIds(submitted);
+        }
+
+        if (setLoadingState) setPicksLoading(false);
         
-        // Cache the fetched data
+        // Cache only league-specific data (picks/submissions)
+        // Fixtures/results are cached by shared data service
         const cacheKey = `ml_live_table:${leagueId}:${displayGw}`;
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:416',message:'Caching fetched data',data:{cacheKey,fixturesCount:fixturesData?.length,picksCount:picksData.length,submissionsCount:submitted.size,resultsCount:resultsData?.length,displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:416',message:'Caching fetched picks/submissions',data:{cacheKey,picksCount:picksData.length,submissionsCount:submitted.size,displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
         // #endregion
         setCached(cacheKey, {
-          fixtures: fixturesData,
           picks: picksData,
           submissions: Array.from(submitted),
-          results: resultsData ?? [],
         }, CACHE_TTL.HOME);
 
       } catch (err: any) {
-        console.error('[MiniLeagueGwTableCard] Error fetching data from DB:', err);
+        console.error('[MiniLeagueGwTableCard] Error fetching picks/submissions from DB:', err);
         if (alive && setLoadingState) {
           // Provide more helpful error messages for common issues
-          let errorMessage = 'Failed to load data';
+          let errorMessage = 'Failed to load picks data';
           if (err?.message?.includes('502') || err?.message?.includes('Bad Gateway')) {
             errorMessage = 'Supabase is temporarily unavailable. Please try again in a moment.';
           } else if (err?.message?.includes('CORS') || err?.code === 'ERR_NETWORK') {
@@ -536,23 +537,24 @@ export default function MiniLeagueGwTableCard({
             errorMessage = err.message;
           }
           setError(errorMessage);
-          setLoading(false);
+          setPicksLoading(false);
         }
       }
     }
     
     // CRITICAL FIX: Always check cache for the CURRENT displayGw (not the initial one)
     // This ensures we load the correct GW data when displayGw changes
+    // Note: Fixtures/results are handled by shared hook, only check cache for picks/submissions
     const cacheData = loadInitialDataFromCache(displayGw, leagueId);
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:444',message:'Cache check result',data:{cacheFound:cacheData.found,fixturesCount:cacheData.fixtures.length,submissionsCount:cacheData.submissions.size,hasMembers,membersLength:members?.length,displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:444',message:'Cache check result',data:{cacheFound:cacheData.found,picksCount:cacheData.picks.length,submissionsCount:cacheData.submissions.size,hasMembers,membersLength:members?.length,displayGw,leagueId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
     // #endregion
-    if (cacheData.found && cacheData.fixtures.length > 0) {
-      console.log(`[MiniLeagueGwTableCard] Found cache for GW ${displayGw} - ${cacheData.fixtures.length} fixtures, ${cacheData.picks.length} picks, ${cacheData.results.length} results, ${cacheData.submissions.size} submissions`);
-      // Update state from cache (this handles both initial load and displayGw changes)
-      setFixtures(cacheData.fixtures);
+    
+    // If we have cached picks/submissions, use them
+    if (cacheData.found && cacheData.picks.length > 0) {
+      console.log(`[MiniLeagueGwTableCard] Found cache for GW ${displayGw} - ${cacheData.picks.length} picks, ${cacheData.submissions.size} submissions`);
+      // Update state from cache (fixtures/results come from shared hook)
       setPicks(cacheData.picks);
-      setResults(cacheData.results);
       
       // Simple: Use cache submissions, or derive from picks if empty
       let submittedFromCache = cacheData.submissions;
@@ -567,9 +569,8 @@ export default function MiniLeagueGwTableCard({
       }
       setSubmittedUserIds(submittedFromCache);
       
-      // CRITICAL FIX: Always set loading to false when we have cache data (fixtures/results)
-      // We can show fixtures/results even without members - picks will load when members arrive
-      setLoading(false);
+      // Picks loading is done (fixtures/results loading handled by shared hook)
+      setPicksLoading(false);
       
       // If we have members, check if picks are complete and fetch if needed
       if (hasMembers) {
@@ -581,12 +582,12 @@ export default function MiniLeagueGwTableCard({
         if (!allMembersHavePicks || cacheData.picks.length === 0) {
           // Cache is incomplete - fetch picks from DB in background
           console.log(`[MiniLeagueGwTableCard] Cache incomplete - fetching picks for ${memberIds.length} members`);
-          fetchDataFromDb(false).catch(() => {
-            // Silently fail - we already have cached fixtures/results displayed
+          fetchPicksFromDb(false).catch(() => {
+            // Silently fail - we already have cached picks displayed
           });
         } else {
           // Cache is complete - just background refresh
-          fetchDataFromDb(false).catch(() => {
+          fetchPicksFromDb(false).catch(() => {
             // Silently fail - we already have cached data displayed
           });
         }
@@ -595,32 +596,32 @@ export default function MiniLeagueGwTableCard({
       
       return () => { alive = false; };
     } else {
-      console.log(`[MiniLeagueGwTableCard] No cache found for GW ${displayGw} (found: ${cacheData.found}, fixtures: ${cacheData.fixtures.length})`);
+      console.log(`[MiniLeagueGwTableCard] No cache found for GW ${displayGw} (found: ${cacheData.found}, picks: ${cacheData.picks.length})`);
     }
     
-    // No cache - fetch from DB (only if we have members, otherwise wait)
+    // No cache - fetch picks from DB (only if we have members, otherwise wait)
+    // Note: Fixtures/results are handled by shared hook, so we only need to fetch picks/submissions
     if (!hasMembers) {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:483',message:'No members - waiting',data:{displayGw,leagueId,membersLength:members?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
       // #endregion
-      // No members yet - keep loading state, will retry when members arrive
-      // Don't set error - members might arrive soon
-      setLoading(true);
+      // No members yet - picks loading is false (fixtures/results loading handled by shared hook)
+      setPicksLoading(false);
       return () => { alive = false; };
     }
     
-    // No cache but we have members - fetch from DB
+    // No cache but we have members - fetch picks from DB
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:489',message:'No cache - fetching from DB',data:{displayGw,leagueId,membersLength:members?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:489',message:'No cache - fetching picks from DB',data:{displayGw,leagueId,membersLength:members?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
     // #endregion
-    fetchDataFromDb(true).catch((err: any) => {
-      console.error('[MiniLeagueGwTableCard] Error fetching data:', err);
+    fetchPicksFromDb(true).catch((err: any) => {
+      console.error('[MiniLeagueGwTableCard] Error fetching picks:', err);
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:491',message:'Error fetching data',data:{error:err?.message,displayGw,leagueId,alive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeagueGwTableCard.tsx:491',message:'Error fetching picks',data:{error:err?.message,displayGw,leagueId,alive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
       // #endregion
       if (alive) {
-        setError(err?.message || 'Failed to load data');
-        setLoading(false);
+        setError(err?.message || 'Failed to load picks data');
+        setPicksLoading(false);
       }
     });
     
@@ -629,7 +630,11 @@ export default function MiniLeagueGwTableCard({
 
   // Calculate rows from picks and results/live scores
   useEffect(() => {
-    if (!displayGw || fixtures.length === 0) {
+    // Handle mockData - use mock fixtures/results if provided
+    const effectiveFixtures = mockData?.fixtures ?? fixtures;
+    const effectiveResults = mockData?.results ?? results;
+    
+    if (!displayGw || effectiveFixtures.length === 0) {
       setRows([]);
       return;
     }
@@ -664,7 +669,7 @@ export default function MiniLeagueGwTableCard({
     }
 
     const outcomes = new Map<number, "H" | "D" | "A">();
-    const fixturesForGw = fixtures.filter(f => f.gw === displayGw);
+    const fixturesForGw = effectiveFixtures.filter(f => f.gw === displayGw);
 
     const hasLiveScores = fixturesForGw.some((f) => {
       const liveScore = liveScores[f.fixture_index];
@@ -685,7 +690,7 @@ export default function MiniLeagueGwTableCard({
         }
       });
     } else {
-      results.forEach((r) => {
+      effectiveResults.forEach((r) => {
         if (r.gw !== displayGw) return;
         const out = rowToOutcome(r);
         if (out) outcomes.set(r.fixture_index, out);
@@ -714,11 +719,11 @@ export default function MiniLeagueGwTableCard({
       console.warn(`[MiniLeagueGwTableCard] No rows calculated for GW ${displayGw}:`, {
         displayGw,
         effectiveCurrentGw,
-        fixturesCount: fixtures.length,
+        fixturesCount: effectiveFixtures.length,
         fixturesForGwCount: fixturesForGw.length,
         picksCount: picks.length,
         picksForGwCount: picksForGw.length,
-        resultsCount: results.length,
+        resultsCount: effectiveResults.length,
         resultsForGwCount: resultsForGw.length,
         outcomesCount: outcomes.size,
         membersCount: members.length,
@@ -731,17 +736,17 @@ export default function MiniLeagueGwTableCard({
       });
       
       // If we have fixtures but no submissions (even after deriving from picks), that's the issue
-      if (fixtures.length > 0 && effectiveSubmittedUserIds.size === 0) {
+      if (effectiveFixtures.length > 0 && effectiveSubmittedUserIds.size === 0) {
         const picksForGw = picks.filter(p => p.gw === displayGw);
         if (picksForGw.length > 0) {
           console.warn(`[MiniLeagueGwTableCard] Have ${picksForGw.length} picks for GW ${displayGw} but couldn't derive submissions - members might not match`);
         } else {
-          console.warn(`[MiniLeagueGwTableCard] Have ${fixtures.length} fixtures for GW ${displayGw} but no picks loaded yet - waiting for data`);
+          console.warn(`[MiniLeagueGwTableCard] Have ${effectiveFixtures.length} fixtures for GW ${displayGw} but no picks loaded yet - waiting for data`);
         }
       }
       
       // If we have no fixtures, that's a different issue
-      if (fixtures.length === 0) {
+      if (effectiveFixtures.length === 0) {
         console.error(`[MiniLeagueGwTableCard] CRITICAL: No fixtures loaded for GW ${displayGw}!`);
       }
     }
@@ -792,7 +797,7 @@ export default function MiniLeagueGwTableCard({
       return outcomes.has(f.fixture_index);
     });
     setAllFixturesFinished(allFinished);
-  }, [displayGw, fixtures, picks, results, members, liveScores, currentGw, submittedUserIds, loading]);
+  }, [displayGw, fixtures, picks, results, members, liveScores, currentGw, submittedUserIds, loading, mockData]);
 
   // Determine if GW is live - show LIVE badge for entire duration of LIVE state
   // (from when games start until GW ends, not just when fixtures are currently IN_PLAY)
