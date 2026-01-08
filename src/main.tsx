@@ -236,8 +236,9 @@ function AppContent() {
     
     // Log what triggered the effect
     const navigateChanged = prevNavigateRef.current !== navigate;
+    const actualPathnameChanged = hasPrevLocation && prevLocationRef.current?.pathname !== location.pathname;
     
-    if (navigateChanged || pathnameChanged) {
+    if (navigateChanged || actualPathnameChanged) {
       try {
         const existingLogs = localStorage.getItem('message_subscription_logs');
         const logs = existingLogs ? JSON.parse(existingLogs) : [];
@@ -248,11 +249,12 @@ function AppContent() {
           channel: 'main.tsx',
           trigger: {
             navigateChanged,
-            pathnameChanged,
+            pathnameChanged: actualPathnameChanged,
+            hasPrevLocation,
             prevPathname: prevLocationRef.current?.pathname,
             currentPathname: location.pathname,
           },
-          reason: `Effect triggered: navigateChanged=${navigateChanged}, pathnameChanged=${pathnameChanged}`,
+          reason: `Effect triggered: navigateChanged=${navigateChanged}, pathnameChanged=${actualPathnameChanged}, hasPrevLocation=${hasPrevLocation}`,
         });
         const recentLogs = logs.slice(-50);
         localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
@@ -514,7 +516,7 @@ function AppContent() {
     
     // Not on league page - clear the processed ref
     processedLeaguePageRef.current = null;
-  }, [navigate, location.pathname]); // Removed location.search - only check it inside effect, don't re-run when it changes
+  }, [location.pathname]); // Removed navigate and location.search - only pathname changes should trigger effect
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [maxLoadingTimeout, setMaxLoadingTimeout] = useState(false);
   const [isSwipeMode, setIsSwipeMode] = useState(false);
