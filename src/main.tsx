@@ -385,6 +385,27 @@ function AppContent() {
     if (location.pathname.startsWith('/league/')) {
       // Already on league page - let League page handle tab opening
       // No navigation needed - React Router already matched the route
+      
+      // Log early return
+      try {
+        const existingLogs = localStorage.getItem('message_subscription_logs');
+        const logs = existingLogs ? JSON.parse(existingLogs) : [];
+        logs.push({
+          timestamp: Date.now(),
+          leagueId: null,
+          status: 'DEEP_LINK_EARLY_RETURN',
+          channel: 'main.tsx',
+          pathname: location.pathname,
+          search: location.search,
+          changedFields,
+          reason: 'Already on league page - exiting early to prevent remount',
+        });
+        const recentLogs = logs.slice(-50);
+        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+      } catch (e) {
+        console.error('[AppContent] Failed to log early return:', e);
+      }
+      
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7', {
         method: 'POST',
@@ -392,7 +413,7 @@ function AppContent() {
         body: JSON.stringify({
           location: 'main.tsx:AppContent:useLayoutEffect:already-on-league',
           message: 'Already on league path - skipping navigation',
-          data: { path: location.pathname, tab, search: location.search },
+          data: { path: location.pathname, tab, search: location.search, changedFields },
           timestamp: Date.now(),
           sessionId: 'debug-session',
           hypothesisId: 'H6'

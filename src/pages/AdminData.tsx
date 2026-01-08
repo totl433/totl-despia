@@ -242,9 +242,17 @@ ${messageSubscriptionLogs.slice().reverse().map((log: any, idx: number) => {
           try {
             const debugInfo = localStorage.getItem('deepLink_debug');
             const result = localStorage.getItem('deepLink_result');
+            const historyStr = localStorage.getItem('deepLink_history');
+            const history = historyStr ? JSON.parse(historyStr) : [];
             return {
               debug: debugInfo ? JSON.parse(debugInfo) : null,
               result: result ? JSON.parse(result) : null,
+              history: history.length > 0 ? history : null,
+              summary: history.length > 0 ? {
+                total: history.length,
+                successful: history.filter((h: any) => h.success).length,
+                failed: history.filter((h: any) => !h.success).length,
+              } : null,
             };
           } catch (e) {
             return null;
@@ -277,7 +285,27 @@ ${report.dataHealth ? `Checked: ${report.dataHealth.timestamp}\nIssues: ${report
 ${report.dataFetches.map((log: any) => `[${log.timestamp}] ${log.location} - ${log.query}\n  Table: ${log.table}\n  Result: ${log.result} ${log.rowCount !== undefined ? `(${log.rowCount} rows)` : ''}${log.error ? `\n  Error: ${log.error}` : ''}`).join('\n\n')}
 
 === DEEP LINK DEBUG ===
-${report.deepLink ? JSON.stringify(report.deepLink, null, 2) : 'No deep link attempts'}
+${report.deepLink ? (() => {
+  const dl = report.deepLink;
+  let output = '';
+  if (dl.summary) {
+    output += `Summary: ${dl.summary.total} attempts (${dl.summary.successful} successful, ${dl.summary.failed} failed)\n\n`;
+  }
+  if (dl.debug) {
+    output += `Last Check:\n${JSON.stringify(dl.debug, null, 2)}\n\n`;
+  }
+  if (dl.result) {
+    output += `Last Result:\n${JSON.stringify(dl.result, null, 2)}\n\n`;
+  }
+  if (dl.history && dl.history.length > 0) {
+    output += `History (last ${Math.min(dl.history.length, 20)}):\n`;
+    dl.history.slice(-20).reverse().forEach((entry: any, idx: number) => {
+      output += `[${idx + 1}] ${entry.success ? '✅' : '❌'} ${new Date(entry.timestamp).toISOString()}\n`;
+      output += `${JSON.stringify(entry, null, 2)}\n\n`;
+    });
+  }
+  return output.trim();
+})() : 'No deep link attempts'}
 
 === NOTIFICATION LOGS ===
 ${report.notifications.length > 0 ? report.notifications.map((log: any) => `[${new Date(log.timestamp).toISOString()}] ${log.ok ? 'OK' : 'Failed'} - Sent: ${log.sent || 0}`).join('\n') : 'No notification attempts'}
@@ -558,43 +586,77 @@ ${report.dataFetches.filter((log: any) => log.table === 'league_messages' || log
                   </div>
                 </div>
                 
-                {messageSubscriptionLogs.slice(-20).reverse().map((log: any, idx: number) => (
-                  <div key={idx} className={`p-3 rounded-lg border text-xs ${
-                    log.status === 'SUBSCRIBED' 
-                      ? 'bg-emerald-50 border-emerald-200' 
-                      : log.status === 'CHANNEL_ERROR' || log.status === 'TIMED_OUT'
-                      ? 'bg-red-50 border-red-200'
-                      : log.status === 'CLOSED'
-                      ? 'bg-amber-50 border-amber-200'
-                      : 'bg-slate-50 border-slate-200'
-                  }`}>
-                    <div className="font-semibold mb-1">
-                      {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} - {log.status}
-                    </div>
-                    <div className="text-slate-600 text-xs mb-1">
-                      League: {log.leagueId?.slice(0, 8)}... | Channel: {log.channel}
-                    </div>
-                    {log.dependencies && (
-                      <div className="text-slate-500 text-xs mt-1">
-                        Dependencies: {JSON.stringify(log.dependencies)}
+                {messageSubscriptionLogs.slice(-20).reverse().map((log: any, idx: number) => {
+                  let bgColor = 'bg-slate-50';
+                  let borderColor = 'border-slate-200';
+                  
+                  if (log.status === 'SUBSCRIBED' || log.status === 'COMPONENT_MOUNT' || log.status === 'EFFECT_MOUNT' || log.status === 'LEAGUE_PAGE_MOUNT') {
+                    bgColor = 'bg-emerald-50';
+                    borderColor = 'border-emerald-200';
+                  } else if (log.status === 'CHANNEL_ERROR' || log.status === 'TIMED_OUT') {
+                    bgColor = 'bg-red-50';
+                    borderColor = 'border-red-200';
+                  } else if (log.status === 'CLOSED' || log.status === 'COMPONENT_UNMOUNT' || log.status === 'EFFECT_UNMOUNT' || log.status === 'LEAGUE_PAGE_UNMOUNT') {
+                    bgColor = 'bg-amber-50';
+                    borderColor = 'border-amber-200';
+                  } else if (log.status === 'DEEP_LINK_EFFECT_RUN' || log.status === 'DEEP_LINK_EARLY_RETURN') {
+                    bgColor = 'bg-blue-50';
+                    borderColor = 'border-blue-200';
+                  } else if (log.status === 'NAVIGATE_CALLED') {
+                    bgColor = 'bg-purple-50';
+                    borderColor = 'border-purple-200';
+                  }
+                  
+                  return (
+                    <div key={idx} className={`p-3 rounded-lg border text-xs ${bgColor} ${borderColor}`}>
+                      <div className="font-semibold mb-1">
+                        {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} - {log.status}
                       </div>
-                    )}
-                    {log.reason && (
-                      <div className="text-orange-600 text-xs mt-1">
-                        Reason: {log.reason}
-                      </div>
-                    )}
-                    {idx < messageSubscriptionLogs.slice(-20).length - 1 && (() => {
-                      const nextLog = messageSubscriptionLogs.slice(-20).reverse()[idx + 1];
-                      const timeDiff = Math.round((log.timestamp - nextLog.timestamp) / 1000);
-                      return (
-                        <div className="text-slate-400 text-xs mt-1">
-                          ⏱️ {timeDiff}s after previous event
+                      {log.leagueId && (
+                        <div className="text-slate-600 text-xs mb-1">
+                          League: {log.leagueId?.slice(0, 8)}... | Channel: {log.channel}
                         </div>
-                      );
-                    })()}
-                  </div>
-                ))}
+                      )}
+                      {log.changedFields && log.changedFields.length > 0 && (
+                        <div className="text-blue-700 text-xs mt-1 font-semibold">
+                          Changed: {Array.isArray(log.changedFields) ? log.changedFields.join(', ') : log.changedFields}
+                        </div>
+                      )}
+                      {log.location && (
+                        <div className="text-slate-500 text-xs mt-1">
+                          Path: {log.location.pathname} | Search: {log.location.search || '(empty)'}
+                        </div>
+                      )}
+                      {log.from && log.to && (
+                        <div className="text-purple-700 text-xs mt-1">
+                          Navigate: {log.from} → {log.to}
+                        </div>
+                      )}
+                      {log.dependencies && (
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-slate-500 text-xs">Dependencies</summary>
+                          <pre className="mt-1 whitespace-pre-wrap break-all text-xs bg-white p-2 rounded border">
+                            {JSON.stringify(log.dependencies, null, 2)}
+                          </pre>
+                        </details>
+                      )}
+                      {log.reason && (
+                        <div className="text-orange-600 text-xs mt-1">
+                          Reason: {log.reason}
+                        </div>
+                      )}
+                      {idx < messageSubscriptionLogs.slice(-20).length - 1 && (() => {
+                        const nextLog = messageSubscriptionLogs.slice(-20).reverse()[idx + 1];
+                        const timeDiff = Math.round((log.timestamp - nextLog.timestamp) / 1000);
+                        return (
+                          <div className="text-slate-400 text-xs mt-1">
+                            ⏱️ {timeDiff}s after previous event
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  );
+                })}
                 <div className="flex gap-2">
                   <button
                     onClick={copySubscriptionLogs}
@@ -815,8 +877,27 @@ ${report.dataFetches.filter((log: any) => log.table === 'league_messages' || log
               try {
                 const debugInfo = localStorage.getItem('deepLink_debug');
                 const result = localStorage.getItem('deepLink_result');
+                const historyStr = localStorage.getItem('deepLink_history');
+                const history = historyStr ? JSON.parse(historyStr) : [];
+                
+                // Count failed attempts
+                const failedCount = history.filter((h: any) => !h.success).length;
+                const successCount = history.filter((h: any) => h.success).length;
+                
                 return (
                   <>
+                    {/* Summary Stats */}
+                    {history.length > 0 && (
+                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-xs">
+                        <div className="font-semibold text-blue-800 mb-2">📊 Summary:</div>
+                        <div className="text-blue-700 space-y-1">
+                          <div>Total attempts: {history.length}</div>
+                          <div>✅ Successful: {successCount} | ❌ Failed: {failedCount}</div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Last Check (for backward compatibility) */}
                     {debugInfo && (
                       <div className="p-3 bg-blue-600/10 rounded-lg border border-blue-600/20 text-xs">
                         <div className="font-semibold text-blue-600 mb-2">Last Check:</div>
@@ -825,6 +906,8 @@ ${report.dataFetches.filter((log: any) => log.table === 'league_messages' || log
                         </pre>
                       </div>
                     )}
+                    
+                    {/* Last Result (for backward compatibility) */}
                     {result && (
                       <div className={`p-3 rounded-lg border text-xs ${
                         JSON.parse(result).success 
@@ -843,15 +926,45 @@ ${report.dataFetches.filter((log: any) => log.table === 'league_messages' || log
                         </pre>
                       </div>
                     )}
-                    {!debugInfo && !result && (
+                    
+                    {/* History of Attempts */}
+                    {history.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-sm text-slate-600 mb-2 font-semibold">
+                          History (last {Math.min(history.length, 20)} attempts):
+                        </div>
+                        {history.slice(-20).reverse().map((entry: any, idx: number) => (
+                          <div key={idx} className={`p-3 rounded-lg border text-xs ${
+                            entry.success 
+                              ? 'bg-emerald-50 border-emerald-200' 
+                              : 'bg-red-50 border-red-200'
+                          }`}>
+                            <div className={`font-semibold mb-1 ${
+                              entry.success ? 'text-emerald-800' : 'text-red-800'
+                            }`}>
+                              {entry.success ? '✅' : '❌ Failed'}: {new Date(entry.timestamp).toLocaleString()}
+                            </div>
+                            <pre className={`whitespace-pre-wrap break-all text-xs ${
+                              entry.success ? 'text-emerald-700' : 'text-red-700'
+                            }`}>
+                              {JSON.stringify(entry, null, 2)}
+                            </pre>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {!debugInfo && !result && history.length === 0 && (
                       <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-600">
                         No deep link attempts recorded yet. Tap a chat notification to see debug info.
                       </div>
                     )}
+                    
                     <button
                       onClick={() => {
                         localStorage.removeItem('deepLink_debug');
                         localStorage.removeItem('deepLink_result');
+                        localStorage.removeItem('deepLink_history');
                         window.location.reload();
                       }}
                       className="w-full py-2 bg-slate-200 text-slate-700 font-medium rounded-lg text-sm"
