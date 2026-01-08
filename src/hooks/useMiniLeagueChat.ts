@@ -274,7 +274,52 @@ export function useMiniLeagueChat(
   
   // FIRST: Subscription effect (separate from cache logic to prevent constant recreation)
   useEffect(() => {
+    // Log subscription effect mount with current dependencies
+    const effectId = Date.now();
+    const dependencies = {
+      miniLeagueId,
+      enabled,
+      autoSubscribe,
+      userId: userIdRef.current,
+    };
+    
+    try {
+      const existingLogs = localStorage.getItem('message_subscription_logs');
+      const logs = existingLogs ? JSON.parse(existingLogs) : [];
+      logs.push({
+        timestamp: Date.now(),
+        leagueId: miniLeagueId,
+        status: 'EFFECT_MOUNT',
+        channel: `league-messages:${miniLeagueId}`,
+        dependencies,
+        effectId,
+        reason: 'Subscription effect mounted',
+      });
+      const recentLogs = logs.slice(-50);
+      localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+    } catch (e) {
+      console.error('[useMiniLeagueChat] Failed to log effect mount:', e);
+    }
+
     if (!miniLeagueId || !enabled || !autoSubscribe) {
+      // Log early return
+      try {
+        const existingLogs = localStorage.getItem('message_subscription_logs');
+        const logs = existingLogs ? JSON.parse(existingLogs) : [];
+        logs.push({
+          timestamp: Date.now(),
+          leagueId: miniLeagueId,
+          status: 'EFFECT_SKIP',
+          channel: `league-messages:${miniLeagueId}`,
+          dependencies,
+          effectId,
+          reason: `Skipped: miniLeagueId=${!!miniLeagueId}, enabled=${enabled}, autoSubscribe=${autoSubscribe}`,
+        });
+        const recentLogs = logs.slice(-50);
+        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+      } catch (e) {
+        // Ignore
+      }
       return;
     }
 
@@ -390,12 +435,59 @@ export function useMiniLeagueChat(
       });
 
     return () => {
+      // Log cleanup with current dependencies
+      try {
+        const existingLogs = localStorage.getItem('message_subscription_logs');
+        const logs = existingLogs ? JSON.parse(existingLogs) : [];
+        logs.push({
+          timestamp: Date.now(),
+          leagueId: miniLeagueId,
+          status: 'EFFECT_UNMOUNT',
+          channel: `league-messages:${miniLeagueId}`,
+          dependencies: {
+            miniLeagueId,
+            enabled,
+            autoSubscribe,
+            userId: userIdRef.current,
+          },
+          effectId,
+          reason: 'Subscription effect unmounting (cleanup)',
+        });
+        const recentLogs = logs.slice(-50);
+        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+      } catch (e) {
+        console.error('[useMiniLeagueChat] Failed to log effect unmount:', e);
+      }
+      
       active = false;
       if (safetyFallbackTimeout) {
         clearTimeout(safetyFallbackTimeout);
       }
       if (channel) {
         supabase.removeChannel(channel);
+        // Log explicit channel removal
+        try {
+          const existingLogs = localStorage.getItem('message_subscription_logs');
+          const logs = existingLogs ? JSON.parse(existingLogs) : [];
+          logs.push({
+            timestamp: Date.now(),
+            leagueId: miniLeagueId,
+            status: 'CLOSED',
+            channel: `league-messages:${miniLeagueId}`,
+            dependencies: {
+              miniLeagueId,
+              enabled,
+              autoSubscribe,
+              userId: userIdRef.current,
+            },
+            effectId,
+            reason: 'Channel removed in cleanup',
+          });
+          const recentLogs = logs.slice(-50);
+          localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+        } catch (e) {
+          // Ignore
+        }
       }
     };
   }, [miniLeagueId, enabled, autoSubscribe]); // Stable dependencies only - userId accessed via ref to prevent recreation

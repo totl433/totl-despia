@@ -62,30 +62,40 @@ export default function AdminDataPage() {
 
   // Load crashes and fetch logs
   useEffect(() => {
-    try {
-      const storedCrashes = localStorage.getItem('app_crashes');
-      if (storedCrashes) {
-        setCrashes(JSON.parse(storedCrashes));
+    const loadLogs = () => {
+      try {
+        const storedCrashes = localStorage.getItem('app_crashes');
+        if (storedCrashes) {
+          setCrashes(JSON.parse(storedCrashes));
+        }
+      } catch (e) {
+        console.error('[AdminData] Failed to load crashes:', e);
       }
-    } catch (e) {
-      console.error('[AdminData] Failed to load crashes:', e);
-    }
 
-    try {
-      const logs = getDataFetchLogs();
-      setFetchLogs(logs);
-    } catch (e) {
-      console.error('[AdminData] Failed to load fetch logs:', e);
-    }
-
-    try {
-      const subLogs = localStorage.getItem('message_subscription_logs');
-      if (subLogs) {
-        setMessageSubscriptionLogs(JSON.parse(subLogs));
+      try {
+        const logs = getDataFetchLogs();
+        setFetchLogs(logs);
+      } catch (e) {
+        console.error('[AdminData] Failed to load fetch logs:', e);
       }
-    } catch (e) {
-      console.error('[AdminData] Failed to load subscription logs:', e);
-    }
+
+      try {
+        const subLogs = localStorage.getItem('message_subscription_logs');
+        if (subLogs) {
+          setMessageSubscriptionLogs(JSON.parse(subLogs));
+        }
+      } catch (e) {
+        console.error('[AdminData] Failed to load subscription logs:', e);
+      }
+    };
+
+    // Load initially
+    loadLogs();
+
+    // Auto-refresh every 2 seconds to show live subscription status
+    const interval = setInterval(loadLogs, 2000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Check data health
@@ -506,24 +516,83 @@ ${report.dataFetches.filter((log: any) => log.table === 'league_messages' || log
             )}
             
             <div className="text-sm text-slate-600 mb-2 mt-4">
-              Real-time subscription status (last 10):
+              Real-time subscription status (last 20):
             </div>
             {messageSubscriptionLogs.length > 0 ? (
               <div className="space-y-2">
-                {messageSubscriptionLogs.slice(-10).reverse().map((log: any, idx: number) => (
+                {/* Summary Stats */}
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-xs">
+                  <div className="font-semibold text-blue-800 mb-2">📊 Subscription Stats:</div>
+                  <div className="space-y-1 text-blue-700">
+                    <div>Total events: {messageSubscriptionLogs.length}</div>
+                    <div>
+                      SUBSCRIBED: {messageSubscriptionLogs.filter((l: any) => l.status === 'SUBSCRIBED').length} | 
+                      CLOSED: {messageSubscriptionLogs.filter((l: any) => l.status === 'CLOSED').length} |
+                      Errors: {messageSubscriptionLogs.filter((l: any) => l.status === 'CHANNEL_ERROR' || l.status === 'TIMED_OUT').length}
+                    </div>
+                    {messageSubscriptionLogs.length >= 2 && (() => {
+                      const recent = messageSubscriptionLogs.slice(-10).reverse();
+                      const cycles = [];
+                      for (let i = 0; i < recent.length - 1; i++) {
+                        if (recent[i].status === 'CLOSED' && recent[i + 1]?.status === 'SUBSCRIBED') {
+                          const timeDiff = recent[i].timestamp - recent[i + 1].timestamp;
+                          cycles.push(timeDiff);
+                        }
+                      }
+                      if (cycles.length > 0) {
+                        const avgCycle = Math.round(cycles.reduce((a, b) => a + b, 0) / cycles.length / 1000);
+                        const minCycle = Math.round(Math.min(...cycles) / 1000);
+                        const maxCycle = Math.round(Math.max(...cycles) / 1000);
+                        return (
+                          <div className="mt-1">
+                            {cycles.length > 1 ? (
+                              <>Avg cycle time: ~{avgCycle}s (min: {minCycle}s, max: {maxCycle}s)</>
+                            ) : (
+                              <>Last cycle: ~{avgCycle}s</>
+                            )}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                </div>
+                
+                {messageSubscriptionLogs.slice(-20).reverse().map((log: any, idx: number) => (
                   <div key={idx} className={`p-3 rounded-lg border text-xs ${
                     log.status === 'SUBSCRIBED' 
                       ? 'bg-emerald-50 border-emerald-200' 
                       : log.status === 'CHANNEL_ERROR' || log.status === 'TIMED_OUT'
                       ? 'bg-red-50 border-red-200'
-                      : 'bg-amber-50 border-amber-200'
+                      : log.status === 'CLOSED'
+                      ? 'bg-amber-50 border-amber-200'
+                      : 'bg-slate-50 border-slate-200'
                   }`}>
                     <div className="font-semibold mb-1">
-                      {new Date(log.timestamp).toLocaleString()} - {log.status}
+                      {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} - {log.status}
                     </div>
-                    <div className="text-slate-600 text-xs">
+                    <div className="text-slate-600 text-xs mb-1">
                       League: {log.leagueId?.slice(0, 8)}... | Channel: {log.channel}
                     </div>
+                    {log.dependencies && (
+                      <div className="text-slate-500 text-xs mt-1">
+                        Dependencies: {JSON.stringify(log.dependencies)}
+                      </div>
+                    )}
+                    {log.reason && (
+                      <div className="text-orange-600 text-xs mt-1">
+                        Reason: {log.reason}
+                      </div>
+                    )}
+                    {idx < messageSubscriptionLogs.slice(-20).length - 1 && (() => {
+                      const nextLog = messageSubscriptionLogs.slice(-20).reverse()[idx + 1];
+                      const timeDiff = Math.round((log.timestamp - nextLog.timestamp) / 1000);
+                      return (
+                        <div className="text-slate-400 text-xs mt-1">
+                          ⏱️ {timeDiff}s after previous event
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))}
                 <div className="flex gap-2">
@@ -541,10 +610,11 @@ ${report.dataFetches.filter((log: any) => log.table === 'league_messages' || log
                     onClick={() => {
                       localStorage.removeItem('message_subscription_logs');
                       setMessageSubscriptionLogs([]);
+                      window.location.reload();
                     }}
                     className="flex-1 py-2 bg-slate-200 text-slate-700 font-medium rounded-lg text-sm"
                   >
-                    Clear Logs
+                    Clear Subscription Logs
                   </button>
                 </div>
               </div>
