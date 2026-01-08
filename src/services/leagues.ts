@@ -95,6 +95,10 @@ export async function joinLeague(code: string, userId: string): Promise<{ succes
       return { success: false, error: "League is full" };
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:entry',message:'joinLeague called',data:{code,userId:userId.slice(0,8)+'...',leagueId:league.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
     // Check if user is already a member (before upsert)
     const { data: existingMember } = await supabase
       .from("league_members")
@@ -105,6 +109,10 @@ export async function joinLeague(code: string, userId: string): Promise<{ succes
 
     const isNewMember = !existingMember;
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:memberCheck',message:'Member check result',data:{leagueId:league.id,userId:userId.slice(0,8)+'...',isNewMember,hasExistingMember:!!existingMember},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
     const { error } = await supabase
       .from("league_members")
       .upsert(
@@ -113,11 +121,21 @@ export async function joinLeague(code: string, userId: string): Promise<{ succes
       );
 
     if (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:dbError',message:'Database upsert error',data:{error:error.message,leagueId:league.id,userId:userId.slice(0,8)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       return { success: false, error: error.message };
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:upsertSuccess',message:'Successfully joined league',data:{leagueId:league.id,userId:userId.slice(0,8)+'...',isNewMember},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
     // Send notification to other members if this is a new join (not just an upsert of existing member)
     if (isNewMember) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:notificationStart',message:'Starting notification flow',data:{leagueId:league.id,userId:userId.slice(0,8)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       try {
         // Get user's name from users table
         const { data: userData } = await supabase
@@ -128,8 +146,16 @@ export async function joinLeague(code: string, userId: string): Promise<{ succes
 
         const userName = userData?.name || userData?.email || 'Someone';
 
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:userDataFetched',message:'User data fetched',data:{userName,hasName:!!userData?.name,hasEmail:!!userData?.email,userId:userId.slice(0,8)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:fetchCall',message:'Calling notifyLeagueMemberJoin function',data:{leagueId:league.id,userId:userId.slice(0,8)+'...',userName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+
         // Send notification asynchronously (don't block the join)
-        fetch('/.netlify/functions/notifyLeagueMemberJoin', {
+        const response = await fetch('/.netlify/functions/notifyLeagueMemberJoin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -137,15 +163,61 @@ export async function joinLeague(code: string, userId: string): Promise<{ succes
             userId: userId,
             userName: userName,
           }),
-        }).catch((notifError) => {
-          // Log error but don't fail the join if notification fails
-          console.error('[joinLeague] Failed to send join notification:', notifError);
         });
+
+        const responseText = await response.text();
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:fetchResponse',message:'Notification function response',data:{status:response.status,ok:response.ok,bodyLength:responseText.length,bodyPreview:responseText.substring(0,200),leagueId:league.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+
+        if (!response.ok) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:fetchError',message:'Notification function returned error',data:{status:response.status,body:responseText,leagueId:league.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+          // #endregion
+          console.error('[joinLeague] Notification failed:', response.status, responseText);
+        } else {
+          try {
+            const result = JSON.parse(responseText);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:notificationResult',message:'Notification result parsed',data:{ok:result.ok,sent:result.sent,recipients:result.recipients,breakdown:result.breakdown,userResults:result.result?.user_results,errors:result.result?.errors,fullResult:result.result,leagueId:league.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+            // #endregion
+            console.log('[joinLeague] Notification result:', result);
+            
+            // Log detailed failure info if failed
+            if (result.breakdown?.failed > 0) {
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:failedDetails',message:'Notification failures detected',data:{failedCount:result.breakdown.failed,userResults:result.result?.user_results?.filter((r:any)=>r.result==='failed'),errors:result.result?.errors,leagueId:league.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+              // #endregion
+              console.error('[joinLeague] Notification failures:', {
+                failed: result.breakdown.failed,
+                userResults: result.result?.user_results?.filter((r: any) => r.result === 'failed'),
+                errors: result.result?.errors
+              });
+            }
+          } catch (parseError) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:parseError',message:'Failed to parse notification response',data:{error:String(parseError),responseText:responseText.substring(0,500),leagueId:league.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+            // #endregion
+            console.error('[joinLeague] Failed to parse notification response:', parseError);
+          }
+        }
       } catch (notifError) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:exception',message:'Exception sending notification',data:{error:String(notifError),stack:notifError?.stack?.substring(0,200),leagueId:league.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
         // Log error but don't fail the join if notification fails
         console.error('[joinLeague] Error sending notification:', notifError);
       }
+    } else {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:skipNotification',message:'Skipping notification - not a new member',data:{leagueId:league.id,userId:userId.slice(0,8)+'...',isNewMember},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
     }
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'leagues.ts:joinLeague:exit',message:'joinLeague returning success',data:{leagueId:league.id,userId:userId.slice(0,8)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
 
     return { success: true };
   } catch (error) {

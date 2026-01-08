@@ -25,6 +25,35 @@ export const handler: Handler = async (event) => {
     return json(405, { error: 'Method not allowed' });
   }
 
+  // Get base URL for constructing absolute URLs (OneSignal requires http:// or https://)
+  const getBaseUrl = () => {
+    // Try to extract from event headers
+    if (event.headers.host) {
+      const protocol = event.headers['x-forwarded-proto'] || 'https';
+      const url = `${protocol}://${event.headers.host}`;
+      console.log(`[notifyLeagueMemberJoin] Base URL from headers: ${url} (host: ${event.headers.host}, proto: ${protocol})`);
+      if (url && url.startsWith('http')) return url;
+    }
+    // Fallback to environment variable
+    const envUrl = process.env.URL || process.env.SITE_URL || process.env.DEPLOY_PRIME_URL;
+    if (envUrl && envUrl.trim()) {
+      const url = envUrl.trim();
+      console.log(`[notifyLeagueMemberJoin] Base URL from env: ${url}`);
+      if (url.startsWith('http')) return url;
+    }
+    // Default fallback (shouldn't happen in production)
+    const defaultUrl = 'https://totl-staging.netlify.app';
+    console.warn(`[notifyLeagueMemberJoin] Base URL using default fallback: ${defaultUrl}`);
+    return defaultUrl;
+  };
+  const baseUrl = getBaseUrl();
+  
+  // Ensure baseUrl is valid
+  if (!baseUrl || !baseUrl.startsWith('http')) {
+    console.error(`[notifyLeagueMemberJoin] Invalid baseUrl: ${baseUrl}`);
+    return json(500, { error: 'Failed to construct base URL', baseUrl });
+  }
+
   let body: { leagueId: string; userId: string; userName: string };
   try {
     body = JSON.parse(event.body || '{}');
@@ -90,6 +119,10 @@ export const handler: Handler = async (event) => {
       return json(500, { error: 'Failed to format event ID' });
     }
 
+    // Construct full URL for deep linking (OneSignal requires absolute URL)
+    const fullUrl = `${baseUrl}/league/${leagueCode}`;
+    console.log(`[notifyLeagueMemberJoin] Constructed URL: ${fullUrl} (baseUrl: ${baseUrl}, leagueCode: ${leagueCode})`);
+    
     // Send notifications using the unified dispatcher
     // Note: dispatchNotification handles preference filtering automatically using the catalog's preference_key
     console.log(`[notifyLeagueMemberJoin] Calling dispatchNotification for ${recipients.size} recipients`);
@@ -107,7 +140,7 @@ export const handler: Handler = async (event) => {
         userName,
         leagueName,
       },
-      url: `/league/${leagueCode}`, // Deep link to specific league page
+      url: fullUrl, // Deep link to specific league page (must be absolute URL for OneSignal)
       league_id: leagueId, // For mute checking
     });
 
