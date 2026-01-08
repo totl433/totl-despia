@@ -102,18 +102,17 @@ export default function GameweekBanner({
  }, [isLive, deadlineText]);
 
  // Live banner: light gray background with new design
- const bgColor = isLive ? '#e9f0ef' : '#e1eae9';
- const textColor = isLive ? 'text-slate-900' : 'text-slate-900';
- const subtextColor = isLive ? 'text-slate-600' : 'text-slate-600';
+ const textColor = isLive ? 'text-slate-900 dark:text-slate-100' : 'text-slate-900 dark:text-slate-100';
+ const subtextColor = isLive ? 'text-slate-600 dark:text-slate-400' : 'text-slate-600 dark:text-slate-400';
  
  const defaultMessage = isLive 
  ? 'Fixtures will be published soon.'
  : 'Fixtures will be published soon.';
  
  const displayMessage = message || defaultMessage;
-
+ 
  return (
- <div className="w-full px-4 lg:px-6 py-3 relative gameweek-banner z-40" style={{ backgroundColor: bgColor }} data-banner-height>
+ <div className={`w-full px-4 lg:px-6 py-3 relative gameweek-banner z-40 ${isLive ? 'bg-[#e9f0ef] dark:bg-slate-800' : 'bg-[#e1eae9] dark:bg-slate-800'}`} data-banner-height>
  <div className="mx-auto max-w-6xl lg:max-w-[1024px] flex items-start justify-between gap-4">
  <div className="flex flex-col gap-0 flex-1 min-w-0">
  {isLive ? (
