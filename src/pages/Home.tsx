@@ -913,10 +913,15 @@ export default function HomePage() {
     }
     
     // Need to load data if fixtures or leagueData is missing
-    // CRITICAL: Only call if we have leagues OR if we've confirmed there are no leagues
-    // If leagues.length is 0, we should still call it (user might have no leagues), but log it
-    if (leagues.length === 0) {
-      console.warn('[Home] Calling loadHomePageData with empty leagues array - user may have no leagues');
+    // CRITICAL: Only call if we have leagues OR if we've confirmed there are no leagues (hasLeaguesCache)
+    // If leagues.length is 0 but we don't have cache, we're still loading - wait
+    if (leagues.length === 0 && !hasLeaguesCache) {
+      // Still waiting for leagues to load - don't call loadHomePageData yet
+      return;
+    }
+    
+    if (leagues.length === 0 && hasLeaguesCache) {
+      console.warn('[Home] Calling loadHomePageData with empty leagues array - user has no leagues (confirmed by cache)');
     }
     
     setBasicDataLoading(true);
