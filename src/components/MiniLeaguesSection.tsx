@@ -328,7 +328,7 @@ How To Play →`}
               const batchLeagues = leagues.slice(startIdx, startIdx + 3);
               
               return (
-                <div key={batchIdx} className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm w-[320px]">
+                <div key={batchIdx} className="flex flex-col rounded-xl bg-white dark:bg-slate-800 overflow-hidden shadow-sm w-[320px]">
                   {batchLeagues.map((l, index) => {
                     const unread = unreadByLeague?.[l.id] ?? 0;
                     const cardData = memoizedCardData[l.id];
@@ -336,7 +336,7 @@ How To Play →`}
                     return (
                       <div key={l.id} className={index < batchLeagues.length - 1 ? 'relative' : ''}>
                         {index < batchLeagues.length - 1 && (
-                          <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-30 pointer-events-none" />
+                          <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 dark:bg-slate-700 z-30 pointer-events-none" />
                         )}
                         <div className="[&>div]:border-0 [&>div]:shadow-none [&>div]:rounded-none [&>div]:bg-transparent relative z-20 [&>div>a]:!p-4">
                               <MiniLeagueCard
