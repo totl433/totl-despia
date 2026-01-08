@@ -272,6 +272,9 @@ export function useMiniLeagueChat(
     applyMessagesRef.current = applyMessages;
   }, [refresh, applyMessages]);
   
+  // Track previous dependencies to detect what changed
+  const prevDepsRef = useRef<{ miniLeagueId?: string | null; enabled: boolean; autoSubscribe: boolean } | null>(null);
+  
   // FIRST: Subscription effect (separate from cache logic to prevent constant recreation)
   useEffect(() => {
     // Log subscription effect mount with current dependencies
@@ -283,6 +286,18 @@ export function useMiniLeagueChat(
       userId: userIdRef.current,
     };
     
+    // Detect what changed
+    const prevDeps = prevDepsRef.current;
+    let changedFields: string[] = [];
+    if (prevDeps) {
+      if (prevDeps.miniLeagueId !== miniLeagueId) changedFields.push(`miniLeagueId: "${prevDeps.miniLeagueId}" → "${miniLeagueId}"`);
+      if (prevDeps.enabled !== enabled) changedFields.push(`enabled: ${prevDeps.enabled} → ${enabled}`);
+      if (prevDeps.autoSubscribe !== autoSubscribe) changedFields.push(`autoSubscribe: ${prevDeps.autoSubscribe} → ${autoSubscribe}`);
+    } else {
+      changedFields.push('initial mount');
+    }
+    prevDepsRef.current = { miniLeagueId, enabled, autoSubscribe };
+    
     try {
       const existingLogs = localStorage.getItem('message_subscription_logs');
       const logs = existingLogs ? JSON.parse(existingLogs) : [];
@@ -293,7 +308,8 @@ export function useMiniLeagueChat(
         channel: `league-messages:${miniLeagueId}`,
         dependencies,
         effectId,
-        reason: 'Subscription effect mounted',
+        changedFields,
+        reason: changedFields.length > 0 ? `Subscription effect mounted - changed: ${changedFields.join(', ')}` : 'Subscription effect mounted',
       });
       const recentLogs = logs.slice(-50);
       localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));

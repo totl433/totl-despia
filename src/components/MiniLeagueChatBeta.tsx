@@ -38,13 +38,57 @@ const resolveName = (id: string, memberNames?: MemberNames) => {
 function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLeagueChatBetaProps) {
   const { user } = useAuth();
   
+  // Memoize enabled to prevent recreation on every render
+  const enabled = useMemo(() => Boolean(miniLeagueId), [miniLeagueId]);
+  
+  // Log component mount/unmount to track remounting
+  useEffect(() => {
+    const componentId = Date.now();
+    try {
+      const existingLogs = localStorage.getItem('message_subscription_logs');
+      const logs = existingLogs ? JSON.parse(existingLogs) : [];
+      logs.push({
+        timestamp: Date.now(),
+        leagueId: miniLeagueId,
+        status: 'COMPONENT_MOUNT',
+        channel: `league-messages:${miniLeagueId}`,
+        componentId,
+        props: { miniLeagueId, enabled },
+        reason: 'MiniLeagueChatBeta component mounted',
+      });
+      const recentLogs = logs.slice(-50);
+      localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+    } catch (e) {
+      console.error('[MiniLeagueChatBeta] Failed to log mount:', e);
+    }
+    
+    return () => {
+      try {
+        const existingLogs = localStorage.getItem('message_subscription_logs');
+        const logs = existingLogs ? JSON.parse(existingLogs) : [];
+        logs.push({
+          timestamp: Date.now(),
+          leagueId: miniLeagueId,
+          status: 'COMPONENT_UNMOUNT',
+          channel: `league-messages:${miniLeagueId}`,
+          componentId,
+          reason: 'MiniLeagueChatBeta component unmounting',
+        });
+        const recentLogs = logs.slice(-50);
+        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
+      } catch (e) {
+        console.error('[MiniLeagueChatBeta] Failed to log unmount:', e);
+      }
+    };
+  }, [miniLeagueId, enabled]);
+  
   const {
     messages,
     error,
     sendMessage,
   } = useMiniLeagueChat(miniLeagueId, {
     userId: user?.id,
-    enabled: Boolean(miniLeagueId),
+    enabled,
   });
 
   // listRef must be declared before useMarkMessagesRead
