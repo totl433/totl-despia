@@ -76,13 +76,18 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     hasScrolledRef.current = false;
   }, [miniLeagueId]);
   
-  // Scroll to show newest messages (for new messages after initial load)
-  // With normal column, newest messages are at bottom, so scroll to max
+  // Scroll to show newest messages (accounting for keyboard)
   const scrollToBottom = useCallback(() => {
-    if (listRef.current) {
-      const maxScrollTop = listRef.current.scrollHeight - listRef.current.clientHeight;
-      listRef.current.scrollTop = maxScrollTop;
-    }
+    if (!listRef.current) return;
+    
+    // Use requestAnimationFrame to ensure DOM is updated
+    requestAnimationFrame(() => {
+      if (!listRef.current) return;
+      
+      // Force scroll to bottom with extra buffer for keyboard
+      const maxScroll = listRef.current.scrollHeight - listRef.current.clientHeight;
+      listRef.current.scrollTop = maxScroll + 100; // Add extra buffer for keyboard
+    });
   }, []);
 
   // Load reactions for all messages
@@ -336,17 +341,24 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   const applyKeyboardLayout = useCallback(
     (keyboardHeight: number) => {
       const inputAreaHeight = inputAreaRef.current?.offsetHeight || 72;
-      
+
       if (keyboardHeight > 0) {
         const totalBottomSpace = keyboardHeight + inputAreaHeight;
         setInputBottom(keyboardHeight);
+        
         if (listRef.current) {
           const newPadding = `${totalBottomSpace + 8}px`;
           listRef.current.style.paddingBottom = newPadding;
-          // FIX: Force scroll after padding is set with double RAF for better timing
+          
+          // Force scroll after keyboard appears - use triple RAF for reliable timing
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-              scrollToBottom();
+              requestAnimationFrame(() => {
+                if (listRef.current) {
+                  const maxScroll = listRef.current.scrollHeight - listRef.current.clientHeight;
+                  listRef.current.scrollTop = maxScroll + 100; // Extra buffer for keyboard
+                }
+              });
             });
           });
         }
@@ -358,7 +370,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         }
       }
     },
-    [scrollToBottom]
+    []
   );
 
   // Keyboard detection
@@ -451,19 +463,21 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
       inputRef.current.removeAttribute('readonly');
     }
     
-    const detectAndApply = () => {
+    // Detect keyboard and scroll immediately
     const visualViewport = (window as any).visualViewport;
     if (visualViewport) {
-        const windowHeight = window.innerHeight;
-        const viewportHeight = visualViewport.height;
-        const viewportBottom = visualViewport.offsetTop + viewportHeight;
-        const keyboardHeight = Math.max(0, windowHeight - viewportBottom);
+      const windowHeight = window.innerHeight;
+      const viewportHeight = visualViewport.height;
+      const viewportBottom = visualViewport.offsetTop + viewportHeight;
+      const keyboardHeight = Math.max(0, windowHeight - viewportBottom);
+      
+      if (keyboardHeight > 0) {
         applyKeyboardLayout(keyboardHeight);
+        // Also scroll immediately when focus happens
+        setTimeout(() => scrollToBottom(), 100);
       }
-    };
+    }
     
-    setTimeout(detectAndApply, 50);
-    setTimeout(detectAndApply, 150);
     scrollToBottom();
   };
 
@@ -684,30 +698,29 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
 
 
   // Auto-scroll when new messages arrive (after initial load)
-  // With normal column, newest messages are at bottom, so scroll to max
   useEffect(() => {
-    if (messages.length > 0 && listRef.current) {
-      // Mark as scrolled after first message load
-      if (!hasScrolledRef.current) {
-        hasScrolledRef.current = true;
-      }
-      // With normal column, newest messages are at bottom, so scroll to max
+    if (messages.length === 0) return;
+    
+    // Mark as scrolled after first message load
+    if (!hasScrolledRef.current) {
+      hasScrolledRef.current = true;
+    }
+    
+    // Scroll to bottom with keyboard awareness
+    requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (listRef.current) {
           const scrollHeight = listRef.current.scrollHeight;
           const clientHeight = listRef.current.clientHeight;
-          const maxScrollTop = scrollHeight - clientHeight;
           const isScrollable = scrollHeight > clientHeight;
           
-          
-          // Only scroll if content is scrollable (long threads)
-          // Short threads will naturally be at top with flex-start
           if (isScrollable) {
-            listRef.current.scrollTop = maxScrollTop;
+            // Force scroll with extra buffer for keyboard
+            listRef.current.scrollTop = scrollHeight + 200;
           }
         }
       });
-    }
+    });
   }, [messages.length, messages]);
 
   const notifyRecipients = useCallback(

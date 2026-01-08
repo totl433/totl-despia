@@ -326,64 +326,37 @@ export function useMiniLeagueChat(
           if (!active) return;
           
           try {
-            // Fetch full message with reply data using foreign key
-            const { data: fullMessage, error: fetchError } = await supabase
-              .from("league_messages")
-              .select(`
-                id, 
-                league_id, 
-                user_id, 
-                content, 
-                created_at,
-                reply_to_message_id,
-                reply_to:league_messages!reply_to_message_id(id, content, user_id)
-              `)
-              .eq("id", payload.new.id)
-              .single();
+            // Use payload.new directly - it already has all message data (INSTANT!)
+            const incomingMessage = payload.new;
             
-            // Log real-time message fetch
-            logDataFetch('useMiniLeagueChat', 'Fetch real-time message', 'league_messages', { data: fullMessage, error: fetchError }, { leagueId: miniLeagueId, messageId: payload.new.id, fromSubscription: true });
-            
-            if (fetchError) {
-              console.error('[useMiniLeagueChat] Error fetching full message:', fetchError);
-              // Fallback to payload data
-              const incoming = normalizeMessage(payload.new);
-              applyMessagesRef.current?.((prev) => {
-                if (!prev.some(msg => msg.id === incoming.id)) {
-                  return dedupeAndSort([...prev, incoming]);
-                }
-                return prev;
-              });
-              return;
-            }
-            
-            if (fullMessage) {
-              // If foreign key didn't work, fetch reply data manually
-              if (fullMessage.reply_to_message_id && (!fullMessage.reply_to || Array.isArray(fullMessage.reply_to))) {
-                const { data: replyMessage } = await supabase
-                  .from("league_messages")
-                  .select("id, content, user_id")
-                  .eq("id", fullMessage.reply_to_message_id)
-                  .single();
-                
-                if (replyMessage) {
-                  (fullMessage as any).reply_to = replyMessage;
-                } else {
-                  (fullMessage as any).reply_to = null;
-                }
-              }
+            // Only fetch reply data if this message is a reply
+            if (incomingMessage.reply_to_message_id) {
+              const { data: replyMessage } = await supabase
+                .from("league_messages")
+                .select("id, content, user_id")
+                .eq("id", incomingMessage.reply_to_message_id)
+                .single();
               
-              const incoming = normalizeMessage(fullMessage);
-              applyMessagesRef.current?.((prev) => {
-                if (!prev.some(msg => msg.id === incoming.id)) {
-                  return dedupeAndSort([...prev, incoming]);
-                }
-                return prev;
-              });
+              if (replyMessage) {
+                (incomingMessage as any).reply_to = replyMessage;
+              } else {
+                (incomingMessage as any).reply_to = null;
+              }
+            } else {
+              (incomingMessage as any).reply_to = null;
             }
+            
+            // Normalize and add message immediately
+            const incoming = normalizeMessage(incomingMessage);
+            applyMessagesRef.current?.((prev) => {
+              if (!prev.some(msg => msg.id === incoming.id)) {
+                return dedupeAndSort([...prev, incoming]);
+              }
+              return prev;
+            });
           } catch (err) {
             console.error('[useMiniLeagueChat] Error processing real-time message:', err);
-            // Fallback: add message from payload
+            // Fallback: add message from payload even if reply fetch fails
             try {
               const incoming = normalizeMessage(payload.new);
               applyMessagesRef.current?.((prev) => {
@@ -436,14 +409,6 @@ export function useMiniLeagueChat(
           }, 2000);
         }
       });
-
-    // Safety fallback: if subscription doesn't succeed within 2 seconds, refresh
-    safetyFallbackTimeout = setTimeout(() => {
-      if (active && subscriptionStatusRef.current !== 'subscribed') {
-        console.warn('[useMiniLeagueChat] Subscription not ready, triggering safety refresh');
-        refreshRef.current?.().catch(() => {});
-      }
-    }, 2000);
 
     return () => {
       active = false;
