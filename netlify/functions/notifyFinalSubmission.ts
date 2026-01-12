@@ -39,8 +39,10 @@ function getBaseUrl(): string {
   if (process.env.URL || process.env.SITE_URL) {
     return (process.env.URL || process.env.SITE_URL || '').trim();
   }
-  // Fallback for local dev
-  return 'https://totl-staging.netlify.app';
+  // Fallback for local dev (shouldn't happen in production)
+  const defaultUrl = 'https://totl-staging.netlify.app';
+  console.warn(`[notifyFinalSubmission] Base URL using default fallback: ${defaultUrl}`);
+  return defaultUrl;
 }
 
 /**

@@ -181,13 +181,17 @@ export async function signUpWithPassword(
         signal: controller.signal,
       });
     } catch (localError: any) {
-      // If local fetch fails, try production URL (for local dev without netlify dev)
+      // If local fetch fails, try fallback URL (staging for localhost, current origin for production)
       if (localError.name === 'TypeError' || localError.name === 'AbortError') {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useSupabaseAuth.ts:125',message:'Local function failed, trying production',data:{trimmedEmail},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v3',hypothesisId:'FIX3'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useSupabaseAuth.ts:125',message:'Local function failed, trying fallback',data:{trimmedEmail},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v3',hypothesisId:'FIX3'})}).catch(()=>{});
         // #endregion
-        console.warn('[signUpWithPassword] Local function unavailable, trying production URL');
-        response = await fetch('https://totl-staging.netlify.app/.netlify/functions/checkEmailAvailable', {
+        const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+        const fallbackUrl = (hostname === 'localhost' || hostname === '127.0.0.1')
+          ? 'https://totl-staging.netlify.app/.netlify/functions/checkEmailAvailable'
+          : `${window.location.origin}/.netlify/functions/checkEmailAvailable`;
+        console.warn('[signUpWithPassword] Local function unavailable, trying fallback URL:', fallbackUrl);
+        response = await fetch(fallbackUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: trimmedEmail }),
@@ -231,14 +235,19 @@ export async function signUpWithPassword(
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useSupabaseAuth.ts:200',message:'Local function 404, trying production URL',data:{trimmedEmail},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v4',hypothesisId:'FIX4'})}).catch(()=>{});
       // #endregion
-      console.warn('[signUpWithPassword] Local function unavailable (404), trying production URL');
+      console.warn('[signUpWithPassword] Local function unavailable (404), trying fallback URL');
       
       try {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useSupabaseAuth.ts:205',message:'BEFORE production fetch',data:{trimmedEmail},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v5',hypothesisId:'FIX5'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useSupabaseAuth.ts:205',message:'BEFORE fallback fetch',data:{trimmedEmail},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix-v5',hypothesisId:'FIX5'})}).catch(()=>{});
         // #endregion
         
-        const prodResponse = await fetch('https://totl-staging.netlify.app/.netlify/functions/checkEmailAvailable', {
+        const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+        const fallbackUrl = (hostname === 'localhost' || hostname === '127.0.0.1')
+          ? 'https://totl-staging.netlify.app/.netlify/functions/checkEmailAvailable'
+          : `${window.location.origin}/.netlify/functions/checkEmailAvailable`;
+        
+        const prodResponse = await fetch(fallbackUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: trimmedEmail }),

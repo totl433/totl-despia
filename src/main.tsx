@@ -4,6 +4,7 @@ import "react-chat-elements/dist/main.css";
 import React, { Suspense, lazy, useState, useEffect, useLayoutEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
+import { isWebBrowser } from "./lib/platform";
 
 // Removed addEventListener interceptor - it was breaking all button clicks
 
@@ -45,6 +46,7 @@ import { useAppLifecycle } from "./hooks/useAppLifecycle";
 import LoadingScreen from "./components/LoadingScreen";
 import { PageLoader } from "./components/PageLoader";
 import ScrollToTop from "./components/ScrollToTop";
+import CookieConsent from "./components/CookieConsent";
 // import { isLoadEverythingFirstEnabled } from "./lib/featureFlags"; // Unused - feature flag checked inline
 import { loadInitialData } from "./services/initialDataLoader";
 import { bootLog } from "./lib/logEvent";
@@ -835,6 +837,9 @@ function AppContent() {
 
   return (
     <>
+      {/* Cookie Consent Banner - Web only (not in native app) */}
+      <CookieConsent />
+      
       {/* Desktop Navigation Sidebar - only on desktop (1024px+) */}
       {showDesktopNav && (
         <ErrorBoundary fallback={null}>
@@ -900,7 +905,7 @@ function AppContent() {
               <Route path="/home-experimental" element={<RequireAuth><ErrorBoundary><HomeExperimental /></ErrorBoundary></RequireAuth>} />
               <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
               <Route path="/profile/edit-avatar" element={<RequireAuth><EditAvatarPage /></RequireAuth>} />
-              <Route path="/profile/notifications" element={<RequireAuth><NotificationCentrePage /></RequireAuth>} />
+              <Route path="/profile/notifications" element={<RequireAuth>{isWebBrowser() ? <Navigate to="/profile" replace /> : <NotificationCentrePage />}</RequireAuth>} />
               <Route path="/profile/email-preferences" element={<RequireAuth><EmailPreferencesPage /></RequireAuth>} />
               <Route path="/profile/stats" element={<RequireAuth><StatsPage /></RequireAuth>} />
               <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />

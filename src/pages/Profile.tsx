@@ -7,6 +7,7 @@ import { ProfileHeader } from '../components/profile/ProfileHeader';
 import { AccountMenu } from '../components/profile/AccountMenu';
 import { PageHeader } from '../components/PageHeader';
 import ThemeToggle from '../components/ThemeToggle';
+import { isWebBrowser } from '../lib/platform';
 
 // Profile page with push notification diagnostics
 
@@ -112,8 +113,10 @@ export default function Profile() {
   }
 
   // Menu items with icons (Stats removed - now has its own section)
+  // Hide Notification Centre on web browsers (only show in native app)
   const menuItems = [
-    {
+    // Only show Notification Centre in native app (not on web)
+    ...(isWebBrowser() ? [] : [{
       to: '/profile/notifications',
       icon: (
         <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -121,7 +124,7 @@ export default function Profile() {
         </svg>
       ),
       label: 'Notification Centre',
-    },
+    }]),
     {
       to: '/profile/email-preferences',
       icon: (

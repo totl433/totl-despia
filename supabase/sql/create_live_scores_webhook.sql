@@ -22,8 +22,8 @@ $$;
 CREATE OR REPLACE FUNCTION public.notify_live_scores_webhook()
 RETURNS TRIGGER AS $$
 DECLARE
-  -- V2 webhook URL - update this if deploying to production
-  webhook_url TEXT := 'https://totl-staging.netlify.app/.netlify/functions/sendScoreNotificationsWebhookV2';
+  -- V2 webhook URL - points to production (playtotl.com)
+  webhook_url TEXT := 'https://playtotl.com/.netlify/functions/sendScoreNotificationsWebhookV2';
   payload JSONB;
   request_id BIGINT;
 BEGIN

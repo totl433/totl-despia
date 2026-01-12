@@ -42,8 +42,10 @@ export const handler: Handler = async (event) => {
     if (process.env.URL || process.env.SITE_URL) {
       return (process.env.URL || process.env.SITE_URL || '').trim();
     }
-    // Default fallback
-    return 'https://totl-staging.netlify.app';
+    // Default fallback (only for local dev - shouldn't happen in production)
+    const defaultUrl = 'https://totl-staging.netlify.app';
+    console.warn(`[sendPredictionReminder] Base URL using default fallback: ${defaultUrl}`);
+    return defaultUrl;
   };
   const baseUrl = getBaseUrl();
 

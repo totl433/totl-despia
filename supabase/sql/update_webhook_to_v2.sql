@@ -6,8 +6,8 @@
 CREATE OR REPLACE FUNCTION public.notify_live_scores_webhook()
 RETURNS TRIGGER AS $$
 DECLARE
-  -- V2 webhook URL - uses new dispatcher system with idempotency
-  webhook_url TEXT := 'https://totl-staging.netlify.app/.netlify/functions/sendScoreNotificationsWebhookV2';
+  -- V2 webhook URL - points to production (playtotl.com), uses new dispatcher system with idempotency
+  webhook_url TEXT := 'https://playtotl.com/.netlify/functions/sendScoreNotificationsWebhookV2';
   payload JSONB;
   request_id BIGINT;
 BEGIN
@@ -44,7 +44,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- you need to update the webhook URL manually in the Dashboard:
 -- 1. Go to Supabase Dashboard → Database → Webhooks
 -- 2. Find "live_scores_notifications" webhook
--- 3. Edit URL to: https://totl-staging.netlify.app/.netlify/functions/sendScoreNotificationsWebhookV2
+-- 3. Edit URL to: https://playtotl.com/.netlify/functions/sendScoreNotificationsWebhookV2
 -- 4. Save
 
 

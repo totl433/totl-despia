@@ -88,13 +88,15 @@ export function getCurrentPlayerId(): string | null {
   return currentPlayerId;
 }
 
+// Import platform detection from centralized utility
+import { isNativeApp } from './platform';
+
 /**
  * Check if Despia native app is available
+ * @deprecated Use isNativeApp() from './platform' instead
  */
 export function isDespiaAvailable(): boolean {
-  const despia = (globalThis as any)?.despia || (typeof window !== 'undefined' ? (window as any)?.despia : null);
-  const directPlayerId = (globalThis as any)?.onesignalplayerid || (typeof window !== 'undefined' ? (window as any)?.onesignalplayerid : null);
-  return !!despia || !!directPlayerId;
+  return isNativeApp();
 }
 
 /**

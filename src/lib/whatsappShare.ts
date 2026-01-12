@@ -1,4 +1,4 @@
-import { isDespiaAvailable } from './pushNotificationsV2';
+import { isNativeApp } from './platform';
 
 /**
  * Open WhatsApp with a pre-filled message
@@ -6,7 +6,7 @@ import { isDespiaAvailable } from './pushNotificationsV2';
  * In regular browsers, uses web links (wa.me)
  */
 export function openWhatsApp(message: string): void {
-  const isDespia = isDespiaAvailable();
+  const isDespia = isNativeApp();
   const encodedMessage = encodeURIComponent(message);
   
   // Debug mode only in development

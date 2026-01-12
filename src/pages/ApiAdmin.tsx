@@ -51,14 +51,17 @@ const getFunctionUrl = () => {
  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
  const origin = typeof window !== 'undefined' ? window.location.origin : '';
  
- if (hostname.includes('netlify.app') || hostname.includes('netlify.com')) {
+ // Use origin for any deployed site (netlify.app, playtotl.com, etc.)
+ if (hostname.includes('netlify.app') || hostname.includes('netlify.com') || hostname.includes('playtotl.com')) {
  return `${origin}/.netlify/functions/fetchFootballData`;
  }
  
+ // Localhost fallback - use staging for local development
  if (hostname === 'localhost' || hostname === '127.0.0.1') {
  return `https://totl-staging.netlify.app/.netlify/functions/fetchFootballData`;
  }
  
+ // Default: relative path (works on any domain)
  return "/.netlify/functions/fetchFootballData";
 };
 
