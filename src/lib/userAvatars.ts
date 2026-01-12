@@ -162,6 +162,11 @@ export async function generateAndUploadDefaultAvatar(
       .getPublicUrl(filePath);
 
     const avatarUrl = data.publicUrl;
+    
+    // Log URL for debugging
+    if (import.meta.env.DEV) {
+      console.log('[userAvatars] Generated default avatar URL:', avatarUrl, 'for user:', userId);
+    }
 
     // Save URL to users table (UPDATE only - user must already exist)
     const { error: dbError } = await supabase
@@ -233,6 +238,11 @@ export async function uploadUserAvatar(
       .getPublicUrl(filePath);
 
     const avatarUrl = data.publicUrl;
+    
+    // Log URL for debugging
+    if (import.meta.env.DEV) {
+      console.log('[userAvatars] Uploaded custom avatar URL:', avatarUrl, 'for user:', userId);
+    }
 
     // Save URL to users table (UPDATE only - user must already exist)
     const { error: dbError } = await supabase
@@ -254,6 +264,22 @@ export async function uploadUserAvatar(
   }
 }
 
+
+/**
+ * Validate that an avatar URL is a valid Supabase storage URL or data URL
+ */
+function isValidAvatarUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  // Check if it's a data URL (fallback avatars)
+  if (url.startsWith('data:image/')) return true;
+  // Check if it's a valid Supabase storage URL
+  if (url.includes('supabase.co/storage/v1/object/public/user-avatars/')) return true;
+  // Log invalid URLs for debugging
+  if (import.meta.env.DEV) {
+    console.warn('[userAvatars] Invalid avatar URL format:', url);
+  }
+  return false;
+}
 
 /**
  * Get the avatar URL for a user
@@ -329,8 +355,21 @@ export async function getUserAvatarUrl(
         return generateDataUrlAvatar(initials, color);
       }
 
-      // If avatar URL exists, return it
+      // If avatar URL exists, validate and return it
       if (data.avatar_url) {
+        // Validate URL format
+        if (!isValidAvatarUrl(data.avatar_url)) {
+          console.warn('[userAvatars] Invalid avatar URL format for user:', userId, 'URL:', data.avatar_url);
+          // Use fallback instead of invalid URL
+          failedAvatarCache.add(userId);
+          const initials = getInitials(userName);
+          const color = getUserAvatarColor(userId);
+          return generateDataUrlAvatar(initials, color);
+        }
+        // Log URL for debugging broken images
+        if (import.meta.env.DEV) {
+          console.log('[userAvatars] Found avatar URL for user:', userId, 'URL:', data.avatar_url);
+        }
         return data.avatar_url;
       }
 
@@ -384,27 +423,39 @@ export async function getUserAvatarUrl(
  * Used when we can't upload to storage
  */
 function generateDataUrlAvatar(initials: string, color: string): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = 200;
-  canvas.height = 200;
-  const ctx = canvas.getContext('2d');
-  
-  if (!ctx) return '';
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 200;
+    canvas.height = 200;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) {
+      console.warn('[userAvatars] Could not get canvas context for data URL avatar');
+      return '';
+    }
 
-  // Draw circular background
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(100, 100, 100, 0, Math.PI * 2);
-  ctx.fill();
+    // Draw circular background
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(100, 100, 100, 0, Math.PI * 2);
+    ctx.fill();
 
-  // Draw initials
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = 'bold 80px Gramatika, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(initials, 100, 100);
+    // Draw initials
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 80px Gramatika, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(initials, 100, 100);
 
-  return canvas.toDataURL('image/png');
+    const dataUrl = canvas.toDataURL('image/png');
+    if (import.meta.env.DEV) {
+      console.log('[userAvatars] Generated data URL avatar for initials:', initials);
+    }
+    return dataUrl;
+  } catch (error) {
+    console.error('[userAvatars] Error generating data URL avatar:', error);
+    return '';
+  }
 }
 
 /**

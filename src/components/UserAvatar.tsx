@@ -107,6 +107,60 @@ export default function UserAvatar({
     };
   }, [userId, name]); // Only depend on userId and name - don't include avatarUrl or loading to prevent infinite loops
 
+  // Calculate imageSrc early so it can be used in useEffect
+  // Only add cache-busting query parameter if cacheBuster > 0 (i.e., avatar was updated)
+  // This prevents the URL from changing on every render
+  const imageSrc = avatarUrl 
+    ? (avatarUrl.startsWith('http') && cacheBuster > 0 
+        ? `${avatarUrl}${avatarUrl.includes('?') ? '&' : '?'}t=${cacheBuster}` 
+        : avatarUrl)
+    : undefined;
+
+  // Monitor for DOM mutations that might convert src to data-src (browser extensions)
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  
+  useEffect(() => {
+    if (!imgRef.current || !imageSrc) return;
+    
+    const img = imgRef.current;
+    let checkInterval: number | null = null;
+    
+    // Check periodically if src was converted to data-src
+    const checkSrc = () => {
+      if (!img) return;
+      
+      // If src is empty but data-src exists, restore it
+      if (!img.src && img.hasAttribute('data-src')) {
+        const dataSrc = img.getAttribute('data-src');
+        if (dataSrc && dataSrc === imageSrc) {
+          console.warn('[UserAvatar] Detected src->data-src conversion, restoring src for user:', userId);
+          img.src = dataSrc;
+          img.removeAttribute('data-src');
+          img.removeAttribute('data-autoblocked');
+        }
+      }
+      
+      // If src was changed from what we set, restore it
+      if (img.src && img.src !== imageSrc && !img.src.startsWith('data:')) {
+        // Only restore if it's not a data URL (which would be a fallback)
+        if (imageSrc && imageSrc.startsWith('http')) {
+          console.warn('[UserAvatar] Detected src change, restoring original src for user:', userId);
+          img.src = imageSrc;
+        }
+      }
+    };
+    
+    // Check immediately and then periodically
+    checkSrc();
+    checkInterval = window.setInterval(checkSrc, 1000);
+    
+    return () => {
+      if (checkInterval !== null) {
+        clearInterval(checkInterval);
+      }
+    };
+  }, [imageSrc, userId]);
+
   // Fallback to initials circle if no avatar or error
   if (error || (!avatarUrl && fallbackToInitials)) {
     const initials = getInitials(name);
@@ -149,17 +203,14 @@ export default function UserAvatar({
     );
   }
 
-  // Show avatar image
-  // Only add cache-busting query parameter if cacheBuster > 0 (i.e., avatar was updated)
-  // This prevents the URL from changing on every render
-  const imageSrc = avatarUrl 
-    ? (avatarUrl.startsWith('http') && cacheBuster > 0 
-        ? `${avatarUrl}${avatarUrl.includes('?') ? '&' : '?'}t=${cacheBuster}` 
-        : avatarUrl)
-    : undefined;
+  // Log for debugging broken images
+  if (import.meta.env.DEV && imageSrc) {
+    console.log('[UserAvatar] Rendering image with src:', imageSrc, 'for user:', userId);
+  }
   
   return (
     <img
+      ref={imgRef}
       src={imageSrc}
       alt={name ? `${name}'s avatar` : 'User avatar'}
       className={`rounded-full object-cover ${className}`}
@@ -167,9 +218,51 @@ export default function UserAvatar({
         width: size,
         height: size,
       }}
-      onError={() => {
+      onError={(e) => {
+        // Log error details for debugging
+        const img = e.currentTarget;
+        const errorDetails = {
+          userId,
+          name,
+          expectedSrc: imageSrc,
+          actualSrc: img.src,
+          hasDataSrc: img.hasAttribute('data-src'),
+          dataSrc: img.getAttribute('data-src'),
+          dataAutoblocked: img.getAttribute('data-autoblocked'),
+          naturalWidth: img.naturalWidth,
+          naturalHeight: img.naturalHeight,
+          complete: img.complete,
+          currentDomain: window.location.hostname,
+        };
+        console.error('[UserAvatar] Image load error:', errorDetails);
+        
+        // If src was converted to data-src (likely CORS issue or browser extension), try to restore it
+        if (img.hasAttribute('data-src') && !img.src && imageSrc) {
+          console.warn('[UserAvatar] Detected src->data-src conversion, attempting to restore src');
+          // Force set src attribute directly
+          img.setAttribute('src', imageSrc);
+          // Remove data-src to prevent interference
+          img.removeAttribute('data-src');
+          // Remove autoblocked attribute
+          img.removeAttribute('data-autoblocked');
+          // Don't set error yet - give it a chance to load
+          return;
+        }
+        
+        // Check if this might be a CORS issue (Supabase storage URL failing on playtotl.com)
+        if (imageSrc && imageSrc.includes('supabase.co/storage') && window.location.hostname === 'playtotl.com') {
+          console.error('[UserAvatar] Possible CORS issue: Supabase storage image failed on playtotl.com');
+          console.error('[UserAvatar] Action required: Update Supabase Storage CORS settings to allow playtotl.com');
+        }
+        
         // Fallback to initials on image load error
         setError(true);
+      }}
+      onLoad={() => {
+        // Log successful load for debugging
+        if (import.meta.env.DEV) {
+          console.log('[UserAvatar] Image loaded successfully:', imageSrc, 'for user:', userId);
+        }
       }}
       title={name || undefined}
       loading="lazy"

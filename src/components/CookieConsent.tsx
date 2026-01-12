@@ -46,6 +46,48 @@ export default function CookieConsent() {
     
     script.onload = () => {
       console.log('[CookieConsent] Termly cookie consent script loaded');
+      
+      // Workaround: Restore image src attributes that Termly AutoBlocker converts to data-src
+      // This allows Supabase storage images (avatars) to load even before cookie consent
+      const restoreImageSrcs = () => {
+        // Find all images with data-src that should have src
+        const images = document.querySelectorAll('img[data-src][data-autoblocked="1"]');
+        images.forEach((img) => {
+          const dataSrc = img.getAttribute('data-src');
+          // Only restore if it's a Supabase storage URL (avatar images)
+          if (dataSrc && dataSrc.includes('supabase.co/storage')) {
+            console.log('[CookieConsent] Restoring Supabase storage image src:', dataSrc);
+            img.setAttribute('src', dataSrc);
+            img.removeAttribute('data-src');
+            img.removeAttribute('data-autoblocked');
+          }
+        });
+      };
+      
+      // Restore immediately and then periodically check
+      setTimeout(restoreImageSrcs, 1000);
+      setInterval(restoreImageSrcs, 2000);
+      
+      // Also use MutationObserver to catch new images as they're added
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          mutation.addedNodes.forEach((node) => {
+            if (node instanceof HTMLElement) {
+              const images = node.querySelectorAll?.('img[data-src][data-autoblocked="1"]') || [];
+              images.forEach((img) => {
+                const dataSrc = img.getAttribute('data-src');
+                if (dataSrc && dataSrc.includes('supabase.co/storage')) {
+                  img.setAttribute('src', dataSrc);
+                  img.removeAttribute('data-src');
+                  img.removeAttribute('data-autoblocked');
+                }
+              });
+            }
+          });
+        });
+      });
+      
+      observer.observe(document.body, { childList: true, subtree: true });
     };
     
     script.onerror = () => {
