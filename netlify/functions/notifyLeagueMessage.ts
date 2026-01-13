@@ -117,12 +117,14 @@ export const handler: Handler = async (event) => {
   }
 
   // Also exclude users who are actively viewing the chat (presence tracking)
-  // Users are considered "active" if they've been seen in the last 30 seconds
+  // Users are considered "active" if they've been seen in the last 15 seconds
+  // (Frontend updates presence every 10s, so 15s = 10s update + 5s buffer)
+  // Presence is cleared when user leaves chat, so this window is just for safety
   const { data: activeViewers, error: presenceErr } = await admin
     .from('chat_presence')
     .select('user_id')
     .eq('league_id', leagueId)
-    .gte('last_seen', new Date(Date.now() - 30000).toISOString()); // Last 30 seconds
+    .gte('last_seen', new Date(Date.now() - 15000).toISOString()); // Last 15 seconds
   
   if (!presenceErr && activeViewers) {
     for (const viewer of activeViewers) {

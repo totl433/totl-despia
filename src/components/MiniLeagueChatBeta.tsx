@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { useMiniLeagueChat } from "../hooks/useMiniLeagueChat";
 import ChatThread, { type ChatThreadProps } from "./chat/ChatThread";
 import { supabase } from "../lib/supabase";
+import { VOLLEY_USER_ID, VOLLEY_NAME } from "../lib/volley";
 
 type MemberNames = Map<string, string> | Record<string, string> | undefined;
 
@@ -26,12 +27,40 @@ const initials = (text?: string) => {
   return `${parts[0][0]?.toUpperCase() ?? ""}${parts[parts.length - 1][0]?.toUpperCase() ?? ""}`;
 };
 
-const resolveName = (id: string, memberNames?: MemberNames) => {
-  if (!memberNames) return "";
-  if (memberNames instanceof Map) {
-    return memberNames.get(id) ?? "";
+/**
+ * Resolve user name from multiple sources:
+ * 1. memberNames prop (current league members)
+ * 2. additionalNames (fetched for non-members who sent messages)
+ * 3. Volley bot special case
+ */
+const resolveName = (
+  id: string, 
+  memberNames?: MemberNames, 
+  additionalNames?: Map<string, string>
+): string => {
+  // Check Volley bot first
+  if (id === VOLLEY_USER_ID) {
+    return VOLLEY_NAME;
   }
-  return memberNames[id] ?? "";
+  
+  // Check memberNames prop
+  if (memberNames) {
+    if (memberNames instanceof Map) {
+      const name = memberNames.get(id);
+      if (name) return name;
+    } else {
+      const name = memberNames[id];
+      if (name) return name;
+    }
+  }
+  
+  // Check additional fetched names
+  if (additionalNames) {
+    const name = additionalNames.get(id);
+    if (name) return name;
+  }
+  
+  return "";
 };
 
 function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLeagueChatBetaProps) {
@@ -52,17 +81,92 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   const [replyingTo, setReplyingTo] = useState<{ id: string; content: string; authorName?: string } | null>(null);
   const [uiErrors, setUiErrors] = useState<Array<{ id: string; message: string; timestamp: number }>>([]);
   
+  // Additional user names fetched for users not in memberNames (e.g., users who left the league)
+  const [additionalNames, setAdditionalNames] = useState<Map<string, string>>(new Map());
+  const fetchedUserIdsRef = useRef<Set<string>>(new Set());
+  
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputAreaRef = useRef<HTMLDivElement | null>(null);
   const hasScrolledRef = useRef<boolean>(false);
   const [inputBottom, setInputBottom] = useState(0);
-  
+
+  // Fetch user names for message authors not in memberNames (e.g., users who left the league)
+  useEffect(() => {
+    if (messages.length === 0) return;
+    
+    // Collect user IDs that can't be resolved from memberNames
+    const missingUserIds: string[] = [];
+    for (const msg of messages) {
+      const userId = msg.user_id;
+      // Skip if already fetched or if it's Volley
+      if (fetchedUserIdsRef.current.has(userId) || userId === VOLLEY_USER_ID) continue;
+      // Skip if resolvable from memberNames
+      if (resolveName(userId, memberNames)) continue;
+      // Skip if current user (we use currentUserDisplayName for that)
+      if (userId === user?.id) continue;
+      
+      missingUserIds.push(userId);
+    }
+    
+    // Also check reply_to user IDs
+    for (const msg of messages) {
+      if (msg.reply_to?.user_id) {
+        const userId = msg.reply_to.user_id;
+        if (fetchedUserIdsRef.current.has(userId) || userId === VOLLEY_USER_ID) continue;
+        if (resolveName(userId, memberNames)) continue;
+        if (userId === user?.id) continue;
+        if (!missingUserIds.includes(userId)) {
+          missingUserIds.push(userId);
+        }
+      }
+    }
+    
+    if (missingUserIds.length === 0) return;
+    
+    // Mark as being fetched to prevent duplicate requests
+    missingUserIds.forEach(id => fetchedUserIdsRef.current.add(id));
+    
+    console.log('[MiniLeagueChatBeta] Fetching names for', missingUserIds.length, 'missing user IDs');
+    
+    // Fetch user names from database
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, name')
+          .in('id', missingUserIds);
+        
+        if (error) {
+          console.error('[MiniLeagueChatBeta] Error fetching user names:', error);
+          return;
+        }
+        
+        if (data && data.length > 0) {
+          setAdditionalNames(prev => {
+            const next = new Map(prev);
+            for (const row of data) {
+              if (row.id && row.name) {
+                next.set(row.id, row.name);
+              }
+            }
+            return next;
+          });
+          console.log('[MiniLeagueChatBeta] Fetched', data.length, 'additional user names');
+        }
+      } catch (err) {
+        console.error('[MiniLeagueChatBeta] Error fetching user names:', err);
+      }
+    })();
+  }, [messages, memberNames, user?.id]);
+
   // Track presence: mark user as active in chat to suppress notifications
   useEffect(() => {
     if (!miniLeagueId || !user?.id) return;
     
     let isActive = true;
+    const currentLeagueId = miniLeagueId;
+    const currentUserId = user.id;
     
     const updatePresence = async () => {
       if (!isActive) return;
@@ -70,8 +174,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         const { error } = await supabase
           .from('chat_presence')
           .upsert({
-            league_id: miniLeagueId,
-            user_id: user.id,
+            league_id: currentLeagueId,
+            user_id: currentUserId,
             last_seen: new Date().toISOString(),
           }, {
             onConflict: 'league_id,user_id'
@@ -86,6 +190,21 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
       }
     };
     
+    // Clear presence when leaving chat - set last_seen to past so notifications work immediately
+    const clearPresence = async () => {
+      try {
+        // Delete the presence record so user gets notifications immediately after leaving
+        await supabase
+          .from('chat_presence')
+          .delete()
+          .eq('league_id', currentLeagueId)
+          .eq('user_id', currentUserId);
+      } catch (err) {
+        // Silently fail - best effort
+        console.warn('[MiniLeagueChatBeta] Error clearing presence:', err);
+      }
+    };
+    
     // Update immediately on mount
     updatePresence();
     
@@ -96,9 +215,25 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
       }
     }, 10000);
     
+    // Handle visibility change - clear presence when app goes to background
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // App went to background - clear presence so user gets notifications
+        clearPresence();
+      } else if (document.visibilityState === 'visible' && isActive) {
+        // App came back to foreground - restore presence
+        updatePresence();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
     return () => {
       isActive = false;
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      // Clear presence on unmount so user gets notifications immediately
+      clearPresence();
     };
   }, [miniLeagueId, user?.id]);
 
@@ -522,20 +657,45 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   // Build chat groups from messages
   const chatGroups = useMemo<ChatThreadProps["groups"]>(() => {
     if (!messages.length) return [];
-    
-    // Wait for memberNames to be available
+
+    // Wait for memberNames to be available OR we have additionalNames
     const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
-    if (!hasMemberNames) {
+    const hasAdditionalNames = additionalNames.size > 0;
+    
+    if (!hasMemberNames && !hasAdditionalNames) {
+      console.log('[MiniLeagueChatBeta] No names available yet, returning empty groups');
       return [];
     }
-    
+
+    // DEBUG: Log names and message user_ids to diagnose "Unknown" author issue
+    if (import.meta.env.DEV) {
+      const memberNameEntries = memberNames instanceof Map
+        ? Array.from(memberNames.entries()).slice(0, 5)
+        : memberNames ? Object.entries(memberNames).slice(0, 5) : [];
+      const additionalNameEntries = Array.from(additionalNames.entries()).slice(0, 5);
+      const messageUserIds = [...new Set(messages.map(m => m.user_id))].slice(0, 5);
+      console.log('[MiniLeagueChatBeta] Building groups:', {
+        memberNamesCount: memberNames instanceof Map ? memberNames.size : memberNames ? Object.keys(memberNames).length : 0,
+        additionalNamesCount: additionalNames.size,
+        memberNamesSample: memberNameEntries,
+        additionalNamesSample: additionalNameEntries,
+        messageUserIdsSample: messageUserIds,
+        messagesCount: messages.length,
+      });
+    }
+
     let lastDayKey: string | null = null;
     const groups = messages.reduce<ChatThreadProps["groups"]>((acc, msg) => {
       const isOwnMessage = msg.user_id === user?.id;
-      const resolvedName = resolveName(msg.user_id, memberNames);
+      const resolvedName = resolveName(msg.user_id, memberNames, additionalNames);
       const authorName = resolvedName || (isOwnMessage ? currentUserDisplayName : "");
       const fallbackName = authorName || (isOwnMessage ? "You" : "Unknown");
-      
+
+      // DEBUG: Log when we can't resolve a name (only in dev, once per user)
+      if (import.meta.env.DEV && fallbackName === "Unknown" && !fetchedUserIdsRef.current.has(msg.user_id)) {
+        console.warn('[MiniLeagueChatBeta] Could not resolve name for user_id:', msg.user_id, 'isOwnMessage:', isOwnMessage);
+      }
+
       const avatarInitials = !isOwnMessage ? initials(fallbackName) : undefined;
 
       const createdDate = new Date(msg.created_at);
@@ -546,7 +706,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
       }
 
       const replyAuthorName = msg.reply_to 
-        ? (resolveName(msg.reply_to.user_id, memberNames) || "Unknown")
+        ? (resolveName(msg.reply_to.user_id, memberNames, additionalNames) || "Unknown")
         : null;
 
       const messagePayload = {
@@ -577,7 +737,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         const updatedMessages = lastGroup.messages.map(existingMsg => {
           const originalMsg = existingMsg.messageId ? messages.find(m => m.id === existingMsg.messageId) : null;
           if (originalMsg?.reply_to) {
-            const updatedReplyAuthorName = resolveName(originalMsg.reply_to.user_id, memberNames) || "Unknown";
+            const updatedReplyAuthorName = resolveName(originalMsg.reply_to.user_id, memberNames, additionalNames) || "Unknown";
             return {
               ...existingMsg,
               replyTo: existingMsg.replyTo ? {
@@ -618,7 +778,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
       const updatedMessages = baseGroup.messages.map(msg => {
         const originalMsg = msg.messageId ? messages.find(m => m.id === msg.messageId) : null;
         if (originalMsg?.reply_to && msg.replyTo) {
-          const updatedReplyAuthorName = resolveName(originalMsg.reply_to.user_id, memberNames) || "Unknown";
+          const updatedReplyAuthorName = resolveName(originalMsg.reply_to.user_id, memberNames, additionalNames) || "Unknown";
           if (updatedReplyAuthorName !== msg.replyTo.authorName) {
             return {
               ...msg,
@@ -635,7 +795,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
       if (baseGroup.author === "Unknown" && baseGroup.messages.length > 0 && baseGroup.messages[0].messageId) {
         const firstMessage = messages.find(m => m.id === baseGroup.messages[0].messageId);
         if (firstMessage) {
-          const resolvedName = resolveName(firstMessage.user_id, memberNames);
+          const resolvedName = resolveName(firstMessage.user_id, memberNames, additionalNames);
           if (resolvedName && resolvedName !== "Unknown") {
             const baseId = baseGroup.id.includes('-') ? baseGroup.id.split('-')[0] : baseGroup.id;
             return {
@@ -655,7 +815,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         messages: updatedMessages,
       };
     });
-  }, [currentUserDisplayName, memberNames, messages, user?.id]);
+  }, [currentUserDisplayName, memberNames, additionalNames, messages, user?.id]);
 
   // Force re-render when memberNames loads
   const chatThreadKey = useMemo(() => {

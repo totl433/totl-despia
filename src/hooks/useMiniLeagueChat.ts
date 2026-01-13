@@ -35,13 +35,6 @@ const normalizeMessage = (row: any): MiniLeagueChatMessage => {
   if (row.reply_to) {
     // If it's an array, take the first element (or null if empty)
     const replyToData = Array.isArray(row.reply_to) ? row.reply_to[0] : row.reply_to;
-    // Debug: log the raw reply_to data for messages that have reply_to_message_id
-    if (row.reply_to_message_id) {
-      console.log('[normalizeMessage] Message has reply_to_message_id:', row.reply_to_message_id, 'reply_to:', row.reply_to, 'replyToData:', replyToData);
-      if (replyToData) {
-        console.log('[normalizeMessage] replyToData.id:', replyToData.id, 'replyToData.user_id:', replyToData.user_id, 'replyToData.content:', replyToData.content);
-      }
-    }
     // Only create reply_to object if we have both id and user_id (required fields)
     if (replyToData && replyToData.id && replyToData.user_id) {
       replyTo = {
@@ -50,9 +43,6 @@ const normalizeMessage = (row: any): MiniLeagueChatMessage => {
         user_id: replyToData.user_id,
         author_name: replyToData.author_name,
       };
-    } else if (row.reply_to_message_id && replyToData) {
-      // Debug: log when we have reply_to_message_id but can't create reply_to object
-      console.warn('[normalizeMessage] Cannot create reply_to object - missing required fields. replyToData:', replyToData, 'has id:', !!replyToData?.id, 'has user_id:', !!replyToData?.user_id);
     }
   }
   
@@ -159,7 +149,6 @@ export function useMiniLeagueChat(
   const fetchPage = useCallback(
     async ({ before, append }: { before?: string; append: boolean }) => {
       if (!miniLeagueId || !enabled) return;
-      console.log('[fetchPage] Starting fetch for league:', miniLeagueId, 'append:', append, 'before:', before);
       // First, fetch all messages
       const query = supabase
         .from("league_messages")
@@ -185,12 +174,9 @@ export function useMiniLeagueChat(
         throw error;
       }
 
-      console.log('[fetchPage] Fetched', data?.length || 0, 'messages from database');
-
       // Fetch reply data for messages that have reply_to_message_id
       const messagesWithReply = (data ?? []).filter((row: any) => row.reply_to_message_id);
       const replyMessageIds = [...new Set(messagesWithReply.map((row: any) => row.reply_to_message_id))];
-      console.log('[fetchPage] Found', messagesWithReply.length, 'messages with reply_to_message_id, unique reply IDs:', replyMessageIds.length);
       
       let replyDataMap = new Map<string, any>();
       if (replyMessageIds.length > 0) {
@@ -206,18 +192,6 @@ export function useMiniLeagueChat(
         if (!replyError && replyMessages) {
           replyMessages.forEach((msg: any) => {
             replyDataMap.set(msg.id, msg);
-          });
-        }
-      }
-
-      // Debug: Check raw Supabase response for messages with reply_to_message_id
-      if (data && data.length > 0) {
-        const messagesWithReply = data.filter((row: any) => row.reply_to_message_id);
-        if (messagesWithReply.length > 0) {
-          console.log('[fetchPage] Found', messagesWithReply.length, 'messages with reply_to_message_id');
-          messagesWithReply.slice(0, 3).forEach((row: any) => {
-            const replyData = replyDataMap.get(row.reply_to_message_id);
-            console.log('[fetchPage] Message', row.id, 'reply_to_message_id:', row.reply_to_message_id, 'replyData:', replyData);
           });
         }
       }
@@ -258,6 +232,10 @@ export function useMiniLeagueChat(
     [miniLeagueId, enabled, applyMessages]
   );
 
+  // Use a ref to access current messages without triggering re-renders
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
   const refresh = useCallback(async () => {
     if (!miniLeagueId || !enabled) {
       setMessages([]);
@@ -267,33 +245,25 @@ export function useMiniLeagueChat(
     
     // Prevent concurrent refreshes
     if (refreshInProgressRef.current) {
-      console.log('[useMiniLeagueChat] Refresh already in progress, skipping');
       return;
     }
     
     refreshInProgressRef.current = true;
     
     // Only set loading if we don't already have messages (from cache)
-    const hasMessages = messages.length > 0;
+    // Use ref to avoid stale closure
+    const hasMessages = messagesRef.current.length > 0;
     if (!hasMessages) {
       setLoading(true);
     }
     setError(null);
     
     try {
-      // Preserve any optimistic messages that are still sending
-      // These will be replaced when the real message arrives via real-time or when sendMessage completes
-      const currentOptimisticMessages = messages.filter(msg => 
-        msg.id.startsWith('optimistic-') && msg.status === 'sending'
-      );
-      
       // Check cache first (pre-loaded during initial data load)
       const cachedMessages = getCached<MiniLeagueChatMessage[]>(`chat:messages:${miniLeagueId}`);
       if (cachedMessages && cachedMessages.length > 0 && !hasMessages) {
         // Use cached messages immediately only if we don't have messages yet
-        // Include any optimistic messages
-        const messagesToSet = [...cachedMessages, ...currentOptimisticMessages];
-        applyMessages(() => dedupeAndSort(messagesToSet));
+        applyMessages(() => dedupeAndSort(cachedMessages));
         // Set earliest timestamp for pagination
         if (cachedMessages.length > 0) {
           earliestTimestampRef.current = cachedMessages[0].created_at;
@@ -305,41 +275,15 @@ export function useMiniLeagueChat(
       }
       
       // Always fetch fresh data to ensure we have latest messages
-      // This is critical for catching messages that might have been missed by real-time subscription
-      console.log('[useMiniLeagueChat] Refreshing messages from database');
       await fetchPage({ append: false });
-      
-      // After fetch, ensure optimistic messages are still present
-      if (currentOptimisticMessages.length > 0) {
-        applyMessages((prev) => {
-          // Add back any optimistic messages that might have been removed
-          const existingOptimisticIds = new Set(
-            prev.filter(msg => msg.id.startsWith('optimistic-')).map(msg => msg.id)
-          );
-          const missingOptimistic = currentOptimisticMessages.filter(
-            msg => !existingOptimisticIds.has(msg.id)
-          );
-          if (missingOptimistic.length > 0) {
-            return dedupeAndSort([...prev, ...missingOptimistic]);
-          }
-          return prev;
-        });
-      }
-      
-      if (!hasMessages && cachedMessages && cachedMessages.length > 0) {
-        // If we used cache, loading was already set to false above
-        // But fetchPage might have updated messages, so we're good
-      }
     } catch (err: any) {
       console.error('[useMiniLeagueChat] Error in refresh:', err);
       setError(err?.message ?? "Failed to load chat");
     } finally {
       refreshInProgressRef.current = false;
-      if (!hasMessages) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
-  }, [miniLeagueId, enabled, fetchPage, applyMessages, messages]);
+  }, [miniLeagueId, enabled, fetchPage, applyMessages]);
 
   useEffect(() => {
     if (!miniLeagueId || !enabled) {
@@ -358,7 +302,8 @@ export function useMiniLeagueChat(
 
     // Check cache FIRST - if we already have messages from initial state, use them
     // Otherwise check cache again (in case cache was populated after component mount)
-    const hasInitialMessages = messages.length > 0;
+    const currentMessages = messagesRef.current;
+    const hasInitialMessages = currentMessages.length > 0;
     const cachedMessages = getCached<MiniLeagueChatMessage[]>(`chat:messages:${miniLeagueId}`);
     
     if (hasInitialMessages || (cachedMessages && cachedMessages.length > 0)) {
@@ -371,11 +316,11 @@ export function useMiniLeagueChat(
           latestTimestampRef.current = cachedMessages[cachedMessages.length - 1].created_at;
         }
         setHasMore(cachedMessages.length >= 50);
-      } else if (hasInitialMessages && messages.length > 0) {
+      } else if (hasInitialMessages && currentMessages.length > 0) {
         // Set earliest timestamp from existing messages
-        earliestTimestampRef.current = messages[0].created_at;
-        latestTimestampRef.current = messages[messages.length - 1].created_at;
-        setHasMore(messages.length >= 50);
+        earliestTimestampRef.current = currentMessages[0].created_at;
+        latestTimestampRef.current = currentMessages[currentMessages.length - 1].created_at;
+        setHasMore(currentMessages.length >= 50);
       }
       // Don't set loading - messages are ready immediately
       // Still set up real-time subscriptions and periodic refresh below
@@ -488,14 +433,6 @@ export function useMiniLeagueChat(
         },
         async (payload) => {
           if (!active) return;
-          console.log('[useMiniLeagueChat] Received real-time message:', payload.new.id);
-          
-          // Skip if refresh is in progress (to avoid race conditions)
-          // The refresh will pick up this message when it completes
-          if (refreshInProgressRef.current) {
-            console.log('[useMiniLeagueChat] Refresh in progress, will add message after refresh completes');
-            // Still add it, but refresh will dedupe
-          }
           
           try {
             // For real-time updates, fetch the full message with reply data
@@ -535,7 +472,6 @@ export function useMiniLeagueChat(
                 // Check if message already exists (deduplication)
                 const exists = prev.some((msg) => msg.id === incoming.id || (msg.client_msg_id && msg.client_msg_id === incoming.client_msg_id));
                 if (exists) {
-                  console.log('[useMiniLeagueChat] Message already exists, skipping:', incoming.id);
                   // Update existing message if it's an optimistic one being replaced
                   const optimisticIndex = prev.findIndex(msg => msg.client_msg_id && msg.client_msg_id === incoming.client_msg_id && msg.id.startsWith('optimistic-'));
                   if (optimisticIndex >= 0) {
@@ -546,13 +482,11 @@ export function useMiniLeagueChat(
                   }
                   return prev;
                 }
-                console.log('[useMiniLeagueChat] Adding new message:', incoming.id);
                 // Always add to end (newest messages at end)
                 return dedupeAndSort([...prev, incoming]);
               });
             } else {
               // Fallback to basic normalization if fetch fails
-              console.warn('[useMiniLeagueChat] Failed to fetch full message, using payload data:', payload.new.id);
               const incoming = normalizeMessage(payload.new);
               applyMessages((prev) => {
                 const exists = prev.some((msg) => msg.id === incoming.id);
@@ -581,38 +515,19 @@ export function useMiniLeagueChat(
         }
       )
       .subscribe((status) => {
-        console.log('[useMiniLeagueChat] Subscription status:', status);
-        
         if (status === 'SUBSCRIBED') {
-          console.log('[useMiniLeagueChat] Successfully subscribed to real-time updates');
           // Start periodic refresh as fallback
           startPeriodicRefresh();
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('[useMiniLeagueChat] Channel subscription error - will rely on periodic refresh');
-          // Start periodic refresh immediately if subscription fails
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          // Connection issue - rely on periodic refresh and try to reconnect
           startPeriodicRefresh();
           // Try to resubscribe after a delay
           setTimeout(() => {
             if (active && miniLeagueId) {
-              console.log('[useMiniLeagueChat] Attempting to resubscribe after error');
               channel.unsubscribe();
               channel.subscribe();
             }
           }, 5000);
-        } else if (status === 'TIMED_OUT') {
-          console.warn('[useMiniLeagueChat] Subscription timed out - will rely on periodic refresh');
-          startPeriodicRefresh();
-          // Try to resubscribe after a delay
-          setTimeout(() => {
-            if (active && miniLeagueId) {
-              console.log('[useMiniLeagueChat] Attempting to resubscribe after timeout');
-              channel.unsubscribe();
-              channel.subscribe();
-            }
-          }, 5000);
-        } else if (status === 'CLOSED') {
-          console.warn('[useMiniLeagueChat] Subscription closed - will rely on periodic refresh');
-          startPeriodicRefresh();
         }
       });
 
