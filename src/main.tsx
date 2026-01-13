@@ -106,15 +106,18 @@ if (typeof window !== 'undefined') {
 
   // Intercept fetch to catch and suppress Termly consent script errors
   const originalFetch = window.fetch;
-  window.fetch = async (...args) => {
+  window.fetch = async (...args: Parameters<typeof fetch>) => {
     // Extract URL from various argument types (string, Request object, etc.)
     let url = '';
-    if (typeof args[0] === 'string') {
-      url = args[0];
-    } else if (args[0] instanceof Request) {
-      url = args[0].url;
-    } else if (args[0]?.url) {
-      url = args[0].url;
+    const firstArg = args[0];
+    if (typeof firstArg === 'string') {
+      url = firstArg;
+    } else if (firstArg instanceof Request) {
+      url = firstArg.url;
+    } else if (firstArg instanceof URL) {
+      url = firstArg.href;
+    } else if (firstArg && typeof firstArg === 'object' && 'url' in firstArg) {
+      url = String((firstArg as { url: string }).url);
     }
     
     // If this is a Termly request, catch and suppress 410 errors
@@ -139,43 +142,42 @@ if (typeof window !== 'undefined') {
 
   // Intercept XMLHttpRequest to catch Axios requests (Termly uses Axios)
   const OriginalXHR = window.XMLHttpRequest;
-  window.XMLHttpRequest = function(...args) {
-    const xhr = new OriginalXHR(...args);
+  window.XMLHttpRequest = function() {
+    const xhr = new OriginalXHR();
     const originalOpen = xhr.open;
     const originalSend = xhr.send;
     
-    xhr.open = function(method: string, url: string | URL, ...rest: any[]) {
+    xhr.open = function(method: string, url: string | URL, async: boolean = true, username?: string | null, password?: string | null) {
       // Store the URL for later checking
       (this as any)._url = url.toString();
-      return originalOpen.apply(this, [method, url, ...rest]);
+      return originalOpen.call(this, method, url, async, username, password);
     };
     
-    xhr.send = function(...args) {
+    xhr.send = function(body?: Document | XMLHttpRequestBodyInit | null) {
       const url = (this as any)._url || '';
       
       // If this is a Termly request, suppress 410 errors
       if (url.includes('termly.io')) {
-        const originalOnError = this.onerror;
         const originalOnReadyStateChange = this.onreadystatechange;
         
-        this.onerror = function(event) {
+        this.onerror = function() {
           // Suppress Termly-related errors
           // Don't call originalOnError to prevent error logging
         };
         
-        this.onreadystatechange = function(event) {
+        this.onreadystatechange = function(event: Event) {
           // If we get a 410 response, suppress it
           if (this.readyState === 4 && this.status === 410) {
             // Silently handle - already suppressed via console.error interceptor
           }
           // Still call original handler for other cases
           if (originalOnReadyStateChange) {
-            originalOnReadyStateChange.apply(this, [event]);
+            originalOnReadyStateChange.call(this, event);
           }
         };
       }
       
-      return originalSend.apply(this, args);
+      return originalSend.call(this, body);
     };
     
     return xhr;
