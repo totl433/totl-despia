@@ -22,9 +22,19 @@ export const handler: Handler = async (event) => {
     return json(405, { error: 'Method not allowed' });
   }
 
-  // Validate environment variables
+  // Validate environment variables (match notifyLeagueMessageV2 exactly)
   const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
   const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+
+  console.log('[notifyLeagueMemberJoin] Env check:', {
+    urlPresent: !!SUPABASE_URL,
+    urlLength: SUPABASE_URL?.length,
+    urlPreview: SUPABASE_URL?.substring(0, 30) + '...',
+    keyPresent: !!SUPABASE_SERVICE_ROLE_KEY,
+    keyLength: SUPABASE_SERVICE_ROLE_KEY?.length,
+    keyPreview: SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20) + '...',
+    keyEndsWith: SUPABASE_SERVICE_ROLE_KEY?.substring(SUPABASE_SERVICE_ROLE_KEY.length - 10),
+  });
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     console.error('[notifyLeagueMemberJoin] Missing Supabase environment variables', {
