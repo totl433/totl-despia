@@ -696,6 +696,9 @@ export default function HomePage() {
     return liveScoresPrevRef.current;
   }, [liveScoresFromCache, liveScoresMap, fixtures, gwResults, cachedLiveScoresMap.size]);
 
+  // Track if data load is in progress to prevent race conditions
+  const dataLoadInProgressRef = useRef(false);
+  
   // Only load data if we don't have cache (fixtures.length === 0 means no cache)
   useEffect(() => {
     if (!user?.id || !gw) return;
@@ -721,13 +724,23 @@ export default function HomePage() {
       return;
     }
     
+    // Prevent duplicate loads - if a load is already in progress, don't start another
+    if (dataLoadInProgressRef.current) {
+      return;
+    }
+    
     // No cache - need to load data
     setBasicDataLoading(true);
-    let alive = true;
+    dataLoadInProgressRef.current = true;
+    
+    // Capture current leagues to use in async function (prevents stale closure issues)
+    const currentLeagues = [...leagues];
+    const currentGw = gw;
+    const currentUserId = user.id;
+    
     (async () => {
       try {
-        const data = await loadHomePageData(user.id, leagues, gw);
-        if (!alive) return;
+        const data = await loadHomePageData(currentUserId, currentLeagues, currentGw);
         
         // Update ALL state at once - single render
         setLatestGw(data.latestGw);
@@ -738,20 +751,21 @@ export default function HomePage() {
         setFiveGwRank(data.fiveGwRank ?? null);
         setTenGwRank(data.tenGwRank ?? null);
         setSeasonRank(data.seasonRank ?? null);
-        if (Object.keys(data.leagueData).length > 0) {
-          setLeagueData(data.leagueData);
-          setLeagueSubmissions(data.leagueSubmissions);
-        } else {
-        }
+        // Always set league data, even if empty - prevents infinite loading
+        setLeagueData(data.leagueData);
+        setLeagueSubmissions(data.leagueSubmissions);
         setBasicDataLoading(false);
       } catch (error: any) {
         console.error('[Home] Error loading data:', error);
-        if (alive) setBasicDataLoading(false);
+        setBasicDataLoading(false);
+      } finally {
+        dataLoadInProgressRef.current = false;
       }
     })();
     
-    return () => { alive = false; };
-  }, [user?.id, gw, fixtures.length, leagues.length, leaguesLoading, hasLeaguesCache]);
+    // No cleanup needed - we use ref to track in-progress state instead of alive flag
+    // This prevents race conditions where effect re-runs discard valid data
+  }, [user?.id, gw, fixtures.length, leaguesLoading, hasLeaguesCache]);
 
   // Background refresh is now handled by loadHomePageData (checks cache freshness internally)
 

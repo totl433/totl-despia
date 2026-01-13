@@ -288,31 +288,81 @@ How To Play →`}
       {/* Mobile: Conditionally show live tables or default view */}
       {showLiveTables ? (
         // Live Tables View - Horizontal scroll of table cards
-        <div className="lg:hidden">
-          <HorizontalScrollContainer>
-            {leagues.map((league) => {
-              const cardData = memoizedCardData[league.id];
-              const members = cardData?.members || [];
-              
-              return (
-                <MiniLeagueGwTableCard
-                  key={league.id}
-                  leagueId={league.id}
-                  leagueCode={league.code}
-                  leagueName={league.name}
-                  members={members}
-                  currentUserId={currentUserId}
-                  currentGw={currentGw}
-                  maxMemberCount={maxMemberCount}
-                  avatar={league.avatar}
-                  unread={unreadByLeague[league.id] ?? 0}
-                  sharedFixtures={fixtures}
-                  sharedGwResults={gwResults}
-                />
-              );
-            })}
-          </HorizontalScrollContainer>
-        </div>
+        // Wait for fixtures AND member data to load before rendering cards
+        (() => {
+          // Check if we have both fixtures and at least one league with members
+          const hasFixtures = fixtures.length > 0;
+          const hasAnyMembers = leagues.some(l => (memoizedCardData[l.id]?.members?.length ?? 0) > 0);
+          const isReady = hasFixtures && hasAnyMembers;
+          
+          if (isReady) {
+            return (
+              <div className="lg:hidden">
+                <HorizontalScrollContainer>
+                  {leagues.map((league) => {
+                    const cardData = memoizedCardData[league.id];
+                    const members = cardData?.members || [];
+                    
+                    return (
+                      <MiniLeagueGwTableCard
+                        key={league.id}
+                        leagueId={league.id}
+                        leagueCode={league.code}
+                        leagueName={league.name}
+                        members={members}
+                        currentUserId={currentUserId}
+                        currentGw={currentGw}
+                        maxMemberCount={maxMemberCount}
+                        avatar={league.avatar}
+                        unread={unreadByLeague[league.id] ?? 0}
+                        sharedFixtures={fixtures}
+                        sharedGwResults={gwResults}
+                      />
+                    );
+                  })}
+                </HorizontalScrollContainer>
+              </div>
+            );
+          } else {
+            // Loading state while fixtures/members are being fetched
+            // Show placeholder cards for up to 3 leagues, or generic placeholders if no leagues yet
+            const placeholderLeagues = leagues.length > 0 ? leagues.slice(0, 3) : [
+              { id: 'placeholder-1', name: 'Loading...', avatar: null },
+              { id: 'placeholder-2', name: 'Loading...', avatar: null },
+            ];
+            
+            return (
+              <div className="lg:hidden">
+                <HorizontalScrollContainer>
+                  {placeholderLeagues.map((league) => (
+                    <div
+                      key={league.id}
+                      className="min-w-[calc(100vw-72px)] snap-start rounded-2xl border border-slate-200 bg-white shadow-sm p-4"
+                    >
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center">
+                          {league.avatar ? (
+                            <img
+                              src={league.avatar}
+                              alt=""
+                              className="w-12 h-12 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-6 h-6 rounded-full bg-slate-300"></div>
+                          )}
+                        </div>
+                        <span className="font-semibold text-slate-800">{league.name}</span>
+                      </div>
+                      <div className="flex justify-center py-8">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600"></div>
+                      </div>
+                    </div>
+                  ))}
+                </HorizontalScrollContainer>
+              </div>
+            );
+          }
+        })()
       ) : (
         // Mobile: Default Overview View - Horizontal scroll with batches
         <div className="lg:hidden">
