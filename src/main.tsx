@@ -1,5 +1,5 @@
 // src/main.tsx
-import "./index.css";
+import "./output.css";
 import "react-chat-elements/dist/main.css";
 import React, { Suspense, lazy, useState, useEffect, useLayoutEffect } from "react";
 import ReactDOM from "react-dom/client";

@@ -458,7 +458,6 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
             // (ML cache section will detect it exists and skip)
             // BUT: Still need to ensure mltRows are cached for instant GW Table loading
             const cachedLeagueData = existingCache.leagueData;
-            console.log('[Preload] Checking mltRows cache for', Object.keys(cachedLeagueData || {}).length, 'leagues');
             if (cachedLeagueData) {
               for (const [leagueId, data] of Object.entries(cachedLeagueData)) {
                 if (data && typeof data === 'object' && 'members' in data && Array.isArray(data.members)) {
@@ -478,23 +477,16 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
                       form: [] as ("W" | "D" | "L")[],
                     }));
                     setCached(mltRowsCacheKey, emptyMltRows, CACHE_TTL.LEAGUES);
-                    log.info('preload/mlt_rows_cached', { 
+                    log.debug('preload/mlt_rows_cached', { 
                       leagueId: leagueId.slice(0, 8), 
                       leagueName: (data as any).name || 'unknown',
                       cacheKey: mltRowsCacheKey, 
                       rowsCount: emptyMltRows.length,
                       note: 'empty (from existing cache)'
                     });
-                    console.log('[Preload] ✅ Cached mltRows (empty - from existing cache)', { leagueId: leagueId.slice(0, 8), cacheKey: mltRowsCacheKey, count: emptyMltRows.length });
-                  } else {
-                    console.log('[Preload] mltRows already cached for', leagueId.slice(0, 8), existingMltRows.length);
                   }
-                } else {
-                  console.log('[Preload] ⚠️ Invalid data structure for league', leagueId.slice(0, 8), { hasData: !!data, hasMembers: data && typeof data === 'object' && data !== null && 'members' in data });
                 }
               }
-            } else {
-              console.log('[Preload] ⚠️ No cachedLeagueData available');
             }
           } else {
             // League data cached but ML live table cache missing - need to fetch minimal data for ML cache
@@ -664,14 +656,13 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
             }));
           const cacheKey = `league:mltRows:${league.id}`;
           setCached(cacheKey, emptyMltRows, CACHE_TTL.LEAGUES);
-            log.info('preload/mlt_rows_cached', { 
+            log.debug('preload/mlt_rows_cached', { 
               leagueId: league.id.slice(0, 8), 
               leagueName: league.name,
               cacheKey, 
               rowsCount: emptyMltRows.length,
               note: 'empty (no results yet)'
             });
-            console.log('[Preload] ✅ Cached mltRows (empty - no results)', { leagueId: league.id.slice(0, 8), cacheKey, count: emptyMltRows.length });
             return;
           }
           
@@ -710,14 +701,13 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
             }));
             const cacheKey = `league:mltRows:${league.id}`;
             setCached(cacheKey, emptyMltRows, CACHE_TTL.LEAGUES);
-            log.info('preload/mlt_rows_cached', { 
+            log.debug('preload/mlt_rows_cached', { 
               leagueId: league.id.slice(0, 8), 
               leagueName: league.name,
               cacheKey, 
               rowsCount: emptyMltRows.length,
               note: 'empty (no relevant GWs)'
             });
-            console.log('[Preload] ✅ Cached mltRows (empty - no relevant GWs)', { leagueId: league.id.slice(0, 8), cacheKey, count: emptyMltRows.length });
             return;
           }
           
@@ -838,14 +828,12 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
           }));
           const cacheKey = `league:mltRows:${league.id}`;
           setCached(cacheKey, mltRowsWithForm, CACHE_TTL.LEAGUES);
-          // Use log.info so it shows in console
-          log.info('preload/mlt_rows_cached', { 
+          log.debug('preload/mlt_rows_cached', { 
             leagueId: league.id.slice(0, 8), 
             leagueName: league.name,
             cacheKey, 
             rowsCount: mltRowsWithForm.length 
           });
-          console.log('[Preload] ✅ Cached mltRows (with data)', { leagueId: league.id.slice(0, 8), cacheKey, count: mltRowsWithForm.length });
           
           const sortedMemberIds = sortedMltRows.map(r => r.user_id);
           const userIndex = sortedMltRows.findIndex(r => r.user_id === userId);
@@ -989,6 +977,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
               });
             }
             
+            // Summary log - keep as debug to reduce console noise
             log.debug('preload/ml_live_table_data_cached', { 
               userId: userId.slice(0, 8), 
               gw: currentGw, 

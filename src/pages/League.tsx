@@ -1357,30 +1357,42 @@ ${shareUrl}`;
   // This MUST run synchronously during component initialization - no async operations
   const getInitialMltRows = (): MltRow[] => {
     try {
-      console.log('[League] getInitialMltRows called', { code, userId: user?.id });
+      const verboseDebug = typeof window !== 'undefined' && localStorage.getItem('debug:verbose') === 'true';
+      
+      if (verboseDebug) {
+        console.log('[League] getInitialMltRows called', { code, userId: user?.id });
+      }
       
       // Strategy 1: Try with code + user.id to find league ID from cached leagues
       if (code && user?.id) {
         const cachedLeagues = getCached<Array<{ id: string; code: string }>>(`leagues:${user.id}`);
-        console.log('[League] getInitialMltRows - cachedLeagues', { hasCached: !!cachedLeagues, length: cachedLeagues?.length });
+        if (verboseDebug) {
+          console.log('[League] getInitialMltRows - cachedLeagues', { hasCached: !!cachedLeagues, length: cachedLeagues?.length });
+        }
         if (cachedLeagues && Array.isArray(cachedLeagues)) {
           const found = cachedLeagues.find(l => l.code.toUpperCase() === code.toUpperCase());
-          console.log('[League] getInitialMltRows - found league', { found: !!found, leagueId: found?.id });
+          if (verboseDebug) {
+            console.log('[League] getInitialMltRows - found league', { found: !!found, leagueId: found?.id });
+          }
           if (found?.id) {
             const cacheKey = `league:mltRows:${found.id}`;
             const cached = getCached<MltRow[]>(cacheKey);
-            console.log('[League] getInitialMltRows - cached mltRows', { 
-              hasCached: !!cached, 
-              length: cached?.length, 
-              cacheKey,
-              cachedType: typeof cached,
-              isArray: Array.isArray(cached),
-              rawCache: cached
-            });
+            if (verboseDebug) {
+              console.log('[League] getInitialMltRows - cached mltRows', { 
+                hasCached: !!cached, 
+                length: cached?.length, 
+                cacheKey,
+                cachedType: typeof cached,
+                isArray: Array.isArray(cached),
+                rawCache: cached
+              });
+            }
             if (cached && Array.isArray(cached) && cached.length > 0) {
-              console.log('[League] ✅ getInitialMltRows returning cached rows', cached.length);
+              if (verboseDebug) {
+                console.log('[League] ✅ getInitialMltRows returning cached rows', cached.length);
+              }
               return cached;
-            } else {
+            } else if (verboseDebug) {
               console.log('[League] ❌ Cache check failed', { 
                 cached: !!cached, 
                 isArray: Array.isArray(cached), 
@@ -1394,12 +1406,18 @@ ${shareUrl}`;
       
       // Strategy 2: Try with initialLeague if available
       const initialLeague = getInitialLeague();
-      console.log('[League] getInitialMltRows - initialLeague', { hasLeague: !!initialLeague, leagueId: initialLeague?.id });
+      if (verboseDebug) {
+        console.log('[League] getInitialMltRows - initialLeague', { hasLeague: !!initialLeague, leagueId: initialLeague?.id });
+      }
       if (initialLeague?.id) {
         const cached = getCached<MltRow[]>(`league:mltRows:${initialLeague.id}`);
-        console.log('[League] getInitialMltRows - cached from initialLeague', { hasCached: !!cached, length: cached?.length });
+        if (verboseDebug) {
+          console.log('[League] getInitialMltRows - cached from initialLeague', { hasCached: !!cached, length: cached?.length });
+        }
         if (cached && Array.isArray(cached) && cached.length > 0) {
-          console.log('[League] ✅ getInitialMltRows returning cached rows from initialLeague', cached.length);
+          if (verboseDebug) {
+            console.log('[League] ✅ getInitialMltRows returning cached rows from initialLeague', cached.length);
+          }
           return cached;
         }
       }
@@ -1413,7 +1431,9 @@ ${shareUrl}`;
             if (l.code?.toUpperCase() === code.toUpperCase() && l.id) {
               const cached = getCached<MltRow[]>(`league:mltRows:${l.id}`);
               if (cached && Array.isArray(cached) && cached.length > 0) {
-                console.log('[League] ✅ getInitialMltRows returning cached rows from strategy 3', cached.length);
+                if (verboseDebug) {
+                  console.log('[League] ✅ getInitialMltRows returning cached rows from strategy 3', cached.length);
+                }
                 return cached;
               }
             }
@@ -1421,7 +1441,9 @@ ${shareUrl}`;
         }
       }
       
-      console.log('[League] ⚠️ getInitialMltRows returning empty array - cache miss');
+      if (verboseDebug) {
+        console.log('[League] ⚠️ getInitialMltRows returning empty array - cache miss');
+      }
     } catch (error) {
       console.error('[League] ❌ getInitialMltRows error', error);
       // Silent fail - cache miss is OK, will be populated by useEffect
@@ -2593,45 +2615,27 @@ ${shareUrl}`;
   }
 
   function MltTab() {
-    const renderStart = performance.now();
-    console.log('[MltTab] ⚡ RENDERING START', { 
-      mltRowsLength: mltRows.length, 
-      membersLength: members.length, 
-      leagueId: league?.id,
-      timestamp: renderStart
-    });
-    
     // CRITICAL: Call hooks FIRST (React rules) - same order as other tab components
-    const hookStart = performance.now();
     const _dummyGw = useMemo(() => currentGw ?? null, [currentGw]);
     const _dummyState = useGameweekState(_dummyGw);
     void _dummyState; // Suppress unused variable warning
-    const hookEnd = performance.now();
-    console.log('[MltTab] ⚡ Hooks complete', { duration: hookEnd - hookStart });
 
     // SIMPLE: Just use mltRows state directly - it's already populated from cache synchronously
     // No need to read cache again - state is the source of truth
-    const rowsStart = performance.now();
     const rows = mltRows.length > 0 
       ? mltRows
       : members.length > 0
         ? members.map((m) => ({
-          user_id: m.id,
-          name: m.name,
-          mltPts: 0,
-          ocp: 0,
-          unicorns: 0,
-          wins: 0,
-          draws: 0,
-          form: [] as ("W" | "D" | "L")[],
-          }))
+            user_id: m.id,
+            name: m.name,
+            mltPts: 0,
+            ocp: 0,
+            unicorns: 0,
+            wins: 0,
+            draws: 0,
+            form: [] as ("W" | "D" | "L")[],
+            }))
         : [];
-    const rowsEnd = performance.now();
-    console.log('[MltTab] ⚡ Rows calculated', { 
-      rowsLength: rows.length, 
-      mltRowsLength: mltRows.length,
-      duration: rowsEnd - rowsStart
-    });
 
     // Check if this is a late-starting league (not one of the special leagues that start from GW0)
     // Note: "API Test" is excluded - it uses test API data, not regular game data
@@ -3817,14 +3821,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
         return (
         <div className={`league-content-wrapper ${showHeaderMenu ? 'menu-open' : ''}`}>
           <div className="px-1 sm:px-2">
-            {tab === "mlt" && (() => {
-              const startTime = performance.now();
-              console.log('[League] Rendering MltTab, tab is mlt', { tab, mltRowsLength: mltRows.length, leagueId: league?.id, timestamp: startTime });
-              const result = <MltTab />;
-              const endTime = performance.now();
-              console.log('[League] MltTab JSX created', { duration: endTime - startTime });
-              return result;
-            })()}
+            {tab === "mlt" && <MltTab />}
             {tab === "gw" && <GwPicksTab />}
             {tab === "gwr" && <GwResultsTab />}
           </div>

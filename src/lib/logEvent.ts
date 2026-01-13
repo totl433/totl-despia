@@ -14,8 +14,18 @@ interface LogEvent {
 /**
  * Log a structured event to the console.
  * In production, this could be extended to send to a logging service.
+ * Debug logs are only shown if localStorage flag 'debug:verbose' is set to 'true'
  */
 export function logEvent({ name, level = 'info', data }: LogEvent): void {
+  // Skip debug logs unless explicitly enabled
+  if (level === 'debug') {
+    const verboseEnabled = typeof window !== 'undefined' && 
+      localStorage.getItem('debug:verbose') === 'true';
+    if (!verboseEnabled) {
+      return; // Silent skip - no log at all
+    }
+  }
+  
   const timestamp = new Date().toISOString();
   const prefix = `[TOTL][${timestamp}]`;
   

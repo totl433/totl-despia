@@ -203,9 +203,9 @@ export default function UserAvatar({
     );
   }
 
-  // Log for debugging broken images
-  if (import.meta.env.DEV && imageSrc) {
-    console.log('[UserAvatar] Rendering image with src:', imageSrc, 'for user:', userId);
+  // Log for debugging broken images (only if verbose debug is enabled)
+  if (import.meta.env.DEV && imageSrc && typeof window !== 'undefined' && localStorage.getItem('debug:verbose') === 'true') {
+    console.debug('[UserAvatar] Rendering image with src:', imageSrc, 'for user:', userId);
   }
   
   return (
@@ -259,9 +259,9 @@ export default function UserAvatar({
         setError(true);
       }}
       onLoad={() => {
-        // Log successful load for debugging
-        if (import.meta.env.DEV) {
-          console.log('[UserAvatar] Image loaded successfully:', imageSrc, 'for user:', userId);
+        // Log successful load for debugging (only if verbose debug is enabled)
+        if (import.meta.env.DEV && typeof window !== 'undefined' && localStorage.getItem('debug:verbose') === 'true') {
+          console.debug('[UserAvatar] Image loaded successfully:', imageSrc, 'for user:', userId);
         }
       }}
       title={name || undefined}
