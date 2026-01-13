@@ -905,7 +905,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
         "User";
 
       try {
-        await fetch("/.netlify/functions/notifyLeagueMessage", {
+        await fetch("/.netlify/functions/notifyLeagueMessageV2", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

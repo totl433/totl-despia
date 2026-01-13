@@ -13,6 +13,7 @@ import { logDataFetch } from './dataFetchLogger';
 type LeagueMember = { id: string; name: string };
 type PickRow = { user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" };
 type ResultRowRaw = { gw: number; fixture_index: number; result?: "H" | "D" | "A" | null };
+type MLTableRow = { user_id: string; name: string; score: number; unicorns: number };
 
 type LeagueDataInternal = {
   id: string;
@@ -33,6 +34,9 @@ type HomePageData = {
   userPicks: Record<number, "H" | "D" | "A">;
   leagueData: Record<string, LeagueDataInternal>;
   leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
+  leaguePicks: Record<string, PickRow[]>; // leagueId -> picks array for current GW
+  leagueSubmissionsSet: Record<string, Set<string>>; // leagueId -> submitted user IDs
+  leagueRows: Record<string, MLTableRow[]>; // leagueId -> pre-calculated table rows for current GW
   gwPoints: Array<{user_id: string, gw: number, points: number}>;
   allGwPoints: Array<{user_id: string, gw: number, points: number}>;
   overall: Array<{user_id: string, name: string | null, ocp: number | null}>;
@@ -135,6 +139,9 @@ export async function loadHomePageData(
   const cachedLeagueData = getCached<{
     leagueData: Record<string, any>;
     leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
+    leaguePicks?: Record<string, PickRow[]>;
+    leagueSubmissionsSet?: Record<string, string[]>;
+    leagueRows?: Record<string, MLTableRow[]>;
   }>(leagueDataCacheKey);
   
   // Check if cache is fresh (within 2 minutes for fixtures, 5 minutes for league data)
@@ -146,8 +153,17 @@ export async function loadHomePageData(
   const isFixturesCacheFresh = fixturesCacheAge < 2 * 60 * 1000; // 2 minutes
   const isLeagueCacheFresh = leagueCacheAge < 5 * 60 * 1000; // 5 minutes
   
-  // If all caches are fresh, return cached data
-  if (isBasicCacheFresh && isFixturesCacheFresh && isLeagueCacheFresh && 
+  // Check if cache has the new fields (leaguePicks/leagueSubmissionsSet/leagueRows)
+  const hasNewFields = cachedLeagueData?.leaguePicks !== undefined && 
+                       cachedLeagueData?.leagueSubmissionsSet !== undefined &&
+                       cachedLeagueData?.leagueRows !== undefined;
+  
+  // If cache is fresh but missing new fields, treat as stale to force fetch
+  // This ensures picks/submissions/rows data loads on first use of new code
+  const effectiveLeagueCacheFresh = isLeagueCacheFresh && hasNewFields;
+  
+  // If all caches are fresh AND have new fields, return cached data
+  if (isBasicCacheFresh && isFixturesCacheFresh && effectiveLeagueCacheFresh && 
       cachedBasic && cachedFixtures && cachedLeagueData?.leagueData) {
     
     // Restore Sets from arrays for league data
@@ -161,6 +177,16 @@ export async function loadHomePageData(
       };
     }
     
+    // Restore leaguePicks, leagueSubmissionsSet, and leagueRows from cache
+    const restoredLeaguePicks: Record<string, PickRow[]> = cachedLeagueData.leaguePicks || {};
+    const restoredLeagueSubmissionsSet: Record<string, Set<string>> = {};
+    if (cachedLeagueData.leagueSubmissionsSet) {
+      for (const [leagueId, userIds] of Object.entries(cachedLeagueData.leagueSubmissionsSet)) {
+        restoredLeagueSubmissionsSet[leagueId] = new Set(userIds);
+      }
+    }
+    const restoredLeagueRows: Record<string, MLTableRow[]> = cachedLeagueData.leagueRows || {};
+    
     return {
       gw: cachedBasic.currentGw,
       latestGw: cachedBasic.latestGw,
@@ -168,6 +194,9 @@ export async function loadHomePageData(
       userPicks: cachedFixtures.userPicks,
       leagueData: restoredLeagueData,
       leagueSubmissions: cachedLeagueData.leagueSubmissions,
+      leaguePicks: restoredLeaguePicks,
+      leagueSubmissionsSet: restoredLeagueSubmissionsSet,
+      leagueRows: restoredLeagueRows,
       gwPoints: (cachedBasic.allGwPoints || []).filter(gp => gp.user_id === userId),
       allGwPoints: cachedBasic.allGwPoints || [],
       overall: cachedBasic.overall || [],
@@ -296,13 +325,14 @@ export async function loadHomePageData(
     }
   });
   
-  // Fetch picks per league
+  // Fetch picks per league (filtered by currentGw for card display)
   const picksPromises = leagues.map(async (league) => {
     const memberIds = (membersByLeague[league.id] ?? []).map(m => m.id);
     if (memberIds.length === 0) return { leagueId: league.id, picks: [], result: null };
     const result = await supabase
       .from("app_picks")
       .select("user_id, gw, fixture_index, pick")
+      .eq("gw", currentGw) // Filter by current GW for card display
       .in("user_id", memberIds);
     
     // Log picks query for this league
@@ -316,6 +346,95 @@ export async function loadHomePageData(
   picksResults.forEach(({ leagueId, picks }) => {
     picksByLeague.set(leagueId, picks || []);
   });
+  
+  // Build leaguePicks object (for current GW only)
+  const leaguePicks: Record<string, PickRow[]> = {};
+  picksByLeague.forEach((picks, leagueId) => {
+    leaguePicks[leagueId] = picks;
+  });
+  
+  // Build leagueSubmissionsSet (extract submitted user IDs per league)
+  const leagueSubmissionsSet: Record<string, Set<string>> = {};
+  leagues.forEach(league => {
+    const memberIds = (membersByLeague[league.id] ?? []).map(m => m.id);
+    const submitted = new Set(memberIds.filter(id => submittedUserIds.has(id)));
+    leagueSubmissionsSet[league.id] = submitted;
+  });
+  
+  // Calculate table rows for each league (for current GW only) - like lastGwRank calculation
+  const leagueRows: Record<string, MLTableRow[]> = {};
+  const currentGwResults = results.filter(r => r.gw === currentGw);
+  const currentGwOutcomes = new Map<number, "H" | "D" | "A">();
+  currentGwResults.forEach(r => {
+    const out = rowToOutcome(r);
+    if (out) currentGwOutcomes.set(r.fixture_index, out);
+  });
+  
+  console.log('[loadHomePageData] Calculating leagueRows for GW', currentGw, {
+    totalResults: results.length,
+    currentGwResults: currentGwResults.length,
+    leaguesCount: leagues.length,
+  });
+  
+  leagues.forEach(league => {
+    const members = membersByLeague[league.id] ?? [];
+    const picks = leaguePicks[league.id] ?? [];
+    const submissions = leagueSubmissionsSet[league.id] ?? new Set<string>();
+    
+    console.log(`[loadHomePageData] League ${league.id} (${league.name}):`, {
+      membersCount: members.length,
+      picksCount: picks.length,
+      submissionsCount: submissions.size,
+      submissions: Array.from(submissions),
+    });
+    
+    // Only include members who submitted
+    const rows: MLTableRow[] = members
+      .filter(m => submissions.has(m.id))
+      .map(m => ({
+        user_id: m.id,
+        name: m.name,
+        score: 0,
+        unicorns: 0,
+      }));
+    
+    console.log(`[loadHomePageData] League ${league.id} initial rows:`, rows.length);
+    
+    // Group picks by fixture
+    const picksByFixture = new Map<number, Array<{ user_id: string; pick: "H" | "D" | "A" }>>();
+    picks.forEach(p => {
+      if (p.gw !== currentGw) return;
+      if (!submissions.has(p.user_id)) return;
+      const arr = picksByFixture.get(p.fixture_index) ?? [];
+      arr.push({ user_id: p.user_id, pick: p.pick });
+      picksByFixture.set(p.fixture_index, arr);
+    });
+    
+    // Calculate scores
+    currentGwOutcomes.forEach((outcome, fixtureIndex) => {
+      const thesePicks = picksByFixture.get(fixtureIndex) ?? [];
+      const correctIds = thesePicks.filter(p => p.pick === outcome).map(p => p.user_id);
+      
+      correctIds.forEach(uid => {
+        const row = rows.find(r => r.user_id === uid);
+        if (row) row.score += 1;
+      });
+      
+      // Unicorns: only one person got it right AND at least 3 members submitted
+      if (correctIds.length === 1 && submissions.size >= 3) {
+        const row = rows.find(r => r.user_id === correctIds[0]);
+        if (row) row.unicorns += 1;
+      }
+    });
+    
+    // Sort: score desc, unicorns desc, name asc
+    rows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name));
+    leagueRows[league.id] = rows;
+    
+    console.log(`[loadHomePageData] League ${league.id} final rows:`, rows.length, rows.map(r => ({ name: r.name, score: r.score })));
+  });
+  
+  console.log('[loadHomePageData] Final leagueRows:', Object.keys(leagueRows).length, 'leagues');
   
   // Calculate league start GWs
   const leagueStartGws = new Map<string, number>();
@@ -545,9 +664,22 @@ export async function loadHomePageData(
       };
     }
     
+    // Cache leaguePicks, leagueSubmissionsSet, and leagueRows
+    const cacheableLeaguePicks: Record<string, PickRow[]> = {};
+    const cacheableLeagueSubmissionsSet: Record<string, string[]> = {};
+    for (const leagueId in leaguePicks) {
+      cacheableLeaguePicks[leagueId] = leaguePicks[leagueId];
+    }
+    for (const leagueId in leagueSubmissionsSet) {
+      cacheableLeagueSubmissionsSet[leagueId] = Array.from(leagueSubmissionsSet[leagueId]);
+    }
+    
     setCached(leagueDataCacheKey, {
       leagueData: cacheableLeagueData,
       leagueSubmissions: submissionStatus,
+      leaguePicks: cacheableLeaguePicks,
+      leagueSubmissionsSet: cacheableLeagueSubmissionsSet,
+      leagueRows: leagueRows, // Pre-calculated rows
     }, CACHE_TTL.HOME);
   } catch (error) {
     // Failed to cache (non-critical)
@@ -560,6 +692,9 @@ export async function loadHomePageData(
     userPicks,
     leagueData: leagueDataMap,
     leagueSubmissions: submissionStatus,
+    leaguePicks,
+    leagueSubmissionsSet,
+    leagueRows, // Pre-calculated table rows
     gwPoints: allGwPoints.filter(gp => gp.user_id === userId),
     allGwPoints,
     overall,

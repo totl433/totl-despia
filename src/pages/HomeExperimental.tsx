@@ -1888,6 +1888,7 @@ export default function HomeExperimental() {
               leagues={leagues}
               leagueData={leagueData}
               leagueSubmissions={leagueSubmissions}
+              leagueRows={{}}
               unreadByLeague={unreadByLeague}
               leagueDataLoading={false}
               currentGw={gw}

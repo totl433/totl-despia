@@ -69,7 +69,42 @@ const createMockData = (memberIds: string[], gw: number, isLive: boolean = false
     ? basePicks.filter(p => p.fixture_index < 3)
     : basePicks;
 
-  return { fixtures, picks, results, displayGw: gw, isLive };
+  // Calculate rows from picks and results
+  const outcomes = new Map<number, "H" | "D" | "A">();
+  results.forEach(r => {
+    if (r.result) outcomes.set(r.fixture_index, r.result);
+  });
+  
+  const rows = memberIds.map(mid => ({
+    user_id: mid,
+    name: `User ${mid.slice(0, 8)}`,
+    score: 0,
+    unicorns: 0,
+  }));
+  
+  const picksByFixture = new Map<number, Array<{ user_id: string; pick: "H" | "D" | "A" }>>();
+  picks.forEach(p => {
+    const arr = picksByFixture.get(p.fixture_index) ?? [];
+    arr.push({ user_id: p.user_id, pick: p.pick });
+    picksByFixture.set(p.fixture_index, arr);
+  });
+  
+  outcomes.forEach((outcome, idx) => {
+    const thesePicks = picksByFixture.get(idx) ?? [];
+    const correctIds = thesePicks.filter(p => p.pick === outcome).map(p => p.user_id);
+    correctIds.forEach(uid => {
+      const row = rows.find(r => r.user_id === uid);
+      if (row) row.score += 1;
+    });
+    if (correctIds.length === 1 && memberIds.length >= 3) {
+      const row = rows.find(r => r.user_id === correctIds[0]);
+      if (row) row.unicorns += 1;
+    }
+  });
+  
+  rows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name));
+
+  return { fixtures, picks, results, displayGw: gw, isLive, rows };
 };
 
 export const Default: Story = {
@@ -82,9 +117,12 @@ export const Default: Story = {
       { id: generateUUID(2), name: 'Bob' },
       { id: generateUUID(3), name: 'Charlie' },
     ],
+    rows: [],
     currentUserId: generateUUID(1),
     currentGw: 18,
     avatar: null,
+    sharedFixtures: [],
+    sharedGwResults: {},
     mockData: createMockData([generateUUID(1), generateUUID(2), generateUUID(3)], 18),
   },
 };
@@ -101,10 +139,13 @@ export const WithMoreMembers: Story = {
       { id: generateUUID(4), name: 'David' },
       { id: generateUUID(5), name: 'Eve' },
     ],
+    rows: [],
     currentUserId: generateUUID(1),
     currentGw: 18,
     maxMemberCount: 5,
     avatar: null,
+    sharedFixtures: [],
+    sharedGwResults: {},
     mockData: createMockData([
       generateUUID(1), generateUUID(2), generateUUID(3), generateUUID(4), generateUUID(5),
     ], 18),
@@ -122,9 +163,12 @@ export const LiveGameweek: Story = {
       { id: generateUUID(3), name: 'Charlie' },
       { id: generateUUID(4), name: 'David' },
     ],
+    rows: [],
     currentUserId: generateUUID(1),
     currentGw: 18,
     avatar: null,
+    sharedFixtures: [],
+    sharedGwResults: {},
     mockData: createMockData([generateUUID(1), generateUUID(2), generateUUID(3), generateUUID(4)], 18, true),
   },
 };
@@ -157,10 +201,13 @@ export const HorizontalScroll: Story = {
           leagueCode="LEAG1"
           leagueName="League One (3 members)"
           members={members1}
+          rows={[]}
           currentUserId={generateUUID(1)}
           currentGw={18}
           maxMemberCount={maxMemberCount}
           avatar={null}
+          sharedFixtures={[]}
+          sharedGwResults={{}}
           mockData={createMockData([generateUUID(1), generateUUID(2), generateUUID(3)], 18)}
         />
         <MiniLeagueGwTableCard
@@ -168,10 +215,13 @@ export const HorizontalScroll: Story = {
           leagueCode="LEAG2"
           leagueName="League Two (8 members)"
           members={members2}
+          rows={[]}
           currentUserId={generateUUID(4)}
           currentGw={18}
           maxMemberCount={maxMemberCount}
           avatar={null}
+          sharedFixtures={[]}
+          sharedGwResults={{}}
           mockData={createMockData([
             generateUUID(4), generateUUID(5), generateUUID(6), generateUUID(7), generateUUID(8)
           ], 18)}
@@ -181,10 +231,13 @@ export const HorizontalScroll: Story = {
           leagueCode="LEAG3"
           leagueName="League Three (1 member)"
           members={members3}
+          rows={[]}
           currentUserId={generateUUID(9)}
           currentGw={18}
           maxMemberCount={maxMemberCount}
           avatar={null}
+          sharedFixtures={[]}
+          sharedGwResults={{}}
           mockData={createMockData([generateUUID(9)], 18)}
         />
       </div>

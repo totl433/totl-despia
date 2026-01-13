@@ -21,10 +21,13 @@ type Fixture = {
   api_match_id?: number | null;
 };
 
+type MLTableRow = { user_id: string; name: string; score: number; unicorns: number };
+
 interface MiniLeaguesSectionProps {
   leagues: LeagueRow[];
   leagueData: Record<string, any>;
   leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
+  leagueRows: Record<string, MLTableRow[]>; // leagueId -> pre-calculated table rows
   unreadByLeague: Record<string, number>;
   leagueDataLoading: boolean;
   currentGw: number | null;
@@ -43,6 +46,7 @@ export function MiniLeaguesSection({
   leagues,
   leagueData,
   leagueSubmissions,
+  leagueRows,
   unreadByLeague,
   leagueDataLoading,
   currentGw,
@@ -179,7 +183,7 @@ export function MiniLeaguesSection({
       {showLiveTables ? (
         <button
           onClick={() => setShowLiveTables(false)}
-          className="px-3 py-1.5 text-xs font-medium rounded-full bg-slate-100 text-slate-600"
+          className="px-3 py-1.5 text-xs font-medium rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
         >
           Default View
         </button>
@@ -227,8 +231,8 @@ Start a Mini League →
 
 How To Play →`}
       >
-        <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
-          <div className="text-slate-600 mb-3">You don't have any mini leagues yet.</div>
+        <div className="p-6 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-center">
+          <div className="text-slate-600 dark:text-slate-400 mb-3">You don't have any mini leagues yet.</div>
           <Link 
             to="/create-league" 
             className="inline-block px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg no-underline"
@@ -288,20 +292,18 @@ How To Play →`}
       {/* Mobile: Conditionally show live tables or default view */}
       {showLiveTables ? (
         // Live Tables View - Horizontal scroll of table cards
-        // Wait for fixtures AND member data to load before rendering cards
+        // Show cards if we have fixtures - cards will show "Loading..." if picks aren't ready yet
         (() => {
-          // Check if we have both fixtures and at least one league with members
           const hasFixtures = fixtures.length > 0;
-          const hasAnyMembers = leagues.some(l => (memoizedCardData[l.id]?.members?.length ?? 0) > 0);
-          const isReady = hasFixtures && hasAnyMembers;
           
-          if (isReady) {
+          if (hasFixtures) {
             return (
               <div className="lg:hidden">
                 <HorizontalScrollContainer>
                   {leagues.map((league) => {
                     const cardData = memoizedCardData[league.id];
                     const members = cardData?.members || [];
+                    const rows = leagueRows[league.id] || [];
                     
                     return (
                       <MiniLeagueGwTableCard
@@ -310,6 +312,7 @@ How To Play →`}
                         leagueCode={league.code}
                         leagueName={league.name}
                         members={members}
+                        rows={rows}
                         currentUserId={currentUserId}
                         currentGw={currentGw}
                         maxMemberCount={maxMemberCount}
@@ -337,10 +340,10 @@ How To Play →`}
                   {placeholderLeagues.map((league) => (
                     <div
                       key={league.id}
-                      className="min-w-[calc(100vw-72px)] snap-start rounded-2xl border border-slate-200 bg-white shadow-sm p-4"
+                      className="min-w-[calc(100vw-72px)] snap-start rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm p-4"
                     >
                       <div className="flex items-center gap-3 mb-4">
-                        <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center">
+                        <div className="w-12 h-12 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
                           {league.avatar ? (
                             <img
                               src={league.avatar}
@@ -348,10 +351,10 @@ How To Play →`}
                               className="w-12 h-12 rounded-full object-cover"
                             />
                           ) : (
-                            <div className="w-6 h-6 rounded-full bg-slate-300"></div>
+                            <div className="w-6 h-6 rounded-full bg-slate-300 dark:bg-slate-600"></div>
                           )}
                         </div>
-                        <span className="font-semibold text-slate-800">{league.name}</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{league.name}</span>
                       </div>
                       <div className="flex justify-center py-8">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600"></div>
@@ -372,7 +375,7 @@ How To Play →`}
               const batchLeagues = leagues.slice(startIdx, startIdx + 3);
               
               return (
-                <div key={batchIdx} className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm w-[320px]">
+                <div key={batchIdx} className="flex flex-col rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden shadow-sm w-[320px]">
                   {batchLeagues.map((l, index) => {
                     const unread = unreadByLeague?.[l.id] ?? 0;
                     const cardData = memoizedCardData[l.id];
@@ -380,7 +383,7 @@ How To Play →`}
                     return (
                       <div key={l.id} className={index < batchLeagues.length - 1 ? 'relative' : ''}>
                         {index < batchLeagues.length - 1 && (
-                          <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-30 pointer-events-none" />
+                          <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 dark:bg-slate-700 z-30 pointer-events-none" />
                         )}
                         <div className="[&>div]:border-0 [&>div]:shadow-none [&>div]:rounded-none [&>div]:bg-transparent relative z-20 [&>div>a]:!p-4">
                               <MiniLeagueCard

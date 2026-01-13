@@ -181,12 +181,18 @@ export default function HomePage() {
         // Load league data from cache
         let leagueData: Record<string, LeagueDataInternal> = {};
         let leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }> = {};
+        let leaguePicks: Record<string, Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }>> = {};
+        let leagueSubmissionsSet: Record<string, Set<string>> = {};
+        let leagueRows: Record<string, Array<{ user_id: string; name: string; score: number; unicorns: number }>> = {};
         const leagueDataCacheKey = `home:leagueData:${userId}:${cached.currentGw}`;
         
         try {
           const leagueDataCached = getCached<{
             leagueData: Record<string, any>;
             leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
+            leaguePicks?: Record<string, Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }>>;
+            leagueSubmissionsSet?: Record<string, string[]>;
+            leagueRows?: Record<string, Array<{ user_id: string; name: string; score: number; unicorns: number }>>;
           }>(leagueDataCacheKey);
           
           if (leagueDataCached?.leagueData) {
@@ -206,6 +212,15 @@ export default function HomePage() {
                 };
               }
               leagueSubmissions = leagueDataCached.leagueSubmissions || {};
+              leaguePicks = leagueDataCached.leaguePicks || {};
+              leagueRows = leagueDataCached.leagueRows || {};
+              
+              // Restore leagueSubmissionsSet from arrays
+              if (leagueDataCached.leagueSubmissionsSet) {
+                for (const [leagueId, userIds] of Object.entries(leagueDataCached.leagueSubmissionsSet)) {
+                  leagueSubmissionsSet[leagueId] = new Set(userIds);
+                }
+              }
             }
           }
         } catch (error) {
@@ -227,6 +242,9 @@ export default function HomePage() {
           liveScores,
           leagueData,
           leagueSubmissions,
+          leaguePicks,
+          leagueSubmissionsSet,
+          leagueRows,
           hasCache: fixtures.length > 0, // Only has cache if fixtures loaded successfully
         };
       }
@@ -278,6 +296,7 @@ export default function HomePage() {
   }>>(initialState.liveScores || {});
   const [leagueData, setLeagueData] = useState<Record<string, LeagueDataInternal>>(initialState.leagueData);
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>(initialState.leagueSubmissions);
+  const [leagueRows, setLeagueRows] = useState<Record<string, Array<{ user_id: string; name: string; score: number; unicorns: number }>>>(initialState.leagueRows || {});
   
   const logoContainerRef = useRef<HTMLDivElement>(null);
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
@@ -701,17 +720,50 @@ export default function HomePage() {
   
   // Only load data if we don't have cache (fixtures.length === 0 means no cache)
   useEffect(() => {
+    console.log('[Home] Data load effect:', { 
+      userId: user?.id?.slice(0, 8), 
+      gw, 
+      fixturesLen: fixtures.length, 
+      leaguesLen: leagues.length, 
+      leaguesLoading, 
+      hasLeaguesCache,
+      dataLoadInProgress: dataLoadInProgressRef.current 
+    });
+    
     if (!user?.id || !gw) return;
     
-    // If we already have fixtures from cache, we're done - pre-loader completed
-    if (fixtures.length > 0) {
+    // If we already have fixtures AND leagueRows from cache, we're done - pre-loader completed
+    // Check if leagueRows has any non-empty arrays (not just keys)
+    const hasLeagueRows = Object.values(leagueRows).some(rows => Array.isArray(rows) && rows.length > 0);
+    const hasLeagueRowsKeys = Object.keys(leagueRows).length > 0;
+    
+    console.log('[Home] Checking cache state:', {
+      fixturesCount: fixtures.length,
+      leagueRowsKeys: Object.keys(leagueRows).length,
+      hasLeagueRows,
+      hasLeagueRowsKeys,
+      leagueRowsSample: Object.entries(leagueRows).slice(0, 2).map(([id, rows]) => ({ id, rowsCount: Array.isArray(rows) ? rows.length : 0 }))
+    });
+    
+    if (fixtures.length > 0 && hasLeagueRows) {
+      console.log('[Home] Cache complete, skipping loadHomePageData');
       setBasicDataLoading(false);
       return;
+    }
+    
+    // If we have fixtures but no leagueRows (or empty leagueRows), we need to load data to calculate rows
+    if (fixtures.length > 0 && !hasLeagueRows) {
+      console.log('[Home] Have fixtures but no leagueRows (or empty rows), loading data...', {
+        leaguesCount: leagues.length,
+        leagueRowsKeysCount: Object.keys(leagueRows).length
+      });
+      // Continue to load data below
     }
     
     // CRITICAL: Wait for leagues to finish loading before calling loadHomePageData
     // If leagues are still loading, wait
     if (leaguesLoading) {
+      console.log('[Home] Waiting for leagues to load...');
       return; // Still loading from API
     }
     
@@ -720,12 +772,14 @@ export default function HomePage() {
     // - If leagues.length === 0 AND hasLeaguesCache: user has no leagues (confirmed by cache), proceed
     // - If leagues.length === 0 AND !hasLeaguesCache: still loading or cache doesn't exist, wait
     if (leagues.length === 0 && !hasLeaguesCache) {
+      console.log('[Home] No leagues and no cache, waiting...');
       // Still waiting for leagues to load or cache to be populated
       return;
     }
     
     // Prevent duplicate loads - if a load is already in progress, don't start another
     if (dataLoadInProgressRef.current) {
+      console.log('[Home] Data load already in progress, skipping');
       return;
     }
     
@@ -738,9 +792,16 @@ export default function HomePage() {
     const currentGw = gw;
     const currentUserId = user.id;
     
+    console.log('[Home] Starting loadHomePageData...', { leagueCount: currentLeagues.length, gw: currentGw });
+    
     (async () => {
       try {
         const data = await loadHomePageData(currentUserId, currentLeagues, currentGw);
+        
+        console.log('[Home] loadHomePageData complete:', { 
+          fixturesCount: data.fixtures.length, 
+          leagueDataKeys: Object.keys(data.leagueData).length 
+        });
         
         // Update ALL state at once - single render
         setLatestGw(data.latestGw);
@@ -754,6 +815,7 @@ export default function HomePage() {
         // Always set league data, even if empty - prevents infinite loading
         setLeagueData(data.leagueData);
         setLeagueSubmissions(data.leagueSubmissions);
+        setLeagueRows(data.leagueRows);
         setBasicDataLoading(false);
       } catch (error: any) {
         console.error('[Home] Error loading data:', error);
@@ -1393,6 +1455,7 @@ export default function HomePage() {
                 leagues={leagues}
                 leagueData={leagueData}
                 leagueSubmissions={leagueSubmissions}
+                leagueRows={leagueRows}
                 unreadByLeague={unreadByLeague}
             leagueDataLoading={false}
                 currentGw={gw}
