@@ -96,7 +96,30 @@ export const handler: Handler = async (event) => {
     return json(400, { error: 'Missing required fields: leagueId, userId, userName' });
   }
 
+  // Test Supabase client connection first
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  
+  // Verify client works by testing a simple query
+  console.log('[notifyLeagueMemberJoin] Testing Supabase client...');
+  const { data: testData, error: testError } = await admin
+    .from('leagues')
+    .select('id')
+    .limit(1);
+  
+  if (testError) {
+    console.error('[notifyLeagueMemberJoin] Supabase client test failed:', {
+      error: testError,
+      message: testError.message,
+      code: testError.code,
+      details: testError.details,
+      hint: testError.hint,
+      url: SUPABASE_URL?.substring(0, 30) + '...',
+      keyLength: SUPABASE_SERVICE_ROLE_KEY?.length,
+    });
+    return json(500, { error: 'Supabase client initialization failed', details: testError.message });
+  }
+  
+  console.log('[notifyLeagueMemberJoin] Supabase client test passed, querying league...');
 
   try {
     // Get league code and name for deep linking and notification text
