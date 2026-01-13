@@ -298,7 +298,11 @@ export default function MiniLeagueGwTableCard({
       // Still need to fetch picks/submissions (league-specific)
       const hasMembers = members && members.length > 0;
       if (!hasMembers) {
-        setLoading(true);
+        // No members yet - show empty table, not loading spinner
+        // This prevents infinite loading when members haven't loaded yet
+        setPicks([]);
+        setSubmittedUserIds(new Set<string>());
+        setLoading(false);
         return;
       }
       
