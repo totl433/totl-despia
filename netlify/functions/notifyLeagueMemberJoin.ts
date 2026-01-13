@@ -90,15 +90,28 @@ export const handler: Handler = async (event) => {
 
   try {
     // Get league code and name for deep linking and notification text
+    console.log('[notifyLeagueMemberJoin] Querying league:', { leagueId, hasUrl: !!SUPABASE_URL, hasKey: !!SUPABASE_SERVICE_ROLE_KEY, keyLength: SUPABASE_SERVICE_ROLE_KEY?.length });
     const { data: leagueData, error: leagueErr } = await admin
       .from('leagues')
       .select('code, name')
       .eq('id', leagueId)
       .single();
 
-    if (leagueErr || !leagueData) {
-      console.error('[notifyLeagueMemberJoin] Failed to load league:', leagueErr);
-      return json(500, { error: 'Failed to load league', details: leagueErr?.message });
+    if (leagueErr) {
+      console.error('[notifyLeagueMemberJoin] Failed to load league:', {
+        error: leagueErr,
+        message: leagueErr?.message,
+        code: leagueErr?.code,
+        details: leagueErr?.details,
+        hint: leagueErr?.hint,
+        leagueId,
+      });
+      return json(500, { error: 'Failed to load league', details: leagueErr?.message || String(leagueErr) });
+    }
+
+    if (!leagueData) {
+      console.error('[notifyLeagueMemberJoin] League not found:', { leagueId });
+      return json(404, { error: 'League not found', leagueId });
     }
 
     const leagueCode = leagueData.code;
