@@ -20,20 +20,14 @@ export const handler: Handler = async (event) => {
     // Try to extract from event headers
     if (event.headers.host) {
       const protocol = event.headers['x-forwarded-proto'] || 'https';
-      const url = `${protocol}://${event.headers.host}`;
-      console.log(`[notifyLeagueMessage] Base URL from headers: ${url} (host: ${event.headers.host}, proto: ${protocol})`);
-      return url;
+      return `${protocol}://${event.headers.host}`;
     }
     // Fallback to environment variable
     if (process.env.URL || process.env.SITE_URL) {
-      const url = (process.env.URL || process.env.SITE_URL || '').trim();
-      console.log(`[notifyLeagueMessage] Base URL from env: ${url}`);
-      return url;
+      return (process.env.URL || process.env.SITE_URL || '').trim();
     }
     // Default fallback (shouldn't happen in production)
-    const defaultUrl = 'https://totl-staging.netlify.app';
-    console.warn(`[notifyLeagueMessage] Base URL using default fallback: ${defaultUrl}`);
-    return defaultUrl;
+    return 'https://totl-staging.netlify.app';
   };
   const baseUrl = getBaseUrl();
 
@@ -47,7 +41,7 @@ export const handler: Handler = async (event) => {
   let payload: any;
   try {
     payload = event.body ? JSON.parse(event.body) : {};
-  } catch (e) {
+  } catch {
     return json(400, { error: 'Invalid JSON body' });
   }
   
@@ -74,7 +68,6 @@ export const handler: Handler = async (event) => {
   // Get league code for deep linking (REQUIRED for notifications to work)
   let leagueCode: string | undefined;
   let leagueUrl: string | undefined;
-  let leagueCodeError: any = null;
   try {
     const { data: leagueData, error: leagueErr } = await admin
       .from('leagues')
@@ -83,19 +76,16 @@ export const handler: Handler = async (event) => {
       .single();
     
     if (leagueErr) {
-      leagueCodeError = leagueErr;
       console.error('[notifyLeagueMessage] Failed to load league code:', leagueErr);
       // Don't fail the notification, but log the error
     } else if (leagueData?.code) {
       leagueCode = leagueData.code;
       // Construct full URL (OneSignal requires http:// or https://)
       leagueUrl = `${baseUrl}/league/${leagueCode}?tab=chat`;
-      console.log(`[notifyLeagueMessage] League code loaded: ${leagueCode}, URL: ${leagueUrl}`);
     } else {
-      console.warn(`[notifyLeagueMessage] League code not found for leagueId: ${leagueId} (data: ${JSON.stringify(leagueData)})`);
+      console.warn('[notifyLeagueMessage] League code not found for leagueId:', leagueId);
     }
   } catch (e) {
-    leagueCodeError = e;
     console.error('[notifyLeagueMessage] Error getting league code:', e);
   }
 
@@ -105,12 +95,7 @@ export const handler: Handler = async (event) => {
     .select('user_id')
     .eq('league_id', leagueId);
 
-  if (memErr) {
-    return json(500, { error: 'Failed to load members', details: memErr.message });
-  }
-  const totalMembers = (members ?? []).length;
-  console.log(`[notifyLeagueMessage] Total league members: ${totalMembers}`);
-  
+  if (memErr) return json(500, { error: 'Failed to load members', details: memErr.message });
   let recipientIds = new Set<string>((members ?? []).map((r: any) => r.user_id).filter(Boolean));
 
   // Exclude sender
@@ -123,11 +108,7 @@ export const handler: Handler = async (event) => {
     .eq('league_id', leagueId)
     .eq('muted', true);
 
-  if (muteErr) {
-    console.error('[notifyLeagueMessage] Failed to load mutes:', muteErr);
-    return json(500, { error: 'Failed to load mutes', details: muteErr.message });
-  }
-  
+  if (muteErr) return json(500, { error: 'Failed to load mutes', details: muteErr.message });
   for (const row of (mutes ?? [])) recipientIds.delete(row.user_id);
 
   // Optional: exclude currently active chat users (if provided)
@@ -135,35 +116,35 @@ export const handler: Handler = async (event) => {
     for (const uid of activeUserIds) recipientIds.delete(uid);
   }
 
-  if (recipientIds.size === 0) {
-    console.log('[notifyLeagueMessage] No eligible recipients (all excluded: sender, muted, or active)');
-    return json(200, { ok: true, message: 'No eligible recipients' });
+  // Also exclude users who are actively viewing the chat (presence tracking)
+  // Users are considered "active" if they've been seen in the last 15 seconds
+  // (Frontend updates presence every 10s, so 15s = 10s update + 5s buffer)
+  // Presence is cleared when user leaves chat, so this window is just for safety
+  const { data: activeViewers, error: presenceErr } = await admin
+    .from('chat_presence')
+    .select('user_id')
+    .eq('league_id', leagueId)
+    .gte('last_seen', new Date(Date.now() - 15000).toISOString()); // Last 15 seconds
+  
+  if (!presenceErr && activeViewers) {
+    for (const viewer of activeViewers) {
+      recipientIds.delete(viewer.user_id);
+    }
   }
+
+  if (recipientIds.size === 0) return json(200, { ok: true, message: 'No eligible recipients' });
 
   // Resolve player IDs
   const toIds = Array.from(recipientIds);
-  
   const { data: subs, error: subErr } = await admin
     .from('push_subscriptions')
     .select('player_id, user_id')
     .in('user_id', toIds)
     .eq('is_active', true);
 
-  if (subErr) {
-    console.error('[notifyLeagueMessage] Failed to load subscriptions:', subErr);
-    return json(500, { error: 'Failed to load subscriptions', details: subErr.message });
-  }
-  
+  if (subErr) return json(500, { error: 'Failed to load subscriptions', details: subErr.message });
   const playerIds = Array.from(new Set((subs ?? []).map((s: any) => s.player_id).filter(Boolean)));
-
-  if (playerIds.length === 0) {
-    console.log('[notifyLeagueMessage] No registered devices found for recipients');
-    return json(200, { ok: true, message: 'No devices' });
-  }
-  
-  // Note: Having player IDs in database doesn't guarantee devices are subscribed in OneSignal
-  // OneSignal may accept notifications but not deliver them if devices aren't subscribed
-  // Check OneSignal dashboard or use Message History API to verify actual delivery
+  if (playerIds.length === 0) return json(200, { ok: true, message: 'No devices' });
 
   // Build message: title = sender, body = content (trim to reasonable length)
   const title = senderName || 'New message';
@@ -185,59 +166,57 @@ export const handler: Handler = async (event) => {
   };
   
   // Add URL for deep linking (iOS needs web_url, NOT url - they conflict)
-  let finalDeepLinkUrl: string | undefined;
   if (leagueUrl) {
     oneSignalPayload.web_url = leagueUrl;
-    finalDeepLinkUrl = leagueUrl;
-    console.log(`[notifyLeagueMessage] Deep link URL set from leagueUrl: ${leagueUrl}`);
   } else if (leagueCode) {
     // Fallback: construct full URL from code if leagueUrl wasn't set
     const fallbackUrl = `${baseUrl}/league/${leagueCode}?tab=chat`;
     oneSignalPayload.web_url = fallbackUrl;
-    finalDeepLinkUrl = fallbackUrl;
-    console.log(`[notifyLeagueMessage] Deep link URL set from fallback: ${fallbackUrl}`);
-  } else {
-    console.warn(`[notifyLeagueMessage] No deep link URL set - missing both leagueUrl and leagueCode`);
   }
-  
-  console.log(`[notifyLeagueMessage] Final OneSignal payload web_url:`, oneSignalPayload.web_url);
-  console.log(`[notifyLeagueMessage] OneSignal payload data:`, JSON.stringify(oneSignalPayload.data, null, 2));
-  
-  // Single endpoint and auth - simplified per Phase 4
-  const endpoint = 'https://onesignal.com/api/v1/notifications';
-  const auth = `Basic ${ONESIGNAL_REST_API_KEY}`;
 
-  try {
-    const resp = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': auth },
-      body: JSON.stringify(oneSignalPayload),
-    });
-    
-    const body = await resp.json().catch(() => ({}));
-    
-    if (!resp.ok) {
-      console.error('[notifyLeagueMessage] OneSignal API error:', resp.status, body);
-      return json(200, { ok: false, error: 'OneSignal API error', details: { status: resp.status, body }, sent: 0 });
+  // Try endpoints and headers similar to original working version
+  const isV2 = ONESIGNAL_REST_API_KEY.startsWith('os_');
+  const endpoints = isV2
+    ? ['https://api.onesignal.com/notifications', 'https://onesignal.com/api/v1/notifications']
+    : ['https://onesignal.com/api/v1/notifications', 'https://api.onesignal.com/notifications'];
+  const headersList = isV2
+    ? [`Bearer ${ONESIGNAL_REST_API_KEY}`, ONESIGNAL_REST_API_KEY, `Basic ${ONESIGNAL_REST_API_KEY}`]
+    : [`Basic ${ONESIGNAL_REST_API_KEY}`, `Bearer ${ONESIGNAL_REST_API_KEY}`, ONESIGNAL_REST_API_KEY];
+
+  let lastResp: any = null;
+  for (const endpoint of endpoints) {
+    for (const auth of headersList) {
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': auth },
+        body: JSON.stringify(oneSignalPayload),
+      });
+      const body = await resp.json().catch(() => ({}));
+      lastResp = { endpoint, auth, status: resp.status, body };
+      
+      // OneSignal often returns HTTP 200 even with errors in the body
+      if (resp.ok) {
+        // Check for errors in response body
+        if (body.errors && body.errors.length > 0) {
+          console.error(`[notifyLeagueMessage] OneSignal returned errors:`, body.errors);
+          // If all players are not subscribed, that's a different issue
+          if (body.errors.some((e: string) => e.includes('not subscribed'))) {
+            console.warn(`[notifyLeagueMessage] Some/all players not subscribed in OneSignal`);
+            // Continue to next endpoint/auth combo
+            continue;
+          }
+        }
+        
+        // Success - check recipients count
+        const recipients = body.recipients || 0;
+        if (recipients > 0 || !body.errors) {
+          return json(200, { ok: true, result: body, sent: playerIds.length, recipients });
+        }
+      }
+      if (![401, 403].includes(resp.status)) break;
     }
-    
-    // Check for errors in response body
-    if (body.errors && body.errors.length > 0) {
-      console.error('[notifyLeagueMessage] OneSignal returned errors:', body.errors);
-      return json(200, { ok: false, error: 'OneSignal errors', details: body.errors, sent: 0 });
-    }
-    
-    const recipients = body.recipients ?? body.result?.recipients ?? 0;
-    const notificationId = body.id;
-    
-    if (notificationId) {
-      console.log(`[notifyLeagueMessage] Success! Notification ID: ${notificationId}, recipients: ${recipients}`);
-      return json(200, { ok: true, result: body, sent: playerIds.length, recipients, notificationId });
-    }
-    
-    return json(200, { ok: false, error: 'Unexpected response format', details: body, sent: 0 });
-  } catch (err: any) {
-    console.error('[notifyLeagueMessage] OneSignal request failed:', err);
-    return json(200, { ok: false, error: 'Request failed', details: err.message, sent: 0 });
   }
+  
+  console.error('[notifyLeagueMessage] All attempts failed:', lastResp);
+  return json(200, { ok: false, error: 'OneSignal error', details: lastResp, sent: 0 });
 };

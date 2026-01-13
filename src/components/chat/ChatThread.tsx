@@ -32,15 +32,6 @@ export type ChatThreadProps = {
 };
 
 export function ChatThread({ groups, reactions, onReactionClick, onMessageClick }: ChatThreadProps) {
-  // CRITICAL DEBUG: Log what author values we're passing to MessageStack
-  const unknownGroups = groups.filter(g => g.author === "Unknown");
-  if (unknownGroups.length > 0) {
-    console.error('[ChatThread] RENDERING with', unknownGroups.length, 'groups with "Unknown" author!');
-    unknownGroups.forEach((g, idx) => {
-      console.error(`[ChatThread] Group ${idx}: id="${g.id}", author="${g.author}", messages=${g.messages.length}`);
-    });
-  }
-  
   return (
     <div className="flex flex-col gap-5">
       {groups.map((group, index) => (

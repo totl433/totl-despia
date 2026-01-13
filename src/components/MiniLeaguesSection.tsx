@@ -6,6 +6,21 @@ import Section from './Section';
 import MiniLeagueGwTableCard from './MiniLeagueGwTableCard';
 import type { GameweekState } from '../lib/gameweekState';
 
+// Types for fixtures and results passed from parent
+type Fixture = {
+  id: string;
+  gw: number;
+  fixture_index: number;
+  home_code?: string | null;
+  away_code?: string | null;
+  home_team?: string | null;
+  away_team?: string | null;
+  home_name?: string | null;
+  away_name?: string | null;
+  kickoff_time?: string | null;
+  api_match_id?: number | null;
+};
+
 interface MiniLeaguesSectionProps {
   leagues: LeagueRow[];
   leagueData: Record<string, any>;
@@ -19,7 +34,9 @@ interface MiniLeaguesSectionProps {
   hideLiveTables?: boolean; // If true, always show default card view, never show live tables
   hidePlayerChips?: boolean; // If true, hide player chips on mini league cards
   showSeasonLeader?: boolean; // If true, show season leader name with trophy (default: false)
-  onCreateJoinClick?: () => void; // Callback for "Create or Join" button in empty state
+  // NEW: Pass fixtures/results from parent to avoid duplicate fetching
+  fixtures?: Fixture[];
+  gwResults?: Record<number, "H" | "D" | "A">;
 }
 
 export function MiniLeaguesSection({
@@ -35,7 +52,8 @@ export function MiniLeaguesSection({
   hideLiveTables = false,
   hidePlayerChips = false,
   showSeasonLeader = false,
-  onCreateJoinClick,
+  fixtures = [],
+  gwResults = {},
 }: MiniLeaguesSectionProps) {
   // Determine if we should show toggle buttons (LIVE or RESULTS_PRE_GW states)
   const isLive = gameState === 'LIVE';
@@ -161,7 +179,7 @@ export function MiniLeaguesSection({
       {showLiveTables ? (
         <button
           onClick={() => setShowLiveTables(false)}
-          className="px-3 py-1.5 text-xs font-medium rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+          className="px-3 py-1.5 text-xs font-medium rounded-full bg-slate-100 text-slate-600"
         >
           Default View
         </button>
@@ -211,21 +229,12 @@ How To Play →`}
       >
         <div className="p-6 bg-white rounded-lg border border-slate-200 text-center">
           <div className="text-slate-600 mb-3">You don't have any mini leagues yet.</div>
-          {onCreateJoinClick ? (
-            <button
-              onClick={onCreateJoinClick}
-              className="w-full px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg no-underline border-0 cursor-pointer"
-            >
-              Create or Join
-            </button>
-          ) : (
-            <Link 
-              to="/create-league" 
-              className="inline-block px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg no-underline"
-            >
-              Create one now!
-            </Link>
-          )}
+          <Link 
+            to="/create-league" 
+            className="inline-block px-4 py-2 bg-[#1C8376] text-white font-semibold rounded-lg no-underline"
+          >
+            Create one now!
+          </Link>
         </div>
       </Section>
     );
@@ -284,12 +293,7 @@ How To Play →`}
             {leagues.map((league) => {
               const cardData = memoizedCardData[league.id];
               const members = cardData?.members || [];
-              // CRITICAL FIX: Always render the card - let it handle its own loading state
-              // This prevents tables from disappearing when data is temporarily empty or loading
-              // The card will show a loading spinner if members are empty or data is loading
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeaguesSection.tsx:285',message:'Rendering MiniLeagueGwTableCard',data:{leagueId:league.id,leagueName:league.name,hasCardData:!!cardData,membersLength:members.length,showLiveTables,currentGw,leagueDataKeys:Object.keys(leagueData).length,memoizedKeys:Object.keys(memoizedCardData).length,leagueDataLoading,willRender:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-              // #endregion
+              
               return (
                 <MiniLeagueGwTableCard
                   key={league.id}
@@ -302,6 +306,8 @@ How To Play →`}
                   maxMemberCount={maxMemberCount}
                   avatar={league.avatar}
                   unread={unreadByLeague[league.id] ?? 0}
+                  sharedFixtures={fixtures}
+                  sharedGwResults={gwResults}
                 />
               );
             })}
@@ -316,7 +322,7 @@ How To Play →`}
               const batchLeagues = leagues.slice(startIdx, startIdx + 3);
               
               return (
-                <div key={batchIdx} className="flex flex-col rounded-xl bg-white dark:bg-slate-800 overflow-hidden shadow-sm w-[320px]">
+                <div key={batchIdx} className="flex flex-col rounded-xl border bg-white overflow-hidden shadow-sm w-[320px]">
                   {batchLeagues.map((l, index) => {
                     const unread = unreadByLeague?.[l.id] ?? 0;
                     const cardData = memoizedCardData[l.id];
@@ -324,7 +330,7 @@ How To Play →`}
                     return (
                       <div key={l.id} className={index < batchLeagues.length - 1 ? 'relative' : ''}>
                         {index < batchLeagues.length - 1 && (
-                          <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 dark:bg-slate-700 z-30 pointer-events-none" />
+                          <div className="absolute bottom-0 left-4 right-4 h-px bg-slate-200 z-30 pointer-events-none" />
                         )}
                         <div className="[&>div]:border-0 [&>div]:shadow-none [&>div]:rounded-none [&>div]:bg-transparent relative z-20 [&>div>a]:!p-4">
                               <MiniLeagueCard

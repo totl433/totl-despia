@@ -1384,6 +1384,8 @@ export default function HomePage() {
                 currentGw={gw}
                 currentUserId={user?.id}
             gameState={effectiveGameState}
+            fixtures={fixtures}
+            gwResults={gwResults}
               />
             </div>
 
