@@ -260,6 +260,10 @@ export default function MiniLeagueGwTableCard({
 
     let alive = true;
     
+    // CRITICAL: Capture displayGw at the start of the fetch to prevent race conditions
+    // If displayGw changes during fetch, we'll ignore the results
+    const fetchDisplayGw = displayGw;
+    
     // Define fetchDataFromDb first so it can be called
     async function fetchDataFromDb(setLoadingState: boolean = true) {
       if (setLoadingState) {
@@ -271,24 +275,46 @@ export default function MiniLeagueGwTableCard({
         const { data: fixturesData, error: fixturesError } = await supabase
           .from('app_fixtures')
           .select('id, gw, fixture_index, home_name, away_name, home_team, away_team, home_code, away_code, kickoff_time, api_match_id')
-          .eq('gw', displayGw)
+          .eq('gw', fetchDisplayGw)
           .order('fixture_index', { ascending: true });
 
-        if (fixturesError) throw fixturesError;
+        if (fixturesError) {
+          console.error(`[MiniLeagueGwTableCard] Error fetching fixtures for GW ${fetchDisplayGw}:`, fixturesError);
+          throw fixturesError;
+        }
         if (!alive) return;
+        
+        // CRITICAL: Check if displayGw changed during fetch - if so, ignore results
+        if (fetchDisplayGw !== displayGw) {
+          console.log(`[MiniLeagueGwTableCard] displayGw changed from ${fetchDisplayGw} to ${displayGw} during fetch, ignoring results`);
+          return;
+        }
 
-        setFixtures((fixturesData as Fixture[]) ?? []);
+        const fixturesArray = (fixturesData as Fixture[]) ?? [];
+        
+        // Log if fixtures are empty to help diagnose the issue
+        if (fixturesArray.length === 0) {
+          console.warn(`[MiniLeagueGwTableCard] No fixtures found for GW ${fetchDisplayGw} (leagueId: ${leagueId}, currentGw: ${currentGw}, currentGwState: ${currentGwState})`);
+        }
+        
+        // Double-check displayGw hasn't changed before setting state
+        if (fetchDisplayGw === displayGw && alive) {
+          setFixtures(fixturesArray);
+        }
 
         // Fetch results first (doesn't require members)
         const { data: resultsData, error: resultsError } = await supabase
           .from('app_gw_results')
           .select('gw, fixture_index, result')
-          .eq('gw', displayGw);
+          .eq('gw', fetchDisplayGw);
 
         if (resultsError) throw resultsError;
-        if (!alive) return;
+        if (!alive || fetchDisplayGw !== displayGw) return;
 
-        setResults((resultsData ?? []) as Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>);
+        // Double-check displayGw hasn't changed before setting state
+        if (fetchDisplayGw === displayGw && alive) {
+          setResults((resultsData ?? []) as Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>);
+        }
 
         // Only fetch picks if we have members
         const memberIds = members?.map(m => m.id) || [];
@@ -299,27 +325,31 @@ export default function MiniLeagueGwTableCard({
           const { data: picksDataResult, error: picksError } = await supabase
             .from('app_picks')
             .select('user_id, gw, fixture_index, pick')
-            .eq('gw', displayGw)
+            .eq('gw', fetchDisplayGw)
             .in('user_id', memberIds);
 
           if (picksError) throw picksError;
-          if (!alive) return;
+          if (!alive || fetchDisplayGw !== displayGw) return;
 
           picksData = picksDataResult ?? [];
-          setPicks(picksData as PickRow[]);
+          
+          // Double-check displayGw hasn't changed before setting state
+          if (fetchDisplayGw === displayGw && alive) {
+            setPicks(picksData as PickRow[]);
+          }
 
           // Fetch submissions to filter out members who didn't submit
           const { data: submissionsData, error: submissionsError } = await supabase
             .from('app_gw_submissions')
             .select('user_id')
-            .eq('gw', displayGw)
+            .eq('gw', fetchDisplayGw)
             .in('user_id', memberIds)
             .not('submitted_at', 'is', null);
 
           if (submissionsError) {
             console.error('[MiniLeagueGwTableCard] Error fetching submissions:', submissionsError);
           }
-          if (!alive) return;
+          if (!alive || fetchDisplayGw !== displayGw) return;
 
           // Create Set of user IDs who submitted
           if (submissionsData) {
@@ -328,19 +358,25 @@ export default function MiniLeagueGwTableCard({
             });
           }
           
-          setSubmittedUserIds(submitted);
+          // Double-check displayGw hasn't changed before setting state
+          if (fetchDisplayGw === displayGw && alive) {
+            setSubmittedUserIds(submitted);
+          }
         }
 
-        if (setLoadingState) setLoading(false);
-        
-        // Cache the fetched data
-        const cacheKey = `ml_live_table:${leagueId}:${displayGw}`;
-        setCached(cacheKey, {
-          fixtures: fixturesData,
-          picks: picksData,
-          submissions: Array.from(submitted),
-          results: resultsData ?? [],
-        }, CACHE_TTL.HOME);
+        // Only update loading and cache if displayGw hasn't changed
+        if (fetchDisplayGw === displayGw && alive) {
+          if (setLoadingState) setLoading(false);
+          
+          // Cache the fetched data
+          const cacheKey = `ml_live_table:${leagueId}:${fetchDisplayGw}`;
+          setCached(cacheKey, {
+            fixtures: fixturesData,
+            picks: picksData,
+            submissions: Array.from(submitted),
+            results: resultsData ?? [],
+          }, CACHE_TTL.HOME);
+        }
 
       } catch (err: any) {
         console.error('[MiniLeagueGwTableCard] Error fetching data from DB:', err);
