@@ -3,7 +3,7 @@
  */
 import { useState } from 'react';
 import { signUpWithPassword } from './useSupabaseAuth';
-import AuthLoading from'./AuthLoading';
+import AuthLoading from './AuthLoading';
 
 interface SignUpFormProps {
  onSwitchToSignIn: () => void;
