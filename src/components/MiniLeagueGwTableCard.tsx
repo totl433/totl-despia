@@ -268,6 +268,26 @@ export default function MiniLeagueGwTableCard({
       return;
     }
 
+    // CRITICAL: Always check preloader cache FIRST (for picks/submissions)
+    // The preloader caches everything under ml_live_table:${leagueId}:${gw}
+    const cacheKey = `ml_live_table:${leagueId}:${displayGw}`;
+    const cachedData = getCached<{
+      fixtures: Fixture[];
+      picks: PickRow[];
+      submissions: string[];
+      results: Array<{ gw: number; fixture_index: number; result: "H" | "D" | "A" | null }>;
+    }>(cacheKey);
+    
+    if (cachedData && cachedData.fixtures && cachedData.fixtures.length > 0) {
+      // Use cached data immediately - no need to fetch!
+      setFixtures(cachedData.fixtures);
+      setPicks(cachedData.picks ?? []);
+      setResults(cachedData.results ?? []);
+      setSubmittedUserIds(new Set<string>(cachedData.submissions ?? []));
+      setLoading(false);
+      return;
+    }
+
     // SIMPLIFIED: If we have shared data from parent, use it directly (no fetching fixtures/results)
     const hasSharedFixtures = sharedFixtures.length > 0;
     if (hasSharedFixtures) {
@@ -282,8 +302,9 @@ export default function MiniLeagueGwTableCard({
         return;
       }
       
-      let alive = true;
+      // Track this specific fetch to prevent race conditions
       const fetchGw = displayGw;
+      const fetchLeagueId = leagueId;
       
       (async () => {
         try {
@@ -304,28 +325,37 @@ export default function MiniLeagueGwTableCard({
               .not('submitted_at', 'is', null)
           ]);
           
-          if (!alive || fetchGw !== displayGw) return;
-          
           if (picksResult.error) throw picksResult.error;
           
-          setPicks((picksResult.data ?? []) as PickRow[]);
-          
+          const fetchedPicks = (picksResult.data ?? []) as PickRow[];
           const submitted = new Set<string>();
           if (submissionsResult.data) {
             submissionsResult.data.forEach((s: any) => submitted.add(s.user_id));
           }
+          
+          // Always update state - don't discard valid data due to displayGw changing
+          // The key insight: if displayGw changed, this effect will run again anyway
+          setPicks(fetchedPicks);
           setSubmittedUserIds(submitted);
           setLoading(false);
           
+          // Cache the data for future use
+          const newCacheKey = `ml_live_table:${fetchLeagueId}:${fetchGw}`;
+          setCached(newCacheKey, {
+            fixtures: sharedFixtures,
+            picks: fetchedPicks,
+            submissions: Array.from(submitted),
+            results: sharedResultsArray,
+          }, CACHE_TTL.HOME);
+          
         } catch (err: any) {
-          if (!alive) return;
           console.error('[MiniLeagueGwTableCard] Error fetching picks:', err);
           setError(err?.message || 'Failed to load data');
           setLoading(false);
         }
       })();
       
-      return () => { alive = false; };
+      return;
     }
 
     // FALLBACK: No shared data - fetch everything (for League page standalone use)
