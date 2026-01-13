@@ -3399,6 +3399,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
   if (!league) {
     return null; // Still loading
   }
+  // #endregion
 
   return (
     <div className={`${oldSchoolMode ? 'oldschool-theme' : 'bg-slate-50 dark:bg-slate-900'}`} style={{
@@ -3714,7 +3715,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
             <button
               onClick={() => {
                 manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                setTab("chat");
+                        setTab("chat");
               }}
               className={
                 "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold relative leading-tight " +
@@ -3734,7 +3735,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
               <button
                 onClick={() => {
                   manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                  setTab("gwr");
+                            setTab("gwr");
                 }}
                 className={
                   "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold relative leading-tight flex items-center justify-center gap-1.5 " +
@@ -3768,7 +3769,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
               <button
                 onClick={() => {
                   manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                  setTab("gw");
+                            setTab("gw");
                 }}
                 className={
                   "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold relative leading-tight " +
@@ -3785,7 +3786,7 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
             <button
               onClick={() => {
                 manualTabSelectedRef.current = true; // Mark as manually selected (synchronous)
-                setTab("mlt");
+                        setTab("mlt");
               }}
               className={
                 "flex-1 min-w-0 px-2 sm:px-4 py-3 text-xs font-semibold relative leading-tight " +
@@ -3804,30 +3805,30 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
       {(() => {
         if (tab === "chat") {
           return (
-            <div className="chat-tab-wrapper">
-              <MiniLeagueChatBeta
-                miniLeagueId={league?.id ?? null}
-                memberNames={memberNameById}
-                deepLinkError={deepLinkError}
-              />
-            </div>
+        <div className="chat-tab-wrapper">
+          <MiniLeagueChatBeta
+            miniLeagueId={league?.id ?? null}
+            memberNames={memberNameById}
+            deepLinkError={deepLinkError}
+          />
+        </div>
           );
         }
         return (
-          <div className={`league-content-wrapper ${showHeaderMenu ? 'menu-open' : ''}`}>
-            <div className="px-1 sm:px-2">
-              {tab === "mlt" && (() => {
-                const startTime = performance.now();
-                console.log('[League] Rendering MltTab, tab is mlt', { tab, mltRowsLength: mltRows.length, leagueId: league?.id, timestamp: startTime });
-                const result = <MltTab />;
-                const endTime = performance.now();
-                console.log('[League] MltTab JSX created', { duration: endTime - startTime });
-                return result;
-              })()}
-              {tab === "gw" && <GwPicksTab />}
-              {tab === "gwr" && <GwResultsTab />}
-            </div>
+        <div className={`league-content-wrapper ${showHeaderMenu ? 'menu-open' : ''}`}>
+          <div className="px-1 sm:px-2">
+            {tab === "mlt" && (() => {
+              const startTime = performance.now();
+              console.log('[League] Rendering MltTab, tab is mlt', { tab, mltRowsLength: mltRows.length, leagueId: league?.id, timestamp: startTime });
+              const result = <MltTab />;
+              const endTime = performance.now();
+              console.log('[League] MltTab JSX created', { duration: endTime - startTime });
+              return result;
+            })()}
+            {tab === "gw" && <GwPicksTab />}
+            {tab === "gwr" && <GwResultsTab />}
           </div>
+      </div>
         );
       })()}
 
