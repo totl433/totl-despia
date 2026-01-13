@@ -376,7 +376,7 @@ export default function HomePage() {
     
     // Check if cache is stale before refreshing
     const unreadCacheKey = `leagues:unread:${user.id}`;
-    const { data: cachedUnread, meta: cacheMeta } = getCachedWithMeta<Record<string, number>>(unreadCacheKey);
+    const { meta: cacheMeta } = getCachedWithMeta<Record<string, number>>(unreadCacheKey);
     const VERY_STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
     const isVeryStale = cacheMeta && cacheMeta.ageMs > VERY_STALE_THRESHOLD_MS;
     

@@ -86,9 +86,12 @@ export async function fetchUnreadCountsFromDb(
     const lastRead = new Map<string, string>();
     (readsData ?? []).forEach((r: any) => lastRead.set(r.league_id, r.last_read_at));
 
-
     // Debug: Log last_read_at timestamps for all leagues
     if (leagueIds.length > 0) {
+      const lastReadDebug: Record<string, string> = {};
+      leagueIds.forEach(id => {
+        lastReadDebug[id] = lastRead.get(id) ?? 'null (never read)';
+      });
       log.debug('api/fetch_unread_debug', {
         leagueIds,
         lastReadTimestamps: lastReadDebug,
