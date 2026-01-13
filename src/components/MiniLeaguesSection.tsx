@@ -325,20 +325,32 @@ How To Play →`}
             );
           } else {
             // Loading state while fixtures/members are being fetched
+            // Show placeholder cards for up to 3 leagues, or generic placeholders if no leagues yet
+            const placeholderLeagues = leagues.length > 0 ? leagues.slice(0, 3) : [
+              { id: 'placeholder-1', name: 'Loading...', avatar: null },
+              { id: 'placeholder-2', name: 'Loading...', avatar: null },
+            ];
+            
             return (
               <div className="lg:hidden">
                 <HorizontalScrollContainer>
-                  {leagues.slice(0, 3).map((league) => (
+                  {placeholderLeagues.map((league) => (
                     <div
                       key={league.id}
                       className="min-w-[calc(100vw-72px)] snap-start rounded-2xl border border-slate-200 bg-white shadow-sm p-4"
                     >
                       <div className="flex items-center gap-3 mb-4">
-                        <img
-                          src={league.avatar || '/league-placeholder.png'}
-                          alt=""
-                          className="w-12 h-12 rounded-full object-cover"
-                        />
+                        <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center">
+                          {league.avatar ? (
+                            <img
+                              src={league.avatar}
+                              alt=""
+                              className="w-12 h-12 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-6 h-6 rounded-full bg-slate-300"></div>
+                          )}
+                        </div>
                         <span className="font-semibold text-slate-800">{league.name}</span>
                       </div>
                       <div className="flex justify-center py-8">
