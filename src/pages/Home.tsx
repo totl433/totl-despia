@@ -304,7 +304,7 @@ export default function HomePage() {
       return false;
     }
   })();
-  const { leagues, unreadByLeague, refresh: refreshLeagues } = useLeagues({ 
+  const { leagues, unreadByLeague, refresh: refreshLeagues, loading: leaguesLoading } = useLeagues({ 
     pageName: 'home',
     skipInitialFetch: hasLeaguesCache // Skip fetch if cache exists - data already loaded synchronously
   });
@@ -706,12 +706,27 @@ export default function HomePage() {
       return;
     }
     
+    // CRITICAL: Wait for leagues to finish loading before calling loadHomePageData
+    // If leagues are still loading, wait
+    if (leaguesLoading) {
+      return; // Still loading from API
+    }
+    
+    // If leagues have finished loading:
+    // - If leagues.length > 0: user has leagues, proceed
+    // - If leagues.length === 0 AND hasLeaguesCache: user has no leagues (confirmed by cache), proceed
+    // - If leagues.length === 0 AND !hasLeaguesCache: still loading or cache doesn't exist, wait
+    if (leagues.length === 0 && !hasLeaguesCache) {
+      // Still waiting for leagues to load or cache to be populated
+      return;
+    }
+    
     // No cache - need to load data
     setBasicDataLoading(true);
     let alive = true;
     (async () => {
       try {
-        const data = await loadHomePageData(user.id, leagues.length > 0 ? leagues : [], gw);
+        const data = await loadHomePageData(user.id, leagues, gw);
         if (!alive) return;
         
         // Update ALL state at once - single render
@@ -736,7 +751,7 @@ export default function HomePage() {
     })();
     
     return () => { alive = false; };
-  }, [user?.id, gw, fixtures.length, leagues.length]);
+  }, [user?.id, gw, fixtures.length, leagues.length, leaguesLoading, hasLeaguesCache]);
 
   // Background refresh is now handled by loadHomePageData (checks cache freshness internally)
 
