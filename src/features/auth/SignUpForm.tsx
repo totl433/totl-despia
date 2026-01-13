@@ -1,8 +1,8 @@
 /**
  * Sign up form component
  */
-import { useState } from'react';
-import { signUpWithPassword } from'./useSupabaseAuth';
+import { useState } from 'react';
+import { signUpWithPassword } from './useSupabaseAuth';
 import AuthLoading from'./AuthLoading';
 
 interface SignUpFormProps {
