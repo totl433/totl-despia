@@ -8,8 +8,9 @@ import { MiniLeaguesSection } from "../components/MiniLeaguesSection";
 import { GamesSection } from "../components/GamesSection";
 import type { Fixture as FixtureCardFixture, LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import { useLiveScores } from "../hooks/useLiveScores";
-import { getCached, setCached, removeCached, getCacheTimestamp, CACHE_TTL } from "../lib/cache";
+import { getCached, setCached, removeCached, getCacheTimestamp, getCachedWithMeta, CACHE_TTL } from "../lib/cache";
 import { useLeagues } from "../hooks/useLeagues";
+import { forceClearUnreadCache } from "../api/leagues";
 import { fireConfettiCannon } from "../lib/confettiCannon";
 import { useGameweekState } from "../hooks/useGameweekState";
 import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
@@ -299,6 +300,7 @@ export default function HomePage() {
   const [leagueRows, setLeagueRows] = useState<Record<string, Array<{ user_id: string; name: string; score: number; unicorns: number }>>>(initialState.leagueRows || {});
   
   const logoContainerRef = useRef<HTMLDivElement>(null);
+  const hasRefreshedOnMountRef = useRef(false);
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
   
   // Determine if we have cache (check if fixtures are loaded from cache)
@@ -323,7 +325,7 @@ export default function HomePage() {
       return false;
     }
   })();
-  const { leagues, unreadByLeague, refresh: refreshLeagues, loading: leaguesLoading } = useLeagues({ 
+  const { leagues, unreadByLeague, refresh: refreshLeagues, refreshUnreadCounts, loading: leaguesLoading } = useLeagues({ 
     pageName: 'home',
     skipInitialFetch: hasLeaguesCache // Skip fetch if cache exists - data already loaded synchronously
   });
@@ -362,6 +364,109 @@ export default function HomePage() {
     window.addEventListener('leagueBadgeUpdated', handleBadgeUpdate);
     return () => window.removeEventListener('leagueBadgeUpdated', handleBadgeUpdate);
   }, [refreshLeagues]);
+
+  // Force refresh unread counts on page load IMMEDIATELY (ONCE)
+  // This ensures badges are up-to-date even if cache is stale
+  // CRITICAL: Only run once on mount, not on every state change (prevents infinite loop)
+  useEffect(() => {
+    if (!user?.id || leagues.length === 0 || hasRefreshedOnMountRef.current) return;
+    
+    // Mark as refreshed to prevent re-running
+    hasRefreshedOnMountRef.current = true;
+    
+    // Check if cache is stale before refreshing
+    const unreadCacheKey = `leagues:unread:${user.id}`;
+    const { data: cachedUnread, meta: cacheMeta } = getCachedWithMeta<Record<string, number>>(unreadCacheKey);
+    const VERY_STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+    const isVeryStale = cacheMeta && cacheMeta.ageMs > VERY_STALE_THRESHOLD_MS;
+    
+    // Force refresh unread counts IMMEDIATELY (no delay)
+    // This is critical to fix stuck badges - we need fresh data right away
+    console.debug('[Home] Force refreshing unread counts on page load (immediate)', {
+      userId: user.id.slice(0, 8),
+      leaguesCount: leagues.length,
+      cacheAgeMs: cacheMeta?.ageMs ?? null,
+      isVeryStale,
+    });
+    
+    // Clear cache first if it's very stale, then refresh (ensures we don't use stale data)
+    if (isVeryStale) {
+      console.debug('[Home] Cache is very stale, clearing before refresh', {
+        cacheAgeMs: cacheMeta.ageMs,
+      });
+      forceClearUnreadCache(user.id);
+    }
+    
+    refreshUnreadCounts(true).catch((err) => {
+      // Log error but don't block - non-critical background refresh
+      console.warn('[Home] Failed to refresh unread counts on page load', err);
+    });
+  }, [user?.id, leagues.length, refreshUnreadCounts]);
+  
+  // Also refresh unread counts when page gains focus (user returns to tab)
+  // This ensures badges are updated if user was away
+  useEffect(() => {
+    if (!user?.id || leagues.length === 0) return;
+    
+    const handleFocus = () => {
+      console.debug('[Home] Page gained focus, refreshing unread counts', {
+        userId: user.id.slice(0, 8),
+      });
+      // Use a small delay to avoid multiple rapid refreshes
+      const timeoutId = setTimeout(() => {
+        refreshUnreadCounts(true).catch((err) => {
+          console.warn('[Home] Failed to refresh unread counts on focus', err);
+        });
+      }, 1000);
+      return () => clearTimeout(timeoutId);
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [user?.id, leagues.length, refreshUnreadCounts]);
+  
+  // Expose debug function to manually fix stuck badges
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    // Add global function to manually fix badge
+    (window as any).fixBadge = async (leagueName?: string) => {
+      console.log('[Home] Manual badge fix triggered', { leagueName, userId: user.id.slice(0, 8) });
+      
+      // Clear cache
+      forceClearUnreadCache(user.id);
+      
+      // Find Prem Predictions league if specified
+      if (leagueName) {
+        const targetLeague = leagues.find(l => 
+          l.name.toLowerCase().includes(leagueName.toLowerCase())
+        );
+        if (targetLeague && user.id) {
+          // Manually mark messages as read for this league
+          const now = new Date().toISOString();
+          const { error } = await supabase
+            .from('league_message_reads')
+            .upsert(
+              { league_id: targetLeague.id, user_id: user.id, last_read_at: now },
+              { onConflict: 'league_id,user_id' }
+            );
+          if (error) {
+            console.error('[Home] Failed to mark messages as read:', error);
+          } else {
+            console.log('[Home] Marked messages as read for', leagueName);
+          }
+        }
+      }
+      
+      // Force refresh
+      await refreshUnreadCounts(true);
+      console.log('[Home] Badge fix complete - check badge count');
+    };
+    
+    return () => {
+      delete (window as any).fixBadge;
+    };
+  }, [user?.id, leagues, refreshUnreadCounts]);
   
   // Validate cached GW (respects user's current_viewing_gw)
   // CRITICAL: Only run if fixtures are missing (cache miss) - don't run if we have cache

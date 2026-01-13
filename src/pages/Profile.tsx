@@ -21,6 +21,8 @@ export default function Profile() {
   const { user, signOut } = useAuth();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<any>(null);
+  const [checkingSubscription, setCheckingSubscription] = useState(false);
   
   // Admin check
   const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
@@ -28,6 +30,31 @@ export default function Profile() {
   useEffect(() => {
     fetchUserStats();
   }, [user]);
+
+  async function checkSubscription() {
+    if (!user) return;
+    setCheckingSubscription(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setSubscriptionStatus({ error: 'Not authenticated' });
+        return;
+      }
+      
+      const response = await fetch('https://totl-staging.netlify.app/.netlify/functions/checkMySubscription', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+      
+      const data = await response.json();
+      setSubscriptionStatus(data);
+    } catch (error: any) {
+      setSubscriptionStatus({ error: error.message || 'Failed to check subscription' });
+    } finally {
+      setCheckingSubscription(false);
+    }
+  }
 
   async function fetchUserStats() {
     if (!user) return;
@@ -209,6 +236,61 @@ export default function Profile() {
             await signOut();
           }}
         />
+
+        {/* User ID & Subscription Status - Debug Section */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 mt-6">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Your Account Info</h2>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm text-slate-600 dark:text-slate-400">User ID:</label>
+              <div className="mt-1 p-2 bg-slate-100 dark:bg-slate-700 rounded text-sm font-mono text-slate-900 dark:text-slate-100 break-all">
+                {user.id}
+              </div>
+            </div>
+            <div>
+              <button
+                onClick={checkSubscription}
+                disabled={checkingSubscription}
+                className="w-full py-2 px-4 bg-[#1C8376] text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {checkingSubscription ? 'Checking...' : 'Check Push Notification Status'}
+              </button>
+            </div>
+            {subscriptionStatus && (
+              <div className={`p-4 rounded-lg ${subscriptionStatus.ok && subscriptionStatus.subscribed 
+                ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800' 
+                : 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800'
+              }`}>
+                {subscriptionStatus.error ? (
+                  <div className="text-sm text-red-600 dark:text-red-400">
+                    <strong>Error:</strong> {subscriptionStatus.error}
+                  </div>
+                ) : subscriptionStatus.ok && subscriptionStatus.subscribed ? (
+                  <div className="text-sm text-green-700 dark:text-green-300">
+                    <strong>✅ Subscribed!</strong> Your device is registered and ready to receive notifications.
+                    {subscriptionStatus.playerId && (
+                      <div className="mt-2 font-mono text-xs">Player ID: {subscriptionStatus.playerId}</div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-sm text-yellow-700 dark:text-yellow-300">
+                    <strong>⚠️ Not Subscribed</strong>
+                    <div className="mt-2">
+                      <p>{subscriptionStatus.message || subscriptionStatus.suggestion}</p>
+                      {subscriptionStatus.reasons && subscriptionStatus.reasons.length > 0 && (
+                        <ul className="mt-2 list-disc list-inside">
+                          {subscriptionStatus.reasons.map((reason: string, i: number) => (
+                            <li key={i}>{reason}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Admin Link - Separate section */}
           {isAdmin && (

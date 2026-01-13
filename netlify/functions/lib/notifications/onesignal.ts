@@ -97,20 +97,30 @@ export async function sendNotification(
   recipients?: number;
   error?: any;
 }> {
-  const restKey = process.env.ONESIGNAL_REST_API_KEY;
+  const restKey = (process.env.ONESIGNAL_REST_API_KEY || '').trim();
   if (!restKey) {
+    console.error('[onesignal] ONESIGNAL_REST_API_KEY not configured');
     return {
       success: false,
       error: { message: 'ONESIGNAL_REST_API_KEY not configured' },
     };
   }
   
+  // Log API key status (first 4 chars only for security)
+  const keyPreview = restKey.length > 4 ? `${restKey.slice(0, 4)}...` : '***';
+  const keyLength = restKey.length;
+  console.log(`[onesignal] Using API key: ${keyPreview} (length: ${keyLength})`);
+  console.log(`[onesignal] App ID: ${appId}`);
+  
   try {
+    const authHeader = `Basic ${restKey}`;
+    console.log(`[onesignal] Authorization header length: ${authHeader.length}`);
+    
     const response = await fetch(ONESIGNAL_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${restKey}`,
+        'Authorization': authHeader,
       },
       body: JSON.stringify(payload),
     });

@@ -1,4 +1,4 @@
-/**
+ l/**
  * Notification Catalog Loader
  * 
  * Loads and provides access to notification catalog metadata.
@@ -321,5 +321,32 @@ export function formatThreadId(
   }
   
   return threadId;
+}
+
+/**
+ * Format a deep link URL using the catalog template
+ * Returns null if url_format is null or notification type not found
+ */
+export function formatDeepLink(
+  notificationKey: string,
+  params: Record<string, string | number>,
+  baseUrl?: string
+): string | null {
+  const entry = catalog[notificationKey];
+  if (!entry || !entry.deep_links.url_format) return null;
+  
+  let url = entry.deep_links.url_format;
+  
+  // Substitute parameters
+  for (const [key, value] of Object.entries(params)) {
+    url = url.replace(`{${key}}`, String(value));
+  }
+  
+  // If baseUrl provided and URL is relative, make it absolute
+  if (baseUrl && !url.startsWith('http')) {
+    url = `${baseUrl}${url.startsWith('/') ? url : `/${url}`}`;
+  }
+  
+  return url;
 }
 

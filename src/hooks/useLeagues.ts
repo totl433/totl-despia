@@ -12,9 +12,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { fetchUserLeagues, fetchUnreadCountsFromDb, invalidateLeagueCache } from '../api/leagues';
+import { fetchUserLeagues, fetchUnreadCountsFromDb, invalidateLeagueCache, forceClearUnreadCache } from '../api/leagues';
 import { sortLeaguesWithUnreadMap } from '../lib/sortLeagues';
-import { getCached, setCached, CACHE_TTL } from '../lib/cache';
+import { getCached, setCached, getCachedWithMeta, CACHE_TTL } from '../lib/cache';
 import { pageLog, log } from '../lib/logEvent';
 import type { League } from '../types/league';
 
@@ -37,6 +37,8 @@ export interface UseLeaguesResult {
   refresh: () => Promise<void>;
   /** Invalidate cache and refresh */
   invalidateAndRefresh: () => Promise<void>;
+  /** Force refresh unread counts only (lighter operation) */
+  refreshUnreadCounts: (forceRefresh?: boolean) => Promise<void>;
 }
 
 export interface UseLeaguesOptions {
@@ -68,7 +70,27 @@ export function useLeagues(options: UseLeaguesOptions = {}): UseLeaguesResult {
   
   const [unreadByLeague, setUnreadByLeague] = useState<Record<string, number>>(() => {
     if (!userId) return {};
-    const cached = getCached<Record<string, number>>(getUnreadCacheKey(userId));
+    const unreadCacheKey = getUnreadCacheKey(userId);
+    const { data: cached, meta: cacheMeta } = getCachedWithMeta<Record<string, number>>(unreadCacheKey);
+    
+    // If cache is very stale (older than 5 minutes), don't use it - return empty object
+    // This forces a fresh fetch and prevents showing stale badge counts
+    const VERY_STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+    if (cached && cacheMeta && cacheMeta.ageMs > VERY_STALE_THRESHOLD_MS) {
+      log.debug('api/unread_cache_too_stale_on_init', {
+        cacheAgeMs: cacheMeta.ageMs,
+        freshnessPercent: cacheMeta.freshnessPercent,
+        action: 'clearing_stale_cache',
+      });
+      // Clear the stale cache
+      try {
+        localStorage.removeItem(`despia:cache:${unreadCacheKey}`);
+      } catch (e) {
+        // Ignore errors
+      }
+      return {}; // Return empty to force fresh fetch
+    }
+    
     return cached ?? {};
   });
   
@@ -140,26 +162,98 @@ export function useLeagues(options: UseLeaguesOptions = {}): UseLeaguesResult {
   }, [userId, pageName]);
 
   // Refresh unread counts only (lighter operation)
-  const refreshUnreadCounts = useCallback(async () => {
+  // CRITICAL: Always fetches fresh data from DB, ignoring cache
+  const refreshUnreadCounts = useCallback(async (forceRefresh: boolean = false) => {
     if (!userId || leagues.length === 0) return;
     
     try {
       const leagueIds = leagues.map(l => l.id);
+      const unreadCacheKey = getUnreadCacheKey(userId);
+      
+      // Get cached values before refresh for debug comparison
+      const { data: cachedUnread, meta: cacheMeta } = getCachedWithMeta<Record<string, number>>(unreadCacheKey);
+      
+      // Check if cache is stale (older than 1 minute) - force refresh if so
+      // Also force refresh if cache is older than 5 minutes (likely stale for badge counts)
+      const STALE_THRESHOLD_MS = 60 * 1000; // 1 minute
+      const VERY_STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+      const isStale = cacheMeta && cacheMeta.ageMs > STALE_THRESHOLD_MS;
+      const isVeryStale = cacheMeta && cacheMeta.ageMs > VERY_STALE_THRESHOLD_MS;
+      const shouldForceRefresh = forceRefresh || isStale;
+      
+      // If cache is very stale, force clear it before fetching
+      // This ensures we don't use stale data even temporarily
+      if (isVeryStale) {
+        log.debug('api/unread_cache_very_stale_clearing', {
+          cacheAgeMs: cacheMeta.ageMs,
+          freshnessPercent: cacheMeta.freshnessPercent,
+          action: 'force_clearing_before_refresh',
+        });
+        forceClearUnreadCache(userId);
+      }
+      
+      if (shouldForceRefresh && cacheMeta) {
+        log.debug('api/unread_cache_stale_force_refresh', {
+          cacheAgeMs: cacheMeta.ageMs,
+          freshnessPercent: cacheMeta.freshnessPercent,
+          isVeryStale,
+          forceRefresh,
+        });
+      }
+      
+      // If cache is very stale, always refresh (even if forceRefresh is false)
+      // This ensures badges are updated even if user hasn't explicitly requested refresh
+      if (isVeryStale && !forceRefresh) {
+        log.debug('api/unread_cache_very_stale_auto_refresh', {
+          cacheAgeMs: cacheMeta.ageMs,
+          freshnessPercent: cacheMeta.freshnessPercent,
+        });
+      }
+      
+      // Always fetch fresh from DB (ignore cache)
       const freshUnread = await fetchUnreadCountsFromDb(userId, leagueIds);
       
       if (!mountedRef.current) return;
       
+      // Always log refresh (for debugging badge issues)
+      const hasChanges = cachedUnread ? leagueIds.some(id => {
+        const cached = cachedUnread[id] ?? 0;
+        const fresh = freshUnread[id] ?? 0;
+        return cached !== fresh;
+      }) : true; // If no cache, consider it a change
+      
+      if (hasChanges) {
+        log.debug('api/unread_counts_refreshed', {
+          cached: cachedUnread ?? {},
+          fresh: freshUnread,
+          cacheAgeMs: cacheMeta?.ageMs ?? null,
+          cacheFreshness: cacheMeta?.freshnessPercent ?? null,
+          forceRefresh,
+        });
+      } else {
+        // Log even when no changes (for debugging)
+        log.debug('api/unread_counts_refreshed_no_changes', {
+          cached: cachedUnread,
+          fresh: freshUnread,
+          cacheAgeMs: cacheMeta?.ageMs ?? null,
+          forceRefresh,
+        });
+      }
+      
+      // Always update state with fresh data, even if it matches cache
+      // This ensures UI is updated even if cache was stale
       setUnreadByLeague(freshUnread);
       
       // Re-sort with fresh unread counts
       const sorted = sortLeaguesWithUnreadMap(leagues, freshUnread);
       setLeagues(sorted);
       
-      // Update cache
-      setCached(getUnreadCacheKey(userId), freshUnread, CACHE_TTL.LEAGUES);
+      // Update cache with fresh data
+      setCached(unreadCacheKey, freshUnread, CACHE_TTL.LEAGUES);
       
     } catch (err) {
-      // Silently fail - unread refresh is non-critical
+      // Log error but don't throw - unread refresh is non-critical
+      log.warn('api/unread_refresh_error', { error: err instanceof Error ? err.message : String(err) });
     }
   }, [userId, leagues]);
 
@@ -182,6 +276,17 @@ export function useLeagues(options: UseLeaguesOptions = {}): UseLeaguesResult {
     
     if (skipInitialFetch) {
       setLoading(false);
+      // Even if skipping initial fetch, refresh unread counts IMMEDIATELY
+      // This ensures badges are up-to-date even when using cached league data
+      // Force refresh to ensure we get fresh data even if cache exists
+      if (leagues.length > 0 && !hasFetchedRef.current) {
+        hasFetchedRef.current = true;
+        // Refresh unread counts IMMEDIATELY (no delay) with force refresh
+        // This is critical to fix stuck badges - don't wait for background refresh
+        refreshUnreadCounts(true).catch(() => {
+          // Silently fail - non-critical
+        });
+      }
       return;
     }
     
@@ -193,10 +298,16 @@ export function useLeagues(options: UseLeaguesOptions = {}): UseLeaguesResult {
     // If we have cached data, show it immediately
     if (leagues.length > 0) {
       setLoading(false);
-      // Still refresh in background
+      // Still refresh in background (both leagues and unread counts)
       if (!hasFetchedRef.current) {
         hasFetchedRef.current = true;
         fetchLeagues(false);
+        // Also refresh unread counts IMMEDIATELY (no delay) to ensure they're fresh
+        // Force refresh to ensure we get fresh data even if cache exists
+        // This is critical to fix stuck badges - refresh immediately, not in background
+        refreshUnreadCounts(true).catch(() => {
+          // Silently fail - non-critical
+        });
       }
     } else {
       // No cache, must fetch
@@ -209,7 +320,7 @@ export function useLeagues(options: UseLeaguesOptions = {}): UseLeaguesResult {
     return () => {
       mountedRef.current = false;
     };
-  }, [userId, skipInitialFetch, fetchLeagues, leagues.length]);
+  }, [userId, skipInitialFetch, fetchLeagues, leagues.length, refreshUnreadCounts]);
 
   // Refresh unread counts when window gains focus
   useEffect(() => {
@@ -228,10 +339,20 @@ export function useLeagues(options: UseLeaguesOptions = {}): UseLeaguesResult {
     if (!userId) return;
     
     const handleMessagesRead = (event: CustomEvent) => {
-      const { userId: eventUserId } = event.detail || {};
+      const { userId: eventUserId, leagueId } = event.detail || {};
       // Only refresh if the event is for this user
       if (eventUserId === userId) {
-        refreshUnreadCounts();
+        log.debug('api/leagues_unread_refresh_triggered', {
+          leagueId,
+          userId: userId.slice(0, 8),
+        });
+        // Immediately refresh unread counts (cache was already invalidated by useMarkMessagesRead)
+        // Force refresh to ensure we get fresh data after cache invalidation
+        refreshUnreadCounts(true).catch((err) => {
+          log.warn('api/leagues_unread_refresh_failed', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
       }
     };
     
@@ -247,6 +368,7 @@ export function useLeagues(options: UseLeaguesOptions = {}): UseLeaguesResult {
     error,
     refresh,
     invalidateAndRefresh,
+    refreshUnreadCounts,
   };
 }
 

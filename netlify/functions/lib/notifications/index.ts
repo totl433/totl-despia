@@ -32,6 +32,7 @@ export {
   formatEventId,
   formatCollapseId,
   formatThreadId,
+  formatDeepLink,
 } from './catalog';
 
 // Types

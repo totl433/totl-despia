@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { invalidateLeagueCache } from '../api/leagues';
+import { getCached } from '../lib/cache';
 
 interface UseMarkMessagesReadOptions {
   leagueId: string | null | undefined;
@@ -42,20 +43,52 @@ export function useMarkMessagesRead({
     lastUpdateRef.current = now;
 
     try {
-      await supabase
+      const now = new Date().toISOString();
+      const { error: upsertError } = await supabase
         .from('league_message_reads')
         .upsert(
-          { league_id: leagueId, user_id: userId, last_read_at: new Date().toISOString() },
+          { league_id: leagueId, user_id: userId, last_read_at: now },
           { onConflict: 'league_id,user_id' }
         );
 
+      if (upsertError) {
+        console.error('[useMarkMessagesRead] Error upserting last_read_at:', upsertError);
+        return;
+      }
+
       // Invalidate cache and dispatch event for badge refresh
+      // CRITICAL: Invalidate cache BEFORE dispatching event so listeners get fresh data
+      console.debug('[useMarkMessagesRead] Invalidating cache before marking as read', {
+        leagueId,
+        userId: userId.slice(0, 8),
+        lastReadAt: now,
+      });
+      
+      // Get cached unread counts before invalidation for debugging
+      let cachedUnreadBefore: Record<string, number> | null = null;
+      try {
+        cachedUnreadBefore = getCached<Record<string, number>>(`leagues:unread:${userId}`);
+      } catch (e) {
+        // Ignore errors when checking cache
+      }
+      
       invalidateLeagueCache(userId);
+      
+      // Dispatch event to trigger badge refresh in useLeagues hook
+      // This event is listened to by useLeagues hook which will refresh unread counts
       window.dispatchEvent(
         new CustomEvent('leagueMessagesRead', {
           detail: { leagueId, userId },
         })
       );
+      
+      console.debug('[useMarkMessagesRead] Marked messages as read and invalidated cache', {
+        leagueId,
+        userId: userId.slice(0, 8),
+        lastReadAt: now,
+        cachedUnreadBefore,
+        eventDispatched: true,
+      });
     } catch (error) {
       console.error('[useMarkMessagesRead] Error marking messages as read:', error);
     }

@@ -6,6 +6,7 @@
  */
 
 import { dispatchNotification } from './dispatch';
+import { formatDeepLink } from './catalog';
 import type { BatchDispatchResult } from './types';
 import { createClient } from '@supabase/supabase-js';
 
@@ -15,6 +16,26 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
+
+/**
+ * Get base URL for building absolute deep link URLs
+ */
+function getBaseUrl(): string {
+  // Try environment variables first
+  if (process.env.URL) {
+    return process.env.URL.trim();
+  }
+  if (process.env.SITE_URL) {
+    return process.env.SITE_URL.trim();
+  }
+  if (process.env.DEPLOY_PRIME_URL) {
+    return process.env.DEPLOY_PRIME_URL.trim();
+  }
+  // Default fallback (shouldn't happen in production)
+  const defaultUrl = 'https://totl-staging.netlify.app';
+  console.warn(`[scoreHelpers] Base URL using default fallback: ${defaultUrl}`);
+  return defaultUrl;
+}
 
 /**
  * Normalize a scorer name for event_id
@@ -173,6 +194,10 @@ export async function sendGoalNotification(
     ? `${homeTeam} [${homeScore}] - ${awayScore} ${awayTeam}`
     : `${homeTeam} ${homeScore} - [${awayScore}] ${awayTeam}`;
 
+  // Build deep link URL from catalog
+  const baseUrl = getBaseUrl();
+  const deepLinkUrl = formatDeepLink('goal-scored', { api_match_id: apiMatchId }, baseUrl);
+
   let baseTitle: string;
   let baseBody: string;
 
@@ -226,6 +251,7 @@ export async function sendGoalNotification(
           fixture_index: fixtureIndex,
           gw,
         },
+        url: deepLinkUrl || undefined,
         grouping_params: { api_match_id: apiMatchId },
       });
       results.push(onTrackResult);
@@ -247,6 +273,7 @@ export async function sendGoalNotification(
           fixture_index: fixtureIndex,
           gw,
         },
+        url: deepLinkUrl || undefined,
         grouping_params: { api_match_id: apiMatchId },
       });
       results.push(offTrackResult);
@@ -268,6 +295,7 @@ export async function sendGoalNotification(
           fixture_index: fixtureIndex,
           gw,
         },
+        url: deepLinkUrl || undefined,
         grouping_params: { api_match_id: apiMatchId },
       });
       results.push(noPickResult);
@@ -294,6 +322,7 @@ export async function sendGoalNotification(
       fixture_index: fixtureIndex,
       gw,
     },
+    url: deepLinkUrl || undefined,
     grouping_params: { api_match_id: apiMatchId },
   });
 }
@@ -324,6 +353,10 @@ export async function sendGoalDisallowedNotification(
   const eventId = buildGoalDisallowedEventId(apiMatchId, minute);
   const scoreDisplay = `${homeTeam} ${homeScore}-${awayScore} ${awayTeam}`;
 
+  // Build deep link URL from catalog
+  const baseUrl = getBaseUrl();
+  const deepLinkUrl = formatDeepLink('goal-disallowed', { api_match_id: apiMatchId }, baseUrl);
+
   return dispatchNotification({
     notification_key: 'goal-disallowed',
     event_id: eventId,
@@ -336,6 +369,7 @@ export async function sendGoalDisallowedNotification(
       fixture_index: fixtureIndex,
       gw,
     },
+    url: deepLinkUrl || undefined,
     grouping_params: { api_match_id: apiMatchId },
   });
 }
@@ -359,6 +393,10 @@ export async function sendKickoffNotification(
   const half = isSecondHalf ? 2 : 1;
   const eventId = buildKickoffEventId(apiMatchId, half);
 
+  // Build deep link URL from catalog
+  const baseUrl = getBaseUrl();
+  const deepLinkUrl = formatDeepLink('kickoff', { api_match_id: apiMatchId }, baseUrl);
+
   return dispatchNotification({
     notification_key: 'kickoff',
     event_id: eventId,
@@ -371,6 +409,7 @@ export async function sendKickoffNotification(
       fixture_index: fixtureIndex,
       gw,
     },
+    url: deepLinkUrl || undefined,
     grouping_params: { api_match_id: apiMatchId, half },
   });
 }
@@ -395,6 +434,10 @@ export async function sendHalftimeNotification(
 
   const eventId = buildHalftimeEventId(apiMatchId);
   const baseBody = `${homeTeam} ${homeScore}-${awayScore} ${awayTeam}`;
+
+  // Build deep link URL from catalog
+  const baseUrl = getBaseUrl();
+  const deepLinkUrl = formatDeepLink('half-time', { api_match_id: apiMatchId }, baseUrl);
 
   // If userPicks provided, send personalized notifications with pick indicator
   if (userPicks && userPicks.size > 0) {
@@ -438,6 +481,7 @@ export async function sendHalftimeNotification(
           fixture_index: fixtureIndex,
           gw,
         },
+        url: deepLinkUrl || undefined,
         grouping_params: { api_match_id: apiMatchId },
         skip_preference_check: true, // Half-time has no preference
       });
@@ -460,6 +504,7 @@ export async function sendHalftimeNotification(
           fixture_index: fixtureIndex,
           gw,
         },
+        url: deepLinkUrl || undefined,
         grouping_params: { api_match_id: apiMatchId },
         skip_preference_check: true, // Half-time has no preference
       });
@@ -482,6 +527,7 @@ export async function sendHalftimeNotification(
           fixture_index: fixtureIndex,
           gw,
         },
+        url: deepLinkUrl || undefined,
         grouping_params: { api_match_id: apiMatchId },
         skip_preference_check: true, // Half-time has no preference
       });
@@ -509,6 +555,7 @@ export async function sendHalftimeNotification(
       fixture_index: fixtureIndex,
       gw,
     },
+    url: deepLinkUrl || undefined,
     grouping_params: { api_match_id: apiMatchId },
     skip_preference_check: true, // Half-time has no preference
   });
@@ -538,6 +585,10 @@ export async function sendFinalWhistleNotification(
 
   const eventId = buildFinalWhistleEventId(apiMatchId);
   const title = `FT: ${homeTeam} ${homeScore}-${awayScore} ${awayTeam}`;
+
+  // Build deep link URL from catalog
+  const baseUrl = getBaseUrl();
+  const deepLinkUrl = formatDeepLink('final-whistle', { api_match_id: apiMatchId }, baseUrl);
 
   // Determine match result
   let result: string;
@@ -580,6 +631,7 @@ export async function sendFinalWhistleNotification(
         fixture_index: fixtureIndex,
         gw,
       },
+      url: deepLinkUrl || undefined,
       grouping_params: { api_match_id: apiMatchId },
     });
     results.push(correctResult);
@@ -601,6 +653,7 @@ export async function sendFinalWhistleNotification(
         fixture_index: fixtureIndex,
         gw,
       },
+      url: deepLinkUrl || undefined,
       grouping_params: { api_match_id: apiMatchId },
     });
     results.push(wrongResult);
@@ -623,6 +676,10 @@ export async function sendGameweekCompleteNotification(
 ): Promise<BatchDispatchResult> {
   const eventId = buildGameweekCompleteEventId(gw);
 
+  // Build deep link URL from catalog
+  const baseUrl = getBaseUrl();
+  const deepLinkUrl = formatDeepLink('gameweek-complete', { gw }, baseUrl);
+
   return dispatchNotification({
     notification_key: 'gameweek-complete',
     event_id: eventId,
@@ -633,6 +690,7 @@ export async function sendGameweekCompleteNotification(
       type: 'gameweek_finished',
       gw,
     },
+    url: deepLinkUrl || undefined,
     grouping_params: { gw },
     badge_count: 1,
   });

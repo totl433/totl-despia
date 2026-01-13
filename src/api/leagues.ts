@@ -67,6 +67,10 @@ export async function fetchUnreadCountsFromDb(
   if (leagueIds.length === 0) return {};
 
   try {
+    // Get cached unread counts for comparison
+    const unreadCacheKey = getUnreadCacheKey(userId);
+    const { data: cachedUnread } = getCachedWithMeta<Record<string, number>>(unreadCacheKey);
+    
     // Query 1: Fetch last read times for user (all leagues at once)
     const { data: readsData, error: readsError } = await supabase
       .from('league_message_reads')
@@ -82,7 +86,22 @@ export async function fetchUnreadCountsFromDb(
     const lastRead = new Map<string, string>();
     (readsData ?? []).forEach((r: any) => lastRead.set(r.league_id, r.last_read_at));
 
+
+    // Debug: Log last_read_at timestamps for all leagues
+    if (leagueIds.length > 0) {
+      log.debug('api/fetch_unread_debug', {
+        leagueIds,
+        lastReadTimestamps: lastReadDebug,
+        cachedUnread,
+      });
+    }
+
     // Find the earliest last_read_at to minimize message fetch
+    const lastReadTimestamps: Record<string, string> = {};
+    leagueIds.forEach(id => {
+      lastReadTimestamps[id] = lastRead.get(id) ?? '1970-01-01T00:00:00Z';
+    });
+    
     const defaultTime = '1970-01-01T00:00:00Z';
     let earliestTime = defaultTime;
     leagueIds.forEach(id => {
@@ -121,6 +140,48 @@ export async function fetchUnreadCountsFromDb(
         unreadMap[msg.league_id] = (unreadMap[msg.league_id] ?? 0) + 1;
       }
     });
+
+    // Debug: Log comparison of cached vs fresh unread counts
+    // Always log cached vs fresh comparison for debugging badge issues
+    if (cachedUnread) {
+      const differences: Record<string, { cached: number; fresh: number; lastReadAt: string }> = {};
+      const allComparisons: Record<string, { cached: number; fresh: number; lastReadAt: string }> = {};
+      leagueIds.forEach(id => {
+        const cached = cachedUnread[id] ?? 0;
+        const fresh = unreadMap[id] ?? 0;
+        const comparison = { 
+          cached, 
+          fresh, 
+          lastReadAt: lastRead.get(id) ?? 'null (never read)'
+        };
+        allComparisons[id] = comparison;
+        if (cached !== fresh) {
+          differences[id] = comparison;
+        }
+      });
+      if (Object.keys(differences).length > 0) {
+        log.debug('api/fetch_unread_cache_mismatch', {
+          differences,
+          allComparisons, // Include all for context
+          lastReadTimestamps,
+        });
+      } else {
+        // Log when cache matches fresh data (for debugging)
+        log.debug('api/fetch_unread_cache_match', {
+          leagueIds,
+          unreadCounts: unreadMap,
+          cachedCounts: cachedUnread,
+          allComparisons, // Include all for context
+        });
+      }
+    } else {
+      // Log when no cache exists (first load)
+      log.debug('api/fetch_unread_no_cache', {
+        leagueIds,
+        unreadCounts: unreadMap,
+        lastReadTimestamps,
+      });
+    }
 
     return unreadMap;
   } catch (error: any) {
@@ -264,6 +325,26 @@ export async function fetchUserLeaguesSorted(
 }
 
 /**
+ * Force clear unread cache for a user (more aggressive than invalidateLeagueCache).
+ * Use this when badges are stuck to force a fresh fetch.
+ */
+export function forceClearUnreadCache(userId: string): void {
+  const unreadCacheKey = getUnreadCacheKey(userId);
+  try {
+    localStorage.removeItem(`despia:cache:${unreadCacheKey}`);
+    log.debug('api/unread_cache_force_cleared', {
+      userId: userId.slice(0, 8),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (e) {
+    log.warn('api/unread_cache_force_clear_error', {
+      error: e instanceof Error ? e.message : String(e),
+      userId: userId.slice(0, 8),
+    });
+  }
+}
+
+/**
  * Invalidate cached league data for a user.
  * Call this after actions that modify leagues (join, leave, create).
  */
@@ -271,13 +352,61 @@ export function invalidateLeagueCache(userId: string): void {
   const cacheKey = getLeaguesCacheKey(userId);
   const unreadCacheKey = getUnreadCacheKey(userId);
   
+  // Get cached unread counts before clearing for debug logging
+  let cachedUnreadBefore: Record<string, number> | null = null;
+  let cachedUnreadMeta: { ageMs: number; freshnessPercent: number } | null = null;
+  try {
+    const { data, meta } = getCachedWithMeta<Record<string, number>>(unreadCacheKey);
+    cachedUnreadBefore = data ?? null;
+    if (meta) {
+      cachedUnreadMeta = {
+        ageMs: meta.ageMs,
+        freshnessPercent: meta.freshnessPercent,
+      };
+    }
+  } catch (e) {
+    // Ignore
+  }
+  
   // Remove from cache (using removeCached from cache.ts)
   try {
     localStorage.removeItem(`despia:cache:${cacheKey}`);
     localStorage.removeItem(`despia:cache:${unreadCacheKey}`);
-    log.debug('api/leagues_cache_invalidated', { userId: userId.slice(0, 8) });
+    
+    // Enhanced logging for debugging badge issues
+    // Find Prem Predictions league specifically for detailed logging
+    let premPredictionsUnread: number | null = null;
+    if (cachedUnreadBefore) {
+      // Try to find Prem Predictions by checking league names from cached leagues
+      try {
+        const { data: cachedLeagues } = getCachedWithMeta<League[]>(cacheKey);
+        if (cachedLeagues) {
+          const premPredictionsLeague = cachedLeagues.find(l => 
+            l.name?.toLowerCase().includes('prem') && l.name?.toLowerCase().includes('predictions')
+          );
+          if (premPredictionsLeague) {
+            premPredictionsUnread = cachedUnreadBefore[premPredictionsLeague.id] ?? null;
+          }
+        }
+      } catch (e) {
+        // Ignore errors when checking for Prem Predictions
+      }
+    }
+    
+    log.debug('api/leagues_cache_invalidated', { 
+      userId: userId.slice(0, 8),
+      unreadCountsBefore: cachedUnreadBefore,
+      unreadCacheAge: cachedUnreadMeta?.ageMs ?? null,
+      unreadCacheFreshness: cachedUnreadMeta?.freshnessPercent ?? null,
+      premPredictionsUnreadBefore: premPredictionsUnread,
+      timestamp: new Date().toISOString(),
+    });
   } catch (e) {
     // Ignore errors
+    log.warn('api/leagues_cache_invalidation_error', { 
+      error: e instanceof Error ? e.message : String(e),
+      userId: userId.slice(0, 8),
+    });
   }
 }
 

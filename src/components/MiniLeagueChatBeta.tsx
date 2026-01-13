@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useMiniLeagueChat } from "../hooks/useMiniLeagueChat";
+import { useMarkMessagesRead } from "../hooks/useMarkMessagesRead";
 import ChatThread, { type ChatThreadProps } from "./chat/ChatThread";
 import { supabase } from "../lib/supabase";
 import { VOLLEY_USER_ID, VOLLEY_NAME } from "../lib/volley";
@@ -86,6 +87,26 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   const fetchedUserIdsRef = useRef<Set<string>>(new Set());
   
   const listRef = useRef<HTMLDivElement | null>(null);
+  
+  // Mark messages as read when they're visible
+  // CRITICAL: This hook marks messages as read when the chat container is visible
+  // and dispatches an event to refresh badge counts
+  // NOTE: listRef must be declared BEFORE useMarkMessagesRead
+  const { markAsRead } = useMarkMessagesRead({
+    leagueId: miniLeagueId ?? null,
+    userId: user?.id ?? null,
+    enabled: Boolean(miniLeagueId && user?.id),
+    containerRef: listRef,
+  });
+  
+  // Immediately mark messages as read when component mounts and has messages
+  // This ensures badge updates immediately when visiting the league page
+  useEffect(() => {
+    if (miniLeagueId && user?.id && messages.length > 0) {
+      // Mark as read immediately (don't wait for IntersectionObserver)
+      markAsRead();
+    }
+  }, [miniLeagueId, user?.id, messages.length, markAsRead]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputAreaRef = useRef<HTMLDivElement | null>(null);
   const hasScrolledRef = useRef<boolean>(false);

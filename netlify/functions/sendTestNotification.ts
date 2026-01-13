@@ -15,6 +15,7 @@ function json(statusCode: number, body: unknown) {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400', // Cache preflight for 24 hours
     },
     body: JSON.stringify(body),
   };

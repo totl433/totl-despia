@@ -306,15 +306,54 @@ async function sendNotification() {
       }),
     });
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      // Response isn't JSON - might be HTML error page
+      const text = await response.text();
+      showResult(false, { 
+        error: `Server returned non-JSON response (status: ${response.status})`,
+        details: text.substring(0, 200)
+      });
+      return;
+    }
+    
+    // Handle specific error cases
+    if (response.status === 405) {
+      showResult(false, { 
+        error: 'Method Not Allowed',
+        details: 'The function is deployed but received the wrong HTTP method. This should not happen with the test console. Check browser console for details.'
+      });
+      return;
+    }
     
     if (response.ok && data.success) {
       showResult(true, data);
     } else {
-      showResult(false, data);
+      // Check if it's a OneSignal credential error
+      const oneSignalError = data?.user_result?.error?.body?.errors?.[0] || 
+                            data?.errors?.[0]?.error?.body?.errors?.[0];
+      if (oneSignalError && oneSignalError.includes('Access denied') && oneSignalError.includes('API key')) {
+        showResult(false, {
+          error: 'OneSignal API Key Missing or Invalid',
+          details: `The function is working, but OneSignal credentials are not configured in the Netlify staging environment. Error: ${oneSignalError}. Check Netlify dashboard → Site settings → Environment variables for ONESIGNAL_APP_ID and ONESIGNAL_REST_API_KEY.`
+        });
+      } else {
+        showResult(false, data);
+      }
     }
   } catch (error) {
-    showResult(false, { error: error.message });
+    // Network error, CORS error, or other fetch failure
+    const errorMessage = error?.message || error?.toString() || String(error) || 'Network request failed';
+    const errorType = error?.constructor?.name || typeof error;
+    showResult(false, { 
+      error: errorMessage || 'Unknown error occurred',
+      details: `Error type: ${errorType}. Failed to reach ${baseUrl}/.netlify/functions/sendTestNotification. This usually means: (1) Function not deployed to staging, (2) CORS blocking the request, or (3) Network connectivity issue. Check browser console (F12 → Console) for full error details.`
+    });
+    console.error('[Test Console] Full error object:', error);
+    console.error('[Test Console] Error message:', error?.message);
+    console.error('[Test Console] Error stack:', error?.stack);
   } finally {
     sendBtn.disabled = false;
     sendBtn.innerHTML = '🚀 Send Test Notification';

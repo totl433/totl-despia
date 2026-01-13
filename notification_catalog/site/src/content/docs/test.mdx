@@ -313,6 +313,12 @@ Send test push notifications to any user. Perfect for debugging and QA testing.
           <span style="font-size: 1.25rem;">✅</span>
           <strong style="color: #22c55e;">Notification Sent!</strong>
         </div>
+        \${data._warning 
+          ? \`<div style="background: rgba(251, 191, 36, 0.15); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 0.375rem; padding: 0.75rem; margin-bottom: 0.75rem;">
+              <p style="margin: 0; color: #fbbf24; font-size: 0.85rem;">⚠️ \${data._warning}</p>
+            </div>\`
+          : ''
+        }
         <div style="color: var(--sl-color-gray-2); font-size: 0.85rem;">
           <p style="margin: 0.25rem 0;"><strong>Type:</strong> \${data.notification_type}</p>
           <p style="margin: 0.25rem 0;"><strong>Title:</strong> \${data.title}</p>
@@ -323,6 +329,10 @@ Send test push notifications to any user. Perfect for debugging and QA testing.
             : ''
           }
           <p style="margin: 0.25rem 0;"><strong>Result:</strong> \${data.user_result?.result || 'unknown'}</p>
+          \${data.user_result?.reason 
+            ? \`<p style="margin: 0.25rem 0;"><strong>Reason:</strong> \${data.user_result.reason}</p>\`
+            : ''
+          }
         </div>
       \`;
     } else {
@@ -378,15 +388,65 @@ Send test push notifications to any user. Perfect for debugging and QA testing.
         }),
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        // Response isn't JSON - might be HTML error page
+        const text = await response.text();
+        showResult(false, { 
+          error: \`Server returned non-JSON response (status: \${response.status})\`,
+          details: text.substring(0, 200)
+        });
+        return;
+      }
       
-      if (response.ok && data.success) {
+      // Handle specific error cases
+      if (response.status === 405) {
+        showResult(false, { 
+          error: 'Method Not Allowed',
+          details: 'The function is deployed but received the wrong HTTP method. This should not happen with the test console. Check browser console for details.'
+        });
+        return;
+      }
+      
+      // Check if it's a OneSignal credential error
+      const oneSignalError = data?.user_result?.error?.body?.errors?.[0] || 
+                            data?.errors?.[0]?.error?.body?.errors?.[0];
+      if (oneSignalError && oneSignalError.includes('Access denied') && oneSignalError.includes('API key')) {
+        showResult(false, {
+          error: 'OneSignal API Key Missing or Invalid',
+          details: \`The function is working, but OneSignal credentials are not configured in the Netlify staging environment. Error: \${oneSignalError}. Check Netlify dashboard → Site settings → Environment variables for ONESIGNAL_APP_ID and ONESIGNAL_REST_API_KEY.\`
+        });
+        return;
+      }
+      
+      // Check if OneSignal accepted but no devices subscribed (this is actually a success)
+      const userResult = data?.user_result;
+      const isSuppressedUnsubscribed = userResult?.result === 'suppressed_unsubscribed' || 
+                                       userResult?.reason?.includes('device not subscribed') ||
+                                       userResult?.reason?.includes('recipients: 0');
+      
+      if (response.ok && (data.success || isSuppressedUnsubscribed)) {
+        // Show success, but add warning if no devices subscribed
+        if (isSuppressedUnsubscribed) {
+          data._warning = 'OneSignal accepted the request, but the test user has no subscribed devices. This is expected for test users.';
+        }
         showResult(true, data);
       } else {
         showResult(false, data);
       }
     } catch (error) {
-      showResult(false, { error: error.message });
+      // Network error, CORS error, or other fetch failure
+      const errorMessage = error?.message || error?.toString() || String(error) || 'Network request failed';
+      const errorType = error?.constructor?.name || typeof error;
+      showResult(false, { 
+        error: errorMessage || 'Unknown error occurred',
+        details: \`Error type: \${errorType}. Failed to reach \${baseUrl}/.netlify/functions/sendTestNotification. This usually means: (1) Function not deployed to staging, (2) CORS blocking the request, or (3) Network connectivity issue. Check browser console (F12 → Console) for full error details.\`
+      });
+      console.error('[Test Console] Full error object:', error);
+      console.error('[Test Console] Error message:', error?.message);
+      console.error('[Test Console] Error stack:', error?.stack);
     } finally {
       sendBtn.disabled = false;
       sendBtn.innerHTML = '🚀 Send Test Notification';
