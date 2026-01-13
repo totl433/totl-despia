@@ -86,9 +86,7 @@ export const handler: Handler = async (event) => {
     return json(400, { error: 'Missing required fields: leagueId, userId, userName' });
   }
 
-  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false },
-  });
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
     // Get league code and name for deep linking and notification text
