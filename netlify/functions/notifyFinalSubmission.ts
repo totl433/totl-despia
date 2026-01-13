@@ -40,7 +40,7 @@ function getBaseUrl(): string {
     return (process.env.URL || process.env.SITE_URL || '').trim();
   }
   // Fallback for local dev (shouldn't happen in production)
-  const defaultUrl = 'https://totl-staging.netlify.app';
+  const defaultUrl = 'https://playtotl.com';
   console.warn(`[notifyFinalSubmission] Base URL using default fallback: ${defaultUrl}`);
   return defaultUrl;
 }

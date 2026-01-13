@@ -536,7 +536,7 @@ export const handler: Handler = async (event, context) => {
 
           // Send Volley congratulations to all leagues
           try {
-            const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://your-site.netlify.app';
+            const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://playtotl.com';
             const volleyRes = await fetch(`${baseUrl}/.netlify/functions/sendVolleyGwCongratulations`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

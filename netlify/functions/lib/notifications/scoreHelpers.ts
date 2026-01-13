@@ -32,7 +32,7 @@ function getBaseUrl(): string {
     return process.env.DEPLOY_PRIME_URL.trim();
   }
   // Default fallback (shouldn't happen in production)
-  const defaultUrl = 'https://totl-staging.netlify.app';
+  const defaultUrl = 'https://playtotl.com';
   console.warn(`[scoreHelpers] Base URL using default fallback: ${defaultUrl}`);
   return defaultUrl;
 }

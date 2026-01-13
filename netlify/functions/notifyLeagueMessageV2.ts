@@ -149,7 +149,7 @@ export const handler: Handler = async (event) => {
       return (process.env.URL || process.env.SITE_URL || '').trim();
     }
     // Default fallback (only for local dev - shouldn't happen in production)
-    const defaultUrl = 'https://totl-staging.netlify.app';
+    const defaultUrl = 'https://playtotl.com';
     console.warn(`[notifyLeagueMessageV2] Base URL using default fallback: ${defaultUrl}`);
     return defaultUrl;
   };

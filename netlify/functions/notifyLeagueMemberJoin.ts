@@ -42,7 +42,7 @@ export const handler: Handler = async (event) => {
       if (url.startsWith('http')) return url;
     }
     // Default fallback (shouldn't happen in production)
-    const defaultUrl = 'https://totl-staging.netlify.app';
+    const defaultUrl = 'https://playtotl.com';
     console.warn(`[notifyLeagueMemberJoin] Base URL using default fallback: ${defaultUrl}`);
     return defaultUrl;
   };

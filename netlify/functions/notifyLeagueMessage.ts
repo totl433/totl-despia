@@ -27,7 +27,7 @@ export const handler: Handler = async (event) => {
       return (process.env.URL || process.env.SITE_URL || '').trim();
     }
     // Default fallback (shouldn't happen in production)
-    return 'https://totl-staging.netlify.app';
+    return 'https://playtotl.com';
   };
   const baseUrl = getBaseUrl();
 
