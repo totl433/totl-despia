@@ -277,11 +277,6 @@ export default function HomePage() {
     result?: "H" | "D" | "A" | null;
   }>>(initialState.liveScores || {});
   const [leagueData, setLeagueData] = useState<Record<string, LeagueDataInternal>>(initialState.leagueData);
-  // #region agent log
-  useEffect(() => {
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Home.tsx:287',message:'leagueData state changed',data:{leagueDataKeys:Object.keys(leagueData),leagueDataCount:Object.keys(leagueData).length,initialStateKeys:Object.keys(initialState.leagueData),initialStateCount:Object.keys(initialState.leagueData).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-  }, [leagueData]);
-  // #endregion
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>(initialState.leagueSubmissions);
   
   const logoContainerRef = useRef<HTMLDivElement>(null);
@@ -728,16 +723,10 @@ export default function HomePage() {
         setFiveGwRank(data.fiveGwRank ?? null);
         setTenGwRank(data.tenGwRank ?? null);
         setSeasonRank(data.seasonRank ?? null);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Home.tsx:762',message:'loadHomePageData result',data:{leagueDataKeys:Object.keys(data.leagueData),leagueDataCount:Object.keys(data.leagueData).length,hasLeagueData:Object.keys(data.leagueData).length>0,firstLeagueId:Object.keys(data.leagueData)[0]||null,firstLeagueHasMembers:Object.keys(data.leagueData).length>0&&data.leagueData[Object.keys(data.leagueData)[0]]?.members?.length>0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         if (Object.keys(data.leagueData).length > 0) {
           setLeagueData(data.leagueData);
           setLeagueSubmissions(data.leagueSubmissions);
         } else {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Home.tsx:768',message:'No leagueData from loadHomePageData',data:{leaguesLength:leagues.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
         }
         setBasicDataLoading(false);
       } catch (error: any) {

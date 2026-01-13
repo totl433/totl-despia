@@ -5,6 +5,183 @@ import React, { Suspense, lazy, useState, useEffect, useLayoutEffect } from "rea
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
 
+// Suppress Termly-related network errors (410 Gone) that occur when Termly account is inactive
+// These errors are non-critical and don't affect app functionality
+// Termly uses Axios (XMLHttpRequest) and fetch, so we intercept both
+// Also suppress verbose UserAvatar debug logs
+if (typeof window !== 'undefined') {
+  // Intercept console.log to suppress verbose UserAvatar debug logs and Termly warnings
+  const originalConsoleLog = console.log;
+  console.log = (...args: any[]) => {
+    // Check all arguments for messages to suppress
+    const shouldSuppress = args.some(arg => {
+      if (!arg) return false;
+      const str = typeof arg === 'string' ? arg : arg.toString();
+      
+      // Suppress UserAvatar debug logs (too verbose)
+      if (str.includes('[UserAvatar]') && 
+          (str.includes('Detected src->data-src') || str.includes('restoring src'))) {
+        return true;
+      }
+      
+      // Suppress Termly warnings (non-critical)
+      if (str.includes('[Termly]')) {
+        // Suppress outdated script warnings
+        if (str.includes('outdated') || 
+            str.includes('CMP script') ||
+            str.includes('update instructions') ||
+            str.includes('ResourceBlocker') ||
+            str.includes('not the first script')) {
+          return true;
+        }
+      }
+      
+      return false;
+    });
+    
+    // Suppress if matched
+    if (shouldSuppress) {
+      return;
+    }
+    
+    // Call original console.log for all other logs
+    originalConsoleLog.apply(console, args);
+  };
+
+  // Intercept console.error to suppress Termly-related errors
+  const originalConsoleError = console.error;
+  console.error = (...args: any[]) => {
+    // Check all arguments for Termly-related content
+    const hasTermlyError = args.some(arg => {
+      if (!arg) return false;
+      
+      // Check string messages
+      const str = typeof arg === 'string' ? arg : arg.toString();
+      if (str.toLowerCase().includes('termly') || 
+          str.includes('ERR_BAD_REQUEST') || 
+          str.includes('Request failed with status code 410') ||
+          str.includes('error fetching configuration')) {
+        return true;
+      }
+      
+      // Check error objects
+      if (arg.message) {
+        const msg = arg.message.toString().toLowerCase();
+        if (msg.includes('termly') || 
+            msg.includes('410') || 
+            msg.includes('err_bad_request') ||
+            msg.includes('error fetching configuration')) {
+          return true;
+        }
+      }
+      
+      // Check for AxiosError with 410 status
+      if (arg.name === 'AxiosError' && arg.response?.status === 410) {
+        return true;
+      }
+      
+      // Check for 410 status in response
+      if (arg.status === 410 || arg.response?.status === 410) {
+        return true;
+      }
+      
+      // Check URL in request objects
+      if (arg.request?.responseURL?.includes('termly.io') || 
+          arg.config?.url?.includes('termly.io')) {
+        return true;
+      }
+      
+      return false;
+    });
+    
+    // Suppress Termly-related errors
+    if (hasTermlyError) {
+      // Silently ignore - this is expected if Termly account is inactive
+      return;
+    }
+    
+    // Call original console.error for all other errors
+    originalConsoleError.apply(console, args);
+  };
+
+  // Intercept fetch to catch and suppress Termly consent script errors
+  const originalFetch = window.fetch;
+  window.fetch = async (...args) => {
+    // Extract URL from various argument types (string, Request object, etc.)
+    let url = '';
+    if (typeof args[0] === 'string') {
+      url = args[0];
+    } else if (args[0] instanceof Request) {
+      url = args[0].url;
+    } else if (args[0]?.url) {
+      url = args[0].url;
+    }
+    
+    // If this is a Termly request, catch and suppress 410 errors
+    if (url.includes('termly.io')) {
+      try {
+        const response = await originalFetch(...args);
+        // If we get a 410, it's expected - don't log as error
+        if (response.status === 410) {
+          // Silently handle - already suppressed via console.error interceptor
+        }
+        return response;
+      } catch (error) {
+        // Suppress network errors for Termly requests
+        // Return a mock 410 response to prevent further errors
+        return new Response(null, { status: 410, statusText: 'Gone' });
+      }
+    }
+    
+    // For all other requests, use original fetch
+    return originalFetch(...args);
+  };
+
+  // Intercept XMLHttpRequest to catch Axios requests (Termly uses Axios)
+  const OriginalXHR = window.XMLHttpRequest;
+  window.XMLHttpRequest = function(...args) {
+    const xhr = new OriginalXHR(...args);
+    const originalOpen = xhr.open;
+    const originalSend = xhr.send;
+    
+    xhr.open = function(method: string, url: string | URL, ...rest: any[]) {
+      // Store the URL for later checking
+      (this as any)._url = url.toString();
+      return originalOpen.apply(this, [method, url, ...rest]);
+    };
+    
+    xhr.send = function(...args) {
+      const url = (this as any)._url || '';
+      
+      // If this is a Termly request, suppress 410 errors
+      if (url.includes('termly.io')) {
+        const originalOnError = this.onerror;
+        const originalOnReadyStateChange = this.onreadystatechange;
+        
+        this.onerror = function(event) {
+          // Suppress Termly-related errors
+          // Don't call originalOnError to prevent error logging
+        };
+        
+        this.onreadystatechange = function(event) {
+          // If we get a 410 response, suppress it
+          if (this.readyState === 4 && this.status === 410) {
+            // Silently handle - already suppressed via console.error interceptor
+          }
+          // Still call original handler for other cases
+          if (originalOnReadyStateChange) {
+            originalOnReadyStateChange.apply(this, [event]);
+          }
+        };
+      }
+      
+      return originalSend.apply(this, args);
+    };
+    
+    return xhr;
+  } as any;
+}
+
 // Eagerly load BottomNav pages for instant navigation (no Suspense delay)
 import HomePage from "./pages/Home";
 import TablesPage from "./pages/Tables";
@@ -620,6 +797,11 @@ function AppContent() {
     </>
   );
 }
+
+// Note: Termly may show console errors (410 Gone) if the Termly account is inactive.
+// This is expected and non-critical - the policy pages will still function.
+// The error comes from Termly's script trying to fetch a consent script endpoint.
+// To suppress these errors, you can filter them in browser DevTools console filters.
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

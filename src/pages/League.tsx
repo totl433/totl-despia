@@ -2778,7 +2778,6 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
   if (!league) {
     return null; // Still loading
   }
-  // #endregion
 
   // Check game state of current GW to determine which GW to show in GW Table tab
   const { state: currentGwState } = useGameweekState(currentGw);
