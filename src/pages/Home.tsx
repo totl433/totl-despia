@@ -765,7 +765,7 @@ export default function HomePage() {
     
     // No cleanup needed - we use ref to track in-progress state instead of alive flag
     // This prevents race conditions where effect re-runs discard valid data
-  }, [user?.id, gw, fixtures.length, leaguesLoading, hasLeaguesCache]);
+  }, [user?.id, gw, fixtures.length, leagues.length, leaguesLoading, hasLeaguesCache]);
 
   // Background refresh is now handled by loadHomePageData (checks cache freshness internally)
 
