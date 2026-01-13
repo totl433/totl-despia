@@ -104,7 +104,7 @@ if (typeof window !== 'undefined') {
     originalConsoleError.apply(console, args);
   };
 
-  // Intercept fetch to catch and suppress Termly consent script errors
+  // Intercept fetch to catch and suppress Termly consent script errors and debug telemetry
   const originalFetch = window.fetch;
   window.fetch = async (...args: Parameters<typeof fetch>) => {
     // Extract URL from various argument types (string, Request object, etc.)
@@ -118,6 +118,12 @@ if (typeof window !== 'undefined') {
       url = firstArg.href;
     } else if (firstArg && typeof firstArg === 'object' && 'url' in firstArg) {
       url = String((firstArg as { url: string }).url);
+    }
+    
+    // Suppress debug telemetry calls to localhost:7242 (old debug code)
+    if (url.includes('127.0.0.1:7242') || url.includes('localhost:7242') || url.includes('ingest/8bc20b5f')) {
+      // Silently ignore - these are old debug telemetry calls
+      return new Response(null, { status: 200, statusText: 'OK' });
     }
     
     // If this is a Termly request, catch and suppress 410 errors
@@ -155,6 +161,13 @@ if (typeof window !== 'undefined') {
     
     xhr.send = function(body?: Document | XMLHttpRequestBodyInit | null) {
       const url = (this as any)._url || '';
+      
+      // Suppress debug telemetry calls to localhost:7242 (old debug code)
+      if (url.includes('127.0.0.1:7242') || url.includes('localhost:7242') || url.includes('ingest/8bc20b5f')) {
+        // Silently ignore - these are old debug telemetry calls
+        // Return immediately without making the request
+        return;
+      }
       
       // If this is a Termly request, suppress 410 errors
       if (url.includes('termly.io')) {
