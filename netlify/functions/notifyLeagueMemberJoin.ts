@@ -8,6 +8,7 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { dispatchNotification, formatEventId } from './lib/notifications';
+import { getSupabase } from './lib/notifications/targeting';
 
 function json(statusCode: number, body: unknown) {
   return {
@@ -84,13 +85,13 @@ export const handler: Handler = async (event) => {
     return json(400, { error: 'Missing required fields: leagueId, userId, userName' });
   }
 
-  // Create Supabase admin client - match notifyLeagueMessageV2 EXACTLY
-  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
+  // Try using the shared getSupabase() helper that dispatchNotification uses
+  // This might work better than creating our own client
   try {
+    const supabase = getSupabase();
+    
     // Get league code and name for deep linking and notification text
-    // Match notifyLeagueMessageV2 query pattern exactly
-    const { data: leagueData, error: leagueErr } = await admin
+    const { data: leagueData, error: leagueErr } = await supabase
       .from('leagues')
       .select('code, name')
       .eq('id', leagueId)
