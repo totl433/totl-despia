@@ -430,7 +430,7 @@ export default function PredictionsBanner() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
-              <div className="font-bold text-slate-900 text-base">
+              <div className="font-bold text-slate-900 dark:text-white text-base">
                 Ready to move on?
               </div>
             </div>
