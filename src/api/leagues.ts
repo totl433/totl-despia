@@ -18,7 +18,7 @@ import { supabase } from '../lib/supabase';
 import { getCachedWithMeta, setCached, CACHE_TTL } from '../lib/cache';
 import { log } from '../lib/logEvent';
 import type { League, LeagueWithUnread } from '../types/league';
-import { sortLeaguesAttachingUnread } from '../lib/sortLeagues';
+import { sortLeaguesAttachingUnread, sortLeaguesWithUnreadMap } from '../lib/sortLeagues';
 import { VOLLEY_USER_ID } from '../lib/volley';
 
 // Cache key generator for leagues
@@ -212,19 +212,22 @@ export async function fetchUserLeagues(
   });
   
   const startTime = Date.now();
-  const leagues = await fetchUserLeaguesFromDb(userId);
+  const unsortedLeagues = await fetchUserLeaguesFromDb(userId);
   const fetchDurationMs = Date.now() - startTime;
   
-  // Cache leagues
-  setCached(cacheKey, leagues, CACHE_TTL.LEAGUES);
-  
-  // Fetch unread counts if requested
+  // Fetch unread counts BEFORE caching (so we can sort properly)
   let unreadByLeague: Record<string, number> = {};
-  if (includeUnread && leagues.length > 0) {
-    const leagueIds = leagues.map(l => l.id);
+  if (includeUnread && unsortedLeagues.length > 0) {
+    const leagueIds = unsortedLeagues.map(l => l.id);
     unreadByLeague = await fetchUnreadCountsFromDb(userId, leagueIds);
     setCached(unreadCacheKey, unreadByLeague, CACHE_TTL.LEAGUES);
   }
+  
+  // Sort leagues by unread count (desc) then name (asc) BEFORE caching
+  const leagues = sortLeaguesWithUnreadMap(unsortedLeagues, unreadByLeague);
+  
+  // Cache SORTED leagues - ensures consistent order on next load
+  setCached(cacheKey, leagues, CACHE_TTL.LEAGUES);
   
   const source: DataSource = forceRefresh ? 'prewarm' : 'network';
   
