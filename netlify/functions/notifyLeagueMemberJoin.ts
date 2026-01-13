@@ -132,13 +132,22 @@ export const handler: Handler = async (event) => {
     // Construct full URL for deep linking (OneSignal requires absolute URL)
     const fullUrl = `${baseUrl}/league/${leagueCode}`;
     console.log(`[notifyLeagueMemberJoin] Constructed URL: ${fullUrl} (baseUrl: ${baseUrl}, leagueCode: ${leagueCode})`);
+    
+    // Safe URL parsing for debugging
+    let actualDomain = 'unknown';
+    try {
+      actualDomain = new URL(fullUrl).hostname;
+    } catch (e) {
+      console.warn(`[notifyLeagueMemberJoin] Failed to parse URL for domain extraction:`, e);
+    }
+    
     console.log(`[notifyLeagueMemberJoin] URL Debug:`, {
       fullUrl,
       baseUrl,
       leagueCode,
       isAbsolute: fullUrl.startsWith('http'),
       expectedDomain: 'playtotl.com',
-      actualDomain: new URL(fullUrl).hostname,
+      actualDomain,
     });
     
     // Send notifications using the unified dispatcher

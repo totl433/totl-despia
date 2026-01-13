@@ -1,4 +1,4 @@
- l/**
+/**
  * Notification Catalog Loader
  * 
  * Loads and provides access to notification catalog metadata.
