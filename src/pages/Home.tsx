@@ -6,8 +6,6 @@ import ScrollLogo from "../components/ScrollLogo";
 import { LeaderboardsSection } from "../components/LeaderboardsSection";
 import { MiniLeaguesSection } from "../components/MiniLeaguesSection";
 import { GamesSection } from "../components/GamesSection";
-import CreateJoinTray from "../components/CreateJoinTray";
-import { joinLeague } from "../services/leagues";
 import type { Fixture as FixtureCardFixture, LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { getCached, setCached, removeCached, getCacheTimestamp, CACHE_TTL } from "../lib/cache";
@@ -15,8 +13,6 @@ import { useLeagues } from "../hooks/useLeagues";
 import { fireConfettiCannon } from "../lib/confettiCannon";
 import { useGameweekState } from "../hooks/useGameweekState";
 import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
-import { useDisplayGameweek } from "../hooks/useDisplayGameweek";
-import { useCacheReady } from "../hooks/useCacheReady";
 import type { GameweekState } from "../lib/gameweekState";
 import GameweekResultsModal from "../components/GameweekResultsModal";
 import { loadHomePageData } from "../lib/loadHomePageData";
@@ -63,59 +59,31 @@ type Fixture = {
  * - All data sources use cache-first approach
  */
 export default function HomePage() {
-  // Track component mount/unmount
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Home.tsx:mount',message:'HomePage MOUNTED',data:{userId:user?.id,stackTrace:new Error().stack?.split('\n').slice(0,5).join('|')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'LIFECYCLE'})}).catch(()=>{});
-    // #endregion
-    return () => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Home.tsx:unmount',message:'HomePage UNMOUNTED',data:{userId:user?.id,stackTrace:new Error().stack?.split('\n').slice(0,5).join('|')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'LIFECYCLE'})}).catch(()=>{});
-      // #endregion
-    };
-  }, []);
   const { user } = useAuth();
-  const cacheReady = useCacheReady();
-  const { displayGw: displayGwFromHook, currentGw: currentGwFromHook } = useDisplayGameweek();
-  
-  // Helper to get default initial state
-  const getDefaultInitialState = () => ({
-    gw: null as number | null,
-    latestGw: null as number | null,
-    gwPoints: [] as Array<{user_id: string, gw: number, points: number}>,
-    allGwPoints: [] as Array<{user_id: string, gw: number, points: number}>,
-    overall: [] as Array<{user_id: string, name: string | null, ocp: number | null}>,
-    lastGwRank: null as { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null,
-    fiveGwRank: null as { rank: number; total: number; isTied: boolean } | null,
-    tenGwRank: null as { rank: number; total: number; isTied: boolean } | null,
-    seasonRank: null as { rank: number; total: number; isTied: boolean } | null,
-    fixtures: [] as Fixture[],
-    userPicks: {} as Record<number, "H" | "D" | "A">,
-    liveScores: {} as Record<number, { 
-      homeScore: number; 
-      awayScore: number; 
-      status: string; 
-      minute?: number | null;
-      goals?: any[] | null;
-      red_cards?: any[] | null;
-      home_team?: string | null;
-      away_team?: string | null;
-      result?: "H" | "D" | "A" | null;
-    }>,
-    leagueData: {} as Record<string, LeagueDataInternal>,
-    leagueSubmissions: {} as Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>,
-    hasCache: false,
-  });
   
   // Load initial state from cache synchronously (happens before first render)
-  // CRITICAL: Memoized to prevent repeated execution and warnings
-  const loadInitialStateFromCache = useMemo(() => {
+  const loadInitialStateFromCache = () => {
     // CRITICAL: Only use user?.id from AuthContext - never fall back to localStorage
     // This ensures we don't load cache from a different user
     const userId: string | undefined = user?.id;
     
     if (typeof window === 'undefined' || !userId) {
-      return getDefaultInitialState();
+      return {
+        gw: 1,
+        latestGw: null,
+        gwPoints: [],
+        allGwPoints: [],
+        overall: [],
+        lastGwRank: null,
+        fiveGwRank: null,
+        tenGwRank: null,
+        seasonRank: null,
+        fixtures: [],
+        userPicks: {},
+        leagueData: {},
+        leagueSubmissions: {},
+        hasCache: false,
+      };
     }
     
     try {
@@ -140,83 +108,13 @@ export default function HomePage() {
         fiveGwRank?: { rank: number; total: number; isTied: boolean } | null;
         tenGwRank?: { rank: number; total: number; isTied: boolean } | null;
         seasonRank?: { rank: number; total: number; isTied: boolean } | null;
-        leagueData?: Record<string, any>;
       }>(cacheKey);
       
       // Determine which GW to display (user's viewing GW, or current GW if not set)
-      const dbCurrentGw = cached?.currentGw ?? null;
-      
-      // FIXED: Only validate that GW is >= 1 (not < 10)
-      // Early season GWs (1-9) are valid, so don't reject them
-      const isValidGw = dbCurrentGw !== null && dbCurrentGw >= 1;
-      
-      // Only wait for hook if:
-      // 1. Cache isn't ready (preload not complete AND no cache exists)
-      // 2. GW is invalid (< 1)
-      const preloadComplete = typeof window !== 'undefined' && sessionStorage.getItem('preload:complete') === 'true';
-      const hasCache = cached !== null;
-      const shouldWaitForHook = (!preloadComplete && !hasCache) || !isValidGw;
-      
-      if (shouldWaitForHook) {
-        // Only log once per session to avoid spam
-        if (!sessionStorage.getItem('home:gw-wait-logged')) {
-          console.log(`[Home] Waiting for hook - preload: ${preloadComplete}, cached: ${hasCache}, gw: ${dbCurrentGw}`);
-          sessionStorage.setItem('home:gw-wait-logged', 'true');
-        }
-        // Return null for gw - let useEffect sync with hook value
-        return {
-          gw: null, // Let hook determine correct GW
-          latestGw: cached?.latestGw ?? null,
-          gwPoints: cached?.allGwPoints ?? [],
-          allGwPoints: cached?.allGwPoints ?? [],
-          overall: cached?.overall ?? [],
-          lastGwRank: cached?.lastGwRank ?? null,
-          fiveGwRank: cached?.fiveGwRank ?? null,
-          tenGwRank: cached?.tenGwRank ?? null,
-          seasonRank: cached?.seasonRank ?? null,
-          fixtures: [],
-          userPicks: {},
-          liveScores: {},
-          leagueData: cached?.leagueData ?? {},
-          leagueSubmissions: {},
-          hasCache: false, // Mark as no cache so we don't use stale fixtures
-        };
-      }
-      
-      // DEFENSIVE CHECK: Ensure userViewingGw is not unreasonably old
-      const validatedUserViewingGw = userViewingGw !== null && dbCurrentGw !== null && userViewingGw < dbCurrentGw - 2 
-        ? dbCurrentGw 
-        : userViewingGw;
-      
-      const gwToDisplay = validatedUserViewingGw !== null && dbCurrentGw !== null && validatedUserViewingGw < dbCurrentGw 
-        ? validatedUserViewingGw 
+      const dbCurrentGw = cached?.currentGw ?? 1;
+      const gwToDisplay = userViewingGw !== null && userViewingGw < dbCurrentGw 
+        ? userViewingGw 
         : dbCurrentGw;
-      
-      // FINAL VALIDATION: Ensure gwToDisplay is reasonable
-      if (gwToDisplay === null || gwToDisplay < 1) {
-        // Only log once per session to avoid spam
-        if (!sessionStorage.getItem('home:gw-invalid-logged')) {
-          console.log(`[Home] Invalid gwToDisplay calculated: ${gwToDisplay}, will wait for hook`);
-          sessionStorage.setItem('home:gw-invalid-logged', 'true');
-        }
-        return {
-          gw: null, // Let hook determine correct GW
-          latestGw: cached?.latestGw ?? null,
-          gwPoints: cached?.allGwPoints ?? [],
-          allGwPoints: cached?.allGwPoints ?? [],
-          overall: cached?.overall ?? [],
-          lastGwRank: cached?.lastGwRank ?? null,
-          fiveGwRank: cached?.fiveGwRank ?? null,
-          tenGwRank: cached?.tenGwRank ?? null,
-          seasonRank: cached?.seasonRank ?? null,
-          fixtures: [],
-          userPicks: {},
-          liveScores: {},
-          leagueData: cached?.leagueData ?? {},
-          leagueSubmissions: {},
-          hasCache: false,
-        };
-      }
       
       if (cached && dbCurrentGw) {
         // Load fixtures from cache for the GW the user is viewing (not necessarily current GW)
@@ -336,44 +234,29 @@ export default function HomePage() {
       // Error loading from cache (non-critical)
     }
     
-    return getDefaultInitialState();
-  }, [user?.id, cacheReady]); // Memoize based on user and cache readiness
+    return {
+      gw: 1,
+      latestGw: null,
+      gwPoints: [],
+      allGwPoints: [],
+      overall: [],
+      lastGwRank: null,
+      fiveGwRank: null,
+      tenGwRank: null,
+      seasonRank: null,
+      fixtures: [],
+      userPicks: {},
+      liveScores: {},
+      leagueData: {},
+      leagueSubmissions: {},
+      hasCache: false,
+    };
+  };
   
   // Initialize ALL state synchronously from cache (happens before first render - zero loading if cache exists)
-  // CRITICAL: Memoized to prevent repeated execution and warnings
-  // loadInitialStateFromCache is already memoized and returns the state directly
-  const initialState = useMemo(() => {
-    if (!user?.id) {
-      return getDefaultInitialState();
-    }
-    
-    // If cache isn't ready, return minimal state and wait for hook
-    if (!cacheReady) {
-      return {
-        ...getDefaultInitialState(),
-        gw: null, // Wait for hook
-      };
-    }
-    
-    // loadInitialStateFromCache is already the result (not a function) since it's wrapped in useMemo
-    return loadInitialStateFromCache;
-  }, [user?.id, cacheReady, loadInitialStateFromCache]);
+  const initialState = loadInitialStateFromCache();
   
-  // Create/Join tray state
-  const [isCreateJoinTrayOpen, setIsCreateJoinTrayOpen] = useState(false);
-  const [joinCode, setJoinCode] = useState('');
-  const [joinError, setJoinError] = useState<string | undefined>(undefined);
-
-  // Initialize gw from cache or hook
-  // FIXED: Removed overly strict validation - GW < 10 is valid early in season
-  const [gw, setGw] = useState<number | null>(() => {
-    const cachedGw = initialState.gw;
-    // Only reject if GW is null or < 1 (invalid)
-    if (cachedGw === null || cachedGw < 1) {
-      return null; // Wait for hook to provide correct value
-    }
-    return cachedGw;
-  });
+  const [gw, setGw] = useState<number>(initialState.gw);
   const [latestGw, setLatestGw] = useState<number | null>(initialState.latestGw);
   const [gwPoints, setGwPoints] = useState<Array<{user_id: string, gw: number, points: number}>>(initialState.gwPoints);
   const [lastGwRank, setLastGwRank] = useState<{ rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null>(initialState.lastGwRank);
@@ -394,22 +277,6 @@ export default function HomePage() {
     result?: "H" | "D" | "A" | null;
   }>>(initialState.liveScores || {});
   const [leagueData, setLeagueData] = useState<Record<string, LeagueDataInternal>>(initialState.leagueData);
-  const prevLeagueDataRef = useRef(leagueData);
-  // #region agent log
-  useEffect(() => {
-    const prevKeys = Object.keys(prevLeagueDataRef.current);
-    const currentKeys = Object.keys(leagueData);
-    const prevCount = prevKeys.length;
-    const currentCount = currentKeys.length;
-    const wasEmpty = prevCount === 0;
-    const isEmpty = currentCount === 0;
-    
-    if (prevCount !== currentCount || wasEmpty !== isEmpty) {
-      fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Home.tsx:287',message:'leagueData state changed',data:{prevCount,currentCount,wasEmpty,isEmpty,prevKeys:prevKeys.slice(0,3),currentKeys:currentKeys.slice(0,3),initialStateKeys:Object.keys(initialState.leagueData).length,initialStateCount:Object.keys(initialState.leagueData).length,stackTrace:new Error().stack?.split('\n').slice(0,8).join('|')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      prevLeagueDataRef.current = leagueData;
-    }
-  }, [leagueData]);
-  // #endregion
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>(initialState.leagueSubmissions);
   
   const logoContainerRef = useRef<HTMLDivElement>(null);
@@ -425,10 +292,6 @@ export default function HomePage() {
   // Use centralized hook for current gameweek (single source of truth)
   const { currentGw: dbCurrentGw } = useCurrentGameweek();
   
-  // ROCK-SOLID: Use centralized hook to determine display GW
-  // This ensures we always know the correct GW and whether user has moved on
-  const { userViewingGw, hasMovedOn } = useDisplayGameweek();
-  
   // Use centralized hooks
   // Skip initial fetch if we have cache (leagues are pre-loaded)
   // Check cache synchronously (before useLeagues hook) to ensure skipInitialFetch is set correctly
@@ -441,25 +304,10 @@ export default function HomePage() {
       return false;
     }
   })();
-  const { leagues, unreadByLeague, refresh: refreshLeagues, loading: leaguesLoading } = useLeagues({ 
+  const { leagues, unreadByLeague, refresh: refreshLeagues } = useLeagues({ 
     pageName: 'home',
     skipInitialFetch: hasLeaguesCache // Skip fetch if cache exists - data already loaded synchronously
   });
-  
-  // Fallback: If we expected cache but leagues are empty, trigger a fetch
-  // This handles the case where cache exists but is empty or invalid
-  useEffect(() => {
-    if (hasLeaguesCache && leagues.length === 0 && !leaguesLoading && user?.id) {
-      console.warn('[Home] Cache exists but leagues are empty - triggering fetch');
-      // Give it a moment in case cache is still loading, then fetch
-      const timeout = setTimeout(() => {
-        if (leagues.length === 0) {
-          refreshLeagues().catch(() => {});
-        }
-      }, 100);
-      return () => clearTimeout(timeout);
-    }
-  }, [hasLeaguesCache, leagues.length, leaguesLoading, user?.id, refreshLeagues]);
   
   // Load game state from cache immediately for instant LIVE detection
   const cachedGameState = useMemo(() => {
@@ -496,37 +344,22 @@ export default function HomePage() {
     return () => window.removeEventListener('leagueBadgeUpdated', handleBadgeUpdate);
   }, [refreshLeagues]);
   
-  // ROCK-SOLID: Sync gw with displayGwFromHook IMMEDIATELY when hook loads
-  // This ensures we use the correct GW from the centralized hook, not stale cache
+  // Validate cached GW (respects user's current_viewing_gw)
+  // CRITICAL: Only run if fixtures are missing (cache miss) - don't run if we have cache
+  // Update displayed GW when dbCurrentGw changes (from useCurrentGameweek hook)
   useEffect(() => {
-    if (!displayGwFromHook || displayGwFromHook < 1) {
-      // Hook hasn't loaded yet or returned invalid value
-      // If gw is null (waiting for hook), keep waiting
-      if (gw === null) {
-        return; // Keep waiting for hook
-      }
-      // If we have a gw but hook isn't ready, only update if dbCurrentGw is clearly better
-      if (dbCurrentGw && dbCurrentGw >= 10 && gw !== dbCurrentGw && (gw < 10 || gw < dbCurrentGw)) {
-        console.log(`[Home] Hook not ready, updating from suspicious GW (${gw}) to dbCurrentGw: ${dbCurrentGw}`);
-        setGw(dbCurrentGw);
-      }
-      return;
-    }
+    if (!user?.id || !dbCurrentGw) return;
     
-    // CRITICAL FIX: Always update if gw is null (waiting for hook) or if current gw is suspiciously old
-    // This fixes the issue where stale cache (GW20) stays until refresh
-    if (gw === null || gw < 10 || (gw < displayGwFromHook && displayGwFromHook >= 10)) {
-      console.log(`[Home] Updating GW from ${gw} to hook value (${displayGwFromHook}) - was null or suspiciously old`);
-      setGw(displayGwFromHook);
-      return;
-    }
+    // Check user's viewing GW preference
+    const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
+    const userViewingGw = prefsCache?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
+    const gwToDisplay = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
     
-    // Only update if different and hook value is reasonable
-    if (gw !== displayGwFromHook && displayGwFromHook >= 1) {
-      console.log(`[Home] Updating displayed GW from ${gw} to ${displayGwFromHook} (currentGw: ${currentGwFromHook}, userViewingGw: ${userViewingGw}, hasMovedOn: ${hasMovedOn})`);
-      setGw(displayGwFromHook);
+    // Only update if different
+    if (gw !== gwToDisplay) {
+      setGw(gwToDisplay);
     }
-  }, [displayGwFromHook, currentGwFromHook, userViewingGw, hasMovedOn, dbCurrentGw, gw]);
+  }, [user?.id, dbCurrentGw, gw]);
   
   // Listen for GW changes from useCurrentGameweek hook
   useEffect(() => {
@@ -534,20 +367,6 @@ export default function HomePage() {
       if (!user?.id) return;
       
       const { oldGw, newGw } = event.detail;
-      
-      // DEFENSIVE CHECK: Validate new GW is reasonable
-      if (!newGw || newGw < 1) {
-        console.error(`[Home] Invalid new GW received: ${newGw}, ignoring GW change event`);
-        return;
-      }
-      
-      // DEFENSIVE CHECK: If new GW is much lower than old GW, something is wrong
-      if (oldGw && newGw < oldGw - 1) {
-        console.error(`[Home] Suspicious GW change: ${oldGw} -> ${newGw} (decreased by more than 1), validating...`);
-        // Don't update immediately - let the hook re-fetch
-        return;
-      }
-      
       console.log(`[Home] GW changed from ${oldGw} to ${newGw}, invalidating caches`);
       
       // Invalidate related caches
@@ -559,21 +378,18 @@ export default function HomePage() {
       removeCached(`home:fixtures:${user.id}:${newGw}`);
       setGwResultsVersion(prev => prev + 1);
       
-      // ROCK-SOLID: Use displayGwFromHook if available, otherwise calculate from newGw
-      // The hook will handle the logic, but if it hasn't updated yet, use newGw
-      if (displayGwFromHook && displayGwFromHook >= 1) {
-        setGw(displayGwFromHook);
-      } else {
-        // Fallback: use newGw (hook will update shortly)
-        setGw(newGw);
-      }
+      // Update displayed GW
+      const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
+      const userViewingGw = prefsCache?.current_viewing_gw ?? (newGw > 1 ? newGw - 1 : newGw);
+      const gwToDisplay = userViewingGw < newGw ? userViewingGw : newGw;
+      setGw(gwToDisplay);
     };
     
     window.addEventListener('currentGwChanged', handleGwChange as EventListener);
     return () => {
       window.removeEventListener('currentGwChanged', handleGwChange as EventListener);
     };
-  }, [user?.id, displayGwFromHook]);
+  }, [user?.id]);
 
   // Confetti check
   useEffect(() => {
@@ -653,7 +469,7 @@ export default function HomePage() {
 
   // Subscribe to real-time live scores
   const { liveScores: liveScoresMapFromHook } = useLiveScores(
-    gw ?? undefined,
+    gw,
     apiMatchIds.length > 0 ? apiMatchIds : undefined
   );
 
@@ -881,54 +697,21 @@ export default function HomePage() {
   }, [liveScoresFromCache, liveScoresMap, fixtures, gwResults, cachedLiveScoresMap.size]);
 
   // Only load data if we don't have cache (fixtures.length === 0 means no cache)
-  // CRITICAL FIX: Also check if leagueData is empty - it might not be loaded even if fixtures exist
   useEffect(() => {
     if (!user?.id || !gw) return;
     
-    // Wait for leagues to finish loading
-    // CRITICAL: If skipInitialFetch is true, leaguesLoading is false immediately, but leagues should be in cache
-    // However, if hasLeaguesCache is true, leagues should be loaded synchronously in useState
-    // So if we have cache but no leagues, something is wrong - but we should still proceed
-    // The real issue is: if leagues.length is 0, we'll call loadHomePageData with empty array
-    // But that's actually OK - it just means user has no leagues, and loadHomePageData handles that
-    // However, if leaguesLoading is true, we should definitely wait
-    if (leaguesLoading) {
-      return; // Still loading from API
-    }
-    
-    // If we have cache but leagues are still empty, the cache might be empty or invalid
-    // In this case, we should still call loadHomePageData (user might have no leagues)
-    // But log it for debugging
-    if (hasLeaguesCache && leagues.length === 0) {
-      console.warn('[Home] hasLeaguesCache is true but leagues.length is 0 - cache might be empty or invalid');
-    }
-    
-    // If we already have fixtures AND leagueData from cache, we're done - pre-loader completed
-    const hasFixtures = fixtures.length > 0;
-    const hasLeagueData = Object.keys(leagueData).length > 0;
-    
-    if (hasFixtures && hasLeagueData) {
+    // If we already have fixtures from cache, we're done - pre-loader completed
+    if (fixtures.length > 0) {
       setBasicDataLoading(false);
       return;
     }
     
-    // Need to load data if fixtures or leagueData is missing
-    // CRITICAL: Only call if we have leagues OR if we've confirmed there are no leagues (hasLeaguesCache)
-    // If leagues.length is 0 but we don't have cache, we're still loading - wait
-    if (leagues.length === 0 && !hasLeaguesCache) {
-      // Still waiting for leagues to load - don't call loadHomePageData yet
-      return;
-    }
-    
-    if (leagues.length === 0 && hasLeaguesCache) {
-      console.warn('[Home] Calling loadHomePageData with empty leagues array - user has no leagues (confirmed by cache)');
-    }
-    
+    // No cache - need to load data
     setBasicDataLoading(true);
     let alive = true;
     (async () => {
       try {
-        const data = await loadHomePageData(user.id, leagues, gw);
+        const data = await loadHomePageData(user.id, leagues.length > 0 ? leagues : [], gw);
         if (!alive) return;
         
         // Update ALL state at once - single render
@@ -940,16 +723,10 @@ export default function HomePage() {
         setFiveGwRank(data.fiveGwRank ?? null);
         setTenGwRank(data.tenGwRank ?? null);
         setSeasonRank(data.seasonRank ?? null);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Home.tsx:762',message:'loadHomePageData result',data:{leagueDataKeys:Object.keys(data.leagueData),leagueDataCount:Object.keys(data.leagueData).length,hasLeagueData:Object.keys(data.leagueData).length>0,firstLeagueId:Object.keys(data.leagueData)[0]||null,firstLeagueHasMembers:Object.keys(data.leagueData).length>0&&data.leagueData[Object.keys(data.leagueData)[0]]?.members?.length>0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         if (Object.keys(data.leagueData).length > 0) {
           setLeagueData(data.leagueData);
           setLeagueSubmissions(data.leagueSubmissions);
         } else {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Home.tsx:768',message:'No leagueData from loadHomePageData',data:{leaguesLength:leagues.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
         }
         setBasicDataLoading(false);
       } catch (error: any) {
@@ -959,7 +736,7 @@ export default function HomePage() {
     })();
     
     return () => { alive = false; };
-  }, [user?.id, gw, fixtures.length, leagues.length, Object.keys(leagueData).length, leaguesLoading, hasLeaguesCache]);
+  }, [user?.id, gw, fixtures.length, leagues.length]);
 
   // Background refresh is now handled by loadHomePageData (checks cache freshness internally)
 
@@ -1524,7 +1301,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="max-w-6xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 pt-2 pb-4 min-h-screen relative bg-[#f5f7f6] dark:bg-slate-900">
+    <div className="max-w-6xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 pt-2 pb-4 min-h-screen relative">
       {/* Logo header */}
       <div ref={logoContainerRef} className="relative mb-4 lg:hidden">
         <ScrollLogo />
@@ -1588,11 +1365,10 @@ export default function HomePage() {
                 leagueData={leagueData}
                 leagueSubmissions={leagueSubmissions}
                 unreadByLeague={unreadByLeague}
-            leagueDataLoading={basicDataLoading || Object.keys(leagueData).length === 0}
+            leagueDataLoading={false}
                 currentGw={gw}
                 currentUserId={user?.id}
             gameState={effectiveGameState}
-                onCreateJoinClick={() => setIsCreateJoinTrayOpen(true)}
               />
             </div>
 
@@ -1638,32 +1414,6 @@ export default function HomePage() {
           }}
         />
       )}
-
-      {/* Create/Join Tray */}
-      <CreateJoinTray
-        isOpen={isCreateJoinTrayOpen}
-        onClose={() => {
-          setIsCreateJoinTrayOpen(false);
-          setJoinCode('');
-          setJoinError(undefined);
-        }}
-        joinCode={joinCode}
-        setJoinCode={setJoinCode}
-        onJoin={async () => {
-          if (!joinCode.trim() || !user?.id) return;
-          setJoinError(undefined);
-          const result = await joinLeague(joinCode.trim(), user.id);
-          if (result.success) {
-            // Notification is now handled by joinLeague service function
-            setIsCreateJoinTrayOpen(false);
-            setJoinCode('');
-            refreshLeagues();
-          } else {
-            setJoinError(result.error);
-          }
-        }}
-        joinError={joinError}
-      />
     </div>
   );
 }

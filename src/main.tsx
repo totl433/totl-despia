@@ -1,12 +1,186 @@
 // src/main.tsx
 import "./index.css";
 import "react-chat-elements/dist/main.css";
-import React, { Suspense, lazy, useState, useEffect, useLayoutEffect, useRef } from "react";
+import React, { Suspense, lazy, useState, useEffect, useLayoutEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
-import { isWebBrowser } from "./lib/platform";
 
-// Removed addEventListener interceptor - it was breaking all button clicks
+// Suppress Termly-related network errors (410 Gone) that occur when Termly account is inactive
+// These errors are non-critical and don't affect app functionality
+// Termly uses Axios (XMLHttpRequest) and fetch, so we intercept both
+// Also suppress verbose UserAvatar debug logs
+if (typeof window !== 'undefined') {
+  // Intercept console.log to suppress verbose UserAvatar debug logs and Termly warnings
+  const originalConsoleLog = console.log;
+  console.log = (...args: any[]) => {
+    // Check all arguments for messages to suppress
+    const shouldSuppress = args.some(arg => {
+      if (!arg) return false;
+      const str = typeof arg === 'string' ? arg : arg.toString();
+      
+      // Suppress UserAvatar debug logs (too verbose)
+      if (str.includes('[UserAvatar]') && 
+          (str.includes('Detected src->data-src') || str.includes('restoring src'))) {
+        return true;
+      }
+      
+      // Suppress Termly warnings (non-critical)
+      if (str.includes('[Termly]')) {
+        // Suppress outdated script warnings
+        if (str.includes('outdated') || 
+            str.includes('CMP script') ||
+            str.includes('update instructions') ||
+            str.includes('ResourceBlocker') ||
+            str.includes('not the first script')) {
+          return true;
+        }
+      }
+      
+      return false;
+    });
+    
+    // Suppress if matched
+    if (shouldSuppress) {
+      return;
+    }
+    
+    // Call original console.log for all other logs
+    originalConsoleLog.apply(console, args);
+  };
+
+  // Intercept console.error to suppress Termly-related errors
+  const originalConsoleError = console.error;
+  console.error = (...args: any[]) => {
+    // Check all arguments for Termly-related content
+    const hasTermlyError = args.some(arg => {
+      if (!arg) return false;
+      
+      // Check string messages
+      const str = typeof arg === 'string' ? arg : arg.toString();
+      if (str.toLowerCase().includes('termly') || 
+          str.includes('ERR_BAD_REQUEST') || 
+          str.includes('Request failed with status code 410') ||
+          str.includes('error fetching configuration')) {
+        return true;
+      }
+      
+      // Check error objects
+      if (arg.message) {
+        const msg = arg.message.toString().toLowerCase();
+        if (msg.includes('termly') || 
+            msg.includes('410') || 
+            msg.includes('err_bad_request') ||
+            msg.includes('error fetching configuration')) {
+          return true;
+        }
+      }
+      
+      // Check for AxiosError with 410 status
+      if (arg.name === 'AxiosError' && arg.response?.status === 410) {
+        return true;
+      }
+      
+      // Check for 410 status in response
+      if (arg.status === 410 || arg.response?.status === 410) {
+        return true;
+      }
+      
+      // Check URL in request objects
+      if (arg.request?.responseURL?.includes('termly.io') || 
+          arg.config?.url?.includes('termly.io')) {
+        return true;
+      }
+      
+      return false;
+    });
+    
+    // Suppress Termly-related errors
+    if (hasTermlyError) {
+      // Silently ignore - this is expected if Termly account is inactive
+      return;
+    }
+    
+    // Call original console.error for all other errors
+    originalConsoleError.apply(console, args);
+  };
+
+  // Intercept fetch to catch and suppress Termly consent script errors
+  const originalFetch = window.fetch;
+  window.fetch = async (...args) => {
+    // Extract URL from various argument types (string, Request object, etc.)
+    let url = '';
+    if (typeof args[0] === 'string') {
+      url = args[0];
+    } else if (args[0] instanceof Request) {
+      url = args[0].url;
+    } else if (args[0]?.url) {
+      url = args[0].url;
+    }
+    
+    // If this is a Termly request, catch and suppress 410 errors
+    if (url.includes('termly.io')) {
+      try {
+        const response = await originalFetch(...args);
+        // If we get a 410, it's expected - don't log as error
+        if (response.status === 410) {
+          // Silently handle - already suppressed via console.error interceptor
+        }
+        return response;
+      } catch (error) {
+        // Suppress network errors for Termly requests
+        // Return a mock 410 response to prevent further errors
+        return new Response(null, { status: 410, statusText: 'Gone' });
+      }
+    }
+    
+    // For all other requests, use original fetch
+    return originalFetch(...args);
+  };
+
+  // Intercept XMLHttpRequest to catch Axios requests (Termly uses Axios)
+  const OriginalXHR = window.XMLHttpRequest;
+  window.XMLHttpRequest = function(...args) {
+    const xhr = new OriginalXHR(...args);
+    const originalOpen = xhr.open;
+    const originalSend = xhr.send;
+    
+    xhr.open = function(method: string, url: string | URL, ...rest: any[]) {
+      // Store the URL for later checking
+      (this as any)._url = url.toString();
+      return originalOpen.apply(this, [method, url, ...rest]);
+    };
+    
+    xhr.send = function(...args) {
+      const url = (this as any)._url || '';
+      
+      // If this is a Termly request, suppress 410 errors
+      if (url.includes('termly.io')) {
+        const originalOnError = this.onerror;
+        const originalOnReadyStateChange = this.onreadystatechange;
+        
+        this.onerror = function(event) {
+          // Suppress Termly-related errors
+          // Don't call originalOnError to prevent error logging
+        };
+        
+        this.onreadystatechange = function(event) {
+          // If we get a 410 response, suppress it
+          if (this.readyState === 4 && this.status === 410) {
+            // Silently handle - already suppressed via console.error interceptor
+          }
+          // Still call original handler for other cases
+          if (originalOnReadyStateChange) {
+            originalOnReadyStateChange.apply(this, [event]);
+          }
+        };
+      }
+      
+      return originalSend.apply(this, args);
+    };
+    
+    return xhr;
+  } as any;
+}
 
 // Eagerly load BottomNav pages for instant navigation (no Suspense delay)
 import HomePage from "./pages/Home";
@@ -23,7 +197,6 @@ const CreateLeaguePage = lazy(() => import("./pages/CreateLeague"));
 const HowToPlayPage = lazy(() => import("./pages/HowToPlay"));
 const ApiAdmin = lazy(() => import("./pages/ApiAdmin"));
 const ProfilePage = lazy(() => import("./pages/Profile"));
-const EditAvatarPage = lazy(() => import("./pages/EditAvatar"));
 const NotificationCentrePage = lazy(() => import("./pages/NotificationCentre"));
 const EmailPreferencesPage = lazy(() => import("./pages/EmailPreferences"));
 const StatsPage = lazy(() => import("./pages/Stats"));
@@ -46,56 +219,10 @@ import { useAppLifecycle } from "./hooks/useAppLifecycle";
 import LoadingScreen from "./components/LoadingScreen";
 import { PageLoader } from "./components/PageLoader";
 import ScrollToTop from "./components/ScrollToTop";
-import CookieConsent from "./components/CookieConsent";
 // import { isLoadEverythingFirstEnabled } from "./lib/featureFlags"; // Unused - feature flag checked inline
 import { loadInitialData } from "./services/initialDataLoader";
 import { bootLog } from "./lib/logEvent";
 import { supabase } from "./lib/supabase";
-import { useTheme } from "./hooks/useTheme";
-
-// Helper function to log deep link attempts to history
-function logDeepLinkAttempt(entry: {
-  success: boolean;
-  method: string;
-  originalPath?: string;
-  leagueCode?: string;
-  targetUrl?: string;
-  reason?: string;
-  [key: string]: any;
-}) {
-  try {
-    const historyKey = 'deepLink_history';
-    const existingHistory = localStorage.getItem(historyKey);
-    const history = existingHistory ? JSON.parse(existingHistory) : [];
-    
-    const logEntry = {
-      ...entry,
-      timestamp: new Date().toISOString()
-    };
-    
-    history.push(logEntry);
-    // Keep only last 50 attempts
-    const trimmedHistory = history.slice(-50);
-    localStorage.setItem(historyKey, JSON.stringify(trimmedHistory));
-    
-    // Also update last check/result for backward compatibility
-    if (entry.success && entry.targetUrl) {
-      localStorage.setItem('deepLink_debug', JSON.stringify({
-        method: entry.method,
-        originalPath: entry.originalPath,
-        leagueCode: entry.leagueCode,
-        targetUrl: entry.targetUrl,
-        timestamp: logEntry.timestamp
-      }));
-      localStorage.setItem('deepLink_result', JSON.stringify(logEntry));
-    } else if (!entry.success) {
-      localStorage.setItem('deepLink_result', JSON.stringify(logEntry));
-    }
-  } catch (e) {
-    // Ignore storage errors
-    console.warn('[DeepLink] Failed to log attempt:', e);
-  }
-}
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -108,7 +235,7 @@ function AppShell() {
   // This prevents the home page from ever rendering if we have a notification deep link
   const searchParams = new URLSearchParams(window.location.search);
   const leagueCode = searchParams.get('leagueCode');
-  const tab = searchParams.get('tab');
+  
   // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat)
   if (leagueCode && !window.location.pathname.startsWith('/league/')) {
     const targetUrl = `/league/${leagueCode}?tab=chat`;
@@ -119,6 +246,7 @@ function AppShell() {
   // Ensure the URL is preserved correctly
   const pathMatch = window.location.pathname.match(/^\/league\/([^/]+)$/);
   if (pathMatch) {
+    const tab = searchParams.get('tab');
     if (tab === 'chat') {
       // URL is already correct, just ensure it stays that way
       // React Router will handle it
@@ -138,303 +266,29 @@ function AppContent() {
   const { showWelcome, dismissWelcome, user, loading: authLoading } = useAuth();
   const [initialDataLoading, setInitialDataLoading] = useState(false);
   
-  // Initialize theme on app load
-  useTheme();
-  
-  // Track previous location to detect changes
-  const prevLocationRef = useRef<{ pathname: string; search: string } | null>(null);
-  // Track if we've already processed deep link for current league page (prevents remount loops)
-  const processedLeaguePageRef = useRef<string | null>(null);
-  // Track navigate function reference to detect if it's changing
-  const prevNavigateRef = useRef<typeof navigate | null>(null);
-  
   // Handle deep links from notifications (iOS native)
   // Check URL immediately - AppShell already updated window.location, but ensure React Router sees it
   useLayoutEffect(() => {
-    // CRITICAL: If we're already on a league page and pathname hasn't changed, skip entirely
-    // This prevents the effect from running when React Router remounts the route component
-    const isOnLeaguePage = location.pathname.startsWith('/league/');
-    const hasPrevLocation = prevLocationRef.current !== null;
-    const prevPathname = prevLocationRef.current?.pathname;
-    const currentPathname = location.pathname;
-    const pathnameChanged = hasPrevLocation && prevPathname !== currentPathname;
-    
-    // Log skip check for debugging
-    if (isOnLeaguePage) {
-      try {
-        const existingLogs = localStorage.getItem('message_subscription_logs');
-        const logs = existingLogs ? JSON.parse(existingLogs) : [];
-        const skipCheckLog = {
-          timestamp: Date.now(),
-          leagueId: null,
-          status: 'DEEP_LINK_SKIP_CHECK',
-          channel: 'main.tsx',
-          isOnLeaguePage: true,
-          hasPrevLocation,
-          pathnameChanged,
-          prevPathname,
-          currentPathname,
-          willSkip: isOnLeaguePage && hasPrevLocation && !pathnameChanged,
-          reason: `Skip check: isOnLeaguePage=${isOnLeaguePage}, hasPrevLocation=${hasPrevLocation}, pathnameChanged=${pathnameChanged}`,
-        };
-        logs.push(skipCheckLog);
-        const recentLogs = logs.slice(-50);
-        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
-      } catch (e) {
-        console.error('[AppContent] Failed to log skip check:', e);
-      }
-    }
-    
-    // Skip effect if we're on a league page and pathname hasn't changed
-    // This prevents remount loops - we check multiple cases:
-    // 1. If we have a previous location and pathname hasn't changed (normal case)
-    // 2. If we're on a league page and there's no leagueCode in the URL (already navigated, no deep link)
-    // 3. If we're on a league page and only have ?tab=chat (already navigated, just tab param)
-    const searchParamsForSkip = new URLSearchParams(window.location.search);
-    const hasLeagueCode = searchParamsForSkip.get('leagueCode');
-    const hasTab = searchParamsForSkip.get('tab');
-    const shouldSkip = isOnLeaguePage && (
-      (hasPrevLocation && !pathnameChanged) || // Normal case: pathname unchanged
-      (!hasLeagueCode && (hasTab === 'chat' || !hasTab)) // Already on league page, no deep link params (or just tab=chat)
-    );
-    
-    if (shouldSkip) {
-      // Already on league page and pathname hasn't changed - skip effect entirely
-      // This prevents remount loops when League.tsx clears search params
-      try {
-        const existingLogs = localStorage.getItem('message_subscription_logs');
-        const logs = existingLogs ? JSON.parse(existingLogs) : [];
-        logs.push({
-          timestamp: Date.now(),
-          leagueId: null,
-          status: 'DEEP_LINK_SKIP_ON_LEAGUE',
-          channel: 'main.tsx',
-          pathname: location.pathname,
-          prevPathname: prevLocationRef.current?.pathname,
-          hasPrevLocation,
-          pathnameChanged,
-          hasLeagueCode: !!hasLeagueCode,
-          hasTab: !!hasTab,
-          reason: 'Already on league page and pathname unchanged - skipping effect to prevent remount',
-        });
-        const recentLogs = logs.slice(-50);
-        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
-      } catch (e) {
-        console.error('[AppContent] Failed to log skip:', e);
-      }
-      // Update prevLocationRef before returning to track that we've seen this location
-      prevLocationRef.current = { pathname: location.pathname, search: location.search };
-      return; // Skip effect entirely
-    }
-    
-    // Log what triggered the effect
-    const navigateChanged = prevNavigateRef.current !== navigate;
-    const actualPathnameChanged = hasPrevLocation && prevLocationRef.current?.pathname !== location.pathname;
-    
-    if (navigateChanged || actualPathnameChanged) {
-      try {
-        const existingLogs = localStorage.getItem('message_subscription_logs');
-        const logs = existingLogs ? JSON.parse(existingLogs) : [];
-        const triggerLog = {
-          timestamp: Date.now(),
-          leagueId: null,
-          status: 'DEEP_LINK_EFFECT_TRIGGER',
-          channel: 'main.tsx',
-          trigger: {
-            navigateChanged,
-            pathnameChanged: actualPathnameChanged,
-            hasPrevLocation,
-            prevPathname: prevLocationRef.current?.pathname,
-            currentPathname: location.pathname,
-          },
-          reason: `Effect triggered: navigateChanged=${navigateChanged}, pathnameChanged=${actualPathnameChanged}, hasPrevLocation=${hasPrevLocation}`,
-        };
-        logs.push(triggerLog);
-        const recentLogs = logs.slice(-50);
-        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
-      } catch (e) {
-        console.error('[AppContent] Failed to log trigger:', e);
-      }
-    }
-    
-    prevNavigateRef.current = navigate;
     const searchParams = new URLSearchParams(window.location.search);
     const leagueCode = searchParams.get('leagueCode');
-    const tab = searchParams.get('tab');
-    
-    // Detect what changed
-    const prevLocation = prevLocationRef.current;
-    let changedFields: string[] = [];
-    if (prevLocation) {
-      if (prevLocation.pathname !== location.pathname) changedFields.push(`pathname: "${prevLocation.pathname}" → "${location.pathname}"`);
-      if (prevLocation.search !== location.search) changedFields.push(`search: "${prevLocation.search}" → "${location.search}"`);
-    } else {
-      changedFields.push('initial run');
-    }
-    prevLocationRef.current = { pathname: location.pathname, search: location.search };
-    
-    // Log to subscription logs for visibility
-    try {
-      const existingLogs = localStorage.getItem('message_subscription_logs');
-      const logs = existingLogs ? JSON.parse(existingLogs) : [];
-      logs.push({
-        timestamp: Date.now(),
-        leagueId: null,
-        status: 'DEEP_LINK_EFFECT_RUN',
-        channel: 'main.tsx',
-        changedFields,
-        location: {
-          pathname: location.pathname,
-          search: location.search,
-        },
-        leagueCode,
-        tab,
-        reason: changedFields.length > 0 ? `Deep link effect ran - changed: ${changedFields.join(', ')}` : 'Deep link effect ran',
-      });
-      const recentLogs = logs.slice(-50);
-      localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
-    } catch (e) {
-      console.error('[AppContent] Failed to log deep link effect:', e);
-    }
     
     // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat)
     if (leagueCode && !location.pathname.startsWith('/league/')) {
-      const targetPath = `/league/${leagueCode}?tab=chat`;
-      
-      // Log navigation attempt
-      try {
-        const existingLogs = localStorage.getItem('message_subscription_logs');
-        const logs = existingLogs ? JSON.parse(existingLogs) : [];
-        logs.push({
-          timestamp: Date.now(),
-          leagueId: null,
-          status: 'NAVIGATE_CALLED',
-          channel: 'main.tsx',
-          from: location.pathname + location.search,
-          to: targetPath,
-          reason: 'Legacy leagueCode format - navigating',
-        });
-        const recentLogs = logs.slice(-50);
-        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
-      } catch (e) {
-        console.error('[AppContent] Failed to log navigate:', e);
-      }
-      
-      navigate(targetPath, { replace: true });
-      
-      // Log successful deep link
-      logDeepLinkAttempt({
-        success: true,
-        method: 'legacy_leagueCode_param',
-        originalPath: location.pathname,
-        leagueCode,
-        targetUrl: targetPath
-      });
+      navigate(`/league/${leagueCode}?tab=chat`, { replace: true });
       return;
     }
     
     // For direct URLs like /league/ABC12?tab=chat from OneSignal web_url
-    // Ensure we're on the correct path - if we're on home page but URL has league path, navigate
-    if (tab === 'chat' && location.pathname === '/' && window.location.pathname.startsWith('/league/')) {
-      // Extract league code from window.location (not React Router location yet)
-      const pathMatch = window.location.pathname.match(/^\/league\/([^/]+)$/);
-      if (pathMatch) {
-        const targetPath = window.location.pathname + window.location.search;
-        
-        // Log navigation attempt
-        try {
-          const existingLogs = localStorage.getItem('message_subscription_logs');
-          const logs = existingLogs ? JSON.parse(existingLogs) : [];
-          logs.push({
-            timestamp: Date.now(),
-            leagueId: null,
-            status: 'NAVIGATE_CALLED',
-            channel: 'main.tsx',
-            from: location.pathname + location.search,
-            to: targetPath,
-            reason: 'Direct URL from window.location - navigating',
-          });
-          const recentLogs = logs.slice(-50);
-          localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
-        } catch (e) {
-          console.error('[AppContent] Failed to log navigate:', e);
-        }
-        
-        navigate(targetPath, { replace: true });
-        
-        // Log successful deep link
-        logDeepLinkAttempt({
-          success: true,
-          method: 'direct_url_onesignal',
-          originalPath: location.pathname,
-          leagueCode: pathMatch[1],
-          targetUrl: targetPath
-        });
-        return;
-      }
-    }
-    
-    // If we're on league page, check if we've already processed it
-    // This prevents the effect from re-running when League page clears ?tab=chat
+    // If we're not already on that exact path, navigate to it
     if (location.pathname.startsWith('/league/')) {
-      const currentLeaguePath = location.pathname;
-      
-      // If we've already processed this league page and only search changed, skip entirely
-      if (processedLeaguePageRef.current === currentLeaguePath && changedFields.some(f => f.includes('search'))) {
-        // Only search changed on a league page we've already processed - ignore it
-        // This prevents remount loops when League page clears ?tab=chat
-        try {
-          const existingLogs = localStorage.getItem('message_subscription_logs');
-          const logs = existingLogs ? JSON.parse(existingLogs) : [];
-          logs.push({
-            timestamp: Date.now(),
-            leagueId: null,
-            status: 'DEEP_LINK_SKIP_SEARCH_CHANGE',
-            channel: 'main.tsx',
-            pathname: location.pathname,
-            search: location.search,
-            changedFields,
-            reason: 'Already processed league page - ignoring search param change to prevent remount',
-          });
-          const recentLogs = logs.slice(-50);
-          localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
-        } catch (e) {
-          console.error('[AppContent] Failed to log skip:', e);
-        }
-        return; // Skip entirely - don't even log or do anything
+      const tab = searchParams.get('tab');
+      if (tab === 'chat') {
+        // Already on the correct path with tab=chat
+        // League page will handle opening the chat tab
+        // No navigation needed - React Router already matched the route
       }
-      
-      // First time on this league page OR pathname changed - mark as processed
-      processedLeaguePageRef.current = currentLeaguePath;
-      
-      // Already on league page - let League page handle tab opening
-      // No navigation needed - React Router already matched the route
-      
-      // Log early return
-      try {
-        const existingLogs = localStorage.getItem('message_subscription_logs');
-        const logs = existingLogs ? JSON.parse(existingLogs) : [];
-        logs.push({
-          timestamp: Date.now(),
-          leagueId: null,
-          status: 'DEEP_LINK_EARLY_RETURN',
-          channel: 'main.tsx',
-          pathname: location.pathname,
-          search: location.search,
-          changedFields,
-          reason: 'Already on league page - exiting early to prevent remount',
-        });
-        const recentLogs = logs.slice(-50);
-        localStorage.setItem('message_subscription_logs', JSON.stringify(recentLogs));
-      } catch (e) {
-        console.error('[AppContent] Failed to log early return:', e);
-      }
-      return; // CRITICAL: Exit early to prevent any navigation when already on league page
     }
-    
-    // Not on league page - clear the processed ref
-    processedLeaguePageRef.current = null;
-  }, [location.pathname]); // Removed navigate and location.search - only pathname changes should trigger effect
+  }, [navigate, location.pathname, location.search]);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [maxLoadingTimeout, setMaxLoadingTimeout] = useState(false);
   const [isSwipeMode, setIsSwipeMode] = useState(false);
@@ -565,11 +419,6 @@ function AppContent() {
         setInitialDataLoading(false);
         // Mark pre-load as complete so HomePage knows cache is ready
         sessionStorage.setItem('preload:complete', 'true');
-        
-        // Dispatch event so components can react immediately (no polling delay)
-        window.dispatchEvent(new CustomEvent('preloadComplete', {
-          detail: { userId: user.id }
-        }));
       })
       .catch((error) => {
         clearTimeout(timeoutId);
@@ -787,22 +636,37 @@ function AppContent() {
           const targetUrl = `/league/${leagueData.code}?tab=chat`;
           navigate(targetUrl, { replace: true });
           
-          // Store debug info for fallback navigation (with history)
-          logDeepLinkAttempt({
-            success: true,
-            method: 'fallback_recent_message',
-            originalPath: location.pathname,
-            leagueCode: leagueData.code,
-            targetUrl
-          });
+          // Store debug info for fallback navigation
+          try {
+            localStorage.setItem('deepLink_debug', JSON.stringify({
+              method: 'fallback_recent_message',
+              originalPath: location.pathname,
+              leagueCode: leagueData.code,
+              targetUrl,
+              timestamp: new Date().toISOString()
+            }));
+            localStorage.setItem('deepLink_result', JSON.stringify({
+              success: true,
+              method: 'fallback_recent_message',
+              leagueCode: leagueData.code,
+              targetUrl,
+              timestamp: new Date().toISOString()
+            }));
+          } catch (e) {
+            // Ignore storage errors
+          }
         } else {
-          // Store failure if no recent message found (with history)
-          logDeepLinkAttempt({
-            success: false,
-            method: 'fallback_recent_message',
-            reason: 'no_recent_message_found',
-            originalPath: location.pathname
-          });
+          // Store failure if no recent message found
+          try {
+            localStorage.setItem('deepLink_result', JSON.stringify({
+              success: false,
+              method: 'fallback_recent_message',
+              reason: 'no_recent_message_found',
+              timestamp: new Date().toISOString()
+            }));
+          } catch (e) {
+            // Ignore storage errors
+          }
         }
       } catch (e) {
         console.warn('[DeepLink] Fallback check failed:', e);
@@ -837,9 +701,6 @@ function AppContent() {
 
   return (
     <>
-      {/* Cookie Consent Banner - Web only (not in native app) */}
-      <CookieConsent />
-      
       {/* Desktop Navigation Sidebar - only on desktop (1024px+) */}
       {showDesktopNav && (
         <ErrorBoundary fallback={null}>
@@ -904,8 +765,7 @@ function AppContent() {
               <Route path="/temp-global" element={<RequireAuth><TempGlobalPage /></RequireAuth>} />
               <Route path="/home-experimental" element={<RequireAuth><ErrorBoundary><HomeExperimental /></ErrorBoundary></RequireAuth>} />
               <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
-              <Route path="/profile/edit-avatar" element={<RequireAuth><EditAvatarPage /></RequireAuth>} />
-              <Route path="/profile/notifications" element={<RequireAuth>{isWebBrowser() ? <Navigate to="/profile" replace /> : <NotificationCentrePage />}</RequireAuth>} />
+              <Route path="/profile/notifications" element={<RequireAuth><NotificationCentrePage /></RequireAuth>} />
               <Route path="/profile/email-preferences" element={<RequireAuth><EmailPreferencesPage /></RequireAuth>} />
               <Route path="/profile/stats" element={<RequireAuth><StatsPage /></RequireAuth>} />
               <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
@@ -938,61 +798,10 @@ function AppContent() {
   );
 }
 
-// Global error handlers - set up BEFORE React renders to catch all crashes
-// These save crashes to localStorage immediately so logs persist even if app crashes completely
-if (typeof window !== 'undefined') {
-  // Catch unhandled JavaScript errors
-  window.addEventListener('error', (event) => {
-    try {
-      const crashLog = {
-        timestamp: Date.now(),
-        errorMessage: event.message || 'Unknown error',
-        errorStack: event.error?.stack || 'No stack trace',
-        filename: event.filename || 'Unknown',
-        lineno: event.lineno || 0,
-        colno: event.colno || 0,
-        url: window.location.href,
-        userAgent: navigator.userAgent,
-        source: 'window.onerror',
-      };
-      
-      const existingCrashes = localStorage.getItem('app_crashes');
-      const crashes = existingCrashes ? JSON.parse(existingCrashes) : [];
-      crashes.push(crashLog);
-      
-      // Keep only last 50 crashes
-      const recentCrashes = crashes.slice(-50);
-      localStorage.setItem('app_crashes', JSON.stringify(recentCrashes));
-    } catch (e) {
-      console.error('[Global Error Handler] Failed to store crash:', e);
-    }
-  });
-  
-  // Catch unhandled promise rejections
-  window.addEventListener('unhandledrejection', (event) => {
-    try {
-      const crashLog = {
-        timestamp: Date.now(),
-        errorMessage: event.reason?.message || String(event.reason) || 'Unhandled promise rejection',
-        errorStack: event.reason?.stack || 'No stack trace',
-        url: window.location.href,
-        userAgent: navigator.userAgent,
-        source: 'unhandledrejection',
-        reason: event.reason?.toString() || 'Unknown',
-      };
-      
-      const existingCrashes = localStorage.getItem('app_crashes');
-      const crashes = existingCrashes ? JSON.parse(existingCrashes) : [];
-      crashes.push(crashLog);
-      
-      // Keep only last 50 crashes
-      const recentCrashes = crashes.slice(-50);
-      localStorage.setItem('app_crashes', JSON.stringify(recentCrashes));
-    } catch (e) {
-      console.error('[Global Error Handler] Failed to store promise rejection:', e);
-    }
-  });
-}
+// Note: Termly may show console errors (410 Gone) if the Termly account is inactive.
+// This is expected and non-critical - the policy pages will still function.
+// The error comes from Termly's script trying to fetch a consent script endpoint.
+// To suppress these errors, you can filter them in browser DevTools console filters.
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

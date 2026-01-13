@@ -71,9 +71,6 @@ export function MiniLeaguesSection({
   const prevCardDataRef = useRef<Record<string, LeagueData | undefined>>({});
   const prevLeagueDataKeysRef = useRef<string>('');
   const memoizedCardData = useMemo(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeaguesSection.tsx:71',message:'memoizedCardData useMemo entry',data:{leagueDataKeys:Object.keys(leagueData),leagueDataCount:Object.keys(leagueData).length,leaguesLength:leagues.length,leagueIds:leagues.map(l=>l.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     const currentKeys = Object.keys(leagueData).sort().join(',');
     
     // Quick check: if keys haven't changed and we have previous data, check if content changed
@@ -140,12 +137,6 @@ export function MiniLeaguesSection({
         seasonLeaderName: data.seasonLeaderName
       } : undefined;
     }
-    // #region agent log
-    const firstKey = Object.keys(result)[0];
-    const firstResult = firstKey ? result[firstKey] : undefined;
-    const firstResultHasMembers = firstResult?.members && firstResult.members.length > 0;
-    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeaguesSection.tsx:140',message:'memoizedCardData result',data:{resultKeys:Object.keys(result),resultCount:Object.keys(result).length,firstResultHasMembers},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
     
     prevCardDataRef.current = result;
     prevLeagueDataKeysRef.current = currentKeys;
@@ -268,9 +259,6 @@ How To Play →`}
         {leagues.map((l) => {
           const unread = unreadByLeague?.[l.id] ?? 0;
           const cardData = memoizedCardData[l.id];
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MiniLeaguesSection.tsx:250',message:'Rendering card',data:{leagueId:l.id,leagueName:l.name,hasCardData:!!cardData,cardDataMembersLength:cardData?.members?.length,memoizedKeys:Object.keys(memoizedCardData)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-          // #endregion
           return (
             <MiniLeagueCard
               key={l.id}

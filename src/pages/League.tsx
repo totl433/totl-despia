@@ -3399,7 +3399,6 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
   if (!league) {
     return null; // Still loading
   }
-  // #endregion
 
   return (
     <div className={`${oldSchoolMode ? 'oldschool-theme' : 'bg-slate-50 dark:bg-slate-900'}`} style={{
