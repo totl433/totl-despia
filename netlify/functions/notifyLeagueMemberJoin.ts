@@ -23,8 +23,24 @@ export const handler: Handler = async (event) => {
   }
 
   // Validate environment variables (match notifyLeagueMessageV2 exactly)
-  const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
-  const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  // Read directly from process.env without any manipulation to match working function
+  const SUPABASE_URL = process.env.SUPABASE_URL?.trim() || '';
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || '';
+  
+  // Also check alternative env var names that might be set
+  const altUrl = process.env.SUPABASE_URL || '';
+  const altKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  
+  console.log('[notifyLeagueMemberJoin] Env var comparison:', {
+    urlDirect: altUrl?.substring(0, 30),
+    urlTrimmed: SUPABASE_URL?.substring(0, 30),
+    urlMatch: altUrl === SUPABASE_URL,
+    keyDirectLength: altKey?.length,
+    keyTrimmedLength: SUPABASE_SERVICE_ROLE_KEY?.length,
+    keyMatch: altKey === SUPABASE_SERVICE_ROLE_KEY,
+    keyDirectStart: altKey?.substring(0, 20),
+    keyTrimmedStart: SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20),
+  });
 
   console.log('[notifyLeagueMemberJoin] Env check:', {
     urlPresent: !!SUPABASE_URL,
