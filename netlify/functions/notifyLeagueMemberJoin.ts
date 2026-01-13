@@ -96,11 +96,21 @@ export const handler: Handler = async (event) => {
     return json(400, { error: 'Missing required fields: leagueId, userId, userName' });
   }
 
+  // Create Supabase admin client (match notifyLeagueMessageV2 exactly)
+  // Log the exact values being used to verify they match
+  console.log('[notifyLeagueMemberJoin] Creating Supabase client with:', {
+    url: SUPABASE_URL,
+    keyLength: SUPABASE_SERVICE_ROLE_KEY?.length,
+    keyStart: SUPABASE_SERVICE_ROLE_KEY?.substring(0, 30),
+    keyEnd: SUPABASE_SERVICE_ROLE_KEY?.substring(SUPABASE_SERVICE_ROLE_KEY.length - 20),
+  });
+  
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
     // Get league code and name for deep linking and notification text
     // Match notifyLeagueMessageV2 exactly - no test query, just the actual query
+    console.log('[notifyLeagueMemberJoin] Querying league with leagueId:', leagueId);
     const { data: leagueData, error: leagueErr } = await admin
       .from('leagues')
       .select('code, name')
