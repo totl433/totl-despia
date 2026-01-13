@@ -376,6 +376,8 @@ export default function MiniLeagueGwTableCard({
     if (!hasMembers) {
       // No members yet - keep loading state, will retry when members arrive
       // Don't set error - members might arrive soon
+      // CRITICAL: Keep loading true so we don't show "No results" prematurely
+      setLoading(true);
       return () => { alive = false; };
     }
     
@@ -393,7 +395,19 @@ export default function MiniLeagueGwTableCard({
 
   // Calculate rows from picks and results/live scores
   useEffect(() => {
-    if (!displayGw || fixtures.length === 0) {
+    if (!displayGw) {
+      setRows([]);
+      return;
+    }
+    
+    // CRITICAL FIX: Don't set empty rows if fixtures are empty but we're still loading
+    // Only set empty rows if we've finished loading AND fixtures are still empty
+    if (fixtures.length === 0) {
+      // If still loading, don't set empty rows yet - wait for data
+      if (loading) {
+        return;
+      }
+      // Loading finished but no fixtures - set empty rows
       setRows([]);
       return;
     }
