@@ -56,10 +56,14 @@ export function useLeagues(options: UseLeaguesOptions = {}): UseLeaguesResult {
   const userId = user?.id;
   
   // Load initial state from cache synchronously
+  // CRITICAL: Sort leagues when loading from cache to ensure consistent order
   const [leagues, setLeagues] = useState<League[]>(() => {
     if (!userId) return [];
     const cached = getCached<League[]>(getLeaguesCacheKey(userId));
-    return cached ?? [];
+    if (!cached) return [];
+    // Sort using cached unread counts
+    const cachedUnread = getCached<Record<string, number>>(getUnreadCacheKey(userId));
+    return sortLeaguesWithUnreadMap(cached, cachedUnread ?? {});
   });
   
   const [unreadByLeague, setUnreadByLeague] = useState<Record<string, number>>(() => {
