@@ -22,25 +22,12 @@ export const handler: Handler = async (event) => {
     return json(405, { error: 'Method not allowed' });
   }
 
-  // Validate environment variables (match notifyLeagueMessageV2 EXACTLY)
+  // Match notifyLeagueMessageV2 EXACTLY - same env var reading pattern
   const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
   const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
-  console.log('[notifyLeagueMemberJoin] Env check:', {
-    urlPresent: !!SUPABASE_URL,
-    urlLength: SUPABASE_URL?.length,
-    urlPreview: SUPABASE_URL?.substring(0, 30) + '...',
-    keyPresent: !!SUPABASE_SERVICE_ROLE_KEY,
-    keyLength: SUPABASE_SERVICE_ROLE_KEY?.length,
-    keyPreview: SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20) + '...',
-    keyEndsWith: SUPABASE_SERVICE_ROLE_KEY?.substring(SUPABASE_SERVICE_ROLE_KEY.length - 10),
-  });
-
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    console.error('[notifyLeagueMemberJoin] Missing Supabase environment variables', {
-      hasUrl: !!SUPABASE_URL,
-      hasKey: !!SUPABASE_SERVICE_ROLE_KEY,
-    });
+    console.error('[notifyLeagueMemberJoin] Missing Supabase env vars');
     return json(500, { error: 'Missing Supabase environment variables' });
   }
 
@@ -96,21 +83,12 @@ export const handler: Handler = async (event) => {
     return json(400, { error: 'Missing required fields: leagueId, userId, userName' });
   }
 
-  // Create Supabase admin client (match notifyLeagueMessageV2 exactly)
-  // Log the exact values being used to verify they match
-  console.log('[notifyLeagueMemberJoin] Creating Supabase client with:', {
-    url: SUPABASE_URL,
-    keyLength: SUPABASE_SERVICE_ROLE_KEY?.length,
-    keyStart: SUPABASE_SERVICE_ROLE_KEY?.substring(0, 30),
-    keyEnd: SUPABASE_SERVICE_ROLE_KEY?.substring(SUPABASE_SERVICE_ROLE_KEY.length - 20),
-  });
-  
+  // Create Supabase admin client - match notifyLeagueMessageV2 EXACTLY
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
     // Get league code and name for deep linking and notification text
-    // Match notifyLeagueMessageV2 exactly - no test query, just the actual query
-    console.log('[notifyLeagueMemberJoin] Querying league with leagueId:', leagueId);
+    // Match notifyLeagueMessageV2 query pattern exactly
     const { data: leagueData, error: leagueErr } = await admin
       .from('leagues')
       .select('code, name')
