@@ -22,11 +22,12 @@ export const handler: Handler = async (event) => {
     return json(405, { error: 'Method not allowed' });
   }
 
-  // Match notifyLeagueMessageV2 EXACTLY - same env var reading pattern
+  // Match notifyLeagueMessageV2 EXACTLY - read all env vars in same order
   const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
+  const SUPABASE_ANON_KEY = (process.env.SUPABASE_ANON_KEY || '').trim();
   const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
     console.error('[notifyLeagueMemberJoin] Missing Supabase env vars');
     return json(500, { error: 'Missing Supabase environment variables' });
   }
