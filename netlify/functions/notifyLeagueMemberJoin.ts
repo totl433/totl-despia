@@ -48,9 +48,16 @@ export const handler: Handler = async (event) => {
   };
   const baseUrl = getBaseUrl();
   
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifyLeagueMemberJoin:baseUrl',message:'Base URL detected',data:{baseUrl,host:event.headers.host,protocol:event.headers['x-forwarded-proto'],envUrl:process.env.URL,envSiteUrl:process.env.SITE_URL},timestamp:Date.now(),sessionId:'debug-session',runId:'test-playtotl',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+  
   // Ensure baseUrl is valid
   if (!baseUrl || !baseUrl.startsWith('http')) {
     console.error(`[notifyLeagueMemberJoin] Invalid baseUrl: ${baseUrl}`);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifyLeagueMemberJoin:invalidBaseUrl',message:'Invalid base URL detected',data:{baseUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'test-playtotl',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     return json(500, { error: 'Failed to construct base URL', baseUrl });
   }
 
@@ -123,6 +130,10 @@ export const handler: Handler = async (event) => {
     const fullUrl = `${baseUrl}/league/${leagueCode}`;
     console.log(`[notifyLeagueMemberJoin] Constructed URL: ${fullUrl} (baseUrl: ${baseUrl}, leagueCode: ${leagueCode})`);
     
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifyLeagueMemberJoin:urlConstructed',message:'Final URL constructed for OneSignal',data:{fullUrl,baseUrl,leagueCode,isAbsolute:fullUrl.startsWith('http')},timestamp:Date.now(),sessionId:'debug-session',runId:'test-playtotl',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+    
     // Send notifications using the unified dispatcher
     // Note: dispatchNotification handles preference filtering automatically using the catalog's preference_key
     console.log(`[notifyLeagueMemberJoin] Calling dispatchNotification for ${recipients.size} recipients`);
@@ -151,6 +162,10 @@ export const handler: Handler = async (event) => {
       suppressed_unsubscribed: result.results.suppressed_unsubscribed,
       total_users: result.total_users,
     });
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/8bc20b5f-9829-459c-9363-d6e04fa799c7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifyLeagueMemberJoin:result',message:'Notification dispatch result',data:{accepted:result.results.accepted,failed:result.results.failed,suppressed_preference:result.results.suppressed_preference,suppressed_unsubscribed:result.results.suppressed_unsubscribed,total_users:result.total_users,fullUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'test-playtotl',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
 
     // Return detailed result for debugging
     return json(200, {
