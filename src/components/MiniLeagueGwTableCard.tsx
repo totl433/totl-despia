@@ -20,6 +20,9 @@ export interface MiniLeagueGwTableCardProps {
   maxMemberCount?: number; // Max members across all leagues for consistent height
   avatar?: string | null; // League avatar
   unread?: number; // Unread message count
+  // SIMPLIFIED: Pass fixtures/results from parent to avoid duplicate fetching
+  sharedFixtures?: Fixture[];
+  sharedGwResults?: Record<number, "H" | "D" | "A">;
   // Optional mock data for Storybook/testing
   mockData?: {
     fixtures: Fixture[];
@@ -76,6 +79,8 @@ export default function MiniLeagueGwTableCard({
   maxMemberCount: _maxMemberCount,
   avatar,
   unread = 0,
+  sharedFixtures = [],
+  sharedGwResults = {},
   mockData,
 }: MiniLeagueGwTableCardProps) {
   // Initialize displayGw immediately from cache (optimistic - assume currentGw, will adjust if needed)
@@ -242,6 +247,16 @@ export default function MiniLeagueGwTableCard({
     };
   }, [currentGw, currentGwState, mockData]);
 
+  // SIMPLIFIED: Convert sharedGwResults to array format and use shared fixtures
+  const sharedResultsArray = useMemo(() => {
+    if (!displayGw || Object.keys(sharedGwResults).length === 0) return [];
+    return Object.entries(sharedGwResults).map(([fixtureIndex, result]) => ({
+      gw: displayGw,
+      fixture_index: Number(fixtureIndex),
+      result: result as "H" | "D" | "A" | null,
+    }));
+  }, [displayGw, sharedGwResults]);
+
   // Update data when displayGw changes (and re-check cache)
   useEffect(() => {
     if (mockData) {
@@ -253,6 +268,67 @@ export default function MiniLeagueGwTableCard({
       return;
     }
 
+    // SIMPLIFIED: If we have shared data from parent, use it directly (no fetching fixtures/results)
+    const hasSharedFixtures = sharedFixtures.length > 0;
+    if (hasSharedFixtures) {
+      // Use shared data immediately
+      setFixtures(sharedFixtures);
+      setResults(sharedResultsArray);
+      
+      // Still need to fetch picks/submissions (league-specific)
+      const hasMembers = members && members.length > 0;
+      if (!hasMembers) {
+        setLoading(true);
+        return;
+      }
+      
+      let alive = true;
+      const fetchGw = displayGw;
+      
+      (async () => {
+        try {
+          const memberIds = members.map(m => m.id);
+          
+          // Fetch picks and submissions in parallel
+          const [picksResult, submissionsResult] = await Promise.all([
+            supabase
+              .from('app_picks')
+              .select('user_id, gw, fixture_index, pick')
+              .eq('gw', fetchGw)
+              .in('user_id', memberIds),
+            supabase
+              .from('app_gw_submissions')
+              .select('user_id')
+              .eq('gw', fetchGw)
+              .in('user_id', memberIds)
+              .not('submitted_at', 'is', null)
+          ]);
+          
+          if (!alive || fetchGw !== displayGw) return;
+          
+          if (picksResult.error) throw picksResult.error;
+          
+          setPicks((picksResult.data ?? []) as PickRow[]);
+          
+          const submitted = new Set<string>();
+          if (submissionsResult.data) {
+            submissionsResult.data.forEach((s: any) => submitted.add(s.user_id));
+          }
+          setSubmittedUserIds(submitted);
+          setLoading(false);
+          
+        } catch (err: any) {
+          if (!alive) return;
+          console.error('[MiniLeagueGwTableCard] Error fetching picks:', err);
+          setError(err?.message || 'Failed to load data');
+          setLoading(false);
+        }
+      })();
+      
+      return () => { alive = false; };
+    }
+
+    // FALLBACK: No shared data - fetch everything (for League page standalone use)
     // If members is empty, we can still load fixtures/results from cache
     // Only picks require members, so we can show partial data
     // But if we have no cache and no members, we need to wait
@@ -427,7 +503,7 @@ export default function MiniLeagueGwTableCard({
     });
     
     return () => { alive = false; };
-  }, [displayGw, leagueId, members, mockData, currentGw]);
+  }, [displayGw, leagueId, members, mockData, currentGw, sharedFixtures, sharedResultsArray]);
 
   // Calculate rows from picks and results/live scores
   useEffect(() => {

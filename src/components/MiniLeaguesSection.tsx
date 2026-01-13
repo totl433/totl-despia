@@ -6,6 +6,21 @@ import Section from './Section';
 import MiniLeagueGwTableCard from './MiniLeagueGwTableCard';
 import type { GameweekState } from '../lib/gameweekState';
 
+// Types for fixtures and results passed from parent
+type Fixture = {
+  id: string;
+  gw: number;
+  fixture_index: number;
+  home_code?: string | null;
+  away_code?: string | null;
+  home_team?: string | null;
+  away_team?: string | null;
+  home_name?: string | null;
+  away_name?: string | null;
+  kickoff_time?: string | null;
+  api_match_id?: number | null;
+};
+
 interface MiniLeaguesSectionProps {
   leagues: LeagueRow[];
   leagueData: Record<string, any>;
@@ -19,6 +34,9 @@ interface MiniLeaguesSectionProps {
   hideLiveTables?: boolean; // If true, always show default card view, never show live tables
   hidePlayerChips?: boolean; // If true, hide player chips on mini league cards
   showSeasonLeader?: boolean; // If true, show season leader name with trophy (default: false)
+  // NEW: Pass fixtures/results from parent to avoid duplicate fetching
+  fixtures?: Fixture[];
+  gwResults?: Record<number, "H" | "D" | "A">;
 }
 
 export function MiniLeaguesSection({
@@ -34,6 +52,8 @@ export function MiniLeaguesSection({
   hideLiveTables = false,
   hidePlayerChips = false,
   showSeasonLeader = false,
+  fixtures = [],
+  gwResults = {},
 }: MiniLeaguesSectionProps) {
   // Determine if we should show toggle buttons (LIVE or RESULTS_PRE_GW states)
   const isLive = gameState === 'LIVE';
@@ -286,6 +306,8 @@ How To Play →`}
                   maxMemberCount={maxMemberCount}
                   avatar={league.avatar}
                   unread={unreadByLeague[league.id] ?? 0}
+                  sharedFixtures={fixtures}
+                  sharedGwResults={gwResults}
                 />
               );
             })}
