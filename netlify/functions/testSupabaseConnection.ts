@@ -27,8 +27,9 @@ export const handler: Handler = async (event) => {
       urlPreview: SUPABASE_URL?.substring(0, 40),
       keyPresent: !!SUPABASE_SERVICE_ROLE_KEY,
       keyLength: SUPABASE_SERVICE_ROLE_KEY?.length,
-      keyStart: SUPABASE_SERVICE_ROLE_KEY?.substring(0, 30),
+      keyStart: SUPABASE_SERVICE_ROLE_KEY?.substring(0, 50),
       keyEnd: SUPABASE_SERVICE_ROLE_KEY?.substring(SUPABASE_SERVICE_ROLE_KEY.length - 20),
+      keyFull: SUPABASE_SERVICE_ROLE_KEY, // Show full key to verify it matches
     },
     tests: {} as any,
   };
