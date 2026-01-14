@@ -110,7 +110,7 @@ export async function sendNotification(
   const keyPreview = restKey.length > 4 ? `${restKey.slice(0, 4)}...` : '***';
   const keyLength = restKey.length;
   console.log(`[onesignal] Using API key: ${keyPreview} (length: ${keyLength})`);
-  console.log(`[onesignal] App ID: ${appId}`);
+  console.log(`[onesignal] App ID: ${payload.app_id || 'not set'}`);
   
   try {
     const authHeader = `Basic ${restKey}`;
