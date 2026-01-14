@@ -346,9 +346,9 @@ export default function TablesPage() {
             .eq("user_id", user.id)
             .maybeSingle();
           
-          // Use current_viewing_gw if set, otherwise default to currentGw - 1 (previous GW)
-          // This ensures users stay on previous GW results when a new GW is published
-          userViewingGw = prefs?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
+          // Use current_viewing_gw only if explicitly set.
+          // New users (null) should default to current published GW.
+          userViewingGw = prefs?.current_viewing_gw ?? null;
         } else {
           // No user, use published GW
           userViewingGw = dbCurrentGw;

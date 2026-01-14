@@ -320,7 +320,8 @@ export default function HomePage() {
     if (!user?.id) return false;
     try {
       const cached = getCached<any[]>(`leagues:${user.id}`);
-      return cached !== null && cached.length > 0;
+      // Treat an empty array as a valid cache (user may have zero leagues)
+      return cached !== null;
     } catch {
       return false;
     }
@@ -476,8 +477,8 @@ export default function HomePage() {
     
     // Check user's viewing GW preference
     const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${user.id}`);
-    const userViewingGw = prefsCache?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
-    const gwToDisplay = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+    const userViewingGw = prefsCache?.current_viewing_gw ?? null;
+    const gwToDisplay = userViewingGw !== null && userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
     
     // Only update if different
     if (gw !== gwToDisplay) {
@@ -875,11 +876,9 @@ export default function HomePage() {
     // If leagues have finished loading:
     // - If leagues.length > 0: user has leagues, proceed
     // - If leagues.length === 0 AND hasLeaguesCache: user has no leagues (confirmed by cache), proceed
-    // - If leagues.length === 0 AND !hasLeaguesCache: still loading or cache doesn't exist, wait
+    // - If leagues.length === 0 AND !hasLeaguesCache: proceed anyway (fetch failed or empty response)
     if (leagues.length === 0 && !hasLeaguesCache) {
-      console.log('[Home] No leagues and no cache, waiting...');
-      // Still waiting for leagues to load or cache to be populated
-      return;
+      console.log('[Home] No leagues and no cache after load, proceeding with empty leagues');
     }
     
     // Prevent duplicate loads - if a load is already in progress, don't start another
@@ -1476,9 +1475,11 @@ export default function HomePage() {
   // Don't wait for gameStateLoading - use cached state immediately
   const shouldShowGwResultsButton = useMemo(() => {
     if (!gw || !user?.id) return false;
+    // Only show if GW finished AND user has results to show
+    const hasUserResults = hasSubmittedCurrentGw || Object.keys(userPicks).length > 0;
     // Use cached state if available, don't wait for hook to load
-    return effectiveGameState === 'RESULTS_PRE_GW';
-  }, [gw, user?.id, effectiveGameState]);
+    return effectiveGameState === 'RESULTS_PRE_GW' && hasUserResults;
+  }, [gw, user?.id, effectiveGameState, hasSubmittedCurrentGw, userPicks]);
 
   // Only show loading if cache is completely missing (not stale)
   if (isLoading) {

@@ -11,6 +11,7 @@ import ConfirmationModal from "../components/predictions/ConfirmationModal";
 import DateHeader from "../components/DateHeader";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { useGameweekState } from "../hooks/useGameweekState";
+import { useDisplayGameweek } from "../hooks/useDisplayGameweek";
 import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import Confetti from "react-confetti";
 import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
@@ -88,6 +89,10 @@ const TEAM_COLORS: Record<string, { primary: string; secondary: string }> = {
 export default function PredictionsPage() {
  const { user } = useAuth();
  const navigate = useNavigate();
+
+ // Use centralized hook for display GW (single source of truth)
+ // This subscribes to real-time updates when user clicks "MOVE ON GW" button
+ const { displayGw } = useDisplayGameweek();
 
  const [currentGw, setCurrentGw] = useState<number | null>(null);
  const [currentIndex, setCurrentIndex] = useState(0);
@@ -304,6 +309,20 @@ export default function PredictionsPage() {
  setViewMode("cards");
  }
  }, [loading, submitted, fixtures.length, currentIndex]);
+
+ // Set data-swipe-mode attribute on body for BottomNav visibility
+ useEffect(() => {
+ if (viewMode === "cards") {
+ document.body.setAttribute('data-swipe-mode', 'true');
+ } else {
+ document.body.removeAttribute('data-swipe-mode');
+ }
+ 
+ // Cleanup on unmount
+ return () => {
+ document.body.removeAttribute('data-swipe-mode');
+ };
+ }, [viewMode]);
  
 const [topPercent, setTopPercent] = useState<number | null>(null);
 const [_allMembersSubmitted, setAllMembersSubmitted] = useState(false);
@@ -547,37 +566,9 @@ const [_submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new S
  let alive = true;
  (async () => {
  try {
- // Use current GW from cache (pre-loaded during initial data load)
- // Fallback to 14 if cache hasn't loaded yet
- const metaCache = getCached<{ current_gw: number }>('app_meta:current_gw');
- let dbCurrentGwNum: number = metaCache?.current_gw ?? 14;
- 
- // Get user's current_viewing_gw (which GW they're actually viewing)
- let userViewingGw: number;
- if (user?.id) {
- const { data: prefs } = await supabase
- .from("user_notification_preferences")
- .select("current_viewing_gw")
- .eq("user_id", user.id)
- .maybeSingle();
- 
- if (prefs) {
- // Use current_viewing_gw if set, otherwise default to currentGw - 1 (previous GW)
- // This ensures users stay on previous GW results when a new GW is published
- userViewingGw = prefs?.current_viewing_gw ?? (dbCurrentGwNum > 1 ? dbCurrentGwNum - 1 : dbCurrentGwNum);
- } else {
- // If no prefs found, default to previous GW
- userViewingGw = dbCurrentGwNum > 1 ? dbCurrentGwNum - 1 : dbCurrentGwNum;
- }
- } else {
- // No user, use published GW
- userViewingGw = dbCurrentGwNum;
- }
- 
- // Determine which GW to display
- // If user hasn't transitioned to new GW, show their viewing GW (previous GW)
- // Otherwise show the current GW
- const gwToDisplay = userViewingGw < dbCurrentGwNum ? userViewingGw : dbCurrentGwNum;
+ // Use displayGw from useDisplayGameweek hook (single source of truth)
+ // This automatically subscribes to real-time updates when user clicks "MOVE ON GW" button
+ const gwToDisplay = displayGw;
  
  if (!gwToDisplay) {
  // Always set state, even if component appears to be unmounting
@@ -1276,7 +1267,7 @@ setLeagueMembers(members);
  return () => {
  alive = false;
  };
- }, [user?.id]);
+}, [displayGw, user?.id]);
 
  // Live scores are now handled by useLiveScores hook via Supabase real-time
 
@@ -2010,10 +2001,10 @@ return null;
  hasEverBeenSubmittedRef.current = false;
  }
 
- // Review Mode (when picks exist but not submitted)
- if (currentIndex >= fixtures.length) {
- return (
- <div className="min-h-screen bg-slate-50 flex flex-col">
+// Review Mode (when picks exist but not submitted)
+if (currentIndex >= fixtures.length) {
+return (
+<div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
  {showConfetti && windowSize.width > 0 && windowSize.height > 0 && (
  <Confetti
  width={windowSize.width}
@@ -2041,7 +2032,7 @@ return null;
  ✕
  </button>
  )}
- <span className="text-lg font-extrabold text-slate-700">Review Mode</span>
+ <span className="text-lg font-extrabold text-slate-700 dark:text-slate-200">Review Mode</span>
  {allPicksMade && !submitted ? (
  <button
  onClick={handleConfirmClick}
@@ -2049,8 +2040,8 @@ return null;
  >
  Confirm
  </button>
- ) : submitted ? (
- <span className="absolute right-0 text-sm text-emerald-600 font-semibold">✓ Submitted</span>
+) : submitted ? (
+<span className="absolute right-0 text-sm text-emerald-600 dark:text-emerald-400 font-semibold">✓ Submitted</span>
  ) : picks.size > 0 ? (
  <button
  onClick={handleConfirmClick}
@@ -2524,36 +2515,36 @@ setPicks(np);
  />
  </div>
  </div>
- <div className="fixed bottom-0 left-0 right-0 px-4 bg-[#eef4f3] z-[10000] safe-area-inset-bottom" style={{ paddingBottom: `calc(2rem + env(safe-area-inset-bottom, 0px))`, paddingTop: '1.5rem' }}>
- <div className="max-w-md mx-auto">
- <div className="flex items-stretch justify-center gap-3">
- <button
- onClick={()=>handleButtonClick("H")}
- disabled={isAnimating || submitted}
- className="flex-1 py-4 rounded-2xl font-semibold flex items-center justify-center bg-[#d7e6e3] text-slate-700 disabled:opacity-70"
- style={{ backgroundColor: cardState.x < -30 ? `rgba(34, 197, 94, ${Math.min(0.8, Math.abs(cardState.x) / 150)})` : undefined, color: cardState.x < -30 ? '#fff' : undefined }}
- >
- Home Win
- </button>
- <button
- onClick={()=>handleButtonClick("D")}
- disabled={isAnimating || submitted}
- className="flex-1 py-4 rounded-2xl font-semibold flex items-center justify-center bg-[#d7e6e3] text-slate-700 disabled:opacity-70"
- style={{ backgroundColor: cardState.y > 30 ? `rgba(59, 130, 246, ${Math.min(0.8, cardState.y / 150)})` : undefined, color: cardState.y > 30 ? '#fff' : undefined }}
- >
- Draw
- </button>
- <button
- onClick={()=>handleButtonClick("A")}
- disabled={isAnimating || submitted}
- className="flex-1 py-4 rounded-2xl font-semibold flex items-center justify-center bg-[#d7e6e3] text-slate-700 disabled:opacity-70"
- style={{ backgroundColor: cardState.x > 30 ? `rgba(34, 197, 94, ${Math.min(0.8, cardState.x / 150)})` : undefined, color: cardState.x > 30 ? '#fff' : undefined }}
- >
- Away Win
- </button>
- </div>
- </div>
- </div>
+<div className="fixed bottom-0 left-0 right-0 px-4 bg-[#eef4f3] dark:bg-slate-800 z-[10000] safe-area-inset-bottom" style={{ paddingBottom: `calc(2rem + env(safe-area-inset-bottom, 0px))`, paddingTop: '1.5rem' }}>
+<div className="max-w-md mx-auto">
+<div className="flex items-stretch justify-center gap-3">
+<button
+onClick={()=>handleButtonClick("H")}
+disabled={isAnimating || submitted}
+className="flex-1 py-4 rounded-2xl font-semibold flex items-center justify-center bg-[#d7e6e3] dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-70"
+style={{ backgroundColor: cardState.x < -30 ? `rgba(34, 197, 94, ${Math.min(0.8, Math.abs(cardState.x) / 150)})` : undefined, color: cardState.x < -30 ? '#fff' : undefined }}
+>
+Home Win
+</button>
+<button
+onClick={()=>handleButtonClick("D")}
+disabled={isAnimating || submitted}
+className="flex-1 py-4 rounded-2xl font-semibold flex items-center justify-center bg-[#d7e6e3] dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-70"
+style={{ backgroundColor: cardState.y > 30 ? `rgba(59, 130, 246, ${Math.min(0.8, cardState.y / 150)})` : undefined, color: cardState.y > 30 ? '#fff' : undefined }}
+>
+Draw
+</button>
+<button
+onClick={()=>handleButtonClick("A")}
+disabled={isAnimating || submitted}
+className="flex-1 py-4 rounded-2xl font-semibold flex items-center justify-center bg-[#d7e6e3] dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-70"
+style={{ backgroundColor: cardState.x > 30 ? `rgba(34, 197, 94, ${Math.min(0.8, cardState.x / 150)})` : undefined, color: cardState.x > 30 ? '#fff' : undefined }}
+>
+Away Win
+</button>
+</div>
+</div>
+</div>
  </div>
  )}
  </div>

@@ -270,10 +270,10 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   }
   
   // Cache user notification preferences for PredictionsBanner and HomePage
+  // IMPORTANT: If there's no row yet (new user), treat as null (user has "moved on")
+  // We still cache the null value so UI can default to currentGw deterministically.
   const userViewingGw = userNotificationPrefsResult.data?.current_viewing_gw ?? null;
-  if (userViewingGw !== null) {
-    setCached(`user_notification_prefs:${userId}`, { current_viewing_gw: userViewingGw }, CACHE_TTL.HOME);
-  }
+  setCached(`user_notification_prefs:${userId}`, { current_viewing_gw: userViewingGw }, CACHE_TTL.HOME);
   
   // Cache last completed GW for MiniLeagueGwTableCard (avoids DB query)
   if (latestGw) {
@@ -291,8 +291,10 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     // Non-critical - gameState will load when useGameweekState hook runs
   }
 
-  // Determine viewing GW (for PredictionsBanner)
-  const viewingGw = userViewingGw ?? (currentGw > 1 ? currentGw - 1 : currentGw);
+  // Determine viewing GW (for PredictionsBanner + homepage fixtures cache)
+  // Only show previous GW if the user explicitly has a viewing GW < currentGw.
+  // New users (null) should see currentGw by default.
+  const viewingGw = userViewingGw !== null && userViewingGw < currentGw ? userViewingGw : currentGw;
 
   // Now fetch fixtures, picks, and user's own OCP (if not in top 100)
   const userInTop100 = (overallResult.data || []).some((r: any) => r.user_id === userId);

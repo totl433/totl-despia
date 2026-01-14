@@ -555,11 +555,12 @@ function AppContent() {
         
         if (!alive) return;
         
-        // Use current_viewing_gw if set, otherwise default to currentGw - 1 (previous GW)
-        const userViewingGw = prefs?.current_viewing_gw ?? (dbCurrentGw > 1 ? dbCurrentGw - 1 : dbCurrentGw);
+        // Use current_viewing_gw only if explicitly set.
+        // New users (null) should default to current published GW.
+        const userViewingGw = prefs?.current_viewing_gw ?? null;
         
         // Determine which GW to check
-        const gwToCheck = userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+        const gwToCheck = userViewingGw !== null && userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
 
         // Check game state for the viewing GW - only hide nav if in GW_OPEN state
         // Import useGameweekState hook result would require restructuring, so we'll check state via query
