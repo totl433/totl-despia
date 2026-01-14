@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { useGameweekState } from "../hooks/useGameweekState";
 import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import { useDisplayGameweek } from "../hooks/useDisplayGameweek";
-import { getCached } from "../lib/cache";
+import { getCached, removeCached } from "../lib/cache";
 import GameweekBanner from "./ComingSoonBanner";
 
 /**
@@ -357,46 +357,53 @@ export default function PredictionsBanner() {
     console.log('[PredictionsBanner] Starting transition to GW', newGwNumber);
     
     try {
-      // Update current_viewing_gw in database
-      console.log('[PredictionsBanner] Updating current_viewing_gw to', newGwNumber);
+      // Use UPSERT directly - works whether row exists or not (fixes issue for migrated users)
+      console.log('[PredictionsBanner] Upserting current_viewing_gw to', newGwNumber);
       
-      // Try UPDATE first (user should already have a row)
-      let { data, error } = await supabase
+      const { data, error } = await supabase
         .from("user_notification_preferences")
-        .update({
+        .upsert({
+          user_id: user.id,
           current_viewing_gw: newGwNumber,
+          preferences: {}, // Ensure preferences exists (required field)
+        }, {
+          onConflict: 'user_id',
         })
-        .eq("user_id", user.id)
         .select();
       
-      // If no row exists, create one with UPSERT
-      if (!error && (!data || data.length === 0)) {
-        console.log('[PredictionsBanner] No existing row found, creating new one');
-        const upsertResult = await supabase
-          .from("user_notification_preferences")
-          .upsert({
-            user_id: user.id,
-            current_viewing_gw: newGwNumber,
-            preferences: {},
-          }, {
-            onConflict: 'user_id',
-          })
-          .select();
-        data = upsertResult.data;
-        error = upsertResult.error;
-      }
-      
       if (error) {
-        console.error('[PredictionsBanner] Error updating current_viewing_gw:', error);
+        console.error('[PredictionsBanner] Error upserting current_viewing_gw:', error);
         console.error('[PredictionsBanner] Error details:', JSON.stringify(error, null, 2));
         console.error('[PredictionsBanner] Error message:', error.message);
         console.error('[PredictionsBanner] Error code:', error.code);
         console.error('[PredictionsBanner] Error hint:', error.hint);
         setIsTransitioning(false);
+        alert('Failed to update gameweek. Please try again or refresh the page.');
         return;
       }
       
-      console.log('[PredictionsBanner] Successfully updated current_viewing_gw:', data);
+      // Verify the update actually worked
+      if (!data || data.length === 0) {
+        console.error('[PredictionsBanner] UPSERT succeeded but no data returned');
+        setIsTransitioning(false);
+        alert('Update completed but verification failed. Please refresh the page.');
+        return;
+      }
+      
+      const updatedRow = data[0];
+      if (updatedRow.current_viewing_gw !== newGwNumber) {
+        console.error('[PredictionsBanner] UPSERT returned wrong value:', updatedRow.current_viewing_gw, 'expected:', newGwNumber);
+        setIsTransitioning(false);
+        alert('Update completed but value mismatch. Please refresh the page.');
+        return;
+      }
+      
+      console.log('[PredictionsBanner] Successfully updated current_viewing_gw:', updatedRow);
+      
+      // Clear cache to ensure hooks pick up the change immediately
+      if (user.id) {
+        removeCached(`user_notification_prefs:${user.id}`);
+      }
       
       // Trigger shimmer animation on page
       console.log('[PredictionsBanner] Dispatching gwTransition event');
@@ -412,6 +419,7 @@ export default function PredictionsBanner() {
     } catch (error) {
       console.error('[PredictionsBanner] Error in handleGwTransition:', error);
       setIsTransitioning(false);
+      alert('An unexpected error occurred. Please try again or refresh the page.');
     }
   };
   
