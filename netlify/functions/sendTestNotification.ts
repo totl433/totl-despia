@@ -128,6 +128,27 @@ function buildNotificationContent(
           is_test: true,
         },
       };
+    case 'member-join':
+      return {
+        title: `👤 ${params.user_name || 'Someone'} Joined!`,
+        body: `${params.user_name || 'Someone'} joined ${params.league_name || 'your league'}`,
+        data: {
+          type: 'member-join',
+          league_id: params.league_id,
+          user_id: params.user_id,
+          is_test: true,
+        },
+      };
+    case 'prediction-reminder':
+      return {
+        title: `⏰ Gameweek ${params.gw || '?'} Predictions Due Soon!`,
+        body: '5 hours to go!',
+        data: {
+          type: 'prediction-reminder',
+          gw: params.gw,
+          is_test: true,
+        },
+      };
     case 'final-submission':
       return {
         title: `✅ All Picks Submitted`,
@@ -201,7 +222,9 @@ export const handler: Handler = async (event) => {
     'final-whistle',
     'gameweek-complete',
     'chat-message',
+    'member-join',
     'final-submission',
+    'prediction-reminder',
     'new-gameweek',
   ];
 

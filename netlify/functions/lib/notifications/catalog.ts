@@ -170,6 +170,22 @@ const catalogData = {
     "onesignal": { "collapse_id_format": "new_gw:{gw}", "thread_id_format": "totl_gameweek", "android_group_format": "totl_gameweek" },
     "deep_links": { "url_format": null },
     "rollout": { "enabled": true, "percentage": 100 }
+  },
+  "prediction-reminder": {
+    "notification_key": "prediction-reminder",
+    "owner": "scheduled",
+    "status": "active",
+    "channels": ["push"],
+    "audience": "users_without_submissions",
+    "source": "scheduled_function",
+    "trigger": { "name": "prediction_deadline_approaching", "event_id_format": "prediction_reminder_gw{gw}" },
+    "dedupe": { "scope": "global", "ttl_seconds": 86400 },
+    "cooldown": { "per_user_seconds": 0 },
+    "quiet_hours": { "start": null, "end": null },
+    "preferences": { "preference_key": "prediction-reminder", "default": true },
+    "onesignal": { "collapse_id_format": "prediction_reminder_gw{gw}", "thread_id_format": "totl_predictions", "android_group_format": "totl_predictions" },
+    "deep_links": { "url_format": "/predictions" },
+    "rollout": { "enabled": true, "percentage": 100 }
   }
 };
 

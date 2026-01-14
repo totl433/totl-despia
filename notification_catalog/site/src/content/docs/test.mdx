@@ -32,7 +32,9 @@ Send test push notifications to any user. Perfect for debugging and QA testing.
     </optgroup>
     <optgroup label="Other Notifications">
       <option value="chat-message">💬 Chat Message</option>
+      <option value="member-join">👤 Member Joined</option>
       <option value="final-submission">✅ Final Submission</option>
+      <option value="prediction-reminder">⏰ Prediction Reminder</option>
       <option value="new-gameweek">🆕 New Gameweek</option>
     </optgroup>
   </select>
@@ -40,9 +42,18 @@ Send test push notifications to any user. Perfect for debugging and QA testing.
 
 {/* User UUID Input */}
 <div style="margin-bottom: 1.5rem;">
-  <label for="user-uuid" style="display: block; font-weight: 600; margin-bottom: 0.5rem; color: var(--sl-color-white);">
-    User UUID
-  </label>
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+    <label for="user-uuid" style="display: block; font-weight: 600; color: var(--sl-color-white);">
+      User UUID
+    </label>
+    <button 
+      id="use-jof-id-btn" 
+      style="padding: 0.375rem 0.75rem; border-radius: 0.375rem; background: rgba(28, 131, 118, 0.2); color: #1C8376; font-weight: 500; font-size: 0.8rem; border: 1px solid rgba(28, 131, 118, 0.4); cursor: pointer; transition: all 0.2s;"
+      title="Fill in Jof's user ID"
+    >
+      👤 Use Jof's ID
+    </button>
+  </div>
   <input 
     type="text" 
     id="user-uuid" 
@@ -166,8 +177,17 @@ Send test push notifications to any user. Perfect for debugging and QA testing.
       sender_name: 'John',
       content: 'Good luck this week everyone! 🍀',
     },
+    'member-join': {
+      league_id: 'test-league-123',
+      user_id: '4542c037-5b38-40d0-b189-847b8f17c222',
+      user_name: 'Jof',
+      league_name: 'Test Mini League',
+    },
     'final-submission': {
       league_id: 'test-league-123',
+      gw: 16,
+    },
+    'prediction-reminder': {
       gw: 16,
     },
     'new-gameweek': {
@@ -229,8 +249,17 @@ Send test push notifications to any user. Perfect for debugging and QA testing.
       { name: 'sender_name', label: 'Sender Name', type: 'text', placeholder: 'John' },
       { name: 'content', label: 'Message Content', type: 'text', placeholder: 'Good luck this week!' },
     ],
+    'member-join': [
+      { name: 'league_id', label: 'League ID', type: 'text', placeholder: 'league-uuid-here' },
+      { name: 'user_id', label: 'User ID (who joined)', type: 'text', placeholder: 'user-uuid-here' },
+      { name: 'user_name', label: 'User Name', type: 'text', placeholder: 'John Doe' },
+      { name: 'league_name', label: 'League Name', type: 'text', placeholder: 'My Mini League' },
+    ],
     'final-submission': [
       { name: 'league_id', label: 'League ID', type: 'text', placeholder: 'league-uuid-here' },
+      { name: 'gw', label: 'Gameweek', type: 'number', placeholder: '16' },
+    ],
+    'prediction-reminder': [
       { name: 'gw', label: 'Gameweek', type: 'number', placeholder: '16' },
     ],
     'new-gameweek': [
@@ -245,8 +274,12 @@ Send test push notifications to any user. Perfect for debugging and QA testing.
   const sendBtn = document.getElementById('send-btn');
   const fillBtn = document.getElementById('fill-btn');
   const clearBtn = document.getElementById('clear-btn');
+  const useJofIdBtn = document.getElementById('use-jof-id-btn');
   const resultContainer = document.getElementById('result-container');
   const resultContent = document.getElementById('result-content');
+  
+  // Jof's user ID
+  const JOF_USER_ID = '4542c037-5b38-40d0-b189-847b8f17c222';
 
   // Validate UUID format
   function isValidUUID(str) {
@@ -506,6 +539,15 @@ Send test push notifications to any user. Perfect for debugging and QA testing.
   sendBtn.addEventListener('click', sendNotification);
   fillBtn.addEventListener('click', fillTestData);
   clearBtn.addEventListener('click', clearAll);
+  useJofIdBtn.addEventListener('click', () => {
+    userInput.value = JOF_USER_ID;
+    updateSendButton();
+    // Visual feedback
+    useJofIdBtn.style.background = 'rgba(28, 131, 118, 0.4)';
+    setTimeout(() => {
+      useJofIdBtn.style.background = 'rgba(28, 131, 118, 0.2)';
+    }, 200);
+  });
 
   // Initialize
   updateSendButton();
