@@ -427,7 +427,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     // NON-BLOCKING - start in background, don't await (app shows immediately)
     (async () => {
       try {
-        const leagueDataCacheKey = `home:leagueData:${userId}:${currentGw}`;
+        const leagueDataCacheKey = `home:leagueData:v3:${userId}:${currentGw}`; // v3: Tables-aligned season ordering + avatar status rings
         
         // Check if already cached
         const existingCache = getCached<any>(leagueDataCacheKey);

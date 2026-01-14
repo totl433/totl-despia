@@ -179,7 +179,7 @@ export default function HomeExperimental() {
         // Load league data from cache
         let leagueData: Record<string, LeagueDataInternal> = {};
         let leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }> = {};
-        const leagueDataCacheKey = `home:leagueData:v2:${userId}:${cached.currentGw}`; // v2: Added seasonLeaderName
+        const leagueDataCacheKey = `home:leagueData:v3:${userId}:${cached.currentGw}`; // v3: Tables-aligned season ordering + avatar status rings
         
         try {
           const leagueDataCached = getCached<{
@@ -947,7 +947,7 @@ export default function HomeExperimental() {
     }
     
     let alive = true;
-    const leagueDataCacheKey = `home:leagueData:v2:${user.id}:${gw}`; // v2: Added seasonLeaderName
+    const leagueDataCacheKey = `home:leagueData:v3:${user.id}:${gw}`; // v3: Tables-aligned season ordering + avatar status rings
     
     // Check cache first
       const cached = getCached<{

@@ -132,8 +132,9 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
       const isLatestWinner = winnersSet.has(member.id);
       const isWebUser = webUserSet.has(member.id); // User has picks in Web table (mirrored)
 
-      // GPU-optimized: Use CSS classes instead of inline styles
-      let chipClassName = 'chip-container rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 w-6 h-6';
+      // GPU-optimized: keep wrapper stable + minimal DOM
+      let chipClassName =
+        'chip-container rounded-full flex items-center justify-center flex-shrink-0 w-6 h-6 relative overflow-hidden';
       
       // Show shiny chip ONLY during RESULTS_PRE_GW state (when GW has finished)
       // This ensures winners only show after a GW has fully finished, not during GW_OPEN or LIVE
@@ -145,22 +146,27 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
         (data.latestRelevantGw < currentGw || data.latestRelevantGw === currentGw);
       
       if (shouldShowShiny) {
-        // Shiny chip for last GW winner (already GPU-optimized with transforms)
-        chipClassName += ' bg-gradient-to-br from-yellow-400 via-orange-500 via-pink-500 to-purple-600 text-white shadow-xl shadow-yellow-400/40 font-semibold relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/70 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:bg-gradient-to-r after:from-transparent after:via-yellow-200/50 after:to-transparent after:animate-[shimmer_1.8s_ease-in-out_infinite_0.4s]';
+        // Shiny avatar treatment for last GW winner (overlay shimmer ON TOP of avatar)
+        chipClassName +=
+          ' ring-[3px] ring-yellow-400 dark:ring-yellow-300 shadow-md shadow-yellow-400/25 ' +
+          'before:absolute before:inset-0 before:z-10 before:pointer-events-none ' +
+          'before:bg-gradient-to-r before:from-transparent before:via-white/60 before:to-transparent ' +
+          'before:animate-[shimmer_1.2s_ease-in-out_infinite] ' +
+          'after:absolute after:inset-0 after:z-10 after:pointer-events-none ' +
+          'after:bg-gradient-to-br after:from-yellow-400/25 after:via-pink-500/15 after:to-purple-600/20';
       } else if (hasSubmitted) {
-        // Green = picked (GPU-optimized class)
-        chipClassName += ' chip-green';
+        // Submitted = green ring
+        chipClassName += ' ring-[3px] ring-emerald-500 dark:ring-emerald-400';
         // Add blue border for Web-mirrored picks (users who have picks in Web table)
         if (isWebUser) {
-          // Use box-shadow for more visible blue outline on green background
-          chipClassName += ' border-2 border-blue-600';
+          // Keep existing blue outline behaviour (extra ring via box-shadow)
+          chipClassName += ' ring-emerald-500';
         } else if (isApiTestLeague) {
-          // Keep blue border for API Test league (for backward compatibility)
-          chipClassName += ' border-2 border-blue-600';
+          // Keep blue outline for API Test league (for backward compatibility)
+          chipClassName += ' ring-emerald-500';
         }
       } else {
-        // Grey = not picked (GPU-optimized class)
-        chipClassName += ' chip-grey';
+        // Unsubmitted: no ring, just a fainter avatar
       }
 
       // GPU-optimized: Use transform instead of marginLeft
@@ -168,10 +174,12 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
         chipClassName += ' chip-overlap';
       }
 
-      // For Web users with submitted picks, add blue outline with box-shadow for visibility
-      const chipStyle = hasSubmitted && isWebUser 
+      // Leftmost should sit on top of the stack.
+      // (Later siblings otherwise paint above earlier ones when overlapping.)
+      const baseStyle = hasSubmitted && isWebUser
         ? { boxShadow: '0 0 0 2px #2563eb, 0 0 0 4px rgba(37, 99, 235, 0.3)' }
         : undefined;
+      const chipStyle = { ...(baseStyle ?? {}), zIndex: 100 - index } as React.CSSProperties;
 
       return (
         <div 
@@ -184,7 +192,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
             userId={member.id}
             name={member.name}
             size={24}
-            className="border-0"
+            className={`border-0 relative z-0 ${hasSubmitted || shouldShowShiny ? '' : 'brightness-75'}`}
             fallbackToInitials={true}
           />
         </div>

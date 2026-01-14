@@ -219,13 +219,13 @@ export function MiniLeaguesSection({
 
 You compete each Gameweek and across the full season — with one overall winner at the end of the season.
 
-(TB) Predictions submitted
+(VOLLEY_SUBMITTED) submitted predictions for the current viewing GW
 
-(TB) Predictions not submitted yet
+(VOLLEY_UNSUBMITTED) not submitted yet
 
-(TB) Gameweek winner!
+(VOLLEY_WINNER) last completed GW winner (only shows once the GW has finished)
 
-Chips are ordered by the current league table.
+Avatars are ordered by the mini-league season table (left = top of the league).
 
 Start a Mini League →
 
@@ -255,13 +255,13 @@ How To Play →`}
 
 You compete each Gameweek and across the full season — with one overall winner at the end of the season.
 
-(TB) Predictions submitted
+(VOLLEY_SUBMITTED) submitted predictions for the current viewing GW
 
-(TB) Predictions not submitted yet
+(VOLLEY_UNSUBMITTED) not submitted yet
 
-(TB) Gameweek winner!
+(VOLLEY_WINNER) last completed GW winner (only shows once the GW has finished)
 
-Chips are ordered by the current league table.
+Avatars are ordered by the mini-league season table (left = top of the league).
 
 Start a Mini League →
 

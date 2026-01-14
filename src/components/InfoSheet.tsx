@@ -1,6 +1,7 @@
 import { useEffect } from'react';
 import { createPortal } from'react-dom';
 import { Link } from'react-router-dom';
+import { VOLLEY_AVATAR_PATH } from '../lib/volley';
 
 export type InfoSheetProps = {
  isOpen: boolean;
@@ -54,7 +55,7 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
  
  {/* Sheet */}
  <div
- className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl"
+ className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 rounded-t-3xl shadow-2xl"
  role="dialog"
  aria-modal="true"
  aria-labelledby="info-sheet-title"
@@ -66,12 +67,12 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
  >
  {/* Top handle */}
  <div className="flex justify-center pt-3 pb-2">
- <div className="w-12 h-1 bg-slate-300 rounded-full" />
+ <div className="w-12 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
  </div>
 
  {/* Header */}
  <div className="flex items-center justify-between px-6 pb-4">
- <h2 id="info-sheet-title" className="text-lg font-medium text-slate-900 uppercase tracking-wide" style={{ fontFamily:'"Gramatika", sans-serif', fontWeight: 700 }}>
+ <h2 id="info-sheet-title" className="text-lg font-medium text-slate-900 dark:text-slate-100 uppercase tracking-wide" style={{ fontFamily:'"Gramatika", sans-serif', fontWeight: 700 }}>
  {title}
  </h2>
  <button
@@ -80,7 +81,7 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
  aria-label="Close"
  >
  <svg
- className="w-5 h-5 text-slate-600"
+ className="w-5 h-5 text-slate-600 dark:text-slate-400"
  fill="none"
  stroke="currentColor"
  viewBox="0 0 24 24"
@@ -97,7 +98,7 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
 
  {/* Content */}
  <div className="px-6 pb-8 max-h-[70vh] overflow-y-auto relative">
- <div id="info-sheet-description" className="text-slate-600 leading-relaxed">
+ <div id="info-sheet-description" className="text-slate-600 dark:text-slate-300 leading-relaxed">
  {(() => {
  // Split on newlines and filter empty lines
  const paragraphs = description
@@ -111,7 +112,7 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
  
  if (isCategoryHeader) {
  return (
-          <h3 key={index} className={`font-bold text-slate-900 text-base ${index === 0 ?'' :'mt-6'}`}>
+          <h3 key={index} className={`font-bold text-slate-900 dark:text-slate-100 text-base ${index === 0 ?'' :'mt-6'}`}>
  {paragraph}
  </h3>);
  }
@@ -119,6 +120,72 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
  // Render paragraph with links and chip examples
  const parts: React.ReactNode[] = [];
  let remaining = paragraph;
+
+ // Replace Volley example avatar tokens:
+ // - (VOLLEY_SUBMITTED) -> Volley avatar with green ring
+ // - (VOLLEY_UNSUBMITTED) -> Volley avatar with faint styling (no ring)
+ // - (VOLLEY_WINNER) -> Volley avatar with shiny overlay
+ const volleyTokenPattern = /\(VOLLEY_(SUBMITTED|UNSUBMITTED|WINNER)\)/g;
+ if (volleyTokenPattern.test(remaining)) {
+   const nodes: React.ReactNode[] = [];
+   let lastIndex = 0;
+   volleyTokenPattern.lastIndex = 0;
+   let match: RegExpExecArray | null;
+   while ((match = volleyTokenPattern.exec(remaining)) !== null) {
+     const before = remaining.slice(lastIndex, match.index);
+     if (before) nodes.push(before);
+
+     const kind = match[1];
+     const baseClass =
+       'inline-flex w-6 h-6 rounded-full overflow-hidden align-middle mx-1 relative bg-sky-200';
+     const imgClassBase = 'w-full h-full object-contain p-0.5';
+
+     if (kind === 'SUBMITTED') {
+       nodes.push(
+         <span
+           key={`volley-${index}-${match.index}`}
+           className={`${baseClass} ring-[3px] ring-emerald-500 dark:ring-emerald-400`}
+           title="Submitted"
+         >
+           <img src={VOLLEY_AVATAR_PATH} alt="" className={imgClassBase} />
+         </span>
+       );
+     } else if (kind === 'WINNER') {
+       nodes.push(
+         <span
+           key={`volley-${index}-${match.index}`}
+           className={`${baseClass} ring-[3px] ring-yellow-400 dark:ring-yellow-300 shadow-md shadow-yellow-400/25 before:absolute before:inset-0 before:z-10 before:pointer-events-none before:bg-gradient-to-r before:from-transparent before:via-white/60 before:to-transparent before:animate-[shimmer_1.2s_ease-in-out_infinite] after:absolute after:inset-0 after:z-10 after:pointer-events-none after:bg-gradient-to-br after:from-yellow-400/25 after:via-pink-500/15 after:to-purple-600/20`}
+           title="Last GW winner"
+         >
+           <img src={VOLLEY_AVATAR_PATH} alt="" className={imgClassBase} />
+         </span>
+       );
+     } else {
+       nodes.push(
+         <span
+           key={`volley-${index}-${match.index}`}
+           className={`${baseClass}`}
+           title="Not submitted"
+         >
+           <img
+             src={VOLLEY_AVATAR_PATH}
+             alt=""
+             className={`${imgClassBase} brightness-75`}
+           />
+         </span>
+       );
+     }
+
+     lastIndex = match.index + match[0].length;
+   }
+   const after = remaining.slice(lastIndex);
+   if (after) nodes.push(after);
+
+   // Rebuild remaining as a marker-free string and push the nodes directly.
+   // (We keep the existing link/chip parsing pipeline intact by storing nodes in parts.)
+   parts.push(...nodes);
+   remaining = '';
+ }
  
  // Check for chip examples like"(TB)" and replace with actual chip components
  const chipPattern = /\(TB\)/g;
@@ -214,7 +281,7 @@ export default function InfoSheet({ isOpen, onClose, title, description, image }
 
  {/* Bottom handle */}
  <div className="flex justify-center pb-3">
- <div className="w-12 h-1 bg-slate-300 rounded-full" />
+ <div className="w-12 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
  </div>
  </div>
  </>);

@@ -221,7 +221,7 @@ a {
 }
 
 .chip-overlap {
-  transform: translateX(-2px);
+  transform: translateX(-1px);
 }
 
 .chip-overlap:first-child {
@@ -244,7 +244,7 @@ a {
 }
 
 .chip-skeleton-overlap {
-  transform: translateX(-2px);
+  transform: translateX(-1px);
 }
 
 .chip-skeleton-overlap:first-child {
