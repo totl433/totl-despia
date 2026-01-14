@@ -118,7 +118,7 @@ export const handler: Handler = async (event) => {
     const leagueName = leagueData.name || 'your mini-league';
 
     // Get all league members (excluding the person who joined)
-    const { data: members, error: memErr } = await admin
+    const { data: members, error: memErr } = await supabase
       .from('league_members')
       .select('user_id')
       .eq('league_id', leagueId);
