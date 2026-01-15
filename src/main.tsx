@@ -120,11 +120,19 @@ if (typeof window !== 'undefined') {
       url = String((firstArg as { url: string }).url);
     }
     
-    // Suppress debug telemetry calls to localhost:7242 (old debug code)
-    if (url.includes('127.0.0.1:7242') || url.includes('localhost:7242') || url.includes('ingest/8bc20b5f')) {
-      // Silently ignore - these are old debug telemetry calls
-      return new Response(null, { status: 200, statusText: 'OK' });
+  // Suppress debug telemetry calls to localhost:7242 (old debug code)
+  // Debug override: allow telemetry when `localStorage.debug:telemetry === 'true'`.
+  const allowDebugTelemetry = (() => {
+    try {
+      return localStorage.getItem('debug:telemetry') === 'true';
+    } catch {
+      return false;
     }
+  })();
+  if (!allowDebugTelemetry && (url.includes('127.0.0.1:7242') || url.includes('localhost:7242') || url.includes('ingest/8bc20b5f'))) {
+    // Silently ignore - these are old debug telemetry calls
+    return new Response(null, { status: 200, statusText: 'OK' });
+  }
     
     // If this is a Termly request, catch and suppress 410 errors
     if (url.includes('termly.io')) {
@@ -163,7 +171,15 @@ if (typeof window !== 'undefined') {
       const url = (this as any)._url || '';
       
       // Suppress debug telemetry calls to localhost:7242 (old debug code)
-      if (url.includes('127.0.0.1:7242') || url.includes('localhost:7242') || url.includes('ingest/8bc20b5f')) {
+      // Debug override: allow telemetry when `localStorage.debug:telemetry === 'true'`.
+      const allowDebugTelemetry = (() => {
+        try {
+          return localStorage.getItem('debug:telemetry') === 'true';
+        } catch {
+          return false;
+        }
+      })();
+      if (!allowDebugTelemetry && (url.includes('127.0.0.1:7242') || url.includes('localhost:7242') || url.includes('ingest/8bc20b5f'))) {
         // Silently ignore - these are old debug telemetry calls
         // Return immediately without making the request
         return;
@@ -212,6 +228,7 @@ const CreateLeaguePage = lazy(() => import("./pages/CreateLeague"));
 const HowToPlayPage = lazy(() => import("./pages/HowToPlay"));
 const ApiAdmin = lazy(() => import("./pages/ApiAdmin"));
 const ProfilePage = lazy(() => import("./pages/Profile"));
+const EditAvatarPage = lazy(() => import("./pages/EditAvatar"));
 const NotificationCentrePage = lazy(() => import("./pages/NotificationCentre"));
 const EmailPreferencesPage = lazy(() => import("./pages/EmailPreferences"));
 const StatsPage = lazy(() => import("./pages/Stats"));
@@ -781,6 +798,7 @@ function AppContent() {
               <Route path="/temp-global" element={<RequireAuth><TempGlobalPage /></RequireAuth>} />
               <Route path="/home-experimental" element={<RequireAuth><ErrorBoundary><HomeExperimental /></ErrorBoundary></RequireAuth>} />
               <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+              <Route path="/profile/edit-avatar" element={<RequireAuth><EditAvatarPage /></RequireAuth>} />
               <Route path="/profile/notifications" element={<RequireAuth><NotificationCentrePage /></RequireAuth>} />
               <Route path="/profile/email-preferences" element={<RequireAuth><EmailPreferencesPage /></RequireAuth>} />
               <Route path="/profile/stats" element={<RequireAuth><StatsPage /></RequireAuth>} />

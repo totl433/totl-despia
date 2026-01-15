@@ -710,7 +710,7 @@ export default function TablesPage() {
           );
           
           const sortedMemberIds = sortedMltRows.map(r => r.user_id);
-          
+
           const userIndex = sortedMltRows.findIndex(r => r.user_id === user.id);
           const userPosition = userIndex !== -1 ? userIndex + 1 : null;
           const prevPosition = userPosition && userPosition > 1 ? userPosition - 1 : null;

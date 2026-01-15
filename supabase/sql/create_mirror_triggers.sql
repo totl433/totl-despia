@@ -45,15 +45,17 @@ BEGIN
          OR (home_code = web_away_code_norm AND away_code = web_home_code_norm)
        ))
       -- Fall back to names if codes are missing (API Admin has names, Web Admin doesn't)
-      OR (web_fixture.home_code IS NULL OR web_fixture.away_code IS NULL
-          AND home_name IS NOT NULL AND away_name IS NOT NULL
-          AND web_fixture.home_name IS NOT NULL AND web_fixture.away_name IS NOT NULL
-          AND (
-            (LOWER(home_name) = LOWER(web_fixture.home_name) 
-             AND LOWER(away_name) = LOWER(web_fixture.away_name))
-            OR (LOWER(home_name) = LOWER(web_fixture.away_name) 
-                AND LOWER(away_name) = LOWER(web_fixture.home_name))
-          ))
+      OR (
+        (web_fixture.home_code IS NULL OR web_fixture.away_code IS NULL)
+        AND home_name IS NOT NULL AND away_name IS NOT NULL
+        AND web_fixture.home_name IS NOT NULL AND web_fixture.away_name IS NOT NULL
+        AND (
+          (LOWER(home_name) = LOWER(web_fixture.home_name) 
+           AND LOWER(away_name) = LOWER(web_fixture.away_name))
+          OR (LOWER(home_name) = LOWER(web_fixture.away_name) 
+              AND LOWER(away_name) = LOWER(web_fixture.home_name))
+        )
+      )
     )
   LIMIT 1;
   
@@ -288,15 +290,17 @@ BEGIN
            OR (home_code = app_away_code_norm AND away_code = app_home_code_norm)
          ))
         -- Fall back to names if codes are missing (Web Admin doesn't populate names, but API Admin does)
-        OR (app_fixture.home_code IS NULL OR app_fixture.away_code IS NULL
-            AND home_name IS NOT NULL AND away_name IS NOT NULL
-            AND app_fixture.home_name IS NOT NULL AND app_fixture.away_name IS NOT NULL
-            AND (
-              (LOWER(home_name) = LOWER(app_fixture.home_name) 
-               AND LOWER(away_name) = LOWER(app_fixture.away_name))
-              OR (LOWER(home_name) = LOWER(app_fixture.away_name) 
-                  AND LOWER(away_name) = LOWER(app_fixture.home_name))
-            ))
+        OR (
+          (app_fixture.home_code IS NULL OR app_fixture.away_code IS NULL)
+          AND home_name IS NOT NULL AND away_name IS NOT NULL
+          AND app_fixture.home_name IS NOT NULL AND app_fixture.away_name IS NOT NULL
+          AND (
+            (LOWER(home_name) = LOWER(app_fixture.home_name) 
+             AND LOWER(away_name) = LOWER(app_fixture.away_name))
+            OR (LOWER(home_name) = LOWER(app_fixture.away_name) 
+                AND LOWER(away_name) = LOWER(app_fixture.home_name))
+          )
+        )
       )
     LIMIT 1;
     

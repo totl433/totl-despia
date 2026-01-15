@@ -427,7 +427,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     // NON-BLOCKING - start in background, don't await (app shows immediately)
     (async () => {
       try {
-        const leagueDataCacheKey = `home:leagueData:v3:${userId}:${currentGw}`; // v3: Tables-aligned season ordering + avatar status rings
+        const leagueDataCacheKey = `home:leagueData:v6:${userId}:${currentGw}`; // v6: Ensure HP ordering matches /tables
         
         // Check if already cached
         const existingCache = getCached<any>(leagueDataCacheKey);
@@ -571,17 +571,77 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
           }
         });
         
-        // Fetch picks per league
-        const picksPromises = leagues.map(async (league) => {
-          const memberIds = (membersByLeague[league.id] ?? []).map(m => m.id);
-          if (memberIds.length === 0) return { leagueId: league.id, picks: [] };
-          const { data } = await supabase
-            .from("app_picks")
-            .select("user_id, gw, fixture_index, pick")
-            .in("user_id", memberIds);
-          return { leagueId: league.id, picks: (data ?? []) as Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }> };
+        // Calculate league start GWs (used to bound picks fetch)
+        const leagueStartGws = new Map<string, number>();
+        const leagueStartGwPromises = leagues.map(async (league) => {
+          const leagueStartGw = await resolveLeagueStartGw(league, currentGw);
+          return { leagueId: league.id, leagueStartGw };
         });
-        const picksResults = await Promise.all(picksPromises);
+        const leagueStartGwResults = await Promise.all(leagueStartGwPromises);
+        leagueStartGwResults.forEach(({ leagueId, leagueStartGw }) => {
+          leagueStartGws.set(leagueId, leagueStartGw);
+        });
+
+        // Fetch ALL picks for ALL ML members (bounded + paged) so ordering can't truncate.
+        const allMemberIds = Array.from(allMemberIdsSet);
+        const boundedStartGw = (() => {
+          const starts = Array.from(leagueStartGws.values())
+            .map((v) => (typeof v === 'number' ? v : 1))
+            .map((v) => (v <= 0 ? 1 : v))
+            .filter((v) => v !== 999);
+          return starts.length ? Math.min(...starts) : 1;
+        })();
+        const boundedEndGw = currentGw;
+
+        // NOTE: PostgREST commonly caps responses to ~1000 rows unless paged correctly.
+        // Using PAGE_SIZE=1000 ensures our loop continues until all rows are fetched.
+        const PAGE_SIZE = 1000;
+        const allMemberPicks: Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }> = [];
+        if (allMemberIds.length > 0) {
+          let from = 0;
+          while (true) {
+            const to = from + PAGE_SIZE - 1;
+            const pageResult = await supabase
+              .from("app_picks")
+              .select("user_id, gw, fixture_index, pick")
+              .in("user_id", allMemberIds)
+              .gte("gw", boundedStartGw)
+              .lte("gw", boundedEndGw)
+              .order("gw", { ascending: true })
+              .order("fixture_index", { ascending: true })
+              .order("user_id", { ascending: true })
+              .range(from, to);
+
+            if (pageResult.error) {
+              console.warn('[initialDataLoader] Failed to page app_picks for ML prewarm', pageResult.error);
+              break;
+            }
+            const page = (pageResult.data ?? []) as Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }>;
+            if (page.length === 0) break;
+            allMemberPicks.push(...page);
+            if (page.length < PAGE_SIZE) break;
+            from += PAGE_SIZE;
+          }
+        }
+
+        // Index picks by user for efficient per-league aggregation
+        const picksByUserId = new Map<string, Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }>>();
+        allMemberPicks.forEach((p) => {
+          const arr = picksByUserId.get(p.user_id) ?? [];
+          arr.push(p);
+          picksByUserId.set(p.user_id, arr);
+        });
+
+        // Build picksResults (ALL GWs) for league processing
+        const picksResults = leagues.map((league) => {
+          const memberIds = (membersByLeague[league.id] ?? []).map((m) => m.id);
+          const picks: Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }> = [];
+          memberIds.forEach((id) => {
+            const userPicks = picksByUserId.get(id);
+            if (userPicks?.length) picks.push(...userPicks);
+          });
+          return { leagueId: league.id, picks };
+        });
         
         // Process outcomes
         const outcomeByGwIdx = new Map<string, "H" | "D" | "A">();
@@ -605,16 +665,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
           picksByLeague.set(leagueId, picks);
         });
         
-        // Calculate league start GWs
-        const leagueStartGws = new Map<string, number>();
-        const leagueStartGwPromises = leagues.map(async (league) => {
-          const leagueStartGw = await resolveLeagueStartGw(league, currentGw);
-          return { leagueId: league.id, leagueStartGw };
-        });
-        const leagueStartGwResults = await Promise.all(leagueStartGwPromises);
-        leagueStartGwResults.forEach(({ leagueId, leagueStartGw }) => {
-          leagueStartGws.set(leagueId, leagueStartGw);
-        });
+        // leagueStartGws already calculated above
         
         // Process league data (full logic from Home.tsx)
         const leagueDataMap: Record<string, any> = {};

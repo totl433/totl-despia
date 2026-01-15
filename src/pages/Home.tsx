@@ -185,7 +185,7 @@ export default function HomePage() {
         let leaguePicks: Record<string, Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }>> = {};
         let leagueSubmissionsSet: Record<string, Set<string>> = {};
         let leagueRows: Record<string, Array<{ user_id: string; name: string; score: number; unicorns: number }>> = {};
-        const leagueDataCacheKey = `home:leagueData:v3:${userId}:${cached.currentGw}`; // v3: Fix season chip order + avatar status rings
+        const leagueDataCacheKey = `home:leagueData:v6:${userId}:${cached.currentGw}`; // v6: Ensure HP ordering matches /tables
         
         try {
           const leagueDataCached = getCached<{

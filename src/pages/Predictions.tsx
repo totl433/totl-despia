@@ -89,6 +89,60 @@ const TEAM_COLORS: Record<string, { primary: string; secondary: string }> = {
 export default function PredictionsPage() {
  const { user } = useAuth();
  const navigate = useNavigate();
+ 
+ // #region agent log
+ // IMPORTANT: Cursor in-app browser may not be able to reach 127.0.0.1:7242 directly.
+ // Send to a same-origin dev proxy; Vite forwards to the local collector.
+ const debugEndpoint = '/__agent_log';
+ const debugPost = (payload: {
+  sessionId: string;
+  runId: string;
+  hypothesisId: string;
+  location: string;
+  message: string;
+  data?: unknown;
+  timestamp: number;
+ }) => {
+  try {
+   // NOTE: main.tsx overrides window.fetch and suppresses localhost:7242 calls.
+   // Use sendBeacon to bypass the fetch/XHR interceptors.
+   if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+    const queued = navigator.sendBeacon(debugEndpoint, blob);
+    if (queued) return;
+   }
+  } catch {
+   // ignore
+  }
+ 
+  // Fallback: use fetch (should be fine via same-origin dev proxy).
+  try {
+   fetch(debugEndpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    keepalive: true,
+    mode: 'no-cors',
+   }).catch(() => {});
+  } catch {
+   // ignore
+  }
+ };
+ 
+ // Helps confirm this instrumented build is actually running in the environment being tested.
+ useEffect(() => {
+  if (typeof window === 'undefined') return;
+  debugPost({
+   sessionId:'debug-session',
+   runId:'run1',
+   hypothesisId:'H0',
+   location:'src/pages/Predictions.tsx:mount',
+   message:'PredictionsPage mounted',
+   data:{href:window.location.href,userIdPrefix:user?.id ? user.id.slice(0,8) : null},
+   timestamp:Date.now()
+  });
+ }, [user?.id]);
+ // #endregion agent log
 
  // Use centralized hook for display GW (single source of truth)
  // This subscribes to real-time updates when user clicks "MOVE ON GW" button
@@ -240,7 +294,7 @@ export default function PredictionsPage() {
  };
  const setHasEverBeenSubmitted = (value: boolean) => {
  if (typeof window === 'undefined' || !currentGw || !user?.id) return;
- const key = `test_api_submitted_${currentGw}_${user?.id}`;
+  const key = `gw_submitted_${currentGw}_${user.id}`;
  if (value) {
  sessionStorage.setItem(key, 'true');
  } else {
@@ -263,7 +317,7 @@ export default function PredictionsPage() {
  try {
  for (let i = 0; i < sessionStorage.length; i++) {
  const key = sessionStorage.key(i);
- if (key && key.startsWith(`test_api_submitted_`) && key.endsWith(`_${user.id}`)) {
+    if (key && key.startsWith(`gw_submitted_`) && key.endsWith(`_${user.id}`)) {
  const value = sessionStorage.getItem(key);
  if (value === 'true') {
  hasEverBeenSubmittedRef.current = true;
@@ -555,6 +609,10 @@ const [_submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new S
 
  const cardRef = useRef<HTMLDivElement>(null);
  const startPosRef = useRef({ x: 0, y: 0 });
+ // IMPORTANT: Don't rely on React state for gesture classification.
+ // State updates can lag behind the last touch/mouse move, which can mis-classify swipes
+ // (e.g. a right-swipe saved as "Draw"). Track the latest delta synchronously in a ref.
+ const lastDeltaRef = useRef({ x: 0, y: 0 });
  const isResettingRef = useRef(false);
 
  // Load fixtures and picks from database
@@ -569,6 +627,13 @@ const [_submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new S
  // Use displayGw from useDisplayGameweek hook (single source of truth)
  // This automatically subscribes to real-time updates when user clicks "MOVE ON GW" button
  const gwToDisplay = displayGw;
+   
+   // Predictions page is user-specific; avoid doing work (and caching) until userId exists.
+   // This prevents cache keys like `predictions:undefined:${gw}` and reduces racey first renders.
+   if (!user?.id) {
+    setLoading(true);
+    return;
+   }
  
  if (!gwToDisplay) {
  // Always set state, even if component appears to be unmounting
@@ -701,11 +766,11 @@ setResults(resultsMap);
  // This ensures score calculation works even if cache is missing
  // Check cached.results, not results state (state might not be updated yet)
  // Check cached.fixtures.length, not fixtures.length (state hasn't updated yet after setFixtures)
- if ((!cached.results || cached.results.length === 0) && cached.fixtures.length > 0 && currentGw) {
+ if ((!cached.results || cached.results.length === 0) && cached.fixtures.length > 0) {
    const { data: gwResultsData, error: gwResultsError } = await supabase
      .from('app_gw_results')
      .select('fixture_index, result')
-     .eq('gw', currentGw);
+     .eq('gw', gwToDisplay);
    
    if (!gwResultsError && gwResultsData && gwResultsData.length > 0) {
      const resultsMap = new Map<number, "H" | "D" | "A">();
@@ -756,8 +821,13 @@ setResults(resultsMap);
  const isCacheStale = cacheAge > 5 * 60 * 1000; // 5 minutes
  
  if (!isCacheStale) {
- // Cache is fresh - skip fetch entirely for zero loading experience
- return;
+  // Cache is fresh - only skip DB fetch if the cache is complete enough.
+  // If cache lacks a submission flag, or claims submitted but has no picks, we must still validate/fetch.
+  const cacheHasSubmissionFlag = cached.submitted !== undefined;
+  const cacheSubmitted = cached.submitted === true;
+  const cacheHasPicks = Array.isArray(cached.picks) && cached.picks.length > 0;
+  const safeToSkipDbFetch = cacheHasSubmissionFlag && (!cacheSubmitted || cacheHasPicks);
+  if (safeToSkipDbFetch) return;
  }
  // Cache is stale - continue with background refresh (non-blocking)
  }
@@ -851,13 +921,13 @@ setResults(resultsMap);
  
 // Load results from app_gw_results (like HomePage does)
 // This ensures we have final results even if live scores aren't available
-if (alive && fixturesData.length > 0 && currentGw) {
+if (alive && fixturesData.length > 0) {
   (async () => {
     try {
       const { data: gwResultsData, error: gwResultsError } = await supabase
         .from('app_gw_results')
         .select('fixture_index, result')
-        .eq('gw', currentGw);
+        .eq('gw', gwToDisplay);
       
       if (!gwResultsError && gwResultsData && gwResultsData.length > 0) {
         const resultsMap = new Map<number, "H" | "D" | "A">();
@@ -876,7 +946,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
               resultsArray.push({ fixture_index, result });
             });
             
-            const cacheKey = `predictions:${user.id}:${currentGw}`;
+            const cacheKey = `predictions:${user.id}:${gwToDisplay}`;
             try {
               const existingCache = getCached<{
                 fixtures: Fixture[];
@@ -1043,7 +1113,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
  }
  // ALWAYS load picks if user has submitted (even if not in cache) - just like HomePage does
  // This ensures picks are displayed even if cache is missing
- if ((isSubmitted || submitted) && user?.id && fixturesData.length > 0 && picks.size === 0) {
+ if ((isSubmitted || submitted) && user?.id && fixturesData.length > 0 && !hasPicks) {
  // User has submitted - fetch picks for display purposes
  const { data: pk, error: pkErr } = await supabase
  .from("app_picks")
@@ -1076,7 +1146,7 @@ if (alive && fixturesData.length > 0 && currentGw) {
             // Cache picks for instant load next time (like HomePage does)
             if (user?.id) {
               const picksArray = Array.from(picksMap.values());
-              const cacheKey = `predictions:${user.id}:${currentGw}`;
+              const cacheKey = `predictions:${user.id}:${gwToDisplay}`;
               try {
                 const existingCache = getCached<{
                   fixtures: Fixture[];
@@ -1221,7 +1291,7 @@ setLeagueMembers(members);
  }
  
  // 2. Cache the fresh data for instant load on next visit
- if (alive && fixturesData.length > 0 && user?.id && currentGw) {
+ if (alive && fixturesData.length > 0 && user?.id) {
  try {
  // Convert picks Map to array for caching
  const picksArray: Array<{ fixture_index: number; pick: "H" | "D" | "A"; matchday: number }> = [];
@@ -1440,12 +1510,14 @@ useEffect(() => {
  if (isAnimating || submitted) return;
  setIsDragging(true);
  startPosRef.current = { x: clientX, y: clientY };
+  lastDeltaRef.current = { x: 0, y: 0 };
  setShowFeedback(null);
  };
  const handleMove = (clientX: number, clientY: number) => {
  if (!isDragging || isAnimating || submitted) return;
  const deltaX = clientX - startPosRef.current.x;
  const deltaY = clientY - startPosRef.current.y;
+  lastDeltaRef.current = { x: deltaX, y: deltaY };
  const rotation = deltaX * 0.1;
  setCardState({ x: deltaX, y: deltaY, rotation, opacity: 1, scale: 1 });
  if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY)) {
@@ -1459,7 +1531,7 @@ useEffect(() => {
  const handleEnd = () => {
  if (!isDragging || isAnimating || submitted) return;
  setIsDragging(false);
- const { x, y } = cardState;
+  const { x, y } = lastDeltaRef.current;
  const threshold = 100;
  let pick: "H" | "D" | "A" | null = null;
  if (Math.abs(x) > threshold && Math.abs(x) > Math.abs(y)) pick = x > 0 ? "A" : "H";
@@ -1517,6 +1589,10 @@ useEffect(() => {
  matchday: currentGw // Keep matchday for Pick type compatibility
  });
  setPicks(newPicks);
+
+ // #region agent log
+ debugPost({sessionId:'debug-session',runId:'run1',hypothesisId:'H1',location:'src/pages/Predictions.tsx:savePick',message:'savePick (local state update)',data:{gw:currentGw,fixture_index:currentFixture.fixture_index,pick},timestamp:Date.now()});
+ // #endregion agent log
  };
  
  const handleConfirmClick = async () => {
@@ -1529,6 +1605,20 @@ useEffect(() => {
  if (!user?.id || !currentGw) return;
 
  try {
+  // #region agent log
+  (() => {
+    const pickValues = Array.from(picks.values());
+    const matchdayCounts: Record<string, number> = {};
+    const pickCounts: Record<string, number> = {};
+    for (const p of pickValues) {
+      matchdayCounts[String(p.matchday)] = (matchdayCounts[String(p.matchday)] ?? 0) + 1;
+      pickCounts[p.pick] = (pickCounts[p.pick] ?? 0) + 1;
+    }
+    const p0 = picks.get(0)?.pick ?? null;
+    debugPost({sessionId:'debug-session',runId:'run1',hypothesisId:'H1',location:'src/pages/Predictions.tsx:handleConfirmClick:entry',message:'confirmClick entry snapshot',data:{gw:currentGw,userIdPrefix:user.id.slice(0,8),fixturesLen:fixtures.length,picksSize:picks.size,p0,matchdayCounts,pickCounts},timestamp:Date.now()});
+  })();
+  // #endregion agent log
+
  // CRITICAL: Ensure we're not already submitted (safety check)
  const { data: existingSubmission } = await supabase
  .from('app_gw_submissions')
@@ -1552,6 +1642,15 @@ useEffect(() => {
  pick: pick.pick
  }));
 
+  // #region agent log
+  (() => {
+    const counts: Record<string, number> = {};
+    for (const p of picksArray) counts[p.pick] = (counts[p.pick] ?? 0) + 1;
+    const p0 = picksArray.find((p) => p.fixture_index === 0)?.pick ?? null;
+    debugPost({sessionId:'debug-session',runId:'run1',hypothesisId:'H1',location:'src/pages/Predictions.tsx:handleConfirmClick:picksArray',message:'built picksArray for upsert',data:{gw:currentGw,userIdPrefix:user.id.slice(0,8),picksArrayLen:picksArray.length,fixturesLen:fixtures.length,p0,counts,sample:picksArray.slice(0,3)},timestamp:Date.now()});
+  })();
+  // #endregion agent log
+
  if (picksArray.length !== fixtures.length) {
  throw new Error(`Expected ${fixtures.length} picks but got ${picksArray.length}`);
  }
@@ -1566,6 +1665,37 @@ useEffect(() => {
  if (picksError) {
  throw picksError;
  }
+
+  // #region agent log
+  debugPost({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'src/pages/Predictions.tsx:handleConfirmClick:afterUpsert',message:'app_picks upsert returned ok',data:{gw:currentGw,userIdPrefix:user.id.slice(0,8)},timestamp:Date.now()});
+  // #endregion agent log
+
+  // Immediately read back from DB (app_picks + picks) to detect trigger rewrites.
+  // NOTE: app_picks.updated_at is not guaranteed to change on updates (no automatic trigger), so we must compare values, not timestamps.
+  // #region agent log
+  (async () => {
+    try {
+      const [appRead, webRead] = await Promise.all([
+        supabase.from('app_picks').select('fixture_index,pick').eq('gw', currentGw).eq('user_id', user.id),
+        supabase.from('picks').select('fixture_index,pick').eq('gw', currentGw).eq('user_id', user.id),
+      ]);
+      const appRows = (appRead.data ?? []) as Array<{fixture_index:number;pick:"H"|"D"|"A"}>;
+      const webRows = (webRead.data ?? []) as Array<{fixture_index:number;pick:"H"|"D"|"A"}>;
+      const toMap = (rows: Array<{fixture_index:number;pick:"H"|"D"|"A"}>) => {
+        const m = new Map<number, "H" | "D" | "A">();
+        rows.forEach(r => m.set(r.fixture_index, r.pick));
+        return m;
+      };
+      const a = toMap(appRows);
+      const w = toMap(webRows);
+      const p0App = a.get(0) ?? null;
+      const p0Web = w.get(0) ?? null;
+      debugPost({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'src/pages/Predictions.tsx:handleConfirmClick:readback',message:'readback after submit',data:{gw:currentGw,userIdPrefix:user.id.slice(0,8),appLen:appRows.length,webLen:webRows.length,p0App,p0Web,appFirst3:appRows.sort((x,y)=>x.fixture_index-y.fixture_index).slice(0,3),webFirst3:webRows.sort((x,y)=>x.fixture_index-y.fixture_index).slice(0,3)},timestamp:Date.now()});
+    } catch {
+      debugPost({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'src/pages/Predictions.tsx:handleConfirmClick:readback',message:'readback after submit failed',data:{gw:currentGw,userIdPrefix:user.id.slice(0,8)},timestamp:Date.now()});
+    }
+  })();
+  // #endregion agent log
 
  // Save submission - CRITICAL: Only create submission after picks are saved successfully
  // This ensures picks and submission are in sync
@@ -2229,7 +2359,7 @@ setPicks(np);
  try {
  for (let i = 0; i < sessionStorage.length; i++) {
  const key = sessionStorage.key(i);
- if (key && key.startsWith(`test_api_submitted_`) && key.endsWith(`_${user.id}`)) {
+    if (key && key.startsWith(`gw_submitted_`) && key.endsWith(`_${user.id}`)) {
  const value = sessionStorage.getItem(key);
  if (value === 'true') return true;
  }

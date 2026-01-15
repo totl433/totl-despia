@@ -118,7 +118,7 @@ export async function loadHomePageData(
   // Check cache first
   const basicCacheKey = `home:basic:${userId}`;
   const fixturesCacheKey = `home:fixtures:${userId}:${currentGw}`;
-  const leagueDataCacheKey = `home:leagueData:v3:${userId}:${currentGw}`; // v3: Tables-aligned season ordering + avatar status rings
+  const leagueDataCacheKey = `home:leagueData:v6:${userId}:${currentGw}`; // v6: Ensure HP ordering matches /tables (avoid truncated prewarm caches)
   
   const cachedBasic = getCached<{
     currentGw: number;
@@ -224,7 +224,8 @@ export async function loadHomePageData(
     appPicksResult,
   ] = await Promise.all([
     supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle(),
-    supabase.from("gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
+    // IMPORTANT: use app_gw_results as the source of truth (matches /tables)
+    supabase.from("app_gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("app_v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
     supabase.from("app_v_ocp_overall").select("user_id, name, ocp"),
     supabase.from("app_fixtures").select("id, gw, fixture_index, api_match_id, home_code, away_code, home_team, away_team, home_name, away_name, kickoff_time").eq("gw", currentGw).order("fixture_index", { ascending: true }),
@@ -358,7 +359,9 @@ export async function loadHomePageData(
   if (allMemberIds.length > 0) {
     // Use paging to avoid silent truncation on large accounts / long seasons.
     // In typical cases (few leagues), this will complete in a single request.
-    const PAGE_SIZE = 5000;
+    // NOTE: PostgREST commonly caps responses to ~1000 rows unless paged correctly.
+    // Using PAGE_SIZE=1000 ensures our loop continues until all rows are fetched.
+    const PAGE_SIZE = 1000;
     let from = 0;
     // Important: range() requires a deterministic order.
     // (We don't actually care about order, but we need stable paging.)
@@ -688,6 +691,7 @@ export async function loadHomePageData(
       latestRelevantGw,
       webUserIds: leagueWebUserIds
     };
+
   });
   
   // Cache the data
