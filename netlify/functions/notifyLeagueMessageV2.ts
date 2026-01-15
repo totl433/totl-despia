@@ -237,6 +237,27 @@ export const handler: Handler = async (event) => {
     }
   }
 
+  // 3b) Remove users actively viewing the chat tab (presence suppression)
+  // Heartbeat is every ~10s on the client; use 30s window for tolerance.
+  try {
+    const activeSince = new Date(Date.now() - 30_000).toISOString();
+    const { data: activeViewers, error: presenceErr } = await admin
+      .from('chat_presence')
+      .select('user_id')
+      .eq('league_id', leagueId)
+      .gte('last_seen', activeSince);
+
+    if (presenceErr) {
+      console.warn('[notifyLeagueMessageV2] Failed to load chat_presence:', presenceErr);
+    } else if (activeViewers && activeViewers.length > 0) {
+      for (const viewer of activeViewers as any[]) {
+        if (viewer?.user_id) recipientIds.delete(viewer.user_id);
+      }
+    }
+  } catch (e) {
+    console.warn('[notifyLeagueMessageV2] chat_presence suppression error:', e);
+  }
+
   if (recipientIds.size === 0) {
     console.log('[notifyLeagueMessageV2] No eligible recipients');
     return json(200, { ok: true, message: 'No eligible recipients' });

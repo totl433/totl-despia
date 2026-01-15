@@ -6012,6 +6012,16 @@ select option {
   --tw-ring-offset-color: #1e293b;
 }
 
+.dark\:placeholder\:text-slate-500:is(.dark *)::-moz-placeholder{
+  --tw-text-opacity: 1;
+  color: rgb(100 116 139 / var(--tw-text-opacity, 1));
+}
+
+.dark\:placeholder\:text-slate-500:is(.dark *)::placeholder{
+  --tw-text-opacity: 1;
+  color: rgb(100 116 139 / var(--tw-text-opacity, 1));
+}
+
 .dark\:after\:border-slate-600:is(.dark *)::after{
   content: var(--tw-content);
   --tw-border-opacity: 1;

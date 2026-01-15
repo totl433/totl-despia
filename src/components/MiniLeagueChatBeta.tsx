@@ -3,68 +3,22 @@ import type { MouseEvent } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useMiniLeagueChat } from "../hooks/useMiniLeagueChat";
 import { useMarkMessagesRead } from "../hooks/useMarkMessagesRead";
-import ChatThread, { type ChatThreadProps } from "./chat/ChatThread";
-import { supabase } from "../lib/supabase";
-import { VOLLEY_USER_ID, VOLLEY_NAME } from "../lib/volley";
-
-type MemberNames = Map<string, string> | Record<string, string> | undefined;
+import { useChatPresence } from "../hooks/useChatPresence";
+import { useChatGroups } from "../hooks/useChatGroups";
+import { useChatReactions } from "../hooks/useChatReactions";
+import { useChatAuthorNames, type MemberNames } from "../hooks/useChatAuthorNames";
+import { useKeyboardBottomInset } from "../hooks/useKeyboardBottomInset";
+import ChatThread from "./chat/ChatThread";
 
 type MiniLeagueChatBetaProps = {
   miniLeagueId?: string | null;
   memberNames?: MemberNames;
   deepLinkError?: string | null;
+  /** Whether the chat tab is actively visible (controls presence + notif suppression). */
+  isChatActive?: boolean;
 };
 
-const formatTime = (value: string) =>
-  new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-const formatDayLabel = (value: string) =>
-  new Date(value).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
-
-const initials = (text?: string) => {
-  if (!text) return "?";
-  const parts = text.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? "?";
-  return `${parts[0][0]?.toUpperCase() ?? ""}${parts[parts.length - 1][0]?.toUpperCase() ?? ""}`;
-};
-
-/**
- * Resolve user name from multiple sources:
- * 1. memberNames prop (current league members)
- * 2. additionalNames (fetched for non-members who sent messages)
- * 3. Volley bot special case
- */
-const resolveName = (
-  id: string, 
-  memberNames?: MemberNames, 
-  additionalNames?: Map<string, string>
-): string => {
-  // Check Volley bot first
-  if (id === VOLLEY_USER_ID) {
-    return VOLLEY_NAME;
-  }
-  
-  // Check memberNames prop
-  if (memberNames) {
-    if (memberNames instanceof Map) {
-      const name = memberNames.get(id);
-      if (name) return name;
-    } else {
-      const name = memberNames[id];
-      if (name) return name;
-    }
-  }
-  
-  // Check additional fetched names
-  if (additionalNames) {
-    const name = additionalNames.get(id);
-    if (name) return name;
-  }
-  
-  return "";
-};
-
-function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLeagueChatBetaProps) {
+function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError, isChatActive = true }: MiniLeagueChatBetaProps) {
   const { user } = useAuth();
   
   const {
@@ -78,15 +32,25 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [reactions, setReactions] = useState<Record<string, Array<{ emoji: string; count: number; hasUserReacted: boolean }>>>({});
   const [replyingTo, setReplyingTo] = useState<{ id: string; content: string; authorName?: string } | null>(null);
   const [uiErrors, setUiErrors] = useState<Array<{ id: string; message: string; timestamp: number }>>([]);
   
-  // Additional user names fetched for users not in memberNames (e.g., users who left the league)
-  const [additionalNames, setAdditionalNames] = useState<Map<string, string>>(new Map());
-  const fetchedUserIdsRef = useRef<Set<string>>(new Set());
+  const { hasAnyNames, getName } = useChatAuthorNames({
+    messages,
+    memberNames,
+    currentUserId: user?.id ?? null,
+  });
   
   const listRef = useRef<HTMLDivElement | null>(null);
+  
+  // Scroll to show newest messages (for new messages after initial load)
+  // With normal column, newest messages are at bottom, so scroll to max
+  const scrollToBottom = useCallback(() => {
+    if (listRef.current) {
+      const maxScrollTop = listRef.current.scrollHeight - listRef.current.clientHeight;
+      listRef.current.scrollTop = maxScrollTop;
+    }
+  }, []);
   
   // Mark messages as read when they're visible
   // CRITICAL: This hook marks messages as read when the chat container is visible
@@ -110,153 +74,17 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputAreaRef = useRef<HTMLDivElement | null>(null);
   const hasScrolledRef = useRef<boolean>(false);
-  const [inputBottom, setInputBottom] = useState(0);
+  const { inputBottom, applyKeyboardLayout, handleInputFocus } = useKeyboardBottomInset({
+    inputAreaRef,
+    listRef,
+    scrollToBottom,
+  });
 
-  // Fetch user names for message authors not in memberNames (e.g., users who left the league)
-  useEffect(() => {
-    if (messages.length === 0) return;
-    
-    // Collect user IDs that can't be resolved from memberNames
-    const missingUserIds: string[] = [];
-    for (const msg of messages) {
-      const userId = msg.user_id;
-      // Skip if already fetched or if it's Volley
-      if (fetchedUserIdsRef.current.has(userId) || userId === VOLLEY_USER_ID) continue;
-      // Skip if resolvable from memberNames
-      if (resolveName(userId, memberNames)) continue;
-      // Skip if current user (we use currentUserDisplayName for that)
-      if (userId === user?.id) continue;
-      
-      missingUserIds.push(userId);
-    }
-    
-    // Also check reply_to user IDs
-    for (const msg of messages) {
-      if (msg.reply_to?.user_id) {
-        const userId = msg.reply_to.user_id;
-        if (fetchedUserIdsRef.current.has(userId) || userId === VOLLEY_USER_ID) continue;
-        if (resolveName(userId, memberNames)) continue;
-        if (userId === user?.id) continue;
-        if (!missingUserIds.includes(userId)) {
-          missingUserIds.push(userId);
-        }
-      }
-    }
-    
-    if (missingUserIds.length === 0) return;
-    
-    // Mark as being fetched to prevent duplicate requests
-    missingUserIds.forEach(id => fetchedUserIdsRef.current.add(id));
-    
-    console.log('[MiniLeagueChatBeta] Fetching names for', missingUserIds.length, 'missing user IDs');
-    
-    // Fetch user names from database
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from('users')
-          .select('id, name')
-          .in('id', missingUserIds);
-        
-        if (error) {
-          console.error('[MiniLeagueChatBeta] Error fetching user names:', error);
-          return;
-        }
-        
-        if (data && data.length > 0) {
-          setAdditionalNames(prev => {
-            const next = new Map(prev);
-            for (const row of data) {
-              if (row.id && row.name) {
-                next.set(row.id, row.name);
-              }
-            }
-            return next;
-          });
-          console.log('[MiniLeagueChatBeta] Fetched', data.length, 'additional user names');
-        }
-      } catch (err) {
-        console.error('[MiniLeagueChatBeta] Error fetching user names:', err);
-      }
-    })();
-  }, [messages, memberNames, user?.id]);
-
-  // Track presence: mark user as active in chat to suppress notifications
-  useEffect(() => {
-    if (!miniLeagueId || !user?.id) return;
-    
-    let isActive = true;
-    const currentLeagueId = miniLeagueId;
-    const currentUserId = user.id;
-    
-    const updatePresence = async () => {
-      if (!isActive) return;
-      try {
-        const { error } = await supabase
-          .from('chat_presence')
-          .upsert({
-            league_id: currentLeagueId,
-            user_id: currentUserId,
-            last_seen: new Date().toISOString(),
-          }, {
-            onConflict: 'league_id,user_id'
-          });
-        
-        if (error) {
-          console.warn('[MiniLeagueChatBeta] Failed to update presence:', error);
-        }
-      } catch (err) {
-        // Silently fail - presence is best effort, but log for debugging
-        console.warn('[MiniLeagueChatBeta] Error updating presence:', err);
-      }
-    };
-    
-    // Clear presence when leaving chat - set last_seen to past so notifications work immediately
-    const clearPresence = async () => {
-      try {
-        // Delete the presence record so user gets notifications immediately after leaving
-        await supabase
-          .from('chat_presence')
-          .delete()
-          .eq('league_id', currentLeagueId)
-          .eq('user_id', currentUserId);
-      } catch (err) {
-        // Silently fail - best effort
-        console.warn('[MiniLeagueChatBeta] Error clearing presence:', err);
-      }
-    };
-    
-    // Update immediately on mount
-    updatePresence();
-    
-    // Update every 10 seconds while component is mounted
-    const interval = setInterval(() => {
-      if (isActive) {
-        updatePresence();
-      }
-    }, 10000);
-    
-    // Handle visibility change - clear presence when app goes to background
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        // App went to background - clear presence so user gets notifications
-        clearPresence();
-      } else if (document.visibilityState === 'visible' && isActive) {
-        // App came back to foreground - restore presence
-        updatePresence();
-      }
-    };
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      isActive = false;
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      // Clear presence on unmount so user gets notifications immediately
-      clearPresence();
-    };
-  }, [miniLeagueId, user?.id]);
+  useChatPresence({
+    leagueId: miniLeagueId ?? null,
+    userId: user?.id ?? null,
+    enabled: Boolean(isChatActive && miniLeagueId && user?.id),
+  });
 
   // Ref callback: set scroll position IMMEDIATELY when node is available
   // This happens synchronously before React finishes rendering, eliminating timing issues
@@ -265,253 +93,22 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     hasScrolledRef.current = false;
   }, [miniLeagueId]);
   
-  // Scroll to show newest messages (for new messages after initial load)
-  // With normal column, newest messages are at bottom, so scroll to max
-  const scrollToBottom = useCallback(() => {
-    if (listRef.current) {
-      const maxScrollTop = listRef.current.scrollHeight - listRef.current.clientHeight;
-      listRef.current.scrollTop = maxScrollTop;
-    }
-  }, []);
+  const messageIds = useMemo(
+    () => messages.map((m) => m.id).filter((id) => !id.startsWith('optimistic-')),
+    [messages]
+  );
 
-  // Load reactions for all messages
-  useEffect(() => {
-    if (messages.length === 0 || !user?.id) return;
-    
-    const messageIds = messages
-      .map(m => m.id)
-      .filter(id => !id.startsWith('optimistic-'));
-    if (messageIds.length === 0) return;
-    
-    const loadReactions = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('league_message_reactions')
-          .select('message_id, emoji, user_id')
-          .in('message_id', messageIds);
-        
-        if (error) {
-          setUiErrors(prev => [...prev, { 
-            id: `reactions-${Date.now()}`, 
-            message: `Failed to load reactions: ${error.message}`, 
-            timestamp: Date.now() 
-          }]);
-          return;
-        }
-        
-        // Group reactions by message_id and emoji
-        const reactionsByMessage: Record<string, Record<string, { count: number; hasUserReacted: boolean }>> = {};
-        
-        (data || []).forEach((reaction: any) => {
-          if (!reactionsByMessage[reaction.message_id]) {
-            reactionsByMessage[reaction.message_id] = {};
-          }
-          if (!reactionsByMessage[reaction.message_id][reaction.emoji]) {
-            reactionsByMessage[reaction.message_id][reaction.emoji] = { count: 0, hasUserReacted: false };
-          }
-          reactionsByMessage[reaction.message_id][reaction.emoji].count++;
-          if (reaction.user_id === user.id) {
-            reactionsByMessage[reaction.message_id][reaction.emoji].hasUserReacted = true;
-          }
-        });
-        
-        // Convert to array format
-        const formattedReactions: Record<string, Array<{ emoji: string; count: number; hasUserReacted: boolean }>> = {};
-        Object.keys(reactionsByMessage).forEach(messageId => {
-          formattedReactions[messageId] = Object.entries(reactionsByMessage[messageId]).map(([emoji, data]) => ({
-            emoji,
-            count: data.count,
-            hasUserReacted: data.hasUserReacted,
-          }));
-        });
-        
-        setReactions(formattedReactions);
-      } catch (err: any) {
-        setUiErrors(prev => [...prev, { 
-          id: `reactions-load-${Date.now()}`, 
-          message: `Error loading reactions: ${err?.message || String(err)}`, 
-          timestamp: Date.now() 
-        }]);
-      }
-    };
-    
-    loadReactions();
-  }, [messages, user?.id]);
-
-  // Subscribe to reaction changes
-  useEffect(() => {
-    if (messages.length === 0 || !user?.id) return;
-    
-    const messageIds = messages
-      .map(m => m.id)
-      .filter(id => !id.startsWith('optimistic-'));
-    if (messageIds.length === 0) return;
-    
-    const channel = supabase
-      .channel('message-reactions-mlcb')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'league_message_reactions',
-        },
-        async () => {
-          // Reload reactions when they change
-            try {
-              const { data, error } = await supabase
-                .from('league_message_reactions')
-                .select('message_id, emoji, user_id')
-                .in('message_id', messageIds);
-              
-            if (error) return;
-              
-              const reactionsByMessage: Record<string, Record<string, { count: number; hasUserReacted: boolean }>> = {};
-              
-              (data || []).forEach((reaction: any) => {
-                if (!reactionsByMessage[reaction.message_id]) {
-                  reactionsByMessage[reaction.message_id] = {};
-                }
-                if (!reactionsByMessage[reaction.message_id][reaction.emoji]) {
-                  reactionsByMessage[reaction.message_id][reaction.emoji] = { count: 0, hasUserReacted: false };
-                }
-                reactionsByMessage[reaction.message_id][reaction.emoji].count++;
-                if (reaction.user_id === user.id) {
-                  reactionsByMessage[reaction.message_id][reaction.emoji].hasUserReacted = true;
-                }
-              });
-              
-              const formattedReactions: Record<string, Array<{ emoji: string; count: number; hasUserReacted: boolean }>> = {};
-              Object.keys(reactionsByMessage).forEach(messageId => {
-                formattedReactions[messageId] = Object.entries(reactionsByMessage[messageId]).map(([emoji, data]) => ({
-                  emoji,
-                  count: data.count,
-                  hasUserReacted: data.hasUserReacted,
-                }));
-              });
-              
-              setReactions(formattedReactions);
-          } catch (err) {
-            // Silently fail
-            }
-        }
-      )
-      .subscribe();
-    
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [messages, user?.id]);
-
-  // Handle reaction click
-  const handleReactionClick = useCallback(async (messageId: string, emoji: string) => {
-    if (!user?.id) return;
-    
-    const messageReactions = reactions[messageId] || [];
-    const existingReaction = messageReactions.find(r => r.emoji === emoji && r.hasUserReacted);
-    
-    // Optimistically update local state
-    setReactions((prev) => {
-      const newReactions = { ...prev };
-      const currentReactions = newReactions[messageId] || [];
-      
-      if (existingReaction) {
-        // Remove reaction
-        const updatedReactions = currentReactions.map(r => {
-          if (r.emoji === emoji) {
-            return {
-              ...r,
-              count: Math.max(0, r.count - 1),
-              hasUserReacted: false,
-            };
-          }
-          return r;
-        }).filter(r => r.count > 0 || r.emoji !== emoji);
-        
-        if (updatedReactions.length === 0) {
-          delete newReactions[messageId];
-        } else {
-          newReactions[messageId] = updatedReactions;
-        }
-      } else {
-        // Add reaction
-        const existingEmojiReaction = currentReactions.find(r => r.emoji === emoji);
-        if (existingEmojiReaction) {
-          newReactions[messageId] = currentReactions.map(r => 
-            r.emoji === emoji 
-              ? { ...r, count: r.count + 1, hasUserReacted: true }
-              : r
-          );
-        } else {
-          newReactions[messageId] = [...currentReactions, { emoji, count: 1, hasUserReacted: true }];
-        }
-      }
-      
-      return newReactions;
-    });
-    
-    // Update database
-    if (existingReaction) {
-      const { error } = await supabase
-        .from('league_message_reactions')
-        .delete()
-        .eq('message_id', messageId)
-        .eq('user_id', user.id)
-        .eq('emoji', emoji);
-      
-      if (error) {
-        // Revert optimistic update
-        setReactions((prev) => {
-          const reverted = { ...prev };
-          const currentReactions = reverted[messageId] || [];
-          const existingEmojiReaction = currentReactions.find(r => r.emoji === emoji);
-          if (existingEmojiReaction) {
-            reverted[messageId] = currentReactions.map(r => 
-              r.emoji === emoji 
-                ? { ...r, count: r.count + 1, hasUserReacted: true }
-                : r
-            );
-          } else {
-            reverted[messageId] = [...currentReactions, { emoji, count: 1, hasUserReacted: true }];
-          }
-          return reverted;
-        });
-      }
-    } else {
-      const { error } = await supabase
-        .from('league_message_reactions')
-        .upsert({
-          message_id: messageId,
-          user_id: user.id,
-          emoji,
-        });
-      
-      if (error) {
-        // Revert optimistic update
-        setReactions((prev) => {
-          const reverted = { ...prev };
-          const currentReactions = reverted[messageId] || [];
-          const updatedReactions = currentReactions.map(r => {
-            if (r.emoji === emoji) {
-              return {
-                ...r,
-                count: Math.max(0, r.count - 1),
-                hasUserReacted: false,
-              };
-            }
-            return r;
-          }).filter(r => r.count > 0 || r.emoji !== emoji);
-          
-          if (updatedReactions.length === 0) {
-            delete reverted[messageId];
-          } else {
-            reverted[messageId] = updatedReactions;
-          }
-          return reverted;
-        });
-      }
-    }
-  }, [user?.id, reactions]);
+  const { reactions, onReactionClick } = useChatReactions({
+    leagueId: miniLeagueId ?? null,
+    messageIds,
+    userId: user?.id ?? null,
+    onError: (message) => {
+      setUiErrors((prev) => [
+        ...prev,
+        { id: `reactions-${Date.now()}`, message, timestamp: Date.now() },
+      ]);
+    },
+  });
 
   // Auto-resize textarea
   useEffect(() => {
@@ -521,138 +118,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     }
   }, [draft]);
 
-  // Keyboard detection and layout adjustment
-  const applyKeyboardLayout = useCallback(
-    (keyboardHeight: number) => {
-      const inputAreaHeight = inputAreaRef.current?.offsetHeight || 72;
-      
-      if (keyboardHeight > 0) {
-        const totalBottomSpace = keyboardHeight + inputAreaHeight;
-        setInputBottom(keyboardHeight);
-        if (listRef.current) {
-          const newPadding = `${totalBottomSpace + 8}px`;
-          listRef.current.style.paddingBottom = newPadding;
-        }
-      } else {
-        setInputBottom(0);
-        if (listRef.current) {
-          const newPadding = `${inputAreaHeight + 8}px`;
-          listRef.current.style.paddingBottom = newPadding;
-        }
-      }
-
-      // Scroll to bottom after keyboard adjustment
-      requestAnimationFrame(() => {
-        scrollToBottom();
-      });
-    },
-    [scrollToBottom]
-  );
-
-  // Keyboard detection
-  useEffect(() => {
-    const visualViewport = (window as any).visualViewport;
-    if (!visualViewport) return;
-
-    let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
-    let lastKeyboardHeight = 0;
-    let initialLoadComplete = false;
-    
-    // Wait a bit before allowing keyboard detection to prevent initial jump
-    setTimeout(() => {
-      initialLoadComplete = true;
-    }, 500);
-
-    const detectKeyboardHeight = (): number => {
-        const windowHeight = window.innerHeight;
-        const viewportHeight = visualViewport.height;
-        const viewportBottom = visualViewport.offsetTop + viewportHeight;
-      return Math.max(0, windowHeight - viewportBottom);
-    };
-
-    const updateLayout = () => {
-      if (resizeTimeout) {
-        clearTimeout(resizeTimeout);
-      }
-
-      resizeTimeout = setTimeout(() => {
-        const keyboardHeight = detectKeyboardHeight();
-        
-        // Only apply keyboard layout changes after initial load is complete
-        if (initialLoadComplete && Math.abs(keyboardHeight - lastKeyboardHeight) > 10) {
-          lastKeyboardHeight = keyboardHeight;
-          applyKeyboardLayout(keyboardHeight);
-        }
-      }, 50);
-    };
-
-    visualViewport.addEventListener("resize", updateLayout);
-    visualViewport.addEventListener("scroll", updateLayout);
-    window.addEventListener("resize", updateLayout);
-
-    const handleFocus = () => {
-      setTimeout(updateLayout, 50);
-    };
-    
-    const handleBlur = () => {
-      setTimeout(updateLayout, 100);
-    };
-
-    const focusTimeout = setTimeout(() => {
-      if (inputRef.current) {
-        inputRef.current.addEventListener("focus", handleFocus);
-        inputRef.current.addEventListener("blur", handleBlur);
-      }
-    }, 100);
-
-    
-    updateLayout();
-
-    return () => {
-      if (resizeTimeout) clearTimeout(resizeTimeout);
-      clearTimeout(focusTimeout);
-      visualViewport.removeEventListener("resize", updateLayout);
-      visualViewport.removeEventListener("scroll", updateLayout);
-      window.removeEventListener("resize", updateLayout);
-      if (inputRef.current) {
-        inputRef.current.removeEventListener("focus", handleFocus);
-        inputRef.current.removeEventListener("blur", handleBlur);
-      }
-    };
-  }, [applyKeyboardLayout]);
-
-  // Set initial padding synchronously to prevent layout shift
-  // This runs on mount to ensure padding is set before first paint
-  useEffect(() => {
-    if (listRef.current && inputAreaRef.current) {
-      const inputAreaHeight = inputAreaRef.current.offsetHeight || 72;
-      const correctPadding = `${inputAreaHeight + 8}px`;
-      
-      // Set padding immediately
-      listRef.current.style.paddingBottom = correctPadding;
-    }
-  }, []);
-
-  const handleInputFocus = () => {
-    if (inputRef.current) {
-      inputRef.current.removeAttribute('readonly');
-    }
-    
-    const detectAndApply = () => {
-    const visualViewport = (window as any).visualViewport;
-    if (visualViewport) {
-        const windowHeight = window.innerHeight;
-        const viewportHeight = visualViewport.height;
-        const viewportBottom = visualViewport.offsetTop + viewportHeight;
-        const keyboardHeight = Math.max(0, windowHeight - viewportBottom);
-        applyKeyboardLayout(keyboardHeight);
-      }
-    };
-    
-    setTimeout(detectAndApply, 50);
-    setTimeout(detectAndApply, 150);
-    scrollToBottom();
-  };
+  const onInputFocus = useCallback(() => handleInputFocus(inputRef), [handleInputFocus]);
 
   const handleMessagesClick = (event: MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
@@ -675,175 +141,13 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
     );
   }, [user]);
 
-  // Build chat groups from messages
-  const chatGroups = useMemo<ChatThreadProps["groups"]>(() => {
-    if (!messages.length) return [];
-
-    // Wait for memberNames to be available OR we have additionalNames
-    const hasMemberNames = memberNames instanceof Map ? memberNames.size > 0 : memberNames ? Object.keys(memberNames).length > 0 : false;
-    const hasAdditionalNames = additionalNames.size > 0;
-    
-    if (!hasMemberNames && !hasAdditionalNames) {
-      console.log('[MiniLeagueChatBeta] No names available yet, returning empty groups');
-      return [];
-    }
-
-    // DEBUG: Log names and message user_ids to diagnose "Unknown" author issue
-    if (import.meta.env.DEV) {
-      const memberNameEntries = memberNames instanceof Map
-        ? Array.from(memberNames.entries()).slice(0, 5)
-        : memberNames ? Object.entries(memberNames).slice(0, 5) : [];
-      const additionalNameEntries = Array.from(additionalNames.entries()).slice(0, 5);
-      const messageUserIds = [...new Set(messages.map(m => m.user_id))].slice(0, 5);
-      console.log('[MiniLeagueChatBeta] Building groups:', {
-        memberNamesCount: memberNames instanceof Map ? memberNames.size : memberNames ? Object.keys(memberNames).length : 0,
-        additionalNamesCount: additionalNames.size,
-        memberNamesSample: memberNameEntries,
-        additionalNamesSample: additionalNameEntries,
-        messageUserIdsSample: messageUserIds,
-        messagesCount: messages.length,
-      });
-    }
-
-    let lastDayKey: string | null = null;
-    const groups = messages.reduce<ChatThreadProps["groups"]>((acc, msg) => {
-      const isOwnMessage = msg.user_id === user?.id;
-      const resolvedName = resolveName(msg.user_id, memberNames, additionalNames);
-      const authorName = resolvedName || (isOwnMessage ? currentUserDisplayName : "");
-      const fallbackName = authorName || (isOwnMessage ? "You" : "Unknown");
-
-      // DEBUG: Log when we can't resolve a name (only in dev, once per user)
-      if (import.meta.env.DEV && fallbackName === "Unknown" && !fetchedUserIdsRef.current.has(msg.user_id)) {
-        console.warn('[MiniLeagueChatBeta] Could not resolve name for user_id:', msg.user_id, 'isOwnMessage:', isOwnMessage);
-      }
-
-      const avatarInitials = !isOwnMessage ? initials(fallbackName) : undefined;
-
-      const createdDate = new Date(msg.created_at);
-      const dayKey = createdDate.toDateString();
-      const shouldLabelDay = dayKey !== lastDayKey;
-      if (shouldLabelDay) {
-        lastDayKey = dayKey;
-      }
-
-      const replyAuthorName = msg.reply_to 
-        ? (resolveName(msg.reply_to.user_id, memberNames, additionalNames) || "Unknown")
-        : null;
-
-      const messagePayload = {
-        id: msg.id,
-        text: msg.content,
-        time: formatTime(msg.created_at),
-        status: msg.status && msg.status !== "sent" ? msg.status : undefined,
-        messageId: msg.id,
-        replyTo: msg.reply_to ? {
-          id: msg.reply_to.id,
-          content: msg.reply_to.content,
-          authorName: replyAuthorName || undefined,
-        } : null,
-      };
-
-      const lastGroup = acc[acc.length - 1];
-      const lastGroupUserId = lastGroup?.messages.length > 0 && lastGroup.messages[0].messageId
-        ? messages.find(m => m.id === lastGroup.messages[0].messageId)?.user_id 
-        : null;
-      const canAppendToLast =
-        lastGroup &&
-        !shouldLabelDay &&
-        lastGroup.isOwnMessage === isOwnMessage &&
-        lastGroupUserId === msg.user_id;
-
-      if (canAppendToLast) {
-        const baseId = lastGroup.id.includes('-') ? lastGroup.id.split('-')[0] : lastGroup.id;
-        const updatedMessages = lastGroup.messages.map(existingMsg => {
-          const originalMsg = existingMsg.messageId ? messages.find(m => m.id === existingMsg.messageId) : null;
-          if (originalMsg?.reply_to) {
-            const updatedReplyAuthorName = resolveName(originalMsg.reply_to.user_id, memberNames, additionalNames) || "Unknown";
-            return {
-              ...existingMsg,
-              replyTo: existingMsg.replyTo ? {
-                ...existingMsg.replyTo,
-                authorName: updatedReplyAuthorName || undefined,
-              } : null,
-            };
-          }
-          return existingMsg;
-        });
-        
-        const updatedGroup = {
-          ...lastGroup,
-          id: `${baseId}-${fallbackName}`,
-          author: fallbackName,
-          avatarInitials,
-          userId: msg.user_id,
-          messages: [...updatedMessages, messagePayload],
-        };
-        return [...acc.slice(0, -1), updatedGroup];
-      } else {
-        return [...acc, {
-          id: `${msg.id}-${fallbackName}`,
-          author: fallbackName,
-          avatarInitials,
-          isOwnMessage,
-          userId: msg.user_id,
-          dayLabel: shouldLabelDay ? formatDayLabel(msg.created_at) : undefined,
-          messages: [messagePayload],
-        }];
-      }
-    }, []);
-
-    // Update groups to ensure all names are resolved
-    return groups.map((group) => {
-      const baseGroup = { ...group };
-      
-      const updatedMessages = baseGroup.messages.map(msg => {
-        const originalMsg = msg.messageId ? messages.find(m => m.id === msg.messageId) : null;
-        if (originalMsg?.reply_to && msg.replyTo) {
-          const updatedReplyAuthorName = resolveName(originalMsg.reply_to.user_id, memberNames, additionalNames) || "Unknown";
-          if (updatedReplyAuthorName !== msg.replyTo.authorName) {
-            return {
-              ...msg,
-              replyTo: {
-                ...msg.replyTo,
-                authorName: updatedReplyAuthorName || undefined,
-              },
-            };
-          }
-        }
-        return msg;
-      });
-      
-      if (baseGroup.author === "Unknown" && baseGroup.messages.length > 0 && baseGroup.messages[0].messageId) {
-        const firstMessage = messages.find(m => m.id === baseGroup.messages[0].messageId);
-        if (firstMessage) {
-          const resolvedName = resolveName(firstMessage.user_id, memberNames, additionalNames);
-          if (resolvedName && resolvedName !== "Unknown") {
-            const baseId = baseGroup.id.includes('-') ? baseGroup.id.split('-')[0] : baseGroup.id;
-            return {
-              ...baseGroup,
-              id: `${baseId}-${resolvedName}`,
-              author: resolvedName,
-              avatarInitials: initials(resolvedName),
-              userId: firstMessage.user_id,
-              messages: updatedMessages,
-            };
-          }
-        }
-      }
-      
-      return {
-        ...baseGroup,
-        messages: updatedMessages,
-      };
-    });
-  }, [currentUserDisplayName, memberNames, additionalNames, messages, user?.id]);
-
-  // Force re-render when memberNames loads
-  const chatThreadKey = useMemo(() => {
-    const authorNames = chatGroups.map(g => g.author).join(',');
-    const hasUnknown = chatGroups.some(g => g.author === "Unknown");
-    return `chat-${chatGroups.length}-${hasUnknown ? 'unknown' : 'resolved'}-${authorNames.slice(0, 50)}`;
-  }, [chatGroups]);
+  const { groups: chatGroups, key: chatThreadKey } = useChatGroups({
+    messages,
+    currentUserId: user?.id ?? null,
+    currentUserDisplayName,
+    hasAnyNames,
+    getName,
+  });
   
   // Simple ref callback: just store the ref and check scrollability
   // No scroll logic needed - CSS column-reverse handles positioning
@@ -1040,7 +344,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
             key={chatThreadKey}
             groups={chatGroups}
             reactions={reactions}
-            onReactionClick={handleReactionClick}
+            onReactionClick={onReactionClick}
             onMessageClick={(messageId, content, authorName) => {
               const message = messages.find(m => m.id === messageId);
               if (message) {
@@ -1071,7 +375,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
 
       <div
         ref={inputAreaRef}
-        className="flex-shrink-0 border-t border-slate-200 bg-white px-4 py-3"
+        className="flex-shrink-0 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3"
         style={{
           paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px))`,
           position: inputBottom > 0 ? "fixed" : "relative",
@@ -1110,10 +414,10 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
             </button>
           </div>
         )}
-        <div className="flex items-end gap-3 bg-slate-100 rounded-2xl px-3 py-2 relative">
+        <div className="flex items-end gap-3 bg-slate-100 dark:bg-slate-700 rounded-2xl px-3 py-2 relative">
           <textarea
             ref={inputRef}
-            className="flex-1 bg-transparent resize-none focus:outline-none text-sm text-slate-800 placeholder:text-slate-400"
+            className="flex-1 bg-transparent resize-none focus:outline-none text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500"
             rows={1}
             value={draft}
             disabled={!miniLeagueId || sending}
@@ -1155,7 +459,7 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError }: MiniLe
                 }
               });
             }}
-            onFocus={handleInputFocus}
+            onFocus={onInputFocus}
             style={{
               minHeight: "42px",
               maxHeight: "120px",
