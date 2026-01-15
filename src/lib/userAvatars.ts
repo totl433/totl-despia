@@ -1,6 +1,10 @@
 import { supabase } from './supabase';
 import imageCompression from 'browser-image-compression';
 
+function withVersionParam(url: string, version: string | number): string {
+  return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(String(version))}`;
+}
+
 /**
  * Large color palette for avatar backgrounds
  * Ensures good contrast with white text for initials
@@ -161,7 +165,7 @@ export async function generateAndUploadDefaultAvatar(
       .from('user-avatars')
       .getPublicUrl(filePath);
 
-    const avatarUrl = data.publicUrl;
+    const avatarUrl = withVersionParam(data.publicUrl, Date.now());
     
     // Log URL for debugging
     if (import.meta.env.DEV) {
@@ -237,7 +241,8 @@ export async function uploadUserAvatar(
       .from('user-avatars')
       .getPublicUrl(filePath);
 
-    const avatarUrl = data.publicUrl;
+    // Add a version param so caches (browser/WebView/CDN) can't stick to an old image.
+    const avatarUrl = withVersionParam(data.publicUrl, Date.now());
     
     // Log URL for debugging
     if (import.meta.env.DEV) {

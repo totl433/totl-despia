@@ -55,9 +55,9 @@ export default function EditAvatarPage() {
         }
         
         // Check if the file actually exists in storage
-        // Extract file path from URL: https://...supabase.co/storage/v1/object/public/user-avatars/{userId}/avatar.png
+        // Extract file path from URL: https://...supabase.co/storage/v1/object/public/user-avatars/{userId}/avatar.png?v=...
         const avatarUrl = data.avatar_url;
-        const urlMatch = avatarUrl.match(/user-avatars\/([^\/]+)\/([^\/]+)/);
+        const urlMatch = avatarUrl.match(/user-avatars\/([^\/]+)\/([^\/\?]+)/);
         
         if (!urlMatch) {
           // URL format doesn't match expected pattern, assume not custom
