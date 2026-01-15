@@ -349,7 +349,10 @@ export default function ScoreIndicator({
  </svg>
  </button>
  )}
+ <div className="flex items-baseline gap-2">
+ <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">Score</span>
  <div className="text-4xl font-extrabold text-[#1C8376]">{score}/{total}</div>
+ </div>
  </div>
  <div className="flex items-center gap-3">
  {topPercent !== null && topPercent !== undefined && (() => {
