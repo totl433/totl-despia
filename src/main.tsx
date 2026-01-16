@@ -267,10 +267,13 @@ function AppShell() {
   // This prevents the home page from ever rendering if we have a notification deep link
   const searchParams = new URLSearchParams(window.location.search);
   const leagueCode = searchParams.get('leagueCode');
+  const rawTab = searchParams.get('tab');
+  const tab = rawTab === 'gw' || rawTab === 'mlt' || rawTab === 'gwr' || rawTab === 'chat' ? rawTab : 'chat';
   
-  // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat)
+  // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat by default)
+  // Also supports: ?leagueCode=ABC12&tab=gw (convert to /league/:code?tab=gw)
   if (leagueCode && !window.location.pathname.startsWith('/league/')) {
-    const targetUrl = `/league/${leagueCode}?tab=chat`;
+    const targetUrl = `/league/${leagueCode}?tab=${tab}`;
     window.history.replaceState(null, '', targetUrl);
   }
   
@@ -303,17 +306,19 @@ function AppContent() {
   useLayoutEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const leagueCode = searchParams.get('leagueCode');
+    const rawTab = searchParams.get('tab');
+    const tab = rawTab === 'gw' || rawTab === 'mlt' || rawTab === 'gwr' || rawTab === 'chat' ? rawTab : 'chat';
     
-    // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat)
+    // Handle legacy format: ?leagueCode=ABC12 (convert to /league/:code?tab=chat by default)
+    // Also supports: ?leagueCode=ABC12&tab=gw (convert to /league/:code?tab=gw)
     if (leagueCode && !location.pathname.startsWith('/league/')) {
-      navigate(`/league/${leagueCode}?tab=chat`, { replace: true });
+      navigate(`/league/${leagueCode}?tab=${tab}`, { replace: true });
       return;
     }
     
     // For direct URLs like /league/ABC12?tab=chat from OneSignal web_url
     // If we're not already on that exact path, navigate to it
     if (location.pathname.startsWith('/league/')) {
-      const tab = searchParams.get('tab');
       if (tab === 'chat') {
         // Already on the correct path with tab=chat
         // League page will handle opening the chat tab

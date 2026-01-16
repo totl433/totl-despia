@@ -110,9 +110,10 @@ async function checkAndNotifyFinalSubmission(
       return { success: false, error: 'Failed to format event ID' };
     }
 
-    // Build deep link URL with tab parameter (matching chat notification pattern)
+    // Build deep link URL in the same format as chat deep links:
+    // Use home + leagueCode query params so AppShell can rewrite BEFORE Home renders.
     const baseUrl = getBaseUrl();
-    const relativeUrl = leagueCode ? `/league/${leagueCode}?tab=gw` : undefined;
+    const relativeUrl = leagueCode ? `/?leagueCode=${leagueCode}&tab=gw` : undefined;
     const fullUrl = relativeUrl ? `${baseUrl}${relativeUrl}` : undefined;
 
     // Dispatch via unified system
@@ -127,6 +128,8 @@ async function checkAndNotifyFinalSubmission(
         league_id: leagueId,
         league_code: leagueCode,
         gw,
+        url: fullUrl,
+        navigateTo: fullUrl,
       },
       url: fullUrl, // Use full URL like chat notifications do
       league_id: leagueId,
