@@ -812,7 +812,7 @@ function AppContent() {
               <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
               <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
               <Route path="/cookie-policy" element={<RequireAuth><CookiePolicyPage /></RequireAuth>} />
-              <Route path="/privacy-policy" element={<RequireAuth><PrivacyPolicyPage /></RequireAuth>} />
+              <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
               <Route path="/terms-and-conditions" element={<RequireAuth><TermsAndConditionsPage /></RequireAuth>} />
               <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
               <Route path="/admin-data" element={<RequireAuth><AdminDataPage /></RequireAuth>} />
