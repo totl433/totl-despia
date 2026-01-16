@@ -237,6 +237,7 @@ const CookiePolicyPage = lazy(() => import("./pages/CookiePolicy"));
 const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsAndConditionsPage = lazy(() => import("./pages/TermsAndConditions"));
 const HomeExperimental = lazy(() => import("./pages/HomeExperimental"));
+const SupportPage = lazy(() => import("./pages/Support"));
 
 // New onboarding + auth flow
 import { AuthGate } from "./features/auth";
@@ -763,7 +764,7 @@ function AppContent() {
         )}
 
         {/* Global Predictions Banner - hide on auth page and full-screen pages */}
-        {!isFullScreenPage && location.pathname !== '/auth' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions' && location.pathname !== '/global' && (
+        {!isFullScreenPage && location.pathname !== '/auth' && location.pathname !== '/support' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions' && location.pathname !== '/global' && (
           <ErrorBoundary fallback={null}>
             <PredictionsBanner />
           </ErrorBoundary>
@@ -793,6 +794,7 @@ function AppContent() {
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/auth" element={<AuthGate />} />
+              <Route path="/support" element={<SupportPage />} />
               <Route path="/api-admin" element={<RequireAuth><ApiAdmin /></RequireAuth>} />
               <Route path="/swipe-card-preview" element={<RequireAuth><SwipeCardPreview /></RequireAuth>} />
               <Route path="/" element={<RequireAuth><ErrorBoundary><HomePage /></ErrorBoundary></RequireAuth>} />
@@ -823,6 +825,7 @@ function AppContent() {
         {/* Only hide completely on specific swipe routes, otherwise use shouldHide prop */}
         {/* Also hide on desktop (lg+) */}
         {location.pathname !== '/auth' && 
+         location.pathname !== '/support' &&
          location.pathname !== '/predictions/swipe' && 
          location.pathname !== '/swipe-card-preview' &&
          <div className="lg:hidden">
