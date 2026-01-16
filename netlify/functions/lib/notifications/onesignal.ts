@@ -78,9 +78,10 @@ export function buildPayload(
   
   // Add deep link URL
   if (url) {
-    // For native apps (Despia), use web_url for deep linking
-    // Don't set both url and web_url - OneSignal doesn't allow it
-    payload.web_url = url;
+    // For Despia (native OneSignal SDK), use the top-level `url` field.
+    // This is what the native SDK uses to open an external URL on notification tap.
+    // (Do not set both `url` and `web_url`.)
+    payload.url = url;
   }
   
   return payload;
