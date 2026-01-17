@@ -255,6 +255,7 @@ import ScrollToTop from "./components/ScrollToTop";
 // import { isLoadEverythingFirstEnabled } from "./lib/featureFlags"; // Unused - feature flag checked inline
 import { loadInitialData } from "./services/initialDataLoader";
 import { bootLog } from "./lib/logEvent";
+import { isDespiaAvailable } from "./lib/platform";
 import { supabase } from "./lib/supabase";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -301,6 +302,7 @@ function AppContent() {
   const navigate = useNavigate();
   const { showWelcome, dismissWelcome, user, loading: authLoading } = useAuth();
   const [initialDataLoading, setInitialDataLoading] = useState(false);
+  const isNativeApp = isDespiaAvailable();
   
   // Handle deep links from notifications (iOS native)
   // Check URL immediately - AppShell already updated window.location, but ensure React Router sees it
@@ -750,7 +752,13 @@ function AppContent() {
       )}
 
       {/* Main Content Area */}
-      <div>
+      <div
+        style={
+          isNativeApp
+            ? { paddingTop: "var(--safe-area-top)", paddingBottom: "var(--safe-area-bottom)" }
+            : undefined
+        }
+      >
         {/* Scroll to top on route change - must be inside Router */}
         <ScrollToTop />
         
