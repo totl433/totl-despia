@@ -101,11 +101,8 @@ export default function MiniLeagueGwTableCard({
       }}
     >
       <style>{`
-        @keyframes pulse-score {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.7; }
-        }
-        .pulse-live-score { animation: pulse-score 2s ease-in-out infinite; }
+        /* Intentionally no pulsing cell animations on the Home ML cards.
+           Live state is indicated via the red dot(s) instead. */
       `}</style>
       
       {/* Chat Badge */}
@@ -217,11 +214,11 @@ export default function MiniLeagueGwTableCard({
                             <span className="truncate">{r.name}</span>
                           </span>
                         </td>
-                        <td className={`py-2 text-center tabular-nums font-bold text-[#1C8376] text-xs bg-white dark:bg-slate-800 w-10 pl-1 pr-1 ${isLive ? 'pulse-live-score' : ''}`}>
+                        <td className="py-2 text-center tabular-nums font-bold text-[#1C8376] text-xs bg-white dark:bg-slate-800 w-10 pl-1 pr-1">
                           {r.score}
                         </td>
                         {members.length >= 3 && (
-                          <td className={`py-2 text-center tabular-nums text-xs bg-white dark:bg-slate-800 w-8 pl-1 pr-1 ${isLive ? 'pulse-live-score' : ''}`}>
+                          <td className="py-2 text-center tabular-nums text-xs text-slate-900 dark:text-slate-200 bg-white dark:bg-slate-800 w-8 pl-1 pr-1">
                             {r.unicorns}
                           </td>
                         )}
