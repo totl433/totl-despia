@@ -48,7 +48,6 @@ export default function MiniLeagueGwTableCard({
   leagueName,
   members,
   rows,
-  currentUserId,
   currentGw,
   maxMemberCount: _maxMemberCount,
   avatar,
@@ -102,17 +101,10 @@ export default function MiniLeagueGwTableCard({
       }}
     >
       <style>{`
-        @keyframes flash {
-          0%, 100% { background-color: rgb(209, 250, 229); }
-          25% { background-color: rgb(167, 243, 208); }
-          50% { background-color: rgb(209, 250, 229); }
-          75% { background-color: rgb(167, 243, 208); }
-        }
         @keyframes pulse-score {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.7; }
         }
-        .flash-user-row { animation: flash 1.5s ease-in-out 3; }
         .pulse-live-score { animation: pulse-score 2s ease-in-out infinite; }
       `}</style>
       
@@ -127,7 +119,7 @@ export default function MiniLeagueGwTableCard({
       
       {/* Header */}
       <div className="px-4 py-3 bg-white dark:bg-slate-800 rounded-t-xl">
-        <div className="flex items-start gap-2">
+        <div className="flex items-center gap-2">
           <img
             src={getLeagueAvatarUrl({ id: leagueId, avatar })}
             alt={`${leagueName} avatar`}
@@ -141,12 +133,12 @@ export default function MiniLeagueGwTableCard({
               }
             }}
           />
-          <div className="flex-1 min-w-0 flex flex-col gap-1">
+          <div className="flex-1 min-w-0 flex flex-col justify-center">
             <h3 className="text-base font-bold text-black dark:text-slate-200 truncate">
               {leagueName}
             </h3>
             {displayRows.length > 0 && isFinished && !isLive && (
-              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-yellow-400 via-orange-500 to-pink-500 text-white shadow-sm flex-shrink-0 w-fit">
+              <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-yellow-400 via-orange-500 to-pink-500 text-white shadow-sm flex-shrink-0 w-fit">
                 <span className="text-[10px] font-semibold">
                   {isDraw ? 'Draw!' : `${displayRows[0].name.length > 15 ? displayRows[0].name.substring(0, 15) + '...' : displayRows[0].name} Wins!`}
                 </span>
@@ -189,11 +181,10 @@ export default function MiniLeagueGwTableCard({
                 </thead>
                 <tbody>
                   {displayRows.map((r, i) => {
-                    const isMe = r.user_id === currentUserId;
                     return (
                       <tr 
                         key={r.user_id} 
-                        className={isMe ? 'flash-user-row' : ''}
+                        className=""
                         style={{
                           position: 'relative',
                           backgroundColor: document.documentElement.classList.contains('dark') 
@@ -210,7 +201,15 @@ export default function MiniLeagueGwTableCard({
                           {i + 1}
                         </td>
                         <td className="py-2 truncate whitespace-nowrap bg-white dark:bg-slate-800 pl-2 pr-2 text-xs dark:text-slate-200">
-                          <span>{r.name}</span>
+                          <span className="inline-flex items-center gap-1 min-w-0">
+                            {isLive && (
+                              <span
+                                className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse flex-shrink-0"
+                                aria-hidden="true"
+                              />
+                            )}
+                            <span className="truncate">{r.name}</span>
+                          </span>
                         </td>
                         <td className={`py-2 text-center tabular-nums font-bold text-[#1C8376] text-xs bg-white dark:bg-slate-800 w-10 pl-1 pr-1 ${isLive ? 'pulse-live-score' : ''}`}>
                           {r.score}

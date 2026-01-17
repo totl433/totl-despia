@@ -14,6 +14,14 @@ type LeagueMember = { id: string; name: string };
 type PickRow = { user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" };
 type ResultRowRaw = { gw: number; fixture_index: number; result?: "H" | "D" | "A" | null };
 type MLTableRow = { user_id: string; name: string; score: number; unicorns: number };
+type LiveScoreRowLite = {
+  api_match_id: number;
+  gw: number;
+  fixture_index: number | null;
+  home_score: number | null;
+  away_score: number | null;
+  status: string | null;
+};
 
 type LeagueDataInternal = {
   id: string;
@@ -222,6 +230,7 @@ export async function loadHomePageData(
     resultsResult,
     webPicksResult,
     appPicksResult,
+    liveScoresResult,
   ] = await Promise.all([
     supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle(),
     // IMPORTANT: use app_gw_results as the source of truth (matches /tables)
@@ -235,6 +244,11 @@ export async function loadHomePageData(
     supabase.from("app_gw_results").select("gw, fixture_index, result"),
     supabase.from("picks").select("user_id, gw, created_at").limit(10000),
     supabase.from("app_picks").select("user_id, gw, created_at").limit(10000),
+    // Seed Home mini-league live tables during LIVE by using live_scores outcomes (same rule as LeaguePage)
+    supabase
+      .from("live_scores")
+      .select("api_match_id, gw, fixture_index, home_score, away_score, status")
+      .eq("gw", currentGw),
   ]);
   
   // Log critical queries for debugging
@@ -436,6 +450,29 @@ export async function loadHomePageData(
   currentGwResults.forEach(r => {
     const out = rowToOutcome(r);
     if (out) currentGwOutcomes.set(r.fixture_index, out);
+  });
+
+  // Then, update with live scores for fixtures that are live or finished (LeaguePage behaviour)
+  const apiMatchIdToFixtureIndex = new Map<number, number>();
+  fixtures.forEach((f: any) => {
+    if (typeof f.api_match_id === "number") {
+      apiMatchIdToFixtureIndex.set(f.api_match_id, f.fixture_index);
+    }
+  });
+
+  ((liveScoresResult.data ?? []) as LiveScoreRowLite[]).forEach((ls) => {
+    const status = ls.status ?? "SCHEDULED";
+    const isStarted = status === "IN_PLAY" || status === "PAUSED" || status === "FINISHED";
+    if (!isStarted) return;
+    if (ls.home_score === null || ls.away_score === null) return;
+
+    const fixtureIndex =
+      typeof ls.fixture_index === "number" ? ls.fixture_index : apiMatchIdToFixtureIndex.get(ls.api_match_id);
+    if (typeof fixtureIndex !== "number") return;
+
+    if (ls.home_score > ls.away_score) currentGwOutcomes.set(fixtureIndex, "H");
+    else if (ls.away_score > ls.home_score) currentGwOutcomes.set(fixtureIndex, "A");
+    else currentGwOutcomes.set(fixtureIndex, "D");
   });
   
   console.log('[loadHomePageData] Calculating leagueRows for GW', currentGw, {

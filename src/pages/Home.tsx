@@ -32,6 +32,7 @@ type LeagueDataInternal = {
   latestRelevantGw?: number | null;
   webUserIds?: string[] | Set<string>;
 };
+type LeaguePickRow = { user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" };
 
 type Fixture = {
   id: string;
@@ -81,8 +82,12 @@ export default function HomePage() {
         seasonRank: null,
         fixtures: [],
         userPicks: {},
+        liveScores: {},
         leagueData: {},
         leagueSubmissions: {},
+        leaguePicks: {},
+        leagueSubmissionsSet: {},
+        leagueRows: {},
         hasCache: false,
       };
     }
@@ -182,7 +187,7 @@ export default function HomePage() {
         // Load league data from cache
         let leagueData: Record<string, LeagueDataInternal> = {};
         let leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }> = {};
-        let leaguePicks: Record<string, Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }>> = {};
+        let leaguePicks: Record<string, LeaguePickRow[]> = {};
         let leagueSubmissionsSet: Record<string, Set<string>> = {};
         let leagueRows: Record<string, Array<{ user_id: string; name: string; score: number; unicorns: number }>> = {};
         const leagueDataCacheKey = `home:leagueData:v6:${userId}:${cached.currentGw}`; // v6: Ensure HP ordering matches /tables
@@ -191,7 +196,7 @@ export default function HomePage() {
           const leagueDataCached = getCached<{
             leagueData: Record<string, any>;
             leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>;
-            leaguePicks?: Record<string, Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }>>;
+            leaguePicks?: Record<string, LeaguePickRow[]>;
             leagueSubmissionsSet?: Record<string, string[]>;
             leagueRows?: Record<string, Array<{ user_id: string; name: string; score: number; unicorns: number }>>;
           }>(leagueDataCacheKey);
@@ -268,6 +273,9 @@ export default function HomePage() {
       liveScores: {},
       leagueData: {},
       leagueSubmissions: {},
+      leaguePicks: {},
+      leagueSubmissionsSet: {},
+      leagueRows: {},
       hasCache: false,
     };
   };
@@ -297,6 +305,8 @@ export default function HomePage() {
   }>>(initialState.liveScores || {});
   const [leagueData, setLeagueData] = useState<Record<string, LeagueDataInternal>>(initialState.leagueData);
   const [leagueSubmissions, setLeagueSubmissions] = useState<Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }>>(initialState.leagueSubmissions);
+  const [leaguePicks, setLeaguePicks] = useState<Record<string, LeaguePickRow[]>>(initialState.leaguePicks || {});
+  const [leagueSubmissionsSet, setLeagueSubmissionsSet] = useState<Record<string, Set<string>>>(initialState.leagueSubmissionsSet || {});
   const [leagueRows, setLeagueRows] = useState<Record<string, Array<{ user_id: string; name: string; score: number; unicorns: number }>>>(initialState.leagueRows || {});
   
   const logoContainerRef = useRef<HTMLDivElement>(null);
@@ -919,6 +929,8 @@ export default function HomePage() {
         // Always set league data, even if empty - prevents infinite loading
         setLeagueData(data.leagueData);
         setLeagueSubmissions(data.leagueSubmissions);
+        setLeaguePicks(data.leaguePicks);
+        setLeagueSubmissionsSet(data.leagueSubmissionsSet);
         setLeagueRows(data.leagueRows);
         setBasicDataLoading(false);
       } catch (error: any) {
@@ -1481,6 +1493,73 @@ export default function HomePage() {
     return effectiveGameState === 'RESULTS_PRE_GW' && hasUserResults;
   }, [gw, user?.id, effectiveGameState, hasSubmittedCurrentGw, userPicks]);
 
+  // During LIVE, compute mini-league GW table rows using live scores (same outcome rule as LeaguePage)
+  const leagueRowsForDisplay = useMemo(() => {
+    if (effectiveGameState !== 'LIVE') return leagueRows;
+    if (!fixtures.length) return leagueRows;
+
+    const outcomes = new Map<number, "H" | "D" | "A">();
+    for (const f of fixtures) {
+      const ls = liveScores[f.fixture_index];
+      if (!ls) continue;
+      const status = ls.status;
+      const isStarted = status === 'IN_PLAY' || status === 'PAUSED' || status === 'FINISHED';
+      if (!isStarted) continue;
+
+      if (ls.result === 'H' || ls.result === 'D' || ls.result === 'A') {
+        outcomes.set(f.fixture_index, ls.result);
+        continue;
+      }
+
+      if (ls.homeScore > ls.awayScore) outcomes.set(f.fixture_index, 'H');
+      else if (ls.awayScore > ls.homeScore) outcomes.set(f.fixture_index, 'A');
+      else outcomes.set(f.fixture_index, 'D');
+    }
+
+    if (outcomes.size === 0) return leagueRows;
+
+    const next: Record<string, Array<{ user_id: string; name: string; score: number; unicorns: number }>> = {};
+    for (const league of leagues) {
+      const leagueId = league.id;
+      const members = leagueData[leagueId]?.members ?? [];
+      const submissions = leagueSubmissionsSet[leagueId] ?? new Set<string>();
+      const picks = leaguePicks[leagueId] ?? [];
+
+      const rows = members
+        .filter((m) => submissions.has(m.id))
+        .map((m) => ({ user_id: m.id, name: m.name, score: 0, unicorns: 0 }));
+
+      const picksByFixture = new Map<number, Array<{ user_id: string; pick: "H" | "D" | "A" }>>();
+      for (const p of picks) {
+        if (!submissions.has(p.user_id)) continue;
+        const arr = picksByFixture.get(p.fixture_index) ?? [];
+        arr.push({ user_id: p.user_id, pick: p.pick });
+        picksByFixture.set(p.fixture_index, arr);
+      }
+
+      outcomes.forEach((outcome, fixtureIndex) => {
+        const thesePicks = picksByFixture.get(fixtureIndex) ?? [];
+        const correctIds = thesePicks.filter(p => p.pick === outcome).map(p => p.user_id);
+
+        correctIds.forEach((uid) => {
+          const r = rows.find(x => x.user_id === uid);
+          if (r) r.score += 1;
+        });
+
+        // Unicorns: only one person got it right AND at least 3 members submitted
+        if (correctIds.length === 1 && submissions.size >= 3) {
+          const r = rows.find(x => x.user_id === correctIds[0]);
+          if (r) r.unicorns += 1;
+        }
+      });
+
+      rows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name));
+      next[leagueId] = rows;
+    }
+
+    return next;
+  }, [effectiveGameState, fixtures, liveScores, leagueRows, leagues, leagueData, leaguePicks, leagueSubmissionsSet]);
+
   // Only show loading if cache is completely missing (not stale)
   if (isLoading) {
     return (
@@ -1561,7 +1640,7 @@ export default function HomePage() {
                 leagues={leagues}
                 leagueData={leagueData}
                 leagueSubmissions={leagueSubmissions}
-                leagueRows={leagueRows}
+                leagueRows={leagueRowsForDisplay}
                 unreadByLeague={unreadByLeague}
             leagueDataLoading={false}
                 currentGw={gw}
