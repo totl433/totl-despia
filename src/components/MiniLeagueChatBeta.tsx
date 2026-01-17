@@ -230,17 +230,26 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError, isChatAc
         "User";
 
       try {
-        await fetch("/.netlify/functions/notifyLeagueMessageV2", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            leagueId: miniLeagueId,
-            senderId: user.id,
-            senderName,
-            content: text,
-            activeUserIds: [user.id],
-          }),
-        });
+        // Best-effort notifications: never block the chat UI on this.
+        // Some devices/networks can hang the request; we hard-timeout it.
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 3000);
+        try {
+          await fetch("/.netlify/functions/notifyLeagueMessageV2", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
+            body: JSON.stringify({
+              leagueId: miniLeagueId,
+              senderId: user.id,
+              senderName,
+              content: text,
+              activeUserIds: [user.id],
+            }),
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
       } catch (err) {
         // Silently fail - notifications are best effort
       }
@@ -259,7 +268,8 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError, isChatAc
         inputRef.current.style.height = "42px";
       }
       await sendMessage(text, replyingTo?.id || null);
-      await notifyRecipients(text);
+      // Don't block UI on notifications; they can be slow/hang on some networks.
+      notifyRecipients(text).catch(() => {});
       setReplyingTo(null);
       scrollToBottom();
     } catch (err: any) {
