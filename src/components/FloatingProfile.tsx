@@ -1,8 +1,10 @@
 import { Link } from'react-router-dom';
 import { useEffect, useState } from'react';
+import { isDespiaAvailable } from '../lib/platform';
 
 export default function FloatingProfile() {
  const [bannerHeight, setBannerHeight] = useState(0);
+ const isNativeApp = isDespiaAvailable();
 
  useEffect(() => {
  // Check if banner is visible and get its height
@@ -58,9 +60,12 @@ export default function FloatingProfile() {
  // Position below banner with some spacing (1rem = 16px spacing)
  // Default to 16px (top-4) if no banner, otherwise banner height + 16px spacing
  const topPosition = bannerHeight > 0 ? bannerHeight + 16 : 16;
+ const topStyle = isNativeApp
+   ? `calc(${topPosition}px + var(--safe-area-top))`
+   : `${topPosition}px`;
 
  return (
- <div className="fixed right-4 z-50 flex items-center gap-2" style={{ top: `${topPosition}px`, transition:'top 0.2s ease-in-out' }}>
+ <div className="fixed right-4 z-50 flex items-center gap-2" style={{ top: topStyle, transition:'top 0.2s ease-in-out' }}>
  {/* How To Play Button */}
  <Link
  to="/how-to-play"
