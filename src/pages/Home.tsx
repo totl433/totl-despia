@@ -608,6 +608,80 @@ export default function HomePage() {
     apiMatchIds.length > 0 ? apiMatchIds : undefined
   );
 
+  // Safety net: gentle polling during LIVE (only when page is visible) to self-heal if realtime stalls
+  const [liveScoresMapFromPoll, setLiveScoresMapFromPoll] = useState<Map<number, any>>(new Map());
+  const liveScoresMapFromPollPrevRef = useRef<Map<number, any>>(new Map());
+  const apiMatchIdsKeyForPoll = useMemo(() => apiMatchIds.join(','), [apiMatchIds]);
+  useEffect(() => {
+    if (!gw || apiMatchIds.length === 0) return;
+    if (effectiveGameState !== 'LIVE') return;
+
+    let alive = true;
+    let intervalId: number | null = null;
+
+    const fetchPoll = async () => {
+      if (!alive) return;
+      if (typeof document !== 'undefined' && document.hidden) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('live_scores')
+          .select('api_match_id, gw, fixture_index, home_score, away_score, status, minute, goals, red_cards, home_team, away_team')
+          .eq('gw', gw)
+          .in('api_match_id', apiMatchIds);
+
+        if (!alive) return;
+        if (error) {
+          console.warn('[Home] Live score poll failed (non-fatal):', error);
+          return;
+        }
+
+        const next = new Map<number, any>();
+        (data ?? []).forEach((score: any) => {
+          if (score?.api_match_id) next.set(score.api_match_id, score);
+        });
+
+        const prev = liveScoresMapFromPollPrevRef.current;
+        const nextKeys = Array.from(next.keys());
+        const prevKeys = Array.from(prev.keys());
+        const keysChanged =
+          nextKeys.length !== prevKeys.length ||
+          nextKeys.some((k) => !prev.has(k)) ||
+          prevKeys.some((k) => !next.has(k));
+
+        const valuesChanged =
+          !keysChanged &&
+          nextKeys.some((k) => JSON.stringify(next.get(k)) !== JSON.stringify(prev.get(k)));
+
+        if (keysChanged || valuesChanged) {
+          liveScoresMapFromPollPrevRef.current = next;
+          setLiveScoresMapFromPoll(next);
+        }
+      } catch (e) {
+        console.warn('[Home] Live score poll error (non-fatal):', e);
+      }
+    };
+
+    const handleVisibility = () => {
+      if (typeof document !== 'undefined' && !document.hidden) {
+        fetchPoll();
+      }
+    };
+
+    // Initial fetch (if visible)
+    fetchPoll();
+
+    // Poll every ~25s while LIVE
+    intervalId = window.setInterval(fetchPoll, 25000);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      alive = false;
+      if (intervalId) window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [gw, apiMatchIdsKeyForPoll, effectiveGameState]);
+
   // Merge cached live scores with hook's live scores
   // Prioritize cached data for instant display - cached data shows immediately, hook updates in background
   // Use ref to store previous map to prevent unnecessary re-renders
@@ -623,6 +697,13 @@ export default function HomePage() {
       merged.set(apiMatchId, score);
     });
     }
+
+    // Merge polling safety-net data last (only present during LIVE)
+    if (liveScoresMapFromPoll.size > 0) {
+      liveScoresMapFromPoll.forEach((score, apiMatchId) => {
+        merged.set(apiMatchId, score);
+      });
+    }
     
     // Only return new Map if content actually changed
     if (merged.size !== liveScoresMapPrevRef.current.size ||
@@ -634,7 +715,7 @@ export default function HomePage() {
     return merged;
     }
     return liveScoresMapPrevRef.current;
-  }, [cachedLiveScoresMap, liveScoresMapFromHook]);
+  }, [cachedLiveScoresMap, liveScoresMapFromHook, liveScoresMapFromPoll]);
 
   // Cache live scores when available
   useEffect(() => {
@@ -783,42 +864,42 @@ export default function HomePage() {
       result?: "H" | "D" | "A" | null;
     }> = { ...liveScoresFromCache };
     
-    // Only merge hook updates if they have meaningful data (not just empty Map)
-    // This prevents re-renders when hook initializes with empty Map
-    if (fixtures?.length && liveScoresMap.size > 0 && liveScoresMap.size > cachedLiveScoresMap.size) {
-    for (const fixture of fixtures) {
-      if (fixture.api_match_id) {
-        const liveScore = liveScoresMap.get(fixture.api_match_id);
-        if (liveScore) {
-          result[fixture.fixture_index] = {
-            homeScore: liveScore.home_score ?? 0,
-            awayScore: liveScore.away_score ?? 0,
-            status: liveScore.status || 'SCHEDULED',
-            minute: liveScore.minute ?? null,
-            goals: liveScore.goals ?? null,
-            red_cards: liveScore.red_cards ?? null,
-            home_team: liveScore.home_team ?? null,
-            away_team: liveScore.away_team ?? null
-          };
-        }
-      } else {
+    // Merge hook updates when they have content (don't overwrite cached data with an empty Map).
+    // NOTE: Previously we gated this by map size; that can prevent updates when IDs are unchanged.
+    if (fixtures?.length && liveScoresMap.size > 0) {
+      for (const fixture of fixtures) {
+        if (fixture.api_match_id) {
+          const liveScore = liveScoresMap.get(fixture.api_match_id);
+          if (liveScore) {
+            result[fixture.fixture_index] = {
+              homeScore: liveScore.home_score ?? 0,
+              awayScore: liveScore.away_score ?? 0,
+              status: liveScore.status || 'SCHEDULED',
+              minute: liveScore.minute ?? null,
+              goals: liveScore.goals ?? null,
+              red_cards: liveScore.red_cards ?? null,
+              home_team: liveScore.home_team ?? null,
+              away_team: liveScore.away_team ?? null
+            };
+          }
+        } else {
           // Handle non-API fixtures with gwResults
-        const resultValue = gwResults[fixture.fixture_index];
-        if (resultValue) {
-          result[fixture.fixture_index] = {
-            homeScore: resultValue === "H" ? 1 : resultValue === "A" ? 0 : 0,
-            awayScore: resultValue === "A" ? 1 : resultValue === "H" ? 0 : 0,
-            status: 'FINISHED',
-            minute: null,
-            goals: null,
-            red_cards: null,
-            home_team: null,
-            away_team: null,
-            result: resultValue
-          };
+          const resultValue = gwResults[fixture.fixture_index];
+          if (resultValue) {
+            result[fixture.fixture_index] = {
+              homeScore: resultValue === "H" ? 1 : resultValue === "A" ? 0 : 0,
+              awayScore: resultValue === "A" ? 1 : resultValue === "H" ? 0 : 0,
+              status: 'FINISHED',
+              minute: null,
+              goals: null,
+              red_cards: null,
+              home_team: null,
+              away_team: null,
+              result: resultValue
+            };
+          }
         }
       }
-    }
     }
     
     // Only return new object if content actually changed (prevent unnecessary re-renders)
@@ -829,7 +910,7 @@ export default function HomePage() {
     return result;
     }
     return liveScoresPrevRef.current;
-  }, [liveScoresFromCache, liveScoresMap, fixtures, gwResults, cachedLiveScoresMap.size]);
+  }, [liveScoresFromCache, liveScoresMap, fixtures, gwResults]);
 
   // Track if data load is in progress to prevent race conditions
   const dataLoadInProgressRef = useRef(false);

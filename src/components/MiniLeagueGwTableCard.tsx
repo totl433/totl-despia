@@ -10,6 +10,7 @@ export interface MiniLeagueGwTableCardProps {
   leagueName: string;
   members: Array<{ id: string; name: string }>;
   rows: Array<{ user_id: string; name: string; score: number; unicorns: number }>; // Pre-calculated rows
+  rowsLoading?: boolean;
   currentUserId?: string;
   currentGw: number | null;
   maxMemberCount?: number;
@@ -48,6 +49,7 @@ export default function MiniLeagueGwTableCard({
   leagueName,
   members,
   rows,
+  rowsLoading = false,
   currentGw,
   maxMemberCount: _maxMemberCount,
   avatar,
@@ -134,8 +136,14 @@ export default function MiniLeagueGwTableCard({
             }}
           />
           <div className="flex-1 min-w-0 flex flex-col justify-center">
-            <h3 className="text-base font-bold text-black dark:text-slate-200 truncate">
-              {leagueName}
+            <h3 className="text-base font-bold text-black dark:text-slate-200 truncate inline-flex items-center gap-1.5">
+              {isLive && (
+                <span
+                  className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse flex-shrink-0"
+                  aria-hidden="true"
+                />
+              )}
+              <span className="truncate">{leagueName}</span>
             </h3>
             {displayRows.length > 0 && isFinished && !isLive && (
               <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-yellow-400 via-orange-500 to-pink-500 text-white shadow-sm flex-shrink-0 w-fit">
@@ -225,6 +233,10 @@ export default function MiniLeagueGwTableCard({
                 </tbody>
               </table>
             </div>
+          </div>
+        ) : rowsLoading ? (
+          <div className="flex justify-center py-8 flex-1">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600"></div>
           </div>
         ) : (
           <div className="text-center py-6 flex-1">

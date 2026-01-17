@@ -303,7 +303,9 @@ How To Play →`}
                   {leagues.map((league) => {
                     const cardData = memoizedCardData[league.id];
                     const members = cardData?.members || [];
-                    const rows = leagueRows[league.id] || [];
+                    const hasRowsKey = Object.prototype.hasOwnProperty.call(leagueRows, league.id);
+                    const rows = hasRowsKey ? (leagueRows[league.id] ?? []) : [];
+                    const rowsLoading = !hasRowsKey;
                     
                     return (
                       <MiniLeagueGwTableCard
@@ -313,6 +315,7 @@ How To Play →`}
                         leagueName={league.name}
                         members={members}
                         rows={rows}
+                        rowsLoading={rowsLoading}
                         currentUserId={currentUserId}
                         currentGw={currentGw}
                         maxMemberCount={maxMemberCount}
