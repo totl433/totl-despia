@@ -8,6 +8,7 @@ import { useLiveScores } from "../hooks/useLiveScores";
 import { useGameweekState } from "../hooks/useGameweekState";
 import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import { PageHeader } from "../components/PageHeader";
+import { isDespiaAvailable } from "../lib/platform";
 import SegmentedToggle from "../components/SegmentedToggle";
 import UserPicksModal from "../components/UserPicksModal";
 import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
@@ -27,6 +28,7 @@ type GwPointsRow = {
 
 export default function GlobalLeaderboardPage() {
   const { user } = useAuth();
+  const isNativeApp = isDespiaAvailable();
   const [searchParams, setSearchParams] = useSearchParams();
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const userRowRef = useRef<HTMLTableRowElement>(null);
@@ -750,7 +752,10 @@ export default function GlobalLeaderboardPage() {
   }, [loading, user?.id, activeTab, rowsFiltered, form5Rows, form10Rows, lastGwRows]);
 
   return (
-    <div className="fixed inset-0 bg-slate-50 dark:bg-slate-900 overflow-hidden flex flex-col">
+    <div
+      className="fixed inset-0 bg-slate-50 dark:bg-slate-900 overflow-hidden flex flex-col"
+      style={isNativeApp ? { paddingTop: "var(--safe-area-top)" } : undefined}
+    >
       <style>{`
         @keyframes sparkle {
           0%, 100% {
