@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -25,6 +25,10 @@ import SubmissionStatusTable from "../components/league/SubmissionStatusTable";
 import LeagueFixtureSection from "../components/league/LeagueFixtureSection";
 import { VOLLEY_USER_ID, VOLLEY_NAME } from "../lib/volley";
 import { fetchUserLeagues } from "../services/userLeagues";
+import { useLeagueTabs } from "../hooks/useLeagueTabs";
+import { useLeaguePageLayoutLock } from "../hooks/useLeaguePageLayoutLock";
+import { useLeagueMeta } from "../hooks/useLeagueMeta";
+import { computeGwTableRows } from "../lib/leagueScoring";
 
 const MAX_MEMBERS = 8;
 
@@ -104,8 +108,6 @@ export default function LeaguePage() {
   
   const { code = "" } = useParams();
   hookCallCountRef.current++;
-  const [searchParams, setSearchParams] = useSearchParams();
-  hookCallCountRef.current++;
   const { user } = useAuth();
   hookCallCountRef.current++;
   const { currentGw: hookCurrentGw } = useCurrentGameweek();
@@ -123,135 +125,7 @@ export default function LeaguePage() {
   }, [oldSchoolMode]);
   hookCallCountRef.current++;
 
-  // Prevent body/html scrolling and keep header fixed
-  useEffect(() => {
-    // Prevent body and html from scrolling
-    document.body.classList.add('league-page-active');
-    document.documentElement.classList.add('league-page-active');
-    
-    // Ensure header stays fixed - check periodically and on scroll
-    const preventHeaderScroll = () => {
-      const header = document.querySelector('.league-header-fixed') as HTMLElement;
-      if (header) {
-        const currentTop = header.style.top || window.getComputedStyle(header).top;
-        if (currentTop !== '0px' && currentTop !== '0') {
-          header.style.top = '0';
-          header.style.transform = 'translate3d(0, 0, 0)';
-        }
-      }
-    };
-    
-    // Monitor window scroll and reset header if it moves
-    const handleWindowScroll = () => {
-      preventHeaderScroll();
-      // Reset window scroll to 0 if it somehow scrolled
-      if (window.scrollY !== 0 || window.pageYOffset !== 0) {
-        window.scrollTo(0, 0);
-      }
-    };
-    
-    // Prevent touchmove outside content wrapper that could cause body scroll
-    const handleTouchMove = (e: TouchEvent) => {
-      const target = e.target as HTMLElement;
-      // Only prevent if touching outside scrollable areas
-      const isInScrollableArea = target.closest('.league-content-wrapper') || 
-                                  target.closest('.league-header-fixed') ||
-                                  target.closest('.chat-tab-wrapper');
-      if (!isInScrollableArea) {
-        e.preventDefault();
-      }
-    };
-    
-    window.addEventListener('scroll', handleWindowScroll, { passive: true });
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    
-    // Check periodically to ensure header stays fixed
-    const checkInterval = setInterval(preventHeaderScroll, 100);
-    
-    preventHeaderScroll();
-    
-    return () => {
-      document.body.classList.remove('league-page-active');
-      document.documentElement.classList.remove('league-page-active');
-      window.removeEventListener('scroll', handleWindowScroll);
-      document.removeEventListener('touchmove', handleTouchMove);
-      clearInterval(checkInterval);
-    };
-  }, []);
-
-  // Keep header fixed when keyboard appears
-  useEffect(() => {
-    const handleFocusIn = (e: FocusEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-        // Prevent page scroll when keyboard appears
-        setTimeout(() => {
-          window.scrollTo(0, 0);
-          const header = document.querySelector('.league-header-fixed');
-          if (header) {
-            (header as HTMLElement).style.top = '0';
-          }
-        }, 100);
-      }
-    };
-
-    const handleResize = () => {
-      // Ensure header stays at top on resize (keyboard show/hide)
-      const header = document.querySelector('.league-header-fixed');
-      if (header) {
-        (header as HTMLElement).style.top = '0';
-      }
-      // Only scroll to top on resize if it's a keyboard-related resize (significant height change)
-      // Don't scroll on tab changes or minor layout shifts
-    };
-
-    document.addEventListener('focusin', handleFocusIn);
-    window.addEventListener('resize', handleResize);
-    window.addEventListener('orientationchange', handleResize);
-
-    return () => {
-      document.removeEventListener('focusin', handleFocusIn);
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('orientationchange', handleResize);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const visualViewport = window.visualViewport;
-    if (!visualViewport) return;
-
-    let raf: number | null = null;
-
-    const applyTransform = () => {
-      const headerEl = headerRef.current;
-      if (!headerEl) return;
-      const offset = visualViewport.offsetTop ?? 0;
-      headerEl.style.setProperty(
-        "transform",
-        `translate3d(0, ${offset}px, 0)`,
-        "important"
-      );
-    };
-
-    const scheduleUpdate = () => {
-      if (raf) cancelAnimationFrame(raf);
-      raf = window.requestAnimationFrame(applyTransform);
-    };
-
-    scheduleUpdate();
-    visualViewport.addEventListener("resize", scheduleUpdate);
-    visualViewport.addEventListener("scroll", scheduleUpdate);
-
-    return () => {
-      if (raf) cancelAnimationFrame(raf);
-      visualViewport.removeEventListener("resize", scheduleUpdate);
-      visualViewport.removeEventListener("scroll", scheduleUpdate);
-      if (headerRef.current) {
-        headerRef.current.style.removeProperty("transform");
-      }
-    };
-  }, []);
+  const { headerRef } = useLeaguePageLayoutLock();
 
   // Try to get league from cache first (pre-loaded during initial data load)
   const getInitialLeague = (): League | null => {
@@ -271,45 +145,15 @@ export default function LeaguePage() {
     return null;
   };
 
-  const [league, setLeague] = useState<League | null>(() => {
-    return getInitialLeague();
-  });
+  const { league, members, firstMember, isMember, isAdmin, loading, setLeague } =
+    useLeagueMeta({ code, userId: user?.id });
   hookCallCountRef.current++;
   const [showBadgeModal, setShowBadgeModal] = useState(false);
   hookCallCountRef.current++;
   
-  // Initialize members from cache synchronously
-  const getInitialMembers = (): Member[] => {
-    const initialLeague = getInitialLeague();
-    if (!initialLeague?.id) return [];
-    try {
-      const cachedMembers = getCached<Array<[string, string]>>(`league:members:${initialLeague.id}`);
-      if (cachedMembers && cachedMembers.length > 0) {
-        return cachedMembers.map(([id, name]) => ({
-          id,
-          name: name || "(no name)",
-        }));
-      }
-    } catch {
-      // Cache miss
-    }
-    return [];
-  };
-  
-  const [members, setMembers] = useState<Member[]>(getInitialMembers);
-  hookCallCountRef.current++;
-  // Start with false if we have cached league, true otherwise
-  const [loading, setLoading] = useState(() => {
-    const initialLeague = getInitialLeague();
-    return !initialLeague;
-  });
-  hookCallCountRef.current++;
-
+  const { tab, setTab, deepLinkError } = useLeagueTabs({ code });
   // tabs: Chat / Mini League Table / GW Picks / GW Results
   // CHAT is always the default tab (never auto-switch to GW Table during live)
-  // Only exception: tab=chat in URL from notification deep links (handled by useEffect below)
-  const initialTab: "chat" | "mlt" | "gw" | "gwr" = 'chat'; // Always default to chat
-  const [tab, setTab] = useState<"chat" | "mlt" | "gw" | "gwr">(initialTab);
   
   // Track tab changes to debug component remounting
   const prevTabRef = useRef<"chat" | "mlt" | "gw" | "gwr" | null>(null);
@@ -405,8 +249,6 @@ export default function LeaguePage() {
     };
   }, []); // Only on mount/unmount
   hookCallCountRef.current++;
-  const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
-  hookCallCountRef.current++;
   const tabRef = useRef(tab);
   hookCallCountRef.current++;
   
@@ -420,52 +262,7 @@ export default function LeaguePage() {
   hookCallCountRef.current++;
   const manualGwSelectedRef = useRef(false);
   hookCallCountRef.current++;
-  const deepLinkAppliedRef = useRef(false);
-  hookCallCountRef.current++;
-  
-  // Handle deep link from notifications - open chat tab when tab=chat is in URL
-  // This runs on mount and when URL changes (e.g., from notification click on iOS)
-  useEffect(() => {
-    // Apply deep links at most once, and never override a user's manual tab selection.
-    if (deepLinkAppliedRef.current || manualTabSelectedRef.current) return;
 
-    const urlTab = searchParams.get('tab');
-    const urlLeagueCode = searchParams.get('leagueCode');
-    
-    // Clear any previous errors
-    setDeepLinkError(null);
-    
-    // Check if we have a deep link
-    if (urlTab === 'chat' || urlTab === 'gw' || urlTab === 'mlt' || urlTab === 'gwr' || urlLeagueCode) {
-      // Verify we're on the correct league page
-      if (urlLeagueCode && code !== urlLeagueCode) {
-        setDeepLinkError(`Deep link mismatch: URL has leagueCode=${urlLeagueCode} but we're on league ${code}. Current URL: ${window.location.href}`);
-        return;
-      }
-      
-      const targetTab =
-        urlTab === 'chat' || urlTab === 'gw' || urlTab === 'mlt' || urlTab === 'gwr'
-          ? urlTab
-          : null;
-
-      if (targetTab && tabRef.current !== targetTab) {
-        setTab(targetTab);
-      }
-
-      deepLinkAppliedRef.current = true;
-
-      // Clear deep-link params so they can't keep forcing tabs / triggering "notification open" logic.
-      const next = new URLSearchParams(searchParams);
-      next.delete('tab');
-      next.delete('leagueCode');
-      // Only update URL if something actually changed.
-      if (next.toString() !== searchParams.toString()) {
-        setSearchParams(next, { replace: true });
-      }
-    }
-    
-  }, [searchParams, setSearchParams, code]);
-  const headerRef = useRef<HTMLDivElement | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -537,17 +334,8 @@ export default function LeaguePage() {
   const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
   const [removing, setRemoving] = useState(false);
   const [ending, setEnding] = useState(false);
-  const [firstMember, setFirstMember] = useState<Member | null>(null);
 
   /* ----- Chat state (no longer used - MiniLeagueChatBeta handles its own state) ----- */
-  const isMember = useMemo(
-    () => !!user?.id && members.some((m) => m.id === user.id),
-    [user?.id, members]
-  );
-  const isAdmin = useMemo(
-    () => !!user?.id && !!firstMember && firstMember.id === user.id,
-    [user?.id, firstMember]
-  );
   const adminName = useMemo(() => firstMember?.name ?? "League admin", [firstMember]);
   const memberNameById = useMemo(() => {
     const m = new Map<string, string>();
@@ -1490,79 +1278,6 @@ ${shareUrl}`;
       console.log('[League] ⚠️ No league.id available yet');
     }
   }, [league?.id, mltRows.length]); // Run immediately when league.id is available
-
-  /* ---------- load league + members ---------- */
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      // If we already have league from cache, use it immediately
-      const cachedLeague = league;
-      let lg = cachedLeague;
-
-      if (!lg) {
-        // Fetch league if not in cache
-        const { data } = await supabase
-        .from("leagues")
-        .select("id,name,code,created_at,avatar")
-        .eq("code", code)
-        .maybeSingle();
-
-      if (!alive) return;
-        if (!data) {
-        setLeague(null);
-        setMembers([]);
-        setLoading(false);
-        return;
-      }
-        lg = data as League;
-        setLeague(lg);
-      }
-
-      // Check cache FIRST (pre-loaded during initial data load)
-      // If we have cache, set loading to false immediately so chat can render
-      const cachedMembers = getCached<Array<[string, string]>>(`league:members:${lg.id}`);
-      let mem: Member[] = [];
-      
-      if (cachedMembers && cachedMembers.length > 0) {
-        // Use cached member names immediately - set loading to false right away!
-        mem = cachedMembers.map(([id, name]) => ({
-          id,
-          name: name || "(no name)",
-        }));
-        setLoading(false); // Clear loading immediately when we have cache
-      } else {
-        // No cache - need to fetch
-      const { data: mm } = await supabase
-        .from("league_members")
-        .select("users(id,name),created_at")
-          .eq("league_id", lg.id)
-        .order("created_at", { ascending: true });
-
-        mem =
-        (mm as any[])?.map((r) => ({
-          id: r.users.id,
-          name: r.users.name ?? "(no name)",
-        })) ?? [];
-        setLoading(false); // Clear loading after fetch
-      }
-
-      const memSorted = [...mem].sort((a, b) => a.name.localeCompare(b.name));
-      setMembers(memSorted);
-
-      const first = mem[0];
-      setFirstMember(first);
-
-      if (user?.id && !mem.some((m) => m.id === user.id)) {
-        setShowJoinConfirm(true);
-      }
-
-      setLoading(false);
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [code]);
 
   /* ---------- Redirect to valid tab if current tab shouldn't be visible for this league ---------- */
   useEffect(() => {
@@ -3105,36 +2820,16 @@ ${shareUrl}`;
       });
     }
 
-    type Row = { user_id: string; name: string; score: number; unicorns: number };
-    // Include ALL members (not just those who submitted) - show all members in GW table
-    const rows: Row[] = members
-      .map((m) => ({ user_id: m.id, name: m.name, score: 0, unicorns: 0 }));
-
-    const picksByFixture = new Map<number, PickRow[]>();
-    picks.forEach((p) => {
-      if (p.gw !== resGw) return;
-      // Include all picks (not filtered by submission status)
-      const arr = picksByFixture.get(p.fixture_index) ?? [];
-      arr.push(p);
-      picksByFixture.set(p.fixture_index, arr);
+    const rows = computeGwTableRows({
+      members,
+      picks,
+      results,
+      liveScores,
+      resGw,
+      currentGw,
+      isApiTestLeague,
+      currentTestGw,
     });
-
-    Array.from(outcomes.entries()).forEach(([idx, out]) => {
-      const these = picksByFixture.get(idx) ?? [];
-      const correctIds = these.filter((p) => p.pick === out).map((p) => p.user_id);
-
-      correctIds.forEach((uid) => {
-        const r = rows.find((x) => x.user_id === uid)!;
-        r.score += 1;
-      });
-
-      if (correctIds.length === 1 && members.length >= 3) {
-        const r = rows.find((x) => x.user_id === correctIds[0])!;
-        r.unicorns += 1;
-      }
-    });
-
-    rows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name));
 
     // Detect position changes and trigger animations (using useEffect to handle state updates)
     useEffect(() => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { getCached, setCached, CACHE_TTL } from '../lib/cache';
 
 export type ReactionSummary = { emoji: string; count: number; hasUserReacted: boolean };
 export type ReactionsByMessage = Record<string, ReactionSummary[]>;
@@ -95,7 +96,16 @@ export function useChatReactions({
   userId: string | null | undefined;
   onError?: (message: string) => void;
 }): { reactions: ReactionsByMessage; onReactionClick: (messageId: string, emoji: string) => Promise<void> } {
-  const [reactions, setReactions] = useState<ReactionsByMessage>({});
+  const cacheKey = useMemo(() => {
+    if (!leagueId || !userId) return null;
+    return `chat:reactions:${leagueId}:${userId}`;
+  }, [leagueId, userId]);
+
+  const [reactions, setReactions] = useState<ReactionsByMessage>(() => {
+    if (!cacheKey) return {};
+    const cached = getCached<ReactionsByMessage>(cacheKey);
+    return cached ?? {};
+  });
   const userIdRef = useRef<string | null | undefined>(userId);
   useEffect(() => {
     userIdRef.current = userId;
@@ -103,6 +113,20 @@ export function useChatReactions({
 
   const stableMessageIds = useMemo(() => Array.from(new Set(messageIds)).sort(), [messageIds]);
   const messageIdsKey = stableMessageIds.join(',');
+  const stableMessageIdSet = useMemo(() => new Set(stableMessageIds), [messageIdsKey]);
+
+  // Cache-first: as soon as messageIds change, trim cached reactions to the current message set
+  // so the UI has emojis immediately while we refetch.
+  useEffect(() => {
+    if (!cacheKey || stableMessageIds.length === 0) return;
+    const cached = getCached<ReactionsByMessage>(cacheKey);
+    if (!cached) return;
+    const trimmed: ReactionsByMessage = {};
+    Object.entries(cached).forEach(([messageId, list]) => {
+      if (stableMessageIdSet.has(messageId)) trimmed[messageId] = list;
+    });
+    setReactions((prev) => (Object.keys(prev).length ? prev : trimmed));
+  }, [cacheKey, stableMessageIdSet, messageIdsKey, stableMessageIds.length]);
 
   // Initial load / refresh when message IDs change.
   useEffect(() => {
@@ -122,7 +146,16 @@ export function useChatReactions({
           onError?.(`Failed to load reactions: ${error.message}`);
           return;
         }
-        setReactions(buildSummaries((data || []) as ReactionRow[], userId));
+        const next = buildSummaries((data || []) as ReactionRow[], userId);
+        setReactions(next);
+        if (cacheKey) {
+          // Keep cache bounded to the current message set so it doesn't grow forever.
+          const trimmed: ReactionsByMessage = {};
+          Object.entries(next).forEach(([messageId, list]) => {
+            if (stableMessageIdSet.has(messageId)) trimmed[messageId] = list;
+          });
+          setCached(cacheKey, trimmed, CACHE_TTL.HOME);
+        }
       } catch (err: any) {
         if (cancelled) return;
         onError?.(`Error loading reactions: ${err?.message || String(err)}`);
@@ -241,6 +274,16 @@ export function useChatReactions({
     },
     [reactions]
   );
+
+  // Persist cached reactions (best-effort) so the emoji bubbles render instantly on next open.
+  useEffect(() => {
+    if (!cacheKey) return;
+    const trimmed: ReactionsByMessage = {};
+    Object.entries(reactions).forEach(([messageId, list]) => {
+      if (stableMessageIdSet.has(messageId)) trimmed[messageId] = list;
+    });
+    setCached(cacheKey, trimmed, CACHE_TTL.HOME);
+  }, [cacheKey, reactions, stableMessageIdSet]);
 
   return { reactions, onReactionClick };
 }
