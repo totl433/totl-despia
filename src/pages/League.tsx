@@ -420,10 +420,15 @@ export default function LeaguePage() {
   hookCallCountRef.current++;
   const manualGwSelectedRef = useRef(false);
   hookCallCountRef.current++;
+  const deepLinkAppliedRef = useRef(false);
+  hookCallCountRef.current++;
   
   // Handle deep link from notifications - open chat tab when tab=chat is in URL
   // This runs on mount and when URL changes (e.g., from notification click on iOS)
   useEffect(() => {
+    // Apply deep links at most once, and never override a user's manual tab selection.
+    if (deepLinkAppliedRef.current || manualTabSelectedRef.current) return;
+
     const urlTab = searchParams.get('tab');
     const urlLeagueCode = searchParams.get('leagueCode');
     
@@ -431,63 +436,35 @@ export default function LeaguePage() {
     setDeepLinkError(null);
     
     // Check if we have a deep link
-    if (urlTab === 'chat' || urlTab === 'gw' || urlLeagueCode) {
+    if (urlTab === 'chat' || urlTab === 'gw' || urlTab === 'mlt' || urlTab === 'gwr' || urlLeagueCode) {
       // Verify we're on the correct league page
       if (urlLeagueCode && code !== urlLeagueCode) {
         setDeepLinkError(`Deep link mismatch: URL has leagueCode=${urlLeagueCode} but we're on league ${code}. Current URL: ${window.location.href}`);
         return;
       }
       
-      // Check if tab should be chat
-      if (urlTab === 'chat') {
-        if (tab !== 'chat') {
-          // FIX: Use functional update to ensure state change
-          setTab(prevTab => {
-            if (prevTab !== 'chat') {
-              return 'chat';
-            }
-            return prevTab;
-          });
-          // Verify tab actually changed after a short delay
-          setTimeout(() => {
-            if (tabRef.current !== 'chat') {
-              setDeepLinkError(`Failed to open chat tab. Current tab: ${tabRef.current}, Expected: chat. URL: ${window.location.href}`);
-            }
-          }, 300);
-        }
-        
-        // DON'T clear the parameter - it causes React Router to remount the route component
-        // The search param will naturally be cleared when user navigates away
-        // If we really need to clear it, do it after a longer delay (5+ seconds) to avoid remount loops
-        // For now, leave it - it doesn't cause any functional issues
+      const targetTab =
+        urlTab === 'chat' || urlTab === 'gw' || urlTab === 'mlt' || urlTab === 'gwr'
+          ? urlTab
+          : null;
+
+      if (targetTab && tabRef.current !== targetTab) {
+        setTab(targetTab);
       }
-      
-      // Check if tab should be predictions (gw)
-      if (urlTab === 'gw') {
-        if (tab !== 'gw') {
-          // FIX: Use functional update to ensure state change
-          setTab(prevTab => {
-            if (prevTab !== 'gw') {
-              return 'gw';
-            }
-            return prevTab;
-          });
-          // Verify tab actually changed after a short delay
-          setTimeout(() => {
-            if (tabRef.current !== 'gw') {
-              setDeepLinkError(`Failed to open predictions tab. Current tab: ${tabRef.current}, Expected: gw. URL: ${window.location.href}`);
-            }
-          }, 300);
-        }
-        
-        // DON'T clear the parameter - it causes React Router to remount the route component
-        // The search param will naturally be cleared when user navigates away
-        // If we really need to clear it, do it after a longer delay (5+ seconds) to avoid remount loops
-        // For now, leave it - it doesn't cause any functional issues
+
+      deepLinkAppliedRef.current = true;
+
+      // Clear deep-link params so they can't keep forcing tabs / triggering "notification open" logic.
+      const next = new URLSearchParams(searchParams);
+      next.delete('tab');
+      next.delete('leagueCode');
+      // Only update URL if something actually changed.
+      if (next.toString() !== searchParams.toString()) {
+        setSearchParams(next, { replace: true });
       }
     }
     
-  }, [searchParams, setSearchParams, tab, code]);
+  }, [searchParams, setSearchParams, code]);
   const headerRef = useRef<HTMLDivElement | null>(null);
 
   const [showForm, setShowForm] = useState(false);
@@ -526,6 +503,8 @@ export default function LeaguePage() {
   const liveScoresPrevRef = useRef<Record<number, { homeScore: number; awayScore: number; status: string; minute?: number | null }>>({});
   // Track previous positions for animation (using ref to persist across renders)
   const prevPositionsRef = useRef<Map<string, number>>(new Map());
+  // Cooldown map to prevent rapid-fire position-change animations on live churn
+  const lastPositionAnimAtRef = useRef<Map<string, number>>(new Map());
   const [positionChangeKeys, setPositionChangeKeys] = useState<Set<string>>(new Set());
   const [showGwDropdown, setShowGwDropdown] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
@@ -3179,14 +3158,28 @@ ${shareUrl}`;
       
       // Trigger animation for changed positions
       if (changedKeys.size > 0) {
-        setPositionChangeKeys(changedKeys);
+        // Apply a per-user cooldown so live churn doesn't create rapid flashing.
+        const now = Date.now();
+        const COOLDOWN_MS = 6000;
+        const cooled = new Set<string>();
+        changedKeys.forEach((userId) => {
+          const last = lastPositionAnimAtRef.current.get(userId) ?? 0;
+          if (now - last >= COOLDOWN_MS) {
+            cooled.add(userId);
+            lastPositionAnimAtRef.current.set(userId, now);
+          }
+        });
+
+        if (cooled.size === 0) return;
+
+        setPositionChangeKeys(cooled);
         // Clear animation after it completes
         const timeout = setTimeout(() => {
           setPositionChangeKeys(new Set());
         }, 2000);
         return () => clearTimeout(timeout);
       }
-    }, [rows.map(r => `${r.user_id}-${r.score}-${r.unicorns}`).join(',')]);
+    }, [rows.map((r) => r.user_id).join(',')]);
 
     // Check if all fixtures have finished
     let allFixturesFinished = false;

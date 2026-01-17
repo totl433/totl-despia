@@ -128,6 +128,9 @@ export function useMiniLeagueChat(
   );
   
   const refreshRef = useRef<((skipCache?: boolean) => Promise<void>) | null>(null);
+  // One-shot guard: if we opened chat from a notification deep-link (`?tab=chat`),
+  // skip cache once to guarantee freshness, but don't keep re-triggering.
+  const hasFetchedFromNotificationRef = useRef(false);
   const applyMessagesRef = useRef<((updater: (prev: MiniLeagueChatMessage[]) => MiniLeagueChatMessage[]) => void) | null>(null);
   
   useEffect(() => {
@@ -520,10 +523,11 @@ export function useMiniLeagueChat(
     const comingFromNotification = typeof window !== 'undefined' && 
       new URLSearchParams(window.location.search).get('tab') === 'chat';
 
-    if (comingFromNotification) {
+    if (comingFromNotification && !hasFetchedFromNotificationRef.current) {
       // Coming from notification - skip cache, fetch fresh immediately
       // This ensures we get the message that triggered the notification
       refreshRef.current?.(true).catch(() => {});
+      hasFetchedFromNotificationRef.current = true;
       return;
     }
 
