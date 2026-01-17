@@ -3457,12 +3457,12 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
         }
         @supports (height: 100dvh) {
           .league-header-fixed {
-            top: env(safe-area-inset-top, 0px) !important;
+            top: var(--safe-area-top, env(safe-area-inset-top, 0px)) !important;
           }
         }
         .league-content-wrapper {
           position: fixed;
-          top: calc(3.5rem + 3rem + env(safe-area-inset-top, 0px) + 0.5rem);
+          top: calc(3.5rem + 3rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
           left: 0;
           right: 0;
           bottom: 0;
@@ -3479,40 +3479,40 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           transition: top 0.3s ease-in-out;
         }
         .league-content-wrapper.has-banner {
-          top: calc(3.5rem + 3rem + 3.5rem + env(safe-area-inset-top, 0px) + 0.5rem);
+          top: calc(3.5rem + 3rem + 3.5rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
         }
         .league-content-wrapper.menu-open {
-          top: calc(3.5rem + 3rem + 12rem + env(safe-area-inset-top, 0px) + 0.5rem);
+          top: calc(3.5rem + 3rem + 12rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
         }
         .league-content-wrapper.menu-open.has-banner {
-          top: calc(3.5rem + 3rem + 3.5rem + 12rem + env(safe-area-inset-top, 0px) + 0.5rem);
+          top: calc(3.5rem + 3rem + 3.5rem + 12rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
         }
         @media (max-width: 768px) {
           .league-content-wrapper {
-            top: calc(3.5rem + 3rem + env(safe-area-inset-top, 0px) + 0.5rem);
+            top: calc(3.5rem + 3rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
             padding-bottom: 2rem;
             padding-left: 1rem;
             padding-right: 1rem;
           }
           .league-content-wrapper.has-banner {
-            top: calc(3.5rem + 3rem + 3.5rem + env(safe-area-inset-top, 0px) + 0.5rem);
+            top: calc(3.5rem + 3rem + 3.5rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
           }
           .league-content-wrapper.menu-open {
-            top: calc(3.5rem + 3rem + 12rem + env(safe-area-inset-top, 0px) + 0.5rem);
+            top: calc(3.5rem + 3rem + 12rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
           }
           .league-content-wrapper.menu-open.has-banner {
-            top: calc(3.5rem + 3rem + 3.5rem + 12rem + env(safe-area-inset-top, 0px) + 0.5rem);
+            top: calc(3.5rem + 3rem + 3.5rem + 12rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
           }
         }
         /* Chat tab - full height layout */
         .chat-tab-wrapper {
           position: fixed;
-          top: calc(3.5rem + 3rem + env(safe-area-inset-top, 0px));
+          top: calc(3.5rem + 3rem + var(--safe-area-top, env(safe-area-inset-top, 0px)));
           left: 0;
           right: 0;
           bottom: 0;
-          height: calc(100vh - 3.5rem - 3rem - env(safe-area-inset-top, 0px));
-          max-height: calc(100vh - 3.5rem - 3rem - env(safe-area-inset-top, 0px));
+          height: calc(100vh - 3.5rem - 3rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
+          max-height: calc(100vh - 3.5rem - 3rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
           z-index: 10;
           overflow: visible;
           overflow-x: hidden;
@@ -3537,21 +3537,21 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           z-index: 0;
         }
         .chat-tab-wrapper.has-banner {
-          top: calc(3.5rem + 3rem + 3.5rem + env(safe-area-inset-top, 0px));
-          height: calc(100vh - 3.5rem - 3rem - 3.5rem - env(safe-area-inset-top, 0px));
-          max-height: calc(100vh - 3.5rem - 3rem - 3.5rem - env(safe-area-inset-top, 0px));
+          top: calc(3.5rem + 3rem + 3.5rem + var(--safe-area-top, env(safe-area-inset-top, 0px)));
+          height: calc(100vh - 3.5rem - 3rem - 3.5rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
+          max-height: calc(100vh - 3.5rem - 3rem - 3.5rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
         }
         .chat-tab-wrapper > * {
           pointer-events: auto;
         }
         @supports (height: 100dvh) {
           .chat-tab-wrapper {
-            height: calc(100dvh - 3.5rem - 3rem - env(safe-area-inset-top, 0px));
-            max-height: calc(100dvh - 3.5rem - 3rem - env(safe-area-inset-top, 0px));
+            height: calc(100dvh - 3.5rem - 3rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
+            max-height: calc(100dvh - 3.5rem - 3rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
           }
           .chat-tab-wrapper.has-banner {
-            height: calc(100dvh - 3.5rem - 3rem - 3.5rem - env(safe-area-inset-top, 0px));
-            max-height: calc(100dvh - 3.5rem - 3rem - 3.5rem - env(safe-area-inset-top, 0px));
+            height: calc(100dvh - 3.5rem - 3rem - 3.5rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
+            max-height: calc(100dvh - 3.5rem - 3rem - 3.5rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
           }
         }
       `}</style>
