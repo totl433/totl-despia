@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
@@ -10,7 +10,6 @@ export interface MiniLeagueGwTableCardProps {
   leagueName: string;
   members: Array<{ id: string; name: string }>;
   rows: Array<{ user_id: string; name: string; score: number; unicorns: number }>; // Pre-calculated rows
-  rowsLoading?: boolean;
   currentUserId?: string;
   currentGw: number | null;
   maxMemberCount?: number;
@@ -49,7 +48,6 @@ export default function MiniLeagueGwTableCard({
   leagueName,
   members,
   rows,
-  rowsLoading = false,
   currentGw,
   maxMemberCount: _maxMemberCount,
   avatar,
@@ -64,26 +62,6 @@ export default function MiniLeagueGwTableCard({
   // Determine if GW is live
   const { state: currentGwState } = useGameweekState(currentGw);
   const isLive = mockData?.isLive ?? (currentGwState === 'LIVE' && displayGw === currentGw);
-
-  // Avoid a brief "No results for GW xx" flash while rows are still settling in.
-  // If we momentarily have an empty array (e.g. during state/cached-data transitions),
-  // show the spinner for a short grace window before showing the empty state.
-  const [emptyGraceActive, setEmptyGraceActive] = useState(false);
-  useEffect(() => {
-    if (!displayGw) return;
-    if (displayRows.length > 0) {
-      setEmptyGraceActive(false);
-      return;
-    }
-    // If rows are explicitly loading, we already show spinner; no need for grace.
-    if (rowsLoading) return;
-    // Only apply grace if we have enough context that data is expected soon.
-    if (sharedFixtures.length === 0) return;
-
-    setEmptyGraceActive(true);
-    const t = window.setTimeout(() => setEmptyGraceActive(false), 1500);
-    return () => window.clearTimeout(t);
-  }, [displayGw, displayRows.length, rowsLoading, sharedFixtures.length]);
   
   // Check if all fixtures are finished (for winner badge)
   const allFixturesFinished = useMemo(() => {
@@ -254,15 +232,9 @@ export default function MiniLeagueGwTableCard({
               </table>
             </div>
           </div>
-        ) : (rowsLoading || emptyGraceActive) ? (
+        ) : (
           <div className="flex justify-center py-8 flex-1">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600"></div>
-          </div>
-        ) : (
-          <div className="text-center py-6 flex-1">
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              No results for GW {displayGw}
-            </div>
           </div>
         )}
       </div>

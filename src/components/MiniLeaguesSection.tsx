@@ -305,7 +305,6 @@ How To Play →`}
                     const members = cardData?.members || [];
                     const hasRowsKey = Object.prototype.hasOwnProperty.call(leagueRows, league.id);
                     const rows = hasRowsKey ? (leagueRows[league.id] ?? []) : [];
-                    const rowsLoading = !hasRowsKey;
                     
                     return (
                       <MiniLeagueGwTableCard
@@ -315,7 +314,6 @@ How To Play →`}
                         leagueName={league.name}
                         members={members}
                         rows={rows}
-                        rowsLoading={rowsLoading}
                         currentUserId={currentUserId}
                         currentGw={currentGw}
                         maxMemberCount={maxMemberCount}
