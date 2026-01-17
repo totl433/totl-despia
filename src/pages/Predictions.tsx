@@ -91,6 +91,9 @@ export default function PredictionsPage() {
  const navigate = useNavigate();
  
  // #region agent log
+ // Off by default: enable only when explicitly debugging with a local collector/proxy.
+ const ENABLE_AGENT_LOG = import.meta.env.DEV && import.meta.env.VITE_AGENT_LOG === 'true';
+
  // IMPORTANT: Cursor in-app browser may not be able to reach 127.0.0.1:7242 directly.
  // Send to a same-origin dev proxy; Vite forwards to the local collector.
  const debugEndpoint = '/__agent_log';
@@ -103,6 +106,8 @@ export default function PredictionsPage() {
   data?: unknown;
   timestamp: number;
  }) => {
+  if (!ENABLE_AGENT_LOG) return;
+
   try {
    // NOTE: main.tsx overrides window.fetch and suppresses localhost:7242 calls.
    // Use sendBeacon to bypass the fetch/XHR interceptors.
@@ -132,6 +137,7 @@ export default function PredictionsPage() {
  // Helps confirm this instrumented build is actually running in the environment being tested.
  useEffect(() => {
   if (typeof window === 'undefined') return;
+  if (!ENABLE_AGENT_LOG) return;
   debugPost({
    sessionId:'debug-session',
    runId:'run1',
@@ -526,9 +532,11 @@ const [_submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new S
  }, []);
 
  useEffect(() => {
- // Only lock scrolling when in card swipe mode, not on review page, and not submitted
+ // Only lock scrolling when we are actually in swipe mode AND the GW is pickable.
+ // If the deadline has passed (DEADLINE_PASSED/LIVE/RESULTS_PRE_GW), we render list/submitted views and must never lock scroll.
  const isReviewPage = currentIndex >= fixtures.length;
- const shouldLockScroll = viewMode === "cards" && !isReviewPage && fixtures.length > 0 && !submitted;
+ const canSwipeNow = !gameStateLoading && (gameState === 'GW_OPEN' || gameState === 'GW_PREDICTED');
+ const shouldLockScroll = viewMode === "cards" && canSwipeNow && !isReviewPage && fixtures.length > 0 && !submitted;
  
  const html = document.documentElement;
  const body = document.body;
@@ -600,7 +608,7 @@ const [_submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new S
  window.removeEventListener('wheel', preventWheel);
  document.removeEventListener('touchmove', preventScroll);
  };
- }, [viewMode, currentIndex, fixtures.length, submitted]);
+ }, [viewMode, currentIndex, fixtures.length, submitted, gameState, gameStateLoading]);
 
  const allPicksMade = useMemo(() => {
  if (fixtures.length === 0) return false;
@@ -1984,10 +1992,11 @@ return (
  });
  }
  
-// Show score indicator if we have fixtures (even if no picks yet)
-// This allows users to see their score as they make picks
-if (fixtures.length > 0 && (hasAnyLiveOrFinished || hasStartingSoon || deadlinePassed || submitted)) {
-  const hasPicks = picks.size > 0;
+// Show score indicator:
+// - Pre-deadline: show (even with 0 picks) so users can see it update as they make picks.
+// - Post-deadline: only show if the user actually has picks/submitted (otherwise it's just "0/10" noise).
+const hasPicks = picks.size > 0;
+if (fixtures.length > 0 && (!deadlinePassed || hasPicks || isUserSubmitted)) {
   
   // Calculate score: prefer results Map (from app_gw_results) over live scores
   // This matches HomePage behavior - use final results when available
@@ -2095,7 +2104,10 @@ return null;
  
  const percentagesForFixture = pickPercentages.get(fixture.fixture_index) || null;
  return (
- <li key={fixture.id} className={index > 0 ? "border-t" : ""}>
+ <li
+ key={fixture.id}
+ className={index > 0 ? "border-t border-slate-200 dark:border-slate-700" : ""}
+ >
  <FixtureCard
  fixture={fixtureCardFixture}
  pick={pick?.pick}
