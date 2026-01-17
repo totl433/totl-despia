@@ -752,13 +752,8 @@ function AppContent() {
       )}
 
       {/* Main Content Area */}
-      <div
-        style={
-          isNativeApp
-            ? { paddingTop: "var(--safe-area-top)", paddingBottom: "var(--safe-area-bottom)" }
-            : undefined
-        }
-      >
+      <div>
+        {isNativeApp && <div style={{ height: "var(--safe-area-top)" }} />}
         {/* Scroll to top on route change - must be inside Router */}
         <ScrollToTop />
         
@@ -843,6 +838,7 @@ function AppContent() {
              location.pathname.startsWith('/league/')
            } />
          </div>}
+        {isNativeApp && <div style={{ height: "var(--safe-area-bottom)" }} />}
       </div>
     </>
   );

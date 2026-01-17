@@ -252,6 +252,7 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
           contain: layout style paint !important;
           pointer-events: auto !important;
           transition: transform 0.3s ease-in-out !important;
+          padding-bottom: calc(2rem + var(--safe-area-bottom)) !important;
         }
         .bottom-nav-slide-out {
           transform: translate3d(0, 100%, 0) !important;
@@ -263,7 +264,7 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
         }
         @supports (padding-bottom: env(safe-area-inset-bottom)) {
           .bottom-nav-absolute {
-            padding-bottom: env(safe-area-inset-bottom) !important;
+            padding-bottom: calc(2rem + env(safe-area-inset-bottom)) !important;
           }
         }
         @media (max-height: 800px) {
