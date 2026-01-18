@@ -9,7 +9,6 @@ import { useGameweekState } from "../hooks/useGameweekState";
 import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import { PageHeader } from "../components/PageHeader";
 import { isDespiaAvailable } from "../lib/platform";
-import { filterOutAppOnlyUsers } from "../lib/appOnlyUsers";
 import SegmentedToggle from "../components/SegmentedToggle";
 import UserPicksModal from "../components/UserPicksModal";
 import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
@@ -60,8 +59,8 @@ export default function GlobalLeaderboardPage() {
         return {
           loading: false,
           latestGw: cached.latestGw,
-          gwPoints: filterOutAppOnlyUsers(cached.gwPoints, { includeUserId: user?.id }),
-          overall: filterOutAppOnlyUsers(cached.overall || [], { includeUserId: user?.id }),
+          gwPoints: cached.gwPoints,
+          overall: cached.overall || [],
           prevOcp: cached.prevOcp || {},
           hasCache: true,
           isCacheStale,
@@ -327,18 +326,14 @@ export default function GlobalLeaderboardPage() {
         if (oErr) throw oErr;
 
         if (!alive) return;
-
-        const filteredGwPoints = filterOutAppOnlyUsers((gp as GwPointsRow[]) ?? [], { includeUserId: user?.id });
-        const filteredOverall = filterOutAppOnlyUsers((ocp as OverallRow[]) ?? [], { includeUserId: user?.id });
-
-        setGwPoints(filteredGwPoints);
-        setOverall(filteredOverall);
+        setGwPoints((gp as GwPointsRow[]) ?? []);
+        setOverall((ocp as OverallRow[]) ?? []);
 
         // 4) previous OCP totals (up to gw-1) to compute rank movement
         let prevOcpData: Record<string, number> = {};
         if (gw && gw > 1) {
           // Use the already fetched gwPoints data instead of making another query
-          const prevList = filteredGwPoints.filter(r => r.gw < gw);
+          const prevList = (gp as GwPointsRow[] | null)?.filter(r => r.gw < gw) ?? [];
           
           const totals: Record<string, number> = {};
           prevList.forEach((r) => {
@@ -354,8 +349,8 @@ export default function GlobalLeaderboardPage() {
         try {
           setCached(cacheKey, {
             latestGw: gw,
-            gwPoints: filteredGwPoints,
-            overall: filteredOverall,
+            gwPoints: (gp as GwPointsRow[]) ?? [],
+            overall: (ocp as OverallRow[]) ?? [],
             prevOcp: prevOcpData,
           }, CACHE_TTL.GLOBAL);
           setHasCache(true);

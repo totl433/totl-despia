@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { TouchEventHandler } from "react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
-import { filterOutAppOnlyUsers } from "../lib/appOnlyUsers";
 import TeamBadge from "../components/TeamBadge";
 import { useNavigate } from "react-router-dom";
 import { invalidateUserCache, getCached, setCached, getCacheTimestamp, CACHE_TTL } from "../lib/cache";
@@ -1503,10 +1502,7 @@ useEffect(() => {
  }
 
  // Sort by points descending
- const filteredGwPointsData = filterOutAppOnlyUsers(gwPointsData as Array<{ user_id: string; points: number | null }>, { includeUserId: user.id });
-
-// Sort by points descending
-const sorted = [...filteredGwPointsData].sort((a, b) => (b.points || 0) - (a.points || 0));
+ const sorted = [...gwPointsData].sort((a, b) => (b.points || 0) - (a.points || 0));
  
  // Find user's rank (handling ties - same rank for same points)
  let userRank = 1;
