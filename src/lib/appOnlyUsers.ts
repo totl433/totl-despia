@@ -18,3 +18,24 @@ export const APP_ONLY_USER_IDS: string[] = [
   '027502c5-1cd7-4922-abd5-f9bcc569bb4d'  // cakehurst
 ];
 
+
+export const APP_ONLY_USER_ID_SET = new Set(APP_ONLY_USER_IDS);
+
+export function isAppOnlyUserId(userId: string | null | undefined): boolean {
+  if (!userId) return false;
+  return APP_ONLY_USER_ID_SET.has(userId);
+}
+
+/**
+ * Filter helper for leaderboards/stats:
+ * - Excludes app-only "stub" accounts by default
+ * - Optionally keeps a specific user visible even if they are app-only
+ */
+export function filterOutAppOnlyUsers<T extends { user_id: string }>(
+  rows: T[],
+  opts?: { includeUserId?: string | null }
+): T[] {
+  const includeUserId = opts?.includeUserId ?? null;
+  return rows.filter((r) => r.user_id === includeUserId || !APP_ONLY_USER_ID_SET.has(r.user_id));
+}
+

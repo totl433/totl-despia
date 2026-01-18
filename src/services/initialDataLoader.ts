@@ -21,7 +21,7 @@ import { log } from '../lib/logEvent';
 import { prewarmLeaguesCache } from '../api/leagues';
 import { getGameweekState, type GameweekState } from '../lib/gameweekState';
 import { resolveLeagueStartGw } from '../lib/leagueStart';
-import { APP_ONLY_USER_IDS } from '../lib/appOnlyUsers';
+import { APP_ONLY_USER_IDS, filterOutAppOnlyUsers } from '../lib/appOnlyUsers';
 
 /**
  * Return type for initial data loading.
@@ -244,6 +244,10 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   if (metaResult.error) throw new Error(`Failed to load current GW: ${metaResult.error.message}`);
   if (gwPointsResult.error) throw new Error(`Failed to load GW points: ${gwPointsResult.error.message}`);
   if (overallResult.error) throw new Error(`Failed to load overall standings: ${overallResult.error.message}`);
+
+  // Exclude app-only/stub users from leaderboard datasets (keep the current user visible if needed)
+  const filteredGwPointsResult = filterOutAppOnlyUsers((gwPointsResult.data || []) as any[], { includeUserId: userId });
+  const filteredOverallTop = filterOutAppOnlyUsers((overallResult.data || []) as any[], { includeUserId: userId });
   if (leagueMembersResult.error) throw new Error(`Failed to load league members: ${leagueMembersResult.error.message}`);
   if (latestGwResult.error) throw new Error(`Failed to load latest GW: ${latestGwResult.error.message}`);
   if (webPicksResult.error) throw new Error(`Failed to load Web picks: ${webPicksResult.error.message}`);
@@ -297,7 +301,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   const viewingGw = userViewingGw !== null && userViewingGw < currentGw ? userViewingGw : currentGw;
 
   // Now fetch fixtures, picks, and user's own OCP (if not in top 100)
-  const userInTop100 = (overallResult.data || []).some((r: any) => r.user_id === userId);
+  const userInTop100 = (filteredOverallTop || []).some((r: any) => r.user_id === userId);
   
   // Fetch submissions for both current and viewing GW (for PredictionsBanner)
   const submissionsForBanner = viewingGw !== currentGw
@@ -408,7 +412,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   }
   
   // Merge user's OCP into overall if they weren't in top 100
-  let overallData = overallResult.data || [];
+  let overallData = filteredOverallTop;
   if (!userInTop100 && userOcpResult.data) {
     overallData = [...overallData, userOcpResult.data];
   }
@@ -1349,12 +1353,12 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
 
   // Calculate 5-week form rank (uses overallData which includes current user)
   const fiveGwRank = latestGw && latestGw >= 5 
-    ? calculateFormRank(latestGw - 4, latestGw, gwPointsResult.data || [], overallData, userId)
+    ? calculateFormRank(latestGw - 4, latestGw, filteredGwPointsResult, overallData, userId)
     : null;
 
   // Calculate 10-week form rank
   const tenGwRank = latestGw && latestGw >= 10
-    ? calculateFormRank(latestGw - 9, latestGw, gwPointsResult.data || [], overallData, userId)
+    ? calculateFormRank(latestGw - 9, latestGw, filteredGwPointsResult, overallData, userId)
     : null;
 
   // Calculate season rank using overallData (includes user if not in top 100)
@@ -1407,7 +1411,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     leagues,
     currentGw,
     latestGw,
-    allGwPoints: gwPointsResult.data || [],
+    allGwPoints: filteredGwPointsResult,
     overall: overallData, // Use merged data that includes user
     lastGwRank,
     fiveGwRank,
@@ -1507,7 +1511,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   }
   setCached('global:leaderboard', {
     latestGw: globalLatestGw,
-    gwPoints: gwPointsResult.data || [],
+    gwPoints: filteredGwPointsResult,
     overall: overallData, // Use merged data that includes user
     prevOcp: prevOcpData,
   }, CACHE_TTL.GLOBAL);
@@ -1716,7 +1720,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     currentGw,
     latestGw,
     leagues,
-    allGwPoints: gwPointsResult.data || [],
+    allGwPoints: filteredGwPointsResult,
     overall: overallData, // Use merged data that includes user
     lastGwRank,
     fixtures: fixturesForGw.data || [],
