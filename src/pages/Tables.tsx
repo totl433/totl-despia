@@ -5,6 +5,7 @@ import { MiniLeagueCard } from "../components/MiniLeagueCard";
 import type { LeagueRow, LeagueData } from "../components/MiniLeagueCard";
 import { getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
 import { resolveLeagueStartGw } from "../lib/leagueStart";
+import { filterHiddenMembers } from "../lib/leaderboardVisibility";
 import { getCached, setCached, getCacheTimestamp, CACHE_TTL, invalidateUserCache } from "../lib/cache";
 import { useLeagues } from "../hooks/useLeagues";
 import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
@@ -464,6 +465,10 @@ export default function TablesPage() {
           arr.push({ id: m.user_id, name });
           membersByLeagueIdMap.set(m.league_id, arr);
         });
+        // Hide internal/test accounts from mini-league table surfaces
+        for (const [leagueId, members] of membersByLeagueIdMap.entries()) {
+          membersByLeagueIdMap.set(leagueId, filterHiddenMembers(members));
+        }
         setMembersByLeagueId(membersByLeagueIdMap);
 
         // Build leagues metadata map from useLeagues data (already has start_gw, created_at)
@@ -555,7 +560,7 @@ export default function TablesPage() {
             const memberUserIds = membersByLeague.get(league.id) ?? [];
             if (memberUserIds.length > 0) {
               // Create minimal member objects from user IDs (fallback when users join fails)
-              memberIds = memberUserIds.map(id => ({ id, name: `User ${id.slice(0, 8)}` }));
+              memberIds = filterHiddenMembers(memberUserIds.map(id => ({ id, name: `User ${id.slice(0, 8)}` })));
             }
           }
           

@@ -22,6 +22,7 @@ import { prewarmLeaguesCache } from '../api/leagues';
 import { getGameweekState, type GameweekState } from '../lib/gameweekState';
 import { resolveLeagueStartGw } from '../lib/leagueStart';
 import { APP_ONLY_USER_IDS } from '../lib/appOnlyUsers';
+import { filterHiddenLeaderboardRows } from '../lib/leaderboardVisibility';
 
 /**
  * Return type for initial data loading.
@@ -412,6 +413,12 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   if (!userInTop100 && userOcpResult.data) {
     overallData = [...overallData, userOcpResult.data];
   }
+  overallData = filterHiddenLeaderboardRows(overallData as Array<{ user_id: string; name: string | null; ocp: number | null }>);
+
+  // Filter test accounts out of all GW points so ranks/leaderboards don't include them.
+  const allGwPointsFiltered = filterHiddenLeaderboardRows(
+    (gwPointsResult.data || []) as Array<{ user_id: string; gw: number; points: number }>
+  );
 
   if (fixturesForGw.error) throw new Error(`Failed to load fixtures: ${fixturesForGw.error.message}`);
   if (picksForGw.error) throw new Error(`Failed to load picks: ${picksForGw.error.message}`);
@@ -1270,12 +1277,12 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   });
 
   // Calculate last GW rank
-  const userGwPoints = (gwPointsResult.data || []).filter((gp: any) => gp.user_id === userId);
+  const userGwPoints = allGwPointsFiltered.filter((gp: any) => gp.user_id === userId);
   const lastGwPoints = userGwPoints.filter((gp: any) => gp.gw === latestGw);
   const lastGwScore = lastGwPoints.reduce((sum: number, gp: any) => sum + (gp.points || 0), 0);
   
   // Get all users' scores for last GW
-  const allLastGwPoints = (gwPointsResult.data || []).filter((gp: any) => gp.gw === latestGw);
+  const allLastGwPoints = allGwPointsFiltered.filter((gp: any) => gp.gw === latestGw);
   const sortedLastGw = allLastGwPoints
     .map((gp: any) => ({ user_id: gp.user_id, points: gp.points || 0 }))
     .sort((a: any, b: any) => b.points - a.points);
@@ -1349,12 +1356,12 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
 
   // Calculate 5-week form rank (uses overallData which includes current user)
   const fiveGwRank = latestGw && latestGw >= 5 
-    ? calculateFormRank(latestGw - 4, latestGw, gwPointsResult.data || [], overallData, userId)
+    ? calculateFormRank(latestGw - 4, latestGw, allGwPointsFiltered, overallData, userId)
     : null;
 
   // Calculate 10-week form rank
   const tenGwRank = latestGw && latestGw >= 10
-    ? calculateFormRank(latestGw - 9, latestGw, gwPointsResult.data || [], overallData, userId)
+    ? calculateFormRank(latestGw - 9, latestGw, allGwPointsFiltered, overallData, userId)
     : null;
 
   // Calculate season rank using overallData (includes user if not in top 100)
@@ -1407,7 +1414,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     leagues,
     currentGw,
     latestGw,
-    allGwPoints: gwPointsResult.data || [],
+    allGwPoints: allGwPointsFiltered,
     overall: overallData, // Use merged data that includes user
     lastGwRank,
     fiveGwRank,
@@ -1500,18 +1507,18 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   const globalLatestGw = latestGw ?? 1;
   const prevOcpData: Record<string, number> = {};
   if (globalLatestGw > 1) {
-    const prevList = (gwPointsResult.data || []).filter((r: any) => r.gw < globalLatestGw);
+    const prevList = allGwPointsFiltered.filter((r: any) => r.gw < globalLatestGw);
     prevList.forEach((r: any) => {
       prevOcpData[r.user_id] = (prevOcpData[r.user_id] ?? 0) + (r.points || 0);
     });
   }
   setCached('global:leaderboard', {
     latestGw: globalLatestGw,
-    gwPoints: gwPointsResult.data || [],
+    gwPoints: allGwPointsFiltered,
     overall: overallData, // Use merged data that includes user
     prevOcp: prevOcpData,
   }, CACHE_TTL.GLOBAL);
-  console.log('[Pre-loading] Global page data cached:', { latestGw: globalLatestGw, gwPointsCount: (gwPointsResult.data || []).length });
+  console.log('[Pre-loading] Global page data cached:', { latestGw: globalLatestGw, gwPointsCount: allGwPointsFiltered.length });
 
   // Preload chat messages and member names for all leagues (NON-BLOCKING - runs in background)
   // This ensures chat loads instantly when user navigates to league page
@@ -1716,7 +1723,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     currentGw,
     latestGw,
     leagues,
-    allGwPoints: gwPointsResult.data || [],
+    allGwPoints: allGwPointsFiltered,
     overall: overallData, // Use merged data that includes user
     lastGwRank,
     fixtures: fixturesForGw.data || [],
