@@ -391,9 +391,9 @@ className={`font-black ${isFinished && pick && pickCorrect !== null ? (pickCorre
  }`}
  style={{ opacity: 1, width: '100%' }}
  >
- <span className={`relative z-10 ${pickCorrect === false && isFinished ? 'line-through decoration-2 decoration-white' : ''}`}>
- {pick === 'H' ? 'Home Win' : pick === 'A' ? 'Away Win' : 'Draw'}
- </span>
+<span className={`relative z-10 ${pickCorrect === false && isFinished ? 'line-through decoration-2 decoration-white' : ''}`}>
+{pick === 'H' ? 'Home' : pick === 'A' ? 'Away' : 'Draw'}
+</span>
  </span>
  </div>
  )}

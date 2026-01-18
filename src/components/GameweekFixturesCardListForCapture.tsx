@@ -552,7 +552,7 @@ export default function GameweekFixturesCardListForCapture({
                           textAlign: 'center'
                         }}
                       >
-                        {pick === 'H' ? 'Home Win' : pick === 'A' ? 'Away Win' : 'Draw'}
+                        {pick === 'H' ? 'Home' : pick === 'A' ? 'Away' : 'Draw'}
                       </span>
                     </div>
                   )}

@@ -341,7 +341,7 @@ export const MiniFixtureCard: React.FC<MiniFixtureCardProps> = ({
               style={{ opacity: 1 }}
             >
               <span className={`relative z-10 ${pickCorrect === false && isFinished ? 'line-through decoration-2 decoration-white' : ''}`}>
-                {pick === 'H' ? 'Home Win' : pick === 'A' ? 'Away Win' : 'Draw'}
+                {pick === 'H' ? 'Home' : pick === 'A' ? 'Away' : 'Draw'}
               </span>
             </span>
           </div>
