@@ -412,10 +412,15 @@ const [_submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new S
  fixtures.forEach(f => {
  if (f.api_match_id && liveScoresMap.has(f.api_match_id)) {
  const score = liveScoresMap.get(f.api_match_id)!;
+ // Normalize status values for UI logic.
+ // Some upstream code treats FT as finished; normalize to FINISHED so all downstream
+ // checks (started/finished/score calc) behave consistently on cold loads too.
+ const normalizedStatus =
+   score.status === 'FT' ? 'FINISHED' : (score.status || 'SCHEDULED');
  scores[f.fixture_index] = {
  homeScore: score.home_score ?? 0,
  awayScore: score.away_score ?? 0,
- status: score.status || 'SCHEDULED',
+  status: normalizedStatus,
  minute: score.minute,
  goals: score.goals || null,
  red_cards: score.red_cards || null,
@@ -1121,6 +1126,11 @@ if (alive && fixturesData.length > 0) {
  }
  // ALWAYS load picks if user has submitted (even if not in cache) - just like HomePage does
  // This ensures picks are displayed even if cache is missing
+ // Track whether we actually managed to query picks successfully for a submitted user.
+ // We should NEVER clear a submission just because a picks fetch failed (transient network / race).
+ let submittedPicksQueryOk = false;
+ let submittedPicksRowCount = 0;
+ let submittedPicksForCurrentFixturesCount = 0;
  if ((isSubmitted || submitted) && user?.id && fixturesData.length > 0 && !hasPicks) {
  // User has submitted - fetch picks for display purposes
  const { data: pk, error: pkErr } = await supabase
@@ -1129,9 +1139,13 @@ if (alive && fixturesData.length > 0) {
  .eq("gw", gwToDisplay)
  .eq("user_id", user.id);
 
+ submittedPicksQueryOk = !pkErr;
+ submittedPicksRowCount = Array.isArray(pk) ? pk.length : 0;
+ 
  if (!pkErr && pk && pk.length > 0) {
  const currentFixtureIndices = new Set(fixturesData.map(f => f.fixture_index));
  const picksForCurrentFixtures = pk.filter((p: any) => currentFixtureIndices.has(p.fixture_index));
+ submittedPicksForCurrentFixturesCount = picksForCurrentFixtures.length;
  
         if (picksForCurrentFixtures.length > 0) {
           const picksMap = new Map<number, Pick>();
@@ -1179,14 +1193,25 @@ if (alive && fixturesData.length > 0) {
  }
  
  // Validate submission is still valid (picks match)
- if (!hasPicks) {
- // Submission exists but picks don't match - clear the submission
- setSubmitted(false);
- await supabase
- .from("app_gw_submissions")
- .delete()
- .eq("gw", gwToDisplay)
- .eq("user_id", user.id);
+ // Only clear submission if we positively confirm it's invalid:
+ // - we successfully queried picks (no pkErr)
+ // - there *are* picks rows for this GW
+ // - but none match the current fixtures (fixture_index mismatch)
+ // Never clear just because we couldn't fetch picks (flakey first load / transient).
+ const shouldClearSubmission =
+   isSubmitted &&
+   !hasPicks &&
+   submittedPicksQueryOk &&
+   submittedPicksRowCount > 0 &&
+   submittedPicksForCurrentFixturesCount === 0;
+ 
+ if (shouldClearSubmission) {
+   setSubmitted(false);
+   await supabase
+     .from("app_gw_submissions")
+     .delete()
+     .eq("gw", gwToDisplay)
+     .eq("user_id", user.id);
  }
  }
  
