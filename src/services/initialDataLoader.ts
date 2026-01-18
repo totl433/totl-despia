@@ -380,6 +380,10 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     .eq('gw', currentGw);
   
   const liveScoresArray = liveScoresResult.data || [];
+
+  // Also cache live scores in a dedicated global key so any page (e.g. Predictions)
+  // can hydrate instantly without needing Home-specific cache keys.
+  setCached(`liveScores:${currentGw}`, liveScoresArray, CACHE_TTL.FIXTURES);
   
   // Build userPicks map from picksForGw data
   const userPicks: Record<number, "H" | "D" | "A"> = {};
@@ -1459,6 +1463,9 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     if (viewingGwLiveScoresResult.data) {
       liveScoresToCache = viewingGwLiveScoresResult.data;
     }
+
+    // Cache viewing GW live scores in the dedicated global key too.
+    setCached(`liveScores:${viewingGw}`, viewingGwLiveScoresResult.data || [], CACHE_TTL.FIXTURES);
     
     // Cache results for viewing GW
     if (viewingGwResultsResult.data) {

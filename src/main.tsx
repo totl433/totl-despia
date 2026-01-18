@@ -263,7 +263,15 @@ function maybeLoadGoogleAnalytics() {
   if (typeof window === "undefined" || typeof document === "undefined") return;
   // GA/GTM should not load in Despia native app (can cause DNS errors/noise and isn't used there).
   if (isDespiaAvailable()) return;
-  const GA_ID = "G-5HWWJWTRRD";
+  // Avoid polluting GA with local development traffic.
+  const hostname = window.location.hostname;
+  const isLocalhost =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1";
+  if (isLocalhost) return;
+
+  const GA_ID = import.meta.env.VITE_GA_ID || "G-5HWWJWTRRD";
   const existing = document.querySelector(`script[src*="googletagmanager.com/gtag/js?id=${GA_ID}"]`);
   if (existing) return;
 

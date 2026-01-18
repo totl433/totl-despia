@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { getCached, setCached, CACHE_TTL } from '../lib/cache';
 
 export interface Goal {
   minute: number | null;
@@ -72,10 +73,15 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
   const [liveScores, setLiveScores] = useState<Map<number, LiveScore>>(() => {
     if (!gw) return new Map();
     try {
-      // Live scores are cached in fixtures cache
-      // Try to get them from any fixtures cache key (they're stored together)
-      // For now, return empty map - HomePage loads from its own cache
-      return new Map();
+      // Seed from a dedicated live scores cache key to prevent 0.1s "pop-in"
+      // (fixtures render immediately; scores/goals arrive after first fetch otherwise).
+      const cached = getCached<LiveScore[]>(`liveScores:${gw}`);
+      if (!cached || cached.length === 0) return new Map();
+      const map = new Map<number, LiveScore>();
+      cached.forEach((score) => {
+        map.set(score.api_match_id, score);
+      });
+      return map;
     } catch {
       return new Map();
     }
@@ -94,10 +100,15 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
     const loadFromCache = () => {
       if (!gw) return;
       try {
-        // Live scores might be cached in multiple places - check fixtures cache
-        // HomePage handles this, but we can also check a dedicated cache if it exists
-        // For now, rely on HomePage's cache loading - this hook will just fetch fresh data
-        return false; // No dedicated cache check here - HomePage handles it
+        const cached = getCached<LiveScore[]>(`liveScores:${gw}`);
+        if (!cached || cached.length === 0) return false;
+        const cachedMap = new Map<number, LiveScore>();
+        cached.forEach((score) => cachedMap.set(score.api_match_id, score));
+        // Hydrate only if we currently have nothing; avoid churn.
+        if (liveScores.size === 0) {
+          setLiveScores(cachedMap);
+        }
+        return true;
       } catch {
         return false;
       }
@@ -135,6 +146,12 @@ export function useLiveScores(gw?: number, apiMatchIds?: number[]) {
         (data || []).forEach((score: LiveScore) => {
           fetchedMap.set(score.api_match_id, score);
         });
+
+        // Cache for instant hydration in other pages / future renders.
+        // Keep TTL moderate: long enough to avoid flicker on navigation, short enough that live updates take over quickly.
+        if (gw !== undefined) {
+          setCached(`liveScores:${gw}`, data || [], CACHE_TTL.FIXTURES);
+        }
 
         if (alive) {
           setLiveScores((prev) => {
