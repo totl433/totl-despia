@@ -343,7 +343,9 @@ function MiniLeagueChatBeta({ miniLeagueId, memberNames, deepLinkError, isChatAc
           maxWidth: '100%',
           display: 'flex',
           flexDirection: 'column', // Normal column - newest at bottom
-          alignItems: 'flex-start', // Ensure content aligns to start (horizontal alignment)
+          // Allow children (ChatThread -> MessageStack) to use full available width so
+          // "own" messages can justify-end all the way to the right edge on desktop.
+          alignItems: 'stretch',
           justifyContent: 'flex-start', // Always flex-start - short threads at top, long threads scrollable
           paddingBottom: '91px', // Default padding to match typical input area height (83px + 8px), refined in ref callback
         }}

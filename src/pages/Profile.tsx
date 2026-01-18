@@ -193,8 +193,8 @@ export default function Profile() {
           loading={loading}
         />
 
-        {/* Theme Toggle */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 mt-6 mb-6">
+        {/* Theme Toggle - mobile/app only (desktop is always light) */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 mt-6 mb-6 lg:hidden">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Appearance</h2>
           <ThemeToggle />
         </div>

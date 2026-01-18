@@ -33,7 +33,7 @@ export type ChatThreadProps = {
 
 export function ChatThread({ groups, reactions, onReactionClick, onMessageClick }: ChatThreadProps) {
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-5 w-full max-w-full">
       {groups.map((group, index) => (
         <div key={`${group.id}-${group.author}-${index}`} className="flex flex-col gap-3">
           {group.dayLabel && (

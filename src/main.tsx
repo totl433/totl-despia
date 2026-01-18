@@ -249,6 +249,7 @@ import FloatingProfile from "./components/FloatingProfile";
 import DesktopNav from "./components/DesktopNav";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useAppLifecycle } from "./hooks/useAppLifecycle";
+import { useTheme } from "./hooks/useTheme";
 import LoadingScreen from "./components/LoadingScreen";
 import { PageLoader } from "./components/PageLoader";
 import ScrollToTop from "./components/ScrollToTop";
@@ -301,6 +302,8 @@ function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
   const { showWelcome, dismissWelcome, user, loading: authLoading } = useAuth();
+  // Ensure theme is applied globally; useTheme now forces light on desktop.
+  useTheme();
   const [initialDataLoading, setInitialDataLoading] = useState(false);
   const isNativeApp = isDespiaAvailable();
   

@@ -3094,17 +3094,20 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
   // #endregion
 
   return (
-    <div className={`${oldSchoolMode ? 'oldschool-theme' : 'bg-slate-50 dark:bg-slate-900'}`} style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      height: '100vh',
-      maxHeight: '100vh',
-      overflow: 'hidden',
-      touchAction: 'none',
-    }}>
+    <div
+      className={`${oldSchoolMode ? 'oldschool-theme' : 'bg-slate-50 dark:bg-slate-900'}`}
+      style={{
+        position: 'fixed',
+        top: 'var(--league-page-top, 0px)',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: 'calc(100vh - var(--league-page-top, 0px))',
+        maxHeight: 'calc(100vh - var(--league-page-top, 0px))',
+        overflow: 'hidden',
+        touchAction: 'none',
+      }}
+    >
       <style>{`
         /* Prevent body/html scrolling that could affect fixed header */
         body.league-page-active {
@@ -3115,13 +3118,21 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
         }
         html.league-page-active {
           overflow: hidden !important;
+          --league-page-top: 0px;
+        }
+        /* DesktopNav is sticky top-0 with h-20 (5rem). Offset League UI below it on desktop only. */
+        @media (min-width: 1024px) {
+          html.league-page-active {
+            --league-page-top: 5rem;
+          }
         }
         .league-header-fixed {
           position: fixed !important;
-          top: 0 !important;
+          top: var(--league-page-top, 0px) !important;
           left: 0 !important;
           right: 0 !important;
-          z-index: 50 !important;
+          /* Keep below DesktopNav (z-50) but above League content */
+          z-index: 40 !important;
           transform: translate3d(0, 0, 0) !important;
           -webkit-transform: translate3d(0, 0, 0) !important;
           will-change: transform !important;
@@ -3145,12 +3156,12 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
         }
         @supports (height: 100dvh) {
           .league-header-fixed {
-            top: var(--safe-area-top, env(safe-area-inset-top, 0px)) !important;
+            top: calc(var(--league-page-top, 0px) + var(--safe-area-top, env(safe-area-inset-top, 0px))) !important;
           }
         }
         .league-content-wrapper {
           position: fixed;
-          top: calc(3.5rem + 3rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
+          top: calc(var(--league-page-top, 0px) + 3.5rem + 3rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
           left: 0;
           right: 0;
           bottom: 0;
@@ -3167,40 +3178,40 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           transition: top 0.3s ease-in-out;
         }
         .league-content-wrapper.has-banner {
-          top: calc(3.5rem + 3rem + 3.5rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
+          top: calc(var(--league-page-top, 0px) + 3.5rem + 3rem + 3.5rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
         }
         .league-content-wrapper.menu-open {
-          top: calc(3.5rem + 3rem + 12rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
+          top: calc(var(--league-page-top, 0px) + 3.5rem + 3rem + 12rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
         }
         .league-content-wrapper.menu-open.has-banner {
-          top: calc(3.5rem + 3rem + 3.5rem + 12rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
+          top: calc(var(--league-page-top, 0px) + 3.5rem + 3rem + 3.5rem + 12rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
         }
         @media (max-width: 768px) {
           .league-content-wrapper {
-            top: calc(3.5rem + 3rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
+            top: calc(var(--league-page-top, 0px) + 3.5rem + 3rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
             padding-bottom: 2rem;
             padding-left: 1rem;
             padding-right: 1rem;
           }
           .league-content-wrapper.has-banner {
-            top: calc(3.5rem + 3rem + 3.5rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
+            top: calc(var(--league-page-top, 0px) + 3.5rem + 3rem + 3.5rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
           }
           .league-content-wrapper.menu-open {
-            top: calc(3.5rem + 3rem + 12rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
+            top: calc(var(--league-page-top, 0px) + 3.5rem + 3rem + 12rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
           }
           .league-content-wrapper.menu-open.has-banner {
-            top: calc(3.5rem + 3rem + 3.5rem + 12rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
+            top: calc(var(--league-page-top, 0px) + 3.5rem + 3rem + 3.5rem + 12rem + var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem);
           }
         }
         /* Chat tab - full height layout */
         .chat-tab-wrapper {
           position: fixed;
-          top: calc(3.5rem + 3rem + var(--safe-area-top, env(safe-area-inset-top, 0px)));
+          top: calc(var(--league-page-top, 0px) + 3.5rem + 3rem + var(--safe-area-top, env(safe-area-inset-top, 0px)));
           left: 0;
           right: 0;
           bottom: 0;
-          height: calc(100vh - 3.5rem - 3rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
-          max-height: calc(100vh - 3.5rem - 3rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
+          height: calc(100vh - var(--league-page-top, 0px) - 3.5rem - 3rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
+          max-height: calc(100vh - var(--league-page-top, 0px) - 3.5rem - 3rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
           z-index: 10;
           overflow: visible;
           overflow-x: hidden;
@@ -3225,27 +3236,27 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
           z-index: 0;
         }
         .chat-tab-wrapper.has-banner {
-          top: calc(3.5rem + 3rem + 3.5rem + var(--safe-area-top, env(safe-area-inset-top, 0px)));
-          height: calc(100vh - 3.5rem - 3rem - 3.5rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
-          max-height: calc(100vh - 3.5rem - 3rem - 3.5rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
+          top: calc(var(--league-page-top, 0px) + 3.5rem + 3rem + 3.5rem + var(--safe-area-top, env(safe-area-inset-top, 0px)));
+          height: calc(100vh - var(--league-page-top, 0px) - 3.5rem - 3rem - 3.5rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
+          max-height: calc(100vh - var(--league-page-top, 0px) - 3.5rem - 3rem - 3.5rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
         }
         .chat-tab-wrapper > * {
           pointer-events: auto;
         }
         @supports (height: 100dvh) {
           .chat-tab-wrapper {
-            height: calc(100dvh - 3.5rem - 3rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
-            max-height: calc(100dvh - 3.5rem - 3rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
+            height: calc(100dvh - var(--league-page-top, 0px) - 3.5rem - 3rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
+            max-height: calc(100dvh - var(--league-page-top, 0px) - 3.5rem - 3rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
           }
           .chat-tab-wrapper.has-banner {
-            height: calc(100dvh - 3.5rem - 3rem - 3.5rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
-            max-height: calc(100dvh - 3.5rem - 3rem - 3.5rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
+            height: calc(100dvh - var(--league-page-top, 0px) - 3.5rem - 3rem - 3.5rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
+            max-height: calc(100dvh - var(--league-page-top, 0px) - 3.5rem - 3rem - 3.5rem - var(--safe-area-top, env(safe-area-inset-top, 0px)));
           }
         }
       `}</style>
       {/* Sticky iOS-style header */}
       <div ref={headerRef} className="league-header-fixed bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4">
+        <div className="max-w-[1024px] mx-auto px-4 lg:px-6">
           {/* Compact header bar */}
           <div className="flex items-center justify-between h-16">
             {/* Back button */}
@@ -3497,24 +3508,26 @@ In Mini-Leagues with 3 or more players, if you're the only person to correctly p
       {(() => {
         if (tab === "chat") {
           return (
-        <div className="chat-tab-wrapper">
-          <MiniLeagueChatBeta
-            miniLeagueId={league?.id ?? null}
-            memberNames={memberNameById}
-            deepLinkError={deepLinkError}
-            isChatActive={tab === 'chat'}
-          />
-        </div>
+            <div className="chat-tab-wrapper">
+              <div className="h-full w-full max-w-[1024px] mx-auto px-0 lg:px-6">
+                <MiniLeagueChatBeta
+                  miniLeagueId={league?.id ?? null}
+                  memberNames={memberNameById}
+                  deepLinkError={deepLinkError}
+                  isChatActive={tab === 'chat'}
+                />
+              </div>
+            </div>
           );
         }
         return (
-        <div className={`league-content-wrapper ${showHeaderMenu ? 'menu-open' : ''}`}>
-          <div className="px-1 sm:px-2">
-            {tab === "mlt" && <MltTab />}
-            {tab === "gw" && <GwPicksTab />}
-            {tab === "gwr" && <GwResultsTab />}
+          <div className={`league-content-wrapper ${showHeaderMenu ? 'menu-open' : ''}`}>
+            <div className="max-w-[1024px] mx-auto px-1 sm:px-2 lg:px-6">
+              {tab === "mlt" && <MltTab />}
+              {tab === "gw" && <GwPicksTab />}
+              {tab === "gwr" && <GwResultsTab />}
+            </div>
           </div>
-      </div>
         );
       })()}
 
