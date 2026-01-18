@@ -645,6 +645,31 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
           </div>
         </div>
       )}
+      {/* Prevent 0.1s "pop-in": always render the pick row immediately, but fill %'s when they arrive.
+          This avoids a flashy skeleton for very fast async loads. */}
+      {!showPickButtonsSection && pickPercentages === null && (
+        <div className={`grid grid-cols-3 gap-3 relative mt-3`} aria-hidden="true">
+          <div className={`${getButtonClass(homeState)} flex flex-col items-center justify-center`}>
+            <span className={`${homeState.isCorrect ? "font-bold" : ""} ${homeState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>
+              Home Win
+            </span>
+            {/* Reserve the percent line height without drawing attention */}
+            <span className="text-xs font-bold opacity-0 mt-0.5">0%</span>
+          </div>
+          <div className={`${getButtonClass(drawState)} flex flex-col items-center justify-center`}>
+            <span className={`${drawState.isCorrect ? "font-bold" : ""} ${drawState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>
+              Draw
+            </span>
+            <span className="text-xs font-bold opacity-0 mt-0.5">0%</span>
+          </div>
+          <div className={`${getButtonClass(awayState)} flex flex-col items-center justify-center`}>
+            <span className={`${awayState.isCorrect ? "font-bold" : ""} ${awayState.isWrong && isFinished ? "line-through decoration-2 decoration-white" : ""}`}>
+              Away Win
+            </span>
+            <span className="text-xs font-bold opacity-0 mt-0.5">0%</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
