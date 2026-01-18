@@ -81,17 +81,12 @@ export default function GameweekFixturesCardList({
  const calculateScore = () => {
  let score = 0;
  let liveCount = 0;
- let totalFixturesWithPicks = 0;
  let allFinished = true;
  let hasAnyActive = false;
 
  sortedFixtures.forEach((fixture) => {
  const pick = picks[fixture.fixture_index];
  const liveScore = liveScores.get(fixture.fixture_index);
-
- if (pick) {
- totalFixturesWithPicks++;
- }
 
  if (liveScore) {
  const isLive = liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED';
@@ -123,10 +118,13 @@ export default function GameweekFixturesCardList({
  }
  });
 
- return { score, liveCount, allFinished, hasAnyActive, totalFixturesWithPicks };
+    // Always show score out of total fixtures (Premier League GW is out of 10),
+    // not "out of picks made" (which can show /7 etc and is misleading).
+    const totalFixtures = sortedFixtures.length || 10;
+    return { score, liveCount, allFinished, hasAnyActive, totalFixtures };
  };
 
- const { score, liveCount, allFinished, hasAnyActive, totalFixturesWithPicks } = calculateScore();
+  const { score, liveCount, allFinished, hasAnyActive, totalFixtures } = calculateScore();
 
  // Truncate username if longer than 18 characters
  const displayUserName = userName.length > 18 ? userName.substring(0, 18) + '...' : userName;
@@ -223,7 +221,7 @@ export default function GameweekFixturesCardList({
  <span className="flex items-baseline gap-0.5">
  <span className="text-sm sm:text-base font-extrabold">{score}</span>
  <span className="text-[10px] sm:text-xs font-medium opacity-90">/</span>
- <span className="text-xs sm:text-sm font-semibold opacity-80">{totalFixturesWithPicks}</span>
+ <span className="text-xs sm:text-sm font-semibold opacity-80">{totalFixtures}</span>
  </span>
  </div>
  )}

@@ -84,17 +84,12 @@ export default function GameweekFixturesCardListForCapture({
   const calculateScore = () => {
     let score = 0;
     let liveCount = 0;
-    let totalFixturesWithPicks = 0;
     let allFinished = true;
     let hasAnyActive = false;
 
     sortedFixtures.forEach((fixture) => {
       const pick = picks[fixture.fixture_index];
       const liveScore = liveScores.get(fixture.fixture_index);
-
-      if (pick) {
-        totalFixturesWithPicks++;
-      }
 
       if (liveScore) {
         const isLive = liveScore.status === 'IN_PLAY' || liveScore.status === 'PAUSED';
@@ -126,10 +121,13 @@ export default function GameweekFixturesCardListForCapture({
       }
     });
 
-    return { score, liveCount, allFinished, hasAnyActive, totalFixturesWithPicks };
+    // Always show score out of total fixtures (Premier League GW is out of 10),
+    // not "out of picks made" (which can show /7 etc and is misleading).
+    const totalFixtures = sortedFixtures.length || 10;
+    return { score, liveCount, allFinished, hasAnyActive, totalFixtures };
   };
 
-  const { score, liveCount, allFinished, hasAnyActive, totalFixturesWithPicks } = calculateScore();
+  const { score, liveCount, allFinished, hasAnyActive, totalFixtures } = calculateScore();
   const displayUserName = userName.length > 18 ? userName.substring(0, 18) + '...' : userName;
 
   return (
@@ -285,7 +283,7 @@ export default function GameweekFixturesCardListForCapture({
               <span className="flex items-baseline" style={{ display: 'flex', alignItems: 'baseline', gap: '2.09px' }}>
                 <span className="font-extrabold text-lg" style={{ fontWeight: '800' }}>{score}</span>
                 <span className="font-medium opacity-90 text-sm" style={{ opacity: 0.9 }}>/</span>
-                <span className="font-semibold opacity-80 text-base" style={{ opacity: 0.8 }}>{totalFixturesWithPicks}</span>
+                <span className="font-semibold opacity-80 text-base" style={{ opacity: 0.8 }}>{totalFixtures}</span>
               </span>
             </div>
           )}

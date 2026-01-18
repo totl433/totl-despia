@@ -62,8 +62,7 @@ function rowToOutcome(r: ResultRowRaw): "H" | "D" | "A" | null {
 function calculateLastGwRank(
   userId: string,
   gw: number,
-  allPoints: Array<{user_id: string, gw: number, points: number}>,
-  results: ResultRowRaw[]
+  allPoints: Array<{user_id: string, gw: number, points: number}>
 ): { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null {
   const gwPoints = allPoints.filter(p => p.gw === gw);
   if (gwPoints.length === 0) return null;
@@ -73,7 +72,9 @@ function calculateLastGwRank(
   const rank = sorted.findIndex(p => p.user_id === userId) + 1;
   const total = gwPoints.length;
   const isTied = sorted.filter(p => p.points === userPoints).length > 1;
-  const totalFixtures = results.filter(r => r.gw === gw).length;
+  // Always display scores out of 10 for Premier League gameweeks (even during LIVE when only
+  // some results have been written to app_gw_results).
+  const totalFixtures = 10;
   
   return { rank, total, score: userPoints, gw, totalFixtures, isTied };
 }
@@ -282,7 +283,7 @@ export async function loadHomePageData(
   });
   
   const results = (resultsResult.data ?? []) as ResultRowRaw[];
-  const lastGwRank = calculateLastGwRank(userId, latestGw, allGwPoints, results);
+  const lastGwRank = calculateLastGwRank(userId, latestGw, allGwPoints);
   const fiveGwRank = latestGw >= 5 ? calculateFormRank(userId, latestGw - 4, latestGw, allGwPoints) : null;
   const tenGwRank = latestGw >= 10 ? calculateFormRank(userId, latestGw - 9, latestGw, allGwPoints) : null;
   const seasonRank = calculateSeasonRank(userId, overall);
