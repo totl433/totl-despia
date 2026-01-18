@@ -42,7 +42,8 @@ export default function SignInForm({
  }
 
  return (
- <div className="min-h-screen flex flex-col bg-white px-6 pt-5">
+ <div className="min-h-screen bg-white">
+ <div className="min-h-screen flex flex-col bg-white px-6 pt-5 w-full max-w-[1024px] mx-auto">
  <h1 className="text-4xl font-normal text-[#1C8376] leading-[1.2] tracking-tight mt-12 mb-10">Sign in</h1>
  
  <form onSubmit={handleSubmit} className="space-y-4">
@@ -102,6 +103,7 @@ export default function SignInForm({
      Sign up
      </button>
  </p>
+ </div>
  </div>
  </div>);
 }

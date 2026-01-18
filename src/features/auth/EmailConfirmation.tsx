@@ -35,7 +35,8 @@ export default function EmailConfirmation({
  };
 
  return (
- <div className="min-h-screen flex flex-col bg-white px-6 pt-16">
+ <div className="min-h-screen bg-white">
+ <div className="min-h-screen flex flex-col bg-white px-6 pt-16 w-full max-w-[1024px] mx-auto">
  <h1 className="text-2xl font-semibold text-slate-900 mb-4">Check Your Email</h1>
  
  <p className="text-slate-600 mb-2">
@@ -83,5 +84,6 @@ export default function EmailConfirmation({
     Sign in
   </button>
 </div>
+ </div>
  </div>);
 }

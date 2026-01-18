@@ -94,7 +94,8 @@ export default function ResetPasswordForm({
  // Email sent confirmation
  if (emailSent) {
  return (
- <div className="min-h-screen flex flex-col bg-white px-6 pt-16">
+ <div className="min-h-screen bg-white">
+ <div className="min-h-screen flex flex-col bg-white px-6 pt-16 w-full max-w-[1024px] mx-auto">
  <h1 className="text-2xl font-semibold text-slate-900 mb-4">Check Your Email</h1>
  <p className="text-slate-600 mb-2">
  We've sent a password reset link to <strong>{email}</strong>
@@ -112,13 +113,15 @@ export default function ResetPasswordForm({
  >
  Back to sign in
  </button>
+ </div>
  </div>);
  }
 
  // Set new password form
  if (mode ==='set-new') {
  return (
- <div className="min-h-screen flex flex-col bg-white px-6 pt-16">
+ <div className="min-h-screen bg-white">
+ <div className="min-h-screen flex flex-col bg-white px-6 pt-16 w-full max-w-[1024px] mx-auto">
  <h1 className="text-2xl font-semibold text-slate-900 mb-8">Set New Password</h1>
  
  <form onSubmit={handleSetNewPassword} className="space-y-4">
@@ -157,12 +160,14 @@ export default function ResetPasswordForm({
  Update Password
  </button>
  </form>
+ </div>
  </div>);
  }
 
  // Request reset email form
  return (
- <div className="min-h-screen flex flex-col bg-white px-6 pt-16">
+ <div className="min-h-screen bg-white">
+ <div className="min-h-screen flex flex-col bg-white px-6 pt-16 w-full max-w-[1024px] mx-auto">
  <h1 className="text-2xl font-semibold text-slate-900 mb-8">Reset your password</h1>
  
  <form onSubmit={handleRequestReset} className="space-y-4">
@@ -200,6 +205,7 @@ export default function ResetPasswordForm({
  Sign in
  </button>
  </p>
+ </div>
  </div>
  </div>);
 }

@@ -408,15 +408,17 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
       role="region"
       aria-label="Onboarding carousel"
     >
-      <div className="flex justify-end px-6 pt-8 pb-4">
-        {canShowSkip && (
-          <button onClick={handleSkip} className="text-sm text-slate-500 py-2 px-3">
-            Skip
-          </button>
-        )}
-      </div>
+      <div className="w-full max-w-[1024px] mx-auto flex flex-col h-full">
+        <div className="flex justify-end px-6 pt-8 pb-4">
+          {canShowSkip && (
+            <button onClick={handleSkip} className="text-sm text-slate-500 py-2 px-3">
+              Skip
+            </button>
+          )}
+        </div>
 
-      {renderContent()}
+        {renderContent()}
+      </div>
     </div>
   );
 }
