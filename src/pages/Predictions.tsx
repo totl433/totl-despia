@@ -2067,7 +2067,9 @@ return null;
    const liveScore = liveScores[fixture.fixture_index];
 
  // CRITICAL: Only render fixtures that match the current GW to prevent flash of old data
- if (fixture.gw !== currentGw) {
+ // Use gwToRender (which falls back to fixturesGwRef.current) to avoid hiding rows
+ // during first-load races where currentGw state hasn't updated yet.
+ if (fixture.gw !== gwToRender) {
    return null;
  }
 
