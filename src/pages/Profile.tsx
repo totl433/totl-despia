@@ -21,7 +21,9 @@ export default function Profile() {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDeleteFinalModal, setShowDeleteFinalModal] = useState(false);
   const [deleteConfirmChecked, setDeleteConfirmChecked] = useState(false);
+  const [deleteTypeToConfirm, setDeleteTypeToConfirm] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   
@@ -186,7 +188,8 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 overflow-x-hidden">
-      <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 py-6 sm:p-6">
+      {/* Extra bottom padding so destructive actions aren't covered by BottomNav on mobile */}
+      <div className="max-w-4xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 py-6 sm:p-6 pb-28 lg:pb-6">
         {/* Page Title */}
         <PageHeader title="Profile" as="h1" className="mb-6" />
 
@@ -235,6 +238,7 @@ export default function Profile() {
             onClick={() => {
               setDeleteError(null);
               setDeleteConfirmChecked(false);
+              setDeleteTypeToConfirm('');
               setShowDeleteModal(true);
             }}
             className="mt-4 w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl"
@@ -253,21 +257,63 @@ export default function Profile() {
       {showDeleteModal && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-800 shadow-2xl p-6 border border-slate-200 dark:border-slate-700">
-            <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">Are you sure?</h3>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold tracking-wide text-slate-500 dark:text-slate-400">
+                  STEP 1 OF 2
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">Are you sure?</h3>
+              </div>
+              <span className="text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-900/40 rounded-full px-3 py-1">
+                Required
+              </span>
+            </div>
             <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">
               Deleting your account will permanently remove your data and you will lose access to your mini leagues and history.
             </p>
 
-            <label className="flex items-start gap-3 mt-4 p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/30">
+            <label
+              className={`mt-4 block rounded-xl border bg-slate-50 dark:bg-slate-900/30 cursor-pointer ${
+                deleteConfirmChecked
+                  ? 'border-emerald-200 dark:border-emerald-900/40'
+                  : 'border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              {/* Native checkboxes are hidden by global CSS in this app; render a custom checkbox UI. */}
               <input
                 type="checkbox"
                 checked={deleteConfirmChecked}
                 onChange={(e) => setDeleteConfirmChecked(e.target.checked)}
-                className="mt-1 h-4 w-4"
+                className="sr-only"
               />
-              <span className="text-sm text-slate-700 dark:text-slate-200">
-                I understand this cannot be undone.
-              </span>
+              <div className="flex items-start gap-4 p-4">
+                <div
+                  className={`mt-0.5 h-7 w-7 rounded-md border flex items-center justify-center ${
+                    deleteConfirmChecked
+                      ? 'bg-rose-600 border-rose-600'
+                      : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'
+                  }`}
+                  aria-hidden="true"
+                >
+                  {deleteConfirmChecked && (
+                    <svg className="h-5 w-5 text-white" viewBox="0 0 20 20" fill="currentColor">
+                      <path
+                        fillRule="evenodd"
+                        d="M16.704 5.29a1 1 0 010 1.414l-7.1 7.1a1 1 0 01-1.414 0l-3.494-3.494a1 1 0 011.414-1.414l2.787 2.787 6.393-6.393a1 1 0 011.414 0z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    I understand this cannot be undone.
+                  </div>
+                  <div className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                    Tap anywhere in this box to confirm.
+                  </div>
+                </div>
+              </div>
             </label>
 
             <div className="mt-5 flex gap-3">
@@ -284,6 +330,55 @@ export default function Profile() {
                 disabled={!deleteConfirmChecked || deletingAccount}
                 onClick={async () => {
                   if (!deleteConfirmChecked || deletingAccount) return;
+                  setDeleteTypeToConfirm('');
+                  setShowDeleteModal(false);
+                  setShowDeleteFinalModal(true);
+                }}
+                className={`flex-1 py-3 rounded-xl font-semibold text-white ${
+                  !deleteConfirmChecked || deletingAccount ? 'bg-rose-300 cursor-not-allowed' : 'bg-rose-600 hover:bg-rose-700'
+                }`}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Final Delete Account Modal (type-to-confirm) */}
+      {showDeleteFinalModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-800 shadow-2xl p-6 border border-rose-200 dark:border-rose-900/50">
+            <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">Final confirmation</h3>
+            <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">
+              Type <span className="font-mono font-semibold">DELETE</span> to permanently delete your account.
+            </p>
+
+            <input
+              value={deleteTypeToConfirm}
+              onChange={(e) => setDeleteTypeToConfirm(e.target.value)}
+              placeholder="Type DELETE"
+              className="mt-4 w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900/30 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-rose-400"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => {
+                  if (deletingAccount) return;
+                  setShowDeleteFinalModal(false);
+                }}
+                className="flex-1 py-3 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={deletingAccount || deleteTypeToConfirm.trim().toUpperCase() !== 'DELETE'}
+                onClick={async () => {
+                  if (deletingAccount) return;
+                  if (deleteTypeToConfirm.trim().toUpperCase() !== 'DELETE') return;
                   setDeletingAccount(true);
                   setDeleteError(null);
                   try {
@@ -317,18 +412,19 @@ export default function Profile() {
                       throw new Error(msg);
                     }
 
-                    // Best-effort sign out + redirect to auth
                     await signOut();
                     navigate('/auth?deleted=1', { replace: true });
                   } catch (e: any) {
                     setDeleteError(e?.message || 'Failed to delete account');
-                    setShowDeleteModal(false);
+                    setShowDeleteFinalModal(false);
                   } finally {
                     setDeletingAccount(false);
                   }
                 }}
                 className={`flex-1 py-3 rounded-xl font-semibold text-white ${
-                  !deleteConfirmChecked || deletingAccount ? 'bg-rose-300 cursor-not-allowed' : 'bg-rose-600 hover:bg-rose-700'
+                  deletingAccount || deleteTypeToConfirm.trim().toUpperCase() !== 'DELETE'
+                    ? 'bg-rose-300 cursor-not-allowed'
+                    : 'bg-rose-600 hover:bg-rose-700'
                 }`}
               >
                 {deletingAccount ? 'Deleting…' : 'Yes, delete'}
