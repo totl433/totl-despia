@@ -8,7 +8,8 @@ import SignInForm from './SignInForm';
 import SignUpForm from './SignUpForm';
 import ResetPasswordForm from './ResetPasswordForm';
 import EmailConfirmation from './EmailConfirmation';
-import { hasConsents } from './consentStorage';
+import { getPrivacyAccepted, hasConsents } from './consentStorage';
+import { isNativeApp } from '../../lib/platform';
 
 export type GuestStep = 'onboarding' | 'signIn' | 'signUp' | 'reset' | 'emailConfirmation';
 
@@ -48,7 +49,9 @@ export default function AuthFlow({ initialStep = 'onboarding', onAuthSuccess }: 
   // Check for reset query param (for testing)
   const urlParams = new URLSearchParams(window.location.search);
   const forceOnboarding = urlParams.get('onboarding') === '1';
-  const consentsCompleted = hasConsents();
+  // Apple review compliance: cookie consent prompts are web-only.
+  // In the native app we require Privacy acceptance, but do not block on cookie preferences.
+  const consentsCompleted = isNativeApp() ? getPrivacyAccepted() : hasConsents();
   
   // Check for persisted step (survives parent re-renders)
   const storedStep = forceOnboarding ? null : getStoredStep();

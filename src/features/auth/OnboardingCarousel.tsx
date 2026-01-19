@@ -10,6 +10,7 @@ import {
   type CookiePreferences,
   type StoredCookieConsent,
 } from './consentStorage';
+import { isNativeApp, isWebBrowser } from '../../lib/platform';
 
 type Slide =
   | {
@@ -70,21 +71,77 @@ interface OnboardingCarouselProps {
 }
 
 export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCarouselProps) {
+  const [nativeDetected, setNativeDetected] = useState(() => isNativeApp());
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const [textFading, setTextFading] = useState(false);
   const [displayedIndex, setDisplayedIndex] = useState(0);
   const [privacyChecked, setPrivacyChecked] = useState(getPrivacyAccepted());
-  const [cookieChoice, setCookieChoiceState] = useState<CookieChoice | null>(
-    getCookieConsent()?.choice ?? null
-  );
-  const [cookiePrefs, setCookiePrefs] = useState<CookiePreferences>({
-    performance: getCookieConsent()?.preferences?.performance ?? true,
-    analytics: getCookieConsent()?.preferences?.analytics ?? true,
-    marketing: getCookieConsent()?.preferences?.marketing ?? true,
+  const [cookieChoice, setCookieChoiceState] = useState<CookieChoice | null>(() => {
+    // In native app, treat as "essential only" by default (no tracking cookies).
+    if (isNativeApp()) return 'essential';
+    return getCookieConsent()?.choice ?? null;
+  });
+  const [cookiePrefs, setCookiePrefs] = useState<CookiePreferences>(() => {
+    if (isNativeApp()) {
+      return { performance: false, analytics: false, marketing: false };
+    }
+    return {
+      performance: getCookieConsent()?.preferences?.performance ?? true,
+      analytics: getCookieConsent()?.preferences?.analytics ?? true,
+      marketing: getCookieConsent()?.preferences?.marketing ?? true,
+    };
   });
   const [showManage, setShowManage] = useState(false);
-  const slides = useMemo(() => BASE_SLIDES, []);
+
+  // Apple review compliance: cookie choices prompt is web-only.
+  // Native app uses essential-only (no tracking cookies) without prompting.
+  const slides = useMemo(() => {
+    return nativeDetected ? BASE_SLIDES.filter((s) => s.type !== 'cookies') : BASE_SLIDES;
+  }, [nativeDetected]);
+
+  // Native detection can become available slightly after boot (Despia injects globals).
+  // Poll briefly so we can remove the cookie prompt and default to essential-only.
+  useEffect(() => {
+    if (nativeDetected) return;
+    let attempts = 0;
+    const maxAttempts = 20; // 10s total
+    const interval = setInterval(() => {
+      attempts += 1;
+      if (isNativeApp()) {
+        setNativeDetected(true);
+        clearInterval(interval);
+        return;
+      }
+      if (attempts >= maxAttempts) {
+        clearInterval(interval);
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [nativeDetected]);
+
+  // Ensure native app has an explicit "essential only" cookie consent stored (local preference, not cookies).
+  useEffect(() => {
+    if (!nativeDetected) return;
+    const existing = getCookieConsent();
+    if (existing?.choice) {
+      // If a previous value exists, still ensure we don't treat it as tracking-enabled inside native app.
+      if (existing.choice !== 'essential') {
+        setCookieConsent({
+          choice: 'essential',
+          preferences: { performance: false, analytics: false, marketing: false },
+        });
+      }
+      return;
+    }
+    setCookieConsent({
+      choice: 'essential',
+      preferences: { performance: false, analytics: false, marketing: false },
+    });
+    setCookieChoiceState('essential');
+    setCookiePrefs({ performance: false, analytics: false, marketing: false });
+    setShowManage(false);
+  }, [nativeDetected]);
 
   useEffect(() => {
     if (currentIndex !== displayedIndex) {
@@ -159,7 +216,8 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
 
   const currentSlide = slides[currentIndex];
   const isPrivacyPending = !privacyChecked;
-  const isCookiesPending = !cookieChoice;
+  const hasCookieSlide = useMemo(() => slides.some((s) => s.type === 'cookies'), [slides]);
+  const isCookiesPending = hasCookieSlide && !cookieChoice;
   const firstPendingRequiredIndex = useMemo(() => {
     if (isPrivacyPending) {
       return slides.findIndex((s) => s.type === 'privacy');

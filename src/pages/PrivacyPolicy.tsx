@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { isWebBrowser } from '../lib/platform';
 
 /**
  * Privacy Policy page displaying Termly-embedded privacy policy
@@ -9,6 +10,11 @@ export default function PrivacyPolicy() {
   const scriptLoadedRef = useRef(false);
 
   useEffect(() => {
+    // Apple review compliance: do not load Termly (cookie-setting) scripts inside the native app WebView.
+    if (!isWebBrowser()) {
+      return;
+    }
+
     // Load Termly script dynamically to ensure it runs after React renders the div
     const loadTermlyScript = () => {
       // Check if Termly is already available (script loaded and initialized)
@@ -79,6 +85,25 @@ export default function PrivacyPolicy() {
     
     return () => clearTimeout(timeoutId);
   }, []);
+
+  if (!isWebBrowser()) {
+    return (
+      <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-900 p-4">
+        <div className="max-w-3xl mx-auto bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm space-y-4">
+          <h1 className="text-2xl font-bold text-[#1C8376] dark:text-emerald-400">Privacy Policy</h1>
+          <p className="text-slate-700 dark:text-slate-200">
+            For Apple compliance, the iOS app does not load third-party policy embeds that may set cookies.
+          </p>
+          <p className="text-slate-700 dark:text-slate-200">
+            View the policy here:{' '}
+            <a className="text-[#1C8376] dark:text-emerald-400 underline" href="https://playtotl.com/privacy-policy">
+              https://playtotl.com/privacy-policy
+            </a>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-900 p-4">

@@ -339,7 +339,12 @@ function AppContent() {
   
   // Load Google Analytics only on web (not Despia).
   useEffect(() => {
-    maybeLoadGoogleAnalytics();
+    // Delay GA load to give Despia time to inject native bridge globals.
+    // This avoids accidental GA/cookie collection during iOS App Review.
+    const timeoutId = window.setTimeout(() => {
+      maybeLoadGoogleAnalytics();
+    }, 2500);
+    return () => clearTimeout(timeoutId);
   }, []);
   
   // Handle deep links from notifications (iOS native)

@@ -9,6 +9,8 @@
     "tailwind:build": "tailwindcss -i ./src/index.css -o ./src/output.css --minify",
     "build": "npm run tailwind:build && tsc -b && vite build",
     "check": "npm run tailwind:build && tsc -b && vite build",
+    "postbuild": "node scripts/check-dist-index-html.mjs",
+    "postcheck": "node scripts/check-dist-index-html.mjs",
     "check:build": "./scripts/check-build.sh",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
