@@ -4,6 +4,7 @@ import "react-chat-elements/dist/main.css";
 import React, { Suspense, lazy, useState, useEffect, useLayoutEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
+import { isNativeApp } from "./lib/platform";
 
 // Suppress Termly-related network errors (410 Gone) that occur when Termly account is inactive
 // These errors are non-critical and don't affect app functionality
@@ -211,6 +212,76 @@ if (typeof window !== 'undefined') {
     
     return xhr;
   } as any;
+}
+
+function clearAnalyticsCookiesForCurrentDomain(): { attempted: boolean; cleared: string[] } {
+  if (typeof document === 'undefined') return { attempted: false, cleared: [] };
+
+  const raw = document.cookie || '';
+  const names = raw
+    .split(';')
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => p.split('=')[0]?.trim())
+    .filter(Boolean);
+
+  const gaNames = names.filter((n) => n.startsWith('_ga'));
+  if (gaNames.length === 0) return { attempted: true, cleared: [] };
+
+  const host = typeof window !== 'undefined' ? window.location.hostname : '';
+  const domainCandidates = Array.from(
+    new Set(
+      [
+        '', // no domain attribute (current host)
+        host ? `domain=${host}` : '',
+        host ? `domain=.${host}` : '',
+      ].filter(Boolean)
+    )
+  );
+  const pathCandidates = ['', 'path=/'];
+
+  const cleared: string[] = [];
+  const expires = 'Thu, 01 Jan 1970 00:00:00 GMT';
+
+  gaNames.forEach((name) => {
+    // Try a few combinations to remove whatever was set.
+    for (const domainAttr of domainCandidates) {
+      for (const pathAttr of pathCandidates) {
+        const attrs = [
+          `${name}=`,
+          `expires=${expires}`,
+          'max-age=0',
+          pathAttr,
+          domainAttr,
+          'SameSite=Lax',
+        ].filter(Boolean);
+        try {
+          document.cookie = attrs.join('; ');
+        } catch {
+          // ignore
+        }
+      }
+    }
+    cleared.push(name);
+  });
+
+  return { attempted: true, cleared };
+}
+
+// Apple review compliance: if we're in the native app, wipe any existing GA cookies
+// (they can persist from older builds where GA was present).
+if (typeof window !== 'undefined' && isNativeApp()) {
+  const res1 = clearAnalyticsCookiesForCurrentDomain();
+  if (import.meta.env.DEV) {
+    console.log('[Compliance] Cleared GA cookies (attempt 1):', res1);
+  }
+  // Run again shortly after boot to catch cookies restored by WebView/session.
+  setTimeout(() => {
+    const res2 = clearAnalyticsCookiesForCurrentDomain();
+    if (import.meta.env.DEV) {
+      console.log('[Compliance] Cleared GA cookies (attempt 2):', res2);
+    }
+  }, 1500);
 }
 
 // Eagerly load BottomNav pages for instant navigation (no Suspense delay)

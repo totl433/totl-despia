@@ -74,6 +74,7 @@ export default function AdminDataPage() {
   const [trackingCaptureEnabled, setTrackingCaptureEnabled] = useState(false);
   const [trackingHits, setTrackingHits] = useState<TrackingHit[]>([]);
   const [trackingCopied, setTrackingCopied] = useState(false);
+  const [trackingCookieCleared, setTrackingCookieCleared] = useState(false);
   const originalFetchRef = useRef<typeof window.fetch | null>(null);
   const originalXhrOpenRef = useRef<XMLHttpRequest['open'] | null>(null);
   const originalXhrSendRef = useRef<XMLHttpRequest['send'] | null>(null);
@@ -224,6 +225,58 @@ export default function AdminDataPage() {
 
     const ok = isInNative && reasons.length === 0;
     return { ok, reasons };
+  };
+
+  const clearGaCookiesNow = () => {
+    try {
+      if (typeof document === 'undefined') return;
+      const raw = document.cookie || '';
+      const names = raw
+        .split(';')
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .map((p) => p.split('=')[0]?.trim())
+        .filter(Boolean);
+      const gaNames = names.filter((n) => n.startsWith('_ga'));
+      const host = typeof window !== 'undefined' ? window.location.hostname : '';
+      const domainCandidates = Array.from(
+        new Set(
+          [
+            '', // no domain attribute
+            host ? `domain=${host}` : '',
+            host ? `domain=.${host}` : '',
+          ].filter(Boolean)
+        )
+      );
+      const pathCandidates = ['', 'path=/'];
+      const expires = 'Thu, 01 Jan 1970 00:00:00 GMT';
+
+      gaNames.forEach((name) => {
+        for (const domainAttr of domainCandidates) {
+          for (const pathAttr of pathCandidates) {
+            const attrs = [
+              `${name}=`,
+              `expires=${expires}`,
+              'max-age=0',
+              pathAttr,
+              domainAttr,
+              'SameSite=Lax',
+            ].filter(Boolean);
+            try {
+              document.cookie = attrs.join('; ');
+            } catch {
+              // ignore
+            }
+          }
+        }
+      });
+
+      setTrackingCookieCleared(true);
+      setTimeout(() => setTrackingCookieCleared(false), 2000);
+      setTrackingDiag(collectTrackingDiag());
+    } catch (e) {
+      console.warn('[AdminData] Failed to clear GA cookies:', e);
+    }
   };
 
   const startTrackingCapture = () => {
@@ -748,6 +801,16 @@ ${report.dataFetches.filter((log: any) => log.table === 'league_messages' || log
                             className="w-full py-2 bg-slate-200 text-slate-800 font-medium rounded-lg text-sm"
                           >
                             Refresh
+                          </button>
+                          <button
+                            onClick={clearGaCookiesNow}
+                            className={`w-full py-2 font-medium rounded-lg text-sm ${
+                              trackingCookieCleared
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-slate-700 text-white hover:bg-slate-800'
+                            }`}
+                          >
+                            {trackingCookieCleared ? '✅ Cleared' : '🧹 Clear GA cookies'}
                           </button>
                           <button
                             onClick={copyTrackingReport}
