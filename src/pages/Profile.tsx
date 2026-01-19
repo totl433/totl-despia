@@ -1,7 +1,7 @@
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { fetchUserLeagues } from '../services/userLeagues';
 import { ProfileHeader } from '../components/profile/ProfileHeader';
 import { AccountMenu } from '../components/profile/AccountMenu';
@@ -17,8 +17,13 @@ interface UserStats {
 
 export default function Profile() {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmChecked, setDeleteConfirmChecked] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   
   // Admin check
   const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
@@ -219,7 +224,119 @@ export default function Profile() {
                 </Link>
             </div>
           )}
+
+        {/* Delete Account (Apple requirement) */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 mt-6 border border-rose-200 dark:border-rose-900/50">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Delete account</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">
+            This will permanently delete your account and sign you out. This action cannot be undone.
+          </p>
+          <button
+            onClick={() => {
+              setDeleteError(null);
+              setDeleteConfirmChecked(false);
+              setShowDeleteModal(true);
+            }}
+            className="mt-4 w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl"
+          >
+            Delete my account
+          </button>
+          {deleteError && (
+            <div className="mt-3 text-sm text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-900/40 rounded-lg p-3">
+              {deleteError}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Delete Account Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-800 shadow-2xl p-6 border border-slate-200 dark:border-slate-700">
+            <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">Are you sure?</h3>
+            <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">
+              Deleting your account will permanently remove your data and you will lose access to your mini leagues and history.
+            </p>
+
+            <label className="flex items-start gap-3 mt-4 p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/30">
+              <input
+                type="checkbox"
+                checked={deleteConfirmChecked}
+                onChange={(e) => setDeleteConfirmChecked(e.target.checked)}
+                className="mt-1 h-4 w-4"
+              />
+              <span className="text-sm text-slate-700 dark:text-slate-200">
+                I understand this cannot be undone.
+              </span>
+            </label>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => {
+                  if (deletingAccount) return;
+                  setShowDeleteModal(false);
+                }}
+                className="flex-1 py-3 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!deleteConfirmChecked || deletingAccount}
+                onClick={async () => {
+                  if (!deleteConfirmChecked || deletingAccount) return;
+                  setDeletingAccount(true);
+                  setDeleteError(null);
+                  try {
+                    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+                    if (sessionError) throw sessionError;
+                    const accessToken = sessionData?.session?.access_token;
+                    if (!accessToken) throw new Error('No active session. Please sign in again and retry.');
+
+                    const isDev = import.meta.env.DEV || window.location.hostname === 'localhost';
+                    const baseUrl = isDev ? 'https://totl-staging.netlify.app' : '';
+
+                    const res = await fetch(`${baseUrl}/.netlify/functions/deleteAccount`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${accessToken}`,
+                      },
+                      body: JSON.stringify({ confirm: true }),
+                    });
+
+                    const text = await res.text();
+                    let json: any = null;
+                    try {
+                      json = text ? JSON.parse(text) : null;
+                    } catch {
+                      json = null;
+                    }
+
+                    if (!res.ok || !json?.ok) {
+                      const msg = json?.error || json?.details || text || `Failed to delete account (HTTP ${res.status})`;
+                      throw new Error(msg);
+                    }
+
+                    // Best-effort sign out + redirect to auth
+                    await signOut();
+                    navigate('/auth?deleted=1', { replace: true });
+                  } catch (e: any) {
+                    setDeleteError(e?.message || 'Failed to delete account');
+                    setShowDeleteModal(false);
+                  } finally {
+                    setDeletingAccount(false);
+                  }
+                }}
+                className={`flex-1 py-3 rounded-xl font-semibold text-white ${
+                  !deleteConfirmChecked || deletingAccount ? 'bg-rose-300 cursor-not-allowed' : 'bg-rose-600 hover:bg-rose-700'
+                }`}
+              >
+                {deletingAccount ? 'Deleting…' : 'Yes, delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
