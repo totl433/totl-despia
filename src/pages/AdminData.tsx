@@ -269,13 +269,13 @@ export default function AdminDataPage() {
     const originalOpen = originalXhrOpenRef.current;
     const originalSend = originalXhrSendRef.current;
 
-    XMLHttpRequest.prototype.open = function (method: string, url: string | URL, ...rest: any[]) {
+    XMLHttpRequest.prototype.open = function (this: XMLHttpRequest, method: string, url: string | URL, ...rest: any[]) {
       (this as any).__totl_tracking_method = method;
       (this as any).__totl_tracking_url = url?.toString?.() ?? String(url);
       return (originalOpen as any).call(this, method, url, ...rest);
     } as any;
 
-    XMLHttpRequest.prototype.send = function (body?: any) {
+    XMLHttpRequest.prototype.send = function (this: XMLHttpRequest, body?: any) {
       const xhr = this as any;
       const url = String(xhr.__totl_tracking_url || '');
       const method = String(xhr.__totl_tracking_method || 'GET');

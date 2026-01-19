@@ -10,7 +10,7 @@ import {
   type CookiePreferences,
   type StoredCookieConsent,
 } from './consentStorage';
-import { isNativeApp, isWebBrowser } from '../../lib/platform';
+import { isNativeApp } from '../../lib/platform';
 
 type Slide =
   | {
