@@ -400,16 +400,21 @@ export default function LeagueDetailScreen() {
         if (Number.isNaN(d.getTime())) return 'Fixtures';
         return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
       };
-      const buckets = new Map<string, { label: string; key: number; fixtures: Fixture[] }>();
+      const buckets = new Map<string, { label: string; key: number; minFixtureIndex: number; fixtures: Fixture[] }>();
       fixtures.forEach((f) => {
         const label = fmt(f.kickoff_time ?? null);
-        const key = f.kickoff_time ? new Date(f.kickoff_time).getTime() : Number.MAX_SAFE_INTEGER;
-        const b = buckets.get(label) ?? { label, key, fixtures: [] };
+        const timeKey = f.kickoff_time ? new Date(f.kickoff_time).getTime() : Number.MAX_SAFE_INTEGER;
+        const safeTimeKey = Number.isFinite(timeKey) ? timeKey : Number.MAX_SAFE_INTEGER;
+        const b =
+          buckets.get(label) ?? { label, key: safeTimeKey, minFixtureIndex: Number(f.fixture_index ?? Number.MAX_SAFE_INTEGER), fixtures: [] };
+        b.key = Math.min(b.key, safeTimeKey);
+        b.minFixtureIndex = Math.min(b.minFixtureIndex, Number(f.fixture_index ?? Number.MAX_SAFE_INTEGER));
         b.fixtures.push(f);
         buckets.set(label, b);
       });
       const sections = Array.from(buckets.values())
-        .sort((a, b) => (a.key ?? 0) - (b.key ?? 0)) // earliest day first
+        // Sort by earliest kickoff time, then by earliest fixture index as a stable fallback.
+        .sort((a, b) => a.key - b.key || a.minFixtureIndex - b.minFixtureIndex)
         .map((b) => ({ label: b.label, fixtures: [...b.fixtures].sort((a, b) => a.fixture_index - b.fixture_index) }));
 
       return {
