@@ -67,6 +67,7 @@ export default function MiniLeagueListItem({
   onPress: () => void;
 }) {
   const t = useTokens();
+  const AVATAR_SIZE = 64; // match Home default-view sizing
 
   const statusText = allSubmitted ? 'All Submitted' : 'Waiting…';
   const statusColor = allSubmitted ? '#1C8376' : t.color.muted;
@@ -82,8 +83,8 @@ export default function MiniLeagueListItem({
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View
             style={{
-              width: 72,
-              height: 72,
+              width: AVATAR_SIZE,
+              height: AVATAR_SIZE,
               borderRadius: 999,
               backgroundColor: t.color.surface2,
               borderWidth: 1,
@@ -92,11 +93,11 @@ export default function MiniLeagueListItem({
               marginRight: 16,
             }}
           >
-            {avatarUri ? <Image source={{ uri: avatarUri }} style={{ width: 72, height: 72 }} /> : null}
+            {avatarUri ? <Image source={{ uri: avatarUri }} style={{ width: AVATAR_SIZE, height: AVATAR_SIZE }} /> : null}
           </View>
 
           <View style={{ flex: 1, minWidth: 0 }}>
-            <TotlText variant="body" numberOfLines={1} style={{ fontWeight: '900', fontSize: 22, lineHeight: 26 }}>
+            <TotlText variant="body" numberOfLines={1} style={{ fontWeight: '900' }}>
               {title}
             </TotlText>
 
