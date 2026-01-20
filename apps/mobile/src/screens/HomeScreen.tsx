@@ -396,21 +396,12 @@ export default function HomeScreen() {
         scrollEventThrottle={16}
       >
         {/* Header (scrolls with content) */}
-        <View style={{ marginBottom: 12 }}>
-          {/* Floating icons: keep together on the right */}
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 2 }}>
-            <RoundIconButton
-              onPress={() => {}}
-              icon={require('../../../../public/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png')}
-            />
-            <View style={{ width: 10 }} />
-            <RoundIconButton
-              onPress={() => navigation.navigate('Profile')}
-              icon={require('../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')}
-            />
-          </View>
+        <View style={{ marginBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
+          {/* Left spacer to keep the logo visually centered (matches web: icons on right, logo centered) */}
+          <View style={{ width: 46 + 10 + 46 }} />
 
-          <View style={{ alignItems: 'center' }}>
+          {/* Logo */}
+          <View style={{ flex: 1, alignItems: 'center' }}>
             {/* Real TOTL logo (from web assets), +25% size + 3D scroll spin (web parity) */}
             <Animated.View
               style={{
@@ -441,6 +432,19 @@ export default function HomeScreen() {
             >
               <SvgUri uri={totlLogoUri} width={150} height={70} />
             </Animated.View>
+          </View>
+
+          {/* Icons on the right (same row as logo, like web) */}
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+            <RoundIconButton
+              onPress={() => {}}
+              icon={require('../../../../public/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png')}
+            />
+            <View style={{ width: 10 }} />
+            <RoundIconButton
+              onPress={() => navigation.navigate('Profile')}
+              icon={require('../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')}
+            />
           </View>
         </View>
 
