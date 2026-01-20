@@ -8,6 +8,8 @@ import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import FixtureCard from '../components/FixtureCard';
 import MiniLeagueCard from '../components/MiniLeagueCard';
+import MiniLeaguesDefaultList from '../components/MiniLeaguesDefaultList';
+import { getGameweekStateFromSnapshot, type GameweekState } from '../lib/gameweekState';
 import PickPill from '../components/home/PickPill';
 import RoundIconButton from '../components/home/RoundIconButton';
 import SectionHeaderRow from '../components/home/SectionHeaderRow';
@@ -349,6 +351,30 @@ export default function HomeScreen() {
   const gwIsLive = (scoreSummary?.live ?? 0) > 0;
   const viewingGw = home?.viewingGw ?? null;
 
+  const gwState: GameweekState | null = React.useMemo(() => {
+    if (!home) return null;
+    return getGameweekStateFromSnapshot({
+      fixtures: home.fixtures ?? [],
+      liveScores: home.liveScores ?? [],
+      hasSubmittedViewingGw: !!home.hasSubmittedViewingGw,
+    });
+  }, [home]);
+
+  const showMlToggleButtons = gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW';
+  const [showLiveTables, setShowLiveTables] = React.useState<boolean>(showMlToggleButtons);
+  const prevGwRef = React.useRef<number | null>(viewingGw);
+
+  React.useEffect(() => {
+    if (prevGwRef.current !== null && viewingGw !== null && prevGwRef.current !== viewingGw) {
+      setShowLiveTables(false);
+    }
+    prevGwRef.current = viewingGw;
+  }, [viewingGw]);
+
+  React.useEffect(() => {
+    if (showMlToggleButtons) setShowLiveTables(true);
+  }, [showMlToggleButtons]);
+
   return (
     <Screen fullBleed>
       {/* Top “GW coming soon” banner */}
@@ -508,29 +534,31 @@ export default function HomeScreen() {
         <View style={{ marginTop: 26 }}>
           <SectionHeaderRow
             title="Mini Leagues"
-            subtitle={home?.viewingGw ? `${viewingGwLabel} Live Tables` : undefined}
+            subtitle={showLiveTables && home?.viewingGw ? `${viewingGwLabel} Live Tables` : undefined}
             right={
-              <Pressable
-                onPress={() => {}}
-                style={({ pressed }) => ({
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: t.radius.pill,
-                  backgroundColor: 'rgba(148,163,184,0.16)',
-                  borderWidth: 1,
-                  borderColor: 'rgba(148,163,184,0.18)',
-                  opacity: pressed ? 0.88 : 1,
-                  transform: [{ scale: pressed ? 0.98 : 1 }],
-                })}
-              >
-                <TotlText variant="caption" style={{ fontWeight: '600' }}>
-                  Default View
-                </TotlText>
-              </Pressable>
+              showMlToggleButtons ? (
+                <Pressable
+                  onPress={() => setShowLiveTables((v) => !v)}
+                  style={({ pressed }) => ({
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: t.radius.pill,
+                    backgroundColor: showLiveTables ? 'rgba(148,163,184,0.16)' : '#1C8376',
+                    borderWidth: 1,
+                    borderColor: showLiveTables ? 'rgba(148,163,184,0.18)' : 'rgba(255,255,255,0.18)',
+                    opacity: pressed ? 0.88 : 1,
+                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                  })}
+                >
+                  <TotlText variant="caption" style={{ fontWeight: '800', color: showLiveTables ? t.color.text : '#FFFFFF' }}>
+                    {showLiveTables ? 'Default View' : 'View Live Tables'}
+                  </TotlText>
+                </Pressable>
+              ) : null
             }
           />
         </View>
-        {leagues?.leagues?.length ? (
+        {leagues?.leagues?.length ? showLiveTables ? (
           <FlatList
             horizontal
             data={leagues.leagues}
@@ -545,6 +573,16 @@ export default function HomeScreen() {
             renderItem={({ item: l, index }: { item: any; index: number }) => (
               <HomeMiniLeagueCardItem league={l} index={index} totalCount={leagues.leagues.length} />
             )}
+          />
+        ) : (
+          <MiniLeaguesDefaultList
+            leagues={leagues.leagues}
+            onLeaguePress={(leagueId, name) =>
+              navigation.navigate('Leagues', {
+                screen: 'LeagueDetail',
+                params: { leagueId, name },
+              })
+            }
           />
         ) : (
           <Card style={{ marginBottom: 12 }}>
