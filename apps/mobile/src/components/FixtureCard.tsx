@@ -242,7 +242,7 @@ export default function FixtureCard({
               {/* Teams + score */}
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: isOngoing ? 16 : 0 }}>
                 {/* Home */}
-                <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
+                <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end', paddingRight: 8 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'flex-end' }}>
                     <TotlText
                       numberOfLines={1}
@@ -291,7 +291,7 @@ export default function FixtureCard({
                 </View>
 
                 {/* Away */}
-                <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>
+                <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start', paddingLeft: 8 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'flex-start' }}>
                     {/* When showing a score, badges live beside the score (center cluster). */}
                     {!showScore && awayBadge ? (
@@ -336,7 +336,7 @@ export default function FixtureCard({
           {/* Teams + score */}
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: isOngoing ? 16 : 0 }}>
             {/* Home */}
-            <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
+            <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end', paddingRight: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'flex-end' }}>
                 <TotlText
                   numberOfLines={1}
@@ -384,7 +384,7 @@ export default function FixtureCard({
             </View>
 
             {/* Away */}
-            <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>
+            <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start', paddingLeft: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'flex-start' }}>
                 {!showScore && awayBadge ? (
                   <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginRight: BADGE_GAP }} />
