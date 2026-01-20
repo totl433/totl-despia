@@ -72,26 +72,32 @@ function LeagueDefaultRow({
             {league.avatarUri ? <Image source={{ uri: league.avatarUri }} style={{ width: 44, height: 44 }} /> : null}
           </View>
 
-          <TotlText variant="body" style={{ flex: 1, fontWeight: '900' }} numberOfLines={1}>
-            {league.name}
-          </TotlText>
-          <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '900', fontSize: 18, lineHeight: 18 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <TotlText variant="body" style={{ fontWeight: '900' }} numberOfLines={1}>
+              {league.name}
+            </TotlText>
+
+            <View style={{ marginTop: 8, flexDirection: 'row' }}>
+              {isLoading ? (
+                <TotlText variant="muted">Loading…</TotlText>
+              ) : members.length ? (
+                members.map((m, idx) => (
+                  <View key={m.id} style={{ marginLeft: idx === 0 ? 0 : -10 }}>
+                    <MemberChip name={m.name} />
+                  </View>
+                ))
+              ) : (
+                <TotlText variant="muted">No members yet.</TotlText>
+              )}
+            </View>
+          </View>
+
+          <TotlText
+            variant="caption"
+            style={{ color: t.color.muted, fontWeight: '900', fontSize: 18, lineHeight: 18, marginLeft: 10 }}
+          >
             ›
           </TotlText>
-        </View>
-
-        <View style={{ marginTop: 10, flexDirection: 'row' }}>
-          {isLoading ? (
-            <TotlText variant="muted">Loading…</TotlText>
-          ) : members.length ? (
-            members.map((m, idx) => (
-              <View key={m.id} style={{ marginLeft: idx === 0 ? 0 : -10 }}>
-                <MemberChip name={m.name} />
-              </View>
-            ))
-          ) : (
-            <TotlText variant="muted">No members yet.</TotlText>
-          )}
         </View>
       </View>
     </Pressable>
