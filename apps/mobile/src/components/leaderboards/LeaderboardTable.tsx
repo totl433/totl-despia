@@ -76,7 +76,7 @@ export default function LeaderboardTable({
         scrollEnabled
         showsVerticalScrollIndicator={false}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 90 }}
+        contentContainerStyle={{ paddingBottom: 140 }}
         ListFooterComponent={<View style={{ height: 12 }} />}
         ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: t.color.border, opacity: 0.6, marginLeft: 16 }} />}
         renderItem={({ item }) => {

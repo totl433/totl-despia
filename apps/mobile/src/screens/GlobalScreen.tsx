@@ -157,7 +157,9 @@ export default function GlobalScreen() {
 
   return (
     <Screen fullBleed>
-      <View style={{ flex: 1, padding: t.space[4], paddingBottom: t.space[8] }}>
+      {/* No extra bottom padding here; the table handles its own scroll padding.
+          This lets the leaderboard container run off-screen at the bottom (more obvious scroll affordance). */}
+      <View style={{ flex: 1, padding: t.space[4], paddingBottom: 0 }}>
         <SectionTitle>Leaderboard</SectionTitle>
 
         <View style={{ marginTop: 10 }}>
@@ -193,7 +195,19 @@ export default function GlobalScreen() {
         ) : null}
 
         {!loading && !error && rows.length > 0 ? (
-          <LeaderboardTable rows={rows} valueLabel={valueLabel} highlightUserId={userId} style={{ flex: 1 }} />
+          <LeaderboardTable
+            rows={rows}
+            valueLabel={valueLabel}
+            highlightUserId={userId}
+            style={{
+              flex: 1,
+              // Remove bottom rounding so it can visually run off-screen.
+              borderBottomLeftRadius: 0,
+              borderBottomRightRadius: 0,
+              // Pull the table down slightly so the bottom edge isn't visible.
+              marginBottom: -24,
+            }}
+          />
         ) : null}
       </View>
     </Screen>
