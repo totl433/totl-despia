@@ -13,6 +13,7 @@ export default function MiniLeagueCard({
   winnerChip,
   rows,
   showUnicorns,
+  emptyLabel = 'No table yet.',
 }: {
   title: string;
   avatarUri: string | null;
@@ -20,6 +21,7 @@ export default function MiniLeagueCard({
   winnerChip: string | null;
   rows: MiniLeagueTableRow[];
   showUnicorns: boolean;
+  emptyLabel?: string;
 }) {
   const t = useTokens();
 
@@ -144,7 +146,7 @@ export default function MiniLeagueCard({
           ))
         ) : (
           <View style={{ paddingVertical: 12 }}>
-            <TotlText variant="muted">No table yet.</TotlText>
+            <TotlText variant="muted">{emptyLabel}</TotlText>
           </View>
         )}
       </View>

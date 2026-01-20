@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, RefreshControl, ScrollView, Share, View } from 'react-native';
+import { FlatList, Image, Pressable, RefreshControl, ScrollView, Share, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
@@ -174,25 +174,41 @@ export default function HomeScreen() {
   const onRefresh = () => {
     void Promise.all([refetchHome(), refetchLeagues()]);
   };
+  const [visibleLeagueIds, setVisibleLeagueIds] = React.useState<Set<string>>(() => new Set());
+  const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 45 }).current;
+  const onViewableItemsChanged = React.useRef(
+    ({ viewableItems }: { viewableItems: Array<{ item: any; index: number | null; isViewable: boolean }> }) => {
+      const leagueList = leagues?.leagues ?? [];
+      const next = new Set<string>();
 
-  const { data: leagueTables } = useQuery({
-    enabled: !!home?.viewingGw && !!leagues?.leagues?.length,
-    queryKey: ['homeLeagueTables', home?.viewingGw, (leagues?.leagues ?? []).map((l: any) => l.id).join(',')],
-    queryFn: async () => {
-      const gw = home!.viewingGw;
-      const list = (leagues?.leagues ?? []).slice(0, 2) as Array<{ id: string; name: string }>;
-      const entries = await Promise.all(
-        list.map(async (l) => {
-          const table = await api.getLeagueGwTable(l.id, gw);
-          return [l.id, table] as const;
-        })
-      );
-      return Object.fromEntries(entries) as Record<
-        string,
-        { leagueId: string; gw: number; rows: Array<{ user_id: string; name: string; score: number; unicorns: number }>; submittedCount: number; totalMembers: number }
-      >;
-    },
-  });
+      viewableItems.forEach((vi) => {
+        if (!vi?.isViewable) return;
+        const item = vi.item;
+        if (item?.id) next.add(String(item.id));
+        const idx = typeof vi.index === 'number' ? vi.index : null;
+        if (idx === null) return;
+        const prev = leagueList[idx - 1];
+        const nextItem = leagueList[idx + 1];
+        if (prev?.id) next.add(String(prev.id));
+        if (nextItem?.id) next.add(String(nextItem.id));
+      });
+
+      // Avoid churn: only update state when membership changes.
+      setVisibleLeagueIds((prev) => {
+        if (prev.size === next.size) {
+          let same = true;
+          for (const id of prev) {
+            if (!next.has(id)) {
+              same = false;
+              break;
+            }
+          }
+          if (same) return prev;
+        }
+        return next;
+      });
+    }
+  ).current;
 
   // SectionTitle/RoundIconButton/PickPill/SectionHeaderRow/LeaderboardCards are extracted into `src/components/home/*`.
 
@@ -267,6 +283,7 @@ export default function HomeScreen() {
   }, [home?.hasSubmittedViewingGw, scoreSummary, t.color.border, t.color.surface2]);
 
   const gwIsLive = (scoreSummary?.live ?? 0) > 0;
+  const viewingGw = home?.viewingGw ?? null;
 
   return (
     <Screen fullBleed>
@@ -450,9 +467,26 @@ export default function HomeScreen() {
           />
         </View>
         {leagues?.leagues?.length ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 12 }}>
-            {leagues.leagues.slice(0, 3).map((l: any, idx: number) => {
-              const table = leagueTables?.[l.id];
+          <FlatList
+            horizontal
+            data={leagues.leagues}
+            keyExtractor={(l: any) => String(l.id)}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 12 }}
+            viewabilityConfig={viewabilityConfig}
+            onViewableItemsChanged={onViewableItemsChanged}
+            initialNumToRender={4}
+            windowSize={4}
+            removeClippedSubviews
+            renderItem={({ item: l, index }: { item: any; index: number }) => {
+              const leagueId = String(l.id);
+              const enabled = !!viewingGw && visibleLeagueIds.has(leagueId);
+              const { data: table, isLoading } = useQuery({
+                enabled,
+                queryKey: ['leagueGwTable', leagueId, viewingGw],
+                queryFn: () => api.getLeagueGwTable(leagueId, viewingGw!),
+              });
+
               const rows = table?.rows?.slice(0, 4) ?? [];
               const winnerName = rows?.[0]?.name as string | undefined;
               const isDraw =
@@ -462,9 +496,17 @@ export default function HomeScreen() {
               const winnerChip = rows.length ? (isDraw ? 'Draw!' : winnerName ? `${winnerName} Wins!` : null) : null;
               const avatarUri = typeof l.avatar === 'string' && l.avatar.startsWith('http') ? l.avatar : null;
               const showUnicorns = (table?.totalMembers ?? 0) >= 3;
+
+              const emptyLabel = !viewingGw
+                ? '—'
+                : !visibleLeagueIds.has(leagueId)
+                  ? 'Swipe to load…'
+                  : isLoading
+                    ? 'Loading table…'
+                    : 'No table yet.';
+
               return (
                 <Pressable
-                  key={l.id}
                   onPress={() =>
                     navigation.navigate('Leagues', {
                       screen: 'LeagueDetail',
@@ -476,7 +518,7 @@ export default function HomeScreen() {
                     transform: [{ scale: pressed ? 0.99 : 1 }],
                   })}
                 >
-                  <View style={{ marginRight: idx === 2 ? 0 : 12 }}>
+                  <View style={{ marginRight: index === leagues.leagues.length - 1 ? 0 : 12 }}>
                     <MiniLeagueCard
                       title={String(l.name ?? '')}
                       avatarUri={avatarUri}
@@ -484,12 +526,13 @@ export default function HomeScreen() {
                       winnerChip={winnerChip}
                       rows={rows}
                       showUnicorns={showUnicorns}
+                      emptyLabel={emptyLabel}
                     />
                   </View>
                 </Pressable>
               );
-            })}
-          </ScrollView>
+            }}
+          />
         ) : (
           <Card style={{ marginBottom: 12 }}>
             <TotlText variant="muted">No leagues yet.</TotlText>
