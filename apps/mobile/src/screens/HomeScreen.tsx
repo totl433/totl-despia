@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList, Image, Pressable, RefreshControl, ScrollView, Share, View } from 'react-native';
+import { Animated, FlatList, Image, Pressable, RefreshControl, Share, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
@@ -47,6 +47,7 @@ function fixtureDateLabel(kickoff: string | null | undefined) {
 export default function HomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
+  const scrollY = React.useRef(new Animated.Value(0)).current;
 
   const {
     data: home,
@@ -383,15 +384,21 @@ export default function HomeScreen() {
 
   return (
     <Screen fullBleed>
-      <ScrollView
+      <Animated.ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: t.space[4], paddingBottom: t.space[12] }}
+        contentContainerStyle={{
+          paddingHorizontal: t.space[4],
+          paddingTop: t.space[2],
+          paddingBottom: t.space[12],
+        }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.color.text} />}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
+        scrollEventThrottle={16}
       >
         {/* Header (scrolls with content) */}
-        <View style={{ marginBottom: 18 }}>
+        <View style={{ marginBottom: 12 }}>
           {/* Floating icons: keep together on the right */}
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 4 }}>
             <RoundIconButton
               onPress={() => {}}
               icon={require('../../../../public/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png')}
@@ -404,10 +411,22 @@ export default function HomeScreen() {
           </View>
 
           <View style={{ alignItems: 'center' }}>
-            {/* Real TOTL logo (from web assets), +25% size */}
-            <View style={{ transform: [{ rotate: '-14deg' }] }}>
+            {/* Real TOTL logo (from web assets), +25% size + subtle scroll spin */}
+            <Animated.View
+              style={{
+                transform: [
+                  {
+                    rotate: scrollY.interpolate({
+                      inputRange: [0, 250, 700],
+                      outputRange: ['-8deg', '-18deg', '-28deg'],
+                      extrapolate: 'clamp',
+                    }),
+                  },
+                ],
+              }}
+            >
               <SvgUri uri={totlLogoUri} width={150} height={70} />
-            </View>
+            </Animated.View>
           </View>
         </View>
 
@@ -474,7 +493,7 @@ export default function HomeScreen() {
         <View style={{ marginTop: 18, marginBottom: 12 }}>
           <TotlText variant="sectionTitle">Leaderboards</TotlText>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 12 }}>
+        <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 12 }}>
           {(() => {
             const gw = ranks?.latestGw ?? home?.viewingGw ?? null;
             const score = home?.hasSubmittedViewingGw && scoreSummary ? String(scoreSummary.correct) : '--';
@@ -521,7 +540,7 @@ export default function HomeScreen() {
               </View>
             ));
           })()}
-        </ScrollView>
+        </Animated.ScrollView>
 
         {/* Mini leagues (match web order: before gameweek section) */}
         <View style={{ marginTop: 26 }}>
@@ -714,7 +733,7 @@ export default function HomeScreen() {
             </View>
           ))
         )}
-      </ScrollView>
+      </Animated.ScrollView>
     </Screen>
   );
 }
