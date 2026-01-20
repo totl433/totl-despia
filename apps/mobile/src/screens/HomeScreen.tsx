@@ -388,7 +388,7 @@ export default function HomeScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingHorizontal: t.space[4],
-          paddingTop: t.space[1],
+          paddingTop: 0,
           paddingBottom: t.space[12],
         }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.color.text} />}
@@ -423,9 +423,9 @@ export default function HomeScreen() {
                   { perspective: 1000 },
                   {
                     rotateY: scrollY.interpolate({
-                      // Web does 2 full flips (720deg) over ~150px of scroll
-                      inputRange: [0, 150],
-                      outputRange: ['0deg', '720deg'],
+                      // Start fast (web-style 2 flips), then keep a gentle "flowy" continuation.
+                      inputRange: [0, 150, 650],
+                      outputRange: ['0deg', '720deg', '900deg'],
                       extrapolate: 'clamp',
                     }),
                   },
