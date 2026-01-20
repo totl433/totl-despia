@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { Screen, TotlText, useTokens } from '@totl/ui';
-import type { Fixture, GwResultRow, HomeSnapshot, LiveScore, LiveStatus } from '@totl/domain';
+import type { Fixture, GwResultRow, HomeSnapshot, LiveScore, LiveStatus, Pick } from '@totl/domain';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
@@ -18,6 +18,10 @@ import LeagueSeasonTable, { type LeagueSeasonRow } from '../components/league/Le
 import LeaguePointsFormToggle from '../components/league/LeaguePointsFormToggle';
 import LeagueSeasonRulesSheet from '../components/league/LeagueSeasonRulesSheet';
 import LeaguePillButton from '../components/league/LeaguePillButton';
+import LeagueSubmissionStatusCard from '../components/league/LeagueSubmissionStatusCard';
+import LeagueFixturePicks from '../components/league/LeagueFixturePicks';
+import type { LeaguePick } from '../components/league/LeaguePickPill';
+import FixtureCard from '../components/FixtureCard';
 
 export default function LeagueDetailScreen() {
   const route = useRoute<any>();
@@ -293,6 +297,146 @@ export default function LeagueDetailScreen() {
     },
   });
 
+  const picksGw = React.useMemo(() => {
+    // Match web: Predictions tab is for the current GW (except special leagues which we can add later).
+    return typeof currentGw === 'number' ? currentGw : null;
+  }, [currentGw]);
+
+  type LeaguePredictionsData = {
+    picksGw: number;
+    deadlinePassed: boolean;
+    allSubmitted: boolean;
+    submittedSet: Set<string>;
+    members: Array<{ id: string; name: string }>;
+    fixtures: Fixture[];
+    sections: Array<{ label: string; fixtures: Fixture[] }>;
+    outcomeByFixtureIndex: Map<number, LeaguePick>;
+    liveByFixtureIndex: Map<number, LiveScore>;
+    picksByFixtureIndex: Map<number, Map<string, LeaguePick>>;
+  };
+
+  const { data: predictions } = useQuery<LeaguePredictionsData>({
+    enabled: tab === 'predictions' && members.length > 0 && typeof picksGw === 'number' && picksGw >= seasonStartGw,
+    queryKey: ['leaguePredictions', leagueId, picksGw, members.map((m: any) => String(m.id)).join(',')],
+    queryFn: async () => {
+      const gw = picksGw as number;
+      const memberIds = members.map((m: any) => String(m.id));
+
+      const [fixturesRes, subsRes, picksRes, liveRes, resultsRes] = await Promise.all([
+        (supabase as any).from('app_fixtures').select('*').eq('gw', gw).order('fixture_index', { ascending: true }),
+        (supabase as any).from('app_gw_submissions').select('user_id').eq('gw', gw),
+        (supabase as any).from('app_picks').select('user_id,fixture_index,pick').eq('gw', gw).in('user_id', memberIds),
+        (supabase as any)
+          .from('live_scores')
+          .select('api_match_id,fixture_index,home_score,away_score,status,minute,goals')
+          .eq('gw', gw),
+        (supabase as any).from('app_gw_results').select('fixture_index,result').eq('gw', gw),
+      ]);
+      if (fixturesRes.error) throw fixturesRes.error;
+      if (subsRes.error) throw subsRes.error;
+      if (picksRes.error) throw picksRes.error;
+      if (liveRes.error) throw liveRes.error;
+      if (resultsRes.error) throw resultsRes.error;
+
+      const fixtures: Fixture[] = (fixturesRes.data ?? []) as Fixture[];
+
+      const kickoffTimes = fixtures
+        .map((f) => f.kickoff_time)
+        .filter((kt): kt is string => !!kt)
+        .map((kt) => new Date(kt))
+        .filter((d) => !Number.isNaN(d.getTime()));
+      const firstKickoff = kickoffTimes.length ? new Date(Math.min(...kickoffTimes.map((d) => d.getTime()))) : null;
+      const deadlineTime = firstKickoff ? new Date(firstKickoff.getTime() - 75 * 60 * 1000) : null;
+      const deadlinePassed = deadlineTime ? new Date() >= deadlineTime : false;
+
+      const submittedSet = new Set<string>(
+        ((subsRes.data ?? []) as Array<{ user_id: string }>).map((s) => String(s.user_id)).filter((id) => memberIds.includes(id))
+      );
+      const allSubmitted = memberIds.length > 0 && memberIds.every((id) => submittedSet.has(id));
+
+      const outcomeByFixtureIndex = new Map<number, LeaguePick>();
+      ((resultsRes.data ?? []) as Array<{ fixture_index: number; result: Pick | string }>).forEach((r) => {
+        if (r.result === 'H' || r.result === 'D' || r.result === 'A') outcomeByFixtureIndex.set(r.fixture_index, r.result);
+      });
+
+      const apiMatchIdToFixtureIndex = new Map<number, number>();
+      fixtures.forEach((f) => {
+        if (typeof (f as any).api_match_id === 'number') apiMatchIdToFixtureIndex.set((f as any).api_match_id, f.fixture_index);
+      });
+
+      const liveByFixtureIndex = new Map<number, LiveScore>();
+      ((liveRes.data ?? []) as LiveScore[]).forEach((ls: any) => {
+        const idx =
+          typeof ls?.fixture_index === 'number'
+            ? ls.fixture_index
+            : typeof ls?.api_match_id === 'number'
+              ? apiMatchIdToFixtureIndex.get(ls.api_match_id)
+              : undefined;
+        if (typeof idx !== 'number') return;
+        liveByFixtureIndex.set(idx, ls);
+
+        const st: LiveStatus = (ls?.status ?? 'SCHEDULED') as LiveStatus;
+        const started = st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED';
+        if (!started) return;
+        const hs = Number(ls?.home_score ?? 0);
+        const as = Number(ls?.away_score ?? 0);
+        outcomeByFixtureIndex.set(idx, hs > as ? 'H' : hs < as ? 'A' : 'D');
+      });
+
+      const picksByFixtureIndex = new Map<number, Map<string, LeaguePick>>();
+      ((picksRes.data ?? []) as Array<{ user_id: string; fixture_index: number; pick: LeaguePick | string }>).forEach((p) => {
+        if (p.pick !== 'H' && p.pick !== 'D' && p.pick !== 'A') return;
+        // Match web: only show picks from users who have submitted.
+        if (!submittedSet.has(String(p.user_id))) return;
+        if (!fixtures.find((f) => f.fixture_index === p.fixture_index)) return;
+        const m = picksByFixtureIndex.get(p.fixture_index) ?? new Map<string, LeaguePick>();
+        m.set(String(p.user_id), p.pick);
+        picksByFixtureIndex.set(p.fixture_index, m);
+      });
+
+      const fmt = (iso?: string | null) => {
+        if (!iso) return 'Fixtures';
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return 'Fixtures';
+        return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+      };
+      const buckets = new Map<string, { label: string; key: number; fixtures: Fixture[] }>();
+      fixtures.forEach((f) => {
+        const label = fmt(f.kickoff_time ?? null);
+        const key = f.kickoff_time ? new Date(f.kickoff_time).getTime() : Number.MAX_SAFE_INTEGER;
+        const b = buckets.get(label) ?? { label, key, fixtures: [] };
+        b.fixtures.push(f);
+        buckets.set(label, b);
+      });
+      const sections = Array.from(buckets.values())
+        .map((b) => ({ label: b.label, fixtures: [...b.fixtures].sort((a, b) => a.fixture_index - b.fixture_index) }))
+        .sort((a, b) => (buckets.get(a.label)!.key ?? 0) - (buckets.get(b.label)!.key ?? 0))
+        .reverse();
+
+      return {
+        picksGw: gw,
+        deadlinePassed,
+        allSubmitted,
+        submittedSet,
+        members: members.map((m: any) => ({ id: String(m.id), name: String(m.name ?? 'User') })),
+        fixtures,
+        sections,
+        outcomeByFixtureIndex,
+        liveByFixtureIndex,
+        picksByFixtureIndex,
+      };
+    },
+  });
+
+  const { data: me } = useQuery<{ id: string } | null>({
+    enabled: tab === 'predictions',
+    queryKey: ['me'],
+    queryFn: async () => {
+      const { data } = await supabase.auth.getUser();
+      return data.user?.id ? { id: data.user.id } : null;
+    },
+  });
+
   return (
     <Screen fullBleed>
       <LeagueHeader
@@ -367,13 +511,85 @@ export default function LeagueDetailScreen() {
               isLateStartingLeague={seasonIsLateStartingLeague}
             />
           </>
+        ) : tab === 'predictions' ? (
+          <>
+            {typeof picksGw !== 'number' ? (
+              <TotlText variant="muted">No current gameweek available.</TotlText>
+            ) : picksGw < seasonStartGw ? (
+              <TotlText variant="muted">No Predictions Available (this league started later).</TotlText>
+            ) : !predictions ? (
+              <TotlText variant="muted">Loading…</TotlText>
+            ) : (() => {
+                const shouldShowWhoSubmitted = !predictions.allSubmitted && !predictions.deadlinePassed;
+
+                if (shouldShowWhoSubmitted) {
+                  return (
+                    <LeagueSubmissionStatusCard
+                      members={predictions.members}
+                      submittedSet={predictions.submittedSet}
+                      picksGw={predictions.picksGw}
+                      fixtures={predictions.fixtures}
+                      variant="compact"
+                    />
+                  );
+                }
+
+                return (
+                  <>
+                    {!predictions.allSubmitted ? (
+                      <LeagueSubmissionStatusCard
+                        members={predictions.members}
+                        submittedSet={predictions.submittedSet}
+                        picksGw={predictions.picksGw}
+                        fixtures={predictions.fixtures}
+                        variant="full"
+                      />
+                    ) : null}
+
+                    {predictions.sections.map((sec) => (
+                      <View key={sec.label} style={{ marginTop: 12 }}>
+                        <TotlText variant="body" style={{ fontWeight: '900', marginBottom: 10 }}>
+                          {sec.label}
+                        </TotlText>
+
+                        <View style={{ borderRadius: 14, overflow: 'hidden' }}>
+                          {sec.fixtures.map((f, idx) => {
+                            const live = predictions.liveByFixtureIndex.get(f.fixture_index) ?? null;
+                            const lsNoGoals = live ? ({ ...(live as any), goals: undefined } as any) : null;
+                            const outcome = predictions.outcomeByFixtureIndex.get(f.fixture_index) ?? null;
+                            const picksMap = predictions.picksByFixtureIndex.get(f.fixture_index) ?? new Map<string, LeaguePick>();
+
+                            return (
+                              <View
+                                key={`${predictions.picksGw}-${f.fixture_index}`}
+                                style={{
+                                  borderTopWidth: idx === 0 ? 0 : 1,
+                                  borderTopColor: 'rgba(148,163,184,0.14)',
+                                  backgroundColor: 'transparent',
+                                }}
+                              >
+                                <FixtureCard fixture={f as any} liveScore={lsNoGoals} showPickButtons={false} variant="standalone" result={outcome} />
+                                <LeagueFixturePicks
+                                  members={predictions.members}
+                                  picksByUserId={picksMap}
+                                  outcome={outcome}
+                                  currentUserId={me?.id ?? null}
+                                />
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                );
+              })()}
+          </>
         ) : (
           <TotlText variant="muted">
             {tab === 'chat'
               ? 'Chat tab (coming next).'
-              : tab === 'predictions'
-                ? 'Predictions tab (coming).'
-                : 'Season tab (coming).'}
+              : 'Season tab (coming).'}
           </TotlText>
         )}
       </View>
