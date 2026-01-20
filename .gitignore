@@ -15,3 +15,13 @@ notification_catalog/site/.astro/
 # Local vitest helper artifacts
 .vitest-unit.*
 
+# macOS junk
+.DS_Store
+
+# Expo / React Native local state (keep out of git)
+.expo/
+apps/**/.expo/
+
+# Expo local env (contains keys / device-specific URLs)
+**/env.local
+

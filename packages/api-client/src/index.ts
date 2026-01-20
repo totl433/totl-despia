@@ -1,0 +1,116 @@
+import { HomeSnapshotSchema, type HomeSnapshot } from '@totl/domain';
+
+export interface ApiClientOptions {
+  baseUrl: string;
+  getAccessToken: () => Promise<string | null>;
+}
+
+export class ApiError extends Error {
+  status: number;
+  body: unknown;
+
+  constructor(message: string, opts: { status: number; body: unknown }) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = opts.status;
+    this.body = opts.body;
+  }
+}
+
+async function requestJson<T>(
+  opts: ApiClientOptions,
+  input: string,
+  init: RequestInit & { validate?: (data: unknown) => T }
+): Promise<T> {
+  const token = await opts.getAccessToken();
+  const res = await fetch(`${opts.baseUrl}${input}`, {
+    ...init,
+    headers: {
+      ...(init.headers ?? {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'Content-Type': 'application/json',
+    },
+  });
+
+  const text = await res.text();
+  const body = text ? (JSON.parse(text) as unknown) : null;
+
+  if (!res.ok) {
+    throw new ApiError(`Request failed: ${res.status} ${res.statusText}`, {
+      status: res.status,
+      body,
+    });
+  }
+
+  return init.validate ? init.validate(body) : (body as T);
+}
+
+export function createApiClient(opts: ApiClientOptions) {
+  return {
+    async getHomeSnapshot(params?: { gw?: number }): Promise<HomeSnapshot> {
+      const q = params?.gw ? `?gw=${encodeURIComponent(String(params.gw))}` : '';
+      return requestJson<HomeSnapshot>(opts, `/v1/home${q}`, {
+        method: 'GET',
+        validate: (data) => HomeSnapshotSchema.parse(data),
+      });
+    },
+
+    async registerExpoPushToken(input: { expoPushToken: string; platform?: 'ios' | 'android' }) {
+      return requestJson<{ ok: true }>(opts, `/v1/push/register`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+        validate: (data) => (data as any) as { ok: true },
+      });
+    },
+
+    async listLeagues(): Promise<{ leagues: Array<{ id: string; name: string; code: string; avatar?: string | null }> }> {
+      return requestJson(opts, `/v1/leagues`, { method: 'GET' });
+    },
+
+    async getLeague(leagueId: string): Promise<{ league: any; members: Array<{ id: string; name: string }> }> {
+      return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}`, { method: 'GET' });
+    },
+
+    async getLeagueGwTable(leagueId: string, gw: number): Promise<{ leagueId: string; gw: number; rows: any[]; submittedCount: number; totalMembers: number }> {
+      return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/gw/${encodeURIComponent(String(gw))}/table`, { method: 'GET' });
+    },
+
+    async getPredictions(params?: { gw?: number }): Promise<{ gw: number; fixtures: any[]; picks: any[]; submitted: boolean }> {
+      const q = params?.gw ? `?gw=${encodeURIComponent(String(params.gw))}` : '';
+      return requestJson(opts, `/v1/predictions${q}`, { method: 'GET' });
+    },
+
+    async savePredictions(input: { gw: number; picks: Array<{ fixture_index: number; pick: 'H' | 'D' | 'A' }> }) {
+      return requestJson<{ ok: true }>(opts, `/v1/predictions/save`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+        validate: (data) => (data as any) as { ok: true },
+      });
+    },
+
+    async submitPredictions(input: { gw: number }) {
+      return requestJson<{ ok: true }>(opts, `/v1/predictions/submit`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+        validate: (data) => (data as any) as { ok: true },
+      });
+    },
+
+    async getOverallLeaderboard(): Promise<{ rows: Array<{ user_id: string; name: string | null; ocp: number | null }> }> {
+      return requestJson(opts, `/v1/leaderboards/overall`, { method: 'GET' });
+    },
+
+    async getNotificationPrefs(): Promise<{ preferences: Record<string, boolean>; current_viewing_gw: number | null }> {
+      return requestJson(opts, `/v1/notification-prefs`, { method: 'GET' });
+    },
+
+    async updateNotificationPrefs(input: { preferences?: Record<string, boolean>; current_viewing_gw?: number | null }) {
+      return requestJson<{ ok: true }>(opts, `/v1/notification-prefs`, {
+        method: 'PUT',
+        body: JSON.stringify(input),
+        validate: (data) => (data as any) as { ok: true },
+      });
+    },
+  };
+}
+

@@ -1,0 +1,35 @@
+export const tokens = {
+    color: {
+        brand: '#1C8376',
+        background: '#0B1220',
+        text: '#F8FAFC',
+        muted: '#94A3B8',
+        danger: '#DC2626',
+        warning: '#F59E0B',
+        success: '#10B981',
+    },
+    space: {
+        0: 0,
+        1: 4,
+        2: 8,
+        3: 12,
+        4: 16,
+        5: 20,
+        6: 24,
+        8: 32,
+        10: 40,
+        12: 48,
+    },
+    radius: {
+        sm: 8,
+        md: 12,
+        lg: 16,
+        xl: 20,
+        pill: 999,
+    },
+    font: {
+        body: 'System',
+        heading: 'System',
+        mono: 'System',
+    },
+};

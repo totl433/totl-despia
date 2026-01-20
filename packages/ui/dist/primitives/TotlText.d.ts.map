@@ -1,0 +1,1 @@
+{"version":3,"file":"TotlText.d.ts","sourceRoot":"","sources":["../../src/primitives/TotlText.tsx"],"names":[],"mappings":"AACA,OAAO,EAAQ,KAAK,SAAS,EAAE,MAAM,cAAc,CAAC;AAGpD,MAAM,MAAM,aAAa,GAAG,SAAS,GAAG;IACtC,OAAO,CAAC,EAAE,MAAM,GAAG,OAAO,GAAG,SAAS,CAAC;CACxC,CAAC;AAEF,wBAAgB,QAAQ,CAAC,EAAE,OAAgB,EAAE,KAAK,EAAE,GAAG,KAAK,EAAE,EAAE,aAAa,2CAS5E"}

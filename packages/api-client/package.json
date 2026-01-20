@@ -1,0 +1,27 @@
+{
+  "name": "@totl/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [],
+  "license": "UNLICENSED",
+  "description": "TOTL typed API client for mobile apps.",
+  "dependencies": {
+    "@totl/domain": "0.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
