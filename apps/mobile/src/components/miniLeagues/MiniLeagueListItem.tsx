@@ -79,7 +79,7 @@ export default function MiniLeagueListItem({
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.96 : 1, transform: [{ scale: pressed ? 0.995 : 1 }] })}>
-      <Card style={{ paddingVertical: 18, paddingHorizontal: 18 }}>
+      <Card style={{ paddingVertical: 14, paddingHorizontal: 16 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View
             style={{
@@ -101,21 +101,22 @@ export default function MiniLeagueListItem({
               {title}
             </TotlText>
 
-            <TotlText variant="caption" style={{ color: statusColor, fontWeight: '800', marginTop: 6 }}>
+            <TotlText variant="caption" style={{ color: statusColor, fontWeight: '800', marginTop: 4 }}>
               {statusText}
             </TotlText>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
-              <TotlText variant="body" style={{ fontWeight: '900', fontSize: 20, lineHeight: 22 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
+              {/* Numbers match league title sizing */}
+              <TotlText variant="body" style={{ fontWeight: '900' }}>
                 {membersCount ?? '—'}
               </TotlText>
-              <TotlText style={{ marginLeft: 12, color: deltaColor, fontWeight: '900' }}>{deltaIcon ?? ''}</TotlText>
-              <TotlText variant="body" style={{ fontWeight: '900', marginLeft: 10, fontSize: 20, lineHeight: 22 }}>
+              <TotlText style={{ marginLeft: 10, color: deltaColor, fontWeight: '900' }}>{deltaIcon ?? ''}</TotlText>
+              <TotlText variant="body" style={{ fontWeight: '900', marginLeft: 8 }}>
                 {userRank ? ordinal(userRank) : '—'}
               </TotlText>
             </View>
 
-            <View style={{ marginTop: 12, flexDirection: 'row' }}>
+            <View style={{ marginTop: 8, flexDirection: 'row' }}>
               {membersPreview.slice(0, 4).map((m, idx) => (
                 <View key={m.id} style={{ marginLeft: idx === 0 ? 0 : -10 }}>
                   <MemberChip name={m.name} avatarUri={m.avatarUri ?? null} ringColor={ringColors[idx % ringColors.length]!} />
