@@ -75,6 +75,7 @@ export default function FixtureCard({
   pick,
   result,
   showPickButtons = true,
+  variant = 'standalone',
 }: {
   fixture: FixtureLike;
   liveScore?: LiveScoreLike | null;
@@ -82,6 +83,11 @@ export default function FixtureCard({
   /** Optional authoritative outcome (e.g. from `app_gw_results`). */
   result?: Pick | null;
   showPickButtons?: boolean;
+  /**
+   * - `standalone`: renders with its own card border (good for Storybook / isolated usage)
+   * - `grouped`: renders borderless, intended to sit inside a parent `Card` list
+   */
+  variant?: 'standalone' | 'grouped';
 }) {
   const t = useTokens();
 
@@ -215,8 +221,85 @@ export default function FixtureCard({
   };
 
   return (
-    <Card style={{ padding: 0, shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 }}>
-      <View style={{ borderRadius: 14, overflow: 'hidden' }}>
+    <View>
+      {variant === 'standalone' ? (
+        <Card style={{ padding: 0, shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 }}>
+          <View style={{ borderRadius: 14, overflow: 'hidden' }}>
+            <View style={{ paddingVertical: 14 }}>
+              {/* LIVE indicator */}
+              {isOngoing ? (
+                <View style={{ position: 'absolute', left: 16, top: 10, flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: '#EF4444', marginRight: 8 }} />
+                  <TotlText variant="caption" style={{ color: '#EF4444', fontWeight: '900', letterSpacing: 0.6 }}>
+                    LIVE
+                  </TotlText>
+                </View>
+              ) : null}
+
+              {/* Teams + score */}
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: isOngoing ? 16 : 0 }}>
+                {/* Home */}
+                <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', maxWidth: '100%' }}>
+                    <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontWeight: hs > as && showScore ? '800' : '600', flexShrink: 1 }}>
+                      {homeName}
+                    </TotlText>
+                    {homeBadge ? <Image source={homeBadge} style={{ width: 18, height: 18, marginLeft: 6 }} /> : null}
+                  </View>
+                  {renderGoalsTimeline([homeName, String(fixture.home_team ?? ''), String(fixture.home_name ?? ''), homeCode], 'flex-end')}
+                </View>
+
+                {/* Score / kickoff */}
+                <View style={{ width: 96, alignItems: 'center' }}>
+                  {showScore ? (
+                    <>
+                      <TotlText style={{ fontWeight: '900', fontSize: 16 }}>
+                        {hs} - {as}
+                      </TotlText>
+                      {isFinished ? (
+                        <TotlText variant="microMuted">{formatMinute(st, typeof ls?.minute === 'number' ? ls.minute : null)}</TotlText>
+                      ) : (
+                        <TotlText variant="caption" style={{ color: isOngoing ? '#DC2626' : t.color.muted, fontWeight: '800' }}>
+                          {formatMinute(st, typeof ls?.minute === 'number' ? ls.minute : null)}
+                        </TotlText>
+                      )}
+                    </>
+                  ) : (
+                    <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '700' }}>
+                      {formatKickoffUtc(fixture.kickoff_time ?? null)}
+                    </TotlText>
+                  )}
+                </View>
+
+                {/* Away */}
+                <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', maxWidth: '100%' }}>
+                    {awayBadge ? <Image source={awayBadge} style={{ width: 18, height: 18, marginRight: 6 }} /> : null}
+                    <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontWeight: as > hs && showScore ? '800' : '600', flexShrink: 1 }}>
+                      {awayName}
+                    </TotlText>
+                  </View>
+                  {renderGoalsTimeline([awayName, String(fixture.away_team ?? ''), String(fixture.away_name ?? ''), awayCode], 'flex-start')}
+                </View>
+              </View>
+
+              {/* Picks */}
+              {showPickButtons ? (
+                <View style={{ flexDirection: 'row', marginTop: 12, paddingHorizontal: 16 }}>
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <ButtonChip side="H" label="Home Win" />
+                  </View>
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <ButtonChip side="D" label="Draw" />
+                  </View>
+                  <ButtonChip side="A" label="Away Win" />
+                </View>
+              ) : null}
+            </View>
+          </View>
+        </Card>
+      ) : (
+        // `grouped`: no outer card/border — parent list card handles borders & radius.
         <View style={{ paddingVertical: 14 }}>
           {/* LIVE indicator */}
           {isOngoing ? (
@@ -288,8 +371,8 @@ export default function FixtureCard({
             </View>
           ) : null}
         </View>
-      </View>
-    </Card>
+      )}
+    </View>
   );
 }
 

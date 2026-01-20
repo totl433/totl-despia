@@ -252,6 +252,7 @@ export default function HomeScreen() {
       pick={userPicks[String(f.fixture_index)]}
       result={resultByFixtureIndex.get(Number(f.fixture_index)) ?? null}
       showPickButtons={!!home?.hasSubmittedViewingGw}
+      variant="grouped"
     />
   );
 
