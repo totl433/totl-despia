@@ -1,85 +1,65 @@
 import React from 'react';
-import { FlatList } from 'react-native';
-import { useRoute } from '@react-navigation/native';
+import { View } from 'react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Screen, TotlText, useTokens } from '@totl/ui';
+import { Screen, TotlText, useTokens } from '@totl/ui';
 
 import { api } from '../lib/api';
 import type { LeaguesStackParamList } from '../navigation/LeaguesNavigator';
+import LeagueHeader from '../components/league/LeagueHeader';
+import LeagueTabBar, { type LeagueTabKey } from '../components/league/LeagueTabBar';
 
 export default function LeagueDetailScreen() {
   const route = useRoute<any>();
   const params = route.params as LeaguesStackParamList['LeagueDetail'];
   const t = useTokens();
+  const navigation = useNavigation<any>();
+  const [tab, setTab] = React.useState<LeagueTabKey>('chat');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['league', params.leagueId],
-    queryFn: () => api.getLeague(params.leagueId),
+  const { data: leagues } = useQuery({
+    queryKey: ['leagues'],
+    queryFn: () => api.listLeagues(),
   });
 
-  const { data: table } = useQuery({
-    enabled: !!data,
-    queryKey: ['leagueTable', params.leagueId, 'currentGw'],
-    queryFn: async () => {
-      const home = await api.getHomeSnapshot();
-      return api.getLeagueGwTable(params.leagueId, home.viewingGw);
-    },
+  const leagueFromList = React.useMemo(() => {
+    const list = leagues?.leagues ?? [];
+    return list.find((l: any) => String(l.id) === String(params.leagueId)) ?? null;
+  }, [leagues?.leagues, params.leagueId]);
+
+  const avatarUri =
+    leagueFromList && typeof leagueFromList.avatar === 'string' && leagueFromList.avatar.startsWith('http')
+      ? leagueFromList.avatar
+      : null;
+
+  const { data: home } = useQuery({
+    queryKey: ['homeSnapshot'],
+    queryFn: () => api.getHomeSnapshot(),
   });
+  const viewingGw = home?.viewingGw ?? null;
 
   return (
     <Screen fullBleed>
-      <TotlText variant="heading" style={{ paddingHorizontal: t.space[4], marginBottom: 8 }}>
-        {params.name}
-      </TotlText>
+      <LeagueHeader
+        title={String(params.name ?? '')}
+        subtitle={viewingGw ? `Gameweek ${viewingGw}` : 'Gameweek'}
+        avatarUri={avatarUri}
+        onPressBack={() => navigation.goBack()}
+        onPressMenu={() => {}}
+      />
 
-      {isLoading && <TotlText variant="muted">Loading…</TotlText>}
+      <LeagueTabBar value={tab} onChange={setTab} />
 
-      {table && (
-        <Card style={{ marginHorizontal: t.space[4], marginBottom: 12 }}>
-          <TotlText variant="heading" style={{ marginBottom: 6 }}>
-            GW {table.gw} table
-          </TotlText>
-          <TotlText variant="muted">
-            Submitted: {table.submittedCount}/{table.totalMembers}
-          </TotlText>
-        </Card>
-      )}
-
-      {table && (
-        <>
-          <TotlText variant="heading" style={{ paddingHorizontal: t.space[4], marginBottom: 8 }}>
-            Standings
-          </TotlText>
-          <FlatList
-            data={table.rows}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingHorizontal: t.space[4], paddingBottom: t.space[6] }}
-            keyExtractor={(r: any) => r.user_id}
-            renderItem={({ item, index }: any) => (
-              <Card style={{ marginBottom: 10 }}>
-                <TotlText variant="heading">
-                  {index + 1}. {item.name}
-                </TotlText>
-                <TotlText variant="muted">Score: {item.score} · Unicorns: {item.unicorns}</TotlText>
-              </Card>
-            )}
-          />
-        </>
-      )}
-
-      {data && (
-        <FlatList
-          data={data.members}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingHorizontal: t.space[4], paddingBottom: t.space[8] }}
-          keyExtractor={(m: any) => m.id}
-          renderItem={({ item }: any) => (
-            <Card style={{ marginBottom: 10 }}>
-              <TotlText>{item.name}</TotlText>
-            </Card>
-          )}
-        />
-      )}
+      <View style={{ flex: 1, padding: t.space[4] }}>
+        <TotlText variant="muted">
+          {tab === 'chat'
+            ? 'Chat tab (coming next).'
+            : tab === 'gwTable'
+              ? 'GW Table tab (building next).'
+              : tab === 'predictions'
+                ? 'Predictions tab (coming).'
+                : 'Season tab (coming).'}
+        </TotlText>
+      </View>
     </Screen>
   );
 }
