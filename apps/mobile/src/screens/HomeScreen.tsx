@@ -383,49 +383,42 @@ export default function HomeScreen() {
 
   return (
     <Screen fullBleed>
-      {/* Top “GW coming soon” banner */}
-      {home && home.currentGw > home.viewingGw && (
-        <View
-          style={{
-            paddingHorizontal: t.space[4],
-            paddingVertical: t.space[3],
-            borderBottomWidth: 1,
-            borderBottomColor: t.color.border,
-          }}
-        >
-          <TotlText style={{ fontWeight: '700' }}>GW{home.currentGw} Coming Soon!</TotlText>
-          <TotlText variant="caption">Fixtures will be published soon.</TotlText>
-        </View>
-      )}
-
-      {/* Header (match web composition: icon — logo — icon) */}
-      <View style={{ paddingHorizontal: t.space[4], paddingTop: t.space[3], paddingBottom: t.space[4] }}>
-        {/* Floating icons: keep together on the right */}
-        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 }}>
-          <RoundIconButton
-            onPress={() => {}}
-            icon={require('../../../../public/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png')}
-          />
-          <View style={{ width: 10 }} />
-          <RoundIconButton
-            onPress={() => navigation.navigate('Profile')}
-            icon={require('../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')}
-          />
-        </View>
-
-        <View style={{ alignItems: 'center' }}>
-          {/* Real TOTL logo (from web assets). */}
-          <View style={{ transform: [{ rotate: '-14deg' }] }}>
-            <SvgUri uri={totlLogoUri} width={120} height={56} />
-          </View>
-        </View>
-      </View>
-
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: t.space[4], paddingBottom: t.space[12] }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.color.text} />}
       >
+        {/* Header (scrolls with content) */}
+        <View style={{ marginBottom: 18 }}>
+          {/* Floating icons: keep together on the right */}
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <RoundIconButton
+              onPress={() => {}}
+              icon={require('../../../../public/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png')}
+            />
+            <View style={{ width: 10 }} />
+            <RoundIconButton
+              onPress={() => navigation.navigate('Profile')}
+              icon={require('../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')}
+            />
+          </View>
+
+          <View style={{ alignItems: 'center' }}>
+            {/* Real TOTL logo (from web assets), +25% size */}
+            <View style={{ transform: [{ rotate: '-14deg' }] }}>
+              <SvgUri uri={totlLogoUri} width={150} height={70} />
+            </View>
+          </View>
+        </View>
+
+        {/* GW coming soon banner (scrolls with content) */}
+        {home && home.currentGw > home.viewingGw && (
+          <Card style={{ marginBottom: 12 }}>
+            <TotlText style={{ fontWeight: '700' }}>GW{home.currentGw} Coming Soon!</TotlText>
+            <TotlText variant="caption">Fixtures will be published soon.</TotlText>
+          </Card>
+        )}
+
         {homeLoading && <TotlText variant="muted">Loading…</TotlText>}
 
         {(homeError || leaguesError) && (
