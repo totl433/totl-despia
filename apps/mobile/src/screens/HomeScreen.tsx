@@ -245,6 +245,70 @@ export default function HomeScreen() {
     />
   );
 
+  function HomeMiniLeagueCardItem({
+    league,
+    index,
+    totalCount,
+  }: {
+    league: any;
+    index: number;
+    totalCount: number;
+  }) {
+    const leagueId = String(league.id);
+    const enabled = !!viewingGw && visibleLeagueIds.has(leagueId);
+
+    const { data: table, isLoading } = useQuery({
+      enabled,
+      queryKey: ['leagueGwTable', leagueId, viewingGw],
+      queryFn: () => api.getLeagueGwTable(leagueId, viewingGw!),
+    });
+
+    const rows = table?.rows?.slice(0, 4) ?? [];
+    const winnerName = rows?.[0]?.name as string | undefined;
+    const isDraw =
+      rows.length >= 2 &&
+      Number(rows[0]?.score ?? 0) === Number(rows[1]?.score ?? 0) &&
+      Number(rows[0]?.unicorns ?? 0) === Number(rows[1]?.unicorns ?? 0);
+    const winnerChip = rows.length ? (isDraw ? 'Draw!' : winnerName ? `${winnerName} Wins!` : null) : null;
+    const avatarUri = typeof league.avatar === 'string' && league.avatar.startsWith('http') ? league.avatar : null;
+    const showUnicorns = (table?.totalMembers ?? 0) >= 3;
+
+    const emptyLabel = !viewingGw
+      ? '—'
+      : !visibleLeagueIds.has(leagueId)
+        ? 'Swipe to load…'
+        : isLoading
+          ? 'Loading table…'
+          : 'No table yet.';
+
+    return (
+      <Pressable
+        onPress={() =>
+          navigation.navigate('Leagues', {
+            screen: 'LeagueDetail',
+            params: { leagueId: league.id, name: league.name },
+          })
+        }
+        style={({ pressed }) => ({
+          opacity: pressed ? 0.96 : 1,
+          transform: [{ scale: pressed ? 0.99 : 1 }],
+        })}
+      >
+        <View style={{ marginRight: index === totalCount - 1 ? 0 : 12 }}>
+          <MiniLeagueCard
+            title={String(league.name ?? '')}
+            avatarUri={avatarUri}
+            gwIsLive={gwIsLive}
+            winnerChip={winnerChip}
+            rows={rows}
+            showUnicorns={showUnicorns}
+            emptyLabel={emptyLabel}
+          />
+        </View>
+      </Pressable>
+    );
+  }
+
   const handleShare = async () => {
     try {
       const gw = home?.viewingGw ?? home?.currentGw ?? null;
@@ -478,60 +542,9 @@ export default function HomeScreen() {
             initialNumToRender={4}
             windowSize={4}
             removeClippedSubviews
-            renderItem={({ item: l, index }: { item: any; index: number }) => {
-              const leagueId = String(l.id);
-              const enabled = !!viewingGw && visibleLeagueIds.has(leagueId);
-              const { data: table, isLoading } = useQuery({
-                enabled,
-                queryKey: ['leagueGwTable', leagueId, viewingGw],
-                queryFn: () => api.getLeagueGwTable(leagueId, viewingGw!),
-              });
-
-              const rows = table?.rows?.slice(0, 4) ?? [];
-              const winnerName = rows?.[0]?.name as string | undefined;
-              const isDraw =
-                rows.length >= 2 &&
-                Number(rows[0]?.score ?? 0) === Number(rows[1]?.score ?? 0) &&
-                Number(rows[0]?.unicorns ?? 0) === Number(rows[1]?.unicorns ?? 0);
-              const winnerChip = rows.length ? (isDraw ? 'Draw!' : winnerName ? `${winnerName} Wins!` : null) : null;
-              const avatarUri = typeof l.avatar === 'string' && l.avatar.startsWith('http') ? l.avatar : null;
-              const showUnicorns = (table?.totalMembers ?? 0) >= 3;
-
-              const emptyLabel = !viewingGw
-                ? '—'
-                : !visibleLeagueIds.has(leagueId)
-                  ? 'Swipe to load…'
-                  : isLoading
-                    ? 'Loading table…'
-                    : 'No table yet.';
-
-              return (
-                <Pressable
-                  onPress={() =>
-                    navigation.navigate('Leagues', {
-                      screen: 'LeagueDetail',
-                      params: { leagueId: l.id, name: l.name },
-                    })
-                  }
-                  style={({ pressed }) => ({
-                    opacity: pressed ? 0.96 : 1,
-                    transform: [{ scale: pressed ? 0.99 : 1 }],
-                  })}
-                >
-                  <View style={{ marginRight: index === leagues.leagues.length - 1 ? 0 : 12 }}>
-                    <MiniLeagueCard
-                      title={String(l.name ?? '')}
-                      avatarUri={avatarUri}
-                      gwIsLive={gwIsLive}
-                      winnerChip={winnerChip}
-                      rows={rows}
-                      showUnicorns={showUnicorns}
-                      emptyLabel={emptyLabel}
-                    />
-                  </View>
-                </Pressable>
-              );
-            }}
+            renderItem={({ item: l, index }: { item: any; index: number }) => (
+              <HomeMiniLeagueCardItem league={l} index={index} totalCount={leagues.leagues.length} />
+            )}
           />
         ) : (
           <Card style={{ marginBottom: 12 }}>
