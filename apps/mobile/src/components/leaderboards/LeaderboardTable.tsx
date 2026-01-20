@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList, type ViewStyle, View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
 
 export type LeaderboardRow = {
@@ -23,10 +23,12 @@ export default function LeaderboardTable({
   rows,
   valueLabel,
   highlightUserId,
+  style,
 }: {
   rows: LeaderboardRow[];
   valueLabel: string;
   highlightUserId?: string | null;
+  style?: ViewStyle;
 }) {
   const t = useTokens();
 
@@ -45,13 +47,13 @@ export default function LeaderboardTable({
   }, [rows]);
 
   return (
-    <Card style={{ padding: 0 }}>
+    <Card style={[{ padding: 0, flex: 1 }, style]}>
       <View
         style={{
           flexDirection: 'row',
           alignItems: 'center',
           paddingHorizontal: 16,
-          paddingVertical: 14,
+          paddingVertical: 12,
           backgroundColor: 'rgba(148,163,184,0.08)',
           borderBottomWidth: 1,
           borderBottomColor: t.color.border,
@@ -71,18 +73,21 @@ export default function LeaderboardTable({
       <FlatList
         data={ranked}
         keyExtractor={(it) => it.row.user_id}
-        scrollEnabled={false}
+        scrollEnabled
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 10 }}
         ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: t.color.border, opacity: 0.6, marginLeft: 16 }} />}
         renderItem={({ item }) => {
           const isMe = !!highlightUserId && item.row.user_id === highlightUserId;
           const showTrophy = item.rank <= 4;
+          const AVATAR_SIZE = 28;
           return (
             <View
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 paddingHorizontal: 16,
-                paddingVertical: 14,
+                paddingVertical: 12,
                 backgroundColor: isMe ? 'rgba(28,131,118,0.45)' : 'transparent',
               }}
             >
@@ -91,8 +96,8 @@ export default function LeaderboardTable({
               <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                 <View
                   style={{
-                    width: 34,
-                    height: 34,
+                    width: AVATAR_SIZE,
+                    height: AVATAR_SIZE,
                     borderRadius: 999,
                     backgroundColor: t.color.surface2,
                     borderWidth: 1,
@@ -100,7 +105,7 @@ export default function LeaderboardTable({
                     overflow: 'hidden',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginRight: 10,
+                    marginRight: 8,
                   }}
                 >
                   <TotlText variant="caption" style={{ fontWeight: '900' }}>
@@ -112,7 +117,8 @@ export default function LeaderboardTable({
                   <TotlText style={{ marginRight: 10, color: '#FACC15', fontWeight: '900' }}>🏆</TotlText>
                 ) : null}
 
-                <TotlText numberOfLines={1} style={{ fontWeight: isMe ? '900' : '700', flexShrink: 1 }}>
+                {/* Match Home mini-league table row typography */}
+                <TotlText variant="caption" numberOfLines={1} style={{ fontWeight: isMe ? '900' : '700', flexShrink: 1 }}>
                   {item.row.name}
                 </TotlText>
               </View>

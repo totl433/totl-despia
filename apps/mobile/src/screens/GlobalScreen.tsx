@@ -190,7 +190,7 @@ export default function GlobalScreen() {
         ) : null}
 
         {!loading && !error && rows.length > 0 ? (
-          <LeaderboardTable rows={rows} valueLabel={valueLabel} highlightUserId={userId} />
+          <LeaderboardTable rows={rows} valueLabel={valueLabel} highlightUserId={userId} style={{ flex: 1 }} />
         ) : null}
       </View>
     </Screen>
