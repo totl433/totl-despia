@@ -1,7 +1,6 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { TotlText, useTokens } from '@totl/ui';
-import SectionHeaderRow from '../home/SectionHeaderRow';
 
 /**
  * Mini Leagues page header (title + subtitle + plus button).
@@ -20,32 +19,35 @@ export default function MiniLeaguesHeader({
   const ADD_BUTTON_SIZE = 46; // match web (w-10/h-10) feel + Home icon sizing
 
   return (
-    <View style={{ paddingHorizontal: t.space[4], paddingTop: t.space[3], paddingBottom: t.space[3] }}>
-      <SectionHeaderRow
-        title={title.toUpperCase()}
-        subtitle={subtitle}
-        right={
-          <Pressable
-            onPress={onPressAdd}
-            accessibilityRole="button"
-            accessibilityLabel="Create or join mini league"
-            style={({ pressed }) => ({
-              width: ADD_BUTTON_SIZE,
-              height: ADD_BUTTON_SIZE,
-              borderRadius: 999,
-              backgroundColor: t.color.brand,
-              borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.16)',
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: pressed ? 0.92 : 1,
-              transform: [{ scale: pressed ? 0.98 : 1 }],
-            })}
-          >
-            <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 22, lineHeight: 22 }}>+</TotlText>
-          </Pressable>
-        }
-      />
+    // NOTE: LeaguesScreen already applies list padding via FlatList `contentContainerStyle`.
+    // Keep this header padding-free to avoid doubling and pushing the button down.
+    <View style={{ marginBottom: 8, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <View style={{ flex: 1, paddingRight: 12 }}>
+        <TotlText variant="sectionTitle">{title.toUpperCase()}</TotlText>
+        <TotlText variant="sectionSubtitle" style={{ marginTop: 2 }}>
+          {subtitle}
+        </TotlText>
+      </View>
+
+      <Pressable
+        onPress={onPressAdd}
+        accessibilityRole="button"
+        accessibilityLabel="Create or join mini league"
+        style={({ pressed }) => ({
+          width: ADD_BUTTON_SIZE,
+          height: ADD_BUTTON_SIZE,
+          borderRadius: 999,
+          backgroundColor: t.color.brand,
+          borderWidth: 1,
+          borderColor: 'rgba(255,255,255,0.16)',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: pressed ? 0.92 : 1,
+          transform: [{ scale: pressed ? 0.98 : 1 }],
+        })}
+      >
+        <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 22, lineHeight: 22 }}>+</TotlText>
+      </Pressable>
     </View>
   );
 }
