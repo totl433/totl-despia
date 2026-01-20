@@ -57,9 +57,9 @@ export default function GlobalScreen() {
     },
   });
 
-  const { data: friendIds } = useQuery({
+  const { data: friendIds, isLoading: friendsLoading } = useQuery({
     queryKey: ['leaderboards', 'miniLeagueFriendIds'],
-    enabled: scope === 'friends',
+    enabled: scope === 'friends' && !!userId,
     queryFn: async () => {
       const { leagues } = await api.listLeagues();
       const ids = new Set<string>();
@@ -68,6 +68,7 @@ export default function GlobalScreen() {
       details.forEach((d) => d.members.forEach((m) => ids.add(String(m.id))));
       return ids;
     },
+    staleTime: 5 * 60 * 1000,
   });
 
   const nameByUserId = React.useMemo(() => {
@@ -79,8 +80,10 @@ export default function GlobalScreen() {
   const filterScope = React.useCallback(
     (rows: LeaderboardRow[]) => {
       if (scope !== 'friends') return rows;
-      const set = friendIds ?? new Set<string>();
-      if (!set.size) return rows;
+      // Avoid swapping from "all" -> "friends" mid-scroll while ids are still loading.
+      if (!friendIds) return [];
+      const set = friendIds;
+      if (!set.size) return [];
       return rows.filter((r) => set.has(r.user_id));
     },
     [friendIds, scope]
@@ -149,7 +152,7 @@ export default function GlobalScreen() {
 
   const valueLabel = tab === 'overall' ? 'OCP' : tab === 'gw' && latestGw ? `GW${latestGw}` : tab === 'form5' ? '5WK' : tab === 'form10' ? '10WK' : '—';
 
-  const loading = overallLoading || gwPointsLoading;
+  const loading = overallLoading || gwPointsLoading || friendsLoading;
   const error = (overallError as any) ?? (gwPointsError as any);
 
   return (

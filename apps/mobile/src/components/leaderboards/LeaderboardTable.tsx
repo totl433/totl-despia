@@ -75,12 +75,14 @@ export default function LeaderboardTable({
         keyExtractor={(it) => it.row.user_id}
         scrollEnabled
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 10 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 90 }}
+        ListFooterComponent={<View style={{ height: 12 }} />}
         ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: t.color.border, opacity: 0.6, marginLeft: 16 }} />}
         renderItem={({ item }) => {
           const isMe = !!highlightUserId && item.row.user_id === highlightUserId;
           const showTrophy = item.rank <= 4;
-          const AVATAR_SIZE = 28;
+          const AVATAR_SIZE = 24;
           return (
             <View
               style={{
