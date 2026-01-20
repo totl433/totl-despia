@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { FlatList, Pressable, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import { api } from '../lib/api';
@@ -85,7 +85,7 @@ function LeagueDefaultRow({
 
 /**
  * Mini-league “Default View” shown before LIVE (and when user toggles off live tables).
- * Mirrors the web Home default view: a vertical list of leagues with a small member preview.
+ * Mirrors the web Home default view: horizontal scroll, batched in rows of 3.
  */
 export default function MiniLeaguesDefaultList({
   leagues,
@@ -94,28 +94,46 @@ export default function MiniLeaguesDefaultList({
   leagues: Array<{ id: string; name: string }>;
   onLeaguePress: (leagueId: string, name: string) => void;
 }) {
-  const t = useTokens();
+  const batches = React.useMemo(() => {
+    const out: Array<Array<{ id: string; name: string }>> = [];
+    const batchSize = 3;
+    for (let i = 0; i < leagues.length; i += batchSize) {
+      out.push(leagues.slice(i, i + batchSize));
+    }
+    return out;
+  }, [leagues]);
 
   return (
-    <Card style={{ paddingVertical: 6 }}>
-      {leagues.map((l, idx) => (
-        <View key={l.id}>
-          <View style={{ paddingHorizontal: 16 }}>
-            <LeagueDefaultRow league={l} onPress={() => onLeaguePress(l.id, l.name)} />
-          </View>
-          {idx < leagues.length - 1 ? (
-            <View
-              style={{
-                height: 1,
-                backgroundColor: 'rgba(148,163,184,0.18)',
-                marginLeft: 16,
-                marginRight: 16,
-              }}
-            />
-          ) : null}
+    <FlatList
+      horizontal
+      data={batches}
+      keyExtractor={(_, idx) => String(idx)}
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ paddingBottom: 12 }}
+      renderItem={({ item: batch, index: batchIdx }: { item: Array<{ id: string; name: string }>; index: number }) => (
+        <View style={{ marginRight: batchIdx === batches.length - 1 ? 0 : 12 }}>
+          <Card style={{ width: 320, paddingVertical: 6 }}>
+            {batch.map((l, idx) => (
+              <View key={l.id}>
+                <View style={{ paddingHorizontal: 16 }}>
+                  <LeagueDefaultRow league={l} onPress={() => onLeaguePress(l.id, l.name)} />
+                </View>
+                {idx < batch.length - 1 ? (
+                  <View
+                    style={{
+                      height: 1,
+                      backgroundColor: 'rgba(148,163,184,0.18)',
+                      marginLeft: 16,
+                      marginRight: 16,
+                    }}
+                  />
+                ) : null}
+              </View>
+            ))}
+          </Card>
         </View>
-      ))}
-    </Card>
+      )}
+    />
   );
 }
 
