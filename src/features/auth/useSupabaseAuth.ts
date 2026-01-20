@@ -123,18 +123,19 @@ export async function signUpWithPassword(
   displayName: string
 ) {
   const trimmedEmail = normalizeEmail(email);
-  const trimmedName = displayName.trim();
-  
-  // Check if username is already taken (case-insensitive)
-  const { data: existingUsers, error: checkError } = await supabase
-    .from('users')
-    .select('name')
-    .ilike('name', trimmedName)
-    .limit(1);
-  
-  if (checkError) throw checkError;
-  
-  if (existingUsers && existingUsers.length > 0) {
+  const trimmedName = normalizeDisplayName(displayName);
+
+  if (!trimmedName) {
+    throw new Error('Display name is required.');
+  }
+  if (hasSqlLikeWildcards(trimmedName)) {
+    throw new Error('Display name contains invalid characters. Please remove % or _.');
+  }
+
+  // Check if username is already taken (case-insensitive).
+  // Prefer server-side check (harder to bypass); fall back to client check on localhost only.
+  const displayNameAvailable = await checkDisplayNameAvailable(trimmedName);
+  if (!displayNameAvailable) {
     throw new Error('Username already taken. Please choose a different name.');
   }
   
@@ -252,7 +253,7 @@ export async function signUpWithPassword(
   // For local dev without netlify dev, we'll proceed but log a warning
   // Supabase Auth will handle duplicates at the database level (though it may just send confirmation emails)
   if (!serverlessCheckWorked) {
-    console.warn('[signUpWithPassword] Email verification service unavailable. Proceeding with signup - duplicate emails may not be detected. For full email checking, run "netlify dev" instead of "npm run dev".');
+    console.warn('[signUpWithPassword] Email verification service unavailable. Proceeding with signup; Supabase Auth will still block duplicate emails.');
     // Don't block signup - allow it to proceed
     // Note: In production, the serverless function should always be available
   }
@@ -291,14 +292,99 @@ export async function signUpWithPassword(
   // Upsert profile (note: users table doesn't have email column, only name)
   const user = data.user ?? (await supabase.auth.getUser()).data.user;
   if (user) {
-    await supabase.from('users').upsert({ 
+    const { error: upsertError } = await supabase.from('users').upsert({ 
       id: user.id, 
       name: trimmedName
       // Note: email column doesn't exist in users table - email is stored in auth.users only
     });
+    if (upsertError) {
+      const msg = (upsertError.message || '').toLowerCase();
+      if (msg.includes('duplicate') || msg.includes('unique') || msg.includes('already exists')) {
+        throw new Error('Username already taken. Please choose a different name.');
+      }
+      throw upsertError;
+    }
   }
   
   return data;
+}
+
+function normalizeDisplayName(input: string): string {
+  return input.trim().replace(/\s+/g, ' ');
+}
+
+function hasSqlLikeWildcards(input: string): boolean {
+  // We rely on ILIKE for case-insensitive comparison; disallow wildcard characters
+  // so the check is an exact match, not a pattern match.
+  return input.includes('%') || input.includes('_');
+}
+
+async function checkDisplayNameAvailable(displayName: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+  const isLocalhost =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+  const fetchCheck = async (url: string) => {
+    return await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName }),
+      signal: controller.signal,
+    });
+  };
+
+  const clientFallback = async () => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id')
+      .ilike('name', displayName)
+      .limit(1);
+    if (error) throw error;
+    return !(data && data.length > 0);
+  };
+
+  try {
+    const localUrl = '/.netlify/functions/checkDisplayNameAvailable';
+    let response: Response;
+    try {
+      response = await fetchCheck(localUrl);
+    } catch (localError: any) {
+      if (localError?.name === 'TypeError' || localError?.name === 'AbortError') {
+        response = await fetchCheck(
+          'https://totl-staging.netlify.app/.netlify/functions/checkDisplayNameAvailable'
+        );
+      } else {
+        throw localError;
+      }
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (response.status === 404 && isLocalhost) {
+      return await clientFallback();
+    }
+
+    if (!response.ok) {
+      if (!isLocalhost) {
+        throw new Error('Unable to verify display name availability. Please try again.');
+      }
+      return await clientFallback();
+    }
+
+    const result = (await response.json()) as { available?: boolean };
+    return result.available !== false;
+  } catch (err: any) {
+    if (!isLocalhost) {
+      if (err?.name === 'AbortError') {
+        throw new Error('Unable to verify display name availability. Please try again.');
+      }
+      throw err;
+    }
+    return await clientFallback();
+  }
 }
 
 export async function resetPasswordForEmail(email: string) {
