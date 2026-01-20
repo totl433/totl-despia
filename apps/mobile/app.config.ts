@@ -37,8 +37,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: config.name ?? 'TOTL',
     slug: config.slug ?? 'totl',
     // Ensure the dev-client deep link works reliably on iOS.
-    // Expo will try to open `exp+<slug>://...` unless a scheme is provided.
-    scheme: (config as any).scheme ?? 'mobile',
+    // Expo will try to open `exp+<slug>://...` by default; on some iOS versions that scheme
+    // doesn't route correctly. Force a known-good scheme that iOS registers for this app.
+    scheme: 'com.totl.mobile',
     extra: {
       ...(config.extra ?? {}),
       EXPO_PUBLIC_SUPABASE_URL: envLocal.EXPO_PUBLIC_SUPABASE_URL,
