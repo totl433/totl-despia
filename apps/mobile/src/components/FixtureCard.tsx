@@ -92,6 +92,7 @@ export default function FixtureCard({
   const t = useTokens();
   const BADGE_SIZE = 20; // ~10% bigger than 18
   const BADGE_GAP = 10; // push badge closer to the score (between name and score)
+  const SCORE_COL_WIDTH = 84; // tighter so crests sit closer to the score
 
   const ls = liveScore ?? null;
   const hs = Number(ls?.home_score ?? 0);
@@ -242,8 +243,17 @@ export default function FixtureCard({
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: isOngoing ? 16 : 0 }}>
                 {/* Home */}
                 <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', maxWidth: '100%' }}>
-                    <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontWeight: hs > as && showScore ? '800' : '600', flexShrink: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'flex-end' }}>
+                    <TotlText
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      style={{
+                        fontWeight: hs > as && showScore ? '800' : '600',
+                        flexGrow: 1,
+                        flexShrink: 1,
+                        textAlign: 'right',
+                      }}
+                    >
                       {homeName}
                     </TotlText>
                     {homeBadge ? (
@@ -254,7 +264,7 @@ export default function FixtureCard({
                 </View>
 
                 {/* Score / kickoff */}
-                <View style={{ width: 96, alignItems: 'center' }}>
+                <View style={{ width: SCORE_COL_WIDTH, alignItems: 'center' }}>
                   {showScore ? (
                     <>
                       <TotlText style={{ fontWeight: '900', fontSize: 16 }}>
@@ -277,7 +287,7 @@ export default function FixtureCard({
 
                 {/* Away */}
                 <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', maxWidth: '100%' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'flex-start' }}>
                     {awayBadge ? (
                       <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginRight: BADGE_GAP }} />
                     ) : null}
@@ -321,8 +331,17 @@ export default function FixtureCard({
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: isOngoing ? 16 : 0 }}>
             {/* Home */}
             <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', maxWidth: '100%' }}>
-                <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontWeight: hs > as && showScore ? '800' : '600', flexShrink: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'flex-end' }}>
+                <TotlText
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  style={{
+                    fontWeight: hs > as && showScore ? '800' : '600',
+                    flexGrow: 1,
+                    flexShrink: 1,
+                    textAlign: 'right',
+                  }}
+                >
                   {homeName}
                 </TotlText>
                 {homeBadge ? (
@@ -333,7 +352,7 @@ export default function FixtureCard({
             </View>
 
             {/* Score / kickoff */}
-            <View style={{ width: 96, alignItems: 'center' }}>
+            <View style={{ width: SCORE_COL_WIDTH, alignItems: 'center' }}>
               {showScore ? (
                 <>
                   <TotlText style={{ fontWeight: '900', fontSize: 16 }}>
@@ -356,7 +375,7 @@ export default function FixtureCard({
 
             {/* Away */}
             <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', maxWidth: '100%' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'flex-start' }}>
                 {awayBadge ? (
                   <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginRight: BADGE_GAP }} />
                 ) : null}
