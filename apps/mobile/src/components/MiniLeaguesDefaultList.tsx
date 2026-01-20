@@ -47,6 +47,7 @@ function LeagueDefaultRow({
   });
 
   const members = (data?.members ?? []).slice(0, 3);
+  const AVATAR_SIZE = 64;
 
   return (
     <Pressable
@@ -56,11 +57,11 @@ function LeagueDefaultRow({
       })}
     >
       <View style={{ paddingVertical: 14 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
           <View
             style={{
-              width: 44,
-              height: 44,
+              width: AVATAR_SIZE,
+              height: AVATAR_SIZE,
               borderRadius: 999,
               backgroundColor: t.color.surface2,
               borderWidth: 1,
@@ -69,7 +70,9 @@ function LeagueDefaultRow({
               marginRight: 12,
             }}
           >
-            {league.avatarUri ? <Image source={{ uri: league.avatarUri }} style={{ width: 44, height: 44 }} /> : null}
+            {league.avatarUri ? (
+              <Image source={{ uri: league.avatarUri }} style={{ width: AVATAR_SIZE, height: AVATAR_SIZE }} />
+            ) : null}
           </View>
 
           <View style={{ flex: 1, minWidth: 0 }}>
