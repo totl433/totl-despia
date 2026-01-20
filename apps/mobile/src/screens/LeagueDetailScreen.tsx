@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { Screen, TotlText, useTokens } from '@totl/ui';
@@ -409,9 +409,8 @@ export default function LeagueDetailScreen() {
         buckets.set(label, b);
       });
       const sections = Array.from(buckets.values())
-        .map((b) => ({ label: b.label, fixtures: [...b.fixtures].sort((a, b) => a.fixture_index - b.fixture_index) }))
-        .sort((a, b) => (buckets.get(a.label)!.key ?? 0) - (buckets.get(b.label)!.key ?? 0))
-        .reverse();
+        .sort((a, b) => (a.key ?? 0) - (b.key ?? 0)) // earliest day first
+        .map((b) => ({ label: b.label, fixtures: [...b.fixtures].sort((a, b) => a.fixture_index - b.fixture_index) }));
 
       return {
         picksGw: gw,
@@ -512,7 +511,7 @@ export default function LeagueDetailScreen() {
             />
           </>
         ) : tab === 'predictions' ? (
-          <>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 140 }}>
             {typeof picksGw !== 'number' ? (
               <TotlText variant="muted">No current gameweek available.</TotlText>
             ) : picksGw < seasonStartGw ? (
@@ -589,7 +588,7 @@ export default function LeagueDetailScreen() {
                   </>
                 );
               })()}
-          </>
+          </ScrollView>
         ) : (
           <TotlText variant="muted">
             {tab === 'chat'
