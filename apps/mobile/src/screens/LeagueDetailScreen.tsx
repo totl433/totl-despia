@@ -19,9 +19,9 @@ import LeaguePointsFormToggle from '../components/league/LeaguePointsFormToggle'
 import LeagueSeasonRulesSheet from '../components/league/LeagueSeasonRulesSheet';
 import LeaguePillButton from '../components/league/LeaguePillButton';
 import LeagueSubmissionStatusCard from '../components/league/LeagueSubmissionStatusCard';
-import LeagueFixturePicks from '../components/league/LeagueFixturePicks';
 import type { LeaguePick } from '../components/league/LeaguePickPill';
 import FixtureCard from '../components/FixtureCard';
+import LeaguePickChipsRow from '../components/league/LeaguePickChipsRow';
 
 export default function LeagueDetailScreen() {
   const route = useRoute<any>();
@@ -552,7 +552,7 @@ export default function LeagueDetailScreen() {
                           {sec.label}
                         </TotlText>
 
-                        <View style={{ borderRadius: 14, overflow: 'hidden' }}>
+                        <View style={{ borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(148,163,184,0.14)' }}>
                           {sec.fixtures.map((f, idx) => {
                             const live = predictions.liveByFixtureIndex.get(f.fixture_index) ?? null;
                             const lsNoGoals = live ? ({ ...(live as any), goals: undefined } as any) : null;
@@ -565,11 +565,16 @@ export default function LeagueDetailScreen() {
                                 style={{
                                   borderTopWidth: idx === 0 ? 0 : 1,
                                   borderTopColor: 'rgba(148,163,184,0.14)',
-                                  backgroundColor: 'transparent',
                                 }}
                               >
-                                <FixtureCard fixture={f as any} liveScore={lsNoGoals} showPickButtons={false} variant="standalone" result={outcome} />
-                                <LeagueFixturePicks
+                                <FixtureCard
+                                  fixture={f as any}
+                                  liveScore={lsNoGoals}
+                                  showPickButtons={false}
+                                  variant="grouped"
+                                  result={outcome}
+                                />
+                                <LeaguePickChipsRow
                                   members={predictions.members}
                                   picksByUserId={picksMap}
                                   outcome={outcome}
