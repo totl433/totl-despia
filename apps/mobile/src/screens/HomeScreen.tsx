@@ -396,7 +396,7 @@ export default function HomeScreen() {
         scrollEventThrottle={16}
       >
         {/* Header (scrolls with content) */}
-        <View style={{ marginBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ marginBottom: 12, paddingTop: 4, paddingBottom: 4, flexDirection: 'row', alignItems: 'center' }}>
           {/* Left spacer to keep the logo visually centered (matches web: icons on right, logo centered) */}
           <View style={{ width: 46 + 10 + 46 }} />
 
@@ -430,7 +430,7 @@ export default function HomeScreen() {
                 ],
               }}
             >
-              <SvgUri uri={totlLogoUri} width={150} height={70} />
+              <SvgUri uri={totlLogoUri} width={165} height={77} />
             </Animated.View>
           </View>
 
