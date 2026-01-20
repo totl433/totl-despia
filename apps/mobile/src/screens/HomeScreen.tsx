@@ -388,7 +388,7 @@ export default function HomeScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingHorizontal: t.space[4],
-          paddingTop: t.space[2],
+          paddingTop: t.space[1],
           paddingBottom: t.space[12],
         }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.color.text} />}
@@ -398,7 +398,7 @@ export default function HomeScreen() {
         {/* Header (scrolls with content) */}
         <View style={{ marginBottom: 12 }}>
           {/* Floating icons: keep together on the right */}
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 4 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 2 }}>
             <RoundIconButton
               onPress={() => {}}
               icon={require('../../../../public/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png')}
@@ -411,14 +411,28 @@ export default function HomeScreen() {
           </View>
 
           <View style={{ alignItems: 'center' }}>
-            {/* Real TOTL logo (from web assets), +25% size + subtle scroll spin */}
+            {/* Real TOTL logo (from web assets), +25% size + 3D scroll spin (web parity) */}
             <Animated.View
               style={{
+                opacity: scrollY.interpolate({
+                  inputRange: [0, 250],
+                  outputRange: [1, 0],
+                  extrapolate: 'clamp',
+                }),
                 transform: [
+                  { perspective: 1000 },
                   {
-                    rotate: scrollY.interpolate({
-                      inputRange: [0, 250, 700],
-                      outputRange: ['-8deg', '-18deg', '-28deg'],
+                    rotateY: scrollY.interpolate({
+                      // Web does 2 full flips (720deg) over ~150px of scroll
+                      inputRange: [0, 150],
+                      outputRange: ['0deg', '720deg'],
+                      extrapolate: 'clamp',
+                    }),
+                  },
+                  {
+                    scale: scrollY.interpolate({
+                      inputRange: [0, 400],
+                      outputRange: [1, 0.4],
                       extrapolate: 'clamp',
                     }),
                   },
@@ -429,14 +443,6 @@ export default function HomeScreen() {
             </Animated.View>
           </View>
         </View>
-
-        {/* GW coming soon banner (scrolls with content) */}
-        {home && home.currentGw > home.viewingGw && (
-          <Card style={{ marginBottom: 12 }}>
-            <TotlText style={{ fontWeight: '700' }}>GW{home.currentGw} Coming Soon!</TotlText>
-            <TotlText variant="caption">Fixtures will be published soon.</TotlText>
-          </Card>
-        )}
 
         {homeLoading && <TotlText variant="muted">Loading…</TotlText>}
 
