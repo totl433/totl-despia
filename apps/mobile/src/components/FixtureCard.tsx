@@ -90,6 +90,8 @@ export default function FixtureCard({
   variant?: 'standalone' | 'grouped';
 }) {
   const t = useTokens();
+  const BADGE_SIZE = 20; // ~10% bigger than 18
+  const BADGE_GAP = 10; // push badge closer to the score (between name and score)
 
   const ls = liveScore ?? null;
   const hs = Number(ls?.home_score ?? 0);
@@ -244,7 +246,9 @@ export default function FixtureCard({
                     <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontWeight: hs > as && showScore ? '800' : '600', flexShrink: 1 }}>
                       {homeName}
                     </TotlText>
-                    {homeBadge ? <Image source={homeBadge} style={{ width: 18, height: 18, marginLeft: 6 }} /> : null}
+                    {homeBadge ? (
+                      <Image source={homeBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginLeft: BADGE_GAP }} />
+                    ) : null}
                   </View>
                   {renderGoalsTimeline([homeName, String(fixture.home_team ?? ''), String(fixture.home_name ?? ''), homeCode], 'flex-end')}
                 </View>
@@ -274,7 +278,9 @@ export default function FixtureCard({
                 {/* Away */}
                 <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', maxWidth: '100%' }}>
-                    {awayBadge ? <Image source={awayBadge} style={{ width: 18, height: 18, marginRight: 6 }} /> : null}
+                    {awayBadge ? (
+                      <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginRight: BADGE_GAP }} />
+                    ) : null}
                     <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontWeight: as > hs && showScore ? '800' : '600', flexShrink: 1 }}>
                       {awayName}
                     </TotlText>
@@ -319,7 +325,9 @@ export default function FixtureCard({
                 <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontWeight: hs > as && showScore ? '800' : '600', flexShrink: 1 }}>
                   {homeName}
                 </TotlText>
-                {homeBadge ? <Image source={homeBadge} style={{ width: 18, height: 18, marginLeft: 6 }} /> : null}
+                {homeBadge ? (
+                  <Image source={homeBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginLeft: BADGE_GAP }} />
+                ) : null}
               </View>
               {renderGoalsTimeline([homeName, String(fixture.home_team ?? ''), String(fixture.home_name ?? ''), homeCode], 'flex-end')}
             </View>
@@ -349,7 +357,9 @@ export default function FixtureCard({
             {/* Away */}
             <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', maxWidth: '100%' }}>
-                {awayBadge ? <Image source={awayBadge} style={{ width: 18, height: 18, marginRight: 6 }} /> : null}
+                {awayBadge ? (
+                  <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginRight: BADGE_GAP }} />
+                ) : null}
                 <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontWeight: as > hs && showScore ? '800' : '600', flexShrink: 1 }}>
                   {awayName}
                 </TotlText>
