@@ -256,7 +256,8 @@ export default function FixtureCard({
                     >
                       {homeName}
                     </TotlText>
-                    {homeBadge ? (
+                    {/* When showing a score, badges live beside the score (center cluster). */}
+                    {!showScore && homeBadge ? (
                       <Image source={homeBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginLeft: BADGE_GAP }} />
                     ) : null}
                   </View>
@@ -267,9 +268,13 @@ export default function FixtureCard({
                 <View style={{ width: SCORE_COL_WIDTH, alignItems: 'center' }}>
                   {showScore ? (
                     <>
-                      <TotlText style={{ fontWeight: '900', fontSize: 16 }}>
-                        {hs} - {as}
-                      </TotlText>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                        {homeBadge ? <Image source={homeBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginRight: 8 }} /> : null}
+                        <TotlText style={{ fontWeight: '900', fontSize: 16 }}>
+                          {hs} - {as}
+                        </TotlText>
+                        {awayBadge ? <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginLeft: 8 }} /> : null}
+                      </View>
                       {isFinished ? (
                         <TotlText variant="microMuted">{formatMinute(st, typeof ls?.minute === 'number' ? ls.minute : null)}</TotlText>
                       ) : (
@@ -288,7 +293,8 @@ export default function FixtureCard({
                 {/* Away */}
                 <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'flex-start' }}>
-                    {awayBadge ? (
+                    {/* When showing a score, badges live beside the score (center cluster). */}
+                    {!showScore && awayBadge ? (
                       <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginRight: BADGE_GAP }} />
                     ) : null}
                     <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontWeight: as > hs && showScore ? '800' : '600', flexShrink: 1 }}>
@@ -344,7 +350,7 @@ export default function FixtureCard({
                 >
                   {homeName}
                 </TotlText>
-                {homeBadge ? (
+                {!showScore && homeBadge ? (
                   <Image source={homeBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginLeft: BADGE_GAP }} />
                 ) : null}
               </View>
@@ -355,9 +361,13 @@ export default function FixtureCard({
             <View style={{ width: SCORE_COL_WIDTH, alignItems: 'center' }}>
               {showScore ? (
                 <>
-                  <TotlText style={{ fontWeight: '900', fontSize: 16 }}>
-                    {hs} - {as}
-                  </TotlText>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                    {homeBadge ? <Image source={homeBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginRight: 8 }} /> : null}
+                    <TotlText style={{ fontWeight: '900', fontSize: 16 }}>
+                      {hs} - {as}
+                    </TotlText>
+                    {awayBadge ? <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginLeft: 8 }} /> : null}
+                  </View>
                   {isFinished ? (
                     <TotlText variant="microMuted">{formatMinute(st, typeof ls?.minute === 'number' ? ls.minute : null)}</TotlText>
                   ) : (
@@ -376,7 +386,7 @@ export default function FixtureCard({
             {/* Away */}
             <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'flex-start' }}>
-                {awayBadge ? (
+                {!showScore && awayBadge ? (
                   <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginRight: BADGE_GAP }} />
                 ) : null}
                 <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontWeight: as > hs && showScore ? '800' : '600', flexShrink: 1 }}>
