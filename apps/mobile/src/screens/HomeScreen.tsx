@@ -1,11 +1,12 @@
 import React from 'react';
-import { Animated, FlatList, Image, Pressable, RefreshControl, Share, View } from 'react-native';
+import { Animated, FlatList, type ImageSourcePropType, Image, Pressable, RefreshControl, Share, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Asset } from 'expo-asset';
 import { SvgUri } from 'react-native-svg';
+import type { Fixture, GwResultRow, HomeRanks, HomeSnapshot, LiveScore, LiveStatus, Pick, RankBadge } from '@totl/domain';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import FixtureCard from '../components/FixtureCard';
@@ -18,8 +19,15 @@ import SectionHeaderRow from '../components/home/SectionHeaderRow';
 import SectionTitle from '../components/home/SectionTitle';
 import { LeaderboardCardLastGw, LeaderboardCardSimple } from '../components/home/LeaderboardCards';
 
-type Pick = 'H' | 'D' | 'A';
-type LiveStatus = 'TIMED' | 'IN_PLAY' | 'PAUSED' | 'FINISHED' | 'SCHEDULED';
+type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
+type LeagueSummary = LeaguesResponse['leagues'][number];
+
+function getErrorMessage(error: unknown): string {
+  if (!error) return 'Unknown error';
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'Unknown error';
+}
 
 function formatMinute(status: LiveStatus, minute: number | null | undefined) {
   if (status === 'FINISHED') return 'FT';
@@ -47,7 +55,6 @@ function fixtureDateLabel(kickoff: string | null | undefined) {
 export default function HomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
-  const scrollY = React.useRef(new Animated.Value(0)).current;
 
   const {
     data: home,
@@ -55,63 +62,61 @@ export default function HomeScreen() {
     error: homeError,
     refetch: refetchHome,
     isRefetching: homeRefetching,
-  } = useQuery({
+  } = useQuery<HomeSnapshot>({
     queryKey: ['homeSnapshot'],
     queryFn: () => api.getHomeSnapshot(),
   });
+
+  const isHomeLoading = Boolean(homeLoading);
 
   const {
     data: leagues,
     error: leaguesError,
     refetch: refetchLeagues,
     isRefetching: leaguesRefetching,
-  } = useQuery({
+  } = useQuery<LeaguesResponse>({
     queryKey: ['leagues'],
     queryFn: () => api.listLeagues(),
   });
 
-  const { data: ranks } = useQuery({
+  const { data: ranks } = useQuery<HomeRanks>({
     queryKey: ['homeRanks'],
     queryFn: () => api.getHomeRanks(),
   });
 
-  const fixtures = home?.fixtures ?? [];
-  const userPicks = (home?.userPicks ?? {}) as Record<string, Pick>;
+  const fixtures: Fixture[] = home?.fixtures ?? [];
+  const userPicks: Record<string, Pick> = home?.userPicks ?? {};
 
   const resultByFixtureIndex = React.useMemo(() => {
     const m = new Map<number, Pick>();
-    (home?.gwResults ?? []).forEach((r: any) => {
-      if (typeof r?.fixture_index === 'number' && (r?.result === 'H' || r?.result === 'D' || r?.result === 'A')) {
-        m.set(r.fixture_index, r.result);
-      }
-    });
+    (home?.gwResults ?? []).forEach((r: GwResultRow) => m.set(r.fixture_index, r.result));
     return m;
   }, [home?.gwResults]);
 
   const liveByFixtureIndex = React.useMemo(() => {
-    const m = new Map<number, any>();
+    const m = new Map<number, LiveScore>();
     if (!home) return m;
     const apiMatchIdToFixtureIndex = new Map<number, number>();
-    home.fixtures.forEach((f: any) => {
+    home.fixtures.forEach((f: Fixture) => {
       if (typeof f.api_match_id === 'number') apiMatchIdToFixtureIndex.set(f.api_match_id, f.fixture_index);
     });
-    (home.liveScores ?? []).forEach((ls: any) => {
+    (home.liveScores ?? []).forEach((ls: LiveScore) => {
       const idx =
         typeof ls.fixture_index === 'number'
           ? ls.fixture_index
           : typeof ls.api_match_id === 'number'
             ? apiMatchIdToFixtureIndex.get(ls.api_match_id)
             : undefined;
-      if (idx === undefined) return;
+      if (typeof idx !== 'number') return;
       m.set(idx, ls);
     });
     return m;
   }, [home]);
 
   const fixturesByDate = React.useMemo(() => {
-    const groups = new Map<string, any[]>();
-    fixtures.forEach((f: any) => {
-      const key = fixtureDateLabel(f?.kickoff_time ?? null);
+    const groups = new Map<string, Fixture[]>();
+    fixtures.forEach((f: Fixture) => {
+      const key = fixtureDateLabel(f.kickoff_time ?? null);
       const arr = groups.get(key) ?? [];
       arr.push(f);
       groups.set(key, arr);
@@ -149,12 +154,12 @@ export default function HomeScreen() {
     let started = 0;
     let live = 0;
     let correct = 0;
-    for (const f of fixtures as any[]) {
-      const fixtureIndex = f.fixture_index as number;
+    for (const f of fixtures) {
+      const fixtureIndex = f.fixture_index;
       const pick = userPicks[String(fixtureIndex)];
 
       const ls = liveByFixtureIndex.get(fixtureIndex);
-      const st = (ls?.status ?? 'SCHEDULED') as LiveStatus;
+      const st: LiveStatus = ls?.status ?? 'SCHEDULED';
       const isStarted = st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED';
       if (!isStarted) continue;
       started += 1;
@@ -182,8 +187,8 @@ export default function HomeScreen() {
   const [visibleLeagueIds, setVisibleLeagueIds] = React.useState<Set<string>>(() => new Set());
   const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 45 }).current;
   const onViewableItemsChanged = React.useRef(
-    ({ viewableItems }: { viewableItems: Array<{ item: any; index: number | null; isViewable: boolean }> }) => {
-      const leagueList = leagues?.leagues ?? [];
+    ({ viewableItems }: { viewableItems: Array<{ item: LeagueSummary; index: number | null; isViewable: boolean }> }) => {
+      const leagueList: LeagueSummary[] = leagues?.leagues ?? [];
       const next = new Set<string>();
 
       viewableItems.forEach((vi) => {
@@ -221,7 +226,7 @@ export default function HomeScreen() {
   const LB_BADGE_10 = require('../../../../dist/assets/10-week-form-badge.png');
   const LB_BADGE_SEASON = require('../../../../dist/assets/season-rank-badge.png');
 
-  function leaderboardBadgeFor(title: string): any | null {
+  function leaderboardBadgeFor(title: string): ImageSourcePropType | null {
     const t = title.toUpperCase();
     if (t.includes('5')) return LB_BADGE_5;
     if (t.includes('10')) return LB_BADGE_10;
@@ -240,7 +245,7 @@ export default function HomeScreen() {
 
   // Leaderboard cards and pills are now shared components.
 
-  const FixtureCardRow = ({ f }: { f: any }) => (
+  const FixtureCardRow = ({ f }: { f: Fixture }) => (
     <FixtureCard
       fixture={f}
       liveScore={liveByFixtureIndex.get(f.fixture_index) ?? null}
@@ -255,7 +260,7 @@ export default function HomeScreen() {
     index,
     totalCount,
   }: {
-    league: any;
+    league: LeagueSummary;
     index: number;
     totalCount: number;
   }) {
@@ -333,7 +338,7 @@ export default function HomeScreen() {
     // If we are already rendering date section headers, don't duplicate the date under the GW title.
     if (showFixtureDateSections) return undefined;
     // Match the web’s “Sat 17 Jan” feel when possible.
-    const first = fixtures.find((f: any) => f?.kickoff_time)?.kickoff_time as string | null | undefined;
+    const first = fixtures.find((f) => f.kickoff_time)?.kickoff_time;
     if (!first) return undefined;
     const d = new Date(first);
     if (Number.isNaN(d.getTime())) return undefined;
@@ -382,6 +387,8 @@ export default function HomeScreen() {
     if (showMlToggleButtons) setShowLiveTables(true);
   }, [showMlToggleButtons]);
 
+  const errorMessage = homeError ? getErrorMessage(homeError) : leaguesError ? getErrorMessage(leaguesError) : null;
+
   return (
     <Screen fullBleed>
       <Animated.ScrollView
@@ -392,8 +399,6 @@ export default function HomeScreen() {
           paddingBottom: t.space[12],
         }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.color.text} />}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
-        scrollEventThrottle={16}
       >
         {/* Header (scrolls with content) */}
         <View style={{ marginBottom: 12, paddingTop: 4, paddingBottom: 4, flexDirection: 'row', alignItems: 'center' }}>
@@ -402,36 +407,10 @@ export default function HomeScreen() {
 
           {/* Logo */}
           <View style={{ flex: 1, alignItems: 'center' }}>
-            {/* Real TOTL logo (from web assets), +25% size + 3D scroll spin (web parity) */}
-            <Animated.View
-              style={{
-                opacity: scrollY.interpolate({
-                  inputRange: [0, 250],
-                  outputRange: [1, 0],
-                  extrapolate: 'clamp',
-                }),
-                transform: [
-                  { perspective: 1000 },
-                  {
-                    rotateY: scrollY.interpolate({
-                      // Start fast (web-style 2 flips), then keep a gentle "flowy" continuation.
-                      inputRange: [0, 150, 650],
-                      outputRange: ['0deg', '720deg', '900deg'],
-                      extrapolate: 'clamp',
-                    }),
-                  },
-                  {
-                    scale: scrollY.interpolate({
-                      inputRange: [0, 400],
-                      outputRange: [1, 0.4],
-                      extrapolate: 'clamp',
-                    }),
-                  },
-                ],
-              }}
-            >
+            {/* Real TOTL logo (from web assets), simple + static */}
+            <View>
               <SvgUri uri={totlLogoUri} width={165} height={77} />
-            </Animated.View>
+            </View>
           </View>
 
           {/* Icons on the right (same row as logo, like web) */}
@@ -448,7 +427,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {homeLoading && <TotlText variant="muted">Loading…</TotlText>}
+        {isHomeLoading && <TotlText variant="muted">Loading…</TotlText>}
 
         {(homeError || leaguesError) && (
           <Card style={{ marginBottom: 12 }}>
@@ -456,7 +435,7 @@ export default function HomeScreen() {
               Couldn’t load everything
             </TotlText>
             <TotlText variant="muted" style={{ marginBottom: 12 }}>
-              {(homeError as any)?.message ?? (leaguesError as any)?.message ?? 'Unknown error'}
+              {errorMessage ?? 'Unknown error'}
             </TotlText>
             <Button title="Retry" onPress={onRefresh} loading={refreshing} />
           </Card>
@@ -525,7 +504,7 @@ export default function HomeScreen() {
               ),
             });
 
-            const add = (b: any, badge: any | null, title: string) => {
+            const add = (b: RankBadge | null | undefined, badge: ImageSourcePropType | null, title: string) => {
               if (!b) return;
               cards.push({
                 key: title,
@@ -581,10 +560,10 @@ export default function HomeScreen() {
           />
         </View>
         {leagues?.leagues?.length ? showLiveTables ? (
-          <FlatList
+          <FlatList<LeagueSummary>
             horizontal
             data={leagues.leagues}
-            keyExtractor={(l: any) => String(l.id)}
+            keyExtractor={(l) => String(l.id)}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 12 }}
             viewabilityConfig={viewabilityConfig}
@@ -592,13 +571,13 @@ export default function HomeScreen() {
             initialNumToRender={4}
             windowSize={4}
             removeClippedSubviews
-            renderItem={({ item: l, index }: { item: any; index: number }) => (
+            renderItem={({ item: l, index }) => (
               <HomeMiniLeagueCardItem league={l} index={index} totalCount={leagues.leagues.length} />
             )}
           />
         ) : (
           <MiniLeaguesDefaultList
-            leagues={leagues.leagues.map((l: any) => ({
+            leagues={leagues.leagues.map((l) => ({
               id: String(l.id),
               name: String(l.name ?? ''),
               avatarUri: typeof l.avatar === 'string' && l.avatar.startsWith('http') ? l.avatar : null,
@@ -720,7 +699,7 @@ export default function HomeScreen() {
                 }}
               >
                 <View style={{ borderRadius: 14, overflow: 'hidden' }}>
-                  {g.fixtures.map((f: any, idx: number) => (
+                  {g.fixtures.map((f: Fixture, idx: number) => (
                     <View key={f.id} style={{ position: 'relative' }}>
                       {idx < g.fixtures.length - 1 ? (
                         <View
