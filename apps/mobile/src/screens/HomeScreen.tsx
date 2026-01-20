@@ -391,6 +391,29 @@ export default function HomeScreen() {
 
   return (
     <Screen fullBleed>
+      {/* Floating menu buttons (stay visible while scrolling) */}
+      <View
+        pointerEvents="box-none"
+        style={{
+          position: 'absolute',
+          top: t.space[2],
+          right: t.space[4],
+          zIndex: 50,
+        }}
+      >
+        <View style={{ flexDirection: 'row' }}>
+          <RoundIconButton
+            onPress={() => {}}
+            icon={require('../../../../public/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png')}
+          />
+          <View style={{ width: 10 }} />
+          <RoundIconButton
+            onPress={() => navigation.navigate('Profile')}
+            icon={require('../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')}
+          />
+        </View>
+      </View>
+
       <Animated.ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
@@ -401,29 +424,10 @@ export default function HomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.color.text} />}
       >
         {/* Header (scrolls with content) */}
-        <View style={{ marginBottom: 12, paddingTop: 4, paddingBottom: 4, flexDirection: 'row', alignItems: 'center' }}>
-          {/* Left spacer to keep the logo visually centered (matches web: icons on right, logo centered) */}
-          <View style={{ width: 46 + 10 + 46 }} />
-
-          {/* Logo */}
-          <View style={{ flex: 1, alignItems: 'center' }}>
-            {/* Real TOTL logo (from web assets), simple + static */}
-            <View>
-              <SvgUri uri={totlLogoUri} width={165} height={77} />
-            </View>
-          </View>
-
-          {/* Icons on the right (same row as logo, like web) */}
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-            <RoundIconButton
-              onPress={() => {}}
-              icon={require('../../../../public/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png')}
-            />
-            <View style={{ width: 10 }} />
-            <RoundIconButton
-              onPress={() => navigation.navigate('Profile')}
-              icon={require('../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')}
-            />
+        <View style={{ marginBottom: 12, paddingTop: 4, paddingBottom: 4, alignItems: 'center' }}>
+          {/* Real TOTL logo (from web assets), simple + static */}
+          <View>
+            <SvgUri uri={totlLogoUri} width={165} height={77} />
           </View>
         </View>
 
