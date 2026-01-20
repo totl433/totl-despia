@@ -36,6 +36,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // `ConfigContext.config` is typed as partially-defined; ensure required fields exist.
     name: config.name ?? 'TOTL',
     slug: config.slug ?? 'totl',
+    // Ensure the dev-client deep link works reliably on iOS.
+    // Expo will try to open `exp+<slug>://...` unless a scheme is provided.
+    scheme: (config as any).scheme ?? 'mobile',
     extra: {
       ...(config.extra ?? {}),
       EXPO_PUBLIC_SUPABASE_URL: envLocal.EXPO_PUBLIC_SUPABASE_URL,
