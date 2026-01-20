@@ -576,7 +576,11 @@ export default function HomeScreen() {
           />
         ) : (
           <MiniLeaguesDefaultList
-            leagues={leagues.leagues}
+            leagues={leagues.leagues.map((l: any) => ({
+              id: String(l.id),
+              name: String(l.name ?? ''),
+              avatarUri: typeof l.avatar === 'string' && l.avatar.startsWith('http') ? l.avatar : null,
+            }))}
             onLeaguePress={(leagueId, name) =>
               navigation.navigate('Leagues', {
                 screen: 'LeagueDetail',

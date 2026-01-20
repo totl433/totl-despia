@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList, Pressable, View } from 'react-native';
+import { FlatList, Image, Pressable, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import { api } from '../lib/api';
@@ -37,7 +37,7 @@ function LeagueDefaultRow({
   league,
   onPress,
 }: {
-  league: { id: string; name: string };
+  league: { id: string; name: string; avatarUri: string | null };
   onPress: () => void;
 }) {
   const t = useTokens();
@@ -57,6 +57,21 @@ function LeagueDefaultRow({
     >
       <View style={{ paddingVertical: 14 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 999,
+              backgroundColor: t.color.surface2,
+              borderWidth: 1,
+              borderColor: t.color.border,
+              overflow: 'hidden',
+              marginRight: 12,
+            }}
+          >
+            {league.avatarUri ? <Image source={{ uri: league.avatarUri }} style={{ width: 44, height: 44 }} /> : null}
+          </View>
+
           <TotlText variant="body" style={{ flex: 1, fontWeight: '900' }} numberOfLines={1}>
             {league.name}
           </TotlText>
@@ -91,11 +106,11 @@ export default function MiniLeaguesDefaultList({
   leagues,
   onLeaguePress,
 }: {
-  leagues: Array<{ id: string; name: string }>;
+  leagues: Array<{ id: string; name: string; avatarUri: string | null }>;
   onLeaguePress: (leagueId: string, name: string) => void;
 }) {
   const batches = React.useMemo(() => {
-    const out: Array<Array<{ id: string; name: string }>> = [];
+    const out: Array<Array<{ id: string; name: string; avatarUri: string | null }>> = [];
     const batchSize = 3;
     for (let i = 0; i < leagues.length; i += batchSize) {
       out.push(leagues.slice(i, i + batchSize));
@@ -110,7 +125,13 @@ export default function MiniLeaguesDefaultList({
       keyExtractor={(_, idx) => String(idx)}
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ paddingBottom: 12 }}
-      renderItem={({ item: batch, index: batchIdx }: { item: Array<{ id: string; name: string }>; index: number }) => (
+      renderItem={({
+        item: batch,
+        index: batchIdx,
+      }: {
+        item: Array<{ id: string; name: string; avatarUri: string | null }>;
+        index: number;
+      }) => (
         <View style={{ marginRight: batchIdx === batches.length - 1 ? 0 : 12 }}>
           <Card style={{ width: 320, paddingVertical: 6 }}>
             {batch.map((l, idx) => (

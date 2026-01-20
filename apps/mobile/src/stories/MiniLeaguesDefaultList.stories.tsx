@@ -16,12 +16,12 @@ function Preview() {
     <Screen>
       <MiniLeaguesDefaultList
         leagues={[
-          { id: 'l1', name: 'aaa Carl' },
-          { id: 'l2', name: 'Easy League' },
-          { id: 'l3', name: 'FC Football' },
-          { id: 'l4', name: 'form' },
-          { id: 'l5', name: 'great' },
-          { id: 'l6', name: 'Jof' },
+          { id: 'l1', name: 'aaa Carl', avatarUri: null },
+          { id: 'l2', name: 'Easy League', avatarUri: null },
+          { id: 'l3', name: 'FC Football', avatarUri: null },
+          { id: 'l4', name: 'form', avatarUri: null },
+          { id: 'l5', name: 'great', avatarUri: null },
+          { id: 'l6', name: 'Jof', avatarUri: null },
         ]}
         onLeaguePress={() => {}}
       />
