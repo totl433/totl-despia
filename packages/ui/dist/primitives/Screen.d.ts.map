@@ -1,0 +1,1 @@
+{"version":3,"file":"Screen.d.ts","sourceRoot":"","sources":["../../src/primitives/Screen.tsx"],"names":[],"mappings":"AACA,OAAO,EAAQ,KAAK,SAAS,EAAE,MAAM,cAAc,CAAC;AAIpD,MAAM,MAAM,WAAW,GAAG,SAAS,GAAG;IACpC,SAAS,CAAC,EAAE,OAAO,CAAC;CACrB,CAAC;AAEF,wBAAgB,MAAM,CAAC,EAAE,KAAK,EAAE,QAAQ,EAAE,SAAiB,EAAE,GAAG,KAAK,EAAE,EAAE,WAAW,2CASnF"}
