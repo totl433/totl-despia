@@ -59,7 +59,7 @@ export default function LeaderboardTable({
           borderBottomColor: t.color.border,
         }}
       >
-        <TotlText variant="caption" style={{ color: t.color.muted, width: 42, fontWeight: '900' }}>
+        <TotlText variant="caption" style={{ color: t.color.muted, width: 36, fontWeight: '900' }}>
           #
         </TotlText>
         <TotlText variant="caption" style={{ color: t.color.muted, flex: 1, fontWeight: '900' }}>
@@ -81,8 +81,9 @@ export default function LeaderboardTable({
         ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: t.color.border, opacity: 0.6, marginLeft: 16 }} />}
         renderItem={({ item }) => {
           const isMe = !!highlightUserId && item.row.user_id === highlightUserId;
-          const showTrophy = item.rank <= 4;
-          const AVATAR_SIZE = 24;
+          // Only top (including joint-top) gets a trophy
+          const showTrophy = item.rank === 1;
+          const AVATAR_SIZE = 20;
           return (
             <View
               style={{
@@ -93,7 +94,7 @@ export default function LeaderboardTable({
                 backgroundColor: isMe ? 'rgba(28,131,118,0.45)' : 'transparent',
               }}
             >
-              <TotlText style={{ width: 42, fontWeight: '900' }}>{formatRank(item.rank, item.tied)}</TotlText>
+              <TotlText style={{ width: 36, fontWeight: '900' }}>{formatRank(item.rank, item.tied)}</TotlText>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                 <View
@@ -107,7 +108,7 @@ export default function LeaderboardTable({
                     overflow: 'hidden',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginRight: 8,
+                    marginRight: 6,
                   }}
                 >
                   <TotlText variant="caption" style={{ fontWeight: '900' }}>
@@ -116,7 +117,7 @@ export default function LeaderboardTable({
                 </View>
 
                 {showTrophy ? (
-                  <TotlText style={{ marginRight: 10, color: '#FACC15', fontWeight: '900' }}>🏆</TotlText>
+                  <TotlText style={{ marginRight: 8, color: '#FACC15', fontWeight: '900' }}>🏆</TotlText>
                 ) : null}
 
                 {/* Match Home mini-league table row typography */}
