@@ -2,6 +2,8 @@ import React from 'react';
 import { FlatList, Modal, Pressable, View } from 'react-native';
 import { TotlText, useTokens } from '@totl/ui';
 
+import LeaguePillButton from './LeaguePillButton';
+
 export default function LeagueGwControlsRow({
   availableGws,
   selectedGw,
@@ -49,23 +51,7 @@ export default function LeagueGwControlsRow({
           </TotlText>
         </Pressable>
 
-        <Pressable
-          onPress={onPressRules}
-          style={({ pressed }) => ({
-            minHeight: 40,
-            borderRadius: 999,
-            borderWidth: 2,
-            borderColor: t.color.border,
-            backgroundColor: t.color.surface,
-            paddingHorizontal: 14,
-            justifyContent: 'center',
-            opacity: pressed ? 0.92 : 1,
-          })}
-        >
-          <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '800' }}>
-            Rules
-          </TotlText>
-        </Pressable>
+        <LeaguePillButton label="Rules" onPress={onPressRules} />
       </View>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
