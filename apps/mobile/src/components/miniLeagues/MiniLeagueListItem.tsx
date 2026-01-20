@@ -96,7 +96,7 @@ export default function MiniLeagueListItem({
           </View>
 
           <View style={{ flex: 1, minWidth: 0 }}>
-            <TotlText variant="heading" numberOfLines={1} style={{ fontWeight: '900' }}>
+            <TotlText variant="body" numberOfLines={1} style={{ fontWeight: '900', fontSize: 22, lineHeight: 26 }}>
               {title}
             </TotlText>
 
@@ -105,11 +105,11 @@ export default function MiniLeagueListItem({
             </TotlText>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
-              <TotlText variant="body" style={{ fontWeight: '900' }}>
+              <TotlText variant="body" style={{ fontWeight: '900', fontSize: 20, lineHeight: 22 }}>
                 {membersCount ?? '—'}
               </TotlText>
               <TotlText style={{ marginLeft: 12, color: deltaColor, fontWeight: '900' }}>{deltaIcon ?? ''}</TotlText>
-              <TotlText variant="body" style={{ fontWeight: '900', marginLeft: 10 }}>
+              <TotlText variant="body" style={{ fontWeight: '900', marginLeft: 10, fontSize: 20, lineHeight: 22 }}>
                 {userRank ? ordinal(userRank) : '—'}
               </TotlText>
             </View>
