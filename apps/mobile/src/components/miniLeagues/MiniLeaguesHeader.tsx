@@ -17,6 +17,7 @@ export default function MiniLeaguesHeader({
   onPressAdd: () => void;
 }) {
   const t = useTokens();
+  const ADD_BUTTON_SIZE = 46; // match web (w-10/h-10) feel + Home icon sizing
 
   return (
     <View style={{ paddingHorizontal: t.space[4], paddingTop: t.space[3], paddingBottom: t.space[3] }}>
@@ -29,8 +30,8 @@ export default function MiniLeaguesHeader({
             accessibilityRole="button"
             accessibilityLabel="Create or join mini league"
             style={({ pressed }) => ({
-              width: 62,
-              height: 62,
+              width: ADD_BUTTON_SIZE,
+              height: ADD_BUTTON_SIZE,
               borderRadius: 999,
               backgroundColor: t.color.brand,
               borderWidth: 1,
@@ -41,7 +42,7 @@ export default function MiniLeaguesHeader({
               transform: [{ scale: pressed ? 0.98 : 1 }],
             })}
           >
-            <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 30, lineHeight: 30 }}>+</TotlText>
+            <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 22, lineHeight: 22 }}>+</TotlText>
           </Pressable>
         }
       />
