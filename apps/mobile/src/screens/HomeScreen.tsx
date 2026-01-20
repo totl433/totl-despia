@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Asset } from 'expo-asset';
+import { SvgUri } from 'react-native-svg';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import FixtureCard from '../components/FixtureCard';
@@ -351,6 +353,10 @@ export default function HomeScreen() {
   const gwIsLive = (scoreSummary?.live ?? 0) > 0;
   const viewingGw = home?.viewingGw ?? null;
 
+  const totlLogoUri = React.useMemo(() => {
+    return Asset.fromModule(require('../../../../public/assets/badges/totl-logo1.svg')).uri;
+  }, []);
+
   const gwState: GameweekState | null = React.useMemo(() => {
     if (!home) return null;
     return getGameweekStateFromSnapshot({
@@ -408,16 +414,10 @@ export default function HomeScreen() {
         </View>
 
         <View style={{ alignItems: 'center' }}>
-          {/* Web uses an SVG logo; RN mimics with styled text. */}
-          <TotlText
-            variant="heading"
-            style={{
-              transform: [{ rotate: '-14deg' }],
-              letterSpacing: -1,
-            }}
-          >
-            TotL
-          </TotlText>
+          {/* Real TOTL logo (from web assets). */}
+          <View style={{ transform: [{ rotate: '-14deg' }] }}>
+            <SvgUri uri={totlLogoUri} width={120} height={56} />
+          </View>
         </View>
       </View>
 
