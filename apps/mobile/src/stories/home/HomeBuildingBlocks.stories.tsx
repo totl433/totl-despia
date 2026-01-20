@@ -18,8 +18,9 @@ export default meta
 type Story = StoryObj<typeof Preview>
 
 function Preview() {
-  const badge = require('../../../../../../dist/assets/5-week-form-badge.png')
-  const icon = require('../../../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')
+  // from `apps/mobile/src/stories/home/*` to repo root is `../../../../../`
+  const badge = require('../../../../../dist/assets/5-week-form-badge.png')
+  const icon = require('../../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')
 
   return (
     <Screen>
