@@ -159,6 +159,26 @@ export default function LeaguesScreen() {
             </Card>
           ) : null
         }
+        ListFooterComponent={
+          (data?.leagues?.length ?? 0) > 0 ? (
+            <View style={{ marginTop: 14, marginBottom: 6 }}>
+              <Pressable
+                onPress={() => {}}
+                style={({ pressed }) => ({
+                  width: '100%',
+                  paddingVertical: 12,
+                  paddingHorizontal: 14,
+                  borderRadius: 14,
+                  backgroundColor: t.color.brand,
+                  opacity: pressed ? 0.92 : 1,
+                  transform: [{ scale: pressed ? 0.99 : 1 }],
+                })}
+              >
+                <TotlText style={{ color: '#FFFFFF', fontWeight: '900', textAlign: 'center' }}>Create or Join</TotlText>
+              </Pressable>
+            </View>
+          ) : null
+        }
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         renderItem={({ item }) => {
           const leagueId = String(item.id);
