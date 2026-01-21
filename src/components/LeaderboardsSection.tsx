@@ -207,7 +207,7 @@ How To Play →`}
             isActiveLive={isLastGwLive && (lastGwLiveScoreState !== null || lastGwLiveScore !== null)}
           />
           <LeaderboardCard
-            title="5-WEEK FORM"
+            title="5 WEEK FORM"
             badgeSrc="/assets/5-week-form-badge.png"
             badgeAlt="5-Week Form Badge"
             linkTo="/global?tab=form5"
@@ -215,7 +215,7 @@ How To Play →`}
             total={fiveGwRank?.total ?? null}
           />
           <LeaderboardCard
-            title="10-WEEK FORM"
+            title="10 WEEK FORM"
             badgeSrc="/assets/10-week-form-badge.png"
             badgeAlt="10-Week Form Badge"
             linkTo="/global?tab=form10"
@@ -255,7 +255,7 @@ How To Play →`}
             isActiveLive={isLastGwLive && (lastGwLiveScoreState !== null || lastGwLiveScore !== null)}
         />
         <LeaderboardCard
-          title="5-WEEK FORM"
+          title="5 WEEK FORM"
           badgeSrc="/assets/5-week-form-badge.png"
           badgeAlt="5-Week Form Badge"
           linkTo="/global?tab=form5"
@@ -263,7 +263,7 @@ How To Play →`}
           total={fiveGwRank?.total ?? null}
         />
         <LeaderboardCard
-          title="10-WEEK FORM"
+          title="10 WEEK FORM"
           badgeSrc="/assets/10-week-form-badge.png"
           badgeAlt="10-Week Form Badge"
           linkTo="/global?tab=form10"
