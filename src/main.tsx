@@ -4,7 +4,6 @@ import "react-chat-elements/dist/main.css";
 import React, { Suspense, lazy, useState, useEffect, useLayoutEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
-import { isNativeApp } from "./lib/platform";
 
 // Suppress Termly-related network errors (410 Gone) that occur when Termly account is inactive
 // These errors are non-critical and don't affect app functionality
@@ -214,76 +213,6 @@ if (typeof window !== 'undefined') {
   } as any;
 }
 
-function clearAnalyticsCookiesForCurrentDomain(): { attempted: boolean; cleared: string[] } {
-  if (typeof document === 'undefined') return { attempted: false, cleared: [] };
-
-  const raw = document.cookie || '';
-  const names = raw
-    .split(';')
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .map((p) => p.split('=')[0]?.trim())
-    .filter(Boolean);
-
-  const gaNames = names.filter((n) => n.startsWith('_ga'));
-  if (gaNames.length === 0) return { attempted: true, cleared: [] };
-
-  const host = typeof window !== 'undefined' ? window.location.hostname : '';
-  const domainCandidates = Array.from(
-    new Set(
-      [
-        '', // no domain attribute (current host)
-        host ? `domain=${host}` : '',
-        host ? `domain=.${host}` : '',
-      ].filter(Boolean)
-    )
-  );
-  const pathCandidates = ['', 'path=/'];
-
-  const cleared: string[] = [];
-  const expires = 'Thu, 01 Jan 1970 00:00:00 GMT';
-
-  gaNames.forEach((name) => {
-    // Try a few combinations to remove whatever was set.
-    for (const domainAttr of domainCandidates) {
-      for (const pathAttr of pathCandidates) {
-        const attrs = [
-          `${name}=`,
-          `expires=${expires}`,
-          'max-age=0',
-          pathAttr,
-          domainAttr,
-          'SameSite=Lax',
-        ].filter(Boolean);
-        try {
-          document.cookie = attrs.join('; ');
-        } catch {
-          // ignore
-        }
-      }
-    }
-    cleared.push(name);
-  });
-
-  return { attempted: true, cleared };
-}
-
-// Apple review compliance: if we're in the native app, wipe any existing GA cookies
-// (they can persist from older builds where GA was present).
-if (typeof window !== 'undefined' && isNativeApp()) {
-  const res1 = clearAnalyticsCookiesForCurrentDomain();
-  if (import.meta.env.DEV) {
-    console.log('[Compliance] Cleared GA cookies (attempt 1):', res1);
-  }
-  // Run again shortly after boot to catch cookies restored by WebView/session.
-  setTimeout(() => {
-    const res2 = clearAnalyticsCookiesForCurrentDomain();
-    if (import.meta.env.DEV) {
-      console.log('[Compliance] Cleared GA cookies (attempt 2):', res2);
-    }
-  }, 1500);
-}
-
 // Eagerly load BottomNav pages for instant navigation (no Suspense delay)
 import HomePage from "./pages/Home";
 import TablesPage from "./pages/Tables";
@@ -304,7 +233,6 @@ const NotificationCentrePage = lazy(() => import("./pages/NotificationCentre"));
 const EmailPreferencesPage = lazy(() => import("./pages/EmailPreferences"));
 const StatsPage = lazy(() => import("./pages/Stats"));
 const SwipeCardPreview = lazy(() => import("./pages/SwipeCardPreview"));
-const CookiePolicyPage = lazy(() => import("./pages/CookiePolicy"));
 const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsAndConditionsPage = lazy(() => import("./pages/TermsAndConditions"));
 const HomeExperimental = lazy(() => import("./pages/HomeExperimental"));
@@ -329,36 +257,6 @@ import { loadInitialData } from "./services/initialDataLoader";
 import { bootLog } from "./lib/logEvent";
 import { isDespiaAvailable } from "./lib/platform";
 import { supabase } from "./lib/supabase";
-
-function maybeLoadGoogleAnalytics() {
-  if (typeof window === "undefined" || typeof document === "undefined") return;
-  // GA/GTM should not load in Despia native app (can cause DNS errors/noise and isn't used there).
-  if (isDespiaAvailable()) return;
-  // Avoid polluting GA with local development traffic.
-  const hostname = window.location.hostname;
-  const isLocalhost =
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "::1";
-  if (isLocalhost) return;
-
-  const GA_ID = import.meta.env.VITE_GA_ID || "G-5HWWJWTRRD";
-  const existing = document.querySelector(`script[src*="googletagmanager.com/gtag/js?id=${GA_ID}"]`);
-  if (existing) return;
-
-  // Equivalent to the removed index.html snippet.
-  (window as any).dataLayer = (window as any).dataLayer || [];
-  (window as any).gtag = function gtag(...args: any[]) {
-    (window as any).dataLayer.push(args);
-  };
-  (window as any).gtag("js", new Date());
-  (window as any).gtag("config", GA_ID);
-
-  const script = document.createElement("script");
-  script.async = true;
-  script.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;
-  document.head.appendChild(script);
-}
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -407,16 +305,6 @@ function AppContent() {
   useTheme();
   const [initialDataLoading, setInitialDataLoading] = useState(false);
   const isNativeApp = isDespiaAvailable();
-  
-  // Load Google Analytics only on web (not Despia).
-  useEffect(() => {
-    // Delay GA load to give Despia time to inject native bridge globals.
-    // This avoids accidental GA/cookie collection during iOS App Review.
-    const timeoutId = window.setTimeout(() => {
-      maybeLoadGoogleAnalytics();
-    }, 2500);
-    return () => clearTimeout(timeoutId);
-  }, []);
   
   // Handle deep links from notifications (iOS native)
   // Check URL immediately - AppShell already updated window.location, but ensure React Router sees it
@@ -928,7 +816,6 @@ function AppContent() {
               <Route path="/profile/stats" element={<RequireAuth><StatsPage /></RequireAuth>} />
               <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
               <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
-              <Route path="/cookie-policy" element={<RequireAuth><CookiePolicyPage /></RequireAuth>} />
               <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
               <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
               <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />

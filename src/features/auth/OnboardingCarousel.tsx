@@ -2,13 +2,8 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import OnboardingSlide from './OnboardingSlide';
 import { useSwipe } from './useSwipe';
 import {
-  getCookieConsent,
   getPrivacyAccepted,
-  setCookieConsent,
   setPrivacyAccepted,
-  type CookieChoice,
-  type CookiePreferences,
-  type StoredCookieConsent,
 } from './consentStorage';
 import { isNativeApp } from '../../lib/platform';
 
@@ -20,7 +15,6 @@ type Slide =
       imageUrl: string;
     }
   | { type: 'privacy' }
-  | { type: 'cookies' }
   | { type: 'push' };
 
 const BASE_SLIDES: Slide[] = [
@@ -60,7 +54,6 @@ const BASE_SLIDES: Slide[] = [
     imageUrl: '/assets/onboarding-4.png',
   },
   { type: 'privacy' },
-  { type: 'cookies' },
 ];
 
 const ONBOARDING_HEADING_CLASSES = 'text-4xl font-normal text-[#1C8376] leading-[1.2] mt-4';
@@ -77,27 +70,9 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
   const [textFading, setTextFading] = useState(false);
   const [displayedIndex, setDisplayedIndex] = useState(0);
   const [privacyChecked, setPrivacyChecked] = useState(getPrivacyAccepted());
-  const [cookieChoice, setCookieChoiceState] = useState<CookieChoice | null>(() => {
-    // In native app, treat as "essential only" by default (no tracking cookies).
-    if (isNativeApp()) return 'essential';
-    return getCookieConsent()?.choice ?? null;
-  });
-  const [cookiePrefs, setCookiePrefs] = useState<CookiePreferences>(() => {
-    if (isNativeApp()) {
-      return { performance: false, analytics: false, marketing: false };
-    }
-    return {
-      performance: getCookieConsent()?.preferences?.performance ?? true,
-      analytics: getCookieConsent()?.preferences?.analytics ?? true,
-      marketing: getCookieConsent()?.preferences?.marketing ?? true,
-    };
-  });
-  const [showManage, setShowManage] = useState(false);
 
-  // Apple review compliance: cookie choices prompt is web-only.
-  // Native app uses essential-only (no tracking cookies) without prompting.
   const slides = useMemo(() => {
-    return nativeDetected ? BASE_SLIDES.filter((s) => s.type !== 'cookies') : BASE_SLIDES;
+    return BASE_SLIDES;
   }, [nativeDetected]);
 
   // Native detection can become available slightly after boot (Despia injects globals).
@@ -120,29 +95,6 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
     return () => clearInterval(interval);
   }, [nativeDetected]);
 
-  // Ensure native app has an explicit "essential only" cookie consent stored (local preference, not cookies).
-  useEffect(() => {
-    if (!nativeDetected) return;
-    const existing = getCookieConsent();
-    if (existing?.choice) {
-      // If a previous value exists, still ensure we don't treat it as tracking-enabled inside native app.
-      if (existing.choice !== 'essential') {
-        setCookieConsent({
-          choice: 'essential',
-          preferences: { performance: false, analytics: false, marketing: false },
-        });
-      }
-      return;
-    }
-    setCookieConsent({
-      choice: 'essential',
-      preferences: { performance: false, analytics: false, marketing: false },
-    });
-    setCookieChoiceState('essential');
-    setCookiePrefs({ performance: false, analytics: false, marketing: false });
-    setShowManage(false);
-  }, [nativeDetected]);
-
   useEffect(() => {
     if (currentIndex !== displayedIndex) {
       setTextFading(true);
@@ -161,27 +113,12 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
     setPrivacyChecked(true);
   }, []);
 
-  const persistCookies = useCallback(
-    (choice: CookieChoice, prefs?: CookiePreferences) => {
-      const payload: StoredCookieConsent = {
-        choice,
-        preferences: prefs,
-      };
-      setCookieConsent(payload);
-      setCookieChoiceState(choice);
-      if (prefs) setCookiePrefs(prefs);
-    },
-    []
-  );
-
   const goToNext = useCallback(
-    (opts?: { nextCookieChoice?: CookieChoice }) => {
-      const effectiveCookieChoice = opts?.nextCookieChoice ?? cookieChoice;
+    () => {
       if (isAnimating) return;
       const slide = slides[currentIndex];
 
       if (slide.type === 'privacy' && !privacyChecked) return;
-      if (slide.type === 'cookies' && !effectiveCookieChoice) return;
 
       if (currentIndex < slides.length - 1) {
         setIsAnimating(true);
@@ -191,7 +128,7 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
         onComplete();
       }
     },
-    [cookieChoice, currentIndex, isAnimating, onComplete, privacyChecked, slides]
+    [currentIndex, isAnimating, onComplete, privacyChecked, slides]
   );
 
   const goToPrev = useCallback(() => {
@@ -216,38 +153,27 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
 
   const currentSlide = slides[currentIndex];
   const isPrivacyPending = !privacyChecked;
-  const hasCookieSlide = useMemo(() => slides.some((s) => s.type === 'cookies'), [slides]);
-  const isCookiesPending = hasCookieSlide && !cookieChoice;
   const firstPendingRequiredIndex = useMemo(() => {
     if (isPrivacyPending) {
       return slides.findIndex((s) => s.type === 'privacy');
     }
-    if (isCookiesPending) {
-      return slides.findIndex((s) => s.type === 'cookies');
-    }
     return -1;
-  }, [isCookiesPending, isPrivacyPending, slides]);
+  }, [isPrivacyPending, slides]);
 
   const handleSkip = useCallback(() => {
-    if (isPrivacyPending || isCookiesPending) {
+    if (isPrivacyPending) {
       if (firstPendingRequiredIndex >= 0) {
         setCurrentIndex(firstPendingRequiredIndex);
       }
       return;
     }
     onSkip();
-  }, [firstPendingRequiredIndex, isCookiesPending, isPrivacyPending, onSkip]);
+  }, [firstPendingRequiredIndex, isPrivacyPending, onSkip]);
 
   const handlePrivacyContinue = () => {
     if (!privacyChecked) return;
     persistPrivacy();
     goToNext();
-  };
-
-  const handleCookieChoice = (choice: CookieChoice, prefs?: CookiePreferences) => {
-    persistCookies(choice, prefs);
-    setShowManage(false);
-    goToNext({ nextCookieChoice: choice });
   };
 
   const renderContent = () => {
@@ -351,101 +277,6 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
                 }`}
               >
                 Continue
-              </button>
-            </div>
-          </div>
-        );
-      case 'cookies':
-        return (
-          <div className="flex-1 flex flex-col px-6 gap-4">
-            <h1 className={ONBOARDING_HEADING_CLASSES}>We value your privacy</h1>
-            <p className="text-base text-slate-700 min-h-12">
-              We use cookies to run the app and improve your experience. Choose how we use them.
-            </p>
-            <a
-              href="https://playtotl.com/privacy"
-              target="_blank"
-              rel="noreferrer"
-              className="text-[#1C8376] underline font-medium"
-            >
-              Cookie & Privacy details
-            </a>
-
-            <div className="mt-auto flex flex-col gap-3 pb-8">
-              <div className="rounded-lg border border-slate-200 p-4 flex flex-col gap-3 bg-white">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-slate-800">Manage cookies</div>
-                    <div className="text-sm text-slate-600">Choose which optional cookies to allow.</div>
-                  </div>
-                  <button onClick={() => setShowManage((prev) => !prev)} className="text-sm text-[#1C8376] font-medium underline">
-                    Manage
-                  </button>
-                </div>
-                {showManage && (
-                  <div className="flex flex-col gap-3">
-                    {(['performance', 'analytics', 'marketing'] as Array<keyof CookiePreferences>).map((key) => (
-                      <label key={key} className="flex items-center justify-between gap-3">
-                        <span className="capitalize text-slate-700">{key} cookies</span>
-                        <span className="relative inline-flex h-7 w-12 flex-shrink-0 items-center">
-                          <input
-                            type="checkbox"
-                            role="switch"
-                            aria-checked={cookiePrefs[key]}
-                            checked={cookiePrefs[key]}
-                            onChange={(e) =>
-                              setCookiePrefs((prev) => {
-                                const updated = {
-                                  ...prev,
-                                  [key]: e.target.checked,
-                                };
-                                persistCookies('managed', updated);
-                                return updated;
-                              })
-                            }
-                            className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                          />
-                          <span className="absolute inset-0 rounded-full bg-slate-200 transition-colors duration-200 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#1C8376] peer-checked:bg-[#1C8376]" />
-                          <span
-                            className="absolute left-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out peer-checked:translate-x-5"
-                            aria-hidden="true"
-                          />
-                          <span
-                            className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-150 peer-checked:opacity-100"
-                            aria-hidden="true"
-                          />
-                        </span>
-                      </label>
-                    ))}
-                    <button
-                      onClick={() => handleCookieChoice('managed', cookiePrefs)}
-                      className="w-full rounded-lg py-3 bg-[#1C8376] text-white font-semibold"
-                    >
-                      Save preferences
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() =>
-                  handleCookieChoice('all', { performance: true, analytics: true, marketing: true })
-                }
-                className="w-full rounded-lg py-3 bg-[#1C8376] text-white font-semibold"
-              >
-                Accept all cookies
-              </button>
-              <button
-                onClick={() =>
-                  handleCookieChoice('essential', {
-                    performance: false,
-                    analytics: false,
-                    marketing: false,
-                  })
-                }
-                className="w-full rounded-lg py-3 border border-slate-300 text-slate-800 font-semibold bg-white"
-              >
-                Accept essential cookies only
               </button>
             </div>
           </div>

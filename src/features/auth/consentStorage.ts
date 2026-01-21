@@ -1,19 +1,5 @@
 const PRIVACY_KEY = 'totl_consent_privacy_v1';
-const COOKIES_KEY = 'totl_consent_cookies_v1';
 const PUSH_KEY = 'totl_consent_push_v1';
-
-export type CookieChoice = 'all' | 'essential' | 'managed';
-
-export interface CookiePreferences {
-  performance: boolean;
-  analytics: boolean;
-  marketing: boolean;
-}
-
-export interface StoredCookieConsent {
-  choice: CookieChoice;
-  preferences?: CookiePreferences;
-}
 
 function safeGetItem(key: string): string | null {
   try {
@@ -51,28 +37,6 @@ export function setPrivacyAccepted(accepted: boolean) {
   }
 }
 
-export function getCookieConsent(): StoredCookieConsent | null {
-  const raw = safeGetItem(COOKIES_KEY);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as StoredCookieConsent;
-    if (parsed && parsed.choice) {
-      return parsed;
-    }
-  } catch {
-    // ignore parse failures
-  }
-  return null;
-}
-
-export function setCookieConsent(consent: StoredCookieConsent | null) {
-  if (!consent) {
-    safeRemoveItem(COOKIES_KEY);
-    return;
-  }
-  safeSetItem(COOKIES_KEY, JSON.stringify(consent));
-}
-
 export function getPushScreenCompleted(): boolean {
   return safeGetItem(PUSH_KEY) === '1';
 }
@@ -84,9 +48,3 @@ export function setPushScreenCompleted(completed: boolean) {
     safeRemoveItem(PUSH_KEY);
   }
 }
-
-export function hasConsents(): boolean {
-  return getPrivacyAccepted() && !!getCookieConsent();
-}
-
-
