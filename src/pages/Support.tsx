@@ -3,6 +3,8 @@
  * Route: /support
  * Usage: <SupportPage />
  */
+import { Link } from 'react-router-dom';
+
 export default function SupportPage() {
   return (
     <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-900 p-4">
@@ -108,17 +110,14 @@ export default function SupportPage() {
           <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Legal</h2>
           <ul className="list-disc pl-5 space-y-1 text-slate-700 dark:text-slate-200">
             <li>
-              <a className="text-[#1C8376] dark:text-emerald-400 underline" href="https://playtotl.com/privacy-policy">
+              <Link className="text-[#1C8376] dark:text-emerald-400 underline" to="/privacy-policy">
                 Privacy Policy
-              </a>
+              </Link>
             </li>
             <li>
-              <a
-                className="text-[#1C8376] dark:text-emerald-400 underline"
-                href="https://playtotl.com/terms-and-conditions"
-              >
+              <Link className="text-[#1C8376] dark:text-emerald-400 underline" to="/terms-and-conditions">
                 Terms of Service
-              </a>
+              </Link>
             </li>
           </ul>
         </section>

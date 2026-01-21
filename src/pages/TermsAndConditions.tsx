@@ -1,125 +1,52 @@
-import { useEffect, useRef } from 'react';
-import { isWebBrowser } from '../lib/platform';
-
 /**
- * Terms and Conditions page displaying Termly-embedded terms and conditions
+ * Terms and Conditions (Despia build)
  * Route: /terms-and-conditions
+ *
+ * IMPORTANT: This page intentionally contains no third-party embeds/scripts
+ * (no Termly / GA / cookie banners) to avoid any tracking/cookie collection
+ * inside the iOS WebView during App Review.
  */
 export default function TermsAndConditions() {
-  const embedRef = useRef<HTMLDivElement>(null);
-  const scriptLoadedRef = useRef(false);
-
-  useEffect(() => {
-    // Apple review compliance: do not load Termly (cookie-setting) scripts inside the native app WebView.
-    if (!isWebBrowser()) {
-      return;
-    }
-
-    // Load Termly script dynamically to ensure it runs after React renders the div
-    const loadTermlyScript = () => {
-      // Check if Termly is already available (script loaded and initialized)
-      if ((window as any).Termly) {
-        console.log('[TermsAndConditions] Termly is already available');
-        return;
-      }
-
-      // Check if script element exists but hasn't loaded yet
-      const existingScript = document.getElementById('termly-jssdk');
-      if (existingScript && !scriptLoadedRef.current) {
-        console.log('[TermsAndConditions] Script element exists but Termly not available yet, waiting...');
-        // Wait for script to load
-        const checkTermly = setInterval(() => {
-          if ((window as any).Termly) {
-            console.log('[TermsAndConditions] Termly is now available');
-            clearInterval(checkTermly);
-          }
-        }, 100);
-        setTimeout(() => {
-          clearInterval(checkTermly);
-          if (!(window as any).Termly) {
-            console.warn('[TermsAndConditions] Termly did not load after 5s, removing old script and retrying...');
-            existingScript.remove();
-            scriptLoadedRef.current = false;
-            loadTermlyScript(); // Retry
-          }
-        }, 5000);
-        return;
-      }
-
-      if (scriptLoadedRef.current) {
-        return;
-      }
-
-      scriptLoadedRef.current = true;
-      console.log('[TermsAndConditions] Loading Termly script...');
-      
-      const script = document.createElement('script');
-      script.id = 'termly-jssdk';
-      script.src = 'https://app.termly.io/embed-policy.min.js';
-      script.async = true;
-      
-      script.onload = () => {
-        console.log('[TermsAndConditions] Termly script loaded successfully');
-        // Termly will automatically find and populate divs with name="termly-embed"
-        // Give it a moment to initialize
-        setTimeout(() => {
-          if ((window as any).Termly) {
-            console.log('[TermsAndConditions] Termly initialized, should populate div');
-          } else {
-            console.warn('[TermsAndConditions] Termly script loaded but Termly object not available');
-          }
-        }, 1000);
-      };
-      
-      script.onerror = () => {
-        console.error('[TermsAndConditions] Failed to load Termly script');
-        scriptLoadedRef.current = false;
-      };
-      
-      // Insert script at the end of body
-      document.body.appendChild(script);
-    };
-
-    // Load script after component mounts (small delay to ensure DOM is ready)
-    const timeoutId = setTimeout(loadTermlyScript, 100);
-    
-    return () => clearTimeout(timeoutId);
-  }, []);
-
-  if (!isWebBrowser()) {
-    return (
-      <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-900 p-4">
-        <div className="max-w-3xl mx-auto bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm space-y-4">
-          <h1 className="text-2xl font-bold text-[#1C8376] dark:text-emerald-400">Terms and Conditions</h1>
-          <p className="text-slate-700 dark:text-slate-200">
-            For Apple compliance, the iOS app does not load third-party policy embeds that may set cookies.
-          </p>
-          <p className="text-slate-700 dark:text-slate-200">
-            View the terms here:{' '}
-            <a
-              className="text-[#1C8376] dark:text-emerald-400 underline"
-              href="https://playtotl.com/terms-and-conditions"
-            >
-              https://playtotl.com/terms-and-conditions
-            </a>
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-900 p-4">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6 text-[#1C8376] dark:text-emerald-400">Terms and Conditions</h1>
-        
-        {/* Termly embed - this div will be populated by Termly's script */}
-        <div 
-          ref={embedRef}
-          {...({ name: 'termly-embed' } as any)}
-          data-id="0f0acfaf-b38e-4b95-a69f-e65904264f60"
-          className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm min-h-[200px]"
-        />
+      <div className="max-w-3xl mx-auto bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm space-y-4">
+        <h1 className="text-2xl font-bold text-[#1C8376] dark:text-emerald-400">Terms and Conditions</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Last updated: 21 Jan 2026</p>
+
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Overview</h2>
+          <p className="text-slate-700 dark:text-slate-200">
+            TOTL provides a predictions game and mini-league features. By using the app you agree to use it lawfully and
+            respectfully.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Your account</h2>
+          <ul className="list-disc pl-5 space-y-1 text-slate-700 dark:text-slate-200">
+            <li>You are responsible for activity under your account.</li>
+            <li>Do not abuse the service (spam, harassment, exploitation, or attempts to break security).</li>
+          </ul>
+        </div>
+
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Service availability</h2>
+          <p className="text-slate-700 dark:text-slate-200">
+            We may update, change, or discontinue parts of the service to improve reliability or comply with platform
+            requirements.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Contact</h2>
+          <p className="text-slate-700 dark:text-slate-200">
+            Questions? Email{' '}
+            <a className="text-[#1C8376] dark:text-emerald-400 underline" href="mailto:hello@playtotl.com">
+              hello@playtotl.com
+            </a>
+            .
+          </p>
+        </div>
       </div>
     </div>
   );

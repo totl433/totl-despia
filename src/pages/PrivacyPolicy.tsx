@@ -1,122 +1,60 @@
-import { useEffect, useRef } from 'react';
-import { isWebBrowser } from '../lib/platform';
-
 /**
- * Privacy Policy page displaying Termly-embedded privacy policy
+ * Privacy Policy (Despia build)
  * Route: /privacy-policy
+ *
+ * IMPORTANT: This page intentionally contains no third-party embeds/scripts
+ * (no Termly / GA / cookie banners) to avoid any tracking/cookie collection
+ * inside the iOS WebView during App Review.
  */
 export default function PrivacyPolicy() {
-  const embedRef = useRef<HTMLDivElement>(null);
-  const scriptLoadedRef = useRef(false);
-
-  useEffect(() => {
-    // Apple review compliance: do not load Termly (cookie-setting) scripts inside the native app WebView.
-    if (!isWebBrowser()) {
-      return;
-    }
-
-    // Load Termly script dynamically to ensure it runs after React renders the div
-    const loadTermlyScript = () => {
-      // Check if Termly is already available (script loaded and initialized)
-      if ((window as any).Termly) {
-        console.log('[PrivacyPolicy] Termly is already available');
-        return;
-      }
-
-      // Check if script element exists but hasn't loaded yet
-      const existingScript = document.getElementById('termly-jssdk');
-      if (existingScript && !scriptLoadedRef.current) {
-        console.log('[PrivacyPolicy] Script element exists but Termly not available yet, waiting...');
-        // Wait for script to load
-        const checkTermly = setInterval(() => {
-          if ((window as any).Termly) {
-            console.log('[PrivacyPolicy] Termly is now available');
-            clearInterval(checkTermly);
-          }
-        }, 100);
-        setTimeout(() => {
-          clearInterval(checkTermly);
-          if (!(window as any).Termly) {
-            console.warn('[PrivacyPolicy] Termly did not load after 5s, removing old script and retrying...');
-            existingScript.remove();
-            scriptLoadedRef.current = false;
-            loadTermlyScript(); // Retry
-          }
-        }, 5000);
-        return;
-      }
-
-      if (scriptLoadedRef.current) {
-        return;
-      }
-
-      scriptLoadedRef.current = true;
-      console.log('[PrivacyPolicy] Loading Termly script...');
-      
-      const script = document.createElement('script');
-      script.id = 'termly-jssdk';
-      script.src = 'https://app.termly.io/embed-policy.min.js';
-      script.async = true;
-      
-      script.onload = () => {
-        console.log('[PrivacyPolicy] Termly script loaded successfully');
-        // Termly will automatically find and populate divs with name="termly-embed"
-        // Give it a moment to initialize
-        setTimeout(() => {
-          if ((window as any).Termly) {
-            console.log('[PrivacyPolicy] Termly initialized, should populate div');
-          } else {
-            console.warn('[PrivacyPolicy] Termly script loaded but Termly object not available');
-          }
-        }, 1000);
-      };
-      
-      script.onerror = () => {
-        console.error('[PrivacyPolicy] Failed to load Termly script');
-        scriptLoadedRef.current = false;
-      };
-      
-      // Insert script at the end of body
-      document.body.appendChild(script);
-    };
-
-    // Load script after component mounts (small delay to ensure DOM is ready)
-    const timeoutId = setTimeout(loadTermlyScript, 100);
-    
-    return () => clearTimeout(timeoutId);
-  }, []);
-
-  if (!isWebBrowser()) {
-    return (
-      <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-900 p-4">
-        <div className="max-w-3xl mx-auto bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm space-y-4">
-          <h1 className="text-2xl font-bold text-[#1C8376] dark:text-emerald-400">Privacy Policy</h1>
-          <p className="text-slate-700 dark:text-slate-200">
-            For Apple compliance, the iOS app does not load third-party policy embeds that may set cookies.
-          </p>
-          <p className="text-slate-700 dark:text-slate-200">
-            View the policy here:{' '}
-            <a className="text-[#1C8376] dark:text-emerald-400 underline" href="https://playtotl.com/privacy-policy">
-              https://playtotl.com/privacy-policy
-            </a>
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-900 p-4">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6 text-[#1C8376] dark:text-emerald-400">Privacy Policy</h1>
-        
-        {/* Termly embed - this div will be populated by Termly's script */}
-        <div 
-          ref={embedRef}
-          {...({ name: 'termly-embed' } as any)}
-          data-id="09438f47-d29f-428a-9545-d15ad953e4c6"
-          className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm min-h-[200px]"
-        />
+      <div className="max-w-3xl mx-auto bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm space-y-4">
+        <h1 className="text-2xl font-bold text-[#1C8376] dark:text-emerald-400">Privacy Policy</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Last updated: 21 Jan 2026</p>
+
+        <p className="text-slate-700 dark:text-slate-200">
+          TOTL is a football predictions game. We use your data to run the service (accounts, predictions, leaderboards,
+          mini-leagues, and notifications).
+        </p>
+
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Data we collect</h2>
+          <ul className="list-disc pl-5 space-y-1 text-slate-700 dark:text-slate-200">
+            <li>Account details you provide (e.g. email and display name).</li>
+            <li>Game activity (predictions, league membership, scores/points).</li>
+            <li>Notification identifiers (only if you enable push notifications).</li>
+          </ul>
+        </div>
+
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">How we use data</h2>
+          <ul className="list-disc pl-5 space-y-1 text-slate-700 dark:text-slate-200">
+            <li>Provide core gameplay features and show leaderboards.</li>
+            <li>Operate mini-leagues and in-app messaging.</li>
+            <li>Send service notifications you opt into.</li>
+            <li>Maintain security and prevent abuse.</li>
+          </ul>
+        </div>
+
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Tracking / cookies</h2>
+          <p className="text-slate-700 dark:text-slate-200">
+            The Despia app build does not load analytics or cookie-consent tools, and does not use tracking cookies in
+            the iOS WebView.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Contact</h2>
+          <p className="text-slate-700 dark:text-slate-200">
+            Questions or requests? Email{' '}
+            <a className="text-[#1C8376] dark:text-emerald-400 underline" href="mailto:hello@playtotl.com">
+              hello@playtotl.com
+            </a>
+            .
+          </p>
+        </div>
       </div>
     </div>
   );

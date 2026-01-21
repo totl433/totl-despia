@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import OnboardingSlide from './OnboardingSlide';
 import { useSwipe } from './useSwipe';
+import { Link } from 'react-router-dom';
 import {
   getPrivacyAccepted,
   setPrivacyAccepted,
@@ -238,14 +239,9 @@ export default function OnboardingCarousel({ onSkip, onComplete }: OnboardingCar
               Please read and accept our Privacy Policy. We only use your data to run the game, improve the app, and
               communicate game updates.
             </p>
-            <a
-              href="https://playtotl.com/privacy"
-              target="_blank"
-              rel="noreferrer"
-              className="text-[#1C8376] underline font-medium"
-            >
+            <Link to="/privacy-policy" className="text-[#1C8376] underline font-medium">
               View Privacy Policy
-            </a>
+            </Link>
             <label className="flex items-center justify-between gap-3 mt-2">
               <span className="text-slate-700">I agree to TOTL&apos;s Privacy Policy.</span>
               <span className="relative inline-flex h-7 w-12 flex-shrink-0 items-center">
