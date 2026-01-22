@@ -19,7 +19,7 @@
   "license": "UNLICENSED",
   "description": "TOTL typed API client for mobile apps.",
   "dependencies": {
-    "@totl/domain": "0.0.0"
+    "@totl/domain": "file:../domain"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

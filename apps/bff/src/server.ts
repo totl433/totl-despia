@@ -14,8 +14,26 @@ const env = loadEnv(process.env);
 const supabase = createSupabaseClient(env);
 initSentry();
 
+const port = Number(process.env.PORT ?? 8787);
+const host = process.env.HOST ?? '0.0.0.0';
+
 const app = Fastify({
   logger: true,
+});
+
+app.addHook('onRequest', async (req) => {
+  // High-signal log so we can see simulator requests hitting the BFF.
+  req.log.info(
+    { method: req.method, url: req.url, ip: req.ip },
+    'incoming request'
+  );
+});
+
+app.addHook('onResponse', async (req, reply) => {
+  req.log.info(
+    { method: req.method, url: req.url, statusCode: reply.statusCode },
+    'request completed'
+  );
 });
 
 await app.register(helmet);
@@ -148,10 +166,36 @@ app.get('/v1/home', async (req) => {
     userPicks[String(p.fixture_index)] = p.pick;
   }
 
+  // Supabase can return timestamps that are ISO-ish but not the strict `...Z` format
+  // enforced by our shared Zod schemas. Normalize to a canonical ISO string.
+  const fixtures = (fixturesRes.data ?? []).map((f: any) => {
+    const kickoff = f?.kickoff_time;
+    if (typeof kickoff !== 'string') return f;
+
+    // Handle a few common DB formats deterministically:
+    // - "YYYY-MM-DD HH:mm:ss" (space separator)
+    // - "YYYY-MM-DDTHH:mm:ss" (no timezone)
+    // - "YYYY-MM-DDTHH:mm:ss+00:00" (offset)
+    // We normalize to ISO with "Z" so the shared domain schema accepts it.
+    const candidates = [
+      kickoff,
+      kickoff.replace(' ', 'T'),
+      `${kickoff}Z`,
+      `${kickoff.replace(' ', 'T')}Z`,
+    ];
+
+    for (const c of candidates) {
+      const ms = Date.parse(c);
+      if (!Number.isNaN(ms)) return { ...f, kickoff_time: new Date(ms).toISOString() };
+    }
+
+    return f;
+  });
+
   const snapshot: HomeSnapshot = {
     currentGw,
     viewingGw,
-    fixtures: fixturesRes.data ?? [],
+    fixtures,
     userPicks,
     liveScores: liveScoresRes.data ?? [],
     gwResults: (gwResultsRes.data ?? []).filter((r: any) => r.result === 'H' || r.result === 'D' || r.result === 'A'),
@@ -472,5 +516,9 @@ app.put('/v1/notification-prefs', async (req) => {
   return { ok: true };
 });
 
-await app.listen({ port: env.PORT, host: '0.0.0.0' });
+app.get('/health', async () => {
+  return { ok: true };
+});
+
+await app.listen({ port, host });
 
