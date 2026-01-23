@@ -5,6 +5,9 @@ const EnvSchema = z.object({
   EXPO_PUBLIC_SUPABASE_URL: z.string().url(),
   EXPO_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
   EXPO_PUBLIC_BFF_URL: z.string().url().default('http://localhost:8787'),
+  // Base URL for Netlify functions (push notifications, etc).
+  // Set to https://playtotl.com in prod; default to playtotl.com for convenience.
+  EXPO_PUBLIC_SITE_URL: z.string().url().default('https://playtotl.com'),
 });
 
 export type MobileEnv = z.infer<typeof EnvSchema>;
@@ -33,6 +36,7 @@ function readRawEnv() {
     EXPO_PUBLIC_SUPABASE_URL: getExtraValue('EXPO_PUBLIC_SUPABASE_URL'),
     EXPO_PUBLIC_SUPABASE_ANON_KEY: getExtraValue('EXPO_PUBLIC_SUPABASE_ANON_KEY'),
     EXPO_PUBLIC_BFF_URL: getExtraValue('EXPO_PUBLIC_BFF_URL'),
+    EXPO_PUBLIC_SITE_URL: getExtraValue('EXPO_PUBLIC_SITE_URL'),
   } as const;
 }
 
@@ -56,5 +60,6 @@ export const env: MobileEnv = parsed.success
       EXPO_PUBLIC_SUPABASE_URL: 'https://invalid.local',
       EXPO_PUBLIC_SUPABASE_ANON_KEY: 'invalid',
       EXPO_PUBLIC_BFF_URL: 'http://localhost:8787',
+      EXPO_PUBLIC_SITE_URL: 'https://playtotl.com',
     };
 

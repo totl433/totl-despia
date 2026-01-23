@@ -22,6 +22,7 @@ import LeagueSubmissionStatusCard from '../components/league/LeagueSubmissionSta
 import type { LeaguePick } from '../components/league/LeaguePickPill';
 import FixtureCard from '../components/FixtureCard';
 import LeaguePickChipsRow from '../components/league/LeaguePickChipsRow';
+import LeagueChatTab from '../components/chat/LeagueChatTab';
 
 export default function LeagueDetailScreen() {
   const route = useRoute<any>();
@@ -594,12 +595,10 @@ export default function LeagueDetailScreen() {
                 );
               })()}
           </ScrollView>
+        ) : tab === 'chat' ? (
+          <LeagueChatTab leagueId={leagueId} members={members.map((m: any) => ({ id: String(m.id), name: String(m.name ?? 'User') }))} />
         ) : (
-          <TotlText variant="muted">
-            {tab === 'chat'
-              ? 'Chat tab (coming next).'
-              : 'Season tab (coming).'}
-          </TotlText>
+          <TotlText variant="muted">Season tab (coming).</TotlText>
         )}
       </View>
     </Screen>

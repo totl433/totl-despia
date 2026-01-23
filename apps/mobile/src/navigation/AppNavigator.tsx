@@ -8,6 +8,7 @@ import PredictionsScreen from '../screens/PredictionsScreen';
 import GlobalScreen from '../screens/GlobalScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import LeaguesNavigator from './LeaguesNavigator';
+import FloatingTabBar from './FloatingTabBar';
 
 export type RootTabsParamList = {
   Home: undefined;
@@ -39,13 +40,17 @@ export default function AppNavigator() {
   return (
     <NavigationContainer theme={navTheme}>
       <Tab.Navigator
+        tabBar={(props) => <FloatingTabBar {...props} />}
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: t.color.text,
-          tabBarInactiveTintColor: t.color.muted,
           tabBarStyle: {
-            backgroundColor: t.color.background,
-            borderTopColor: t.color.border,
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'transparent',
+            borderTopWidth: 0,
+            elevation: 0,
           },
         }}
       >
@@ -53,7 +58,14 @@ export default function AppNavigator() {
         <Tab.Screen name="Predictions" component={PredictionsScreen} />
         <Tab.Screen name="Leagues" component={LeaguesNavigator as any} />
         <Tab.Screen name="Global" component={GlobalScreen} />
-        <Tab.Screen name="Profile" component={ProfileScreen} />
+        <Tab.Screen
+          name="Profile"
+          component={ProfileScreen}
+          options={{
+            // Keep route available for header buttons, but hide it from the 4-button web-style nav.
+            tabBarButton: () => null,
+          }}
+        />
       </Tab.Navigator>
     </NavigationContainer>
   );

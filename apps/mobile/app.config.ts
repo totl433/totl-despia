@@ -45,6 +45,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       EXPO_PUBLIC_SUPABASE_URL: envLocal.EXPO_PUBLIC_SUPABASE_URL,
       EXPO_PUBLIC_SUPABASE_ANON_KEY: envLocal.EXPO_PUBLIC_SUPABASE_ANON_KEY,
       EXPO_PUBLIC_BFF_URL: envLocal.EXPO_PUBLIC_BFF_URL,
+      EXPO_PUBLIC_SITE_URL: envLocal.EXPO_PUBLIC_SITE_URL,
     },
     // Reanimated v4 (pulled in by Storybook UI deps) requires New Architecture.
     // Keep the main app on legacy for stability unless Storybook is enabled.
