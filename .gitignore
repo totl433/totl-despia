@@ -24,4 +24,3 @@ apps/**/.expo/
 
 # Expo local env (contains keys / device-specific URLs)
 **/env.local
-

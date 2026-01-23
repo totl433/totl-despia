@@ -18,7 +18,7 @@
     "@fastify/helmet": "^13.0.2",
     "@sentry/node": "^10.35.0",
     "@supabase/supabase-js": "^2.90.1",
-    "@totl/domain": "0.0.0",
+    "@totl/domain": "file:../../packages/domain",
     "dotenv": "^17.2.3",
     "fastify": "^5.7.1",
     "zod": "^4.3.5"
