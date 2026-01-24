@@ -2,16 +2,14 @@
  * AuthGate - Session check + redirect logic
  * Renders nothing while checking, redirects authed users, shows AuthFlow for guests
  */
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSupabaseAuth } from './useSupabaseAuth';
 import AuthFlow from './AuthFlow';
-import type { GuestStep } from './AuthFlow';
 
 export default function AuthGate() {
   const navigate = useNavigate();
   const { status, user } = useSupabaseAuth();
-  const [initialStep, setInitialStep] = useState<GuestStep>('onboarding');
 
   function detectRecoveryFromUrl(): boolean {
     const urlParams = new URLSearchParams(window.location.search);
@@ -24,25 +22,18 @@ export default function AuthGate() {
     );
   }
 
-  // Check for password reset recovery on mount
-  useEffect(() => {
-    const isRecovery = detectRecoveryFromUrl();
-    if (isRecovery) {
-      setInitialStep('reset');
-    }
-  }, []);
+  const isRecovery = detectRecoveryFromUrl();
 
   // Redirect authed users to home
   useEffect(() => {
     if (status === 'authed' && user) {
       // Check if this is a password reset flow - don't redirect
-      const isRecovery = detectRecoveryFromUrl();
       if (!isRecovery) {
         console.log('[AuthGate] User is authed, redirecting to home');
         navigate('/', { replace: true });
       }
     }
-  }, [status, user, navigate]);
+  }, [status, user, navigate, isRecovery]);
 
   // Handle successful auth - navigate to home
   const handleAuthSuccess = () => {
@@ -55,11 +46,15 @@ export default function AuthGate() {
     return null;
   }
 
-  // If authed, render nothing (redirect will happen via useEffect)
+  // If authed, render nothing (redirect will happen via useEffect).
+  // Exception: during password recovery, keep showing the reset UI even though Supabase creates a session.
   if (status === 'authed') {
+    if (isRecovery) {
+      return <AuthFlow initialStep="reset" onAuthSuccess={handleAuthSuccess} />;
+    }
     return null;
   }
 
   // Guest user - show auth flow
-  return <AuthFlow initialStep={initialStep} onAuthSuccess={handleAuthSuccess} />;
+  return <AuthFlow initialStep={isRecovery ? 'reset' : 'onboarding'} onAuthSuccess={handleAuthSuccess} />;
 }
