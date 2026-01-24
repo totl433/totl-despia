@@ -390,7 +390,9 @@ async function checkDisplayNameAvailable(displayName: string): Promise<boolean> 
 export async function resetPasswordForEmail(email: string) {
   const normalizedEmail = normalizeEmail(email);
   const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-    redirectTo: `${window.location.origin}/auth`,
+    // Force recovery mode on landing so AuthGate shows the set-new-password UI.
+    // (Supabase may place tokens in the URL hash; the query param still remains.)
+    redirectTo: `${window.location.origin}/auth?type=recovery`,
   });
   
   if (error) throw error;
