@@ -52,12 +52,22 @@ export default function AuthFlow({ initialStep = 'onboarding', onAuthSuccess }: 
   // Apple review compliance: cookie consent prompts are web-only.
   // In the native app we require Privacy acceptance, but do not block on cookie preferences.
   const consentsCompleted = isNativeApp() ? getPrivacyAccepted() : hasConsents();
+
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+  const isRecoveryFlow =
+    initialStep === 'reset' ||
+    urlParams.get('type') === 'recovery' ||
+    hashParams.get('type') === 'recovery' ||
+    window.location.search.includes('type=recovery') ||
+    window.location.hash.includes('type=recovery');
   
   // Check for persisted step (survives parent re-renders)
-  const storedStep = forceOnboarding ? null : getStoredStep();
-  const consentAwareInitialStep =
-    !consentsCompleted || forceOnboarding ? 'onboarding' : storedStep || initialStep || 'signIn';
-  const effectiveInitialStep = consentAwareInitialStep;
+  const storedStep = forceOnboarding || isRecoveryFlow ? null : getStoredStep();
+  const effectiveInitialStep: GuestStep = isRecoveryFlow
+    ? 'reset'
+    : !consentsCompleted || forceOnboarding
+      ? 'onboarding'
+      : storedStep || initialStep || 'signIn';
   
   const [guestStep, setGuestStep] = useState<GuestStep>(effectiveInitialStep);
   const [confirmationEmail, setConfirmationEmail] = useState('');
@@ -68,6 +78,16 @@ export default function AuthFlow({ initialStep = 'onboarding', onAuthSuccess }: 
       ? effectiveInitialStep 
       : 'signIn'
   );
+
+  // If we landed here from a recovery link, always force the reset step
+  // and clear any stored step that could override it (e.g. lingering "signUp").
+  useEffect(() => {
+    if (!isRecoveryFlow) return;
+    setStoredStep(null);
+    if (guestStep !== 'reset') {
+      setGuestStep('reset');
+    }
+  }, [isRecoveryFlow, guestStep]);
 
   // Update stored step when navigating to a form
   useEffect(() => {
