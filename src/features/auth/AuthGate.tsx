@@ -13,16 +13,20 @@ export default function AuthGate() {
   const { status, user } = useSupabaseAuth();
   const [initialStep, setInitialStep] = useState<GuestStep>('onboarding');
 
-  // Check for password reset recovery on mount
-  useEffect(() => {
+  function detectRecoveryFromUrl(): boolean {
     const urlParams = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    
-    const isRecovery = urlParams.get('type') === 'recovery' || 
-                      hashParams.get('type') === 'recovery' ||
-                      window.location.search.includes('type=recovery') ||
-                      window.location.hash.includes('type=recovery');
-    
+    return (
+      urlParams.get('type') === 'recovery' ||
+      hashParams.get('type') === 'recovery' ||
+      window.location.search.includes('type=recovery') ||
+      window.location.hash.includes('type=recovery')
+    );
+  }
+
+  // Check for password reset recovery on mount
+  useEffect(() => {
+    const isRecovery = detectRecoveryFromUrl();
     if (isRecovery) {
       setInitialStep('reset');
     }
@@ -32,12 +36,7 @@ export default function AuthGate() {
   useEffect(() => {
     if (status === 'authed' && user) {
       // Check if this is a password reset flow - don't redirect
-      const urlParams = new URLSearchParams(window.location.search);
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      
-      const isRecovery = urlParams.get('type') === 'recovery' || 
-                        hashParams.get('type') === 'recovery';
-      
+      const isRecovery = detectRecoveryFromUrl();
       if (!isRecovery) {
         console.log('[AuthGate] User is authed, redirecting to home');
         navigate('/', { replace: true });
