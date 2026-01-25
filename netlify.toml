@@ -37,6 +37,19 @@
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
 
+# iOS Universal Links: AASA must be served as JSON with no redirects
+[[headers]]
+  for = "/apple-app-site-association"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "public, max-age=300"
+
+[[headers]]
+  for = "/.well-known/apple-app-site-association"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "public, max-age=300"
+
 # Assets: long-term immutable cache (hashed filenames change on rebuild)
 [[headers]]
   for = "/assets/*"
