@@ -15,3 +15,5 @@ notification_catalog/site/.astro/
 # Local vitest helper artifacts
 .vitest-unit.*
 
+
+.DS_Store

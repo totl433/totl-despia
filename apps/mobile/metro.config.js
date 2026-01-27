@@ -1,4 +1,4 @@
-const { getDefaultConfig } = require('expo/metro-config');
+const { getDefaultConfig } = require('@expo/metro-config');
 const { withStorybook } = require('@storybook/react-native/metro/withStorybook');
 const path = require('path');
 

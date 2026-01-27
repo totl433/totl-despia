@@ -5,10 +5,10 @@ import { Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
-import SectionTitle from '../components/home/SectionTitle';
 import LeaderboardsTabs, { type LeaderboardsTab } from '../components/leaderboards/LeaderboardsTabs';
 import LeaderboardsScopeToggle, { type LeaderboardsScope } from '../components/leaderboards/LeaderboardsScopeToggle';
 import LeaderboardTable, { type LeaderboardRow } from '../components/leaderboards/LeaderboardTable';
+import PageHeader from '../components/PageHeader';
 
 type OverallRow = { user_id: string; name: string | null; ocp: number | null };
 type GwPointsRow = { user_id: string; gw: number; points: number };
@@ -33,13 +33,19 @@ export default function GlobalScreen() {
   });
   const userId = userData?.id ?? null;
 
-  const { data: ranks } = useQuery({
+  const { data: ranks, refetch: refetchRanks, isRefetching: ranksRefetching } = useQuery({
     queryKey: ['homeRanks'],
     queryFn: () => api.getHomeRanks(),
   });
   const latestGw = ranks?.latestGw ?? null;
 
-  const { data: overall, isLoading: overallLoading, error: overallError } = useQuery({
+  const {
+    data: overall,
+    isLoading: overallLoading,
+    error: overallError,
+    refetch: refetchOverall,
+    isRefetching: overallRefetching,
+  } = useQuery({
     queryKey: ['leaderboards', 'overallView'],
     queryFn: async () => {
       const { data, error } = await supabase.from('app_v_ocp_overall').select('user_id, name, ocp');
@@ -48,7 +54,13 @@ export default function GlobalScreen() {
     },
   });
 
-  const { data: gwPoints, isLoading: gwPointsLoading, error: gwPointsError } = useQuery({
+  const {
+    data: gwPoints,
+    isLoading: gwPointsLoading,
+    error: gwPointsError,
+    refetch: refetchGwPoints,
+    isRefetching: gwPointsRefetching,
+  } = useQuery({
     queryKey: ['leaderboards', 'gwPointsView'],
     queryFn: async () => {
       const { data, error } = await supabase.from('app_v_gw_points').select('user_id, gw, points').order('gw', { ascending: true });
@@ -57,7 +69,12 @@ export default function GlobalScreen() {
     },
   });
 
-  const { data: friendIds, isLoading: friendsLoading } = useQuery({
+  const {
+    data: friendIds,
+    isLoading: friendsLoading,
+    refetch: refetchFriendIds,
+    isRefetching: friendIdsRefetching,
+  } = useQuery({
     queryKey: ['leaderboards', 'miniLeagueFriendIds'],
     enabled: scope === 'friends' && !!userId,
     queryFn: async () => {
@@ -155,60 +172,75 @@ export default function GlobalScreen() {
   const loading = overallLoading || gwPointsLoading || friendsLoading;
   const error = (overallError as any) ?? (gwPointsError as any);
 
+  const refreshing = overallRefetching || gwPointsRefetching || ranksRefetching || friendIdsRefetching;
+  const onRefresh = React.useCallback(() => {
+    void Promise.all([
+      refetchRanks(),
+      refetchOverall(),
+      refetchGwPoints(),
+      scope === 'friends' ? refetchFriendIds() : Promise.resolve(),
+    ]);
+  }, [refetchFriendIds, refetchGwPoints, refetchOverall, refetchRanks, scope]);
+
   return (
     <Screen fullBleed>
       {/* No extra bottom padding here; the table handles its own scroll padding.
           This lets the leaderboard container run off-screen at the bottom (more obvious scroll affordance). */}
-      <View style={{ flex: 1, padding: t.space[4], paddingBottom: 0 }}>
-        <SectionTitle>Leaderboard</SectionTitle>
+      <View style={{ flex: 1 }}>
+        <PageHeader title="Leaderboard" />
 
-        <View style={{ marginTop: 10 }}>
-          <LeaderboardsTabs value={tab} onChange={setTab} />
+        <View style={{ flex: 1, paddingHorizontal: t.space[4], paddingBottom: 0 }}>
+
+          <View style={{ marginTop: 10 }}>
+            <LeaderboardsTabs value={tab} onChange={setTab} />
+          </View>
+
+          <View style={{ marginTop: 16 }}>
+            <LeaderboardsScopeToggle value={scope} onChange={setScope} />
+          </View>
+
+          <View style={{ marginTop: 14, marginBottom: 10, alignItems: 'center' }}>
+            <TotlText variant="sectionSubtitle">{subtitle}</TotlText>
+          </View>
+
+          {loading ? <TotlText variant="muted">Loading…</TotlText> : null}
+
+          {error ? (
+            <Card style={{ marginBottom: 12 }}>
+              <TotlText variant="heading" style={{ marginBottom: 6 }}>
+                Couldn’t load leaderboard
+              </TotlText>
+              <TotlText variant="muted">{String((error as any)?.message ?? 'Unknown error')}</TotlText>
+            </Card>
+          ) : null}
+
+          {!loading && !error && rows.length === 0 ? (
+            <Card>
+              <TotlText variant="heading" style={{ marginBottom: 6 }}>
+                No leaderboard data yet
+              </TotlText>
+              <TotlText variant="muted">Pull to refresh.</TotlText>
+            </Card>
+          ) : null}
+
+          {!loading && !error && rows.length > 0 ? (
+            <LeaderboardTable
+              rows={rows}
+              valueLabel={valueLabel}
+              highlightUserId={userId}
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              style={{
+                flex: 1,
+                // Remove bottom rounding so it can visually run off-screen.
+                borderBottomLeftRadius: 0,
+                borderBottomRightRadius: 0,
+                // Pull the table down slightly so the bottom edge isn't visible.
+                marginBottom: -24,
+              }}
+            />
+          ) : null}
         </View>
-
-        <View style={{ marginTop: 16 }}>
-          <LeaderboardsScopeToggle value={scope} onChange={setScope} />
-        </View>
-
-        <View style={{ marginTop: 14, marginBottom: 10, alignItems: 'center' }}>
-          <TotlText variant="sectionSubtitle">{subtitle}</TotlText>
-        </View>
-
-        {loading ? <TotlText variant="muted">Loading…</TotlText> : null}
-
-        {error ? (
-          <Card style={{ marginBottom: 12 }}>
-            <TotlText variant="heading" style={{ marginBottom: 6 }}>
-              Couldn’t load leaderboard
-            </TotlText>
-            <TotlText variant="muted">{String((error as any)?.message ?? 'Unknown error')}</TotlText>
-          </Card>
-        ) : null}
-
-        {!loading && !error && rows.length === 0 ? (
-          <Card>
-            <TotlText variant="heading" style={{ marginBottom: 6 }}>
-              No leaderboard data yet
-            </TotlText>
-            <TotlText variant="muted">Pull to refresh.</TotlText>
-          </Card>
-        ) : null}
-
-        {!loading && !error && rows.length > 0 ? (
-          <LeaderboardTable
-            rows={rows}
-            valueLabel={valueLabel}
-            highlightUserId={userId}
-            style={{
-              flex: 1,
-              // Remove bottom rounding so it can visually run off-screen.
-              borderBottomLeftRadius: 0,
-              borderBottomRightRadius: 0,
-              // Pull the table down slightly so the bottom edge isn't visible.
-              marginBottom: -24,
-            }}
-          />
-        ) : null}
       </View>
     </Screen>
   );

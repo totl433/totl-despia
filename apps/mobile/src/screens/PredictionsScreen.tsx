@@ -4,6 +4,8 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import { api } from '../lib/api';
+import PageHeader from '../components/PageHeader';
+import { TotlRefreshControl } from '../lib/refreshControl';
 
 type Pick = 'H' | 'D' | 'A';
 
@@ -46,17 +48,14 @@ export default function PredictionsScreen() {
 
   return (
     <Screen fullBleed>
-      <TotlText variant="heading" style={{ paddingHorizontal: t.space[4], marginBottom: 8 }}>
-        Predictions
-      </TotlText>
+      <PageHeader title="Predictions" />
 
       <FlatList
         data={data?.fixtures ?? []}
         style={{ flex: 1 }}
         keyExtractor={(item: any) => item.id}
         contentContainerStyle={{ padding: t.space[4], paddingBottom: t.space[8] }}
-        refreshing={isRefetching}
-        onRefresh={() => refetch()}
+        refreshControl={<TotlRefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
         ListHeaderComponent={
           <>
             {isLoading && <TotlText variant="muted">Loading…</TotlText>}

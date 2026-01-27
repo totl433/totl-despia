@@ -351,7 +351,7 @@ app.get('/v1/leagues/:leagueId', async (req) => {
     (supa as any).from('leagues').select('id, name, code, avatar, created_at').eq('id', params.leagueId).maybeSingle(),
     (supa as any)
       .from('league_members')
-      .select('user_id, users(id, name)')
+      .select('user_id, users(id, name, avatar_url)')
       .eq('league_id', params.leagueId)
       .limit(200),
   ]);
@@ -363,6 +363,7 @@ app.get('/v1/leagues/:leagueId', async (req) => {
   const members = (membersRes.data ?? []).map((m: any) => ({
     id: m.users?.id ?? m.user_id,
     name: m.users?.name ?? 'User',
+    avatar_url: m.users?.avatar_url ?? null,
   }));
 
   return { league: leagueRes.data, members };
@@ -487,7 +488,7 @@ app.get('/v1/leagues/:leagueId/gw/:gw/table', async (req) => {
   const [membersRes, submissionsRes, picksRes, liveScoresRes, resultsRes, fixturesRes] = await Promise.all([
     (supa as any)
       .from('league_members')
-      .select('user_id, users(id, name)')
+      .select('user_id, users(id, name, avatar_url)')
       .eq('league_id', leagueId)
       .limit(200),
     (supa as any).from('app_gw_submissions').select('user_id').eq('gw', gw),
@@ -507,8 +508,9 @@ app.get('/v1/leagues/:leagueId/gw/:gw/table', async (req) => {
   const members = (membersRes.data ?? []).map((m: any) => ({
     user_id: m.user_id,
     name: m.users?.name ?? 'User',
+    avatar_url: m.users?.avatar_url ?? null,
   }));
-  const memberIds = new Set(members.map((m: { user_id: string; name: string }) => m.user_id));
+  const memberIds = new Set(members.map((m: { user_id: string; name: string; avatar_url: string | null }) => m.user_id));
   const submittedIds = new Set(
     ((submissionsRes.data ?? []) as any[])
       .map((s: any) => s.user_id as string)
@@ -555,8 +557,14 @@ app.get('/v1/leagues/:leagueId/gw/:gw/table', async (req) => {
   });
 
   const rows = members
-    .filter((m: { user_id: string; name: string }) => submittedIds.has(m.user_id))
-    .map((m: { user_id: string; name: string }) => ({ user_id: m.user_id, name: m.name, score: 0, unicorns: 0 }));
+    .filter((m: { user_id: string; name: string; avatar_url: string | null }) => submittedIds.has(m.user_id))
+    .map((m: { user_id: string; name: string; avatar_url: string | null }) => ({
+      user_id: m.user_id,
+      name: m.name,
+      avatar_url: m.avatar_url,
+      score: 0,
+      unicorns: 0,
+    }));
 
   outcomeByFixtureIndex.forEach((outcome, fixtureIndex) => {
     const thesePicks = picksByFixtureIndex.get(fixtureIndex) ?? [];

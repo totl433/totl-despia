@@ -1,6 +1,7 @@
 import React from 'react';
 import { FlatList, type ViewStyle, View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
+import { TotlRefreshControl } from '../../lib/refreshControl';
 
 export type LeaderboardRow = {
   user_id: string;
@@ -24,11 +25,15 @@ export default function LeaderboardTable({
   valueLabel,
   highlightUserId,
   style,
+  refreshing,
+  onRefresh,
 }: {
   rows: LeaderboardRow[];
   valueLabel: string;
   highlightUserId?: string | null;
   style?: ViewStyle;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }) {
   const t = useTokens();
 
@@ -77,6 +82,9 @@ export default function LeaderboardTable({
         showsVerticalScrollIndicator={false}
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 140 }}
+        refreshControl={
+          onRefresh ? <TotlRefreshControl refreshing={!!refreshing} onRefresh={onRefresh} /> : undefined
+        }
         ListFooterComponent={<View style={{ height: 12 }} />}
         ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: t.color.border, opacity: 0.6, marginLeft: 16 }} />}
         renderItem={({ item }) => {

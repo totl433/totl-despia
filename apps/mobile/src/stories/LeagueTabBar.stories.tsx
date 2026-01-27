@@ -1,7 +1,7 @@
 import React from 'react';
 import type { Meta, StoryObj } from '@storybook/react-native';
 import { Screen } from '@totl/ui';
-import LeagueTabBar from '../components/league/LeagueTabBar';
+import LeagueTabBar, { type LeagueTabKey } from '../components/league/LeagueTabBar';
 
 const meta: Meta<typeof LeagueTabBar> = {
   title: 'league/LeagueTabBar',
@@ -26,3 +26,13 @@ export const Default: Story = {
   },
 };
 
+export const Interactive: Story = {
+  render: () => {
+    const [value, setValue] = React.useState<LeagueTabKey>('chat');
+    return (
+      <Screen fullBleed>
+        <LeagueTabBar value={value} onChange={setValue} />
+      </Screen>
+    );
+  },
+};

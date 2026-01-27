@@ -1,23 +1,30 @@
 import React from 'react';
-import { Animated, FlatList, type ImageSourcePropType, Image, Pressable, RefreshControl, Share, View } from 'react-native';
+import { Animated, type ImageSourcePropType, Image, Pressable, Share, View, useWindowDimensions } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Asset } from 'expo-asset';
 import { SvgUri } from 'react-native-svg';
+import Carousel from 'react-native-reanimated-carousel';
+import type { ICarouselInstance } from 'react-native-reanimated-carousel';
+import { Extrapolation, interpolate, useSharedValue } from 'react-native-reanimated';
 import type { Fixture, GwResultRow, HomeRanks, HomeSnapshot, LiveScore, LiveStatus, Pick, RankBadge } from '@totl/domain';
 import { api } from '../lib/api';
+import { TotlRefreshControl } from '../lib/refreshControl';
 import { supabase } from '../lib/supabase';
 import FixtureCard from '../components/FixtureCard';
 import MiniLeagueCard from '../components/MiniLeagueCard';
-import MiniLeaguesDefaultList from '../components/MiniLeaguesDefaultList';
+import { MiniLeaguesDefaultBatchCard } from '../components/MiniLeaguesDefaultList';
 import { getGameweekStateFromSnapshot, type GameweekState } from '../lib/gameweekState';
 import PickPill from '../components/home/PickPill';
 import RoundIconButton from '../components/home/RoundIconButton';
 import SectionHeaderRow from '../components/home/SectionHeaderRow';
+import CarouselDots from '../components/home/CarouselDots';
+import CarouselWithPagination from '../components/home/CarouselWithPagination';
+import CarouselFocusShell from '../components/home/CarouselFocusShell';
 import SectionTitle from '../components/home/SectionTitle';
-import { LeaderboardCardLastGw, LeaderboardCardSimple } from '../components/home/LeaderboardCards';
+import { LeaderboardCardLastGw, LeaderboardCardResultsCta, LeaderboardCardSimple } from '../components/home/LeaderboardCards';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -55,6 +62,7 @@ function fixtureDateLabel(kickoff: string | null | undefined) {
 export default function HomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
+  const { width: screenWidth } = useWindowDimensions();
 
   const {
     data: home,
@@ -185,40 +193,11 @@ export default function HomeScreen() {
     void Promise.all([refetchHome(), refetchLeagues()]);
   };
   const [visibleLeagueIds, setVisibleLeagueIds] = React.useState<Set<string>>(() => new Set());
-  const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 45 }).current;
-  const onViewableItemsChanged = React.useRef(
-    ({ viewableItems }: { viewableItems: Array<{ item: LeagueSummary; index: number | null; isViewable: boolean }> }) => {
-      const leagueList: LeagueSummary[] = leagues?.leagues ?? [];
-      const next = new Set<string>();
-
-      viewableItems.forEach((vi) => {
-        if (!vi?.isViewable) return;
-        const item = vi.item;
-        if (item?.id) next.add(String(item.id));
-        const idx = typeof vi.index === 'number' ? vi.index : null;
-        if (idx === null) return;
-        const prev = leagueList[idx - 1];
-        const nextItem = leagueList[idx + 1];
-        if (prev?.id) next.add(String(prev.id));
-        if (nextItem?.id) next.add(String(nextItem.id));
-      });
-
-      // Avoid churn: only update state when membership changes.
-      setVisibleLeagueIds((prev) => {
-        if (prev.size === next.size) {
-          let same = true;
-          for (const id of prev) {
-            if (!next.has(id)) {
-              same = false;
-              break;
-            }
-          }
-          if (same) return prev;
-        }
-        return next;
-      });
-    }
-  ).current;
+  const [activeLeagueIndex, setActiveLeagueIndex] = React.useState<number>(0);
+  const mlAbsoluteProgress = useSharedValue(0);
+  const mlCarouselItemWidthSV = useSharedValue(0);
+  const mlSidePeekSV = useSharedValue(0);
+  const mlFirstItemOffsetSV = useSharedValue(0);
 
   // SectionTitle/RoundIconButton/PickPill/SectionHeaderRow/LeaderboardCards are extracted into `src/components/home/*`.
 
@@ -260,13 +239,15 @@ export default function HomeScreen() {
     league,
     index,
     totalCount,
+    mode,
   }: {
     league: LeagueSummary;
     index: number;
     totalCount: number;
+    mode: 'live' | 'default';
   }) {
     const leagueId = String(league.id);
-    const enabled = !!viewingGw && visibleLeagueIds.has(leagueId);
+    const enabled = mode === 'live' && !!viewingGw && visibleLeagueIds.has(leagueId);
 
     const { data: table, isLoading } = useQuery({
       enabled,
@@ -274,7 +255,7 @@ export default function HomeScreen() {
       queryFn: () => api.getLeagueGwTable(leagueId, viewingGw!),
     });
 
-    const rows = table?.rows?.slice(0, 4) ?? [];
+    const rows = mode === 'live' ? (table?.rows?.slice(0, 4) ?? []) : [];
     const winnerName = rows?.[0]?.name as string | undefined;
     const isDraw =
       rows.length >= 2 &&
@@ -282,15 +263,17 @@ export default function HomeScreen() {
       Number(rows[0]?.unicorns ?? 0) === Number(rows[1]?.unicorns ?? 0);
     const winnerChip = rows.length ? (isDraw ? 'Draw!' : winnerName ? `${winnerName} Wins!` : null) : null;
     const avatarUri = typeof league.avatar === 'string' && league.avatar.startsWith('http') ? league.avatar : null;
-    const showUnicorns = (table?.totalMembers ?? 0) >= 3;
 
-    const emptyLabel = !viewingGw
-      ? '—'
-      : !visibleLeagueIds.has(leagueId)
-        ? 'Swipe to load…'
-        : isLoading
-          ? 'Loading table…'
-          : 'No table yet.';
+    const emptyLabel =
+      mode === 'default'
+        ? 'Tap to open'
+        : !viewingGw
+          ? '—'
+          : !visibleLeagueIds.has(leagueId)
+            ? 'Swipe to load…'
+            : isLoading
+              ? 'Loading table…'
+              : 'No table yet.';
 
     return (
       <Pressable
@@ -301,21 +284,21 @@ export default function HomeScreen() {
           })
         }
         style={({ pressed }) => ({
+          width: mlCardWidth,
           opacity: pressed ? 0.96 : 1,
           transform: [{ scale: pressed ? 0.99 : 1 }],
         })}
       >
-        <View style={{ marginRight: index === totalCount - 1 ? 0 : 12 }}>
-          <MiniLeagueCard
-            title={String(league.name ?? '')}
-            avatarUri={avatarUri}
-            gwIsLive={gwIsLive}
-            winnerChip={winnerChip}
-            rows={rows}
-            showUnicorns={showUnicorns}
-            emptyLabel={emptyLabel}
-          />
-        </View>
+        <MiniLeagueCard
+          title={String(league.name ?? '')}
+          avatarUri={avatarUri}
+          gwIsLive={mode === 'live' ? gwIsLive : false}
+          winnerChip={winnerChip}
+          rows={rows}
+          emptyLabel={emptyLabel}
+          width={mlCardWidth}
+          fixedRowCount={mode === 'live' ? 4 : undefined}
+        />
       </Pressable>
     );
   }
@@ -359,10 +342,43 @@ export default function HomeScreen() {
 
   const gwIsLive = (scoreSummary?.live ?? 0) > 0;
   const viewingGw = home?.viewingGw ?? null;
+  const contentWidth = Math.max(280, screenWidth - t.space[4] * 2);
+  /**
+   * Mini Leagues carousel sizing:
+   * - Center the active card so (when not at the edges) you can see both left + right neighbors.
+   * - Keep a 12px gap between cards.
+   */
+  const mlCardGap = 12;
+  // Carousel viewport should be full width (cancel the ScrollView padding around it).
+  const mlCarouselViewportWidth = screenWidth;
+  const mlCarouselOuterGutter = t.space[4];
+  // Card width should be fixed to match design.
+  const mlCardWidth = 308;
+  // Step distance between cards (card width + gap).
+  const mlCarouselItemWidth = mlCardWidth + mlCardGap;
+  // Where the active card's LEFT edge should be when centered (index 1+).
+  const mlSidePeek = Math.max(0, (mlCarouselViewportWidth - mlCardWidth) / 2);
+  // IMPORTANT: `react-native-reanimated-carousel` defaults height to "100%" if you don't pass it,
+  // which can create a huge blank block inside a vertical ScrollView (looks like a blank screen).
+  const mlCarouselHeight = 352;
+  const mlLiveCarouselRef = React.useRef<ICarouselInstance>(null);
+  const mlDefaultCarouselRef = React.useRef<ICarouselInstance>(null);
+
+  React.useEffect(() => {
+    mlCarouselItemWidthSV.value = mlCarouselItemWidth;
+    mlSidePeekSV.value = mlSidePeek;
+    // Index 0: align the card with the page gutter.
+    mlFirstItemOffsetSV.value = mlCarouselOuterGutter;
+  }, [mlCarouselItemWidth, mlSidePeek, mlCarouselOuterGutter, mlCarouselItemWidthSV, mlSidePeekSV, mlFirstItemOffsetSV]);
 
   const totlLogoUri = React.useMemo(() => {
-    return Asset.fromModule(require('../../../../public/assets/badges/totl-logo1.svg')).uri;
-  }, []);
+    const isLightMode = t.color.background.toLowerCase() === '#f8fafc';
+    return Asset.fromModule(
+      isLightMode
+        ? require('../../../../public/assets/badges/totl-logo1-black.svg')
+        : require('../../../../public/assets/badges/totl-logo1.svg')
+    ).uri;
+  }, [t.color.background]);
 
   const gwState: GameweekState | null = React.useMemo(() => {
     if (!home) return null;
@@ -388,7 +404,63 @@ export default function HomeScreen() {
     if (showMlToggleButtons) setShowLiveTables(true);
   }, [showMlToggleButtons]);
 
+  const defaultLeagueBatches = React.useMemo(() => {
+    const leagueList: LeagueSummary[] = leagues?.leagues ?? [];
+    const out: Array<Array<LeagueSummary>> = [];
+    const batchSize = 3;
+    for (let i = 0; i < leagueList.length; i += batchSize) out.push(leagueList.slice(i, i + batchSize));
+    return out;
+  }, [leagues?.leagues]);
+
+  React.useEffect(() => {
+    // With the carousel we don't have RN FlatList viewability callbacks.
+    // Approximate “visible” cards as current + neighbors to keep GW table fetch lazy.
+    if (!showLiveTables) {
+      setVisibleLeagueIds((prev) => (prev.size ? new Set() : prev));
+      return;
+    }
+
+    const leagueList: LeagueSummary[] = leagues?.leagues ?? [];
+    if (!leagueList.length) return;
+
+    const next = new Set<string>();
+    const idxs = [activeLeagueIndex - 1, activeLeagueIndex, activeLeagueIndex + 1];
+    for (const idx of idxs) {
+      if (idx < 0 || idx >= leagueList.length) continue;
+      const id = leagueList[idx]?.id;
+      if (id) next.add(String(id));
+    }
+
+    setVisibleLeagueIds((prev) => {
+      if (prev.size === next.size) {
+        let same = true;
+        for (const id of prev) {
+          if (!next.has(id)) {
+            same = false;
+            break;
+          }
+        }
+        if (same) return prev;
+      }
+      return next;
+    });
+  }, [activeLeagueIndex, leagues?.leagues, showLiveTables]);
+//VERTICAL SPACING CONTROL HERE
   const errorMessage = homeError ? getErrorMessage(homeError) : leaguesError ? getErrorMessage(leaguesError) : null;
+  const SECTION_GAP_Y = 40; // visual rhythm between major sections (spec)
+  const MINI_TO_GW_GAP_Y = -20; // slightly tighter to balance the heavier mini leagues block
+
+  // Mini Leagues block spacing controls.
+  // - Gap between carousel cards and the pagination dots (per view).
+  const ML_LIVE_DOTS_GAP_Y = 0;
+  const ML_DEFAULT_DOTS_GAP_Y = -40;
+  // - Gap between the carousel section (viewport+dots) and the content below it (per view).
+  const ML_LIVE_SECTION_BOTTOM_PADDING = MINI_TO_GW_GAP_Y + 80;
+  const ML_DEFAULT_SECTION_BOTTOM_PADDING = MINI_TO_GW_GAP_Y +80;
+
+  // Each view keeps its own viewport height so dots stay visually attached to the bottom of that view.
+  const ML_LIVE_HEIGHT = mlCarouselHeight;
+  const ML_DEFAULT_HEIGHT = 350;
 
   return (
     <Screen fullBleed>
@@ -422,10 +494,10 @@ export default function HomeScreen() {
           paddingTop: 0,
           paddingBottom: t.space[12],
         }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.color.text} />}
+        refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* Header (scrolls with content) */}
-        <View style={{ marginBottom: 12, paddingTop: 4, paddingBottom: 4, alignItems: 'center' }}>
+        <View style={{ marginBottom: 0, paddingTop: 16, paddingBottom: 0, alignItems: 'center' }}>
           {/* Real TOTL logo (from web assets), simple + static */}
           <View>
             <SvgUri uri={totlLogoUri} width={165} height={77} />
@@ -446,48 +518,17 @@ export default function HomeScreen() {
           </Card>
         )}
 
-        {/* Results CTA like web (real gradient + pressed scale) */}
-        {ranks?.latestGw ? (
-          <Pressable
-            onPress={() => {}}
-            style={({ pressed }) => [
-              {
-                marginBottom: 14,
-                borderRadius: 14,
-                overflow: 'hidden',
-                transform: [{ scale: pressed ? 0.985 : 1 }],
-                shadowColor: '#000000',
-                shadowOffset: { width: 0, height: 8 },
-                shadowOpacity: 0.25,
-                shadowRadius: 16,
-                elevation: 6,
-              },
-            ]}
-          >
-            <LinearGradient
-              colors={['#10B981', '#0D9488']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{
-                paddingVertical: 14,
-                paddingHorizontal: 16,
-              }}
-            >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <TotlText style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 18 }}>
-                  Your Gameweek {ranks.latestGw} Results
-                </TotlText>
-                <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 22 }}>›</TotlText>
-              </View>
-            </LinearGradient>
-          </Pressable>
-        ) : null}
-
         {/* Leaderboards row (match web card structure) */}
-        <View style={{ marginTop: 18, marginBottom: 12 }}>
-          <TotlText variant="sectionTitle">Leaderboards</TotlText>
+        <View style={{ marginTop: SECTION_GAP_Y }}>
+          <SectionHeaderRow title="Leaderboards" />
         </View>
-        <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 12 }}>
+        {/* Full-bleed horizontal row (remove side margins from the page padding) */}
+        <Animated.ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginHorizontal: -t.space[4], marginBottom: SECTION_GAP_Y }}
+          contentContainerStyle={{ paddingHorizontal: t.space[4], paddingBottom: 12 }}
+        >
           {(() => {
             const gw = ranks?.latestGw ?? home?.viewingGw ?? null;
             const score = home?.hasSubmittedViewingGw && scoreSummary ? String(scoreSummary.correct) : '--';
@@ -495,6 +536,13 @@ export default function HomeScreen() {
             const lastGwDisplay = ranks?.gwRank?.percentileLabel ? String(ranks.gwRank.percentileLabel) : 'Top —';
 
             const cards: Array<{ key: string; node: React.JSX.Element }> = [];
+
+            if (ranks?.latestGw) {
+              cards.push({
+                key: 'gw-results',
+                node: <LeaderboardCardResultsCta gw={ranks.latestGw} badge={LB_BADGE_5} onPress={() => {}} />,
+              });
+            }
 
             cards.push({
               key: 'last-gw',
@@ -537,26 +585,36 @@ export default function HomeScreen() {
         </Animated.ScrollView>
 
         {/* Mini leagues (match web order: before gameweek section) */}
-        <View style={{ marginTop: 26 }}>
+        <View style={{ marginTop: 0 }}>
           <SectionHeaderRow
-            title="Mini Leagues"
+            title="Mini leagues"
             subtitle={showLiveTables && home?.viewingGw ? `${viewingGwLabel} Live Tables` : undefined}
             right={
               showMlToggleButtons ? (
                 <Pressable
                   onPress={() => setShowLiveTables((v) => !v)}
                   style={({ pressed }) => ({
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     borderRadius: t.radius.pill,
-                    backgroundColor: showLiveTables ? 'rgba(148,163,184,0.16)' : '#1C8376',
-                    borderWidth: 1,
-                    borderColor: showLiveTables ? 'rgba(148,163,184,0.18)' : 'rgba(255,255,255,0.18)',
-                    opacity: pressed ? 0.88 : 1,
+                    backgroundColor: showLiveTables ? t.color.surface2 : t.color.brand,
+                    borderWidth: showLiveTables ? 1 : 0,
+                    borderColor: showLiveTables ? t.color.border : 'transparent',
+                    opacity: pressed ? 0.92 : 1,
                     transform: [{ scale: pressed ? 0.98 : 1 }],
                   })}
                 >
-                  <TotlText variant="caption" style={{ fontWeight: '800', color: showLiveTables ? t.color.text : '#FFFFFF' }}>
+                  <TotlText
+                    style={{
+                      color: '#FFFFFF',
+                      fontFamily: 'Gramatika-Regular',
+                      fontWeight: '400',
+                      fontSize: 12,
+                      lineHeight: 12,
+                    }}
+                  >
                     {showLiveTables ? 'Default View' : 'View Live Tables'}
                   </TotlText>
                 </Pressable>
@@ -564,44 +622,104 @@ export default function HomeScreen() {
             }
           />
         </View>
-        {leagues?.leagues?.length ? showLiveTables ? (
-          <FlatList<LeagueSummary>
-            horizontal
-            data={leagues.leagues}
-            keyExtractor={(l) => String(l.id)}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 12 }}
-            viewabilityConfig={viewabilityConfig}
-            onViewableItemsChanged={onViewableItemsChanged}
-            initialNumToRender={4}
-            windowSize={4}
-            removeClippedSubviews
-            renderItem={({ item: l, index }) => (
-              <HomeMiniLeagueCardItem league={l} index={index} totalCount={leagues.leagues.length} />
-            )}
-          />
+        {leagues?.leagues?.length ? (
+          showLiveTables ? (
+            <CarouselWithPagination
+              carouselRef={mlLiveCarouselRef}
+              width={mlCarouselViewportWidth}
+              height={ML_LIVE_HEIGHT}
+              data={leagues.leagues}
+              progress={mlAbsoluteProgress}
+              currentIndex={activeLeagueIndex}
+              onIndexChange={(idx) => setActiveLeagueIndex(idx)}
+              dotsGap={ML_LIVE_DOTS_GAP_Y}
+              sectionBottomPadding={ML_LIVE_SECTION_BOTTOM_PADDING}
+              dotsName="Mini leagues"
+              customAnimation={(value) => {
+                'worklet';
+                const step = mlCarouselItemWidthSV.value;
+                const sidePeek = mlSidePeekSV.value;
+                const firstOffset = mlFirstItemOffsetSV.value;
+                const translate = value * step;
+                const offset = interpolate(mlAbsoluteProgress.value, [0, 1], [firstOffset, sidePeek], Extrapolation.CLAMP);
+                const z = Math.max(0, 100 - Math.round(Math.abs(value) * 10));
+                return { transform: [{ translateX: offset + translate }], zIndex: z, elevation: z };
+              }}
+              style={{
+                width: mlCarouselViewportWidth,
+                height: ML_LIVE_HEIGHT,
+                marginHorizontal: -mlCarouselOuterGutter,
+              }}
+              containerStyle={{ paddingBottom: 0 }}
+              renderItem={({ item: l, index, animationValue }) => (
+                <CarouselFocusShell
+                  animationValue={animationValue}
+                  width={mlCardWidth}
+                  activeBorderColor="#DC2626"
+                  activeShadowColor="#DC2626"
+                >
+                  <HomeMiniLeagueCardItem
+                    league={l}
+                    index={index}
+                    totalCount={leagues.leagues.length}
+                    mode="live"
+                  />
+                </CarouselFocusShell>
+              )}
+            />
+          ) : (
+            <CarouselWithPagination
+              carouselRef={mlDefaultCarouselRef}
+              width={mlCarouselViewportWidth}
+              height={ML_DEFAULT_HEIGHT}
+              data={defaultLeagueBatches}
+              progress={mlAbsoluteProgress}
+              currentIndex={activeLeagueIndex}
+              onIndexChange={(idx) => setActiveLeagueIndex(idx)}
+              dotsGap={ML_DEFAULT_DOTS_GAP_Y}
+              sectionBottomPadding={ML_DEFAULT_SECTION_BOTTOM_PADDING}
+              dotsName="Mini leagues"
+              customAnimation={(value) => {
+                'worklet';
+                const step = mlCarouselItemWidthSV.value;
+                const sidePeek = mlSidePeekSV.value;
+                const firstOffset = mlFirstItemOffsetSV.value;
+                const translate = value * step;
+                const offset = interpolate(mlAbsoluteProgress.value, [0, 1], [firstOffset, sidePeek], Extrapolation.CLAMP);
+                const z = Math.max(0, 100 - Math.round(Math.abs(value) * 10));
+                return { transform: [{ translateX: offset + translate }], zIndex: z, elevation: z };
+              }}
+              style={{
+                width: mlCarouselViewportWidth,
+                height: ML_DEFAULT_HEIGHT,
+                marginHorizontal: -mlCarouselOuterGutter,
+              }}
+              containerStyle={{ paddingBottom: 0 }}
+              renderItem={({ item: batch, animationValue }) => (
+                <CarouselFocusShell animationValue={animationValue} width={mlCardWidth}>
+                  <MiniLeaguesDefaultBatchCard
+                    width={mlCardWidth}
+                    batch={batch.map((l) => ({
+                      id: String(l.id),
+                      name: String(l.name ?? ''),
+                      avatarUri: typeof l.avatar === 'string' && l.avatar.startsWith('http') ? l.avatar : null,
+                    }))}
+                    onLeaguePress={(leagueId, name) =>
+                      navigation.navigate('Leagues', { screen: 'LeagueDetail', params: { leagueId, name } })
+                    }
+                  />
+                </CarouselFocusShell>
+              )}
+            />
+          )
         ) : (
-          <MiniLeaguesDefaultList
-            leagues={leagues.leagues.map((l) => ({
-              id: String(l.id),
-              name: String(l.name ?? ''),
-              avatarUri: typeof l.avatar === 'string' && l.avatar.startsWith('http') ? l.avatar : null,
-            }))}
-            onLeaguePress={(leagueId, name) =>
-              navigation.navigate('Leagues', {
-                screen: 'LeagueDetail',
-                params: { leagueId, name },
-              })
-            }
-          />
-        ) : (
-          <Card style={{ marginBottom: 12 }}>
+          <Card style={{ marginBottom: MINI_TO_GW_GAP_Y }}>
             <TotlText variant="muted">No leagues yet.</TotlText>
           </Card>
         )}
 
         {/* Gameweek section like web */}
-        <View style={{ marginTop: 26 }}>
+        <View style={{ marginTop: 0 }}>
           <SectionHeaderRow
             title={viewingGwLabel}
             subtitle={viewingGwSubtitle}
@@ -610,9 +728,10 @@ export default function HomeScreen() {
                 <Pressable
                   onPress={handleShare}
                   style={({ pressed }) => ({
-                    minHeight: 40,
-                    paddingHorizontal: 14,
+                    paddingHorizontal: 10,
                     paddingVertical: 8,
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     borderRadius: t.radius.pill,
                     backgroundColor: t.color.brand,
                     marginRight: 10,
@@ -620,46 +739,42 @@ export default function HomeScreen() {
                     transform: [{ scale: pressed ? 0.98 : 1 }],
                   })}
                 >
-                  <TotlText variant="caption" style={{ color: '#FFFFFF', fontWeight: '800' }}>
+                  <TotlText
+                    style={{
+                      color: '#FFFFFF',
+                      fontFamily: 'Gramatika-Regular',
+                      fontWeight: '400',
+                      fontSize: 12,
+                      lineHeight: 12,
+                    }}
+                  >
                     Share
                   </TotlText>
                 </Pressable>
                 <View
                   style={{
-                    minHeight: 40,
-                    paddingHorizontal: 14,
+                    paddingHorizontal: 10,
                     paddingVertical: 8,
                     borderRadius: t.radius.pill,
                     backgroundColor: scorePill.bg,
                     borderWidth: scorePill.border === 'transparent' ? 0 : 1,
                     borderColor: scorePill.border,
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    {scorePill.dot ? (
-                      <View style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: '#FFFFFF', marginRight: 8, opacity: 0.95 }} />
-                    ) : null}
-                    <TotlText
-                      variant="caption"
-                      style={{
-                        fontWeight: '800',
-                        color: scorePill.bg === '#DC2626' ? '#FFFFFF' : t.color.text,
-                        letterSpacing: 0.4,
-                      }}
-                    >
-                      {scorePill.label}{' '}
-                      <TotlText
-                        variant="caption"
-                        style={{
-                          fontWeight: '900',
-                          color: scorePill.bg === '#DC2626' ? '#FFFFFF' : t.color.text,
-                          fontVariant: ['tabular-nums'],
-                        }}
-                      >
-                        {scorePill.score}/{scorePill.total}
-                      </TotlText>
-                    </TotlText>
-                  </View>
+                  <TotlText
+                    style={{
+                      color: '#FFFFFF',
+                      fontFamily: 'Gramatika-Regular',
+                      fontWeight: '400',
+                      fontSize: 12,
+                      lineHeight: 12,
+                      fontVariant: ['tabular-nums'],
+                    }}
+                  >
+                    {scorePill.label} {scorePill.score}/{scorePill.total}
+                  </TotlText>
                 </View>
               </View>
             }

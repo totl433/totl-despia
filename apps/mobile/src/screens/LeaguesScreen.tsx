@@ -6,8 +6,9 @@ import { Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import { api } from '../lib/api';
 import type { LeaguesStackParamList } from '../navigation/LeaguesNavigator';
-import MiniLeaguesHeader from '../components/miniLeagues/MiniLeaguesHeader';
 import MiniLeagueListItem from '../components/miniLeagues/MiniLeagueListItem';
+import PageHeader from '../components/PageHeader';
+import { TotlRefreshControl } from '../lib/refreshControl';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -126,18 +127,42 @@ export default function LeaguesScreen() {
 
   return (
     <Screen fullBleed>
+      <PageHeader
+        title="Mini Leagues"
+        subtitle="Create or join a private league with friends. Let the rivalry begin."
+        rightAction={
+          <Pressable
+            onPress={() => {}}
+            accessibilityRole="button"
+            accessibilityLabel="Create or join mini league"
+            style={({ pressed }) => ({
+              width: 46,
+              height: 46,
+              borderRadius: 999,
+              backgroundColor: t.color.brand,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.16)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.92 : 1,
+              transform: [{ scale: pressed ? 0.98 : 1 }],
+            })}
+          >
+            <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 22, lineHeight: 22 }}>+</TotlText>
+          </Pressable>
+        }
+      />
+
       <FlatList
         data={data?.leagues ?? []}
         style={{ flex: 1 }}
         keyExtractor={(l) => String(l.id)}
         contentContainerStyle={{ padding: t.space[4], paddingBottom: t.space[8] }}
-        refreshing={isRefetching}
-        onRefresh={() => refetch()}
+        refreshControl={<TotlRefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
         viewabilityConfig={viewabilityConfig}
         onViewableItemsChanged={onViewableItemsChanged}
         ListHeaderComponent={
           <>
-            <MiniLeaguesHeader title="Mini Leagues" onPressAdd={() => {}} />
             {isLoading && <TotlText variant="muted">Loading…</TotlText>}
             {error && (
               <Card style={{ marginBottom: 12 }}>

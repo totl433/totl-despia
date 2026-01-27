@@ -1,10 +1,12 @@
 import React from 'react';
-import { Switch, View } from 'react-native';
+import { ScrollView, Switch, View } from 'react-native';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
+import PageHeader from '../components/PageHeader';
+import { TotlRefreshControl } from '../lib/refreshControl';
 
 export default function ProfileScreen() {
   const t = useTokens();
@@ -25,11 +27,13 @@ export default function ProfileScreen() {
 
   return (
     <Screen fullBleed>
-      <TotlText variant="heading" style={{ paddingHorizontal: t.space[4], marginBottom: 8 }}>
-        Profile
-      </TotlText>
+      <PageHeader title="Profile" />
 
-      <View style={{ padding: t.space[4] }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: t.space[4], paddingBottom: t.space[8] }}
+        refreshControl={<TotlRefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
+      >
         {isLoading && <TotlText variant="muted">Loading…</TotlText>}
         {error && (
           <Card style={{ marginBottom: 12 }}>
@@ -71,7 +75,7 @@ export default function ProfileScreen() {
         <View style={{ gap: 10 }}>
           <Button title="Sign out" onPress={() => supabase.auth.signOut()} />
         </View>
-      </View>
+      </ScrollView>
     </Screen>
   );
 }

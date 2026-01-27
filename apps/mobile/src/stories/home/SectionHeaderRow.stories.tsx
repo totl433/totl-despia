@@ -18,7 +18,7 @@ function Preview({ subtitle, withRight }: { subtitle: boolean; withRight: boolea
     <Screen>
       <View style={{ gap: 16 }}>
         <SectionHeaderRow
-          title="Mini Leagues"
+          title="Mini leagues"
           subtitle={subtitle ? 'Gameweek 22 Live Tables' : undefined}
           right={withRight ? <PickPill label="Default View" active /> : null}
         />

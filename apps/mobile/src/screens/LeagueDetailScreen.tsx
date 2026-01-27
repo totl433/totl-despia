@@ -23,6 +23,7 @@ import type { LeaguePick } from '../components/league/LeaguePickPill';
 import FixtureCard from '../components/FixtureCard';
 import LeaguePickChipsRow from '../components/league/LeaguePickChipsRow';
 import LeagueChatTab from '../components/chat/LeagueChatTab';
+import { TotlRefreshControl } from '../lib/refreshControl';
 
 export default function LeagueDetailScreen() {
   const route = useRoute<any>();
@@ -50,7 +51,7 @@ export default function LeagueDetailScreen() {
       ? leagueFromList.avatar
       : null;
 
-  const { data: home } = useQuery<HomeSnapshot>({
+  const { data: home, refetch: refetchHome, isRefetching: homeRefetching } = useQuery<HomeSnapshot>({
     queryKey: ['homeSnapshot'],
     queryFn: () => api.getHomeSnapshot(),
   });
@@ -79,14 +80,14 @@ export default function LeagueDetailScreen() {
 
   type LeagueTableResponse = Awaited<ReturnType<typeof api.getLeagueGwTable>>;
   const leagueId = String(params.leagueId);
-  const { data: table, isLoading: tableLoading } = useQuery<LeagueTableResponse>({
+  const { data: table, isLoading: tableLoading, refetch: refetchTable, isRefetching: tableRefetching } = useQuery<LeagueTableResponse>({
     enabled: tab === 'gwTable' && typeof selectedGw === 'number',
     queryKey: ['leagueGwTable', leagueId, selectedGw],
     queryFn: () => api.getLeagueGwTable(leagueId, selectedGw as number),
   });
 
   type LeagueMembersResponse = Awaited<ReturnType<typeof api.getLeague>>;
-  const { data: leagueDetails } = useQuery<LeagueMembersResponse>({
+  const { data: leagueDetails, refetch: refetchLeagueDetails, isRefetching: leagueDetailsRefetching } = useQuery<LeagueMembersResponse>({
     enabled: tab === 'season',
     queryKey: ['league', leagueId],
     queryFn: () => api.getLeague(leagueId),
@@ -149,7 +150,9 @@ export default function LeagueDetailScreen() {
     return 1;
   }, [params.name]);
 
-  const { data: seasonRows, isLoading: seasonLoading } = useQuery<LeagueSeasonRow[]>({
+  const { data: seasonRows, isLoading: seasonLoading, refetch: refetchSeasonRows, isRefetching: seasonRowsRefetching } = useQuery<
+    LeagueSeasonRow[]
+  >({
     enabled: tab === 'season' && members.length > 0 && typeof currentGw === 'number',
     queryKey: ['leagueSeasonTable', leagueId, currentGw, members.map((m: any) => String(m.id ?? '')).join(',')],
     queryFn: async () => {
@@ -316,7 +319,11 @@ export default function LeagueDetailScreen() {
     picksByFixtureIndex: Map<number, Map<string, LeaguePick>>;
   };
 
-  const { data: predictions } = useQuery<LeaguePredictionsData>({
+  const {
+    data: predictions,
+    refetch: refetchPredictions,
+    isRefetching: predictionsRefetching,
+  } = useQuery<LeaguePredictionsData>({
     enabled: tab === 'predictions' && members.length > 0 && typeof picksGw === 'number' && picksGw >= seasonStartGw,
     queryKey: ['leaguePredictions', leagueId, picksGw, members.map((m: any) => String(m.id)).join(',')],
     queryFn: async () => {
@@ -433,7 +440,7 @@ export default function LeagueDetailScreen() {
     },
   });
 
-  const { data: me } = useQuery<{ id: string } | null>({
+  const { data: me, refetch: refetchMe, isRefetching: meRefetching } = useQuery<{ id: string } | null>({
     enabled: tab === 'predictions',
     queryKey: ['me'],
     queryFn: async () => {
@@ -441,6 +448,50 @@ export default function LeagueDetailScreen() {
       return data.user?.id ? { id: data.user.id } : null;
     },
   });
+
+  const refreshing =
+    tab === 'gwTable'
+      ? homeRefetching || tableRefetching
+      : tab === 'season'
+        ? homeRefetching || leagueDetailsRefetching || seasonRowsRefetching
+        : tab === 'predictions'
+          ? homeRefetching || predictionsRefetching || meRefetching
+          : false;
+
+  const onRefresh = React.useCallback(() => {
+    if (tab === 'gwTable') {
+      const actions: Array<Promise<any>> = [refetchHome()];
+      if (typeof selectedGw === 'number') actions.push(refetchTable());
+      void Promise.all(actions);
+      return;
+    }
+
+    if (tab === 'season') {
+      const actions: Array<Promise<any>> = [refetchHome(), refetchLeagueDetails()];
+      if (members.length > 0 && typeof currentGw === 'number') actions.push(refetchSeasonRows());
+      void Promise.all(actions);
+      return;
+    }
+
+    if (tab === 'predictions') {
+      const actions: Array<Promise<any>> = [refetchHome(), refetchMe()];
+      if (members.length > 0 && typeof picksGw === 'number' && picksGw >= seasonStartGw) actions.push(refetchPredictions());
+      void Promise.all(actions);
+    }
+  }, [
+    currentGw,
+    members.length,
+    picksGw,
+    refetchHome,
+    refetchLeagueDetails,
+    refetchMe,
+    refetchPredictions,
+    refetchSeasonRows,
+    refetchTable,
+    seasonStartGw,
+    selectedGw,
+    tab,
+  ]);
 
   return (
     <Screen fullBleed>
@@ -456,7 +507,11 @@ export default function LeagueDetailScreen() {
 
       <View style={{ flex: 1, padding: t.space[4] }}>
         {tab === 'gwTable' ? (
-          <>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: 140 }}
+            refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          >
             {table?.rows?.length && allFixturesFinished ? (
               <LeagueWinnerBanner
                 winnerName={String(table.rows?.[0]?.name ?? '')}
@@ -484,9 +539,13 @@ export default function LeagueDetailScreen() {
             />
 
             <LeagueRulesSheet open={rulesOpen} onClose={() => setRulesOpen(false)} />
-          </>
+          </ScrollView>
         ) : tab === 'season' ? (
-          <>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: 140 }}
+            refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          >
             <LeagueSeasonTable
               rows={seasonRows ?? []}
               loading={seasonLoading}
@@ -515,9 +574,13 @@ export default function LeagueDetailScreen() {
               onClose={() => setSeasonRulesOpen(false)}
               isLateStartingLeague={seasonIsLateStartingLeague}
             />
-          </>
+          </ScrollView>
         ) : tab === 'predictions' ? (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 140 }}>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: 140 }}
+            refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          >
             {typeof picksGw !== 'number' ? (
               <TotlText variant="muted">No current gameweek available.</TotlText>
             ) : picksGw < seasonStartGw ? (

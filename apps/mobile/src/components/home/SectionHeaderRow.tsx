@@ -1,6 +1,6 @@
 import React from 'react'
 import { View } from 'react-native'
-import { TotlText } from '@totl/ui'
+import { TotlText, useTokens } from '@totl/ui'
 
 export default function SectionHeaderRow({
   title,
@@ -11,10 +11,21 @@ export default function SectionHeaderRow({
   subtitle?: string
   right?: React.JSX.Element | null
 }) {
+  const t = useTokens()
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
       <View style={{ flex: 1, paddingRight: 12 }}>
-        <TotlText variant="sectionTitle">{title}</TotlText>
+        {/* Section header style (sentence case): Gramatika-Bold 20/20, white. */}
+        <TotlText
+          style={{
+            color: t.color.text,
+            fontFamily: 'Gramatika-Bold',
+            fontSize: 20,
+            lineHeight: 20,
+          }}
+        >
+          {title}
+        </TotlText>
         {subtitle ? (
           <TotlText variant="sectionSubtitle" style={{ marginTop: 2 }}>
             {subtitle}

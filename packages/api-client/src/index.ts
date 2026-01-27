@@ -85,15 +85,28 @@ export function createApiClient(opts: ApiClientOptions) {
       });
     },
 
-    async listLeagues(): Promise<{ leagues: Array<{ id: string; name: string; code: string; avatar?: string | null }> }> {
+    async listLeagues(): Promise<{
+      leagues: Array<{ id: string; name: string; code: string; avatar?: string | null }>;
+    }> {
       return requestJson(opts, `/v1/leagues`, { method: 'GET' });
     },
 
-    async getLeague(leagueId: string): Promise<{ league: any; members: Array<{ id: string; name: string }> }> {
+    async getLeague(
+      leagueId: string
+    ): Promise<{ league: any; members: Array<{ id: string; name: string; avatar_url?: string | null }> }> {
       return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}`, { method: 'GET' });
     },
 
-    async getLeagueGwTable(leagueId: string, gw: number): Promise<{ leagueId: string; gw: number; rows: any[]; submittedCount: number; totalMembers: number }> {
+    async getLeagueGwTable(
+      leagueId: string,
+      gw: number
+    ): Promise<{
+      leagueId: string;
+      gw: number;
+      rows: Array<{ user_id: string; name: string; avatar_url?: string | null; score: number; unicorns: number }>;
+      submittedCount: number;
+      totalMembers: number;
+    }> {
       return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/gw/${encodeURIComponent(String(gw))}/table`, { method: 'GET' });
     },
 

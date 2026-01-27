@@ -2,7 +2,6 @@ import React from 'react';
 import { Animated, Pressable, View, useWindowDimensions } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { TotlText, useTokens } from '@totl/ui';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 function getFocusedRouteName(route: any): string | null {
@@ -70,7 +69,6 @@ const WEB_TABS: Array<{
 
 export default function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const t = useTokens();
-  const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
 
   // Match web: hide bottom nav on mini-league detail pages.
@@ -121,10 +119,11 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
         position: 'absolute',
         left: 0,
         right: 0,
-        bottom: 0,
+        // Keep the floating nav close to the bottom (per design).
+        bottom: 20,
         paddingHorizontal: 16,
         // Transparent overlay: content should be visible behind/around the pill (like web)
-        paddingBottom: insets.bottom + 8,
+        paddingBottom: 0,
         backgroundColor: 'transparent',
       }}
       pointerEvents="box-none"
@@ -139,7 +138,7 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
           borderColor: t.color.border,
           overflow: 'hidden',
           alignSelf: 'center',
-          marginBottom: 12,
+          marginBottom: 0,
           flexDirection: 'row',
           position: 'relative',
         }}
