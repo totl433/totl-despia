@@ -60,11 +60,17 @@ export default function AuthFlow({ initialStep = 'onboarding', onAuthSuccess }: 
     hashParams.get('type') === 'recovery' ||
     window.location.search.includes('type=recovery') ||
     window.location.hash.includes('type=recovery');
+
+  // If we reached /auth?confirm=expired (email link expired), show sign-in directly
+  // (don't bounce them back through onboarding).
+  const hasConfirmExpired = urlParams.get('confirm') === 'expired';
   
   // Check for persisted step (survives parent re-renders)
-  const storedStep = forceOnboarding || isRecoveryFlow ? null : getStoredStep();
+  const storedStep = forceOnboarding || isRecoveryFlow || hasConfirmExpired ? null : getStoredStep();
   const effectiveInitialStep: GuestStep = isRecoveryFlow
     ? 'reset'
+    : hasConfirmExpired
+      ? 'signIn'
     : !consentsCompleted || forceOnboarding
       ? 'onboarding'
       : storedStep || initialStep || 'signIn';

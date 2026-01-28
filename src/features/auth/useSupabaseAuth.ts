@@ -412,6 +412,19 @@ export async function verifyRecoveryToken(tokenHash: string, email: string) {
   return data;
 }
 
+export async function verifySignupToken(tokenHash: string, email: string) {
+  const normalizedEmail = normalizeEmail(email);
+  const { data, error } = await supabase.auth.verifyOtp({
+    type: 'signup',
+    token_hash: tokenHash,
+    email: normalizedEmail,
+  });
+  if (error) {
+    throw new Error('This confirmation link is invalid or has expired. Please request a new one.');
+  }
+  return data;
+}
+
 export async function updateUserPassword(newPassword: string) {
   const { error } = await supabase.auth.updateUser({
     password: newPassword
