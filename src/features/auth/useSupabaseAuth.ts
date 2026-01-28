@@ -409,6 +409,14 @@ export async function verifyRecoveryToken(tokenHash: string, email: string) {
     // Common cases: otp_expired, access_denied, malformed token, etc.
     throw new Error('This reset link is invalid or has expired. Please request a new one.');
   }
+  // Some email-link flows return a session but don't automatically persist it.
+  // Persist it so the user is truly authed before setting a new password.
+  if (data?.session?.access_token && data?.session?.refresh_token) {
+    await supabase.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
+  }
   return data;
 }
 
@@ -421,6 +429,13 @@ export async function verifySignupToken(tokenHash: string, email: string) {
   });
   if (error) {
     throw new Error('This confirmation link is invalid or has expired. Please request a new one.');
+  }
+  // Persist session so we can route straight to Home (skip showing auth forms again).
+  if (data?.session?.access_token && data?.session?.refresh_token) {
+    await supabase.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
   }
   return data;
 }
