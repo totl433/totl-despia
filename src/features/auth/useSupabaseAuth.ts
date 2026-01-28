@@ -398,6 +398,33 @@ export async function resetPasswordForEmail(email: string) {
   if (error) throw error;
 }
 
+export async function verifyRecoveryToken(tokenHash: string, email: string) {
+  const normalizedEmail = normalizeEmail(email);
+  const { data, error } = await supabase.auth.verifyOtp({
+    type: 'recovery',
+    token_hash: tokenHash,
+    email: normalizedEmail,
+  });
+  if (error) {
+    // Common cases: otp_expired, access_denied, malformed token, etc.
+    throw new Error('This reset link is invalid or has expired. Please request a new one.');
+  }
+  return data;
+}
+
+export async function verifySignupToken(tokenHash: string, email: string) {
+  const normalizedEmail = normalizeEmail(email);
+  const { data, error } = await supabase.auth.verifyOtp({
+    type: 'signup',
+    token_hash: tokenHash,
+    email: normalizedEmail,
+  });
+  if (error) {
+    throw new Error('This confirmation link is invalid or has expired. Please request a new one.');
+  }
+  return data;
+}
+
 export async function updateUserPassword(newPassword: string) {
   const { error } = await supabase.auth.updateUser({
     password: newPassword
