@@ -367,6 +367,15 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 function AppShell() {
+  // If a Universal Link on playtotl.com opens the native app, we must avoid
+  // rendering playtotl.com inside the Despia webview (Apple review / cookie prompts).
+  // Instead, immediately bounce to the staging origin while preserving path/query/hash.
+  if (isDespiaAvailable() && window.location.hostname === 'playtotl.com') {
+    const target = `https://totl-staging.netlify.app${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.location.replace(target);
+    return null;
+  }
+
   // Check for deep link SYNCHRONOUSLY before React Router renders
   // This prevents the home page from ever rendering if we have a notification deep link
   const searchParams = new URLSearchParams(window.location.search);

@@ -3,7 +3,7 @@
  * Handles both requesting reset email and setting new password
  */
 import { useState, useEffect } from'react';
-import { resetPasswordForEmail, updateUserPassword } from'./useSupabaseAuth';
+import { resetPasswordForEmail, updateUserPassword, verifyRecoveryToken } from'./useSupabaseAuth';
 import AuthLoading from'./AuthLoading';
 
 interface ResetPasswordFormProps {
@@ -22,20 +22,53 @@ export default function ResetPasswordForm({
  const [error, setError] = useState<string | null>(null);
  const [emailSent, setEmailSent] = useState(false);
  const [isLoading, setIsLoading] = useState(false);
+ const [isVerifyingLink, setIsVerifyingLink] = useState(false);
 
  // Check if we're in password reset mode (recovery link clicked)
  useEffect(() => {
- const urlParams = new URLSearchParams(window.location.search);
- const hashParams = new URLSearchParams(window.location.hash.substring(1));
- 
- const isRecovery = urlParams.get('type') ==='recovery' || 
- hashParams.get('type') ==='recovery' ||
- window.location.search.includes('type=recovery') ||
- window.location.hash.includes('type=recovery');
- 
- if (isRecovery) {
- setMode('set-new');
- }
+  const urlParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+
+  const isRecovery =
+    urlParams.get('type') ==='recovery' ||
+    hashParams.get('type') ==='recovery' ||
+    window.location.search.includes('type=recovery') ||
+    window.location.hash.includes('type=recovery');
+
+  // If Supabase redirected back with an error in the hash (common in WhatsApp/Safari),
+  // don't show "set new password" because there is no valid recovery session.
+  const errorCode = hashParams.get('error_code') || hashParams.get('error');
+  if (isRecovery && errorCode) {
+    setError('This reset link is invalid or has expired. Please request a new one.');
+    setMode('request');
+    return;
+  }
+
+  // Preferred universal-link format: /auth?type=recovery&token_hash=...&email=...
+  // This lets the link itself be on playtotl.com (or staging) so iOS opens the native app.
+  const tokenHash = urlParams.get('token_hash') || '';
+  const emailParam = urlParams.get('email') || '';
+  if (isRecovery && tokenHash && emailParam) {
+    setMode('set-new');
+    setEmail(emailParam);
+    setIsVerifyingLink(true);
+    verifyRecoveryToken(tokenHash, emailParam)
+      .then(() => {
+        // Remove sensitive token from the URL after establishing the recovery session.
+        window.history.replaceState(null, '', '/auth?type=recovery');
+      })
+      .catch((err: any) => {
+        const message = err?.message || 'This reset link is invalid or has expired. Please request a new one.';
+        setError(message);
+        setMode('request');
+      })
+      .finally(() => setIsVerifyingLink(false));
+    return;
+  }
+
+  if (isRecovery) {
+    setMode('set-new');
+  }
  }, []);
 
  async function handleRequestReset(e: React.FormEvent) {
@@ -87,7 +120,7 @@ export default function ResetPasswordForm({
  }
  
  // Show loading screen during auth
- if (isLoading) {
+ if (isLoading || isVerifyingLink) {
  return <AuthLoading />;
  }
 
