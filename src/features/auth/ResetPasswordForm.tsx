@@ -44,15 +44,15 @@ export default function ResetPasswordForm({
     return;
   }
 
-  // Preferred universal-link format: /auth?type=recovery&token_hash=...&email=...
+  // Preferred universal-link format: /auth?type=recovery&token_hash=...(&email=...)
   // This lets the link itself be on playtotl.com (or staging) so iOS opens the native app.
   const tokenHash = urlParams.get('token_hash') || '';
   const emailParam = urlParams.get('email') || '';
-  if (isRecovery && tokenHash && emailParam) {
+  if (isRecovery && tokenHash) {
     setMode('set-new');
-    setEmail(emailParam);
+    if (emailParam) setEmail(emailParam);
     setIsVerifyingLink(true);
-    verifyRecoveryToken(tokenHash, emailParam)
+    verifyRecoveryToken(tokenHash, emailParam || undefined)
       .then(() => {
         // Remove sensitive token from the URL after establishing the recovery session.
         window.history.replaceState(null, '', '/auth?type=recovery');
