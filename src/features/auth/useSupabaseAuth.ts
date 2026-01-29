@@ -405,7 +405,7 @@ export async function verifyRecoveryToken(tokenHash: string, email?: string) {
   const { data, error } = await supabase.auth.verifyOtp({
     type: 'recovery',
     token_hash: tokenHash,
-    ...(normalizedEmail ? { email: normalizedEmail } : null),
+    ...(normalizedEmail ? { email: normalizedEmail } : {}),
   });
   if (error) {
     // Common cases: otp_expired, access_denied, malformed token, etc.
@@ -421,8 +421,18 @@ export async function verifyRecoveryToken(tokenHash: string, email?: string) {
   }
 
   // Defensive: ensure we actually have a session after verification (otherwise updateUser will fail).
-  const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData?.session) {
+  const waitForSession = async (): Promise<boolean> => {
+    const start = Date.now();
+    const maxMs = 2500;
+    while (Date.now() - start < maxMs) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData?.session) return true;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    return false;
+  };
+  const hasSession = await waitForSession();
+  if (!hasSession) {
     throw new Error('This reset link is invalid or has expired. Please request a new one.');
   }
 
