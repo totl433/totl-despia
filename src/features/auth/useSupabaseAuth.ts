@@ -316,14 +316,34 @@ export async function verifyRecoveryToken(tokenHash: string, email?: string) {
   // Supabase recovery links increasingly use the "token_hash" format.
   // For recovery, `email` may be omitted; passing it is optional and can vary by client/link format.
   const normalizedEmail = email ? normalizeEmail(email) : undefined;
-  const { data, error } = await supabase.auth.verifyOtp({
+
+  const formatOtpError = (err: any) => {
+    const code = err?.code || err?.error_code;
+    const message = err?.message || err?.error_description || '';
+    const suffix = code ? ` (${code})` : message ? ` (${message})` : '';
+    return `This reset link is invalid or has expired. Please request a new one.${suffix}`;
+  };
+
+  // Try without email first (works for token_hash links on newer Supabase flows).
+  let data: any = null;
+  let error: any = null;
+  ({ data, error } = await supabase.auth.verifyOtp({
     type: 'recovery',
     token_hash: tokenHash,
-    ...(normalizedEmail ? { email: normalizedEmail } : {}),
-  });
+  }));
+
+  // If that fails and we have an email, retry including email (older/stricter configurations).
+  if (error && normalizedEmail) {
+    ({ data, error } = await supabase.auth.verifyOtp({
+      type: 'recovery',
+      token_hash: tokenHash,
+      email: normalizedEmail,
+    }));
+  }
+
   if (error) {
     // Common cases: otp_expired, access_denied, malformed token, etc.
-    throw new Error('This reset link is invalid or has expired. Please request a new one.');
+    throw new Error(formatOtpError(error));
   }
   // Some email-link flows return a session but don't automatically persist it.
   // Persist it so the user is truly authed before setting a new password.
@@ -347,7 +367,7 @@ export async function verifyRecoveryToken(tokenHash: string, email?: string) {
   };
   const hasSession = await waitForSession();
   if (!hasSession) {
-    throw new Error('This reset link is invalid or has expired. Please request a new one.');
+    throw new Error('This reset link is invalid or has expired. Please request a new one. (no_session)');
   }
 
   return data;
