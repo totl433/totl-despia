@@ -312,6 +312,56 @@ export async function resetPasswordForEmail(email: string) {
   if (error) throw error;
 }
 
+export async function verifyRecoveryToken(tokenHash: string, email?: string) {
+  // Supabase recovery links increasingly use the "token_hash" format.
+  // For recovery, `email` may be omitted; passing it is optional and can vary by client/link format.
+  const normalizedEmail = email ? normalizeEmail(email) : undefined;
+  const { data, error } = await supabase.auth.verifyOtp({
+    type: 'recovery',
+    token_hash: tokenHash,
+    ...(normalizedEmail ? { email: normalizedEmail } : null),
+  });
+  if (error) {
+    // Common cases: otp_expired, access_denied, malformed token, etc.
+    throw new Error('This reset link is invalid or has expired. Please request a new one.');
+  }
+  // Some email-link flows return a session but don't automatically persist it.
+  // Persist it so the user is truly authed before setting a new password.
+  if (data?.session?.access_token && data?.session?.refresh_token) {
+    await supabase.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
+  }
+
+  // Defensive: ensure we actually have a session after verification (otherwise updateUser will fail).
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData?.session) {
+    throw new Error('This reset link is invalid or has expired. Please request a new one.');
+  }
+
+  return data;
+}
+
+export async function verifySignupToken(tokenHash: string, email: string) {
+  const normalizedEmail = normalizeEmail(email);
+  const { data, error } = await supabase.auth.verifyOtp({
+    type: 'signup',
+    token_hash: tokenHash,
+    email: normalizedEmail,
+  });
+  if (error) {
+    throw new Error('This confirmation link is invalid or has expired. Please request a new one.');
+  }
+  // Persist session so we can route straight to Home (skip showing auth forms again).
+  if (data?.session?.access_token && data?.session?.refresh_token) {
+    await supabase.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
+  }
+  return data;
+}
 export async function updateUserPassword(newPassword: string) {
   const { error } = await supabase.auth.updateUser({
     password: newPassword
