@@ -897,7 +897,8 @@ function AppContent() {
         )}
 
         {/* Welcome Message */}
-        {showWelcome && (
+        {/* TEMP: hidden until design is confirmed */}
+        {false && showWelcome && (
           <div className="fixed top-40 left-1/2 transform -translate-x-1/2 z-50 bg-[#1C8376] text-white px-8 py-5 rounded-lg shadow-lg w-11/12 max-w-4xl">
             <div className="relative">
               <div className="text-center pr-10">
