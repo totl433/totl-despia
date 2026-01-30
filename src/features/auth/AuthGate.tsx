@@ -40,13 +40,11 @@ export default function AuthGate() {
     return { tokenHash, email };
   }, []);
 
-  // If we opened an email confirmation universal link, verify it immediately.
-  // This prevents the onboarding carousel from showing on a fresh launch.
   useEffect(() => {
-    if (!signupParams?.tokenHash || !signupParams?.email) return;
+    if (!signupParams?.tokenHash) return;
     if (status !== 'guest') return;
     setSignupVerifyLoading(true);
-    verifySignupToken(signupParams.tokenHash, signupParams.email)
+    verifySignupToken(signupParams.tokenHash, signupParams.email || undefined)
       .then(() => {
         // Strip sensitive params from the URL and go home.
         window.history.replaceState(null, '', '/');
