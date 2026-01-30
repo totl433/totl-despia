@@ -373,16 +373,37 @@ export async function verifyRecoveryToken(tokenHash: string, email?: string) {
   return data;
 }
 
-export async function verifySignupToken(tokenHash: string, email: string) {
-  const normalizedEmail = normalizeEmail(email);
-  const { data, error } = await supabase.auth.verifyOtp({
+export async function verifySignupToken(tokenHash: string, email?: string) {
+  const normalizedEmail = email ? normalizeEmail(email) : undefined;
+
+  const formatOtpError = (err: any) => {
+    const code = err?.code || err?.error_code;
+    const message = err?.message || err?.error_description || '';
+    const suffix = code ? ` (${code})` : message ? ` (${message})` : '';
+    return `This confirmation link is invalid or has expired. Please request a new one.${suffix}`;
+  };
+
+  // Try without email first (works for token_hash links on newer Supabase flows).
+  let data: any = null;
+  let error: any = null;
+  ({ data, error } = await supabase.auth.verifyOtp({
     type: 'signup',
     token_hash: tokenHash,
-    email: normalizedEmail,
-  });
-  if (error) {
-    throw new Error('This confirmation link is invalid or has expired. Please request a new one.');
+  }));
+
+  // If that fails and we have an email, retry including email (older/stricter configurations).
+  if (error && normalizedEmail) {
+    ({ data, error } = await supabase.auth.verifyOtp({
+      type: 'signup',
+      token_hash: tokenHash,
+      email: normalizedEmail,
+    }));
   }
+
+  if (error) {
+    throw new Error(formatOtpError(error));
+  }
+
   // Persist session so we can route straight to Home (skip showing auth forms again).
   if (data?.session?.access_token && data?.session?.refresh_token) {
     await supabase.auth.setSession({
@@ -390,6 +411,23 @@ export async function verifySignupToken(tokenHash: string, email: string) {
       refresh_token: data.session.refresh_token,
     });
   }
+
+  // Defensive: ensure a session exists after verification.
+  const waitForSession = async (): Promise<boolean> => {
+    const start = Date.now();
+    const maxMs = 2500;
+    while (Date.now() - start < maxMs) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData?.session) return true;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    return false;
+  };
+  const hasSession = await waitForSession();
+  if (!hasSession) {
+    throw new Error('This confirmation link is invalid or has expired. Please request a new one. (no_session)');
+  }
+
   return data;
 }
 export async function updateUserPassword(newPassword: string) {
