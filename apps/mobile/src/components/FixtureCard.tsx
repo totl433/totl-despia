@@ -175,7 +175,7 @@ export default function FixtureCard({
     const s = buttonStyle(side);
     const commonStyle = {
       flex: 1,
-      height: 64,
+      height: 48,
       borderRadius: 12,
       borderWidth: 2,
       borderColor: s.border,
@@ -322,7 +322,7 @@ export default function FixtureCard({
         </Card>
       ) : (
         // `grouped`: no outer card/border — parent list card handles borders & radius.
-        <View style={{ paddingVertical: 14 }}>
+        <View style={{ paddingVertical: 20 }}>
           {/* LIVE indicator */}
           {isOngoing ? (
             <View style={{ position: 'absolute', left: 16, top: 10, flexDirection: 'row', alignItems: 'center' }}>

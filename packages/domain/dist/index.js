@@ -61,3 +61,39 @@ export const HomeRanksSchema = z.object({
     tenWeekForm: RankBadgeSchema.nullable(),
     seasonRank: RankBadgeSchema.nullable(),
 });
+export const GwResultsSchema = z.object({
+    score: z.number().int().nonnegative(),
+    totalFixtures: z.number().int().positive(),
+    gwRank: z.number().int().positive().nullable(),
+    gwRankTotal: z.number().int().positive().nullable(),
+    trophies: z.object({
+        gw: z.boolean(),
+        form5: z.boolean(),
+        form10: z.boolean(),
+        overall: z.boolean(),
+    }),
+    mlVictories: z.number().int().nonnegative(),
+    mlVictoryNames: z.array(z.string()),
+    mlVictoryData: z.array(z.object({
+        id: z.string(),
+        name: z.string(),
+        avatar: z.string().nullable(),
+    })),
+    leaderboardChanges: z.object({
+        overall: z.object({
+            before: z.number().int().positive().nullable(),
+            after: z.number().int().positive().nullable(),
+            change: z.number().int().nullable(),
+        }),
+        form5: z.object({
+            before: z.number().int().positive().nullable(),
+            after: z.number().int().positive().nullable(),
+            change: z.number().int().nullable(),
+        }),
+        form10: z.object({
+            before: z.number().int().positive().nullable(),
+            after: z.number().int().positive().nullable(),
+            change: z.number().int().nullable(),
+        }),
+    }),
+});

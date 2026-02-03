@@ -1,4 +1,4 @@
-import { type HomeRanks, type HomeSnapshot } from '@totl/domain';
+import { type GwResults, type HomeRanks, type HomeSnapshot } from '@totl/domain';
 export interface ApiClientOptions {
     baseUrl: string;
     getAccessToken: () => Promise<string | null>;
@@ -16,6 +16,7 @@ export declare function createApiClient(opts: ApiClientOptions): {
         gw?: number;
     }): Promise<HomeSnapshot>;
     getHomeRanks(): Promise<HomeRanks>;
+    getGwResults(gw: number): Promise<GwResults>;
     registerExpoPushToken(input: {
         expoPushToken: string;
         platform?: "ios" | "android";
@@ -35,12 +36,19 @@ export declare function createApiClient(opts: ApiClientOptions): {
         members: Array<{
             id: string;
             name: string;
+            avatar_url?: string | null;
         }>;
     }>;
     getLeagueGwTable(leagueId: string, gw: number): Promise<{
         leagueId: string;
         gw: number;
-        rows: any[];
+        rows: Array<{
+            user_id: string;
+            name: string;
+            avatar_url?: string | null;
+            score: number;
+            unicorns: number;
+        }>;
         submittedCount: number;
         totalMembers: number;
     }>;

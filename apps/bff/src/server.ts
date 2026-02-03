@@ -6,6 +6,7 @@ import { z } from 'zod';
 import {
   FixtureSchema,
   GwResultRowSchema,
+  GwResultsSchema,
   HomeRanksSchema,
   HomeSnapshotSchema,
   LiveScoreSchema,
@@ -14,10 +15,11 @@ import {
   type Pick,
 } from '@totl/domain';
 
-import { loadEnv } from './env';
-import { createSupabaseClient } from './supabase';
-import { requireUser } from './auth';
-import { captureException, initSentry } from './sentry';
+import { loadEnv } from './env.js';
+import { createSupabaseClient } from './supabase.js';
+import { requireUser } from './auth.js';
+import { captureException, initSentry } from './sentry.js';
+import { computeGwResults } from './gwResults.js';
 
 const env = loadEnv(process.env);
 const supabase = createSupabaseClient(env);
@@ -53,6 +55,10 @@ function getAuthedSupa(req: any) {
   return { userId, supa: createSupabaseClient(env, { bearerToken: accessToken }) };
 }
 
+const GwParamsSchema = z.object({
+  gw: z.coerce.number().int().positive(),
+});
+
 const HomeQuerySchema = z.object({
   gw: z.coerce.number().int().positive().optional(),
 });
@@ -84,6 +90,14 @@ app.post('/v1/push/register', async (req) => {
 
   if (error) throw error;
   return { ok: true };
+});
+
+app.get('/v1/gw/:gw/results', async (req) => {
+  await requireUser(req, supabase);
+  const { userId, supa } = getAuthedSupa(req as any);
+  const params = GwParamsSchema.parse((req as any).params);
+  const out = await computeGwResults({ userId, gw: params.gw, supa });
+  return GwResultsSchema.parse(out);
 });
 
 app.get('/v1/home', async (req) => {

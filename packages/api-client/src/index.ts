@@ -1,4 +1,11 @@
-import { HomeRanksSchema, HomeSnapshotSchema, type HomeRanks, type HomeSnapshot } from '@totl/domain';
+import {
+  GwResultsSchema,
+  HomeRanksSchema,
+  HomeSnapshotSchema,
+  type GwResults,
+  type HomeRanks,
+  type HomeSnapshot,
+} from '@totl/domain';
 
 export interface ApiClientOptions {
   baseUrl: string;
@@ -74,6 +81,13 @@ export function createApiClient(opts: ApiClientOptions) {
       return requestJson<HomeRanks>(opts, `/v1/home/ranks`, {
         method: 'GET',
         validate: (data) => HomeRanksSchema.parse(data),
+      });
+    },
+
+    async getGwResults(gw: number): Promise<GwResults> {
+      return requestJson<GwResults>(opts, `/v1/gw/${encodeURIComponent(String(gw))}/results`, {
+        method: 'GET',
+        validate: (data) => GwResultsSchema.parse(data),
       });
     },
 

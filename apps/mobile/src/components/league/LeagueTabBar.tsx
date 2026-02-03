@@ -162,16 +162,16 @@ export default function LeagueTabBar({
         pointerEvents="none"
         style={[
           {
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
             height: INDICATOR_H,
-            backgroundColor: t.color.brand,
+                  backgroundColor: t.color.brand,
             borderRadius: 999,
           },
           indicatorStyle,
         ]}
-      />
+              />
     </View>
   );
 }

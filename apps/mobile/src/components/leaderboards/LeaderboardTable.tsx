@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList, type ViewStyle, View } from 'react-native';
+import { FlatList, Image, type ViewStyle, View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import { TotlRefreshControl } from '../../lib/refreshControl';
 
@@ -7,13 +7,13 @@ export type LeaderboardRow = {
   user_id: string;
   name: string;
   value: number;
+  avatar_url?: string | null;
 };
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return `${parts[0]![0] ?? ''}${parts[parts.length - 1]![0] ?? ''}`.toUpperCase();
+function initial1(name: string): string {
+  const s = name.trim();
+  if (!s) return '?';
+  return s.slice(0, 1).toUpperCase();
 }
 
 function formatRank(rank: number, tied: boolean): string {
@@ -52,7 +52,20 @@ export default function LeaderboardTable({
   }, [rows]);
 
   return (
-    <Card style={[{ padding: 0, flex: 1 }, style]}>
+    <Card
+      style={[
+        {
+          padding: 0,
+          flex: 1,
+          // Flat (no shadow) to match the new iOS design language.
+          shadowOpacity: 0,
+          shadowRadius: 0,
+          shadowOffset: { width: 0, height: 0 },
+          elevation: 0,
+        },
+        style,
+      ]}
+    >
       <View
         style={{
           flexDirection: 'row',
@@ -119,9 +132,13 @@ export default function LeaderboardTable({
                     marginRight: 6,
                   }}
                 >
+                  {item.row.avatar_url ? (
+                    <Image source={{ uri: item.row.avatar_url }} style={{ width: AVATAR_SIZE, height: AVATAR_SIZE }} />
+                  ) : (
                   <TotlText variant="caption" style={{ fontWeight: '900' }}>
-                    {initials(item.row.name)}
+                      {initial1(item.row.name)}
                   </TotlText>
+                  )}
                 </View>
 
                 {showTrophy ? (

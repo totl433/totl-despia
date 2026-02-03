@@ -1,6 +1,6 @@
 import React from 'react';
 import { FlatList, Pressable, View } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
 
@@ -9,6 +9,10 @@ import type { LeaguesStackParamList } from '../navigation/LeaguesNavigator';
 import MiniLeagueListItem from '../components/miniLeagues/MiniLeagueListItem';
 import PageHeader from '../components/PageHeader';
 import { TotlRefreshControl } from '../lib/refreshControl';
+import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
+import CreateJoinLeagueSheet from '../components/miniLeagues/CreateJoinLeagueSheet';
+import { joinLeagueByCode } from '../services/leagues';
+import { resolveLeagueAvatarUri } from '../lib/leagueAvatars';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -36,6 +40,8 @@ function LeagueRow({
   onPress: () => void;
 }) {
   const leagueId = String(league.id);
+  const { unreadByLeagueId, optimisticallyClear } = useLeagueUnreadCounts();
+  const unread = Number(unreadByLeagueId[leagueId] ?? 0);
 
   const { data: membersData } = useQuery<LeagueMembersResponse>({
     enabled,
@@ -65,13 +71,18 @@ function LeagueRow({
   return (
     <MiniLeagueListItem
       title={String(league.name ?? '')}
-      avatarUri={typeof league.avatar === 'string' && league.avatar.startsWith('http') ? league.avatar : null}
-      allSubmitted={allSubmitted}
-      membersCount={table?.totalMembers ?? members.length ?? null}
-      userRank={userRank}
-      rankDelta={null}
-      membersPreview={members.slice(0, 4).map((m) => ({ id: String(m.id), name: String(m.name ?? '') }))}
-      onPress={onPress}
+      avatarUri={resolveLeagueAvatarUri(typeof league.avatar === 'string' ? league.avatar : null)}
+      submittedCount={typeof table?.submittedCount === 'number' ? table.submittedCount : null}
+      totalMembers={typeof table?.totalMembers === 'number' ? table.totalMembers : members.length ?? null}
+      membersPreview={members.slice(0, 4).map((m: any) => ({
+        id: String(m.id),
+        name: String(m.name ?? ''),
+        avatarUri: typeof m.avatar_url === 'string' && m.avatar_url.startsWith('http') ? m.avatar_url : null,
+      }))}
+      unreadCount={unread}
+      onPress={() => {
+        onPress();
+      }}
     />
   );
 }
@@ -79,6 +90,7 @@ function LeagueRow({
 export default function LeaguesScreen() {
   const navigation = useNavigation<any>();
   const t = useTokens();
+  const queryClient = useQueryClient();
   const { data, isLoading, error, refetch, isRefetching } = useQuery<LeaguesResponse>({
     queryKey: ['leagues'],
     queryFn: () => api.listLeagues(),
@@ -89,6 +101,11 @@ export default function LeaguesScreen() {
     queryFn: () => api.getHomeSnapshot(),
   });
   const viewingGw = home?.viewingGw ?? null;
+
+  const [createJoinOpen, setCreateJoinOpen] = React.useState(false);
+  const [joinCode, setJoinCode] = React.useState('');
+  const [joinError, setJoinError] = React.useState<string | null>(null);
+  const [joining, setJoining] = React.useState(false);
 
   const [visibleLeagueIds, setVisibleLeagueIds] = React.useState<Set<string>>(() => new Set());
   const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 35 }).current;
@@ -132,7 +149,10 @@ export default function LeaguesScreen() {
         subtitle="Create or join a private league with friends. Let the rivalry begin."
         rightAction={
           <Pressable
-            onPress={() => {}}
+            onPress={() => {
+              setJoinError(null);
+              setCreateJoinOpen(true);
+            }}
             accessibilityRole="button"
             accessibilityLabel="Create or join mini league"
             style={({ pressed }) => ({
@@ -157,7 +177,7 @@ export default function LeaguesScreen() {
         data={data?.leagues ?? []}
         style={{ flex: 1 }}
         keyExtractor={(l) => String(l.id)}
-        contentContainerStyle={{ padding: t.space[4], paddingBottom: t.space[8] }}
+        contentContainerStyle={{ padding: t.space[4], paddingBottom: t.space[8] + 56 }}
         refreshControl={<TotlRefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
         viewabilityConfig={viewabilityConfig}
         onViewableItemsChanged={onViewableItemsChanged}
@@ -188,7 +208,10 @@ export default function LeaguesScreen() {
           (data?.leagues?.length ?? 0) > 0 ? (
             <View style={{ marginTop: 14, marginBottom: 6 }}>
               <Pressable
-                onPress={() => {}}
+                onPress={() => {
+                  setJoinError(null);
+                  setCreateJoinOpen(true);
+                }}
                 style={({ pressed }) => ({
                   width: '100%',
                   paddingVertical: 12,
@@ -222,6 +245,42 @@ export default function LeaguesScreen() {
               }
             />
           );
+        }}
+      />
+
+      <CreateJoinLeagueSheet
+        open={createJoinOpen}
+        onClose={() => setCreateJoinOpen(false)}
+        joinCode={joinCode}
+        setJoinCode={(next) => {
+          setJoinError(null);
+          setJoinCode(next);
+        }}
+        joinError={joinError}
+        joining={joining}
+        onPressCreate={() => {
+          setCreateJoinOpen(false);
+          // Route will be added in `LeaguesNavigator` as part of the plan.
+          navigation.navigate('CreateLeague');
+        }}
+        onPressJoin={() => {
+          if (joining) return;
+          const code = joinCode.trim().toUpperCase();
+          setJoinError(null);
+          setJoining(true);
+          void (async () => {
+            const res = await joinLeagueByCode(code);
+            if (!res.ok) {
+              setJoinError(res.error);
+              setJoining(false);
+              return;
+            }
+            setJoining(false);
+            setCreateJoinOpen(false);
+            setJoinCode('');
+            await queryClient.invalidateQueries({ queryKey: ['leagues'] });
+            navigation.navigate('LeagueDetail', { leagueId: res.league.id, name: res.league.name } as const);
+          })();
         }}
       />
     </Screen>

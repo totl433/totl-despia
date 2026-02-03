@@ -23,10 +23,8 @@ export const AllSubmitted: Story = {
   args: {
     title: 'Prem Predictions',
     avatarUri: null,
-    allSubmitted: true,
-    membersCount: 4,
-    userRank: 2,
-    rankDelta: -1,
+    submittedCount: 4,
+    totalMembers: 4,
     membersPreview: [
       { id: '1', name: 'Jof' },
       { id: '2', name: 'Greg' },
@@ -41,10 +39,8 @@ export const Waiting: Story = {
   args: {
     title: 'Easy League',
     avatarUri: null,
-    allSubmitted: false,
-    membersCount: 3,
-    userRank: null,
-    rankDelta: null,
+    submittedCount: 2,
+    totalMembers: 3,
     membersPreview: [
       { id: '1', name: 'Alice Wonder' },
       { id: '2', name: 'Bob Builder' },

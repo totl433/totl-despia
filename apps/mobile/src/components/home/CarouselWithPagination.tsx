@@ -57,6 +57,12 @@ export default function CarouselWithPagination<ItemT>({
   renderItem: CarouselRenderItem<ItemT>
 }) {
   const dotCount = data.length
+  // Gesture tuning:
+  // - Vertical scroll on the page should win unless the user is clearly swiping horizontally.
+  // - We do this by requiring a minimum horizontal displacement before the pan activates,
+  //   and failing the gesture quickly when vertical displacement is detected.
+  const HORIZONTAL_LOCK_PX = 12
+  const VERTICAL_FAIL_PX = 8
 
   return (
     <View style={{ marginBottom: sectionBottomPadding }}>
@@ -74,6 +80,12 @@ export default function CarouselWithPagination<ItemT>({
           windowSize={windowSize}
           onProgressChange={progress}
           customAnimation={customAnimation}
+          onConfigurePanGesture={(g) => {
+            // Only start capturing when the user has moved horizontally enough.
+            g.activeOffsetX([-HORIZONTAL_LOCK_PX, HORIZONTAL_LOCK_PX])
+            // If the user moves vertically, let the parent ScrollView take over.
+            g.failOffsetY([-VERTICAL_FAIL_PX, VERTICAL_FAIL_PX])
+          }}
           style={[{ overflow: 'visible' }, style]}
           containerStyle={[{ overflow: 'visible' }, containerStyle]}
           onSnapToItem={onIndexChange}

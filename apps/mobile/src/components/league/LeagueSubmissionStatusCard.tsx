@@ -4,19 +4,20 @@ import { Card, TotlText, useTokens } from '@totl/ui';
 
 export default function LeagueSubmissionStatusCard({
   members,
-  submittedSet,
+  submittedUserIds,
   picksGw,
   fixtures,
   variant = 'full',
 }: {
   members: Array<{ id: string; name: string }>;
-  submittedSet: Set<string>;
+  submittedUserIds: string[];
   picksGw: number;
   fixtures: Array<{ kickoff_time?: string | null }>;
   variant?: 'full' | 'compact';
 }) {
   const t = useTokens();
 
+  const submittedSet = React.useMemo(() => new Set(submittedUserIds.map(String)), [submittedUserIds]);
   const remaining = members.filter((m) => !submittedSet.has(m.id)).length;
   const allSubmitted = members.length > 0 && remaining === 0;
 
@@ -45,7 +46,17 @@ export default function LeagueSubmissionStatusCard({
   };
 
   return (
-    <Card style={{ marginTop: 8, marginBottom: 12 }}>
+    <Card
+      style={{
+        marginTop: 8,
+        marginBottom: 12,
+        // Flat surface (no shadow) to match the iOS-native, light chrome direction.
+        shadowOpacity: 0,
+        shadowRadius: 0,
+        shadowOffset: { width: 0, height: 0 },
+        elevation: 0,
+      }}
+    >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <TotlText variant="body" style={{ fontWeight: '900' }}>
           {allSubmitted

@@ -35,6 +35,9 @@ export default function MiniLeagueCard({
   const rowGap = 16;
   const avatarBg = t.color.surface2;
   const isLightMode = t.color.background.toLowerCase() === '#f8fafc';
+  const CARD_HEIGHT = 330;
+  const CARD_RADIUS = 16;
+  const CARD_BORDER = '#DFEBE9';
 
   const displayRows: Array<MiniLeagueTableRowWithAvatar | null> = React.useMemo(() => {
     if (!fixedRowCount) return rows;
@@ -47,9 +50,12 @@ export default function MiniLeagueCard({
     <Card
       style={{
         width,
+        height: CARD_HEIGHT,
         padding: 20,
-        borderRadius: 16,
-        backgroundColor: t.color.surface,
+        borderRadius: CARD_RADIUS,
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: CARD_BORDER,
         ...(isLightMode
           ? {
               shadowOpacity: 0,
@@ -61,16 +67,16 @@ export default function MiniLeagueCard({
       }}
     >
       {/* Header (Figma: 54px avatar + 18px title) */}
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <View
-          style={{
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View
+            style={{
             width: 54,
             height: 54,
-            borderRadius: 999,
+              borderRadius: 999,
             backgroundColor: avatarBg,
-            overflow: 'hidden',
-          }}
-        >
+              overflow: 'hidden',
+            }}
+          >
           {avatarUri ? <Image source={{ uri: avatarUri }} style={{ width: 54, height: 54 }} /> : null}
         </View>
         <View style={{ width: 16 }} />
@@ -94,7 +100,7 @@ export default function MiniLeagueCard({
           <View style={{ width: 20 }} />
           <TotlText style={{ width: unicornColWidth, textAlign: 'right', fontSize: 14, color: t.color.text }}>🦄</TotlText>
         </>
-      </View>
+          </View>
 
       <View style={{ height: 16 }} />
 
@@ -125,7 +131,7 @@ export default function MiniLeagueCard({
                   }}
                 >
                   {r?.avatar_url ? <Image source={{ uri: r.avatar_url }} style={{ width: 30, height: 30 }} /> : null}
-                </View>
+            </View>
                 <View style={{ width: 12 }} />
 
                 <TotlText
@@ -154,9 +160,9 @@ export default function MiniLeagueCard({
             </React.Fragment>
           );
         })
-      ) : (
-        <TotlText variant="muted">{emptyLabel}</TotlText>
-      )}
+        ) : (
+            <TotlText variant="muted">{emptyLabel}</TotlText>
+        )}
     </Card>
   );
 }

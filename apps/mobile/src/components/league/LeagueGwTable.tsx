@@ -31,7 +31,15 @@ export default function LeagueGwTable({
       : null;
 
   return (
-    <Card style={{ padding: 0 }}>
+    <Card
+      style={{
+        padding: 0,
+        shadowOpacity: 0,
+        shadowRadius: 0,
+        shadowOffset: { width: 0, height: 0 },
+        elevation: 0,
+      }}
+    >
       {submittedLabel ? (
         <View style={{ paddingHorizontal: 14, paddingTop: 12 }}>
           <TotlText variant="caption" style={{ color: allSubmitted ? t.color.brand : t.color.muted, fontWeight: '900' }}>

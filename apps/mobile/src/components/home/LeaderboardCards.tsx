@@ -71,7 +71,16 @@ export function LeaderboardCardLastGw({
           </TotlText>
         </View>
         <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-          <TotlText variant="caption" style={{ color: t.color.muted, marginBottom: 8, fontSize: 14, lineHeight: 18 }}>
+          <TotlText
+            variant="caption"
+            style={{
+              color: t.color.muted,
+              marginBottom: 8,
+              fontSize: 14,
+              lineHeight: 18,
+              textTransform: 'uppercase',
+            }}
+          >
             {gw ? `Gameweek ${gw}` : 'Gameweek'}
           </TotlText>
           <TotlText style={{ fontSize: 16, lineHeight: 20, fontWeight: '900' }}>{displayText}</TotlText>

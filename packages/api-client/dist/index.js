@@ -1,4 +1,4 @@
-import { HomeRanksSchema, HomeSnapshotSchema } from '@totl/domain';
+import { GwResultsSchema, HomeRanksSchema, HomeSnapshotSchema, } from '@totl/domain';
 export class ApiError extends Error {
     status;
     body;
@@ -56,6 +56,12 @@ export function createApiClient(opts) {
             return requestJson(opts, `/v1/home/ranks`, {
                 method: 'GET',
                 validate: (data) => HomeRanksSchema.parse(data),
+            });
+        },
+        async getGwResults(gw) {
+            return requestJson(opts, `/v1/gw/${encodeURIComponent(String(gw))}/results`, {
+                method: 'GET',
+                validate: (data) => GwResultsSchema.parse(data),
             });
         },
         async registerExpoPushToken(input) {

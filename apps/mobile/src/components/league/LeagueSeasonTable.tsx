@@ -31,7 +31,15 @@ export default function LeagueSeasonTable({
   const t = useTokens();
 
   return (
-    <Card style={{ padding: 0 }}>
+    <Card
+      style={{
+        padding: 0,
+        shadowOpacity: 0,
+        shadowRadius: 0,
+        shadowOffset: { width: 0, height: 0 },
+        elevation: 0,
+      }}
+    >
       <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 12 }}>
         {/* Header */}
         <View

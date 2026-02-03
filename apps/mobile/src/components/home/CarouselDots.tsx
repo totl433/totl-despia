@@ -44,7 +44,7 @@ export default function CarouselDots({
   // Map requested greys to our semantic tokens:
   // - secondary_grey -> `muted`
   // - tertiary_grey  -> `border`
-  const activeDotColor = t.color.muted
+  const activeDotColor = '#737678'
   const inactiveDotColor = t.color.border
 
   const visibleCount = Math.min(Math.max(0, count), maxDots)

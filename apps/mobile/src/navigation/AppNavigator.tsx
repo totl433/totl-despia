@@ -1,24 +1,17 @@
 import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { DarkTheme, NavigationContainer, type Theme } from '@react-navigation/native';
 import { useTokens } from '@totl/ui';
 
-import HomeScreen from '../screens/HomeScreen';
-import PredictionsScreen from '../screens/PredictionsScreen';
-import GlobalScreen from '../screens/GlobalScreen';
-import ProfileScreen from '../screens/ProfileScreen';
-import LeaguesNavigator from './LeaguesNavigator';
-import FloatingTabBar from './FloatingTabBar';
+import TabsNavigator from './TabsNavigator';
+import GameweekResultsModalScreen from '../screens/GameweekResultsModalScreen';
 
-export type RootTabsParamList = {
-  Home: undefined;
-  Predictions: undefined;
-  Leagues: undefined;
-  Global: undefined;
-  Profile: undefined;
+export type RootStackParamList = {
+  Tabs: undefined;
+  GameweekResults: { gw: number };
 };
 
-const Tab = createBottomTabNavigator<RootTabsParamList>();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function AppNavigator() {
   const t = useTokens();
@@ -39,34 +32,21 @@ export default function AppNavigator() {
 
   return (
     <NavigationContainer theme={navTheme}>
-      <Tab.Navigator
-        tabBar={(props) => <FloatingTabBar {...props} />}
+      <Stack.Navigator
         screenOptions={{
           headerShown: false,
-          tabBarStyle: {
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'transparent',
-            borderTopWidth: 0,
-            elevation: 0,
-          },
+          contentStyle: { backgroundColor: t.color.background },
         }}
       >
-        <Tab.Screen name="Home" component={HomeScreen} />
-        <Tab.Screen name="Predictions" component={PredictionsScreen} />
-        <Tab.Screen name="Leagues" component={LeaguesNavigator as any} />
-        <Tab.Screen name="Global" component={GlobalScreen} />
-        <Tab.Screen
-          name="Profile"
-          component={ProfileScreen}
+        <Stack.Screen name="Tabs" component={TabsNavigator} />
+        <Stack.Screen
+          name="GameweekResults"
+          component={GameweekResultsModalScreen}
           options={{
-            // Keep route available for header buttons, but hide it from the 4-button web-style nav.
-            tabBarButton: () => null,
+            presentation: 'fullScreenModal',
           }}
         />
-      </Tab.Navigator>
+      </Stack.Navigator>
     </NavigationContainer>
   );
 }

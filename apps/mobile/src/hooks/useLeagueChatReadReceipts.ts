@@ -15,20 +15,25 @@ export function useLeagueChatReadReceipts({
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const DEBOUNCE_MS = 1500;
 
-  const markAsRead = useCallback(async () => {
+  const markAsRead = useCallback(async (opts?: { lastReadAtOverride?: string | null }) => {
     if (!enabled || !leagueId || !userId) return;
     const nowMs = Date.now();
 
     if (nowMs - lastUpdateRef.current < DEBOUNCE_MS) {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      timeoutRef.current = setTimeout(() => void markAsRead(), DEBOUNCE_MS - (nowMs - lastUpdateRef.current));
+      timeoutRef.current = setTimeout(
+        () => void markAsRead({ lastReadAtOverride: opts?.lastReadAtOverride ?? null }),
+        DEBOUNCE_MS - (nowMs - lastUpdateRef.current)
+      );
       return;
     }
 
     lastUpdateRef.current = nowMs;
     try {
+      // Prefer server message timestamps when available (avoids client clock drift).
+      const lastReadAt = (opts?.lastReadAtOverride ?? null) || new Date().toISOString();
       await supabase.from('league_message_reads').upsert(
-        { league_id: leagueId, user_id: userId, last_read_at: new Date().toISOString() },
+        { league_id: leagueId, user_id: userId, last_read_at: lastReadAt },
         { onConflict: 'league_id,user_id' }
       );
     } catch {

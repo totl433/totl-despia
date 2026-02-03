@@ -2,8 +2,9 @@ import React from 'react'
 import type { StyleProp, ViewStyle } from 'react-native'
 import { StyleSheet, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
-import Animated, { Extrapolation, interpolate, interpolateColor, useAnimatedStyle } from 'react-native-reanimated'
+import Animated, { Extrapolation, interpolate, useAnimatedStyle } from 'react-native-reanimated'
 import { useTokens } from '@totl/ui'
+import Svg, { Rect } from 'react-native-svg'
 
 /**
  * Adds “selected card focus” styling to carousel items:
@@ -18,32 +19,18 @@ export default function CarouselFocusShell({
   width,
   radius = 16,
   style,
-  activeBorderColor,
-  activeShadowColor,
 }: {
   animationValue: SharedValue<number>
   children: React.JSX.Element
   width: number
   radius?: number
   style?: StyleProp<ViewStyle>
-  /**
-   * Optional override for the ACTIVE (centered) border color.
-   * Useful when we want the active card to use a specific brand color.
-   */
-  activeBorderColor?: string
-  /**
-   * Optional override for the ACTIVE (centered) shadow color (iOS).
-   * Note: Android elevation shadows aren't reliably tintable, so this primarily affects iOS.
-   */
-  activeShadowColor?: string
 }) {
   const t = useTokens()
-  const isLightMode = t.color.background.toLowerCase() === '#f8fafc'
+  const baseBorder = '#E2E3E5'
+  const selectedShadow = '#000' // “native” shadow (neutral grey when combined with opacity)
 
-  // Slightly stronger border when “selected” (center item).
-  const selectedBorder = activeBorderColor ?? (isLightMode ? 'rgba(15,23,42,0.35)' : 'rgba(248,250,252,0.28)')
-  const baseBorder = t.color.border
-  const selectedShadow = activeShadowColor ?? '#000'
+  const [measuredH, setMeasuredH] = React.useState<number>(0)
 
   const outerStyle = useAnimatedStyle(() => {
     // `animationValue.value` is roughly 0 at center, +/-1 for neighbors.
@@ -80,11 +67,12 @@ export default function CarouselFocusShell({
     }
   }, [radius, selectedShadow])
 
-  const borderOverlayStyle = useAnimatedStyle(() => {
+  const gradientBorderStyle = useAnimatedStyle(() => {
     const d = Math.min(1, Math.abs(animationValue.value))
-    const borderColor = interpolateColor(d, [0, 1], [selectedBorder, baseBorder])
-    return { borderColor }
-  }, [baseBorder, selectedBorder])
+    return {
+      opacity: interpolate(d, [0, 1], [1, 0], Extrapolation.CLAMP),
+    }
+  }, [])
 
   return (
     <Animated.View pointerEvents="box-none" style={[{ flex: 1 }, outerStyle, style]}>
@@ -92,17 +80,40 @@ export default function CarouselFocusShell({
           The carousel translate math in HomeScreen expects the card to be anchored at the item's left edge.
           We only add bottom breathing room so the shadow can fade naturally without clipping. */}
       <View style={{ flex: 1, justifyContent: 'flex-start', paddingBottom: 18 }} pointerEvents="box-none">
-        <Animated.View pointerEvents="box-none" style={[{ width, borderRadius: radius }, innerStyle]}>
+        <Animated.View
+          pointerEvents="box-none"
+          onLayout={(e) => {
+            const h = Math.round(e.nativeEvent.layout.height)
+            if (!h) return
+            setMeasuredH((prev) => (prev === h ? prev : h))
+          }}
+          style={[{ width, borderRadius: radius }, innerStyle]}
+        >
           {children}
-          {/* Draw the border ABOVE the card contents so it can't be covered/cut by child backgrounds. */}
-          <Animated.View
+          {/* Base border (all cards). */}
+          <View
             pointerEvents="none"
-            style={[
-              StyleSheet.absoluteFillObject,
-              { borderRadius: radius, borderWidth: 1 },
-              borderOverlayStyle,
-            ]}
+            style={[StyleSheet.absoluteFillObject, { borderRadius: radius, borderWidth: 1, borderColor: baseBorder }]}
           />
+
+          {/* Active border overlay: subtle border, fades out for non-active cards. */}
+          {measuredH > 0 ? (
+            <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, gradientBorderStyle]}>
+              <Svg width={width} height={measuredH}>
+                <Rect
+                  x={0.5}
+                  y={0.5}
+                  width={Math.max(0, width - 1)}
+                  height={Math.max(0, measuredH - 1)}
+                  rx={Math.max(0, radius - 0.5)}
+                  ry={Math.max(0, radius - 0.5)}
+                  fill="transparent"
+                  stroke={baseBorder}
+                  strokeWidth={1}
+                />
+              </Svg>
+            </Animated.View>
+          ) : null}
         </Animated.View>
       </View>
     </Animated.View>

@@ -2,23 +2,13 @@ import React from 'react';
 import { Image, Pressable, View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return `${parts[0]![0] ?? ''}${parts[parts.length - 1]![0] ?? ''}`.toUpperCase();
+function initial1(name: string): string {
+  const trimmed = String(name ?? '').trim();
+  if (!trimmed) return '?';
+  return trimmed[0]!.toUpperCase();
 }
 
-function ordinal(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${n}st`;
-  if (mod10 === 2 && mod100 !== 12) return `${n}nd`;
-  if (mod10 === 3 && mod100 !== 13) return `${n}rd`;
-  return `${n}th`;
-}
-
-function MemberChip({ name, avatarUri, ringColor }: { name: string; avatarUri?: string | null; ringColor: string }) {
+function MemberChip({ name, avatarUri }: { name: string; avatarUri?: string | null }) {
   const t = useTokens();
   const size = 32;
   return (
@@ -27,9 +17,8 @@ function MemberChip({ name, avatarUri, ringColor }: { name: string; avatarUri?: 
         width: size,
         height: size,
         borderRadius: 999,
-        backgroundColor: t.color.surface2,
-        borderWidth: 3,
-        borderColor: ringColor,
+        // Flat chips (no coloured rings)
+        backgroundColor: '#CED5D2',
         overflow: 'hidden',
         alignItems: 'center',
         justifyContent: 'center',
@@ -38,8 +27,8 @@ function MemberChip({ name, avatarUri, ringColor }: { name: string; avatarUri?: 
       {avatarUri ? (
         <Image source={{ uri: avatarUri }} style={{ width: size, height: size }} />
       ) : (
-        <TotlText variant="caption" style={{ fontWeight: '900' }}>
-          {initials(name)}
+        <TotlText variant="caption" style={{ fontWeight: '900', color: '#0F172A' }}>
+          {initial1(name)}
         </TotlText>
       )}
     </View>
@@ -49,37 +38,49 @@ function MemberChip({ name, avatarUri, ringColor }: { name: string; avatarUri?: 
 export default function MiniLeagueListItem({
   title,
   avatarUri,
-  allSubmitted,
-  membersCount,
-  userRank,
-  rankDelta,
+  submittedCount,
+  totalMembers,
   membersPreview,
+  unreadCount,
   onPress,
 }: {
   title: string;
   avatarUri: string | null;
-  allSubmitted: boolean;
-  membersCount: number | null;
-  userRank: number | null;
-  /** Positive = up, negative = down, 0/ null = none */
-  rankDelta: number | null;
+  submittedCount: number | null;
+  totalMembers: number | null;
   membersPreview: Array<{ id: string; name: string; avatarUri?: string | null }>;
+  unreadCount?: number | null;
   onPress: () => void;
 }) {
   const t = useTokens();
   const AVATAR_SIZE = 64; // match Home default-view sizing
+  const badgeNumber = Math.min(99, Math.max(0, Number(unreadCount ?? 0)));
+  const showBadge = badgeNumber > 0;
+  const badgeLabel = String(badgeNumber);
+  const badgeIsSingleDigit = badgeLabel.length === 1;
 
-  const statusText = allSubmitted ? 'All Submitted' : 'Waiting…';
+  const allSubmitted = !!totalMembers && !!submittedCount && submittedCount === totalMembers && totalMembers > 0;
+  const statusText =
+    typeof submittedCount === 'number' && typeof totalMembers === 'number' && totalMembers > 0
+      ? allSubmitted
+        ? 'All Submitted'
+        : `${submittedCount}/${totalMembers} Submitted`
+      : '—';
   const statusColor = allSubmitted ? '#1C8376' : t.color.muted;
-
-  const deltaIcon = rankDelta === null ? null : rankDelta === 0 ? '·' : rankDelta > 0 ? '▲' : '▼';
-  const deltaColor = rankDelta === null || rankDelta === 0 ? t.color.muted : rankDelta > 0 ? '#16A34A' : '#DC2626';
-
-  const ringColors = ['#FACC15', '#22C55E', '#60A5FA', '#EC4899'];
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.96 : 1, transform: [{ scale: pressed ? 0.995 : 1 }] })}>
-      <Card style={{ paddingVertical: 14, paddingHorizontal: 16 }}>
+      <Card
+        style={{
+          paddingVertical: 14,
+          paddingHorizontal: 16,
+          // Remove all shadows (flat iOS surface)
+          shadowOpacity: 0,
+          shadowRadius: 0,
+          shadowOffset: { width: 0, height: 0 },
+          elevation: 0,
+        }}
+      >
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View
             style={{
@@ -105,29 +106,48 @@ export default function MiniLeagueListItem({
               {statusText}
             </TotlText>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-              {/* Numbers match league title sizing */}
-              <TotlText variant="body" style={{ fontWeight: '900' }}>
-                {membersCount ?? '—'}
-              </TotlText>
-              <TotlText style={{ marginLeft: 10, color: deltaColor, fontWeight: '900' }}>{deltaIcon ?? ''}</TotlText>
-              <TotlText variant="body" style={{ fontWeight: '900', marginLeft: 8 }}>
-                {userRank ? ordinal(userRank) : '—'}
-              </TotlText>
-            </View>
-
             <View style={{ marginTop: 8, flexDirection: 'row' }}>
               {membersPreview.slice(0, 4).map((m, idx) => (
                 <View key={m.id} style={{ marginLeft: idx === 0 ? 0 : -10 }}>
-                  <MemberChip name={m.name} avatarUri={m.avatarUri ?? null} ringColor={ringColors[idx % ringColors.length]!} />
+                  <MemberChip name={m.name} avatarUri={m.avatarUri ?? null} />
                 </View>
               ))}
             </View>
           </View>
 
-          <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '900', fontSize: 22, lineHeight: 22, marginLeft: 10 }}>
-            ›
-          </TotlText>
+          {showBadge ? (
+            <View
+              style={{
+                marginLeft: 10,
+                height: 20,
+                width: badgeIsSingleDigit ? 20 : undefined,
+                minWidth: badgeIsSingleDigit ? 20 : 30,
+                paddingHorizontal: badgeIsSingleDigit ? 0 : 3,
+                borderRadius: 999,
+                backgroundColor: '#FF5E5C',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <TotlText
+                style={{
+                  color: '#FFFFFF',
+                  fontFamily: 'SF Pro Display',
+                  fontWeight: '500',
+                  fontSize: 14,
+                  lineHeight: 17,
+                  textAlign: 'center',
+                  fontVariant: ['tabular-nums'],
+                }}
+              >
+                {badgeLabel}
+              </TotlText>
+            </View>
+          ) : (
+            <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '900', fontSize: 22, lineHeight: 22, marginLeft: 10 }}>
+              ›
+            </TotlText>
+          )}
         </View>
       </Card>
     </Pressable>

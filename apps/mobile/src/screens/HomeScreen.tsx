@@ -6,6 +6,7 @@ import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Asset } from 'expo-asset';
 import { SvgUri } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
 import Carousel from 'react-native-reanimated-carousel';
 import type { ICarouselInstance } from 'react-native-reanimated-carousel';
 import { Extrapolation, interpolate, useSharedValue } from 'react-native-reanimated';
@@ -25,6 +26,7 @@ import CarouselWithPagination from '../components/home/CarouselWithPagination';
 import CarouselFocusShell from '../components/home/CarouselFocusShell';
 import SectionTitle from '../components/home/SectionTitle';
 import { LeaderboardCardLastGw, LeaderboardCardResultsCta, LeaderboardCardSimple } from '../components/home/LeaderboardCards';
+import { resolveLeagueAvatarUri } from '../lib/leagueAvatars';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -262,7 +264,7 @@ export default function HomeScreen() {
       Number(rows[0]?.score ?? 0) === Number(rows[1]?.score ?? 0) &&
       Number(rows[0]?.unicorns ?? 0) === Number(rows[1]?.unicorns ?? 0);
     const winnerChip = rows.length ? (isDraw ? 'Draw!' : winnerName ? `${winnerName} Wins!` : null) : null;
-    const avatarUri = typeof league.avatar === 'string' && league.avatar.startsWith('http') ? league.avatar : null;
+    const avatarUri = resolveLeagueAvatarUri(typeof league.avatar === 'string' ? league.avatar : null);
 
     const emptyLabel =
       mode === 'default'
@@ -352,8 +354,10 @@ export default function HomeScreen() {
   // Carousel viewport should be full width (cancel the ScrollView padding around it).
   const mlCarouselViewportWidth = screenWidth;
   const mlCarouselOuterGutter = t.space[4];
-  // Card width should be fixed to match design.
-  const mlCardWidth = 308;
+  // Card width: 83% of the viewport with a tablet cap, so we always get a “next card” peek.
+  const ML_CARD_WIDTH_RATIO = 0.83;
+  const ML_CARD_MAX_WIDTH = 400;
+  const mlCardWidth = Math.round(Math.min(mlCarouselViewportWidth * ML_CARD_WIDTH_RATIO, ML_CARD_MAX_WIDTH));
   // Step distance between cards (card width + gap).
   const mlCarouselItemWidth = mlCardWidth + mlCardGap;
   // Where the active card's LEFT edge should be when centered (index 1+).
@@ -452,7 +456,7 @@ export default function HomeScreen() {
 
   // Mini Leagues block spacing controls.
   // - Gap between carousel cards and the pagination dots (per view).
-  const ML_LIVE_DOTS_GAP_Y = 0;
+  const ML_LIVE_DOTS_GAP_Y = 12;
   const ML_DEFAULT_DOTS_GAP_Y = -40;
   // - Gap between the carousel section (viewport+dots) and the content below it (per view).
   const ML_LIVE_SECTION_BOTTOM_PADDING = MINI_TO_GW_GAP_Y + 80;
@@ -492,7 +496,8 @@ export default function HomeScreen() {
         contentContainerStyle={{
           paddingHorizontal: t.space[4],
           paddingTop: 0,
-          paddingBottom: t.space[12],
+          // Ensure the last fixture isn't hidden behind the floating bottom tab bar.
+          paddingBottom: t.space[12] + 60,
         }}
         refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
@@ -520,7 +525,7 @@ export default function HomeScreen() {
 
         {/* Leaderboards row (match web card structure) */}
         <View style={{ marginTop: SECTION_GAP_Y }}>
-          <SectionHeaderRow title="Leaderboards" />
+          <SectionHeaderRow title="Performance" />
         </View>
         {/* Full-bleed horizontal row (remove side margins from the page padding) */}
         <Animated.ScrollView
@@ -537,10 +542,20 @@ export default function HomeScreen() {
 
             const cards: Array<{ key: string; node: React.JSX.Element }> = [];
 
-            if (ranks?.latestGw) {
+            const showResultsCta =
+              gwState === 'RESULTS_PRE_GW' && !!home?.hasSubmittedViewingGw && typeof home?.viewingGw === 'number';
+            const resultsGw = typeof home?.viewingGw === 'number' ? home.viewingGw : ranks?.latestGw ?? null;
+
+            if (showResultsCta && resultsGw) {
               cards.push({
                 key: 'gw-results',
-                node: <LeaderboardCardResultsCta gw={ranks.latestGw} badge={LB_BADGE_5} onPress={() => {}} />,
+                node: (
+                  <LeaderboardCardResultsCta
+                    gw={resultsGw}
+                    badge={LB_BADGE_5}
+                    onPress={() => navigation.navigate('GameweekResults', { gw: resultsGw })}
+                  />
+                ),
               });
             }
 
@@ -590,35 +605,67 @@ export default function HomeScreen() {
             title="Mini leagues"
             subtitle={showLiveTables && home?.viewingGw ? `${viewingGwLabel} Live Tables` : undefined}
             right={
-              showMlToggleButtons ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Pressable
-                  onPress={() => setShowLiveTables((v) => !v)}
+                  onPress={() =>
+                    navigation.navigate('Leagues', {
+                      screen: 'LeaguesList',
+                    })
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel="See all mini leagues"
                   style={({ pressed }) => ({
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: t.radius.pill,
-                    backgroundColor: showLiveTables ? t.color.surface2 : t.color.brand,
-                    borderWidth: showLiveTables ? 1 : 0,
-                    borderColor: showLiveTables ? t.color.border : 'transparent',
-                    opacity: pressed ? 0.92 : 1,
+                    paddingVertical: 6,
+                    paddingHorizontal: 8,
+                    opacity: pressed ? 0.8 : 1,
                     transform: [{ scale: pressed ? 0.98 : 1 }],
                   })}
                 >
                   <TotlText
                     style={{
-                      color: '#FFFFFF',
                       fontFamily: 'Gramatika-Regular',
                       fontWeight: '400',
-                      fontSize: 12,
-                      lineHeight: 12,
+                      fontSize: 14,
+                      lineHeight: 14,
+                      color: '#1C8376',
+                      textAlign: 'right',
                     }}
                   >
-                    {showLiveTables ? 'Default View' : 'View Live Tables'}
+                    See all
                   </TotlText>
                 </Pressable>
-              ) : null
+
+                {showMlToggleButtons ? (
+                  <Pressable
+                    onPress={() => setShowLiveTables((v) => !v)}
+                    style={({ pressed }) => ({
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: t.radius.pill,
+                      backgroundColor: showLiveTables ? t.color.surface2 : t.color.brand,
+                      borderWidth: showLiveTables ? 1 : 0,
+                      borderColor: showLiveTables ? t.color.border : 'transparent',
+                      opacity: pressed ? 0.92 : 1,
+                      transform: [{ scale: pressed ? 0.98 : 1 }],
+                      marginLeft: 10,
+                    })}
+                  >
+                    <TotlText
+                      style={{
+                        color: '#FFFFFF',
+                        fontFamily: 'Gramatika-Regular',
+                        fontWeight: '400',
+                        fontSize: 12,
+                        lineHeight: 12,
+                      }}
+                    >
+                      {showLiveTables ? 'Default View' : 'View Live Tables'}
+                    </TotlText>
+                  </Pressable>
+                ) : null}
+              </View>
             }
           />
         </View>
@@ -652,12 +699,7 @@ export default function HomeScreen() {
               }}
               containerStyle={{ paddingBottom: 0 }}
               renderItem={({ item: l, index, animationValue }) => (
-                <CarouselFocusShell
-                  animationValue={animationValue}
-                  width={mlCardWidth}
-                  activeBorderColor="#DC2626"
-                  activeShadowColor="#DC2626"
-                >
+                <CarouselFocusShell animationValue={animationValue} width={mlCardWidth}>
                   <HomeMiniLeagueCardItem
                     league={l}
                     index={index}
@@ -702,7 +744,7 @@ export default function HomeScreen() {
                     batch={batch.map((l) => ({
                       id: String(l.id),
                       name: String(l.name ?? ''),
-                      avatarUri: typeof l.avatar === 'string' && l.avatar.startsWith('http') ? l.avatar : null,
+                      avatarUri: resolveLeagueAvatarUri(typeof l.avatar === 'string' ? l.avatar : null),
                     }))}
                     onLeaguePress={(leagueId, name) =>
                       navigation.navigate('Leagues', { screen: 'LeagueDetail', params: { leagueId, name } })
@@ -718,66 +760,11 @@ export default function HomeScreen() {
           </Card>
         )}
 
-        {/* Gameweek section like web */}
+        {/* Predictions section */}
         <View style={{ marginTop: 0 }}>
           <SectionHeaderRow
-            title={viewingGwLabel}
-            subtitle={viewingGwSubtitle}
-            right={
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Pressable
-                  onPress={handleShare}
-                  style={({ pressed }) => ({
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: t.radius.pill,
-                    backgroundColor: t.color.brand,
-                    marginRight: 10,
-                    opacity: pressed ? 0.92 : 1,
-                    transform: [{ scale: pressed ? 0.98 : 1 }],
-                  })}
-                >
-                  <TotlText
-                    style={{
-                      color: '#FFFFFF',
-                      fontFamily: 'Gramatika-Regular',
-                      fontWeight: '400',
-                      fontSize: 12,
-                      lineHeight: 12,
-                    }}
-                  >
-                    Share
-                  </TotlText>
-                </Pressable>
-                <View
-                  style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    borderRadius: t.radius.pill,
-                    backgroundColor: scorePill.bg,
-                    borderWidth: scorePill.border === 'transparent' ? 0 : 1,
-                    borderColor: scorePill.border,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <TotlText
-                    style={{
-                      color: '#FFFFFF',
-                      fontFamily: 'Gramatika-Regular',
-                      fontWeight: '400',
-                      fontSize: 12,
-                      lineHeight: 12,
-                      fontVariant: ['tabular-nums'],
-                    }}
-                  >
-                    {scorePill.label} {scorePill.score}/{scorePill.total}
-                  </TotlText>
-                </View>
-              </View>
-            }
+            title="Predictions"
+            titleRight={`${scorePill.score}/${scorePill.total}`}
           />
         </View>
 
@@ -802,13 +789,6 @@ export default function HomeScreen() {
               key={`${g.date}-${groupIdx}`}
               style={{ marginBottom: groupIdx === fixturesByDate.length - 1 ? 0 : 12 }}
             >
-              {/* Date headers should be outside the fixture cards (web-style sections). */}
-              {showFixtureDateSections ? (
-                <View style={{ paddingHorizontal: 2, paddingBottom: 8 }}>
-                  <TotlText variant="sectionSubtitle">{g.date}</TotlText>
-                </View>
-              ) : null}
-
               <Card
                 style={{
                   padding: 0,
@@ -819,6 +799,68 @@ export default function HomeScreen() {
                 }}
               >
                 <View style={{ borderRadius: 14, overflow: 'hidden' }}>
+                  {/* Card header: date + Share (spec) */}
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingHorizontal: 16,
+                      paddingTop: 14,
+                      paddingBottom: 12,
+                      borderBottomWidth: 1,
+                      borderBottomColor: 'rgba(15,23,42,0.06)',
+                    }}
+                  >
+                    <TotlText
+                      style={{
+                        color: t.color.text,
+                        fontFamily: 'Gramatika-Medium',
+                        fontSize: 14,
+                        lineHeight: 14,
+                        letterSpacing: 0.6,
+                      }}
+                      numberOfLines={1}
+                    >
+                      {String(g.date ?? '').toUpperCase()}
+                    </TotlText>
+
+                    {/* Only show once when there are multiple date groups to avoid repetition */}
+                    {(!showFixtureDateSections || groupIdx === 0) && (
+                      <Pressable
+                        onPress={handleShare}
+                        accessibilityRole="button"
+                        accessibilityLabel="Share"
+                        style={({ pressed }) => ({
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          borderRadius: 16,
+                          borderWidth: 1,
+                          borderColor: '#DFEBE9',
+                          backgroundColor: 'transparent',
+                          opacity: pressed ? 0.85 : 1,
+                          transform: [{ scale: pressed ? 0.98 : 1 }],
+                        })}
+                      >
+                        <Ionicons name="share-outline" size={12} color="#000000" />
+                        <View style={{ width: 6 }} />
+                        <TotlText
+                          style={{
+                            color: '#000000',
+                            fontFamily: 'Gramatika-Regular',
+                            fontWeight: '400',
+                            fontSize: 12,
+                            lineHeight: 12,
+                          }}
+                        >
+                          Share
+                        </TotlText>
+                      </Pressable>
+                    )}
+                  </View>
+
                   {g.fixtures.map((f: Fixture, idx: number) => (
                     <View key={f.id} style={{ position: 'relative' }}>
                       {idx < g.fixtures.length - 1 ? (

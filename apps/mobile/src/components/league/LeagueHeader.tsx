@@ -50,7 +50,15 @@ export default function LeagueHeader({
             marginRight: 12,
           }}
         >
-          {avatarUri ? <Image source={{ uri: avatarUri }} style={{ width: AVATAR, height: AVATAR }} /> : null}
+          {avatarUri ? (
+            <Image
+              source={{ uri: avatarUri }}
+              style={{ width: AVATAR, height: AVATAR }}
+              onError={(e) => {
+                console.error('[LeagueHeader] Avatar failed to load:', { uri: avatarUri, error: e.nativeEvent });
+              }}
+            />
+          ) : null}
         </View>
 
         <View style={{ flex: 1, minWidth: 0 }}>

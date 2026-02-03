@@ -157,4 +157,41 @@ export declare const HomeRanksSchema: z.ZodObject<{
     }, z.core.$strip>>;
 }, z.core.$strip>;
 export type HomeRanks = z.infer<typeof HomeRanksSchema>;
+export declare const GwResultsSchema: z.ZodObject<{
+    score: z.ZodNumber;
+    totalFixtures: z.ZodNumber;
+    gwRank: z.ZodNullable<z.ZodNumber>;
+    gwRankTotal: z.ZodNullable<z.ZodNumber>;
+    trophies: z.ZodObject<{
+        gw: z.ZodBoolean;
+        form5: z.ZodBoolean;
+        form10: z.ZodBoolean;
+        overall: z.ZodBoolean;
+    }, z.core.$strip>;
+    mlVictories: z.ZodNumber;
+    mlVictoryNames: z.ZodArray<z.ZodString>;
+    mlVictoryData: z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        name: z.ZodString;
+        avatar: z.ZodNullable<z.ZodString>;
+    }, z.core.$strip>>;
+    leaderboardChanges: z.ZodObject<{
+        overall: z.ZodObject<{
+            before: z.ZodNullable<z.ZodNumber>;
+            after: z.ZodNullable<z.ZodNumber>;
+            change: z.ZodNullable<z.ZodNumber>;
+        }, z.core.$strip>;
+        form5: z.ZodObject<{
+            before: z.ZodNullable<z.ZodNumber>;
+            after: z.ZodNullable<z.ZodNumber>;
+            change: z.ZodNullable<z.ZodNumber>;
+        }, z.core.$strip>;
+        form10: z.ZodObject<{
+            before: z.ZodNullable<z.ZodNumber>;
+            after: z.ZodNullable<z.ZodNumber>;
+            change: z.ZodNullable<z.ZodNumber>;
+        }, z.core.$strip>;
+    }, z.core.$strip>;
+}, z.core.$strip>;
+export type GwResults = z.infer<typeof GwResultsSchema>;
 //# sourceMappingURL=index.d.ts.map

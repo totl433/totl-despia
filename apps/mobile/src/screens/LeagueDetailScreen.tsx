@@ -1,9 +1,16 @@
 import React from 'react';
-import { ScrollView, View } from 'react-native';
+import { Alert, Share, ScrollView, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Screen, TotlText, useTokens } from '@totl/ui';
 import type { Fixture, GwResultRow, HomeSnapshot, LiveScore, LiveStatus, Pick } from '@totl/domain';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+// Expo SDK 54: legacy async APIs (getInfoAsync/readAsStringAsync) moved under `expo-file-system/legacy`.
+// Using the non-legacy import can surface deprecation errors in some runtimes.
+import * as FileSystem from 'expo-file-system/legacy';
+import { resolveLeagueAvatarUri } from '../lib/leagueAvatars';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
@@ -24,14 +31,36 @@ import FixtureCard from '../components/FixtureCard';
 import LeaguePickChipsRow from '../components/league/LeaguePickChipsRow';
 import LeagueChatTab from '../components/chat/LeagueChatTab';
 import { TotlRefreshControl } from '../lib/refreshControl';
+import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
+import LeagueMenuSheet, { type LeagueMenuAction } from '../components/league/LeagueMenuSheet';
+import LeagueInviteSheet from '../components/league/LeagueInviteSheet';
+import { env } from '../env';
+import { resolveLeagueStartGw } from '../lib/leagueStart';
+
+const LEAGUE_TABS: LeagueTabKey[] = ['chat', 'gwTable', 'predictions', 'season'];
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  // RN-safe base64 decode (atob is available in Hermes/JSC for RN; if not, we'll fail loudly).
+  const binary = globalThis.atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
 
 export default function LeagueDetailScreen() {
   const route = useRoute<any>();
   const params = route.params as LeaguesStackParamList['LeagueDetail'];
   const t = useTokens();
   const navigation = useNavigation<any>();
+  const queryClient = useQueryClient();
   const [tab, setTab] = React.useState<LeagueTabKey>('gwTable');
   const [rulesOpen, setRulesOpen] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [inviteOpen, setInviteOpen] = React.useState(false);
+  const [avatarOverrideUri, setAvatarOverrideUri] = React.useState<string | null>(null);
+  const [leavingLeague, setLeavingLeague] = React.useState(false);
+  const { optimisticallyClear } = useLeagueUnreadCounts();
 
   type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
   type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -46,7 +75,7 @@ export default function LeagueDetailScreen() {
     return list.find((l) => String(l.id) === String(params.leagueId)) ?? null;
   }, [leagues?.leagues, params.leagueId]);
 
-  const avatarUri =
+  const avatarUriFromList =
     leagueFromList && typeof leagueFromList.avatar === 'string' && leagueFromList.avatar.startsWith('http')
       ? leagueFromList.avatar
       : null;
@@ -80,6 +109,11 @@ export default function LeagueDetailScreen() {
 
   type LeagueTableResponse = Awaited<ReturnType<typeof api.getLeagueGwTable>>;
   const leagueId = String(params.leagueId);
+  React.useEffect(() => {
+    if (tab === 'chat') {
+      optimisticallyClear(leagueId);
+    }
+  }, [leagueId, optimisticallyClear, tab]);
   const { data: table, isLoading: tableLoading, refetch: refetchTable, isRefetching: tableRefetching } = useQuery<LeagueTableResponse>({
     enabled: tab === 'gwTable' && typeof selectedGw === 'number',
     queryKey: ['leagueGwTable', leagueId, selectedGw],
@@ -88,11 +122,19 @@ export default function LeagueDetailScreen() {
 
   type LeagueMembersResponse = Awaited<ReturnType<typeof api.getLeague>>;
   const { data: leagueDetails, refetch: refetchLeagueDetails, isRefetching: leagueDetailsRefetching } = useQuery<LeagueMembersResponse>({
-    enabled: tab === 'season',
+    // Needed across tabs (chat avatars + menu actions).
+    enabled: true,
     queryKey: ['league', leagueId],
     queryFn: () => api.getLeague(leagueId),
   });
   const members = leagueDetails?.members ?? [];
+  const leagueMeta = (leagueDetails?.league ?? null) as null | { id?: string; name?: string; code?: string; created_at?: string | null; avatar?: string | null };
+  const headerAvatarUri = React.useMemo(() => {
+    if (typeof avatarOverrideUri === 'string' && avatarOverrideUri.startsWith('http')) return avatarOverrideUri;
+    const a1 = resolveLeagueAvatarUri(leagueMeta?.avatar);
+    if (a1) return a1;
+    return resolveLeagueAvatarUri(avatarUriFromList);
+  }, [avatarOverrideUri, avatarUriFromList, leagueMeta?.avatar]);
 
   const allFixturesFinished = React.useMemo(() => {
     if (tab !== 'gwTable') return false;
@@ -149,6 +191,229 @@ export default function LeagueDetailScreen() {
     if (gw8StartLeagues.includes(name)) return 8;
     return 1;
   }, [params.name]);
+
+  const handleEditBadge = React.useCallback(async () => {
+    const leagueName = String(leagueMeta?.name ?? params.name ?? 'Mini league');
+    if (!leagueId) return;
+
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Please allow photo library access to update the league badge.', [{ text: 'OK' }]);
+      return;
+    }
+
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+    if (picked.canceled) return;
+    const asset = picked.assets?.[0];
+    const uri = asset?.uri ? String(asset.uri) : null;
+    if (!uri) return;
+
+    // Resize to match the intent of the web flow (square, small).
+    const manipulated = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: 256 } }],
+      { compress: 0.75, format: ImageManipulator.SaveFormat.JPEG }
+    );
+
+    const info = await FileSystem.getInfoAsync(manipulated.uri);
+    console.log('[LeagueDetailScreen] Badge file info:', { uri: manipulated.uri, size: (info as any)?.size, exists: info.exists });
+    const size = typeof (info as any)?.size === 'number' ? ((info as any).size as number) : null;
+    if (!info.exists || !size || size <= 0) {
+      Alert.alert('Badge update failed', 'We could not read the edited image from disk. Please try again.', [{ text: 'OK' }]);
+      return;
+    }
+
+    // NOTE: In Expo Go on iOS, `fetch(file://...)` can yield a 0-byte Blob.
+    // Use FileSystem to read the local file reliably.
+    const b64 = await FileSystem.readAsStringAsync(manipulated.uri, { encoding: 'base64' });
+    const bytes = base64ToUint8Array(b64);
+    console.log('[LeagueDetailScreen] Badge bytes length:', bytes.byteLength);
+    if (!bytes.byteLength) {
+      Alert.alert('Badge update failed', 'The edited image produced 0 bytes. Please try again.', [{ text: 'OK' }]);
+      return;
+    }
+    const fileName = `${leagueId}-${Date.now()}.jpg`;
+
+    const uploadRes = await (supabase as any).storage.from('league-avatars').upload(fileName, bytes, {
+      contentType: 'image/jpeg',
+      cacheControl: '3600',
+      upsert: true,
+    });
+    if (uploadRes.error) throw uploadRes.error;
+
+    const { data: publicUrlData } = (supabase as any).storage.from('league-avatars').getPublicUrl(fileName);
+    const publicUrl = publicUrlData?.publicUrl ? String(publicUrlData.publicUrl) : null;
+    if (!publicUrl) throw new Error('Unable to get public URL for badge.');
+    setAvatarOverrideUri(publicUrl);
+    console.log('[LeagueDetailScreen] Badge publicUrl:', publicUrl);
+
+    // In dev, verify the URL is actually reachable (bucket might not be public).
+    if (__DEV__) {
+      try {
+        const resp = await fetch(publicUrl, { method: 'GET' });
+        console.log('[LeagueDetailScreen] Badge publicUrl fetch:', { status: resp.status, ok: resp.ok });
+      } catch (e) {
+        console.log('[LeagueDetailScreen] Badge publicUrl fetch failed:', String(e));
+      }
+    }
+
+    const updateRes = await (supabase as any).from('leagues').update({ avatar: publicUrl }).eq('id', leagueId);
+    if (updateRes.error) throw updateRes.error;
+
+    // Update caches immediately so the header avatar updates without waiting for refetch.
+    queryClient.setQueryData(['league', leagueId], (prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        league: { ...(prev.league ?? {}), avatar: publicUrl },
+      };
+    });
+    queryClient.setQueryData(['leagues'], (prev: any) => {
+      const list = prev?.leagues;
+      if (!Array.isArray(list)) return prev;
+      return {
+        ...prev,
+        leagues: list.map((l: any) => (String(l?.id) === String(leagueId) ? { ...l, avatar: publicUrl } : l)),
+      };
+    });
+
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['leagues'] }),
+      queryClient.invalidateQueries({ queryKey: ['league', leagueId] }),
+    ]);
+
+    Alert.alert('Updated', `League badge updated for "${leagueName}".`, [{ text: 'OK' }]);
+  }, [leagueId, leagueMeta?.name, params.name, queryClient]);
+
+  const handleMenuAction = React.useCallback(
+    async (action: LeagueMenuAction) => {
+      setMenuOpen(false);
+
+      if (action === 'shareLeagueCode') {
+        try {
+          const leagueName = String(params.name ?? 'my mini league');
+          const shareText = `Join my mini league "${leagueName}" on TotL!`;
+          const code = leagueMeta?.code ? String(leagueMeta.code) : null;
+          const base = String(env.EXPO_PUBLIC_SITE_URL ?? '').replace(/\/$/, '');
+          const url = code && base ? `${base}/league/${encodeURIComponent(code)}` : null;
+          await Share.share({ message: url ? `${shareText}\n${url}` : `${shareText}\nCode: ${code ?? ''}`.trim() });
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
+      if (action === 'leave') {
+        if (leavingLeague) return;
+        setLeavingLeague(true);
+        try {
+          const { data } = await supabase.auth.getUser();
+          const userId = data.user?.id ? String(data.user.id) : null;
+          if (!userId) throw new Error('Not logged in.');
+
+          const { error } = await (supabase as any)
+            .from('league_members')
+            .delete()
+            .eq('league_id', leagueId)
+            .eq('user_id', userId);
+          if (error) throw error;
+
+          await queryClient.invalidateQueries({ queryKey: ['leagues'] });
+          navigation.navigate('LeaguesList');
+        } catch (e: any) {
+          Alert.alert('Couldn’t leave league', e?.message ?? 'Failed to leave league. Please try again.', [{ text: 'OK' }]);
+        } finally {
+          setLeavingLeague(false);
+        }
+        return;
+      }
+
+      if (action === 'invitePlayers') {
+        try {
+          const gw = typeof currentGw === 'number' ? currentGw : null;
+          const createdAt = typeof leagueMeta?.created_at === 'string' ? leagueMeta.created_at : null;
+          const leagueName = String(leagueMeta?.name ?? params.name ?? '');
+          const startGw = gw ? await resolveLeagueStartGw({ id: leagueId, name: leagueName, created_at: createdAt }, gw) : null;
+          const locked = gw !== null && startGw !== null && gw - startGw >= 4;
+          if (locked) {
+            Alert.alert(
+              'League Locked',
+              'This league has been running for more than 4 gameweeks. New members can only be added during the first 4 gameweeks.',
+              [{ text: 'OK' }]
+            );
+            return;
+          }
+          setInviteOpen(true);
+        } catch {
+          // fail open
+          setInviteOpen(true);
+        }
+        return;
+      }
+
+      if (action === 'editBadge') {
+        try {
+          await handleEditBadge();
+        } catch (e: any) {
+          Alert.alert('Couldn’t update badge', e?.message ?? 'Failed to upload badge. Please try again.', [{ text: 'OK' }]);
+        }
+        return;
+      }
+
+      if (action === 'resetBadge') {
+        try {
+          setAvatarOverrideUri(null);
+          const updateRes = await (supabase as any).from('leagues').update({ avatar: null }).eq('id', leagueId);
+          if (updateRes.error) throw updateRes.error;
+
+          // Update caches immediately so UI clears without waiting for refetch.
+          queryClient.setQueryData(['league', leagueId], (prev: any) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              league: { ...(prev.league ?? {}), avatar: null },
+            };
+          });
+          queryClient.setQueryData(['leagues'], (prev: any) => {
+            const list = prev?.leagues;
+            if (!Array.isArray(list)) return prev;
+            return {
+              ...prev,
+              leagues: list.map((l: any) => (String(l?.id) === String(leagueId) ? { ...l, avatar: null } : l)),
+            };
+          });
+
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['leagues'] }),
+            queryClient.invalidateQueries({ queryKey: ['league', leagueId] }),
+          ]);
+
+          Alert.alert('Reset', 'League badge removed.', [{ text: 'OK' }]);
+        } catch (e: any) {
+          Alert.alert('Couldn’t reset badge', e?.message ?? 'Failed to reset badge. Please try again.', [{ text: 'OK' }]);
+        }
+        return;
+      }
+    },
+    [
+      currentGw,
+      env.EXPO_PUBLIC_SITE_URL,
+      handleEditBadge,
+      leagueId,
+      leagueMeta?.code,
+      leagueMeta?.created_at,
+      leagueMeta?.name,
+      leavingLeague,
+      navigation,
+      queryClient,
+      params.name,
+    ]
+  );
 
   const { data: seasonRows, isLoading: seasonLoading, refetch: refetchSeasonRows, isRefetching: seasonRowsRefetching } = useQuery<
     LeagueSeasonRow[]
@@ -310,13 +575,13 @@ export default function LeagueDetailScreen() {
     picksGw: number;
     deadlinePassed: boolean;
     allSubmitted: boolean;
-    submittedSet: Set<string>;
+    submittedUserIds: string[];
     members: Array<{ id: string; name: string }>;
     fixtures: Fixture[];
     sections: Array<{ label: string; fixtures: Fixture[] }>;
-    outcomeByFixtureIndex: Map<number, LeaguePick>;
-    liveByFixtureIndex: Map<number, LiveScore>;
-    picksByFixtureIndex: Map<number, Map<string, LeaguePick>>;
+    outcomeByFixtureIndex: Record<string, LeaguePick>;
+    liveByFixtureIndex: Record<string, LiveScore>;
+    picksByFixtureIndex: Record<string, Record<string, LeaguePick>>;
   };
 
   const {
@@ -325,7 +590,8 @@ export default function LeagueDetailScreen() {
     isRefetching: predictionsRefetching,
   } = useQuery<LeaguePredictionsData>({
     enabled: tab === 'predictions' && members.length > 0 && typeof picksGw === 'number' && picksGw >= seasonStartGw,
-    queryKey: ['leaguePredictions', leagueId, picksGw, members.map((m: any) => String(m.id)).join(',')],
+    // NOTE: v2 key to invalidate older persisted cache that contained Map/Set (non-serializable).
+    queryKey: ['leaguePredictionsV2', leagueId, picksGw, members.map((m: any) => String(m.id)).join(',')],
     queryFn: async () => {
       const gw = picksGw as number;
       const memberIds = members.map((m: any) => String(m.id));
@@ -357,14 +623,15 @@ export default function LeagueDetailScreen() {
       const deadlineTime = firstKickoff ? new Date(firstKickoff.getTime() - 75 * 60 * 1000) : null;
       const deadlinePassed = deadlineTime ? new Date() >= deadlineTime : false;
 
-      const submittedSet = new Set<string>(
-        ((subsRes.data ?? []) as Array<{ user_id: string }>).map((s) => String(s.user_id)).filter((id) => memberIds.includes(id))
-      );
+      const submittedUserIds = ((subsRes.data ?? []) as Array<{ user_id: string }>)
+        .map((s) => String(s.user_id))
+        .filter((id) => memberIds.includes(id));
+      const submittedSet = new Set<string>(submittedUserIds);
       const allSubmitted = memberIds.length > 0 && memberIds.every((id) => submittedSet.has(id));
 
-      const outcomeByFixtureIndex = new Map<number, LeaguePick>();
+      const outcomeByFixtureIndex: Record<string, LeaguePick> = {};
       ((resultsRes.data ?? []) as Array<{ fixture_index: number; result: Pick | string }>).forEach((r) => {
-        if (r.result === 'H' || r.result === 'D' || r.result === 'A') outcomeByFixtureIndex.set(r.fixture_index, r.result);
+        if (r.result === 'H' || r.result === 'D' || r.result === 'A') outcomeByFixtureIndex[String(r.fixture_index)] = r.result;
       });
 
       const apiMatchIdToFixtureIndex = new Map<number, number>();
@@ -372,7 +639,7 @@ export default function LeagueDetailScreen() {
         if (typeof (f as any).api_match_id === 'number') apiMatchIdToFixtureIndex.set((f as any).api_match_id, f.fixture_index);
       });
 
-      const liveByFixtureIndex = new Map<number, LiveScore>();
+      const liveByFixtureIndex: Record<string, LiveScore> = {};
       ((liveRes.data ?? []) as LiveScore[]).forEach((ls: any) => {
         const idx =
           typeof ls?.fixture_index === 'number'
@@ -381,25 +648,26 @@ export default function LeagueDetailScreen() {
               ? apiMatchIdToFixtureIndex.get(ls.api_match_id)
               : undefined;
         if (typeof idx !== 'number') return;
-        liveByFixtureIndex.set(idx, ls);
+        liveByFixtureIndex[String(idx)] = ls;
 
         const st: LiveStatus = (ls?.status ?? 'SCHEDULED') as LiveStatus;
         const started = st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED';
         if (!started) return;
         const hs = Number(ls?.home_score ?? 0);
         const as = Number(ls?.away_score ?? 0);
-        outcomeByFixtureIndex.set(idx, hs > as ? 'H' : hs < as ? 'A' : 'D');
+        outcomeByFixtureIndex[String(idx)] = hs > as ? 'H' : hs < as ? 'A' : 'D';
       });
 
-      const picksByFixtureIndex = new Map<number, Map<string, LeaguePick>>();
+      const picksByFixtureIndex: Record<string, Record<string, LeaguePick>> = {};
       ((picksRes.data ?? []) as Array<{ user_id: string; fixture_index: number; pick: LeaguePick | string }>).forEach((p) => {
         if (p.pick !== 'H' && p.pick !== 'D' && p.pick !== 'A') return;
         // Match web: only show picks from users who have submitted.
         if (!submittedSet.has(String(p.user_id))) return;
         if (!fixtures.find((f) => f.fixture_index === p.fixture_index)) return;
-        const m = picksByFixtureIndex.get(p.fixture_index) ?? new Map<string, LeaguePick>();
-        m.set(String(p.user_id), p.pick);
-        picksByFixtureIndex.set(p.fixture_index, m);
+        const key = String(p.fixture_index);
+        const m = picksByFixtureIndex[key] ?? {};
+        m[String(p.user_id)] = p.pick;
+        picksByFixtureIndex[key] = m;
       });
 
       const fmt = (iso?: string | null) => {
@@ -429,8 +697,12 @@ export default function LeagueDetailScreen() {
         picksGw: gw,
         deadlinePassed,
         allSubmitted,
-        submittedSet,
-        members: members.map((m: any) => ({ id: String(m.id), name: String(m.name ?? 'User') })),
+        submittedUserIds,
+        members: members.map((m: any) => ({
+          id: String(m.id),
+          name: String(m.name ?? 'User'),
+          avatar_url: typeof m.avatar_url === 'string' ? m.avatar_url : null,
+        })),
         fixtures,
         sections,
         outcomeByFixtureIndex,
@@ -493,177 +765,260 @@ export default function LeagueDetailScreen() {
     tab,
   ]);
 
+  const swipeTabsGesture = React.useMemo(() => {
+    const HORIZONTAL_LOCK_PX = 18;
+    const VERTICAL_FAIL_PX = 10;
+    const COMMIT_DX_PX = 60;
+    const COMMIT_VELOCITY_X = 700;
+    const DIRECTION_RATIO = 1.2;
+
+    return Gesture.Pan()
+      .maxPointers(1)
+      // Only start capturing when the user has moved horizontally enough.
+      .activeOffsetX([-HORIZONTAL_LOCK_PX, HORIZONTAL_LOCK_PX])
+      // If the user moves vertically, let the child ScrollView/FlatList win.
+      .failOffsetY([-VERTICAL_FAIL_PX, VERTICAL_FAIL_PX])
+      // We want to call `setTab` / `navigation.goBack()` directly from the handler.
+      .runOnJS(true)
+      .onEnd((e) => {
+        const idx = Math.max(0, LEAGUE_TABS.indexOf(tab));
+        const lastIdx = LEAGUE_TABS.length - 1;
+
+        const dx = e.translationX ?? 0;
+        const dy = e.translationY ?? 0;
+        const vx = e.velocityX ?? 0;
+
+        const absX = Math.abs(dx);
+        const absY = Math.abs(dy);
+
+        // Only treat as a horizontal swipe when clearly horizontal.
+        if (absX <= absY * DIRECTION_RATIO) return;
+
+        const shouldCommit = absX >= COMMIT_DX_PX || Math.abs(vx) >= COMMIT_VELOCITY_X;
+        if (!shouldCommit) return;
+
+        if (dx > 0) {
+          // Swipe right = previous tab, or back if already at leftmost tab.
+          if (idx === 0) {
+            if (navigation?.canGoBack?.() ?? true) navigation.goBack();
+            return;
+          }
+          setTab(LEAGUE_TABS[idx - 1] ?? 'chat');
+          return;
+        }
+
+        // Swipe left = next tab (no-op at last tab).
+        if (idx >= lastIdx) return;
+        setTab(LEAGUE_TABS[idx + 1] ?? 'season');
+      });
+  }, [navigation, tab]);
+
   return (
     <Screen fullBleed>
-      <LeagueHeader
-        title={String(params.name ?? '')}
-        subtitle={typeof selectedGw === 'number' ? `Gameweek ${selectedGw}` : viewingGw ? `Gameweek ${viewingGw}` : 'Gameweek'}
-        avatarUri={avatarUri}
-        onPressBack={() => navigation.goBack()}
-        onPressMenu={() => {}}
-      />
+      <GestureDetector gesture={swipeTabsGesture}>
+        <View style={{ flex: 1 }}>
+          <LeagueHeader
+            title={String(params.name ?? '')}
+            subtitle={typeof selectedGw === 'number' ? `Gameweek ${selectedGw}` : viewingGw ? `Gameweek ${viewingGw}` : 'Gameweek'}
+            avatarUri={headerAvatarUri}
+            onPressBack={() => navigation.goBack()}
+            onPressMenu={() => setMenuOpen(true)}
+          />
 
-      <LeagueTabBar value={tab} onChange={setTab} />
+          <LeagueTabBar value={tab} onChange={setTab} />
 
-      <View style={{ flex: 1, padding: t.space[4] }}>
-        {tab === 'gwTable' ? (
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingBottom: 140 }}
-            refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          >
-            {table?.rows?.length && allFixturesFinished ? (
-              <LeagueWinnerBanner
-                winnerName={String(table.rows?.[0]?.name ?? '')}
-                isDraw={
-                  Number(table.rows?.[0]?.score ?? 0) === Number(table.rows?.[1]?.score ?? -1) &&
-                  Number(table.rows?.[0]?.unicorns ?? 0) === Number(table.rows?.[1]?.unicorns ?? -1)
-                }
+          <View style={{ flex: 1, padding: t.space[4] }}>
+            {tab === 'gwTable' ? (
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingBottom: 140 }}
+                refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+              >
+                {table?.rows?.length && allFixturesFinished ? (
+                  <LeagueWinnerBanner
+                    winnerName={String(table.rows?.[0]?.name ?? '')}
+                    isDraw={
+                      Number(table.rows?.[0]?.score ?? 0) === Number(table.rows?.[1]?.score ?? -1) &&
+                      Number(table.rows?.[0]?.unicorns ?? 0) === Number(table.rows?.[1]?.unicorns ?? -1)
+                    }
+                  />
+                ) : null}
+
+                {tableLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
+
+                <LeagueGwTable
+                  rows={(table?.rows ?? []) as LeagueGwTableRow[]}
+                  showUnicorns={Number(table?.totalMembers ?? 0) >= 3}
+                  submittedCount={typeof table?.submittedCount === 'number' ? table.submittedCount : null}
+                  totalMembers={typeof table?.totalMembers === 'number' ? table.totalMembers : null}
+                />
+
+                <LeagueGwControlsRow
+                  availableGws={availableGws}
+                  selectedGw={selectedGw}
+                  onChangeGw={setSelectedGw}
+                  onPressRules={() => setRulesOpen(true)}
+                />
+
+                <LeagueRulesSheet open={rulesOpen} onClose={() => setRulesOpen(false)} />
+              </ScrollView>
+            ) : tab === 'season' ? (
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingBottom: 140 }}
+                refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+              >
+                <LeagueSeasonTable
+                  rows={seasonRows ?? []}
+                  loading={seasonLoading}
+                  showForm={seasonShowForm}
+                  showUnicorns={seasonShowUnicorns}
+                  isLateStartingLeague={seasonIsLateStartingLeague}
+                />
+
+                <View
+                  style={{
+                    marginTop: t.space[4],
+                    marginBottom: t.space[2],
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <LeaguePointsFormToggle showForm={seasonShowForm} onToggle={setSeasonShowForm} />
+                  <View style={{ width: 10 }} />
+                  <View style={{ flex: 1 }} />
+                  <LeaguePillButton label="Rules" onPress={() => setSeasonRulesOpen(true)} />
+                </View>
+
+                <LeagueSeasonRulesSheet
+                  open={seasonRulesOpen}
+                  onClose={() => setSeasonRulesOpen(false)}
+                  isLateStartingLeague={seasonIsLateStartingLeague}
+                />
+              </ScrollView>
+            ) : tab === 'predictions' ? (
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingBottom: 140 }}
+                refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+              >
+                {typeof picksGw !== 'number' ? (
+                  <TotlText variant="muted">No current gameweek available.</TotlText>
+                ) : picksGw < seasonStartGw ? (
+                  <TotlText variant="muted">No Predictions Available (this league started later).</TotlText>
+                ) : !predictions ? (
+                  <TotlText variant="muted">Loading…</TotlText>
+                ) : (() => {
+                    const shouldShowWhoSubmitted = !predictions.allSubmitted && !predictions.deadlinePassed;
+
+                    if (shouldShowWhoSubmitted) {
+                      return (
+                        <LeagueSubmissionStatusCard
+                          members={predictions.members}
+                          submittedUserIds={predictions.submittedUserIds}
+                          picksGw={predictions.picksGw}
+                          fixtures={predictions.fixtures}
+                          variant="compact"
+                        />
+                      );
+                    }
+
+                    return (
+                      <>
+                        {!predictions.allSubmitted ? (
+                          <LeagueSubmissionStatusCard
+                            members={predictions.members}
+                            submittedUserIds={predictions.submittedUserIds}
+                            picksGw={predictions.picksGw}
+                            fixtures={predictions.fixtures}
+                            variant="full"
+                          />
+                        ) : null}
+
+                        {predictions.sections.map((sec) => (
+                          <View key={sec.label} style={{ marginTop: 12 }}>
+                            <TotlText variant="body" style={{ fontWeight: '900', marginBottom: 10 }}>
+                              {sec.label}
+                            </TotlText>
+
+                            <View
+                              style={{
+                                borderRadius: 14,
+                                overflow: 'hidden',
+                                borderWidth: 1,
+                                borderColor: 'rgba(148,163,184,0.14)',
+                              }}
+                            >
+                              {sec.fixtures.map((f, idx) => {
+                                const k = String(f.fixture_index);
+                                const live = predictions.liveByFixtureIndex[k] ?? null;
+                                const lsNoGoals = live ? ({ ...(live as any), goals: undefined } as any) : null;
+                                const outcome = predictions.outcomeByFixtureIndex[k] ?? null;
+                                const picksMap =
+                                  new Map<string, LeaguePick>(Object.entries(predictions.picksByFixtureIndex[k] ?? {}));
+
+                                return (
+                                  <View
+                                    key={`${predictions.picksGw}-${f.fixture_index}`}
+                                    style={{
+                                      borderTopWidth: idx === 0 ? 0 : 1,
+                                      borderTopColor: 'rgba(148,163,184,0.14)',
+                                    }}
+                                  >
+                                    <FixtureCard
+                                      fixture={f as any}
+                                      liveScore={lsNoGoals}
+                                      showPickButtons={false}
+                                      variant="grouped"
+                                      result={outcome}
+                                    />
+                                    <LeaguePickChipsRow
+                                      members={predictions.members}
+                                      picksByUserId={picksMap}
+                                      outcome={outcome}
+                                      currentUserId={me?.id ?? null}
+                                    />
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        ))}
+                      </>
+                    );
+                  })()}
+              </ScrollView>
+            ) : tab === 'chat' ? (
+              <LeagueChatTab
+                leagueId={leagueId}
+                members={members.map((m: any) => ({
+                  id: String(m.id),
+                  name: String(m.name ?? 'User'),
+                  avatar_url: typeof m.avatar_url === 'string' ? m.avatar_url : null,
+                }))}
               />
-            ) : null}
+            ) : (
+              <TotlText variant="muted">Season tab (coming).</TotlText>
+            )}
+          </View>
+        </View>
+      </GestureDetector>
 
-            {tableLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
-
-            <LeagueGwTable
-              rows={(table?.rows ?? []) as LeagueGwTableRow[]}
-              showUnicorns={Number(table?.totalMembers ?? 0) >= 3}
-              submittedCount={typeof table?.submittedCount === 'number' ? table.submittedCount : null}
-              totalMembers={typeof table?.totalMembers === 'number' ? table.totalMembers : null}
-            />
-
-            <LeagueGwControlsRow
-              availableGws={availableGws}
-              selectedGw={selectedGw}
-              onChangeGw={setSelectedGw}
-              onPressRules={() => setRulesOpen(true)}
-            />
-
-            <LeagueRulesSheet open={rulesOpen} onClose={() => setRulesOpen(false)} />
-          </ScrollView>
-        ) : tab === 'season' ? (
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingBottom: 140 }}
-            refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          >
-            <LeagueSeasonTable
-              rows={seasonRows ?? []}
-              loading={seasonLoading}
-              showForm={seasonShowForm}
-              showUnicorns={seasonShowUnicorns}
-              isLateStartingLeague={seasonIsLateStartingLeague}
-            />
-
-            <View
-              style={{
-                marginTop: t.space[4],
-                marginBottom: t.space[2],
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <LeaguePointsFormToggle showForm={seasonShowForm} onToggle={setSeasonShowForm} />
-              <View style={{ width: 10 }} />
-              <View style={{ flex: 1 }} />
-              <LeaguePillButton label="Rules" onPress={() => setSeasonRulesOpen(true)} />
-            </View>
-
-            <LeagueSeasonRulesSheet
-              open={seasonRulesOpen}
-              onClose={() => setSeasonRulesOpen(false)}
-              isLateStartingLeague={seasonIsLateStartingLeague}
-            />
-          </ScrollView>
-        ) : tab === 'predictions' ? (
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingBottom: 140 }}
-            refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          >
-            {typeof picksGw !== 'number' ? (
-              <TotlText variant="muted">No current gameweek available.</TotlText>
-            ) : picksGw < seasonStartGw ? (
-              <TotlText variant="muted">No Predictions Available (this league started later).</TotlText>
-            ) : !predictions ? (
-              <TotlText variant="muted">Loading…</TotlText>
-            ) : (() => {
-                const shouldShowWhoSubmitted = !predictions.allSubmitted && !predictions.deadlinePassed;
-
-                if (shouldShowWhoSubmitted) {
-                  return (
-                    <LeagueSubmissionStatusCard
-                      members={predictions.members}
-                      submittedSet={predictions.submittedSet}
-                      picksGw={predictions.picksGw}
-                      fixtures={predictions.fixtures}
-                      variant="compact"
-                    />
-                  );
-                }
-
-                return (
-                  <>
-                    {!predictions.allSubmitted ? (
-                      <LeagueSubmissionStatusCard
-                        members={predictions.members}
-                        submittedSet={predictions.submittedSet}
-                        picksGw={predictions.picksGw}
-                        fixtures={predictions.fixtures}
-                        variant="full"
-                      />
-                    ) : null}
-
-                    {predictions.sections.map((sec) => (
-                      <View key={sec.label} style={{ marginTop: 12 }}>
-                        <TotlText variant="body" style={{ fontWeight: '900', marginBottom: 10 }}>
-                          {sec.label}
-                        </TotlText>
-
-                        <View style={{ borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(148,163,184,0.14)' }}>
-                          {sec.fixtures.map((f, idx) => {
-                            const live = predictions.liveByFixtureIndex.get(f.fixture_index) ?? null;
-                            const lsNoGoals = live ? ({ ...(live as any), goals: undefined } as any) : null;
-                            const outcome = predictions.outcomeByFixtureIndex.get(f.fixture_index) ?? null;
-                            const picksMap = predictions.picksByFixtureIndex.get(f.fixture_index) ?? new Map<string, LeaguePick>();
-
-                            return (
-                              <View
-                                key={`${predictions.picksGw}-${f.fixture_index}`}
-                                style={{
-                                  borderTopWidth: idx === 0 ? 0 : 1,
-                                  borderTopColor: 'rgba(148,163,184,0.14)',
-                                }}
-                              >
-                                <FixtureCard
-                                  fixture={f as any}
-                                  liveScore={lsNoGoals}
-                                  showPickButtons={false}
-                                  variant="grouped"
-                                  result={outcome}
-                                />
-                                <LeaguePickChipsRow
-                                  members={predictions.members}
-                                  picksByUserId={picksMap}
-                                  outcome={outcome}
-                                  currentUserId={me?.id ?? null}
-                                />
-                              </View>
-                            );
-                          })}
-                        </View>
-                      </View>
-                    ))}
-                  </>
-                );
-              })()}
-          </ScrollView>
-        ) : tab === 'chat' ? (
-          <LeagueChatTab leagueId={leagueId} members={members.map((m: any) => ({ id: String(m.id), name: String(m.name ?? 'User') }))} />
-        ) : (
-          <TotlText variant="muted">Season tab (coming).</TotlText>
-        )}
-      </View>
+      <LeagueMenuSheet
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onAction={handleMenuAction}
+        showResetBadge={!!headerAvatarUri}
+      />
+      {leagueMeta?.code ? (
+        <LeagueInviteSheet
+          open={inviteOpen}
+          onClose={() => setInviteOpen(false)}
+          leagueName={String(leagueMeta?.name ?? params.name ?? 'Mini league')}
+          leagueCode={String(leagueMeta.code)}
+        />
+      ) : null}
     </Screen>
   );
 }

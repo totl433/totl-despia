@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import type { Env } from './env';
+import type { Env } from './env.js';
 
 export function createSupabaseClient(env: Env, opts?: { bearerToken?: string }) {
   return createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {

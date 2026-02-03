@@ -136,7 +136,7 @@ export default function GlobalScreen() {
     [gwPoints, latestGw, nameByUserId, overall]
   );
 
-  const rows: LeaderboardRow[] = React.useMemo(() => {
+  const rowsBase: LeaderboardRow[] = React.useMemo(() => {
     const gw = latestGw ?? null;
     if (!overall || !gwPoints) return [];
 
@@ -158,6 +158,35 @@ export default function GlobalScreen() {
       .sort(byValueThenName);
     return filterScope(pts);
   }, [computeFormRows, filterScope, gwPoints, latestGw, nameByUserId, overall, tab]);
+
+  const visibleUserIds = React.useMemo(() => {
+    const ids = Array.from(new Set(rowsBase.map((r) => r.user_id))).filter(Boolean);
+    // Keep it bounded (leaderboard UI only needs the top list).
+    return ids.slice(0, 400);
+  }, [rowsBase]);
+
+  const { data: avatarByUserId } = useQuery<Record<string, string | null>>({
+    enabled: visibleUserIds.length > 0,
+    queryKey: ['leaderboards', 'avatarMap', scope, tab, latestGw, visibleUserIds.length],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('users').select('id, avatar_url').in('id', visibleUserIds);
+      if (error) throw error;
+      const out: Record<string, string | null> = {};
+      (data ?? []).forEach((u: any) => {
+        out[String(u.id)] = typeof u.avatar_url === 'string' ? u.avatar_url : null;
+      });
+      return out;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const rows: LeaderboardRow[] = React.useMemo(() => {
+    const m = avatarByUserId ?? {};
+    return rowsBase.map((r) => ({
+      ...r,
+      avatar_url: m[r.user_id] ?? null,
+    }));
+  }, [avatarByUserId, rowsBase]);
 
   const subtitle = React.useMemo(() => {
     const who = scope === 'friends' ? 'Mini League Friends' : 'All Players';
@@ -187,59 +216,59 @@ export default function GlobalScreen() {
       {/* No extra bottom padding here; the table handles its own scroll padding.
           This lets the leaderboard container run off-screen at the bottom (more obvious scroll affordance). */}
       <View style={{ flex: 1 }}>
-        <PageHeader title="Leaderboard" />
+        <PageHeader title="Performance" />
 
         <View style={{ flex: 1, paddingHorizontal: t.space[4], paddingBottom: 0 }}>
 
-          <View style={{ marginTop: 10 }}>
-            <LeaderboardsTabs value={tab} onChange={setTab} />
-          </View>
+        <View style={{ marginTop: 10 }}>
+          <LeaderboardsScopeToggle value={scope} onChange={setScope} />
+        </View>
 
-          <View style={{ marginTop: 16 }}>
-            <LeaderboardsScopeToggle value={scope} onChange={setScope} />
-          </View>
+        <View style={{ marginTop: 12 }}>
+          <LeaderboardsTabs value={tab} onChange={setTab} />
+        </View>
 
-          <View style={{ marginTop: 14, marginBottom: 10, alignItems: 'center' }}>
-            <TotlText variant="sectionSubtitle">{subtitle}</TotlText>
-          </View>
+        <View style={{ marginTop: 14, marginBottom: 10, alignItems: 'center' }}>
+          <TotlText variant="sectionSubtitle">{subtitle}</TotlText>
+        </View>
 
-          {loading ? <TotlText variant="muted">Loading…</TotlText> : null}
+        {loading ? <TotlText variant="muted">Loading…</TotlText> : null}
 
-          {error ? (
-            <Card style={{ marginBottom: 12 }}>
-              <TotlText variant="heading" style={{ marginBottom: 6 }}>
-                Couldn’t load leaderboard
-              </TotlText>
-              <TotlText variant="muted">{String((error as any)?.message ?? 'Unknown error')}</TotlText>
-            </Card>
-          ) : null}
+        {error ? (
+          <Card style={{ marginBottom: 12 }}>
+            <TotlText variant="heading" style={{ marginBottom: 6 }}>
+              Couldn’t load leaderboard
+            </TotlText>
+            <TotlText variant="muted">{String((error as any)?.message ?? 'Unknown error')}</TotlText>
+          </Card>
+        ) : null}
 
-          {!loading && !error && rows.length === 0 ? (
-            <Card>
-              <TotlText variant="heading" style={{ marginBottom: 6 }}>
-                No leaderboard data yet
-              </TotlText>
-              <TotlText variant="muted">Pull to refresh.</TotlText>
-            </Card>
-          ) : null}
+        {!loading && !error && rows.length === 0 ? (
+          <Card>
+            <TotlText variant="heading" style={{ marginBottom: 6 }}>
+              No leaderboard data yet
+            </TotlText>
+            <TotlText variant="muted">Pull to refresh.</TotlText>
+          </Card>
+        ) : null}
 
-          {!loading && !error && rows.length > 0 ? (
-            <LeaderboardTable
-              rows={rows}
-              valueLabel={valueLabel}
-              highlightUserId={userId}
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              style={{
-                flex: 1,
-                // Remove bottom rounding so it can visually run off-screen.
-                borderBottomLeftRadius: 0,
-                borderBottomRightRadius: 0,
-                // Pull the table down slightly so the bottom edge isn't visible.
-                marginBottom: -24,
-              }}
-            />
-          ) : null}
+        {!loading && !error && rows.length > 0 ? (
+          <LeaderboardTable
+            rows={rows}
+            valueLabel={valueLabel}
+            highlightUserId={userId}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            style={{
+              flex: 1,
+              // Remove bottom rounding so it can visually run off-screen.
+              borderBottomLeftRadius: 0,
+              borderBottomRightRadius: 0,
+              // Pull the table down slightly so the bottom edge isn't visible.
+              marginBottom: -24,
+            }}
+          />
+        ) : null}
         </View>
       </View>
     </Screen>

@@ -20,7 +20,7 @@ export function Full() {
             { id: '2', name: 'Bob' },
             { id: '3', name: 'Charlie' },
           ]}
-          submittedSet={new Set(['1'])}
+          submittedUserIds={['1']}
           variant="full"
         />
       </View>
@@ -40,7 +40,7 @@ export function Compact() {
             { id: '2', name: 'Bob' },
             { id: '3', name: 'Charlie' },
           ]}
-          submittedSet={new Set(['1'])}
+          submittedUserIds={['1']}
           variant="compact"
         />
       </View>

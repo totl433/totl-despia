@@ -160,6 +160,12 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
               key={tab.routeName}
               onPress={() => {
                 if (!route) return;
+                // Ensure "Mini Leagues" always opens the top-level leagues list,
+                // even if the user last viewed a specific league detail screen.
+                if (tab.routeName === 'Leagues') {
+                  (navigation as any).navigate('Leagues', { screen: 'LeaguesList' });
+                  return;
+                }
                 navigation.navigate(route.name as never);
               }}
               style={{

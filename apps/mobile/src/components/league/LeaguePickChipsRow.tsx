@@ -1,23 +1,24 @@
 import React from 'react';
-import { View } from 'react-native';
+import { Image, View } from 'react-native';
 import { TotlText, useTokens } from '@totl/ui';
 
 import type { LeaguePick } from './LeaguePickPill';
 
-function initials(name: string): string {
+function initial1(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return `${parts[0]![0] ?? ''}${parts[parts.length - 1]![0] ?? ''}`.toUpperCase();
+  return (parts[0]![0] ?? '?').toUpperCase();
 }
 
 function Chip({
   name,
+  avatarUri,
   ring,
   isMe,
   overlap,
 }: {
   name: string;
+  avatarUri?: string | null;
   ring: string;
   isMe: boolean;
   overlap: number;
@@ -36,11 +37,16 @@ function Chip({
         alignItems: 'center',
         justifyContent: 'center',
         marginLeft: overlap,
+        overflow: 'hidden',
       }}
     >
-      <TotlText variant="caption" style={{ fontWeight: '900' }}>
-        {initials(name)}
-      </TotlText>
+      {avatarUri ? (
+        <Image source={{ uri: avatarUri }} style={{ width: SIZE, height: SIZE }} resizeMode="cover" />
+      ) : (
+        <TotlText variant="caption" style={{ fontWeight: '900' }}>
+          {initial1(name)}
+        </TotlText>
+      )}
     </View>
   );
 }
@@ -55,7 +61,7 @@ export default function LeaguePickChipsRow({
   outcome,
   currentUserId,
 }: {
-  members: Array<{ id: string; name: string }>;
+  members: Array<{ id: string; name: string; avatar_url?: string | null }>;
   picksByUserId: Map<string, LeaguePick>;
   outcome: LeaguePick | null;
   currentUserId: string | null;
@@ -63,7 +69,7 @@ export default function LeaguePickChipsRow({
   const t = useTokens();
 
   const byPick = React.useMemo(() => {
-    const m = new Map<LeaguePick, Array<{ id: string; name: string }>>([
+    const m = new Map<LeaguePick, Array<{ id: string; name: string; avatar_url?: string | null }>>([
       ['H', []],
       ['D', []],
       ['A', []],
@@ -71,7 +77,7 @@ export default function LeaguePickChipsRow({
     members.forEach((mem) => {
       const p = picksByUserId.get(mem.id);
       if (!p) return;
-      m.get(p)!.push({ id: mem.id, name: mem.name });
+      m.get(p)!.push({ id: mem.id, name: mem.name, avatar_url: mem.avatar_url ?? null });
     });
     return m;
   }, [members, picksByUserId]);
@@ -90,6 +96,7 @@ export default function LeaguePickChipsRow({
           <Chip
             key={u.id}
             name={u.name}
+            avatarUri={u.avatar_url ?? null}
             ring={ringFor(pick)}
             isMe={!!currentUserId && u.id === currentUserId}
             overlap={idx === 0 ? 0 : -8}

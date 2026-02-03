@@ -14,10 +14,10 @@ export function Basic() {
       <View style={{ padding: 16 }}>
         <LeaguePickChipsRow
           members={[
-            { id: '1', name: 'Thomas James Bird' },
+            { id: '1', name: 'Thomas James Bird', avatar_url: null },
             { id: '2', name: 'Jof' },
             { id: '3', name: 'SP' },
-            { id: '4', name: 'Carl' },
+            { id: '4', name: 'Carl', avatar_url: 'https://placehold.co/64x64/png' },
           ]}
           picksByUserId={
             new Map([

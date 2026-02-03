@@ -22,6 +22,7 @@ function Preview({ subtitle, withRight }: { subtitle: boolean; withRight: boolea
           subtitle={subtitle ? 'Gameweek 22 Live Tables' : undefined}
           right={withRight ? <PickPill label="Default View" active /> : null}
         />
+        <SectionHeaderRow title="Predictions" titleRight="0/10" />
       </View>
     </Screen>
   )

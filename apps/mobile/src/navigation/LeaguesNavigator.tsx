@@ -4,10 +4,12 @@ import { useTokens } from '@totl/ui';
 
 import LeaguesScreen from '../screens/LeaguesScreen';
 import LeagueDetailScreen from '../screens/LeagueDetailScreen';
+import CreateLeagueScreen from '../screens/CreateLeagueScreen';
 
 export type LeaguesStackParamList = {
   LeaguesList: undefined;
   LeagueDetail: { leagueId: string; name: string };
+  CreateLeague: undefined;
 };
 
 const Stack = createNativeStackNavigator<LeaguesStackParamList>();
@@ -23,6 +25,7 @@ export default function LeaguesNavigator() {
     >
       <Stack.Screen name="LeaguesList" component={LeaguesScreen} />
       <Stack.Screen name="LeagueDetail" component={LeagueDetailScreen} />
+      <Stack.Screen name="CreateLeague" component={CreateLeagueScreen} />
     </Stack.Navigator>
   );
 }
