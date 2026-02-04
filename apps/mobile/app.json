@@ -16,6 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.totl.mobile",
+      "buildNumber": "2",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -37,7 +38,7 @@
     "extra": {
       "EXPO_PUBLIC_SUPABASE_URL": "https://gyjagrtwrhctmgkootjj.supabase.co",
       "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5amFncnR3cmhjdG1na29vdGpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MzM2OTIsImV4cCI6MjA3NDMwOTY5Mn0.S6TrCrZWkISC7g14QmVriEQSBawLwxpcGYQKcNqpazA",
-      "EXPO_PUBLIC_BFF_URL": "http://192.168.0.21:8787",
+      "EXPO_PUBLIC_BFF_URL": "https://totl-despia-production.up.railway.app",
       "eas": {
         "projectId": "099a4819-be8c-4214-8b87-941895ff9e2e"
       }

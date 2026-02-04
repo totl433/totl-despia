@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "faebff9a-0dd1-4c92-b654-abf63e16a09c"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.carlstratton.totlweb",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
+}

@@ -34,6 +34,21 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const pick = (key: string) => {
     const fromLocal = envLocal[key];
     if (typeof fromLocal === 'string' && fromLocal.trim() && fromLocal !== 'PASTE_ANON_KEY_HERE') return fromLocal;
+
+    // Prefer EAS/CI injected env vars next.
+    // Important: locally, Expo CLI may load `.env` into `process.env` automatically.
+    // We intentionally prioritize `env.local` (non-hidden) to avoid stale `.env` overriding local dev.
+    const isEasBuild = process.env.EAS_BUILD === 'true';
+    const isCi = process.env.CI === 'true' || process.env.CI === '1';
+    const preferProcess = isEasBuild || isCi;
+    const fromProcess = process.env[key];
+    if (preferProcess && typeof fromProcess === 'string' && fromProcess.trim() && fromProcess !== 'PASTE_ANON_KEY_HERE')
+      return fromProcess;
+    if (!preferProcess && typeof fromProcess === 'string' && fromProcess.trim() && fromProcess !== 'PASTE_ANON_KEY_HERE') {
+      // Still allow `process.env` locally, but only after `env.local`.
+      return fromProcess;
+    }
+
     const fromConfig = (config.extra as Record<string, unknown> | undefined)?.[key];
     return typeof fromConfig === 'string' ? fromConfig : undefined;
   };

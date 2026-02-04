@@ -68,6 +68,9 @@ export const RankBadgeSchema = z.object({
   total: z.number().int().positive(),
   // Optional helper for the UI (e.g. “Top 12%”)
   percentileLabel: z.string().nullable().optional(),
+  // Optional helpers for “last GW” score display on mobile (e.g. “5/10”)
+  score: z.number().int().nonnegative().optional(),
+  totalFixtures: z.number().int().positive().optional(),
 });
 export type RankBadge = z.infer<typeof RankBadgeSchema>;
 

@@ -214,7 +214,9 @@ function makeRankBadge(input: {
   label: string;
   rank: number | null;
   total: number;
-}): { label: string; rank: number; total: number; percentileLabel: string } | null {
+  score?: number;
+  totalFixtures?: number;
+}): { label: string; rank: number; total: number; percentileLabel: string; score?: number; totalFixtures?: number } | null {
   if (!input.rank || input.total <= 0) return null;
   const pct = Math.max(1, Math.min(100, Math.round((input.rank / input.total) * 100)));
   return {
@@ -222,6 +224,8 @@ function makeRankBadge(input: {
     rank: input.rank,
     total: input.total,
     percentileLabel: `Top ${pct}%`,
+    ...(typeof input.score === 'number' ? { score: input.score } : null),
+    ...(typeof input.totalFixtures === 'number' ? { totalFixtures: input.totalFixtures } : null),
   };
 }
 
@@ -308,6 +312,14 @@ app.get('/v1/home/ranks', async (req) => {
   });
   lastGwScores.sort((a, b) => b.score - a.score);
   const gwRank = rankFromSorted(lastGwScores, userId);
+  const myLatestGwScore = pointsByUserByGw.get(userId)?.get(latestGw) ?? 0;
+
+  const { count: latestGwFixtureCount, error: latestGwFxErr } = await (supa as any)
+    .from('app_fixtures')
+    .select('id', { count: 'exact', head: true })
+    .eq('gw', latestGw);
+  if (latestGwFxErr) throw latestGwFxErr;
+  const myLatestGwTotalFixtures = Number(latestGwFixtureCount ?? 0) || 0;
 
   const sumWindow = (windowSize: number) => {
     const start = Math.max(1, latestGw - (windowSize - 1));
@@ -327,7 +339,13 @@ app.get('/v1/home/ranks', async (req) => {
 
   const out: HomeRanks = {
     latestGw,
-    gwRank: makeRankBadge({ label: `GW ${latestGw}`, rank: gwRank.rank, total: gwRank.total }),
+    gwRank: makeRankBadge({
+      label: `GW ${latestGw}`,
+      rank: gwRank.rank,
+      total: gwRank.total,
+      score: myLatestGwScore,
+      totalFixtures: myLatestGwTotalFixtures || undefined,
+    }),
     fiveWeekForm: makeRankBadge({ label: '5-week form', rank: five.rank, total: five.total }),
     tenWeekForm: makeRankBadge({ label: '10-week form', rank: ten.rank, total: ten.total }),
     seasonRank: makeRankBadge({ label: 'Season', rank: season.rank, total: season.total }),

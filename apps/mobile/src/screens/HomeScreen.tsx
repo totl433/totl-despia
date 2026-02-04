@@ -3,7 +3,6 @@ import { Animated, type ImageSourcePropType, Image, Pressable, Share, View, useW
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Asset } from 'expo-asset';
 import { SvgUri } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +13,9 @@ import type { Fixture, GwResultRow, HomeRanks, HomeSnapshot, LiveScore, LiveStat
 import { api } from '../lib/api';
 import { TotlRefreshControl } from '../lib/refreshControl';
 import { supabase } from '../lib/supabase';
+import { env } from '../env';
+import GameweekAdvanceTransition from '../components/transitions/GameweekAdvanceTransition';
+import { useGameweekAdvanceTransition } from '../hooks/useGameweekAdvanceTransition';
 import FixtureCard from '../components/FixtureCard';
 import MiniLeagueCard from '../components/MiniLeagueCard';
 import { MiniLeaguesDefaultBatchCard } from '../components/MiniLeaguesDefaultList';
@@ -54,6 +56,32 @@ function formatKickoffUtc(kickoff: string | null | undefined) {
   return `${hh}:${mm}`;
 }
 
+function deadlineCountdown(
+  fixtures: Fixture[],
+  nowMs: number
+): {
+  text: string;
+  expired: boolean;
+} | null {
+  const firstKickoff = fixtures
+    .map((f) => (f.kickoff_time ? new Date(f.kickoff_time) : null))
+    .filter((d): d is Date => !!d && !Number.isNaN(d.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime())[0];
+  if (!firstKickoff) return null;
+
+  const DEADLINE_BUFFER_MINUTES = 75;
+  const deadline = new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000);
+  const diffMs = deadline.getTime() - nowMs;
+  if (diffMs <= 0) return { text: '0d 0h 0m', expired: true };
+
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+
+  return { text: `${days}d ${hours}h ${minutes}m`, expired: false };
+}
+
 function fixtureDateLabel(kickoff: string | null | undefined) {
   if (!kickoff) return 'No date';
   const d = new Date(kickoff);
@@ -65,6 +93,32 @@ export default function HomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
   const { width: screenWidth } = useWindowDimensions();
+  const advanceTransition = useGameweekAdvanceTransition({ totalMs: 1050 });
+  const [nowMs, setNowMs] = React.useState(() => Date.now());
+  const [hasAccessToken, setHasAccessToken] = React.useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    // Keep countdowns fresh without being noisy.
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (cancelled) return;
+        setHasAccessToken(Boolean(data.session?.access_token));
+      } catch {
+        if (cancelled) return;
+        setHasAccessToken(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const {
     data: home,
@@ -89,7 +143,7 @@ export default function HomeScreen() {
     queryFn: () => api.listLeagues(),
   });
 
-  const { data: ranks } = useQuery<HomeRanks>({
+  const { data: ranks, refetch: refetchRanks, isRefetching: ranksRefetching } = useQuery<HomeRanks>({
     queryKey: ['homeRanks'],
     queryFn: () => api.getHomeRanks(),
   });
@@ -190,11 +244,10 @@ export default function HomeScreen() {
     return { started, live, correct, total: fixtures.length };
   }, [fixtures, liveByFixtureIndex, resultByFixtureIndex, userPicks]);
 
-  const refreshing = homeRefetching || leaguesRefetching;
+  const refreshing = homeRefetching || leaguesRefetching || ranksRefetching;
   const onRefresh = () => {
-    void Promise.all([refetchHome(), refetchLeagues()]);
+    void Promise.all([refetchHome(), refetchLeagues(), refetchRanks()]);
   };
-  const [visibleLeagueIds, setVisibleLeagueIds] = React.useState<Set<string>>(() => new Set());
   const [activeLeagueIndex, setActiveLeagueIndex] = React.useState<number>(0);
   const mlAbsoluteProgress = useSharedValue(0);
   const mlCarouselItemWidthSV = useSharedValue(0);
@@ -237,74 +290,6 @@ export default function HomeScreen() {
     />
   );
 
-  function HomeMiniLeagueCardItem({
-    league,
-    index,
-    totalCount,
-    mode,
-  }: {
-    league: LeagueSummary;
-    index: number;
-    totalCount: number;
-    mode: 'live' | 'default';
-  }) {
-    const leagueId = String(league.id);
-    const enabled = mode === 'live' && !!viewingGw && visibleLeagueIds.has(leagueId);
-
-    const { data: table, isLoading } = useQuery({
-      enabled,
-      queryKey: ['leagueGwTable', leagueId, viewingGw],
-      queryFn: () => api.getLeagueGwTable(leagueId, viewingGw!),
-    });
-
-    const rows = mode === 'live' ? (table?.rows?.slice(0, 4) ?? []) : [];
-    const winnerName = rows?.[0]?.name as string | undefined;
-    const isDraw =
-      rows.length >= 2 &&
-      Number(rows[0]?.score ?? 0) === Number(rows[1]?.score ?? 0) &&
-      Number(rows[0]?.unicorns ?? 0) === Number(rows[1]?.unicorns ?? 0);
-    const winnerChip = rows.length ? (isDraw ? 'Draw!' : winnerName ? `${winnerName} Wins!` : null) : null;
-    const avatarUri = resolveLeagueAvatarUri(typeof league.avatar === 'string' ? league.avatar : null);
-
-    const emptyLabel =
-      mode === 'default'
-        ? 'Tap to open'
-        : !viewingGw
-          ? '—'
-          : !visibleLeagueIds.has(leagueId)
-            ? 'Swipe to load…'
-            : isLoading
-              ? 'Loading table…'
-              : 'No table yet.';
-
-    return (
-      <Pressable
-        onPress={() =>
-          navigation.navigate('Leagues', {
-            screen: 'LeagueDetail',
-            params: { leagueId: league.id, name: league.name },
-          })
-        }
-        style={({ pressed }) => ({
-          width: mlCardWidth,
-          opacity: pressed ? 0.96 : 1,
-          transform: [{ scale: pressed ? 0.99 : 1 }],
-        })}
-      >
-        <MiniLeagueCard
-          title={String(league.name ?? '')}
-          avatarUri={avatarUri}
-          gwIsLive={mode === 'live' ? gwIsLive : false}
-          winnerChip={winnerChip}
-          rows={rows}
-          emptyLabel={emptyLabel}
-          width={mlCardWidth}
-          fixedRowCount={mode === 'live' ? 4 : undefined}
-        />
-      </Pressable>
-    );
-  }
-
   const handleShare = async () => {
     try {
       const gw = home?.viewingGw ?? home?.currentGw ?? null;
@@ -344,6 +329,13 @@ export default function HomeScreen() {
 
   const gwIsLive = (scoreSummary?.live ?? 0) > 0;
   const viewingGw = home?.viewingGw ?? null;
+  const currentGw = home?.currentGw ?? null;
+  const showReadyToMoveOn =
+    typeof currentGw === 'number' && typeof viewingGw === 'number' ? viewingGw < currentGw : false;
+  const hasMovedOn = typeof currentGw === 'number' && typeof viewingGw === 'number' ? viewingGw >= currentGw : true;
+  const deadline = React.useMemo(() => deadlineCountdown(fixtures, nowMs), [fixtures, nowMs]);
+  const deadlineExpired = deadline?.expired ?? false;
+
   const contentWidth = Math.max(280, screenWidth - t.space[4] * 2);
   /**
    * Mini Leagues carousel sizing:
@@ -365,7 +357,6 @@ export default function HomeScreen() {
   // IMPORTANT: `react-native-reanimated-carousel` defaults height to "100%" if you don't pass it,
   // which can create a huge blank block inside a vertical ScrollView (looks like a blank screen).
   const mlCarouselHeight = 352;
-  const mlLiveCarouselRef = React.useRef<ICarouselInstance>(null);
   const mlDefaultCarouselRef = React.useRef<ICarouselInstance>(null);
 
   React.useEffect(() => {
@@ -390,23 +381,14 @@ export default function HomeScreen() {
       fixtures: home.fixtures ?? [],
       liveScores: home.liveScores ?? [],
       hasSubmittedViewingGw: !!home.hasSubmittedViewingGw,
+      now: new Date(nowMs),
     });
-  }, [home]);
+  }, [home, nowMs]);
 
-  const showMlToggleButtons = gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW';
-  const [showLiveTables, setShowLiveTables] = React.useState<boolean>(showMlToggleButtons);
-  const prevGwRef = React.useRef<number | null>(viewingGw);
-
-  React.useEffect(() => {
-    if (prevGwRef.current !== null && viewingGw !== null && prevGwRef.current !== viewingGw) {
-      setShowLiveTables(false);
-    }
-    prevGwRef.current = viewingGw;
-  }, [viewingGw]);
-
-  React.useEffect(() => {
-    if (showMlToggleButtons) setShowLiveTables(true);
-  }, [showMlToggleButtons]);
+  const showMakePicksBanner =
+    hasMovedOn &&
+    (gwState === 'GW_OPEN' || gwState === 'DEADLINE_PASSED') &&
+    home?.hasSubmittedViewingGw === false;
 
   const defaultLeagueBatches = React.useMemo(() => {
     const leagueList: LeagueSummary[] = leagues?.leagues ?? [];
@@ -417,38 +399,14 @@ export default function HomeScreen() {
   }, [leagues?.leagues]);
 
   React.useEffect(() => {
-    // With the carousel we don't have RN FlatList viewability callbacks.
-    // Approximate “visible” cards as current + neighbors to keep GW table fetch lazy.
-    if (!showLiveTables) {
-      setVisibleLeagueIds((prev) => (prev.size ? new Set() : prev));
+    // Keep dots index stable when leagues change.
+    if (!defaultLeagueBatches.length) {
+      if (activeLeagueIndex !== 0) setActiveLeagueIndex(0);
       return;
     }
-
-    const leagueList: LeagueSummary[] = leagues?.leagues ?? [];
-    if (!leagueList.length) return;
-
-    const next = new Set<string>();
-    const idxs = [activeLeagueIndex - 1, activeLeagueIndex, activeLeagueIndex + 1];
-    for (const idx of idxs) {
-      if (idx < 0 || idx >= leagueList.length) continue;
-      const id = leagueList[idx]?.id;
-      if (id) next.add(String(id));
-    }
-
-    setVisibleLeagueIds((prev) => {
-      if (prev.size === next.size) {
-        let same = true;
-        for (const id of prev) {
-          if (!next.has(id)) {
-            same = false;
-            break;
-          }
-        }
-        if (same) return prev;
-      }
-      return next;
-    });
-  }, [activeLeagueIndex, leagues?.leagues, showLiveTables]);
+    if (activeLeagueIndex < 0) setActiveLeagueIndex(0);
+    if (activeLeagueIndex >= defaultLeagueBatches.length) setActiveLeagueIndex(defaultLeagueBatches.length - 1);
+  }, [activeLeagueIndex, defaultLeagueBatches.length]);
 //VERTICAL SPACING CONTROL HERE
   const errorMessage = homeError ? getErrorMessage(homeError) : leaguesError ? getErrorMessage(leaguesError) : null;
   const SECTION_GAP_Y = 40; // visual rhythm between major sections (spec)
@@ -456,51 +414,49 @@ export default function HomeScreen() {
 
   // Mini Leagues block spacing controls.
   // - Gap between carousel cards and the pagination dots (per view).
-  const ML_LIVE_DOTS_GAP_Y = 12;
   const ML_DEFAULT_DOTS_GAP_Y = -40;
   // - Gap between the carousel section (viewport+dots) and the content below it (per view).
-  const ML_LIVE_SECTION_BOTTOM_PADDING = MINI_TO_GW_GAP_Y + 80;
   const ML_DEFAULT_SECTION_BOTTOM_PADDING = MINI_TO_GW_GAP_Y +80;
 
   // Each view keeps its own viewport height so dots stay visually attached to the bottom of that view.
-  const ML_LIVE_HEIGHT = mlCarouselHeight;
   const ML_DEFAULT_HEIGHT = 350;
 
   return (
-    <Screen fullBleed>
-      {/* Floating menu buttons (stay visible while scrolling) */}
-      <View
-        pointerEvents="box-none"
-        style={{
-          position: 'absolute',
-          top: t.space[2],
-          right: t.space[4],
-          zIndex: 50,
-        }}
-      >
-        <View style={{ flexDirection: 'row' }}>
-          <RoundIconButton
-            onPress={() => {}}
-            icon={require('../../../../public/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png')}
-          />
-          <View style={{ width: 10 }} />
-          <RoundIconButton
-            onPress={() => navigation.navigate('Profile')}
-            icon={require('../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')}
-          />
+    <GameweekAdvanceTransition controller={advanceTransition}>
+      <Screen fullBleed>
+        {/* Floating menu buttons (stay visible while scrolling) */}
+        <View
+          pointerEvents="box-none"
+          style={{
+            position: 'absolute',
+            top: t.space[2],
+            right: t.space[4],
+            zIndex: 50,
+          }}
+        >
+          <View style={{ flexDirection: 'row' }}>
+            <RoundIconButton
+              onPress={() => {}}
+              icon={require('../../../../public/assets/Icons/School--Streamline-Outlined-Material-Pr0_White.png')}
+            />
+            <View style={{ width: 10 }} />
+            <RoundIconButton
+              onPress={() => navigation.navigate('Profile')}
+              icon={require('../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')}
+            />
+          </View>
         </View>
-      </View>
 
-      <Animated.ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          paddingHorizontal: t.space[4],
-          paddingTop: 0,
-          // Ensure the last fixture isn't hidden behind the floating bottom tab bar.
-          paddingBottom: t.space[12] + 60,
-        }}
-        refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
+        <Animated.ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            paddingHorizontal: t.space[4],
+            paddingTop: 0,
+            // Ensure the last fixture isn't hidden behind the floating bottom tab bar.
+            paddingBottom: t.space[12] + 60,
+          }}
+          refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        >
         {/* Header (scrolls with content) */}
         <View style={{ marginBottom: 0, paddingTop: 16, paddingBottom: 0, alignItems: 'center' }}>
           {/* Real TOTL logo (from web assets), simple + static */}
@@ -509,7 +465,163 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {__DEV__ ? (
+          <View style={{ marginBottom: 10 }}>
+            <TotlText variant="muted">Dev: BFF {String(env.EXPO_PUBLIC_BFF_URL)}</TotlText>
+            <TotlText variant="muted">
+              Dev: Auth token {hasAccessToken === null ? 'unknown' : hasAccessToken ? 'present' : 'missing'}
+            </TotlText>
+          </View>
+        ) : null}
+
         {isHomeLoading && <TotlText variant="muted">Loading…</TotlText>}
+
+        {/* GW Transition banner (RESULTS_PRE_GW but next GW published) */}
+        {showReadyToMoveOn ? (
+          <View
+            style={{
+              backgroundColor: '#e9f0ef',
+              borderRadius: 16,
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              marginBottom: 10,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
+              <View
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 10,
+                  backgroundColor: '#1C8376',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 10,
+                }}
+              >
+                <Ionicons name="flash" size={12} color="#FFFFFF" />
+              </View>
+              <TotlText style={{ fontFamily: 'Gramatika-Bold', fontWeight: '700', fontSize: 16, lineHeight: 18 }}>
+                Ready to move on?
+              </TotlText>
+            </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Move to next gameweek"
+              disabled={advanceTransition.isAnimating}
+              onPress={() => {
+                if (typeof currentGw !== 'number') return;
+                advanceTransition.start({
+                  nextGameweekLabel: `GAMEWEEK ${currentGw}`,
+                  onAdvance: async () => {
+                    await api.updateNotificationPrefs({ current_viewing_gw: currentGw });
+                    await Promise.all([refetchHome(), refetchLeagues(), refetchRanks()]);
+                  },
+                });
+              }}
+              style={({ pressed }) => ({
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                borderRadius: t.radius.pill,
+                backgroundColor: '#1C8376',
+                opacity: advanceTransition.isAnimating ? 0.7 : pressed ? 0.9 : 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                transform: [{ scale: pressed ? 0.99 : 1 }],
+              })}
+            >
+              <TotlText
+                style={{
+                  color: '#FFFFFF',
+                  fontFamily: 'Gramatika-Medium',
+                  fontWeight: '500',
+                  fontSize: 14,
+                  lineHeight: 14,
+                }}
+              >
+                {typeof currentGw === 'number' ? `Gameweek ${currentGw}` : 'Gameweek'}
+              </TotlText>
+              <View style={{ width: 6 }} />
+              <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+            </Pressable>
+          </View>
+        ) : null}
+
+        {/* Predictions banner (after move-on, user hasn't submitted for current GW) */}
+        {showMakePicksBanner && typeof viewingGw === 'number' ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Go to predictions"
+            disabled={advanceTransition.isAnimating || deadlineExpired}
+            onPress={() => {
+              if (advanceTransition.isAnimating) return;
+              if (deadlineExpired) return;
+              navigation.navigate('Predictions');
+            }}
+            style={({ pressed }) => ({
+              backgroundColor: '#e9f0ef',
+              borderRadius: 16,
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              marginBottom: 10,
+              opacity: deadlineExpired ? 0.6 : pressed ? 0.92 : 1,
+            })}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexShrink: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: 10,
+                      backgroundColor: '#1C8376',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 10,
+                    }}
+                  >
+                    <TotlText style={{ color: '#FFFFFF', fontSize: 10, lineHeight: 10 }}>!</TotlText>
+                  </View>
+                  <TotlText style={{ fontFamily: 'Gramatika-Bold', fontWeight: '700', fontSize: 16, lineHeight: 18 }}>
+                    Gameweek {viewingGw} Predictions
+                  </TotlText>
+                </View>
+                <TotlText variant="muted" style={{ marginLeft: 30 }}>
+                  Deadline{' '}
+                  {deadline?.text ? (
+                    <TotlText style={{ color: deadlineExpired ? '#64748B' : '#1C8376', fontWeight: '700' }}>
+                      {deadline.text}
+                    </TotlText>
+                  ) : (
+                    '—'
+                  )}
+                </TotlText>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderRadius: t.radius.pill,
+                    backgroundColor: deadlineExpired ? '#94A3B8' : '#1C8376',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                >
+                  <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Medium', fontWeight: '500' }}>Go</TotlText>
+                  <View style={{ width: 6 }} />
+                  <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                </View>
+              </View>
+            </View>
+          </Pressable>
+        ) : null}
 
         {(homeError || leaguesError) && (
           <Card style={{ marginBottom: 12 }}>
@@ -518,6 +630,12 @@ export default function HomeScreen() {
             </TotlText>
             <TotlText variant="muted" style={{ marginBottom: 12 }}>
               {errorMessage ?? 'Unknown error'}
+            </TotlText>
+            <TotlText variant="muted" style={{ marginBottom: 2 }}>
+              BFF: {String(env.EXPO_PUBLIC_BFF_URL)}
+            </TotlText>
+            <TotlText variant="muted" style={{ marginBottom: 12 }}>
+              Auth token: {hasAccessToken === null ? 'unknown' : hasAccessToken ? 'present' : 'missing'}
             </TotlText>
             <Button title="Retry" onPress={onRefresh} loading={refreshing} />
           </Card>
@@ -536,8 +654,16 @@ export default function HomeScreen() {
         >
           {(() => {
             const gw = ranks?.latestGw ?? home?.viewingGw ?? null;
-            const score = home?.hasSubmittedViewingGw && scoreSummary ? String(scoreSummary.correct) : '--';
-            const total = scoreSummary ? String(scoreSummary.total) : String(fixtures.length || '--');
+            const showLiveOrViewingGwScore = Boolean(home?.hasSubmittedViewingGw) && !!scoreSummary;
+            const fallbackScore =
+              typeof ranks?.gwRank?.score === 'number' && Number.isFinite(ranks.gwRank.score) ? String(ranks.gwRank.score) : '--';
+            const fallbackTotal =
+              typeof ranks?.gwRank?.totalFixtures === 'number' && Number.isFinite(ranks.gwRank.totalFixtures)
+                ? String(ranks.gwRank.totalFixtures)
+                : '--';
+
+            const score = showLiveOrViewingGwScore ? String(scoreSummary!.correct) : fallbackScore;
+            const total = showLiveOrViewingGwScore ? String(scoreSummary!.total) : fallbackTotal;
             const lastGwDisplay = ranks?.gwRank?.percentileLabel ? String(ranks.gwRank.percentileLabel) : 'Top —';
 
             const cards: Array<{ key: string; node: React.JSX.Element }> = [];
@@ -603,7 +729,6 @@ export default function HomeScreen() {
         <View style={{ marginTop: 0 }}>
           <SectionHeaderRow
             title="Mini leagues"
-            subtitle={showLiveTables && home?.viewingGw ? `${viewingGwLabel} Live Tables` : undefined}
             right={
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Pressable
@@ -634,126 +759,54 @@ export default function HomeScreen() {
                     See all
                   </TotlText>
                 </Pressable>
-
-                {showMlToggleButtons ? (
-                  <Pressable
-                    onPress={() => setShowLiveTables((v) => !v)}
-                    style={({ pressed }) => ({
-                      paddingHorizontal: 10,
-                      paddingVertical: 8,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: t.radius.pill,
-                      backgroundColor: showLiveTables ? t.color.surface2 : t.color.brand,
-                      borderWidth: showLiveTables ? 1 : 0,
-                      borderColor: showLiveTables ? t.color.border : 'transparent',
-                      opacity: pressed ? 0.92 : 1,
-                      transform: [{ scale: pressed ? 0.98 : 1 }],
-                      marginLeft: 10,
-                    })}
-                  >
-                    <TotlText
-                      style={{
-                        color: '#FFFFFF',
-                        fontFamily: 'Gramatika-Regular',
-                        fontWeight: '400',
-                        fontSize: 12,
-                        lineHeight: 12,
-                      }}
-                    >
-                      {showLiveTables ? 'Default View' : 'View Live Tables'}
-                    </TotlText>
-                  </Pressable>
-                ) : null}
               </View>
             }
           />
         </View>
         {leagues?.leagues?.length ? (
-          showLiveTables ? (
-            <CarouselWithPagination
-              carouselRef={mlLiveCarouselRef}
-              width={mlCarouselViewportWidth}
-              height={ML_LIVE_HEIGHT}
-              data={leagues.leagues}
-              progress={mlAbsoluteProgress}
-              currentIndex={activeLeagueIndex}
-              onIndexChange={(idx) => setActiveLeagueIndex(idx)}
-              dotsGap={ML_LIVE_DOTS_GAP_Y}
-              sectionBottomPadding={ML_LIVE_SECTION_BOTTOM_PADDING}
-              dotsName="Mini leagues"
-              customAnimation={(value) => {
-                'worklet';
-                const step = mlCarouselItemWidthSV.value;
-                const sidePeek = mlSidePeekSV.value;
-                const firstOffset = mlFirstItemOffsetSV.value;
-                const translate = value * step;
-                const offset = interpolate(mlAbsoluteProgress.value, [0, 1], [firstOffset, sidePeek], Extrapolation.CLAMP);
-                const z = Math.max(0, 100 - Math.round(Math.abs(value) * 10));
-                return { transform: [{ translateX: offset + translate }], zIndex: z, elevation: z };
-              }}
-              style={{
-                width: mlCarouselViewportWidth,
-                height: ML_LIVE_HEIGHT,
-                marginHorizontal: -mlCarouselOuterGutter,
-              }}
-              containerStyle={{ paddingBottom: 0 }}
-              renderItem={({ item: l, index, animationValue }) => (
-                <CarouselFocusShell animationValue={animationValue} width={mlCardWidth}>
-                  <HomeMiniLeagueCardItem
-                    league={l}
-                    index={index}
-                    totalCount={leagues.leagues.length}
-                    mode="live"
-                  />
-                </CarouselFocusShell>
-              )}
-            />
-          ) : (
-            <CarouselWithPagination
-              carouselRef={mlDefaultCarouselRef}
-              width={mlCarouselViewportWidth}
-              height={ML_DEFAULT_HEIGHT}
-              data={defaultLeagueBatches}
-              progress={mlAbsoluteProgress}
-              currentIndex={activeLeagueIndex}
-              onIndexChange={(idx) => setActiveLeagueIndex(idx)}
-              dotsGap={ML_DEFAULT_DOTS_GAP_Y}
-              sectionBottomPadding={ML_DEFAULT_SECTION_BOTTOM_PADDING}
-              dotsName="Mini leagues"
-              customAnimation={(value) => {
-                'worklet';
-                const step = mlCarouselItemWidthSV.value;
-                const sidePeek = mlSidePeekSV.value;
-                const firstOffset = mlFirstItemOffsetSV.value;
-                const translate = value * step;
-                const offset = interpolate(mlAbsoluteProgress.value, [0, 1], [firstOffset, sidePeek], Extrapolation.CLAMP);
-                const z = Math.max(0, 100 - Math.round(Math.abs(value) * 10));
-                return { transform: [{ translateX: offset + translate }], zIndex: z, elevation: z };
-              }}
-              style={{
-                width: mlCarouselViewportWidth,
-                height: ML_DEFAULT_HEIGHT,
-                marginHorizontal: -mlCarouselOuterGutter,
-              }}
-              containerStyle={{ paddingBottom: 0 }}
-              renderItem={({ item: batch, animationValue }) => (
-                <CarouselFocusShell animationValue={animationValue} width={mlCardWidth}>
-                  <MiniLeaguesDefaultBatchCard
-                    width={mlCardWidth}
-                    batch={batch.map((l) => ({
-                      id: String(l.id),
-                      name: String(l.name ?? ''),
-                      avatarUri: resolveLeagueAvatarUri(typeof l.avatar === 'string' ? l.avatar : null),
-                    }))}
-                    onLeaguePress={(leagueId, name) =>
-                      navigation.navigate('Leagues', { screen: 'LeagueDetail', params: { leagueId, name } })
-                    }
-                  />
-                </CarouselFocusShell>
-              )}
-            />
-          )
+          <CarouselWithPagination
+            carouselRef={mlDefaultCarouselRef}
+            width={mlCarouselViewportWidth}
+            height={ML_DEFAULT_HEIGHT}
+            data={defaultLeagueBatches}
+            progress={mlAbsoluteProgress}
+            currentIndex={activeLeagueIndex}
+            onIndexChange={(idx) => setActiveLeagueIndex(idx)}
+            dotsGap={ML_DEFAULT_DOTS_GAP_Y}
+            sectionBottomPadding={ML_DEFAULT_SECTION_BOTTOM_PADDING}
+            dotsName="Mini leagues"
+            customAnimation={(value) => {
+              'worklet';
+              const step = mlCarouselItemWidthSV.value;
+              const sidePeek = mlSidePeekSV.value;
+              const firstOffset = mlFirstItemOffsetSV.value;
+              const translate = value * step;
+              const offset = interpolate(mlAbsoluteProgress.value, [0, 1], [firstOffset, sidePeek], Extrapolation.CLAMP);
+              const z = Math.max(0, 100 - Math.round(Math.abs(value) * 10));
+              return { transform: [{ translateX: offset + translate }], zIndex: z, elevation: z };
+            }}
+            style={{
+              width: mlCarouselViewportWidth,
+              height: ML_DEFAULT_HEIGHT,
+              marginHorizontal: -mlCarouselOuterGutter,
+            }}
+            containerStyle={{ paddingBottom: 0 }}
+            renderItem={({ item: batch, animationValue }) => (
+              <CarouselFocusShell animationValue={animationValue} width={mlCardWidth}>
+                <MiniLeaguesDefaultBatchCard
+                  width={mlCardWidth}
+                  batch={batch.map((l) => ({
+                    id: String(l.id),
+                    name: String(l.name ?? ''),
+                    avatarUri: resolveLeagueAvatarUri(typeof l.avatar === 'string' ? l.avatar : null),
+                  }))}
+                  onLeaguePress={(leagueId, name) =>
+                    navigation.navigate('Leagues', { screen: 'LeagueDetail', params: { leagueId, name } })
+                  }
+                />
+              </CarouselFocusShell>
+            )}
+          />
         ) : (
           <Card style={{ marginBottom: MINI_TO_GW_GAP_Y }}>
             <TotlText variant="muted">No leagues yet.</TotlText>
@@ -884,8 +937,9 @@ export default function HomeScreen() {
             </View>
           ))
         )}
-      </Animated.ScrollView>
-    </Screen>
+        </Animated.ScrollView>
+      </Screen>
+    </GameweekAdvanceTransition>
   );
 }
 

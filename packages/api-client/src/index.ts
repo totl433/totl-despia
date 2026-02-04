@@ -24,20 +24,50 @@ export class ApiError extends Error {
   }
 }
 
+class RequestTimeoutError extends Error {
+  url: string;
+  timeoutMs: number;
+
+  constructor(url: string, timeoutMs: number) {
+    super(`Request timed out after ${timeoutMs}ms`);
+    this.name = 'RequestTimeoutError';
+    this.url = url;
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 async function requestJson<T>(
   opts: ApiClientOptions,
   input: string,
   init: RequestInit & { validate?: (data: unknown) => T }
 ): Promise<T> {
   const token = await opts.getAccessToken();
-  const res = await fetch(`${opts.baseUrl}${input}`, {
-    ...init,
-    headers: {
-      ...(init.headers ?? {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      'Content-Type': 'application/json',
-    },
-  });
+  const url = `${opts.baseUrl}${input}`;
+  const timeoutMs = 12_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        ...(init.headers ?? {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        'Content-Type': 'application/json',
+      },
+    });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new RequestTimeoutError(url, timeoutMs);
+    }
+
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Network request failed (${url}): ${msg}`);
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const text = await res.text();
   let body: unknown = null;
@@ -58,7 +88,7 @@ async function requestJson<T>(
         ? String((body as any).message)
         : null;
 
-    throw new ApiError(serverMessage ?? `Request failed: ${res.status} ${res.statusText}`, {
+    throw new ApiError(serverMessage ?? `Request failed (${url}): ${res.status} ${res.statusText}`, {
       status: res.status,
       body,
     });
