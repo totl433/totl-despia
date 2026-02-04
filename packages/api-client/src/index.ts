@@ -2,9 +2,11 @@ import {
   GwResultsSchema,
   HomeRanksSchema,
   HomeSnapshotSchema,
+  PredictionsResponseSchema,
   type GwResults,
   type HomeRanks,
   type HomeSnapshot,
+  type PredictionsResponse,
 } from '@totl/domain';
 
 export interface ApiClientOptions {
@@ -154,9 +156,12 @@ export function createApiClient(opts: ApiClientOptions) {
       return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/gw/${encodeURIComponent(String(gw))}/table`, { method: 'GET' });
     },
 
-    async getPredictions(params?: { gw?: number }): Promise<{ gw: number; fixtures: any[]; picks: any[]; submitted: boolean }> {
+    async getPredictions(params?: { gw?: number }): Promise<PredictionsResponse> {
       const q = params?.gw ? `?gw=${encodeURIComponent(String(params.gw))}` : '';
-      return requestJson(opts, `/v1/predictions${q}`, { method: 'GET' });
+      return requestJson(opts, `/v1/predictions${q}`, {
+        method: 'GET',
+        validate: (data) => PredictionsResponseSchema.parse(data),
+      });
     },
 
     async savePredictions(input: { gw: number; picks: Array<{ fixture_index: number; pick: 'H' | 'D' | 'A' }> }) {

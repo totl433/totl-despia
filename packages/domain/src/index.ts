@@ -51,6 +51,22 @@ export const GwResultRowSchema = z.object({
 });
 export type GwResultRow = z.infer<typeof GwResultRowSchema>;
 
+export const PredictionPickRowSchema = z.object({
+  fixture_index: z.number().int().nonnegative(),
+  pick: PickSchema,
+});
+export type PredictionPickRow = z.infer<typeof PredictionPickRowSchema>;
+
+export const PredictionsResponseSchema = z.object({
+  gw: z.number().int().positive(),
+  fixtures: z.array(FixtureSchema),
+  picks: z.array(PredictionPickRowSchema),
+  submitted: z.boolean(),
+  // Optional for backwards compatibility; mobile treats missing as empty.
+  teamForms: z.record(z.string(), z.string()).optional().default({}),
+});
+export type PredictionsResponse = z.infer<typeof PredictionsResponseSchema>;
+
 export const HomeSnapshotSchema = z.object({
   currentGw: z.number().int().positive(),
   viewingGw: z.number().int().positive(),

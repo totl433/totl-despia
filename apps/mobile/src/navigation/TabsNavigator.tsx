@@ -21,7 +21,11 @@ const Tab = createBottomTabNavigator<RootTabsParamList>();
 export default function TabsNavigator() {
   return (
     <Tab.Navigator
-      tabBar={(props) => <FloatingTabBar {...props} />}
+      tabBar={(props) => {
+        const activeRouteName = props.state.routes[props.state.index]?.name;
+        if (activeRouteName === 'Predictions') return null;
+        return <FloatingTabBar {...props} />;
+      }}
       screenOptions={{
         headerShown: false,
         tabBarStyle: {

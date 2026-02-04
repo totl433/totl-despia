@@ -1,4 +1,4 @@
-import { GwResultsSchema, HomeRanksSchema, HomeSnapshotSchema, } from '@totl/domain';
+import { GwResultsSchema, HomeRanksSchema, HomeSnapshotSchema, PredictionsResponseSchema, } from '@totl/domain';
 export class ApiError extends Error {
     status;
     body;
@@ -9,16 +9,44 @@ export class ApiError extends Error {
         this.body = opts.body;
     }
 }
+class RequestTimeoutError extends Error {
+    url;
+    timeoutMs;
+    constructor(url, timeoutMs) {
+        super(`Request timed out after ${timeoutMs}ms`);
+        this.name = 'RequestTimeoutError';
+        this.url = url;
+        this.timeoutMs = timeoutMs;
+    }
+}
 async function requestJson(opts, input, init) {
     const token = await opts.getAccessToken();
-    const res = await fetch(`${opts.baseUrl}${input}`, {
-        ...init,
-        headers: {
-            ...(init.headers ?? {}),
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            'Content-Type': 'application/json',
-        },
-    });
+    const url = `${opts.baseUrl}${input}`;
+    const timeoutMs = 12_000;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let res;
+    try {
+        res = await fetch(url, {
+            ...init,
+            signal: controller.signal,
+            headers: {
+                ...(init.headers ?? {}),
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                'Content-Type': 'application/json',
+            },
+        });
+    }
+    catch (err) {
+        if (controller.signal.aborted) {
+            throw new RequestTimeoutError(url, timeoutMs);
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`Network request failed (${url}): ${msg}`);
+    }
+    finally {
+        clearTimeout(timeout);
+    }
     const text = await res.text();
     let body = null;
     if (text) {
@@ -36,7 +64,7 @@ async function requestJson(opts, input, init) {
             typeof body.message === 'string'
             ? String(body.message)
             : null;
-        throw new ApiError(serverMessage ?? `Request failed: ${res.status} ${res.statusText}`, {
+        throw new ApiError(serverMessage ?? `Request failed (${url}): ${res.status} ${res.statusText}`, {
             status: res.status,
             body,
         });
@@ -82,7 +110,10 @@ export function createApiClient(opts) {
         },
         async getPredictions(params) {
             const q = params?.gw ? `?gw=${encodeURIComponent(String(params.gw))}` : '';
-            return requestJson(opts, `/v1/predictions${q}`, { method: 'GET' });
+            return requestJson(opts, `/v1/predictions${q}`, {
+                method: 'GET',
+                validate: (data) => PredictionsResponseSchema.parse(data),
+            });
         },
         async savePredictions(input) {
             return requestJson(opts, `/v1/predictions/save`, {

@@ -38,6 +38,18 @@ export const GwResultRowSchema = z.object({
     fixture_index: z.number().int().nonnegative(),
     result: PickSchema,
 });
+export const PredictionPickRowSchema = z.object({
+    fixture_index: z.number().int().nonnegative(),
+    pick: PickSchema,
+});
+export const PredictionsResponseSchema = z.object({
+    gw: z.number().int().positive(),
+    fixtures: z.array(FixtureSchema),
+    picks: z.array(PredictionPickRowSchema),
+    submitted: z.boolean(),
+    // Optional for backwards compatibility; mobile treats missing as empty.
+    teamForms: z.record(z.string(), z.string()).optional().default({}),
+});
 export const HomeSnapshotSchema = z.object({
     currentGw: z.number().int().positive(),
     viewingGw: z.number().int().positive(),
@@ -53,6 +65,9 @@ export const RankBadgeSchema = z.object({
     total: z.number().int().positive(),
     // Optional helper for the UI (e.g. “Top 12%”)
     percentileLabel: z.string().nullable().optional(),
+    // Optional helpers for “last GW” score display on mobile (e.g. “5/10”)
+    score: z.number().int().nonnegative().optional(),
+    totalFixtures: z.number().int().positive().optional(),
 });
 export const HomeRanksSchema = z.object({
     latestGw: z.number().int().positive().nullable(),

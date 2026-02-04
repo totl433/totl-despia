@@ -224,8 +224,8 @@ function makeRankBadge(input: {
     rank: input.rank,
     total: input.total,
     percentileLabel: `Top ${pct}%`,
-    ...(typeof input.score === 'number' ? { score: input.score } : null),
-    ...(typeof input.totalFixtures === 'number' ? { totalFixtures: input.totalFixtures } : null),
+    ...(typeof input.score === 'number' ? { score: input.score } : {}),
+    ...(typeof input.totalFixtures === 'number' ? { totalFixtures: input.totalFixtures } : {}),
   };
 }
 
@@ -420,7 +420,7 @@ app.get('/v1/predictions', async (req) => {
 
   const gw = query.gw ?? currentGw;
 
-  const [fixturesRes, picksRes, submissionRes] = await Promise.all([
+  const [fixturesRes, picksRes, submissionRes, formsRes] = await Promise.all([
     (supa as any)
       .from('app_fixtures')
       .select('*')
@@ -437,17 +437,27 @@ app.get('/v1/predictions', async (req) => {
       .eq('user_id', userId)
       .eq('gw', gw)
       .maybeSingle(),
+    (supa as any).from('app_team_forms').select('team_code, form').eq('gw', gw),
   ]);
 
   if (fixturesRes.error) throw fixturesRes.error;
   if (picksRes.error) throw picksRes.error;
   if (submissionRes.error) throw submissionRes.error;
+  if (formsRes.error) throw formsRes.error;
+
+  const teamForms: Record<string, string> = {};
+  (formsRes.data ?? []).forEach((row: any) => {
+    const code = typeof row?.team_code === 'string' ? row.team_code.trim().toUpperCase() : '';
+    const form = typeof row?.form === 'string' ? row.form.trim().toUpperCase() : '';
+    if (code && form) teamForms[code] = form;
+  });
 
   return {
     gw,
     fixtures: fixturesRes.data ?? [],
     picks: picksRes.data ?? [],
     submitted: !!submissionRes.data?.submitted_at,
+    teamForms,
   };
 });
 

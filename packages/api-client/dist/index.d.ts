@@ -1,4 +1,4 @@
-import { type GwResults, type HomeRanks, type HomeSnapshot } from '@totl/domain';
+import { type GwResults, type HomeRanks, type HomeSnapshot, type PredictionsResponse } from '@totl/domain';
 export interface ApiClientOptions {
     baseUrl: string;
     getAccessToken: () => Promise<string | null>;
@@ -54,12 +54,7 @@ export declare function createApiClient(opts: ApiClientOptions): {
     }>;
     getPredictions(params?: {
         gw?: number;
-    }): Promise<{
-        gw: number;
-        fixtures: any[];
-        picks: any[];
-        submitted: boolean;
-    }>;
+    }): Promise<PredictionsResponse>;
     savePredictions(input: {
         gw: number;
         picks: Array<{

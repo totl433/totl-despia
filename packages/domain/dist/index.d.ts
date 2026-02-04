@@ -67,6 +67,44 @@ export declare const GwResultRowSchema: z.ZodObject<{
     }>;
 }, z.core.$strip>;
 export type GwResultRow = z.infer<typeof GwResultRowSchema>;
+export declare const PredictionPickRowSchema: z.ZodObject<{
+    fixture_index: z.ZodNumber;
+    pick: z.ZodEnum<{
+        H: "H";
+        D: "D";
+        A: "A";
+    }>;
+}, z.core.$strip>;
+export type PredictionPickRow = z.infer<typeof PredictionPickRowSchema>;
+export declare const PredictionsResponseSchema: z.ZodObject<{
+    gw: z.ZodNumber;
+    fixtures: z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        gw: z.ZodNumber;
+        fixture_index: z.ZodNumber;
+        kickoff_time: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        api_match_id: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        home_team: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        away_team: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        home_name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        away_name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        home_code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        away_code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        home_crest: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        away_crest: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>;
+    picks: z.ZodArray<z.ZodObject<{
+        fixture_index: z.ZodNumber;
+        pick: z.ZodEnum<{
+            H: "H";
+            D: "D";
+            A: "A";
+        }>;
+    }, z.core.$strip>>;
+    submitted: z.ZodBoolean;
+    teamForms: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>>;
+}, z.core.$strip>;
+export type PredictionsResponse = z.infer<typeof PredictionsResponseSchema>;
 export declare const HomeSnapshotSchema: z.ZodObject<{
     currentGw: z.ZodNumber;
     viewingGw: z.ZodNumber;
@@ -127,6 +165,8 @@ export declare const RankBadgeSchema: z.ZodObject<{
     rank: z.ZodNumber;
     total: z.ZodNumber;
     percentileLabel: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    score: z.ZodOptional<z.ZodNumber>;
+    totalFixtures: z.ZodOptional<z.ZodNumber>;
 }, z.core.$strip>;
 export type RankBadge = z.infer<typeof RankBadgeSchema>;
 export declare const HomeRanksSchema: z.ZodObject<{
@@ -136,24 +176,32 @@ export declare const HomeRanksSchema: z.ZodObject<{
         rank: z.ZodNumber;
         total: z.ZodNumber;
         percentileLabel: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        score: z.ZodOptional<z.ZodNumber>;
+        totalFixtures: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strip>>;
     fiveWeekForm: z.ZodNullable<z.ZodObject<{
         label: z.ZodString;
         rank: z.ZodNumber;
         total: z.ZodNumber;
         percentileLabel: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        score: z.ZodOptional<z.ZodNumber>;
+        totalFixtures: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strip>>;
     tenWeekForm: z.ZodNullable<z.ZodObject<{
         label: z.ZodString;
         rank: z.ZodNumber;
         total: z.ZodNumber;
         percentileLabel: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        score: z.ZodOptional<z.ZodNumber>;
+        totalFixtures: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strip>>;
     seasonRank: z.ZodNullable<z.ZodObject<{
         label: z.ZodString;
         rank: z.ZodNumber;
         total: z.ZodNumber;
         percentileLabel: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        score: z.ZodOptional<z.ZodNumber>;
+        totalFixtures: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strip>>;
 }, z.core.$strip>;
 export type HomeRanks = z.infer<typeof HomeRanksSchema>;

@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Carousel from 'react-native-reanimated-carousel';
 import type { ICarouselInstance } from 'react-native-reanimated-carousel';
 import { Extrapolation, interpolate, useSharedValue } from 'react-native-reanimated';
-import type { Fixture, GwResultRow, HomeRanks, HomeSnapshot, LiveScore, LiveStatus, Pick, RankBadge } from '@totl/domain';
+import type { Fixture, GwResultRow, GwResults, HomeRanks, HomeSnapshot, LiveScore, LiveStatus, Pick, RankBadge } from '@totl/domain';
 import { api } from '../lib/api';
 import { TotlRefreshControl } from '../lib/refreshControl';
 import { supabase } from '../lib/supabase';
@@ -146,6 +146,14 @@ export default function HomeScreen() {
   const { data: ranks, refetch: refetchRanks, isRefetching: ranksRefetching } = useQuery<HomeRanks>({
     queryKey: ['homeRanks'],
     queryFn: () => api.getHomeRanks(),
+  });
+
+  const latestCompletedGw = ranks?.latestGw ?? null;
+  const shouldFetchLatestGwResults = !home?.hasSubmittedViewingGw && typeof latestCompletedGw === 'number';
+  const { data: latestGwResults } = useQuery<GwResults>({
+    enabled: shouldFetchLatestGwResults,
+    queryKey: ['gwResults', latestCompletedGw],
+    queryFn: () => api.getGwResults(latestCompletedGw as number),
   });
 
   const fixtures: Fixture[] = home?.fixtures ?? [];
@@ -654,16 +662,18 @@ export default function HomeScreen() {
         >
           {(() => {
             const gw = ranks?.latestGw ?? home?.viewingGw ?? null;
-            const showLiveOrViewingGwScore = Boolean(home?.hasSubmittedViewingGw) && !!scoreSummary;
+            const showViewingGwScore = Boolean(home?.hasSubmittedViewingGw) && !!scoreSummary;
             const fallbackScore =
-              typeof ranks?.gwRank?.score === 'number' && Number.isFinite(ranks.gwRank.score) ? String(ranks.gwRank.score) : '--';
+              typeof latestGwResults?.score === 'number' && Number.isFinite(latestGwResults.score)
+                ? String(latestGwResults.score)
+                : '--';
             const fallbackTotal =
-              typeof ranks?.gwRank?.totalFixtures === 'number' && Number.isFinite(ranks.gwRank.totalFixtures)
-                ? String(ranks.gwRank.totalFixtures)
+              typeof latestGwResults?.totalFixtures === 'number' && Number.isFinite(latestGwResults.totalFixtures)
+                ? String(latestGwResults.totalFixtures)
                 : '--';
 
-            const score = showLiveOrViewingGwScore ? String(scoreSummary!.correct) : fallbackScore;
-            const total = showLiveOrViewingGwScore ? String(scoreSummary!.total) : fallbackTotal;
+            const score = showViewingGwScore ? String(scoreSummary!.correct) : fallbackScore;
+            const total = showViewingGwScore ? String(scoreSummary!.total) : fallbackTotal;
             const lastGwDisplay = ranks?.gwRank?.percentileLabel ? String(ranks.gwRank.percentileLabel) : 'Top —';
 
             const cards: Array<{ key: string; node: React.JSX.Element }> = [];

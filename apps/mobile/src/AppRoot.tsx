@@ -9,6 +9,7 @@ import { queryClient, queryPersister } from './lib/queryClient';
 import { initSentry } from './lib/sentry';
 import { supabase } from './lib/supabase';
 import { registerForPushNotifications } from './lib/push';
+import { ConfettiProvider } from './lib/confetti';
 import { envStatus } from './env';
 import AuthScreen from './screens/AuthScreen';
 import AppNavigator from './navigation/AppNavigator';
@@ -111,7 +112,9 @@ export default function AppRoot() {
               <Button title="Close and reopen the app" onPress={() => {}} variant="secondary" />
             </Screen>
           ) : authed ? (
-            <AppNavigator />
+            <ConfettiProvider>
+              <AppNavigator />
+            </ConfettiProvider>
           ) : (
             <AuthScreen />
           )}

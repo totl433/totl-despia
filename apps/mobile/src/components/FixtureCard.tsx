@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import WinnerShimmer from './WinnerShimmer';
@@ -75,6 +75,8 @@ export default function FixtureCard({
   pick,
   result,
   showPickButtons = true,
+  onPick,
+  pickButtonsDisabled = false,
   variant = 'standalone',
 }: {
   fixture: FixtureLike;
@@ -83,6 +85,8 @@ export default function FixtureCard({
   /** Optional authoritative outcome (e.g. from `app_gw_results`). */
   result?: Pick | null;
   showPickButtons?: boolean;
+  onPick?: (pick: Pick) => void;
+  pickButtonsDisabled?: boolean;
   /**
    * - `standalone`: renders with its own card border (good for Storybook / isolated usage)
    * - `grouped`: renders borderless, intended to sit inside a parent `Card` list
@@ -190,8 +194,12 @@ export default function FixtureCard({
         variant="body"
         style={{
           color: s.text,
-          fontWeight: s.isCorrect ? '800' : '700',
+          fontFamily: 'Gramatika-Medium',
+          fontStyle: 'normal',
+          fontWeight: '500',
           fontSize: 14,
+          lineHeight: 17,
+          letterSpacing: -0.004,
           textDecorationLine: s.isWrong && isFinished ? 'line-through' : 'none',
           textDecorationStyle: 'solid',
           textDecorationColor: s.text,
@@ -201,25 +209,45 @@ export default function FixtureCard({
       </TotlText>
     );
 
+    const interactive = typeof onPick === 'function' && !pickButtonsDisabled;
+    const wrap = (child: React.ReactElement) => {
+      return interactive ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          onPress={() => onPick(side)}
+          style={({ pressed }) => ({
+            flex: 1,
+            opacity: pressed ? 0.92 : 1,
+            transform: [{ scale: pressed ? 0.99 : 1 }],
+          })}
+        >
+          {child as any}
+        </Pressable>
+      ) : (
+        <View style={{ flex: 1, opacity: pickButtonsDisabled ? 0.55 : 1 }}>{child as any}</View>
+      );
+    };
+
     if ((s as any).gradient) {
       return (
-        <LinearGradient
-          colors={['#FACC15', '#F97316', '#EC4899', '#9333EA']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{ ...commonStyle, borderWidth: 0 }}
-        >
-          <WinnerShimmer durationMs={1200} delayMs={0} opacity={0.95} tint="white" />
-          <WinnerShimmer durationMs={1800} delayMs={380} opacity={0.55} tint="gold" />
-          {text}
-        </LinearGradient>
+        wrap(
+          <LinearGradient
+            colors={['#FACC15', '#F97316', '#EC4899', '#9333EA']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ ...commonStyle, borderWidth: 0 }}
+          >
+            <WinnerShimmer durationMs={1200} delayMs={0} opacity={0.95} tint="white" />
+            <WinnerShimmer durationMs={1800} delayMs={380} opacity={0.55} tint="gold" />
+            {text}
+          </LinearGradient>
+        )
       );
     }
 
     return (
-      <View style={{ backgroundColor: s.bg, ...commonStyle }}>
-        {text}
-      </View>
+      wrap(<View style={{ backgroundColor: s.bg, ...commonStyle }}>{text}</View>)
     );
   };
 

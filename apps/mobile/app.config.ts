@@ -61,7 +61,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // Ensure the dev-client deep link works reliably on iOS.
     // Expo will try to open `exp+<slug>://...` by default; on some iOS versions that scheme
     // doesn't route correctly. Force a known-good scheme that iOS registers for this app.
-    scheme: 'com.totl.mobile',
+    scheme: 'com.despia.totlnative',
     extra: {
       ...(config.extra ?? {}),
       EXPO_PUBLIC_SUPABASE_URL: pick('EXPO_PUBLIC_SUPABASE_URL'),
