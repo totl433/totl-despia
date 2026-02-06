@@ -112,3 +112,64 @@ export const GwResultsSchema = z.object({
         }),
     }),
 });
+// ----------------------------
+// Profile (native app)
+// ----------------------------
+export const ProfileSummarySchema = z.object({
+    name: z.string(),
+    email: z.string().nullable(),
+    avatar_url: z.string().nullable(),
+    isAdmin: z.boolean(),
+    ocp: z.number(),
+    miniLeaguesCount: z.number().int().nonnegative(),
+    weeksStreak: z.number().int().nonnegative(),
+});
+export const EmailPreferencesSchema = z.object({
+    new_gameweek: z.boolean(),
+    results_published: z.boolean(),
+    news_updates: z.boolean(),
+});
+export const UserStatsDataSchema = z.object({
+    lastCompletedGw: z.number().int().positive().nullable(),
+    lastCompletedGwPercentile: z.number().nullable(),
+    overallPercentile: z.number().nullable(),
+    correctPredictionRate: z.number().nullable(),
+    bestStreak: z.number().int().nonnegative(),
+    bestStreakGwRange: z.string().nullable(),
+    avgPointsPerWeek: z.number().nullable(),
+    bestSingleGw: z.object({ points: z.number(), gw: z.number().int().positive() }).nullable(),
+    lowestSingleGw: z.object({ points: z.number(), gw: z.number().int().positive() }).nullable(),
+    chaosIndex: z.number().nullable(),
+    chaosCorrectCount: z.number().int().nonnegative().nullable(),
+    chaosTotalCount: z.number().int().nonnegative().nullable(),
+    mostCorrectTeam: z.object({ code: z.string().nullable(), name: z.string(), percentage: z.number() }).nullable(),
+    mostIncorrectTeam: z.object({ code: z.string().nullable(), name: z.string(), percentage: z.number() }).nullable(),
+    weeklyParData: z
+        .array(z.object({
+        gw: z.number().int().positive(),
+        userPoints: z.number(),
+        averagePoints: z.number(),
+    }))
+        .nullable(),
+    trophyCabinet: z
+        .object({
+        lastGw: z.number().int().nonnegative(),
+        form5: z.number().int().nonnegative(),
+        form10: z.number().int().nonnegative(),
+        overall: z.number().int().nonnegative(),
+    })
+        .nullable(),
+});
+export const UnicornCardSchema = z.object({
+    fixture_index: z.number().int().nonnegative(),
+    gw: z.number().int().positive(),
+    home_team: z.string(),
+    away_team: z.string(),
+    home_code: z.string().nullable(),
+    away_code: z.string().nullable(),
+    home_name: z.string().nullable(),
+    away_name: z.string().nullable(),
+    kickoff_time: z.string().nullable(),
+    pick: PickSchema,
+    league_names: z.array(z.string()),
+});

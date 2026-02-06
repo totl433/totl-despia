@@ -36,6 +36,7 @@ import LeagueMenuSheet, { type LeagueMenuAction } from '../components/league/Lea
 import LeagueInviteSheet from '../components/league/LeagueInviteSheet';
 import { env } from '../env';
 import { resolveLeagueStartGw } from '../lib/leagueStart';
+import CenteredSpinner from '../components/CenteredSpinner';
 
 const LEAGUE_TABS: LeagueTabKey[] = ['chat', 'gwTable', 'predictions', 'season'];
 
@@ -844,7 +845,11 @@ export default function LeagueDetailScreen() {
                   />
                 ) : null}
 
-                {tableLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
+                {tableLoading && !table ? (
+                  <View style={{ height: 220 }}>
+                    <CenteredSpinner loading />
+                  </View>
+                ) : null}
 
                 <LeagueGwTable
                   rows={(table?.rows ?? []) as LeagueGwTableRow[]}
@@ -908,7 +913,9 @@ export default function LeagueDetailScreen() {
                 ) : picksGw < seasonStartGw ? (
                   <TotlText variant="muted">No Predictions Available (this league started later).</TotlText>
                 ) : !predictions ? (
-                  <TotlText variant="muted">Loading…</TotlText>
+                  <View style={{ height: 220 }}>
+                    <CenteredSpinner loading />
+                  </View>
                 ) : (() => {
                     const shouldShowWhoSubmitted = !predictions.allSubmitted && !predictions.deadlinePassed;
 

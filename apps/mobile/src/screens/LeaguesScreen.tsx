@@ -13,6 +13,9 @@ import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import CreateJoinLeagueSheet from '../components/miniLeagues/CreateJoinLeagueSheet';
 import { joinLeagueByCode } from '../services/leagues';
 import { resolveLeagueAvatarUri } from '../lib/leagueAvatars';
+import CenteredSpinner from '../components/CenteredSpinner';
+import { sortLeaguesByUnread } from '../lib/sortLeaguesByUnread';
+import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../lib/layout';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -91,10 +94,20 @@ export default function LeaguesScreen() {
   const navigation = useNavigation<any>();
   const t = useTokens();
   const queryClient = useQueryClient();
+  const { unreadByLeagueId, optimisticallyClear } = useLeagueUnreadCounts();
   const { data, isLoading, error, refetch, isRefetching } = useQuery<LeaguesResponse>({
     queryKey: ['leagues'],
     queryFn: () => api.listLeagues(),
   });
+
+  const sortedLeagues = React.useMemo(() => {
+    return sortLeaguesByUnread(data?.leagues ?? [], unreadByLeagueId);
+  }, [data?.leagues, unreadByLeagueId]);
+
+  const sortedLeaguesRef = React.useRef<LeagueSummary[]>([]);
+  React.useEffect(() => {
+    sortedLeaguesRef.current = sortedLeagues;
+  }, [sortedLeagues]);
 
   const { data: home } = useQuery({
     queryKey: ['homeSnapshot'],
@@ -111,7 +124,7 @@ export default function LeaguesScreen() {
   const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 35 }).current;
   const onViewableItemsChanged = React.useRef(
     ({ viewableItems }: { viewableItems: Array<{ item: LeagueSummary; index: number | null; isViewable: boolean }> }) => {
-      const leagueList: LeagueSummary[] = data?.leagues ?? [];
+      const leagueList: LeagueSummary[] = sortedLeaguesRef.current ?? [];
       const next = new Set<string>();
 
       viewableItems.forEach((vi) => {
@@ -141,6 +154,77 @@ export default function LeaguesScreen() {
       });
     }
   ).current;
+
+  // Initial/empty load: avoid rendering an empty list shell.
+  if (isLoading && !data && !error) {
+    return (
+      <Screen fullBleed>
+        <PageHeader
+          title="Mini Leagues"
+          subtitle="Create or join a private league with friends. Let the rivalry begin."
+          rightAction={
+            <Pressable
+              onPress={() => {
+                setJoinError(null);
+                setCreateJoinOpen(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Create or join mini league"
+              style={({ pressed }) => ({
+                width: 46,
+                height: 46,
+                borderRadius: 999,
+                backgroundColor: t.color.brand,
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.16)',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.92 : 1,
+                transform: [{ scale: pressed ? 0.98 : 1 }],
+              })}
+            >
+              <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 22, lineHeight: 22 }}>+</TotlText>
+            </Pressable>
+          }
+        />
+        <CenteredSpinner loading />
+        <CreateJoinLeagueSheet
+          open={createJoinOpen}
+          onClose={() => setCreateJoinOpen(false)}
+          joinCode={joinCode}
+          setJoinCode={(next) => {
+            setJoinError(null);
+            setJoinCode(next);
+          }}
+          joinError={joinError}
+          joining={joining}
+          onPressCreate={() => {
+            setCreateJoinOpen(false);
+            navigation.navigate('CreateLeague');
+          }}
+          onPressJoin={() => {
+            if (joining) return;
+            const code = joinCode.trim().toUpperCase();
+            setJoinError(null);
+            setJoining(true);
+            void (async () => {
+              const res = await joinLeagueByCode(code);
+              if (!res.ok) {
+                setJoinError(res.error);
+                setJoining(false);
+                return;
+              }
+              setJoining(false);
+              setCreateJoinOpen(false);
+              setJoinCode('');
+              await queryClient.invalidateQueries({ queryKey: ['leagues'] });
+              navigation.navigate('LeagueDetail', { leagueId: res.league.id, name: res.league.name } as const);
+            })();
+          }}
+        />
+      </Screen>
+    );
+  }
 
   return (
     <Screen fullBleed>
@@ -174,16 +258,19 @@ export default function LeaguesScreen() {
       />
 
       <FlatList
-        data={data?.leagues ?? []}
+        data={sortedLeagues}
         style={{ flex: 1 }}
         keyExtractor={(l) => String(l.id)}
-        contentContainerStyle={{ padding: t.space[4], paddingBottom: t.space[8] + 56 }}
+        contentContainerStyle={{
+          paddingHorizontal: t.space[4],
+          paddingTop: t.space[4],
+          paddingBottom: FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
+        }}
         refreshControl={<TotlRefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
         viewabilityConfig={viewabilityConfig}
         onViewableItemsChanged={onViewableItemsChanged}
         ListHeaderComponent={
           <>
-            {isLoading && <TotlText variant="muted">Loading…</TotlText>}
             {error && (
               <Card style={{ marginBottom: 12 }}>
                 <TotlText variant="heading" style={{ marginBottom: 6 }}>
@@ -237,12 +324,13 @@ export default function LeaguesScreen() {
               league={item}
               enabled={enabled}
               viewingGw={viewingGw}
-              onPress={() =>
+              onPress={() => {
+                optimisticallyClear(leagueId);
                 navigation.navigate(
                   'LeagueDetail',
                   { leagueId: item.id, name: item.name } satisfies LeaguesStackParamList['LeagueDetail']
-                )
-              }
+                );
+              }}
             />
           );
         }}

@@ -20,6 +20,13 @@ import { createSupabaseClient } from './supabase.js';
 import { requireUser } from './auth.js';
 import { captureException, initSentry } from './sentry.js';
 import { computeGwResults } from './gwResults.js';
+import {
+  getEmailPreferences,
+  getProfileStats,
+  getProfileSummary,
+  getProfileUnicorns,
+  updateEmailPreferences,
+} from './profile.js';
 
 const env = loadEnv(process.env);
 const supabase = createSupabaseClient(env);
@@ -515,6 +522,50 @@ app.get('/v1/leaderboards/overall', async (req) => {
     .limit(200);
   if (error) throw error;
   return { rows: data ?? [] };
+});
+
+app.get('/v1/profile/summary', async (req) => {
+  await requireUser(req, supabase);
+  const { userId, supa } = getAuthedSupa(req as any);
+  const accessToken = (req as any).accessToken as string;
+  return getProfileSummary({ userId, supa, accessToken, rootSupabase: supabase });
+});
+
+app.get('/v1/profile/stats', async (req) => {
+  await requireUser(req, supabase);
+  const { userId, supa } = getAuthedSupa(req as any);
+  return getProfileStats({ userId, supa });
+});
+
+app.get('/v1/profile/unicorns', async (req) => {
+  await requireUser(req, supabase);
+  const { userId, supa } = getAuthedSupa(req as any);
+  return { unicorns: await getProfileUnicorns({ userId, supa }) };
+});
+
+app.get('/v1/email-preferences', async (req) => {
+  await requireUser(req, supabase);
+  const { userId, supa } = getAuthedSupa(req as any);
+  return { preferences: await getEmailPreferences({ userId, supa }) };
+});
+
+const UpdateEmailPreferencesBodySchema = z
+  .object({
+    new_gameweek: z.boolean().optional(),
+    results_published: z.boolean().optional(),
+    news_updates: z.boolean().optional(),
+  })
+  .strict();
+
+app.put('/v1/email-preferences', async (req) => {
+  await requireUser(req, supabase);
+  const { userId, supa } = getAuthedSupa(req as any);
+  const accessToken = (req as any).accessToken as string;
+  const body = UpdateEmailPreferencesBodySchema.parse((req as any).body);
+  const { data: authData } = await (supabase as any).auth.getUser(accessToken);
+  const email = (authData?.user?.email as string | null) ?? null;
+  const next = await updateEmailPreferences({ userId, supa, email, input: body });
+  return { ok: true, preferences: next };
 });
 
 app.get('/v1/leagues/:leagueId/gw/:gw/table', async (req) => {

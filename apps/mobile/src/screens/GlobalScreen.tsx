@@ -9,6 +9,7 @@ import LeaderboardsTabs, { type LeaderboardsTab } from '../components/leaderboar
 import LeaderboardsScopeToggle, { type LeaderboardsScope } from '../components/leaderboards/LeaderboardsScopeToggle';
 import LeaderboardTable, { type LeaderboardRow } from '../components/leaderboards/LeaderboardTable';
 import PageHeader from '../components/PageHeader';
+import CenteredSpinner from '../components/CenteredSpinner';
 
 type OverallRow = { user_id: string; name: string | null; ocp: number | null };
 type GwPointsRow = { user_id: string; gw: number; points: number };
@@ -200,6 +201,7 @@ export default function GlobalScreen() {
 
   const loading = overallLoading || gwPointsLoading || friendsLoading;
   const error = (overallError as any) ?? (gwPointsError as any);
+  const showInitialSpinner = loading && !error && rows.length === 0;
 
   const refreshing = overallRefetching || gwPointsRefetching || ranksRefetching || friendIdsRefetching;
   const onRefresh = React.useCallback(() => {
@@ -232,7 +234,7 @@ export default function GlobalScreen() {
           <TotlText variant="sectionSubtitle">{subtitle}</TotlText>
         </View>
 
-        {loading ? <TotlText variant="muted">Loading…</TotlText> : null}
+        {showInitialSpinner ? <CenteredSpinner loading /> : null}
 
         {error ? (
           <Card style={{ marginBottom: 12 }}>

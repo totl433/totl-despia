@@ -14,6 +14,7 @@ import type { RootStackParamList } from '../navigation/AppNavigator';
 import { api } from '../lib/api';
 import { getDefaultMlAvatarFilename, resolveLeagueAvatarUri } from '../lib/leagueAvatars';
 import PageHeader from '../components/PageHeader';
+import CenteredSpinner from '../components/CenteredSpinner';
 
 type Route = {
   key: string;
@@ -193,6 +194,36 @@ export default function GameweekResultsModalScreen() {
     queryFn: () => api.getGwResults(gw as number),
   });
 
+  if (isLoading && !results && !error) {
+    return (
+      <Screen fullBleed>
+        <View style={{ flex: 1 }}>
+          <PageHeader
+            title={`Gameweek ${gw ?? '—'} Results`}
+            rightAction={
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                onPress={() => navigation.goBack()}
+                style={({ pressed }) => ({
+                  width: 32,
+                  height: 32,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 16,
+                  opacity: pressed ? 0.75 : 1,
+                })}
+              >
+                <Ionicons name="close" size={22} color={t.color.text} />
+              </Pressable>
+            }
+          />
+          <CenteredSpinner loading />
+        </View>
+      </Screen>
+    );
+  }
+
   const trophyCount = React.useMemo(() => {
     if (!results) return 0;
     return Object.values(results.trophies ?? {}).filter(Boolean).length;
@@ -273,8 +304,6 @@ export default function GameweekResultsModalScreen() {
           }}
           showsVerticalScrollIndicator={false}
         >
-          {isLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
-
           {error ? (
             <Card
               style={{

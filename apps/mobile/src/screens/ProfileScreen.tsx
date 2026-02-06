@@ -7,6 +7,8 @@ import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import PageHeader from '../components/PageHeader';
 import { TotlRefreshControl } from '../lib/refreshControl';
+import CenteredSpinner from '../components/CenteredSpinner';
+import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../lib/layout';
 
 export default function ProfileScreen() {
   const t = useTokens();
@@ -20,6 +22,15 @@ export default function ProfileScreen() {
     onSuccess: () => refetch(),
   });
 
+  if (isLoading && !data && !error) {
+    return (
+      <Screen fullBleed>
+        <PageHeader title="Profile" />
+        <CenteredSpinner loading />
+      </Screen>
+    );
+  }
+
   const preferences = data?.preferences ?? {};
   const setPref = (key: string, value: boolean) => {
     update.mutate({ ...preferences, [key]: value });
@@ -31,10 +42,13 @@ export default function ProfileScreen() {
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: t.space[4], paddingBottom: t.space[8] }}
+        contentContainerStyle={{
+          paddingHorizontal: t.space[4],
+          paddingTop: t.space[4],
+          paddingBottom: FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
+        }}
         refreshControl={<TotlRefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
       >
-        {isLoading && <TotlText variant="muted">Loading…</TotlText>}
         {error && (
           <Card style={{ marginBottom: 12 }}>
             <TotlText variant="heading" style={{ marginBottom: 6 }}>

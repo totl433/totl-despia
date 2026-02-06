@@ -45,6 +45,8 @@ export default function AppRoot() {
       'Gramatika-Medium': require('../../../public/Fonts/Gramatika-Medium.ttf'),
       'Gramatika-Bold': require('../../../public/Fonts/Gramatika-Bold.ttf'),
       'Gramatika-Italic': require('../../../public/Fonts/Gramatika-Italic.ttf'),
+      'BarlowCondensed-Medium': require('../../../public/Fonts/BarlowCondensed-Medium.ttf'),
+      'BarlowCondensed-Light': require('../../../public/Fonts/BarlowCondensed-Light.ttf'),
       'PressStart2P-Regular': require('../../../public/Fonts/PressStart2P-Regular.ttf'),
     })
       .catch(() => {

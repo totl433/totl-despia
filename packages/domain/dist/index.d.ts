@@ -242,4 +242,80 @@ export declare const GwResultsSchema: z.ZodObject<{
     }, z.core.$strip>;
 }, z.core.$strip>;
 export type GwResults = z.infer<typeof GwResultsSchema>;
+export declare const ProfileSummarySchema: z.ZodObject<{
+    name: z.ZodString;
+    email: z.ZodNullable<z.ZodString>;
+    avatar_url: z.ZodNullable<z.ZodString>;
+    isAdmin: z.ZodBoolean;
+    ocp: z.ZodNumber;
+    miniLeaguesCount: z.ZodNumber;
+    weeksStreak: z.ZodNumber;
+}, z.core.$strip>;
+export type ProfileSummary = z.infer<typeof ProfileSummarySchema>;
+export declare const EmailPreferencesSchema: z.ZodObject<{
+    new_gameweek: z.ZodBoolean;
+    results_published: z.ZodBoolean;
+    news_updates: z.ZodBoolean;
+}, z.core.$strip>;
+export type EmailPreferences = z.infer<typeof EmailPreferencesSchema>;
+export declare const UserStatsDataSchema: z.ZodObject<{
+    lastCompletedGw: z.ZodNullable<z.ZodNumber>;
+    lastCompletedGwPercentile: z.ZodNullable<z.ZodNumber>;
+    overallPercentile: z.ZodNullable<z.ZodNumber>;
+    correctPredictionRate: z.ZodNullable<z.ZodNumber>;
+    bestStreak: z.ZodNumber;
+    bestStreakGwRange: z.ZodNullable<z.ZodString>;
+    avgPointsPerWeek: z.ZodNullable<z.ZodNumber>;
+    bestSingleGw: z.ZodNullable<z.ZodObject<{
+        points: z.ZodNumber;
+        gw: z.ZodNumber;
+    }, z.core.$strip>>;
+    lowestSingleGw: z.ZodNullable<z.ZodObject<{
+        points: z.ZodNumber;
+        gw: z.ZodNumber;
+    }, z.core.$strip>>;
+    chaosIndex: z.ZodNullable<z.ZodNumber>;
+    chaosCorrectCount: z.ZodNullable<z.ZodNumber>;
+    chaosTotalCount: z.ZodNullable<z.ZodNumber>;
+    mostCorrectTeam: z.ZodNullable<z.ZodObject<{
+        code: z.ZodNullable<z.ZodString>;
+        name: z.ZodString;
+        percentage: z.ZodNumber;
+    }, z.core.$strip>>;
+    mostIncorrectTeam: z.ZodNullable<z.ZodObject<{
+        code: z.ZodNullable<z.ZodString>;
+        name: z.ZodString;
+        percentage: z.ZodNumber;
+    }, z.core.$strip>>;
+    weeklyParData: z.ZodNullable<z.ZodArray<z.ZodObject<{
+        gw: z.ZodNumber;
+        userPoints: z.ZodNumber;
+        averagePoints: z.ZodNumber;
+    }, z.core.$strip>>>;
+    trophyCabinet: z.ZodNullable<z.ZodObject<{
+        lastGw: z.ZodNumber;
+        form5: z.ZodNumber;
+        form10: z.ZodNumber;
+        overall: z.ZodNumber;
+    }, z.core.$strip>>;
+}, z.core.$strip>;
+export type UserStatsData = z.infer<typeof UserStatsDataSchema>;
+export declare const UnicornCardSchema: z.ZodObject<{
+    fixture_index: z.ZodNumber;
+    gw: z.ZodNumber;
+    home_team: z.ZodString;
+    away_team: z.ZodString;
+    home_code: z.ZodNullable<z.ZodString>;
+    away_code: z.ZodNullable<z.ZodString>;
+    home_name: z.ZodNullable<z.ZodString>;
+    away_name: z.ZodNullable<z.ZodString>;
+    kickoff_time: z.ZodNullable<z.ZodString>;
+    pick: z.ZodEnum<{
+        H: "H";
+        D: "D";
+        A: "A";
+    }>;
+    league_names: z.ZodArray<z.ZodString>;
+}, z.core.$strip>;
+export type UnicornCard = z.infer<typeof UnicornCardSchema>;
 //# sourceMappingURL=index.d.ts.map

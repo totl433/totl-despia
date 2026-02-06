@@ -29,6 +29,11 @@ import CarouselFocusShell from '../components/home/CarouselFocusShell';
 import SectionTitle from '../components/home/SectionTitle';
 import { LeaderboardCardLastGw, LeaderboardCardResultsCta, LeaderboardCardSimple } from '../components/home/LeaderboardCards';
 import { resolveLeagueAvatarUri } from '../lib/leagueAvatars';
+import CenteredSpinner from '../components/CenteredSpinner';
+import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../lib/layout';
+import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
+import { sortLeaguesByUnread } from '../lib/sortLeaguesByUnread';
+import GameweekCountdownItem from '../components/home/GameweekCountdownItem';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -96,6 +101,8 @@ export default function HomeScreen() {
   const advanceTransition = useGameweekAdvanceTransition({ totalMs: 1050 });
   const [nowMs, setNowMs] = React.useState(() => Date.now());
   const [hasAccessToken, setHasAccessToken] = React.useState<boolean | null>(null);
+  const { unreadByLeagueId } = useLeagueUnreadCounts();
+  const [dismissedCountdownGw, setDismissedCountdownGw] = React.useState<number | null>(null);
 
   React.useEffect(() => {
     // Keep countdowns fresh without being noisy.
@@ -149,7 +156,9 @@ export default function HomeScreen() {
   });
 
   const latestCompletedGw = ranks?.latestGw ?? null;
-  const shouldFetchLatestGwResults = !home?.hasSubmittedViewingGw && typeof latestCompletedGw === 'number';
+  const shouldFetchLatestGwResults =
+    typeof latestCompletedGw === 'number' &&
+    (typeof ranks?.gwRank?.score !== 'number' || typeof ranks?.gwRank?.totalFixtures !== 'number');
   const { data: latestGwResults } = useQuery<GwResults>({
     enabled: shouldFetchLatestGwResults,
     queryKey: ['gwResults', latestCompletedGw],
@@ -232,19 +241,27 @@ export default function HomeScreen() {
 
       const ls = liveByFixtureIndex.get(fixtureIndex);
       const st: LiveStatus = ls?.status ?? 'SCHEDULED';
-      const isStarted = st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED';
+      // IMPORTANT: `live_scores` can be missing/pruned after a GW finishes. Final outcomes live in `app_gw_results`.
+      const resultFromDb = resultByFixtureIndex.get(fixtureIndex);
+      const hasFinalResult = resultFromDb === 'H' || resultFromDb === 'D' || resultFromDb === 'A';
+      const isStartedFromLive = st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED';
+      const isStarted = hasFinalResult || isStartedFromLive;
       if (!isStarted) continue;
       started += 1;
       if (st === 'IN_PLAY' || st === 'PAUSED') live += 1;
 
       if (!pick) continue;
 
-      const resultFromDb = resultByFixtureIndex.get(fixtureIndex);
-      const hs = Number(ls?.home_score ?? 0);
-      const as = Number(ls?.away_score ?? 0);
-
-      const outcome: Pick | null =
-        resultFromDb ?? (hs > as ? 'H' : hs < as ? 'A' : 'D');
+      const outcome: Pick | null = hasFinalResult
+        ? resultFromDb
+        : typeof ls?.home_score === 'number' && typeof ls?.away_score === 'number'
+          ? ls.home_score > ls.away_score
+            ? 'H'
+            : ls.home_score < ls.away_score
+              ? 'A'
+              : 'D'
+          : null;
+      if (!outcome) continue;
 
       if (outcome === pick) correct += 1;
     }
@@ -399,12 +416,12 @@ export default function HomeScreen() {
     home?.hasSubmittedViewingGw === false;
 
   const defaultLeagueBatches = React.useMemo(() => {
-    const leagueList: LeagueSummary[] = leagues?.leagues ?? [];
+    const leagueList: LeagueSummary[] = sortLeaguesByUnread(leagues?.leagues ?? [], unreadByLeagueId);
     const out: Array<Array<LeagueSummary>> = [];
     const batchSize = 3;
     for (let i = 0; i < leagueList.length; i += batchSize) out.push(leagueList.slice(i, i + batchSize));
     return out;
-  }, [leagues?.leagues]);
+  }, [leagues?.leagues, unreadByLeagueId]);
 
   React.useEffect(() => {
     // Keep dots index stable when leagues change.
@@ -428,6 +445,17 @@ export default function HomeScreen() {
 
   // Each view keeps its own viewport height so dots stay visually attached to the bottom of that view.
   const ML_DEFAULT_HEIGHT = 350;
+
+  // Initial/empty load: avoid rendering empty/broken home sections while waiting on BFF/Railway.
+  if (homeLoading && !home && !homeError) {
+    return (
+      <GameweekAdvanceTransition controller={advanceTransition}>
+        <Screen fullBleed>
+          <CenteredSpinner loading />
+        </Screen>
+      </GameweekAdvanceTransition>
+    );
+  }
 
   return (
     <GameweekAdvanceTransition controller={advanceTransition}>
@@ -461,7 +489,7 @@ export default function HomeScreen() {
             paddingHorizontal: t.space[4],
             paddingTop: 0,
             // Ensure the last fixture isn't hidden behind the floating bottom tab bar.
-            paddingBottom: t.space[12] + 60,
+            paddingBottom: FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
           }}
           refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
@@ -662,7 +690,29 @@ export default function HomeScreen() {
         >
           {(() => {
             const gw = ranks?.latestGw ?? home?.viewingGw ?? null;
-            const showViewingGwScore = Boolean(home?.hasSubmittedViewingGw) && !!scoreSummary;
+            const scoreFromRanks = ranks?.gwRank?.score;
+            const totalFromRanks = ranks?.gwRank?.totalFixtures;
+            const wallNowMs = Date.now();
+
+            const firstFixture = (home?.fixtures ?? [])
+              .filter((f) => {
+                const k = f?.kickoff_time ? new Date(f.kickoff_time).getTime() : NaN;
+                return Number.isFinite(k);
+              })
+              .map((f) => ({ f, k: new Date(f.kickoff_time as string).getTime() }))
+              .sort((a, b) => a.k - b.k)[0]?.f;
+
+            const firstFixtureKickoffTimeMs = firstFixture?.kickoff_time ? new Date(firstFixture.kickoff_time).getTime() : null;
+            const predictionsLocked = Boolean(home?.hasSubmittedViewingGw) || deadlineExpired;
+            const viewingGwForCountdown = typeof home?.viewingGw === 'number' ? home.viewingGw : typeof ranks?.latestGw === 'number' ? ranks.latestGw : null;
+            const countdownVisible =
+              predictionsLocked === true &&
+              typeof viewingGwForCountdown === 'number' &&
+              typeof firstFixtureKickoffTimeMs === 'number' &&
+              Number.isFinite(firstFixtureKickoffTimeMs) &&
+              wallNowMs < firstFixtureKickoffTimeMs &&
+              dismissedCountdownGw !== viewingGwForCountdown;
+
             const fallbackScore =
               typeof latestGwResults?.score === 'number' && Number.isFinite(latestGwResults.score)
                 ? String(latestGwResults.score)
@@ -672,9 +722,14 @@ export default function HomeScreen() {
                 ? String(latestGwResults.totalFixtures)
                 : '--';
 
-            const score = showViewingGwScore ? String(scoreSummary!.correct) : fallbackScore;
-            const total = showViewingGwScore ? String(scoreSummary!.total) : fallbackTotal;
-            const lastGwDisplay = ranks?.gwRank?.percentileLabel ? String(ranks.gwRank.percentileLabel) : 'Top —';
+            const score = typeof scoreFromRanks === 'number' ? String(scoreFromRanks) : fallbackScore;
+            const total = typeof totalFromRanks === 'number' ? String(totalFromRanks) : fallbackTotal;
+
+            const lastGwDisplay =
+              ranks?.gwRank?.percentileLabel ??
+              (latestGwResults?.gwRank && latestGwResults?.gwRankTotal
+                ? `Top ${Math.max(1, Math.min(100, Math.round((latestGwResults.gwRank / latestGwResults.gwRankTotal) * 100)))}%`
+                : 'Top —');
 
             const cards: Array<{ key: string; node: React.JSX.Element }> = [];
 
@@ -690,6 +745,21 @@ export default function HomeScreen() {
                     gw={resultsGw}
                     badge={LB_BADGE_5}
                     onPress={() => navigation.navigate('GameweekResults', { gw: resultsGw })}
+                  />
+                ),
+              });
+            }
+
+            if (countdownVisible && viewingGwForCountdown && firstFixtureKickoffTimeMs) {
+              cards.unshift({
+                key: `countdown-${viewingGwForCountdown}`,
+                node: (
+                  <GameweekCountdownItem
+                    gw={viewingGwForCountdown}
+                    kickoffTimeMs={firstFixtureKickoffTimeMs}
+                    homeCode={String(firstFixture?.home_code ?? '').toUpperCase() || null}
+                    awayCode={String(firstFixture?.away_code ?? '').toUpperCase() || null}
+                    onKickedOff={() => setDismissedCountdownGw(viewingGwForCountdown)}
                   />
                 ),
               });

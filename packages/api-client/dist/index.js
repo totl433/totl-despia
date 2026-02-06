@@ -1,4 +1,5 @@
-import { GwResultsSchema, HomeRanksSchema, HomeSnapshotSchema, PredictionsResponseSchema, } from '@totl/domain';
+import { z } from 'zod';
+import { GwResultsSchema, HomeRanksSchema, HomeSnapshotSchema, PredictionsResponseSchema, EmailPreferencesSchema, ProfileSummarySchema, UnicornCardSchema, UserStatsDataSchema, } from '@totl/domain';
 export class ApiError extends Error {
     status;
     body;
@@ -140,6 +141,39 @@ export function createApiClient(opts) {
                 method: 'PUT',
                 body: JSON.stringify(input),
                 validate: (data) => data,
+            });
+        },
+        async getProfileSummary() {
+            return requestJson(opts, `/v1/profile/summary`, {
+                method: 'GET',
+                validate: (data) => ProfileSummarySchema.parse(data),
+            });
+        },
+        async getProfileStats() {
+            return requestJson(opts, `/v1/profile/stats`, {
+                method: 'GET',
+                validate: (data) => UserStatsDataSchema.parse(data),
+            });
+        },
+        async getProfileUnicorns() {
+            return requestJson(opts, `/v1/profile/unicorns`, {
+                method: 'GET',
+                validate: (data) => z.object({ unicorns: z.array(UnicornCardSchema) }).parse(data),
+            });
+        },
+        async getEmailPreferences() {
+            return requestJson(opts, `/v1/email-preferences`, {
+                method: 'GET',
+                validate: (data) => z.object({ preferences: EmailPreferencesSchema }).parse(data),
+            });
+        },
+        async updateEmailPreferences(input) {
+            return requestJson(opts, `/v1/email-preferences`, {
+                method: 'PUT',
+                body: JSON.stringify(input),
+                validate: (data) => z
+                    .object({ ok: z.literal(true), preferences: EmailPreferencesSchema })
+                    .parse(data),
             });
         },
     };

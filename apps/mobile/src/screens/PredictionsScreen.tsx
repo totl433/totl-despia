@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -25,6 +25,9 @@ import PredictionsProgressPills from '../components/predictions/PredictionsProgr
 import PredictionsHowToSheet from '../components/predictions/PredictionsHowToSheet';
 import { normalizeTeamCode } from '../lib/teamColors';
 import { useConfetti } from '../lib/confetti';
+import PageHeader from '../components/PageHeader';
+import CenteredSpinner from '../components/CenteredSpinner';
+import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../lib/layout';
 
 type Mode = 'cards' | 'review' | 'list';
 
@@ -351,6 +354,14 @@ export default function PredictionsScreen() {
     if (mode === 'list') setMode('cards');
   }, [allPicksMade, forceListMode, mode]);
 
+  // Bottom tab bar behavior:
+  // - Hide while making/reviewing picks (full-screen flow).
+  // - Show once picks are submitted (normal screen with bottom nav).
+  React.useEffect(() => {
+    const hideTabBar = mode !== 'list';
+    navigation.setOptions({ tabBarStyle: hideTabBar ? { display: 'none' } : undefined });
+  }, [mode, navigation]);
+
   React.useEffect(() => {
     // Show the “how to swipe” sheet once, only when swipe mode is actually available.
     if (howToSuppressed) return;
@@ -432,6 +443,78 @@ export default function PredictionsScreen() {
   });
 
   const goHome = React.useCallback(() => navigation.navigate('Home'), [navigation]);
+
+  const renderGroupedFixtures = React.useCallback(
+    ({ interactive }: { interactive: boolean }) => {
+      return fixturesByDate.map((g, groupIdx) => (
+        <View
+          key={`${g.date}-${groupIdx}`}
+          style={{ marginBottom: groupIdx === fixturesByDate.length - 1 ? 0 : 12 }}
+        >
+          <Card style={[FLAT_CARD_STYLE, { padding: 0 }]}>
+            <View style={{ borderRadius: 22, overflow: 'hidden' }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingHorizontal: 16,
+                  paddingTop: 14,
+                  paddingBottom: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: 'rgba(15,23,42,0.06)',
+                }}
+              >
+                <TotlText
+                  style={{
+                    color: t.color.text,
+                    fontFamily: 'Gramatika-Medium',
+                    fontSize: 14,
+                    lineHeight: 14,
+                    letterSpacing: 0.6,
+                  }}
+                  numberOfLines={1}
+                >
+                  {String(g.date ?? '').toUpperCase()}
+                </TotlText>
+              </View>
+
+              {g.fixtures.map((f: Fixture, idx: number) => {
+                const pick = picks[f.fixture_index] ?? undefined;
+                return (
+                  <View key={String(f.id)} style={{ position: 'relative' }}>
+                    {idx < g.fixtures.length - 1 ? (
+                      <View
+                        style={{
+                          position: 'absolute',
+                          left: 16,
+                          right: 16,
+                          bottom: 0,
+                          height: 1,
+                          backgroundColor: 'rgba(148,163,184,0.18)',
+                          zIndex: 2,
+                        }}
+                      />
+                    ) : null}
+                    <FixtureCard
+                      fixture={f as any}
+                      liveScore={null}
+                      pick={pick as any}
+                      showPickButtons
+                      pickButtonsDisabled={!interactive || submitted || deadlineExpired}
+                      onPick={interactive ? (side) => setPickLocal(f.fixture_index, side) : undefined}
+                      variant="grouped"
+                    />
+                  </View>
+                );
+              })}
+            </View>
+          </Card>
+        </View>
+      ));
+    },
+    [deadlineExpired, fixturesByDate, picks, setPickLocal, submitted, t.color.text]
+  );
 
   const renderTopBar = ({ title, right }: { title: string; right?: React.ReactNode }) => {
     return (
@@ -658,7 +741,17 @@ export default function PredictionsScreen() {
       });
   }, [animateOut, isAnimatingSV, tx, ty]);
 
+  const showInitialSpinner = isLoading && !data && !error;
+
   // --- Render modes ---
+  if (showInitialSpinner) {
+    return (
+      <Screen fullBleed>
+        <CenteredSpinner loading />
+      </Screen>
+    );
+  }
+
   if (mode === 'cards') {
     const current = fixtures[cardIndex] ?? null;
     const next = fixtures[cardIndex + 1] ?? null;
@@ -965,72 +1058,7 @@ export default function PredictionsScreen() {
               </Card>
             ) : null}
 
-            {fixturesByDate.map((g, groupIdx) => (
-              <View
-                key={`${g.date}-${groupIdx}`}
-                style={{ marginBottom: groupIdx === fixturesByDate.length - 1 ? 0 : 12 }}
-              >
-                <Card style={[FLAT_CARD_STYLE, { padding: 0 }]}>
-                  <View style={{ borderRadius: 22, overflow: 'hidden' }}>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        paddingHorizontal: 16,
-                        paddingTop: 14,
-                        paddingBottom: 12,
-                        borderBottomWidth: 1,
-                        borderBottomColor: 'rgba(15,23,42,0.06)',
-                      }}
-                    >
-                      <TotlText
-                        style={{
-                          color: t.color.text,
-                          fontFamily: 'Gramatika-Medium',
-                          fontSize: 14,
-                          lineHeight: 14,
-                          letterSpacing: 0.6,
-                        }}
-                        numberOfLines={1}
-                      >
-                        {String(g.date ?? '').toUpperCase()}
-                      </TotlText>
-                    </View>
-
-                    {g.fixtures.map((f: Fixture, idx: number) => {
-                      const pick = picks[f.fixture_index] ?? undefined;
-                      return (
-                        <View key={String(f.id)} style={{ position: 'relative' }}>
-                          {idx < g.fixtures.length - 1 ? (
-                            <View
-                              style={{
-                                position: 'absolute',
-                                left: 16,
-                                right: 16,
-                                bottom: 0,
-                                height: 1,
-                                backgroundColor: 'rgba(148,163,184,0.18)',
-                                zIndex: 2,
-                              }}
-                            />
-                          ) : null}
-                          <FixtureCard
-                            fixture={f as any}
-                            liveScore={null}
-                            pick={pick as any}
-                            showPickButtons
-                            pickButtonsDisabled={submitted || deadlineExpired}
-                            onPick={(side) => setPickLocal(f.fixture_index, side)}
-                            variant="grouped"
-                          />
-                        </View>
-                      );
-                    })}
-                  </View>
-                </Card>
-              </View>
-            ))}
+            {renderGroupedFixtures({ interactive: true })}
           </ScrollView>
 
           <View
@@ -1074,57 +1102,49 @@ export default function PredictionsScreen() {
   // List mode (submitted or deadline passed)
   return (
     <Screen fullBleed>
-      {renderTopBar({
-        title: 'Predictions',
-      })}
-      <TotlText variant="sectionSubtitle" style={{ paddingHorizontal: t.space[4], marginTop: 2, marginBottom: 8 }}>
-        {typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek'}
-      </TotlText>
+      <PageHeader title="Predictions" subtitle={typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek'} />
 
-      <FlatList
-        data={fixtures}
+      <ScrollView
         style={{ flex: 1 }}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={{ padding: t.space[4], paddingBottom: t.space[12] }}
-        refreshControl={<TotlRefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
-        ListHeaderComponent={
-          <>
-            {isLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
-            {error ? (
-              <Card style={[FLAT_CARD_STYLE, { marginBottom: 12 }]}>
-                <TotlText variant="heading" style={{ marginBottom: 6 }}>
-                  Couldn’t load predictions
-                </TotlText>
-                <TotlText variant="muted">{(error as any)?.message ?? 'Unknown error'}</TotlText>
-              </Card>
-            ) : null}
-
-            {deadlineExpired && !submitted ? (
-              <Card style={[FLAT_CARD_STYLE, { marginBottom: 12 }]}>
-                <TotlText variant="heading" style={{ marginBottom: 6 }}>
-                  Deadline has passed
-                </TotlText>
-                <TotlText variant="muted">Predictions are no longer available.</TotlText>
-              </Card>
-            ) : null}
-
-            {submitted ? (
-              <Card style={[FLAT_CARD_STYLE, { marginBottom: 12 }]}>
-                <TotlText variant="heading" style={{ marginBottom: 6 }}>
-                  Submitted
-                </TotlText>
-                <TotlText variant="muted">Your predictions are locked in.</TotlText>
-              </Card>
-            ) : null}
-          </>
-        }
-        renderItem={({ item }) => {
-          const pick = picks[item.fixture_index] ?? undefined;
-          return (
-            <FixtureCard fixture={item as any} liveScore={null} pick={pick as any} showPickButtons variant="standalone" pickButtonsDisabled />
-          );
+        // Keep bottom padding consistent across tabbed pages so content isn't obscured by the floating tab bar.
+        contentContainerStyle={{
+          paddingHorizontal: t.space[4],
+          paddingTop: t.space[4],
+          paddingBottom: FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
         }}
-      />
+        refreshControl={<TotlRefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
+        showsVerticalScrollIndicator={false}
+      >
+        {isLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
+        {error ? (
+          <Card style={[FLAT_CARD_STYLE, { marginBottom: 12 }]}>
+            <TotlText variant="heading" style={{ marginBottom: 6 }}>
+              Couldn’t load predictions
+            </TotlText>
+            <TotlText variant="muted">{(error as any)?.message ?? 'Unknown error'}</TotlText>
+          </Card>
+        ) : null}
+
+        {deadlineExpired && !submitted ? (
+          <Card style={[FLAT_CARD_STYLE, { marginBottom: 12 }]}>
+            <TotlText variant="heading" style={{ marginBottom: 6 }}>
+              Deadline has passed
+            </TotlText>
+            <TotlText variant="muted">Predictions are no longer available.</TotlText>
+          </Card>
+        ) : null}
+
+        {submitted ? (
+          <Card style={[FLAT_CARD_STYLE, { marginBottom: 12 }]}>
+            <TotlText variant="heading" style={{ marginBottom: 6 }}>
+              Submitted
+            </TotlText>
+            <TotlText variant="muted">Your predictions are locked in.</TotlText>
+          </Card>
+        ) : null}
+
+        {renderGroupedFixtures({ interactive: false })}
+      </ScrollView>
     </Screen>
   );
 }

@@ -1,12 +1,21 @@
+import { z } from 'zod';
 import {
   GwResultsSchema,
   HomeRanksSchema,
   HomeSnapshotSchema,
   PredictionsResponseSchema,
+  EmailPreferencesSchema,
+  ProfileSummarySchema,
+  UnicornCardSchema,
+  UserStatsDataSchema,
   type GwResults,
+  type EmailPreferences,
   type HomeRanks,
   type HomeSnapshot,
+  type ProfileSummary,
   type PredictionsResponse,
+  type UnicornCard,
+  type UserStatsData,
 } from '@totl/domain';
 
 export interface ApiClientOptions {
@@ -193,6 +202,47 @@ export function createApiClient(opts: ApiClientOptions) {
         method: 'PUT',
         body: JSON.stringify(input),
         validate: (data) => (data as any) as { ok: true },
+      });
+    },
+
+    async getProfileSummary(): Promise<ProfileSummary> {
+      return requestJson<ProfileSummary>(opts, `/v1/profile/summary`, {
+        method: 'GET',
+        validate: (data) => ProfileSummarySchema.parse(data),
+      });
+    },
+
+    async getProfileStats(): Promise<UserStatsData> {
+      return requestJson<UserStatsData>(opts, `/v1/profile/stats`, {
+        method: 'GET',
+        validate: (data) => UserStatsDataSchema.parse(data),
+      });
+    },
+
+    async getProfileUnicorns(): Promise<{ unicorns: UnicornCard[] }> {
+      return requestJson(opts, `/v1/profile/unicorns`, {
+        method: 'GET',
+        validate: (data) =>
+          (z.object({ unicorns: z.array(UnicornCardSchema) }).parse(data) as unknown) as { unicorns: UnicornCard[] },
+      });
+    },
+
+    async getEmailPreferences(): Promise<{ preferences: EmailPreferences }> {
+      return requestJson(opts, `/v1/email-preferences`, {
+        method: 'GET',
+        validate: (data) =>
+          (z.object({ preferences: EmailPreferencesSchema }).parse(data) as unknown) as { preferences: EmailPreferences },
+      });
+    },
+
+    async updateEmailPreferences(input: Partial<EmailPreferences>): Promise<{ ok: true; preferences: EmailPreferences }> {
+      return requestJson(opts, `/v1/email-preferences`, {
+        method: 'PUT',
+        body: JSON.stringify(input),
+        validate: (data) =>
+          (z
+            .object({ ok: z.literal(true), preferences: EmailPreferencesSchema })
+            .parse(data) as unknown) as { ok: true; preferences: EmailPreferences },
       });
     },
   };

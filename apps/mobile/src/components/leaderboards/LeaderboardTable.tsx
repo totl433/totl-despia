@@ -2,6 +2,7 @@ import React from 'react';
 import { FlatList, Image, type ViewStyle, View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import { TotlRefreshControl } from '../../lib/refreshControl';
+import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
 
 export type LeaderboardRow = {
   user_id: string;
@@ -94,7 +95,7 @@ export default function LeaderboardTable({
         scrollEnabled
         showsVerticalScrollIndicator={false}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 140 }}
+        contentContainerStyle={{ paddingBottom: FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING }}
         refreshControl={
           onRefresh ? <TotlRefreshControl refreshing={!!refreshing} onRefresh={onRefresh} /> : undefined
         }

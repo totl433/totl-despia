@@ -1,4 +1,4 @@
-import { type GwResults, type HomeRanks, type HomeSnapshot, type PredictionsResponse } from '@totl/domain';
+import { type GwResults, type EmailPreferences, type HomeRanks, type HomeSnapshot, type ProfileSummary, type PredictionsResponse, type UnicornCard, type UserStatsData } from '@totl/domain';
 export interface ApiClientOptions {
     baseUrl: string;
     getAccessToken: () => Promise<string | null>;
@@ -85,6 +85,18 @@ export declare function createApiClient(opts: ApiClientOptions): {
         current_viewing_gw?: number | null;
     }): Promise<{
         ok: true;
+    }>;
+    getProfileSummary(): Promise<ProfileSummary>;
+    getProfileStats(): Promise<UserStatsData>;
+    getProfileUnicorns(): Promise<{
+        unicorns: UnicornCard[];
+    }>;
+    getEmailPreferences(): Promise<{
+        preferences: EmailPreferences;
+    }>;
+    updateEmailPreferences(input: Partial<EmailPreferences>): Promise<{
+        ok: true;
+        preferences: EmailPreferences;
     }>;
 };
 //# sourceMappingURL=index.d.ts.map
