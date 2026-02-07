@@ -3,6 +3,7 @@ import { Animated, Pressable, View, useWindowDimensions } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { TotlText, useTokens } from '@totl/ui';
 import Svg, { Path } from 'react-native-svg';
+import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 
 function getFocusedRouteName(route: any): string | null {
   const state = route?.state;
@@ -36,6 +37,17 @@ function PredictionsIcon({ color }: { color: string }) {
 
 function MiniLeaguesIcon({ color }: { color: string }) {
   return (
+    <Svg width={31} height={21} viewBox="0 0 31 21" fill="none">
+      <Path
+        d="M20.668 10.0762C18.0791 10.0762 15.9736 7.79883 15.9736 4.99512C15.9736 2.23438 18.0898 0 20.668 0C23.2676 0 25.373 2.20215 25.373 4.97363C25.373 7.78809 23.2676 10.0762 20.668 10.0762ZM8.21777 10.1943C5.97266 10.1943 4.13574 8.19629 4.13574 5.72559C4.13574 3.33008 5.9834 1.34277 8.21777 1.34277C10.4844 1.34277 12.3105 3.29785 12.3105 5.7041C12.3105 8.18555 10.4844 10.1943 8.21777 10.1943ZM20.668 8.21777C22.1719 8.21777 23.4287 6.78906 23.4287 4.97363C23.4287 3.20117 22.1826 1.8584 20.668 1.8584C19.1641 1.8584 17.918 3.22266 17.918 4.99512C17.918 6.81055 19.1855 8.21777 20.668 8.21777ZM8.21777 8.35742C9.45312 8.35742 10.4951 7.18652 10.4951 5.7041C10.4951 4.29688 9.47461 3.16895 8.21777 3.16895C6.99316 3.16895 5.96191 4.31836 5.96191 5.72559C5.96191 7.18652 7.00391 8.35742 8.21777 8.35742ZM2.30957 20.0664C0.773438 20.0664 0 19.4111 0 18.1328C0 14.5664 3.67383 11.3223 8.21777 11.3223C9.89355 11.3223 11.5908 11.7734 12.9551 12.6221C12.375 12.998 11.9238 13.4492 11.5693 13.9541C10.6348 13.4385 9.4209 13.1377 8.21777 13.1377C4.80176 13.1377 1.90137 15.501 1.90137 17.9717C1.90137 18.1543 1.9873 18.251 2.19141 18.251H9.75391C9.67871 18.96 10.0762 19.7227 10.6562 20.0664H2.30957ZM13.9648 20.0664C12.1172 20.0664 11.2256 19.4756 11.2256 18.2188C11.2256 15.2861 14.8994 11.333 20.668 11.333C26.4365 11.333 30.1104 15.2861 30.1104 18.2188C30.1104 19.4756 29.2188 20.0664 27.3604 20.0664H13.9648ZM13.6104 18.208H27.7256C27.9727 18.208 28.0693 18.1328 28.0693 17.9287C28.0693 16.2852 25.416 13.1914 20.668 13.1914C15.9199 13.1914 13.2559 16.2852 13.2559 17.9287C13.2559 18.1328 13.3525 18.208 13.6104 18.208Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+function ChatIcon({ color }: { color: string }) {
+  return (
     <Svg width={29} height={23} viewBox="0 0 29 23" fill="none">
       <Path
         d="M15.0586 18.9746C13.0664 18.9746 11.709 18.2031 11.0938 16.7871L7.7832 19.707C7.11914 20.3027 6.70898 20.5664 6.16211 20.5664C5.38086 20.5664 4.92188 20.0195 4.92188 19.1602V16.748H4.52148C1.68945 16.748 0 15.0684 0 12.1582V4.58984C0 1.67969 1.65039 0 4.58984 0H17.041C19.9805 0 21.6309 1.68945 21.6309 4.58984V4.87305H24.2676C27.0801 4.87305 28.6133 6.43555 28.6133 9.18945V14.7168C28.6133 17.4414 27.0996 18.9746 24.3262 18.9746H24.1504V21.2109C24.1504 22.0605 23.6914 22.6074 22.9199 22.6074C22.3926 22.6074 21.9434 22.3145 21.3086 21.7578L18.0566 18.9746H15.0586ZM6.64062 15.6348V18.418L9.73633 15.3516C10.0684 15.0098 10.3223 14.8828 10.7129 14.8438C10.7129 14.8047 10.7031 14.7656 10.7031 14.7266V9.18945C10.7031 6.43555 12.2461 4.87305 15.0586 4.87305H19.7168V4.64844C19.7168 2.85156 18.8281 1.91406 16.9824 1.91406H4.63867C2.79297 1.91406 1.91406 2.85156 1.91406 4.64844V12.0996C1.91406 13.8965 2.79297 14.834 4.63867 14.834H5.83984C6.39648 14.834 6.64062 15.0488 6.64062 15.6348ZM15.2051 17.0996H18.0176C18.4668 17.0996 18.8477 17.2559 19.2188 17.6074L22.4316 20.5176V17.9785C22.4316 17.3926 22.793 17.0996 23.2715 17.0996H24.1211C25.9082 17.0996 26.7188 16.2207 26.7188 14.5117V9.33594C26.7188 7.62695 25.9082 6.74805 24.1211 6.74805H15.2051C13.418 6.74805 12.6074 7.62695 12.6074 9.33594V14.5117C12.6074 16.2207 13.418 17.0996 15.2051 17.0996ZM16.3184 10.9961C15.8691 10.9961 15.5469 10.6445 15.5469 10.2148C15.5469 9.76562 15.8691 9.43359 16.3184 9.43359H23.0566C23.5059 9.43359 23.8379 9.76562 23.8379 10.2148C23.8379 10.6445 23.5059 10.9961 23.0566 10.9961H16.3184ZM16.3184 14.5605C15.8691 14.5605 15.5469 14.2285 15.5469 13.7891C15.5469 13.3496 15.8691 12.998 16.3184 12.998H21.2109C21.6504 12.998 21.9922 13.3496 21.9922 13.7891C21.9922 14.2285 21.6504 14.5605 21.2109 14.5605H16.3184Z"
@@ -57,25 +69,30 @@ function LeaderboardsIcon({ color }: { color: string }) {
 }
 
 const WEB_TABS: Array<{
-  label: 'Home' | 'Predictions' | 'Mini Leagues' | 'Leaderboards';
-  routeName: 'Home' | 'Predictions' | 'Leagues' | 'Global';
+  label: 'Home' | 'Predictions' | 'Mini Leagues' | 'Chat' | 'Leaderboards';
+  routeName: 'Home' | 'Predictions' | 'Leagues' | 'Chat' | 'Global';
   renderIcon: (args: { color: string }) => React.ReactElement;
 }> = [
   { label: 'Home', routeName: 'Home', renderIcon: ({ color }) => <HomeIcon color={color} /> },
   { label: 'Predictions', routeName: 'Predictions', renderIcon: ({ color }) => <PredictionsIcon color={color} /> },
   { label: 'Mini Leagues', routeName: 'Leagues', renderIcon: ({ color }) => <MiniLeaguesIcon color={color} /> },
+  { label: 'Chat', routeName: 'Chat', renderIcon: ({ color }) => <ChatIcon color={color} /> },
   { label: 'Leaderboards', routeName: 'Global', renderIcon: ({ color }) => <LeaderboardsIcon color={color} /> },
 ];
 
 export default function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const t = useTokens();
   const { width: screenWidth } = useWindowDimensions();
+  const { unreadByLeagueId } = useLeagueUnreadCounts();
 
   // Match web: hide bottom nav on mini-league detail pages.
   // When the active tab is `Leagues` and the nested stack route is `LeagueDetail`, render nothing.
   const activeTabRoute = state.routes[state.index];
   const nested = getFocusedRouteName(activeTabRoute);
-  const shouldHide = activeTabRoute?.name === 'Leagues' && nested === 'LeagueDetail';
+  const shouldHide =
+    (activeTabRoute?.name === 'Leagues' && (nested === 'LeagueDetail' || nested === 'LeagueChat')) ||
+    (activeTabRoute?.name === 'Chat' && nested === 'ChatThread') ||
+    activeTabRoute?.name === 'Profile';
 
   const containerWidth = Math.min(360, Math.max(280, screenWidth - 32));
   const itemWidth = containerWidth / WEB_TABS.length;
@@ -112,6 +129,12 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
     backgroundColor: 'rgba(28, 131, 118, 0.1)',
     transform: [{ translateX: x }],
   } as const;
+
+  const hasAnyUnread = React.useMemo(() => {
+    return Object.values(unreadByLeagueId ?? {}).some((n) => Number(n ?? 0) > 0);
+  }, [unreadByLeagueId]);
+  // Dot clears only when all unread are cleared (even if Chat tab is active).
+  const showChatDot = hasAnyUnread;
 
   return shouldHide ? null : (
     <View
@@ -150,6 +173,7 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
           const route = state.routes.find((r) => r.name === tab.routeName);
           const isActive = idx === activeIndex;
           const color = isActive ? t.color.brand : t.color.text;
+          const showDot = tab.routeName === 'Chat' && showChatDot;
           // TS note: some monorepo setups end up with duplicated React type packages,
           // causing ReactElement/ReactNode incompatibilities across packages.
           // We keep the runtime behavior fully typed, and cast at the final render boundary.
@@ -182,19 +206,32 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
               accessibilityState={isActive ? { selected: true } : {}}
             >
               <View style={{ height: 26, alignItems: 'center', justifyContent: 'center' }}>{iconEl as any}</View>
-              <TotlText
-                variant="microMuted"
-                style={{
-                  fontSize: 8,
-                  lineHeight: 10,
-                  color,
-                  textAlign: 'center',
-                  maxWidth: itemWidth - 8,
-                }}
-                numberOfLines={1}
-              >
-                {tab.label}
-              </TotlText>
+              <View style={{ alignItems: 'center', justifyContent: 'flex-start', height: 18 }}>
+                <TotlText
+                  variant="microMuted"
+                  style={{
+                    fontSize: 8,
+                    lineHeight: 10,
+                    color,
+                    textAlign: 'center',
+                    maxWidth: itemWidth - 8,
+                  }}
+                  numberOfLines={1}
+                >
+                  {tab.label}
+                </TotlText>
+                {/* Reserve space so layout doesn't shift; show/hide via opacity. */}
+                <View
+                  style={{
+                    marginTop: 2,
+                    width: 6,
+                    height: 6,
+                    borderRadius: 3,
+                    backgroundColor: '#DC2626',
+                    opacity: showDot ? 1 : 0,
+                  }}
+                />
+              </View>
             </Pressable>
           );
         })}

@@ -54,7 +54,7 @@ export default function ChatActionsSheet({
         />
       )}
     >
-      <BottomSheetView style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 + insets.bottom }}>
+      <BottomSheetView style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 + insets.bottom }}>
         <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '900', marginBottom: 10 }}>
           React
         </TotlText>

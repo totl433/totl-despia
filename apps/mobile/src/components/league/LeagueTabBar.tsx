@@ -3,7 +3,7 @@ import { AccessibilityInfo, Pressable, type LayoutChangeEvent, Text, View } from
 import { useTokens } from '@totl/ui';
 import Animated, { Easing, Extrapolation, interpolate, interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
-export type LeagueTabKey = 'chat' | 'gwTable' | 'predictions' | 'season';
+export type LeagueTabKey = 'gwTable' | 'predictions' | 'season';
 
 const AnimatedText = Animated.createAnimatedComponent(Text);
 
@@ -74,7 +74,6 @@ export default function LeagueTabBar({
   const TAB_ANIM_MS = 210; // ~180–240ms (spec)
   const INDICATOR_H = 2;
   const tabs: Array<{ key: LeagueTabKey; label: string }> = [
-    { key: 'chat', label: 'Chat' },
     { key: 'gwTable', label: 'GW Table' },
     { key: 'predictions', label: 'Predictions' },
     { key: 'season', label: 'Season' },

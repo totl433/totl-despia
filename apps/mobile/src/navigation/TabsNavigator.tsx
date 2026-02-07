@@ -7,11 +7,13 @@ import GlobalScreen from '../screens/GlobalScreen';
 import LeaguesNavigator from './LeaguesNavigator';
 import FloatingTabBar from './FloatingTabBar';
 import ProfileNavigator from './ProfileNavigator';
+import ChatNavigator from './ChatNavigator';
 
 export type RootTabsParamList = {
   Home: undefined;
   Predictions: undefined;
   Leagues: undefined;
+  Chat: undefined;
   Global: undefined;
   Profile: undefined;
 };
@@ -45,6 +47,7 @@ export default function TabsNavigator() {
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Predictions" component={PredictionsScreen} />
       <Tab.Screen name="Leagues" component={LeaguesNavigator as any} />
+      <Tab.Screen name="Chat" component={ChatNavigator as any} />
       <Tab.Screen name="Global" component={GlobalScreen} />
       <Tab.Screen
         name="Profile"

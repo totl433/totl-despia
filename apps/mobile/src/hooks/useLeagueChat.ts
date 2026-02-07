@@ -96,6 +96,43 @@ async function notifyLeagueMessage({
 
 type Page = { rows: LeagueChatMessage[]; nextCursor: string | null };
 
+type ChatInboxLastMessage = {
+  league_id: string;
+  content: string | null;
+  created_at: string;
+  user_id: string;
+};
+
+type ChatInboxLastByLeagueId = Record<string, ChatInboxLastMessage>;
+
+function upsertChatInboxLastMessage(
+  prev: unknown,
+  leagueId: string,
+  nextMsg: ChatInboxLastMessage
+): ChatInboxLastByLeagueId | unknown {
+  if (prev == null) return { [String(leagueId)]: nextMsg };
+
+  // Backward compat: tolerate a persisted Map (older builds) and normalize to a plain object.
+  let obj: ChatInboxLastByLeagueId | null = null;
+  if (prev instanceof Map) {
+    obj = {};
+    (prev as Map<string, ChatInboxLastMessage>).forEach((v, k) => {
+      obj![String(k)] = v;
+    });
+  } else if (typeof prev === 'object') {
+    obj = prev as ChatInboxLastByLeagueId;
+  }
+  if (!obj) return prev;
+
+  const current = obj[String(leagueId)] ?? null;
+  if (current?.created_at && typeof current.created_at === 'string') {
+    // Only replace if the new message is newer (ISO strings are lexicographically sortable).
+    if (String(nextMsg.created_at).localeCompare(String(current.created_at)) <= 0) return prev;
+  }
+
+  return { ...obj, [String(leagueId)]: nextMsg };
+}
+
 async function fetchPage({ leagueId, before }: { leagueId: string; before?: string | null }): Promise<Page> {
   const query = supabase
     .from('league_messages')
@@ -214,6 +251,20 @@ export function useLeagueChat({
         status: 'sending',
       };
 
+      // Update Chat inbox preview immediately (so the list updates without needing a refetch/remount).
+      queryClient.setQueriesData(
+        {
+          predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'chatInboxLastMessagesV2',
+        },
+        (prev) =>
+          upsertChatInboxLastMessage(prev, leagueId, {
+            league_id: leagueId,
+            content: text,
+            created_at: optimistic.created_at,
+            user_id: userId,
+          })
+      );
+
       queryClient.setQueryData(['leagueChat', leagueId], (prev: any) => {
         if (!prev?.pages) return prev;
         const pages = [...prev.pages];
@@ -250,6 +301,20 @@ export function useLeagueChat({
         if (error) throw error;
         const saved = normalizeMessage(data);
 
+        // Confirm/update inbox preview with canonical server timestamp.
+        queryClient.setQueriesData(
+          {
+            predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'chatInboxLastMessagesV2',
+          },
+          (prev) =>
+            upsertChatInboxLastMessage(prev, leagueId, {
+              league_id: leagueId,
+              content: saved.content,
+              created_at: saved.created_at,
+              user_id: saved.user_id,
+            })
+        );
+
         queryClient.setQueryData(['leagueChat', leagueId], (prev: any) => {
           if (!prev?.pages) return prev;
           const pages = prev.pages.map((p: Page) => ({ ...p, rows: p.rows.filter((m) => m.id !== optimistic.id) }));
@@ -274,6 +339,11 @@ export function useLeagueChat({
             rows: p.rows.map((m) => (m.id === optimistic.id ? { ...m, status: 'error' as const } : m)),
           }));
           return { ...prev, pages };
+        });
+
+        // Ensure the inbox doesn't get stuck showing an optimistic preview if send fails.
+        void queryClient.invalidateQueries({
+          predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'chatInboxLastMessagesV2',
         });
       }
     },

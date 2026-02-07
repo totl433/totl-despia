@@ -29,16 +29,15 @@ import LeagueSubmissionStatusCard from '../components/league/LeagueSubmissionSta
 import type { LeaguePick } from '../components/league/LeaguePickPill';
 import FixtureCard from '../components/FixtureCard';
 import LeaguePickChipsRow from '../components/league/LeaguePickChipsRow';
-import LeagueChatTab from '../components/chat/LeagueChatTab';
 import { TotlRefreshControl } from '../lib/refreshControl';
-import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
-import LeagueMenuSheet, { type LeagueMenuAction } from '../components/league/LeagueMenuSheet';
+import LeagueOverflowMenu, { type LeagueOverflowAction } from '../components/league/LeagueOverflowMenu';
 import LeagueInviteSheet from '../components/league/LeagueInviteSheet';
 import { env } from '../env';
 import { resolveLeagueStartGw } from '../lib/leagueStart';
 import CenteredSpinner from '../components/CenteredSpinner';
+import { Ionicons } from '@expo/vector-icons';
 
-const LEAGUE_TABS: LeagueTabKey[] = ['chat', 'gwTable', 'predictions', 'season'];
+const LEAGUE_TABS: LeagueTabKey[] = ['gwTable', 'predictions', 'season'];
 
 function base64ToUint8Array(base64: string): Uint8Array {
   // RN-safe base64 decode (atob is available in Hermes/JSC for RN; if not, we'll fail loudly).
@@ -59,9 +58,9 @@ export default function LeagueDetailScreen() {
   const [rulesOpen, setRulesOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [inviteOpen, setInviteOpen] = React.useState(false);
+  const [inviteMode, setInviteMode] = React.useState<'league' | 'chat'>('league');
   const [avatarOverrideUri, setAvatarOverrideUri] = React.useState<string | null>(null);
   const [leavingLeague, setLeavingLeague] = React.useState(false);
-  const { optimisticallyClear } = useLeagueUnreadCounts();
 
   type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
   type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -110,11 +109,6 @@ export default function LeagueDetailScreen() {
 
   type LeagueTableResponse = Awaited<ReturnType<typeof api.getLeagueGwTable>>;
   const leagueId = String(params.leagueId);
-  React.useEffect(() => {
-    if (tab === 'chat') {
-      optimisticallyClear(leagueId);
-    }
-  }, [leagueId, optimisticallyClear, tab]);
   const { data: table, isLoading: tableLoading, refetch: refetchTable, isRefetching: tableRefetching } = useQuery<LeagueTableResponse>({
     enabled: tab === 'gwTable' && typeof selectedGw === 'number',
     queryKey: ['leagueGwTable', leagueId, selectedGw],
@@ -292,7 +286,7 @@ export default function LeagueDetailScreen() {
   }, [leagueId, leagueMeta?.name, params.name, queryClient]);
 
   const handleMenuAction = React.useCallback(
-    async (action: LeagueMenuAction) => {
+    async (action: LeagueOverflowAction) => {
       setMenuOpen(false);
 
       if (action === 'shareLeagueCode') {
@@ -334,8 +328,9 @@ export default function LeagueDetailScreen() {
         return;
       }
 
-      if (action === 'invitePlayers') {
+      if (action === 'inviteLeague' || action === 'inviteChat') {
         try {
+          setInviteMode(action === 'inviteChat' ? 'chat' : 'league');
           const gw = typeof currentGw === 'number' ? currentGw : null;
           const createdAt = typeof leagueMeta?.created_at === 'string' ? leagueMeta.created_at : null;
           const leagueName = String(leagueMeta?.name ?? params.name ?? '');
@@ -804,7 +799,7 @@ export default function LeagueDetailScreen() {
             if (navigation?.canGoBack?.() ?? true) navigation.goBack();
             return;
           }
-          setTab(LEAGUE_TABS[idx - 1] ?? 'chat');
+          setTab(LEAGUE_TABS[idx - 1] ?? 'gwTable');
           return;
         }
 
@@ -996,27 +991,32 @@ export default function LeagueDetailScreen() {
                     );
                   })()}
               </ScrollView>
-            ) : tab === 'chat' ? (
-              <LeagueChatTab
-                leagueId={leagueId}
-                members={members.map((m: any) => ({
-                  id: String(m.id),
-                  name: String(m.name ?? 'User'),
-                  avatar_url: typeof m.avatar_url === 'string' ? m.avatar_url : null,
-                }))}
-              />
-            ) : (
-              <TotlText variant="muted">Season tab (coming).</TotlText>
-            )}
+            ) : null}
           </View>
         </View>
       </GestureDetector>
 
-      <LeagueMenuSheet
+      <LeagueOverflowMenu
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         onAction={handleMenuAction}
+        extraItems={[
+          {
+            key: 'go-to-chat',
+            label: 'Go to chat',
+            icon: <Ionicons name="chatbubble-ellipses-outline" size={18} color="#000000" />,
+            onPress: () => {
+              setMenuOpen(false);
+              // Jump to the global Chat tab's thread view for this league.
+              (navigation as any).getParent?.()?.navigate?.('Chat', {
+                screen: 'ChatThread',
+                params: { leagueId, name: String(leagueMeta?.name ?? params.name ?? '') },
+              });
+            },
+          },
+        ]}
         showResetBadge={!!headerAvatarUri}
+        showInviteChat={false}
       />
       {leagueMeta?.code ? (
         <LeagueInviteSheet
@@ -1024,6 +1024,17 @@ export default function LeagueDetailScreen() {
           onClose={() => setInviteOpen(false)}
           leagueName={String(leagueMeta?.name ?? params.name ?? 'Mini league')}
           leagueCode={String(leagueMeta.code)}
+          title={inviteMode === 'chat' ? 'Invite to chat' : 'Invite to mini league'}
+          shareTextOverride={
+            inviteMode === 'chat'
+              ? `Join the chat for "${String(leagueMeta?.name ?? params.name ?? '') || 'my mini league'}" on TotL!`
+              : undefined
+          }
+          urlOverride={
+            inviteMode === 'chat'
+              ? `${String(env.EXPO_PUBLIC_SITE_URL ?? '').replace(/\/$/, '')}/league/${encodeURIComponent(String(leagueMeta.code))}?tab=chat`
+              : undefined
+          }
         />
       ) : null}
     </Screen>

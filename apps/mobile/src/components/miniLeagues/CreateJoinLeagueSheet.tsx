@@ -29,7 +29,7 @@ export default function CreateJoinLeagueSheet({
 }) {
   const t = useTokens();
   const ref = React.useRef<BottomSheetModal>(null);
-  const snapPoints = React.useMemo(() => [420], []);
+  const snapPoints = React.useMemo(() => [432], []);
 
   React.useEffect(() => {
     if (open) {
@@ -54,7 +54,7 @@ export default function CreateJoinLeagueSheet({
         <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.35} pressBehavior="close" />
       )}
     >
-      <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 6, paddingBottom: 18 }}>
+      <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 6, paddingBottom: 30 }}>
         <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 22, lineHeight: 22, color: '#000000' }}>
           Create or join
         </TotlText>

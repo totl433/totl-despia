@@ -12,11 +12,13 @@ import { TotlText, useTokens } from '@totl/ui';
 export default function PageHeader({
   title,
   subtitle,
+  leftAction,
   rightAction,
   style,
 }: {
   title: string;
   subtitle?: string;
+  leftAction?: React.ReactNode;
   rightAction?: React.ReactNode;
   style?: ViewStyle;
 }) {
@@ -36,6 +38,13 @@ export default function PageHeader({
         style,
       ]}
     >
+      {leftAction ? (
+        <View style={{ paddingTop: subtitle ? 2 : 0, paddingRight: 12 }}>
+          {/* TS workaround: monorepo sometimes resolves duplicate React type defs (ReactNode incompatibility). */}
+          {leftAction as any}
+        </View>
+      ) : null}
+
       <View style={{ flex: 1, paddingRight: rightAction ? 12 : 0 }}>
         <TotlText
           numberOfLines={1}

@@ -12,15 +12,21 @@ export default function LeagueInviteSheet({
   onClose,
   leagueName,
   leagueCode,
+  title = 'Invite players',
+  shareTextOverride,
+  urlOverride,
 }: {
   open: boolean;
   onClose: () => void;
   leagueName: string;
   leagueCode: string;
+  title?: string;
+  shareTextOverride?: string;
+  urlOverride?: string;
 }) {
   const t = useTokens();
   const ref = React.useRef<BottomSheetModal>(null);
-  const snapPoints = React.useMemo(() => [240], []);
+  const snapPoints = React.useMemo(() => [252], []);
 
   const [toast, setToast] = React.useState<string>('');
 
@@ -32,9 +38,9 @@ export default function LeagueInviteSheet({
     ref.current?.dismiss();
   }, [open]);
 
-  const shareText = `Join my mini league "${leagueName}" on TotL!`;
+  const shareText = String(shareTextOverride ?? `Join my mini league "${leagueName}" on TotL!`);
   const base = String(env.EXPO_PUBLIC_SITE_URL ?? '').replace(/\/$/, '');
-  const url = base ? `${base}/league/${encodeURIComponent(leagueCode)}` : '';
+  const url = urlOverride ? String(urlOverride) : base ? `${base}/league/${encodeURIComponent(leagueCode)}` : '';
 
   const handleShare = async () => {
     try {
@@ -67,8 +73,8 @@ export default function LeagueInviteSheet({
         <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.5} pressBehavior="close" />
       )}
     >
-      <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 12 }}>
-        <TotlText style={{ fontFamily: 'System', fontSize: 16, lineHeight: 20, fontWeight: '700' }}>Invite players</TotlText>
+      <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 24 }}>
+        <TotlText style={{ fontFamily: 'System', fontSize: 16, lineHeight: 20, fontWeight: '700' }}>{title}</TotlText>
         <TotlText style={{ marginTop: 6, fontFamily: 'System', fontSize: 13, lineHeight: 16, color: t.color.muted }}>
           Share this code with friends:
         </TotlText>

@@ -49,7 +49,35 @@ export default function ProfileHomeScreen() {
   if (isLoading && !data && !error) {
     return (
       <Screen fullBleed>
-        <PageHeader title="Profile" />
+        <PageHeader
+          title="Profile"
+          leftAction={
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back to home"
+              onPress={() => (navigation as any).getParent?.()?.navigate?.('Home')}
+              style={({ pressed }) => ({
+                width: 36,
+                height: 36,
+                borderRadius: 999,
+                backgroundColor: t.color.surface2,
+                borderWidth: 1,
+                borderColor: t.color.border,
+                overflow: 'hidden',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.9 : 1,
+                transform: [{ scale: pressed ? 0.98 : 1 }],
+              })}
+            >
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={{ width: 36, height: 36 }} />
+              ) : (
+                <TotlText style={{ fontWeight: '900' }}>{initials.slice(0, 1) || 'U'}</TotlText>
+              )}
+            </Pressable>
+          }
+        />
         <CenteredSpinner loading />
       </Screen>
     );
@@ -68,7 +96,35 @@ export default function ProfileHomeScreen() {
 
   return (
     <Screen fullBleed>
-      <PageHeader title="Profile" />
+      <PageHeader
+        title="Profile"
+        leftAction={
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back to home"
+            onPress={() => (navigation as any).getParent?.()?.navigate?.('Home')}
+            style={({ pressed }) => ({
+              width: 36,
+              height: 36,
+              borderRadius: 999,
+              backgroundColor: t.color.surface2,
+              borderWidth: 1,
+              borderColor: t.color.border,
+              overflow: 'hidden',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.9 : 1,
+              transform: [{ scale: pressed ? 0.98 : 1 }],
+            })}
+          >
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={{ width: 36, height: 36 }} />
+            ) : (
+              <TotlText style={{ fontWeight: '900' }}>{initials.slice(0, 1) || 'U'}</TotlText>
+            )}
+          </Pressable>
+        }
+      />
 
       <ScrollView
         style={{ flex: 1 }}

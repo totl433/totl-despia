@@ -24,7 +24,7 @@ function countdownParts(ms: number): { days: number; hours: number; minutes: num
 }
 
 /**
- * A pre-kickoff countdown tile for the Home "Performance" carousel.
+ * A pre-kickoff countdown (tile or banner) for the Home screen.
  *
  * Visibility is controlled by the parent. This component is responsible for:
  * - live countdown every second
@@ -37,12 +37,14 @@ export default function GameweekCountdownItem({
   homeCode,
   awayCode,
   onKickedOff,
+  variant = 'tile',
 }: {
   gw: number;
   kickoffTimeMs: number;
   homeCode?: string | null;
   awayCode?: string | null;
   onKickedOff: () => void;
+  variant?: 'tile' | 'banner';
 }) {
   useTokens(); // keep theme provider wiring consistent (even though styles are mostly fixed)
 
@@ -79,7 +81,7 @@ export default function GameweekCountdownItem({
 
   // Entry animation.
   const opacitySV = useSharedValue(0);
-  const scaleSV = useSharedValue(0.9);
+  const scaleSV = useSharedValue(variant === 'banner' ? 0.98 : 0.9);
   React.useEffect(() => {
     opacitySV.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) });
     scaleSV.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) });
@@ -157,6 +159,84 @@ export default function GameweekCountdownItem({
   const { days, hours, minutes } = React.useMemo(() => countdownParts(remainingMs), [remainingMs]);
   const homeBadge = homeCode ? TEAM_BADGES[String(homeCode).toUpperCase()] ?? null : null;
   const awayBadge = awayCode ? TEAM_BADGES[String(awayCode).toUpperCase()] ?? null : null;
+
+  if (variant === 'banner') {
+    return (
+      <Animated.View style={animStyle}>
+        <Card
+          style={{
+            width: '100%',
+            paddingVertical: 14,
+            paddingHorizontal: 14,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: '#DFEBE9',
+            shadowOpacity: 0,
+            shadowRadius: 0,
+            shadowOffset: { width: 0, height: 0 },
+            elevation: 0,
+            overflow: 'hidden',
+            backgroundColor: '#FFFFFF',
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <TotlText
+                style={{
+                  fontFamily: 'Gramatika-Regular',
+                  fontWeight: '400',
+                  fontSize: 12,
+                  color: '#59687C',
+                  letterSpacing: 0.5,
+                }}
+                numberOfLines={1}
+              >
+                {`GW ${gw} KICKS-OFF IN`}
+              </TotlText>
+
+              <View style={{ height: 8 }} />
+
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14 }}>
+                <View style={{ alignItems: 'center' }}>
+                  <TotlText style={{ fontFamily: 'BarlowCondensed-Light', fontSize: 40, lineHeight: 40, color: '#202020' }}>
+                    {pad2(days)}
+                  </TotlText>
+                  <TotlText style={{ fontFamily: 'Gramatika-Regular', fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
+                    DAYS
+                  </TotlText>
+                </View>
+                <View style={{ alignItems: 'center' }}>
+                  <TotlText style={{ fontFamily: 'BarlowCondensed-Light', fontSize: 40, lineHeight: 40, color: '#202020' }}>
+                    {pad2(hours)}
+                  </TotlText>
+                  <TotlText style={{ fontFamily: 'Gramatika-Regular', fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
+                    HRS
+                  </TotlText>
+                </View>
+                <View style={{ alignItems: 'center' }}>
+                  <TotlText style={{ fontFamily: 'BarlowCondensed-Light', fontSize: 40, lineHeight: 40, color: '#202020' }}>
+                    {pad2(minutes)}
+                  </TotlText>
+                  <TotlText style={{ fontFamily: 'Gramatika-Regular', fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
+                    MINS
+                  </TotlText>
+                </View>
+              </View>
+            </View>
+
+            <View style={{ width: 12 }} />
+
+            <View style={{ alignItems: 'center', justifyContent: 'center', opacity: 0.9 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                {homeBadge ? <Image source={homeBadge} style={{ width: 32, height: 32 }} /> : <View style={{ width: 32, height: 32 }} />}
+                {awayBadge ? <Image source={awayBadge} style={{ width: 32, height: 32 }} /> : <View style={{ width: 32, height: 32 }} />}
+              </View>
+            </View>
+          </View>
+        </Card>
+      </Animated.View>
+    );
+  }
 
   return (
     <Animated.View style={animStyle}>

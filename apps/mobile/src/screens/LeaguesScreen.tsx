@@ -325,7 +325,6 @@ export default function LeaguesScreen() {
               enabled={enabled}
               viewingGw={viewingGw}
               onPress={() => {
-                optimisticallyClear(leagueId);
                 navigation.navigate(
                   'LeagueDetail',
                   { leagueId: item.id, name: item.name } satisfies LeaguesStackParamList['LeagueDetail']

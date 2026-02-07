@@ -82,8 +82,10 @@ export default function LeagueChatTab({
   const { data: me } = useQuery({
     queryKey: ['me'],
     queryFn: async () => {
-      const { data } = await supabase.auth.getUser();
-      return data.user ?? null;
+      // IMPORTANT: Prefer `getSession()` (local, reliable) over `getUser()` (network-backed).
+      // If `getUser()` fails/returns null transiently, read receipts won't write and badges won't clear.
+      const { data } = await supabase.auth.getSession();
+      return data.session?.user ?? null;
     },
   });
 
@@ -99,6 +101,13 @@ export default function LeagueChatTab({
 
   useLeagueChatPresence({ leagueId, userId: meId, enabled: true });
   const { markAsRead } = useLeagueChatReadReceipts({ leagueId, userId: meId, enabled: true });
+
+  // Ensure we record a read receipt on first open (as soon as we know who "me" is),
+  // so unread badges clear when navigating back without requiring a second open.
+  React.useEffect(() => {
+    if (!meId) return;
+    markAsRead();
+  }, [markAsRead, meId]);
 
   const messageIds = React.useMemo(() => messages.map((m) => m.id).filter((id) => !id.startsWith('optimistic-')), [messages]);
   const { reactions, toggleReaction } = useLeagueChatReactions({

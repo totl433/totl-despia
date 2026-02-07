@@ -10,6 +10,7 @@ import { initSentry } from './lib/sentry';
 import { supabase } from './lib/supabase';
 import { registerForPushNotifications } from './lib/push';
 import { ConfettiProvider } from './lib/confetti';
+import { LeagueUnreadCountsProvider } from './context/LeagueUnreadCountsContext';
 import { envStatus } from './env';
 import AuthScreen from './screens/AuthScreen';
 import AppNavigator from './navigation/AppNavigator';
@@ -115,7 +116,9 @@ export default function AppRoot() {
             </Screen>
           ) : authed ? (
             <ConfettiProvider>
-              <AppNavigator />
+              <LeagueUnreadCountsProvider>
+                <AppNavigator />
+              </LeagueUnreadCountsProvider>
             </ConfettiProvider>
           ) : (
             <AuthScreen />

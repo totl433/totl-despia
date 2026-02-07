@@ -2,8 +2,8 @@ export type GameweekState = 'GW_OPEN' | 'GW_PREDICTED' | 'DEADLINE_PASSED' | 'LI
 
 const DEADLINE_BUFFER_MINUTES = 75;
 
-type FixtureKickoff = { kickoff_time?: string | null };
-type LiveScoreLike = { status?: string | null; kickoff_time?: string | null };
+type FixtureKickoff = { kickoff_time?: string | null; fixture_index?: number | null; api_match_id?: number | null };
+type LiveScoreLike = { status?: string | null; kickoff_time?: string | null; fixture_index?: number | null; api_match_id?: number | null };
 
 function parseDateSafe(s: string | null | undefined): Date | null {
   if (!s) return null;
@@ -22,14 +22,19 @@ export function getGameweekStateFromSnapshot(input: {
   now?: Date;
 }): GameweekState {
   const now = input.now ?? new Date();
-  const fixtures = [...(input.fixtures ?? [])]
-    .map((f) => ({ kickoff: parseDateSafe(f.kickoff_time) }))
-    .filter((x): x is { kickoff: Date } => !!x.kickoff)
+  const fixtures = [...(input.fixtures ?? [])].map((f) => ({
+    kickoff: parseDateSafe(f.kickoff_time),
+    fixture_index: typeof f.fixture_index === 'number' ? f.fixture_index : null,
+    api_match_id: typeof f.api_match_id === 'number' ? f.api_match_id : null,
+  }));
+
+  const fixturesWithKickoff = fixtures
+    .filter((x): x is { kickoff: Date; fixture_index: number | null; api_match_id: number | null } => !!x.kickoff)
     .sort((a, b) => a.kickoff.getTime() - b.kickoff.getTime());
 
-  if (fixtures.length === 0) return input.hasSubmittedViewingGw ? 'GW_PREDICTED' : 'GW_OPEN';
+  if (fixturesWithKickoff.length === 0) return input.hasSubmittedViewingGw ? 'GW_PREDICTED' : 'GW_OPEN';
 
-  const firstKickoff = fixtures[0]!.kickoff;
+  const firstKickoff = fixturesWithKickoff[0]!.kickoff;
   const deadlineTime = new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000);
 
   const deadlinePassed = now >= deadlineTime;
@@ -43,10 +48,22 @@ export function getGameweekStateFromSnapshot(input: {
   const liveScores = input.liveScores ?? [];
   const hasActiveGame = liveScores.some((ls) => ls?.status === 'IN_PLAY' || ls?.status === 'PAUSED');
 
-  // If there are no active games and at least one finished, treat as RESULTS_PRE_GW.
-  // (We don't have full fixture->live coverage client-side, so this is a conservative approximation.)
-  const hasAnyFinished = liveScores.some((ls) => ls?.status === 'FINISHED');
-  if (!hasActiveGame && hasAnyFinished) return 'RESULTS_PRE_GW';
+  // Match Despia/web logic:
+  // GW is finished only when the LAST fixture (by kickoff time) is FINISHED in live_scores AND there are no active games.
+  const lastFixtureByKickoff = fixturesWithKickoff[fixturesWithKickoff.length - 1] ?? null;
+  const lastFixtureIndex = lastFixtureByKickoff?.fixture_index ?? null;
+  const lastApiMatchId = lastFixtureByKickoff?.api_match_id ?? null;
+
+  const lastGameLiveScore =
+    typeof lastFixtureIndex === 'number'
+      ? liveScores.find((ls) => ls?.fixture_index === lastFixtureIndex) ?? null
+      : typeof lastApiMatchId === 'number'
+        ? liveScores.find((ls) => ls?.api_match_id === lastApiMatchId) ?? null
+        : null;
+
+  const lastGameFinished = lastGameLiveScore?.status === 'FINISHED';
+
+  if (!hasActiveGame && lastGameFinished) return 'RESULTS_PRE_GW';
 
   return 'LIVE';
 }

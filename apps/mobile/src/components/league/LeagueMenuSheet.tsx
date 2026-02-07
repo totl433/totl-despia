@@ -57,7 +57,7 @@ export default function LeagueMenuSheet({
 }) {
   const t = useTokens();
   const ref = React.useRef<BottomSheetModal>(null);
-  const snapPoints = React.useMemo(() => [showResetBadge ? 344 : 290], [showResetBadge]);
+  const snapPoints = React.useMemo(() => [showResetBadge ? 356 : 302], [showResetBadge]);
 
   React.useEffect(() => {
     if (open) {
@@ -79,7 +79,7 @@ export default function LeagueMenuSheet({
         <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.5} pressBehavior="close" />
       )}
     >
-      <BottomSheetView style={{ paddingTop: 8, paddingBottom: 14 }}>
+      <BottomSheetView style={{ paddingTop: 8, paddingBottom: 26 }}>
         <MenuRow
           label="Edit League Badge"
           icon={<Ionicons name="image-outline" size={18} color={t.color.muted} />}

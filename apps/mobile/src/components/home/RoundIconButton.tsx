@@ -1,8 +1,16 @@
 import React from 'react'
-import { Image, Pressable } from 'react-native'
+import { Image, type ImageSourcePropType, Pressable } from 'react-native'
 import { useTokens } from '@totl/ui'
 
-export default function RoundIconButton({ onPress, icon }: { onPress: () => void; icon: any }) {
+export default function RoundIconButton({
+  onPress,
+  icon,
+  imageUri,
+}: {
+  onPress: () => void
+  icon: ImageSourcePropType
+  imageUri?: string | null
+}) {
   const t = useTokens()
 
   return (
@@ -19,9 +27,14 @@ export default function RoundIconButton({ onPress, icon }: { onPress: () => void
         justifyContent: 'center',
         opacity: pressed ? 0.9 : 1,
         transform: [{ scale: pressed ? 0.96 : 1 }],
+        overflow: 'hidden',
       })}
     >
-      <Image source={icon} style={{ width: 22, height: 22, resizeMode: 'contain' }} />
+      {imageUri ? (
+        <Image source={{ uri: imageUri }} style={{ width: 46, height: 46, resizeMode: 'cover' }} />
+      ) : (
+        <Image source={icon} style={{ width: 22, height: 22, resizeMode: 'contain' }} />
+      )}
     </Pressable>
   )
 }
