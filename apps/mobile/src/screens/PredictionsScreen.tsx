@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Fixture, Pick } from '@totl/domain';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -117,6 +117,8 @@ function PickChip({
 export default function PredictionsScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
+  const scrollRef = React.useRef<any>(null);
+  useScrollToTop(scrollRef);
   const queryClient = useQueryClient();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const confetti = useConfetti();
@@ -1105,6 +1107,7 @@ export default function PredictionsScreen() {
       <PageHeader title="Predictions" subtitle={typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek'} />
 
       <ScrollView
+        ref={scrollRef}
         style={{ flex: 1 }}
         // Keep bottom padding consistent across tabbed pages so content isn't obscured by the floating tab bar.
         contentContainerStyle={{

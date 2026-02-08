@@ -2,6 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
+import { useScrollToTop } from '@react-navigation/native';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
@@ -21,6 +22,8 @@ function byValueThenName(a: LeaderboardRow, b: LeaderboardRow) {
 
 export default function GlobalScreen() {
   const t = useTokens();
+  const listRef = React.useRef<any>(null);
+  useScrollToTop(listRef);
 
   const [tab, setTab] = React.useState<LeaderboardsTab>('gw');
   const [scope, setScope] = React.useState<LeaderboardsScope>('all');
@@ -261,6 +264,7 @@ export default function GlobalScreen() {
             highlightUserId={userId}
             refreshing={refreshing}
             onRefresh={onRefresh}
+            listRef={listRef}
             style={{
               flex: 1,
               // Remove bottom rounding so it can visually run off-screen.

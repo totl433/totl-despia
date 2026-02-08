@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, Share, View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
+import { formatLocalDateShort, formatLocalTimeHHmm } from '../../lib/dateTime';
 
 export default function LeagueSubmissionStatusCard({
   members,
@@ -33,10 +34,10 @@ export default function LeagueSubmissionStatusCard({
 
   const deadlineStr = (() => {
     if (!deadlineTime) return null;
-    const day = deadlineTime.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
-    const hh = String(deadlineTime.getUTCHours()).padStart(2, '0');
-    const mm = String(deadlineTime.getUTCMinutes()).padStart(2, '0');
-    return `${day}, ${hh}:${mm} BST`;
+    const day = formatLocalDateShort(deadlineTime.toISOString());
+    const time = formatLocalTimeHHmm(deadlineTime.toISOString());
+    if (!day || time === '—') return null;
+    return `${day}, ${time}`;
   })();
 
   const shareReminder = async () => {

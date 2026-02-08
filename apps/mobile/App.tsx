@@ -2,6 +2,7 @@ import AppRoot from './src/AppRoot';
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 export default function App() {
   const storybookEnabled = process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === 'true';
@@ -13,7 +14,9 @@ export default function App() {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <BottomSheetModalProvider>
-          <StorybookUIRoot />
+          <KeyboardProvider>
+            <StorybookUIRoot />
+          </KeyboardProvider>
         </BottomSheetModalProvider>
       </GestureHandlerRootView>
     );
@@ -22,7 +25,9 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <BottomSheetModalProvider>
-        <AppRoot />
+        <KeyboardProvider>
+          <AppRoot />
+        </KeyboardProvider>
       </BottomSheetModalProvider>
     </GestureHandlerRootView>
   );

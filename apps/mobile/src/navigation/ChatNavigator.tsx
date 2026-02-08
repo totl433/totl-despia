@@ -3,11 +3,9 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTokens } from '@totl/ui';
 
 import ChatInboxScreen from '../screens/ChatInboxScreen';
-import ChatThreadScreen from '../screens/ChatThreadScreen';
 
 export type ChatStackParamList = {
   ChatInbox: undefined;
-  ChatThread: { leagueId: string; name: string };
 };
 
 const Stack = createNativeStackNavigator<ChatStackParamList>();
@@ -22,7 +20,6 @@ export default function ChatNavigator() {
       }}
     >
       <Stack.Screen name="ChatInbox" component={ChatInboxScreen} />
-      <Stack.Screen name="ChatThread" component={ChatThreadScreen} />
     </Stack.Navigator>
   );
 }

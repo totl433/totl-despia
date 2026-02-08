@@ -1,7 +1,10 @@
 import React from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, View } from 'react-native';
+import { FlatList, View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import { useQuery } from '@tanstack/react-query';
+import { KeyboardStickyView, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
 import ChatMessageBubble from './ChatMessageBubble';
 import ChatComposer from './ChatComposer';
@@ -72,12 +75,34 @@ export default function LeagueChatTab({
   members: Array<{ id: string; name: string; avatar_url?: string | null }>;
 }) {
   const t = useTokens();
+  const insets = useSafeAreaInsets();
   const chatBg = t.color.background;
   const listRef = React.useRef<FlatList<any> | null>(null);
   const [draft, setDraft] = React.useState('');
   const [sending, setSending] = React.useState(false);
   const [replyTo, setReplyTo] = React.useState<{ id: string; content: string; authorName?: string } | null>(null);
   const [actionsFor, setActionsFor] = React.useState<{ id: string; content: string; authorName?: string } | null>(null);
+
+  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
+  const composerHeightSv = useSharedValue(0);
+  const [keyboardOpen, setKeyboardOpen] = React.useState(false);
+
+  useAnimatedReaction(
+    () => keyboardHeight.value > 0,
+    (open, prev) => {
+      if (open === prev) return;
+      runOnJS(setKeyboardOpen)(open);
+    },
+    [keyboardHeight]
+  );
+
+  const bottomInset = keyboardOpen ? 8 : Math.max(8, insets.bottom);
+
+  const listBottomSpacerStyle = useAnimatedStyle(() => {
+    // In an inverted FlatList, ListHeaderComponent is rendered at the bottom (next to the composer).
+    // This spacer ensures the newest message never sits behind the composer or keyboard.
+    return { height: composerHeightSv.value + keyboardHeight.value + 8 };
+  }, [keyboardHeight]);
 
   const { data: me } = useQuery({
     queryKey: ['me'],
@@ -161,137 +186,137 @@ export default function LeagueChatTab({
   }, [messages]);
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      // We’re not inside a native nav header; offsetting here causes visual gaps.
-      keyboardVerticalOffset={0}
-    >
-      <View style={{ flex: 1, backgroundColor: chatBg }}>
-        {error ? (
-          <Card style={{ margin: t.space[4] }}>
-            <TotlText variant="heading" style={{ marginBottom: 6 }}>
-              Couldn’t load chat
-            </TotlText>
-            <TotlText variant="muted">{error}</TotlText>
-          </Card>
-        ) : null}
+    <View style={{ flex: 1, backgroundColor: chatBg }}>
+      {error ? (
+        <Card style={{ margin: t.space[4] }}>
+          <TotlText variant="heading" style={{ marginBottom: 6 }}>
+            Couldn’t load chat
+          </TotlText>
+          <TotlText variant="muted">{error}</TotlText>
+        </Card>
+      ) : null}
 
-        <FlatList
-          ref={(n) => {
-            listRef.current = n;
-          }}
-          data={listItems}
-          keyExtractor={(it) => (it.type === 'message' ? it.message.id : it.key)}
-          inverted
-          style={{ flex: 1, backgroundColor: chatBg }}
-          // No inset "frame" — keep the list full-bleed and apply row padding within message rows instead.
-          contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 8, paddingTop: 0 }}
-          onScroll={(e) => {
-            // With inverted list, offset ~0 means "at bottom / latest"
-            if (e.nativeEvent.contentOffset.y < 40) {
-              const newest = messages[messages.length - 1]?.created_at ?? null;
-              markAsRead({ lastReadAtOverride: newest });
-            }
-          }}
-          scrollEventThrottle={16}
-          onEndReached={() => {
-            if (hasOlder && !isFetchingOlder) void fetchOlder();
-          }}
-          onEndReachedThreshold={0.2}
-          ListHeaderComponent={
-            <View style={{ paddingHorizontal: 8 }}>
-              {/* Gap between the newest message and the composer (WhatsApp-like breathing room). */}
-              <View style={{ height: 8 }} />
-              {isLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
-            </View>
+      <FlatList
+        ref={(n) => {
+          listRef.current = n;
+        }}
+        data={listItems}
+        keyExtractor={(it) => (it.type === 'message' ? it.message.id : it.key)}
+        inverted
+        style={{ flex: 1, backgroundColor: chatBg }}
+        // No inset "frame" — keep the list full-bleed and apply row padding within message rows instead.
+        contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 8, paddingTop: 0 }}
+        onScroll={(e) => {
+          // With inverted list, offset ~0 means "at bottom / latest"
+          if (e.nativeEvent.contentOffset.y < 40) {
+            const newest = messages[messages.length - 1]?.created_at ?? null;
+            markAsRead({ lastReadAtOverride: newest });
           }
-          renderItem={({ item, index }) => {
-            if (item.type === 'day') {
-              if (!item.label) return <View style={{ height: 10 }} />;
-              return (
-                <View style={{ alignItems: 'center', marginVertical: 10 }}>
-                  <View
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      borderRadius: 999,
-                      backgroundColor: 'rgba(148,163,184,0.18)',
-                    }}
-                  >
-                    <TotlText style={{ fontFamily: 'System', fontSize: 12, lineHeight: 14, color: 'rgba(15,23,42,0.55)' }}>
-                      {item.label}
-                    </TotlText>
-                  </View>
-                </View>
-              );
-            }
-
-            const msg = item.message;
-            const isMe = !!meId && msg.user_id === meId;
-            const authorName = isMe ? meName : nameById.get(msg.user_id) ?? 'Unknown';
-            const avatarUri = isMe ? null : avatarById.get(msg.user_id) ?? null;
-            const r = reactions[msg.id] ?? [];
-
-            const prev = prevMessage(listItems, index); // newer (visually below)
-            const next = nextMessage(listItems, index); // older (visually above)
-            const sameAsPrev = !!prev && prev.user_id === msg.user_id;
-            const sameAsNext = !!next && next.user_id === msg.user_id;
-            const speakerChanged = !!prev && prev.user_id !== msg.user_id;
-
-            // Strict grouping:
-            // - same sender in a run: keep bubbles aligned + tight spacing
-            // - show avatar once per run (newest message in that run)
-            // - show name once per run (oldest message in that run)
-            const showAvatar = !isMe && !sameAsPrev;
-            const showAuthorName = !isMe && !sameAsNext;
-            const topSpacing = sameAsPrev ? 2 : speakerChanged ? 14 : 10;
-
+        }}
+        scrollEventThrottle={16}
+        onEndReached={() => {
+          if (hasOlder && !isFetchingOlder) void fetchOlder();
+        }}
+        onEndReachedThreshold={0.2}
+        ListHeaderComponent={
+          <View style={{ paddingHorizontal: 8 }}>
+            <Animated.View style={listBottomSpacerStyle} />
+            {isLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
+          </View>
+        }
+        renderItem={({ item, index }) => {
+          if (item.type === 'day') {
+            if (!item.label) return <View style={{ height: 10 }} />;
             return (
-              <ChatMessageBubble
-                message={msg}
-                isMe={isMe}
-                authorName={authorName}
-                avatarLabel={authorName}
-                avatarUri={avatarUri}
-                showAvatar={showAvatar}
-                showAuthorName={showAuthorName}
-                topSpacing={topSpacing}
-                reactions={r}
-                onPressReaction={(emoji) => void toggleReaction(msg.id, emoji)}
-                onLongPress={() => setActionsFor({ id: msg.id, content: msg.content, authorName })}
-              />
+              <View style={{ alignItems: 'center', marginVertical: 10 }}>
+                <View
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    backgroundColor: 'rgba(148,163,184,0.18)',
+                  }}
+                >
+                  <TotlText style={{ fontFamily: 'System', fontSize: 12, lineHeight: 14, color: 'rgba(15,23,42,0.55)' }}>
+                    {item.label}
+                  </TotlText>
+                </View>
+              </View>
             );
-          }}
-        />
+          }
 
-        <View style={{ borderTopWidth: 1, borderTopColor: t.color.border }}>
+          const msg = item.message;
+          const isMe = !!meId && msg.user_id === meId;
+          const authorName = isMe ? meName : nameById.get(msg.user_id) ?? 'Unknown';
+          const avatarUri = isMe ? null : avatarById.get(msg.user_id) ?? null;
+          const r = reactions[msg.id] ?? [];
+
+          const prev = prevMessage(listItems, index); // newer (visually below)
+          const next = nextMessage(listItems, index); // older (visually above)
+          const sameAsPrev = !!prev && prev.user_id === msg.user_id;
+          const sameAsNext = !!next && next.user_id === msg.user_id;
+          const speakerChanged = !!prev && prev.user_id !== msg.user_id;
+
+          // Strict grouping:
+          // - same sender in a run: keep bubbles aligned + tight spacing
+          // - show avatar once per run (newest message in that run)
+          // - show name once per run (oldest message in that run)
+          const showAvatar = !isMe && !sameAsPrev;
+          const showAuthorName = !isMe && !sameAsNext;
+          const topSpacing = sameAsPrev ? 2 : speakerChanged ? 14 : 10;
+
+          return (
+            <ChatMessageBubble
+              message={msg}
+              isMe={isMe}
+              authorName={authorName}
+              avatarLabel={authorName}
+              avatarUri={avatarUri}
+              showAvatar={showAvatar}
+              showAuthorName={showAuthorName}
+              topSpacing={topSpacing}
+              reactions={r}
+              onPressReaction={(emoji) => void toggleReaction(msg.id, emoji)}
+              onLongPress={() => setActionsFor({ id: msg.id, content: msg.content, authorName })}
+            />
+          );
+        }}
+      />
+
+      <KeyboardStickyView offset={{ closed: 0, opened: 0 }} style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
+        <View
+          onLayout={(e) => {
+            composerHeightSv.value = e.nativeEvent.layout.height;
+          }}
+          style={{ borderTopWidth: 1, borderTopColor: t.color.border, backgroundColor: chatBg }}
+        >
           <ChatComposer
             value={draft}
             onChange={setDraft}
             onSend={onSend}
             sending={sending}
+            bottomInset={bottomInset}
             replyPreview={replyTo ? { content: replyTo.content, authorName: replyTo.authorName } : null}
             onCancelReply={() => setReplyTo(null)}
           />
         </View>
+      </KeyboardStickyView>
 
-        <ChatActionsSheet
-          open={!!actionsFor}
-          onClose={() => setActionsFor(null)}
-          onReply={() => {
-            if (!actionsFor) return;
-            setReplyTo(actionsFor);
-            setActionsFor(null);
-          }}
-          onReact={(emoji) => {
-            if (!actionsFor) return;
-            void toggleReaction(actionsFor.id, emoji);
-            setActionsFor(null);
-          }}
-        />
-      </View>
-    </KeyboardAvoidingView>
+      <ChatActionsSheet
+        open={!!actionsFor}
+        onClose={() => setActionsFor(null)}
+        onReply={() => {
+          if (!actionsFor) return;
+          setReplyTo(actionsFor);
+          setActionsFor(null);
+        }}
+        onReact={(emoji) => {
+          if (!actionsFor) return;
+          void toggleReaction(actionsFor.id, emoji);
+          setActionsFor(null);
+        }}
+      />
+    </View>
   );
 }
 

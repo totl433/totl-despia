@@ -16,6 +16,21 @@ export default function ProfileHomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
 
+  const goHome = React.useCallback(() => {
+    const parent = (navigation as any).getParent?.();
+    // ProfileNavigator sits inside the RootStack; prefer going back if possible.
+    if (parent?.canGoBack?.() ?? false) {
+      parent.goBack();
+      return;
+    }
+    // Fallback: explicitly navigate to Tabs → Home.
+    parent?.navigate?.('Tabs', { screen: 'Home' });
+  }, [navigation]);
+
+  const goEditAvatar = React.useCallback(() => {
+    navigation.navigate('EditAvatar');
+  }, [navigation]);
+
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['profile-summary'],
     queryFn: () => api.getProfileSummary(),
@@ -55,26 +70,17 @@ export default function ProfileHomeScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Back to home"
-              onPress={() => (navigation as any).getParent?.()?.navigate?.('Home')}
+              onPress={goHome}
               style={({ pressed }) => ({
-                width: 36,
-                height: 36,
-                borderRadius: 999,
-                backgroundColor: t.color.surface2,
-                borderWidth: 1,
-                borderColor: t.color.border,
-                overflow: 'hidden',
+                width: 32,
+                height: 32,
+                borderRadius: 16,
                 alignItems: 'center',
                 justifyContent: 'center',
-                opacity: pressed ? 0.9 : 1,
-                transform: [{ scale: pressed ? 0.98 : 1 }],
+                opacity: pressed ? 0.75 : 1,
               })}
             >
-              {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={{ width: 36, height: 36 }} />
-              ) : (
-                <TotlText style={{ fontWeight: '900' }}>{initials.slice(0, 1) || 'U'}</TotlText>
-              )}
+              <Ionicons name="chevron-back" size={24} color={t.color.text} />
             </Pressable>
           }
         />
@@ -102,26 +108,17 @@ export default function ProfileHomeScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Back to home"
-            onPress={() => (navigation as any).getParent?.()?.navigate?.('Home')}
+            onPress={goHome}
             style={({ pressed }) => ({
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              backgroundColor: t.color.surface2,
-              borderWidth: 1,
-              borderColor: t.color.border,
-              overflow: 'hidden',
+              width: 32,
+              height: 32,
+              borderRadius: 16,
               alignItems: 'center',
               justifyContent: 'center',
-              opacity: pressed ? 0.9 : 1,
-              transform: [{ scale: pressed ? 0.98 : 1 }],
+              opacity: pressed ? 0.75 : 1,
             })}
           >
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={{ width: 36, height: 36 }} />
-            ) : (
-              <TotlText style={{ fontWeight: '900' }}>{initials.slice(0, 1) || 'U'}</TotlText>
-            )}
+            <Ionicons name="chevron-back" size={24} color={t.color.text} />
           </Pressable>
         }
       />

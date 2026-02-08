@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { TotlText, useTokens } from '@totl/ui';
 
-import type { LeaguesStackParamList } from '../../navigation/LeaguesNavigator';
+import type { RootStackParamList } from '../../navigation/AppNavigator';
 
 type Section = 'miniLeague' | 'chat';
 
@@ -53,7 +53,7 @@ export default function LeagueSectionSwitch({
           accessibilityLabel="Mini league section"
           onPress={() => {
             if (active === 'miniLeague') return;
-            const params = { leagueId: String(leagueId), name: String(name) } satisfies LeaguesStackParamList['LeagueDetail'];
+            const params = { leagueId: String(leagueId), name: String(name) } satisfies RootStackParamList['LeagueDetail'];
             if (typeof navigation.replace === 'function') navigation.replace('LeagueDetail', params);
             else navigation.navigate('LeagueDetail', params);
           }}
@@ -72,7 +72,7 @@ export default function LeagueSectionSwitch({
           accessibilityLabel="Chat section"
           onPress={() => {
             if (active === 'chat') return;
-            const params = { leagueId: String(leagueId), name: String(name) } satisfies LeaguesStackParamList['LeagueChat'];
+            const params = { leagueId: String(leagueId), name: String(name) } satisfies RootStackParamList['LeagueChat'];
             if (typeof navigation.replace === 'function') navigation.replace('LeagueChat', params);
             else navigation.navigate('LeagueChat', params);
           }}

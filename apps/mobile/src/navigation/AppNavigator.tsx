@@ -7,9 +7,19 @@ import { useTokens } from '@totl/ui';
 import TabsNavigator from './TabsNavigator';
 import GameweekResultsModalScreen from '../screens/GameweekResultsModalScreen';
 import { supabase } from '../lib/supabase';
+import LeagueDetailScreen from '../screens/LeagueDetailScreen';
+import LeagueChatScreen from '../screens/LeagueChatScreen';
+import CreateLeagueScreen from '../screens/CreateLeagueScreen';
+import ChatThreadScreen from '../screens/ChatThreadScreen';
+import ProfileNavigator from './ProfileNavigator';
 
 export type RootStackParamList = {
   Tabs: undefined;
+  LeagueDetail: { leagueId: string; name: string };
+  LeagueChat: { leagueId: string; name: string };
+  CreateLeague: undefined;
+  ChatThread: { leagueId: string; name: string };
+  Profile: undefined;
   GameweekResults: { gw: number };
 };
 
@@ -59,24 +69,11 @@ export default function AppNavigator() {
         return;
       }
 
-      navigationRef.navigate(
-        'Tabs' as any,
-        openChat
-          ? {
-              screen: 'Chat',
-              params: {
-                screen: 'ChatThread',
-                params: { leagueId, name },
-              },
-            }
-          : {
-              screen: 'Leagues',
-              params: {
-                screen: 'LeagueDetail',
-                params: { leagueId, name },
-              },
-            }
-      );
+      if (openChat) {
+        navigationRef.navigate('ChatThread', { leagueId, name });
+      } else {
+        navigationRef.navigate('LeagueDetail', { leagueId, name });
+      }
     } catch {
       // ignore
     }
@@ -128,6 +125,11 @@ export default function AppNavigator() {
         }}
       >
         <Stack.Screen name="Tabs" component={TabsNavigator} />
+        <Stack.Screen name="LeagueDetail" component={LeagueDetailScreen} />
+        <Stack.Screen name="LeagueChat" component={LeagueChatScreen} />
+        <Stack.Screen name="CreateLeague" component={CreateLeagueScreen} />
+        <Stack.Screen name="ChatThread" component={ChatThreadScreen} />
+        <Stack.Screen name="Profile" component={ProfileNavigator} />
         <Stack.Screen
           name="GameweekResults"
           component={GameweekResultsModalScreen}

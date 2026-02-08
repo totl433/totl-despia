@@ -1,7 +1,7 @@
 import React from 'react';
 import { AppState, Animated, type ImageSourcePropType, Image, Pressable, Share, View, useWindowDimensions } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { Asset } from 'expo-asset';
 import { SvgUri } from 'react-native-svg';
@@ -34,6 +34,7 @@ import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import { sortLeaguesByUnread } from '../lib/sortLeaguesByUnread';
 import GameweekCountdownItem from '../components/home/GameweekCountdownItem';
 import MiniLeagueLiveCard from '../components/home/MiniLeagueLiveCard';
+import { useLiveScores } from '../hooks/useLiveScores';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -52,14 +53,6 @@ function formatMinute(status: LiveStatus, minute: number | null | undefined) {
   return '';
 }
 
-function formatKickoffUtc(kickoff: string | null | undefined) {
-  if (!kickoff) return '—';
-  const d = new Date(kickoff);
-  if (Number.isNaN(d.getTime())) return '—';
-  const hh = String(d.getUTCHours()).padStart(2, '0');
-  const mm = String(d.getUTCMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
-}
 
 function deadlineCountdown(
   fixtures: Fixture[],
@@ -97,6 +90,9 @@ function fixtureDateLabel(kickoff: string | null | undefined) {
 export default function HomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
+  const scrollRef = React.useRef<any>(null);
+  useScrollToTop(scrollRef);
+  const scrollY = React.useRef(new Animated.Value(0)).current;
   const { width: screenWidth } = useWindowDimensions();
   const advanceTransition = useGameweekAdvanceTransition({ totalMs: 1050 });
   const [nowMs, setNowMs] = React.useState(() => Date.now());
@@ -202,6 +198,12 @@ export default function HomeScreen() {
   const fixtures: Fixture[] = home?.fixtures ?? [];
   const userPicks: Record<string, Pick> = home?.userPicks ?? {};
 
+  const liveScoresGw =
+    typeof home?.viewingGw === 'number' ? home.viewingGw : typeof home?.currentGw === 'number' ? home.currentGw : null;
+  const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(liveScoresGw, {
+    initial: home?.liveScores ?? [],
+  });
+
   const firstKickoffTimeMs = React.useMemo(() => {
     const first = fixtures
       .map((f) => (f.kickoff_time ? new Date(f.kickoff_time).getTime() : NaN))
@@ -237,6 +239,7 @@ export default function HomeScreen() {
   const liveByFixtureIndex = React.useMemo(() => {
     const m = new Map<number, LiveScore>();
     if (!home) return m;
+    if (liveByFixtureIndexRealtime.size > 0) return liveByFixtureIndexRealtime;
     const apiMatchIdToFixtureIndex = new Map<number, number>();
     home.fixtures.forEach((f: Fixture) => {
       if (typeof f.api_match_id === 'number') apiMatchIdToFixtureIndex.set(f.api_match_id, f.fixture_index);
@@ -252,7 +255,7 @@ export default function HomeScreen() {
       m.set(idx, ls);
     });
     return m;
-  }, [home]);
+  }, [home, liveByFixtureIndexRealtime]);
 
   const fixturesByDate = React.useMemo(() => {
     const groups = new Map<string, Fixture[]>();
@@ -530,13 +533,27 @@ export default function HomeScreen() {
     <GameweekAdvanceTransition controller={advanceTransition}>
       <Screen fullBleed>
         {/* Floating menu buttons (stay visible while scrolling) */}
-        <View
+        <Animated.View
           pointerEvents="box-none"
           style={{
             position: 'absolute',
             top: t.space[2],
             right: t.space[4],
             zIndex: 50,
+            opacity: scrollY.interpolate({
+              inputRange: [0, 60],
+              outputRange: [1, 0],
+              extrapolate: 'clamp',
+            }),
+            transform: [
+              {
+                scale: scrollY.interpolate({
+                  inputRange: [0, 60],
+                  outputRange: [1, 0.72],
+                  extrapolate: 'clamp',
+                }),
+              },
+            ],
           }}
         >
           <View style={{ flexDirection: 'row' }}>
@@ -546,10 +563,13 @@ export default function HomeScreen() {
               imageUri={avatarUrl}
             />
           </View>
-        </View>
+        </Animated.View>
 
         <Animated.ScrollView
+          ref={scrollRef}
           style={{ flex: 1 }}
+          scrollEventThrottle={16}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
           contentContainerStyle={{
             paddingHorizontal: t.space[4],
             paddingTop: 0,
@@ -882,11 +902,7 @@ export default function HomeScreen() {
             right={
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Pressable
-                  onPress={() =>
-                    navigation.navigate('Leagues', {
-                      screen: 'LeaguesList',
-                    })
-                  }
+                  onPress={() => navigation.navigate('Leagues')}
                   accessibilityRole="button"
                   accessibilityLabel="See all mini leagues"
                   style={({ pressed }) => ({
@@ -959,7 +975,7 @@ export default function HomeScreen() {
                       width={mlCardWidth}
                       enabled={enabled}
                       onPress={() =>
-                        navigation.navigate('Leagues', { screen: 'LeagueDetail', params: { leagueId, name: String(league.name ?? '') } })
+                        navigation.navigate('LeagueDetail', { leagueId, name: String(league.name ?? '') })
                       }
                     />
                   </CarouselFocusShell>
@@ -1004,7 +1020,7 @@ export default function HomeScreen() {
                       avatarUri: resolveLeagueAvatarUri(typeof l.avatar === 'string' ? l.avatar : null),
                     }))}
                     onLeaguePress={(leagueId, name) =>
-                      navigation.navigate('Leagues', { screen: 'LeagueDetail', params: { leagueId, name } })
+                      navigation.navigate('LeagueDetail', { leagueId, name })
                     }
                   />
                 </CarouselFocusShell>

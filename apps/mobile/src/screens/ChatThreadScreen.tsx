@@ -13,13 +13,13 @@ import LeagueOverflowMenu, { type LeagueOverflowAction } from '../components/lea
 import CenteredSpinner from '../components/CenteredSpinner';
 import { env } from '../env';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
-import type { ChatStackParamList } from '../navigation/ChatNavigator';
+import type { RootStackParamList } from '../navigation/AppNavigator';
 import { Ionicons } from '@expo/vector-icons';
 import { resolveLeagueAvatarUri } from '../lib/leagueAvatars';
 
 export default function ChatThreadScreen() {
   const route = useRoute<any>();
-  const params = route.params as ChatStackParamList['ChatThread'];
+  const params = route.params as RootStackParamList['ChatThread'];
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
 
@@ -167,10 +167,7 @@ export default function ChatThreadScreen() {
               icon: <Ionicons name="trophy-outline" size={18} color="#000000" />,
               onPress: () => {
                 setMenuOpen(false);
-                (navigation as any).getParent?.()?.navigate?.('Leagues', {
-                  screen: 'LeagueDetail',
-                  params: { leagueId, name: leagueName },
-                });
+                navigation.navigate('LeagueDetail' as any, { leagueId, name: leagueName });
               },
             },
           ]}

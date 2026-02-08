@@ -1,6 +1,6 @@
 import React from 'react';
 import { FlatList, Image, Pressable, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
 
@@ -66,6 +66,8 @@ function formatTimestamp(iso: string): string {
 export default function ChatInboxScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
+  const listRef = React.useRef<FlatList<any> | null>(null);
+  useScrollToTop(listRef as any);
   const { unreadByLeagueId, meId } = useLeagueUnreadCounts();
 
   const leaguesQ = useQuery<LeaguesResponse>({
@@ -205,6 +207,7 @@ export default function ChatInboxScreen() {
     <Screen fullBleed>
       <PageHeader title="Chat" subtitle="All your mini league chats" />
       <FlatList
+        ref={listRef}
         data={rows}
         keyExtractor={(r) => r.leagueId}
         style={{ flex: 1 }}

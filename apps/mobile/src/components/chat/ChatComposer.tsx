@@ -1,5 +1,5 @@
 import React from 'react';
-import { Keyboard, Platform, Pressable, TextInput, View } from 'react-native';
+import { Pressable, TextInput, View } from 'react-native';
 import { TotlText, useTokens } from '@totl/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,6 +8,7 @@ export default function ChatComposer({
   onChange,
   onSend,
   sending,
+  bottomInset,
   replyPreview,
   onCancelReply,
 }: {
@@ -15,26 +16,13 @@ export default function ChatComposer({
   onChange: (v: string) => void;
   onSend: () => void;
   sending: boolean;
+  bottomInset?: number;
   replyPreview: { content: string; authorName?: string } | null;
   onCancelReply: () => void;
 }) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
-  const [keyboardVisible, setKeyboardVisible] = React.useState(false);
-
-  React.useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const subShow = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
-    const subHide = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
-    return () => {
-      subShow.remove();
-      subHide.remove();
-    };
-  }, []);
-
-  const bottomPad = keyboardVisible ? 8 : Math.max(8, insets.bottom);
+  const bottomPad = typeof bottomInset === 'number' ? bottomInset : Math.max(8, insets.bottom);
 
   return (
     <View

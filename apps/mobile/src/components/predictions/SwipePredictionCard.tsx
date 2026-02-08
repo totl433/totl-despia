@@ -6,15 +6,10 @@ import type { Fixture } from '@totl/domain';
 import { TEAM_BADGES } from '../../lib/teamBadges';
 import { getMediumName } from '../../../../../src/lib/teamNames';
 import { getTeamColor, normalizeTeamCode } from '../../lib/teamColors';
+import { formatLocalDateTimeLabel } from '../../lib/dateTime';
 
 function formatKickoffLabel(kickoff: string | null | undefined): string | null {
-  if (!kickoff) return null;
-  const d = new Date(kickoff);
-  if (Number.isNaN(d.getTime())) return null;
-
-  const date = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  return `${date} • ${time}`;
+  return formatLocalDateTimeLabel(kickoff);
 }
 
 function FormDots({ form }: { form: string | null | undefined }) {

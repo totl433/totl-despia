@@ -14,7 +14,7 @@ import { resolveLeagueAvatarUri } from '../lib/leagueAvatars';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
-import type { LeaguesStackParamList } from '../navigation/LeaguesNavigator';
+import type { RootStackParamList } from '../navigation/AppNavigator';
 import LeagueHeader from '../components/league/LeagueHeader';
 import LeagueTabBar, { type LeagueTabKey } from '../components/league/LeagueTabBar';
 import LeagueGwTable, { type LeagueGwTableRow } from '../components/league/LeagueGwTable';
@@ -36,6 +36,7 @@ import { env } from '../env';
 import { resolveLeagueStartGw } from '../lib/leagueStart';
 import CenteredSpinner from '../components/CenteredSpinner';
 import { Ionicons } from '@expo/vector-icons';
+import { useLiveScores } from '../hooks/useLiveScores';
 
 const LEAGUE_TABS: LeagueTabKey[] = ['gwTable', 'predictions', 'season'];
 
@@ -50,7 +51,7 @@ function base64ToUint8Array(base64: string): Uint8Array {
 
 export default function LeagueDetailScreen() {
   const route = useRoute<any>();
-  const params = route.params as LeaguesStackParamList['LeagueDetail'];
+  const params = route.params as RootStackParamList['LeagueDetail'];
   const t = useTokens();
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
@@ -576,9 +577,10 @@ export default function LeagueDetailScreen() {
     fixtures: Fixture[];
     sections: Array<{ label: string; fixtures: Fixture[] }>;
     outcomeByFixtureIndex: Record<string, LeaguePick>;
-    liveByFixtureIndex: Record<string, LiveScore>;
     picksByFixtureIndex: Record<string, Record<string, LeaguePick>>;
   };
+
+  const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(picksGw);
 
   const {
     data: predictions,
@@ -592,20 +594,15 @@ export default function LeagueDetailScreen() {
       const gw = picksGw as number;
       const memberIds = members.map((m: any) => String(m.id));
 
-      const [fixturesRes, subsRes, picksRes, liveRes, resultsRes] = await Promise.all([
+      const [fixturesRes, subsRes, picksRes, resultsRes] = await Promise.all([
         (supabase as any).from('app_fixtures').select('*').eq('gw', gw).order('fixture_index', { ascending: true }),
         (supabase as any).from('app_gw_submissions').select('user_id').eq('gw', gw),
         (supabase as any).from('app_picks').select('user_id,fixture_index,pick').eq('gw', gw).in('user_id', memberIds),
-        (supabase as any)
-          .from('live_scores')
-          .select('api_match_id,fixture_index,home_score,away_score,status,minute,goals')
-          .eq('gw', gw),
         (supabase as any).from('app_gw_results').select('fixture_index,result').eq('gw', gw),
       ]);
       if (fixturesRes.error) throw fixturesRes.error;
       if (subsRes.error) throw subsRes.error;
       if (picksRes.error) throw picksRes.error;
-      if (liveRes.error) throw liveRes.error;
       if (resultsRes.error) throw resultsRes.error;
 
       const fixtures: Fixture[] = (fixturesRes.data ?? []) as Fixture[];
@@ -628,30 +625,6 @@ export default function LeagueDetailScreen() {
       const outcomeByFixtureIndex: Record<string, LeaguePick> = {};
       ((resultsRes.data ?? []) as Array<{ fixture_index: number; result: Pick | string }>).forEach((r) => {
         if (r.result === 'H' || r.result === 'D' || r.result === 'A') outcomeByFixtureIndex[String(r.fixture_index)] = r.result;
-      });
-
-      const apiMatchIdToFixtureIndex = new Map<number, number>();
-      fixtures.forEach((f) => {
-        if (typeof (f as any).api_match_id === 'number') apiMatchIdToFixtureIndex.set((f as any).api_match_id, f.fixture_index);
-      });
-
-      const liveByFixtureIndex: Record<string, LiveScore> = {};
-      ((liveRes.data ?? []) as LiveScore[]).forEach((ls: any) => {
-        const idx =
-          typeof ls?.fixture_index === 'number'
-            ? ls.fixture_index
-            : typeof ls?.api_match_id === 'number'
-              ? apiMatchIdToFixtureIndex.get(ls.api_match_id)
-              : undefined;
-        if (typeof idx !== 'number') return;
-        liveByFixtureIndex[String(idx)] = ls;
-
-        const st: LiveStatus = (ls?.status ?? 'SCHEDULED') as LiveStatus;
-        const started = st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED';
-        if (!started) return;
-        const hs = Number(ls?.home_score ?? 0);
-        const as = Number(ls?.away_score ?? 0);
-        outcomeByFixtureIndex[String(idx)] = hs > as ? 'H' : hs < as ? 'A' : 'D';
       });
 
       const picksByFixtureIndex: Record<string, Record<string, LeaguePick>> = {};
@@ -702,7 +675,6 @@ export default function LeagueDetailScreen() {
         fixtures,
         sections,
         outcomeByFixtureIndex,
-        liveByFixtureIndex,
         picksByFixtureIndex,
       };
     },
@@ -954,9 +926,20 @@ export default function LeagueDetailScreen() {
                             >
                               {sec.fixtures.map((f, idx) => {
                                 const k = String(f.fixture_index);
-                                const live = predictions.liveByFixtureIndex[k] ?? null;
+                                const live = liveByFixtureIndexRealtime.get(f.fixture_index) ?? null;
                                 const lsNoGoals = live ? ({ ...(live as any), goals: undefined } as any) : null;
-                                const outcome = predictions.outcomeByFixtureIndex[k] ?? null;
+                                const outcomeFromDb = predictions.outcomeByFixtureIndex[k] ?? null;
+                                const outcomeFromLive: LeaguePick | null = (() => {
+                                  if (!live) return null;
+                                  const st: LiveStatus = (live?.status ?? 'SCHEDULED') as LiveStatus;
+                                  const started = st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED';
+                                  if (!started) return null;
+                                  const hs = typeof live.home_score === 'number' ? live.home_score : null;
+                                  const as = typeof live.away_score === 'number' ? live.away_score : null;
+                                  if (hs === null || as === null) return null;
+                                  return hs > as ? 'H' : hs < as ? 'A' : 'D';
+                                })();
+                                const outcome = outcomeFromDb ?? outcomeFromLive;
                                 const picksMap =
                                   new Map<string, LeaguePick>(Object.entries(predictions.picksByFixtureIndex[k] ?? {}));
 
@@ -1007,10 +990,9 @@ export default function LeagueDetailScreen() {
             icon: <Ionicons name="chatbubble-ellipses-outline" size={18} color="#000000" />,
             onPress: () => {
               setMenuOpen(false);
-              // Jump to the global Chat tab's thread view for this league.
-              (navigation as any).getParent?.()?.navigate?.('Chat', {
-                screen: 'ChatThread',
-                params: { leagueId, name: String(leagueMeta?.name ?? params.name ?? '') },
+              navigation.navigate('ChatThread' as any, {
+                leagueId,
+                name: String(leagueMeta?.name ?? params.name ?? ''),
               });
             },
           },

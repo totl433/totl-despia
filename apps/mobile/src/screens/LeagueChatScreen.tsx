@@ -7,7 +7,7 @@ import type { HomeSnapshot } from '@totl/domain';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
-import type { LeaguesStackParamList } from '../navigation/LeaguesNavigator';
+import type { RootStackParamList } from '../navigation/AppNavigator';
 import { resolveLeagueAvatarUri } from '../lib/leagueAvatars';
 import LeagueHeader from '../components/league/LeagueHeader';
 import LeagueChatTab from '../components/chat/LeagueChatTab';
@@ -21,7 +21,7 @@ import { resolveLeagueStartGw } from '../lib/leagueStart';
 
 export default function LeagueChatScreen() {
   const route = useRoute<any>();
-  const params = route.params as LeaguesStackParamList['LeagueChat'];
+  const params = route.params as RootStackParamList['LeagueChat'];
   const t = useTokens();
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();

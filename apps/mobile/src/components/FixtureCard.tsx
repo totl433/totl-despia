@@ -5,6 +5,8 @@ import { Card, TotlText, useTokens } from '@totl/ui';
 import WinnerShimmer from './WinnerShimmer';
 import { TEAM_BADGES } from '../lib/teamBadges';
 import { areTeamNamesSimilar, getMediumName } from '../../../../src/lib/teamNames';
+import { formatLocalTimeHHmm } from '../lib/dateTime';
+import { Ionicons } from '@expo/vector-icons';
 
 export type Pick = 'H' | 'D' | 'A';
 export type LiveStatus = 'TIMED' | 'IN_PLAY' | 'PAUSED' | 'FINISHED' | 'SCHEDULED';
@@ -38,13 +40,12 @@ function formatMinute(status: LiveStatus, minute: number | null | undefined) {
   return '';
 }
 
-function formatKickoffUtc(kickoff: string | null | undefined) {
-  if (!kickoff) return '—';
-  const d = new Date(kickoff);
-  if (Number.isNaN(d.getTime())) return '—';
-  const hh = String(d.getUTCHours()).padStart(2, '0');
-  const mm = String(d.getUTCMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
+const formatKickoffLocal = formatLocalTimeHHmm;
+
+function parseUpdatedAtMs(updatedAt: unknown): number | null {
+  if (typeof updatedAt !== 'string' || !updatedAt) return null;
+  const ms = new Date(updatedAt).getTime();
+  return Number.isFinite(ms) ? ms : null;
 }
 
 function getSurname(fullName: string | null | undefined): string {
@@ -106,6 +107,45 @@ export default function FixtureCard({
   const isFinished = st === 'FINISHED';
   const showScore = !!ls && (isOngoing || isFinished);
 
+  // ----------------------------
+  // Live match minute ticking
+  // ----------------------------
+  // We want minute labels to advance even between backend updates.
+  // Use `updated_at` when available; otherwise fall back to "received at" time.
+  const baseMinute = typeof (ls as any)?.minute === 'number' ? ((ls as any).minute as number) : null;
+  const updatedAtMs = React.useMemo(() => parseUpdatedAtMs((ls as any)?.updated_at), [(ls as any)?.updated_at]);
+  const receivedAtRef = React.useRef<number>(Date.now());
+  const [minuteTick, setMinuteTick] = React.useState(0);
+
+  React.useEffect(() => {
+    // When live score payload changes, refresh the receive time anchor.
+    if (!ls) return;
+    receivedAtRef.current = Date.now();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [st, hs, as, baseMinute, updatedAtMs]);
+
+  React.useEffect(() => {
+    if (st !== 'IN_PLAY' || baseMinute === null) return;
+
+    const anchor = updatedAtMs ?? receivedAtRef.current;
+    const elapsedMs = Math.max(0, Date.now() - anchor);
+    const msIntoCurrentMinute = elapsedMs % 60_000;
+    // Small buffer so we flip *after* the boundary.
+    const msToNextMinute = Math.max(250, 60_000 - msIntoCurrentMinute + 25);
+
+    const id = setTimeout(() => setMinuteTick((x) => x + 1), msToNextMinute);
+    return () => clearTimeout(id);
+  }, [st, baseMinute, updatedAtMs, minuteTick]);
+
+  const effectiveMinute = React.useMemo(() => {
+    if (st !== 'IN_PLAY') return baseMinute;
+    if (baseMinute === null) return null;
+    const anchor = updatedAtMs ?? receivedAtRef.current;
+    const elapsedMs = Math.max(0, Date.now() - anchor);
+    const add = Math.floor(elapsedMs / 60_000);
+    return baseMinute + add;
+  }, [st, baseMinute, updatedAtMs, minuteTick]);
+
   const homeCode = String(fixture.home_code ?? '').toUpperCase();
   const awayCode = String(fixture.away_code ?? '').toUpperCase();
   const homeBadge = TEAM_BADGES[homeCode] ?? null;
@@ -123,14 +163,15 @@ export default function FixtureCard({
     const isCorrectResult = showScore ? derivedOutcome === side : false;
     const isCorrect = isPicked && isCorrectResult;
     const isWrong = isPicked && showScore && !isCorrectResult;
+    const isWrongFinished = isWrong && isFinished;
 
     if (isOngoing && isCorrect)
-      return { bg: '#059669', border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult, gradient: false };
+      return { bg: t.color.brand, border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult, gradient: false };
     if (isFinished && isCorrect)
       return { bg: 'transparent', border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult, gradient: true };
-    if (isWrong) return { bg: t.color.brand, border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult };
+    if (isWrongFinished) return { bg: '#FFDFDE', border: 'transparent', text: '#FF5E5C', isPicked, isCorrect, isWrong, isCorrectResult };
     if (isPicked) return { bg: t.color.brand, border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult };
-    if (showScore && isCorrectResult && !isPicked) return { bg: t.color.surface2, border: '#059669', text: t.color.text, isPicked, isCorrect, isWrong, isCorrectResult };
+    if (showScore && isCorrectResult && !isPicked) return { bg: t.color.surface2, border: t.color.brand, text: t.color.text, isPicked, isCorrect, isWrong, isCorrectResult };
     return { bg: t.color.surface2, border: t.color.border, text: t.color.text, isPicked, isCorrect, isWrong, isCorrectResult };
   };
 
@@ -189,6 +230,7 @@ export default function FixtureCard({
       position: 'relative' as const,
     };
 
+    const showWrongX = s.isWrong && isFinished;
     const text = (
       <TotlText
         variant="body"
@@ -200,13 +242,23 @@ export default function FixtureCard({
           fontSize: 14,
           lineHeight: 17,
           letterSpacing: -0.004,
-          textDecorationLine: s.isWrong && isFinished ? 'line-through' : 'none',
-          textDecorationStyle: 'solid',
-          textDecorationColor: s.text,
         }}
       >
         {label}
       </TotlText>
+    );
+
+    const wrongX = (
+      <View
+        style={{
+          ...commonStyle,
+          backgroundColor: '#FFDFDE',
+          borderWidth: 2,
+          borderColor: '#FFCAC9',
+        }}
+      >
+        <Ionicons name="close" size={24} color="#FF5E5C" />
+      </View>
     );
 
     const interactive = typeof onPick === 'function' && !pickButtonsDisabled;
@@ -246,9 +298,7 @@ export default function FixtureCard({
       );
     }
 
-    return (
-      wrap(<View style={{ backgroundColor: s.bg, ...commonStyle }}>{text}</View>)
-    );
+    return wrap(showWrongX ? wrongX : <View style={{ backgroundColor: s.bg, ...commonStyle }}>{text}</View>);
   };
 
   return (
@@ -304,16 +354,16 @@ export default function FixtureCard({
                         {awayBadge ? <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginLeft: 8 }} /> : null}
                       </View>
                       {isFinished ? (
-                        <TotlText variant="microMuted">{formatMinute(st, typeof ls?.minute === 'number' ? ls.minute : null)}</TotlText>
+                        <TotlText variant="microMuted">{formatMinute(st, effectiveMinute)}</TotlText>
                       ) : (
                         <TotlText variant="caption" style={{ color: isOngoing ? '#DC2626' : t.color.muted, fontWeight: '800' }}>
-                          {formatMinute(st, typeof ls?.minute === 'number' ? ls.minute : null)}
+                          {formatMinute(st, effectiveMinute)}
                         </TotlText>
                       )}
                     </>
                   ) : (
                     <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '700' }}>
-                      {formatKickoffUtc(fixture.kickoff_time ?? null)}
+                      {formatKickoffLocal(fixture.kickoff_time ?? null)}
                     </TotlText>
                   )}
                 </View>
@@ -397,16 +447,16 @@ export default function FixtureCard({
                     {awayBadge ? <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginLeft: 8 }} /> : null}
                   </View>
                   {isFinished ? (
-                    <TotlText variant="microMuted">{formatMinute(st, typeof ls?.minute === 'number' ? ls.minute : null)}</TotlText>
+                    <TotlText variant="microMuted">{formatMinute(st, effectiveMinute)}</TotlText>
                   ) : (
                     <TotlText variant="caption" style={{ color: isOngoing ? '#DC2626' : t.color.muted, fontWeight: '800' }}>
-                      {formatMinute(st, typeof ls?.minute === 'number' ? ls.minute : null)}
+                      {formatMinute(st, effectiveMinute)}
                     </TotlText>
                   )}
                 </>
               ) : (
                 <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '700' }}>
-                  {formatKickoffUtc(fixture.kickoff_time ?? null)}
+                  {formatKickoffLocal(fixture.kickoff_time ?? null)}
                 </TotlText>
               )}
             </View>

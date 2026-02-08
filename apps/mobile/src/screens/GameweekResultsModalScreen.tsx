@@ -194,36 +194,6 @@ export default function GameweekResultsModalScreen() {
     queryFn: () => api.getGwResults(gw as number),
   });
 
-  if (isLoading && !results && !error) {
-    return (
-      <Screen fullBleed>
-        <View style={{ flex: 1 }}>
-          <PageHeader
-            title={`Gameweek ${gw ?? '—'} Results`}
-            rightAction={
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close"
-                onPress={() => navigation.goBack()}
-                style={({ pressed }) => ({
-                  width: 32,
-                  height: 32,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: 16,
-                  opacity: pressed ? 0.75 : 1,
-                })}
-              >
-                <Ionicons name="close" size={22} color={t.color.text} />
-              </Pressable>
-            }
-          />
-          <CenteredSpinner loading />
-        </View>
-      </Screen>
-    );
-  }
-
   const trophyCount = React.useMemo(() => {
     if (!results) return 0;
     return Object.values(results.trophies ?? {}).filter(Boolean).length;
@@ -272,11 +242,47 @@ export default function GameweekResultsModalScreen() {
     }
   }, [gw, results, sharing]);
 
+  if (isLoading && !results && !error) {
+    return (
+      <Screen fullBleed>
+        <View style={{ flex: 1 }}>
+          <PageHeader
+            title="Performance"
+            subtitle={typeof gw === 'number' ? `Gameweek ${gw} results` : 'Gameweek results'}
+            // Local fix: prevent large title glyphs clipping at top in this modal.
+            style={{ paddingTop: t.space[2] + 20 }}
+            rightAction={
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                onPress={() => navigation.goBack()}
+                style={({ pressed }) => ({
+                  width: 32,
+                  height: 32,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 16,
+                  opacity: pressed ? 0.75 : 1,
+                })}
+              >
+                <Ionicons name="close" size={22} color={t.color.text} />
+              </Pressable>
+            }
+          />
+          <CenteredSpinner loading />
+        </View>
+      </Screen>
+    );
+  }
+
   return (
     <Screen fullBleed>
       <View style={{ flex: 1 }}>
         <PageHeader
-          title={`Gameweek ${gw ?? '—'} Results`}
+          title="Performance"
+          subtitle={typeof gw === 'number' ? `Gameweek ${gw} results` : 'Gameweek results'}
+          // Local fix: prevent large title glyphs clipping at top in this modal.
+          style={{ paddingTop: t.space[2] + 60 }}
           rightAction={
             <Pressable
               accessibilityRole="button"

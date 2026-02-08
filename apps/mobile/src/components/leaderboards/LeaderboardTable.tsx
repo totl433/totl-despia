@@ -28,6 +28,7 @@ export default function LeaderboardTable({
   style,
   refreshing,
   onRefresh,
+  listRef,
 }: {
   rows: LeaderboardRow[];
   valueLabel: string;
@@ -35,6 +36,7 @@ export default function LeaderboardTable({
   style?: ViewStyle;
   refreshing?: boolean;
   onRefresh?: () => void;
+  listRef?: React.RefObject<FlatList<any> | null>;
 }) {
   const t = useTokens();
 
@@ -90,6 +92,7 @@ export default function LeaderboardTable({
       </View>
 
       <FlatList
+        ref={listRef as any}
         data={ranked}
         keyExtractor={(it) => it.row.user_id}
         scrollEnabled

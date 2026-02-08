@@ -1,11 +1,11 @@
 import React from 'react';
 import { FlatList, Pressable, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import { api } from '../lib/api';
-import type { LeaguesStackParamList } from '../navigation/LeaguesNavigator';
+import type { RootStackParamList } from '../navigation/AppNavigator';
 import MiniLeagueListItem from '../components/miniLeagues/MiniLeagueListItem';
 import PageHeader from '../components/PageHeader';
 import { TotlRefreshControl } from '../lib/refreshControl';
@@ -93,6 +93,8 @@ function LeagueRow({
 export default function LeaguesScreen() {
   const navigation = useNavigation<any>();
   const t = useTokens();
+  const listRef = React.useRef<FlatList<LeagueSummary> | null>(null);
+  useScrollToTop(listRef as any);
   const queryClient = useQueryClient();
   const { unreadByLeagueId, optimisticallyClear } = useLeagueUnreadCounts();
   const { data, isLoading, error, refetch, isRefetching } = useQuery<LeaguesResponse>({
@@ -258,6 +260,7 @@ export default function LeaguesScreen() {
       />
 
       <FlatList
+        ref={listRef}
         data={sortedLeagues}
         style={{ flex: 1 }}
         keyExtractor={(l) => String(l.id)}
@@ -327,7 +330,7 @@ export default function LeaguesScreen() {
               onPress={() => {
                 navigation.navigate(
                   'LeagueDetail',
-                  { leagueId: item.id, name: item.name } satisfies LeaguesStackParamList['LeagueDetail']
+                  { leagueId: item.id, name: item.name } satisfies RootStackParamList['LeagueDetail']
                 );
               }}
             />
