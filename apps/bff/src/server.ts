@@ -678,7 +678,8 @@ app.get('/v1/leagues/:leagueId/gw/:gw/table', async (req) => {
     (a: { score: number; unicorns: number; name: string }, b: { score: number; unicorns: number; name: string }) =>
       b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name)
   );
-  return { leagueId, gw, rows, submittedCount: submittedIds.size, totalMembers: members.length };
+  const submittedUserIds = Array.from(submittedIds).map(String).sort();
+  return { leagueId, gw, rows, submittedUserIds, submittedCount: submittedIds.size, totalMembers: members.length };
 });
 
 app.get('/v1/notification-prefs', async (req) => {

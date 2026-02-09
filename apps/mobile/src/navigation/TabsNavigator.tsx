@@ -8,6 +8,7 @@ import GlobalScreen from '../screens/GlobalScreen';
 import LeaguesNavigator from './LeaguesNavigator';
 import ChatNavigator from './ChatNavigator';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
+import FloatingTabBar from './FloatingTabBar';
 
 export type RootTabsParamList = {
   Home: undefined;
@@ -33,6 +34,7 @@ export default function TabsNavigator() {
       tabBarInactiveTintColor={'#353536'}
       labeled
       tabBarStyle={{ backgroundColor: t.color.surface }}
+      tabBar={(props) => <FloatingTabBar {...(props as any)} />}
     >
       <Tab.Screen
         name="Home"

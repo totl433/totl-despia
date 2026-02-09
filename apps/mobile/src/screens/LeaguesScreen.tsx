@@ -35,11 +35,13 @@ function LeagueRow({
   league,
   enabled,
   viewingGw,
+  meId,
   onPress,
 }: {
   league: LeagueSummary;
   enabled: boolean;
   viewingGw: number | null;
+  meId: string | null;
   onPress: () => void;
 }) {
   const leagueId = String(league.id);
@@ -58,18 +60,40 @@ function LeagueRow({
     queryFn: () => api.getLeagueGwTable(leagueId, viewingGw as number),
   });
 
+  const prevGw = typeof viewingGw === 'number' ? viewingGw - 1 : null;
+  const { data: prevTable } = useQuery<LeagueTableResponse>({
+    enabled: enabled && typeof prevGw === 'number' && prevGw >= 1,
+    queryKey: ['leagueGwTable', leagueId, prevGw],
+    queryFn: () => api.getLeagueGwTable(leagueId, prevGw as number),
+  });
+
   const members = membersData?.members ?? [];
   const allSubmitted = !!table && table.submittedCount === table.totalMembers && table.totalMembers > 0;
 
-  // Best effort: show your current position if the table includes you.
-  // If BFF doesn't return user_id rows for you, this will safely fall back to null.
-  const userRank = (() => {
+  const memberCount: number | null =
+    typeof table?.totalMembers === 'number' && Number.isFinite(table.totalMembers)
+      ? table.totalMembers
+      : typeof members.length === 'number'
+        ? members.length
+        : null;
+
+  // Best effort: show your current position and week-on-week movement if the table includes you.
+  const currentRank: number | null = React.useMemo(() => {
+    if (!meId) return null;
     const rows = (table?.rows ?? []) as Array<{ user_id?: string | null }>;
-    // No user id available in this screen yet; show rank only if backend sends it later.
-    // (We’ll wire in userId once auth context is available here.)
-    void rows;
-    return null;
-  })();
+    const idx = rows.findIndex((r) => String(r?.user_id ?? '') === String(meId));
+    return idx >= 0 ? idx + 1 : null;
+  }, [meId, table?.rows]);
+
+  const prevRank: number | null = React.useMemo(() => {
+    if (!meId) return null;
+    const rows = (prevTable?.rows ?? []) as Array<{ user_id?: string | null }>;
+    const idx = rows.findIndex((r) => String(r?.user_id ?? '') === String(meId));
+    return idx >= 0 ? idx + 1 : null;
+  }, [meId, prevTable?.rows]);
+
+  const rankDelta: number | null =
+    typeof currentRank === 'number' && typeof prevRank === 'number' ? prevRank - currentRank : null;
 
   return (
     <MiniLeagueListItem
@@ -77,11 +101,25 @@ function LeagueRow({
       avatarUri={resolveLeagueAvatarUri(typeof league.avatar === 'string' ? league.avatar : null)}
       submittedCount={typeof table?.submittedCount === 'number' ? table.submittedCount : null}
       totalMembers={typeof table?.totalMembers === 'number' ? table.totalMembers : members.length ?? null}
-      membersPreview={members.slice(0, 4).map((m: any) => ({
-        id: String(m.id),
-        name: String(m.name ?? ''),
-        avatarUri: typeof m.avatar_url === 'string' && m.avatar_url.startsWith('http') ? m.avatar_url : null,
-      }))}
+      membersPreview={(() => {
+        const submitted = new Set<string>(
+          Array.isArray((table as any)?.submittedUserIds)
+            ? ((table as any).submittedUserIds as unknown[]).map((x) => String(x))
+            : (table?.rows ?? []).map((r: any) => String(r?.user_id ?? '')).filter(Boolean)
+        );
+        return members.map((m: any) => {
+          const id = String(m.id);
+          return {
+            id,
+            name: String(m.name ?? ''),
+            avatarUri: typeof m.avatar_url === 'string' && m.avatar_url.startsWith('http') ? m.avatar_url : null,
+            hasSubmitted: submitted.has(id),
+          };
+        });
+      })()}
+      memberCount={memberCount}
+      myRank={currentRank}
+      rankDelta={rankDelta}
       unreadCount={unread}
       onPress={() => {
         onPress();
@@ -96,7 +134,7 @@ export default function LeaguesScreen() {
   const listRef = React.useRef<FlatList<LeagueSummary> | null>(null);
   useScrollToTop(listRef as any);
   const queryClient = useQueryClient();
-  const { unreadByLeagueId, optimisticallyClear } = useLeagueUnreadCounts();
+  const { unreadByLeagueId, optimisticallyClear, meId } = useLeagueUnreadCounts();
   const { data, isLoading, error, refetch, isRefetching } = useQuery<LeaguesResponse>({
     queryKey: ['leagues'],
     queryFn: () => api.listLeagues(),
@@ -327,6 +365,7 @@ export default function LeaguesScreen() {
               league={item}
               enabled={enabled}
               viewingGw={viewingGw}
+              meId={meId ?? null}
               onPress={() => {
                 navigation.navigate(
                   'LeagueDetail',

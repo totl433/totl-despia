@@ -422,47 +422,62 @@ export default function LeagueDetailScreen() {
       const showUnicorns = memberIds.length >= 3;
       const latestGw = currentGw as number;
 
-      const [fixturesRes, resultsRes] = await Promise.all([
-        (supabase as any).from('app_fixtures').select('gw,fixture_index').gte('gw', seasonStartGw).lte('gw', latestGw),
-        (supabase as any).from('app_gw_results').select('gw,fixture_index,result').gte('gw', seasonStartGw).lte('gw', latestGw),
-      ]);
-      if (fixturesRes.error) throw fixturesRes.error;
+      const resultsRes = await (supabase as any)
+        .from('app_gw_results')
+        .select('gw,fixture_index,result')
+        .gte('gw', seasonStartGw)
+        .lte('gw', latestGw);
       if (resultsRes.error) throw resultsRes.error;
 
-      const fixtures: Array<{ gw: number; fixture_index: number }> = fixturesRes.data ?? [];
       const results: Array<{ gw: number; fixture_index: number; result: 'H' | 'D' | 'A' | string }> = resultsRes.data ?? [];
 
-      const fixtureCountByGw = new Map<number, number>();
-      fixtures.forEach((f) => fixtureCountByGw.set(f.gw, (fixtureCountByGw.get(f.gw) ?? 0) + 1));
-
-      const resultCountByGw = new Map<number, number>();
       const outcomeByGwFixture = new Map<string, 'H' | 'D' | 'A'>();
       results.forEach((r) => {
         if (r.result !== 'H' && r.result !== 'D' && r.result !== 'A') return;
-        resultCountByGw.set(r.gw, (resultCountByGw.get(r.gw) ?? 0) + 1);
         outcomeByGwFixture.set(`${r.gw}:${r.fixture_index}`, r.result);
       });
 
-      const completeGws: number[] = [];
-      for (let gw = seasonStartGw; gw <= latestGw; gw += 1) {
-        const fixtureCount = fixtureCountByGw.get(gw) ?? 0;
-        const resultCount = resultCountByGw.get(gw) ?? 0;
-        if (fixtureCount > 0 && resultCount === fixtureCount) completeGws.push(gw);
+      // Match Despia/web: count any GW with results; only exclude current GW if incomplete.
+      const gwsWithResults = Array.from(
+        new Set(
+          Array.from(outcomeByGwFixture.keys())
+            .map((k) => Number.parseInt(k.split(':')[0] ?? '', 10))
+            .filter((n) => Number.isFinite(n))
+        )
+      ).sort((a, b) => a - b);
+
+      let relevantGws = gwsWithResults.filter((gw) => gw >= seasonStartGw);
+
+      // CRITICAL: exclude current GW only if still live (not all fixtures have results).
+      if (typeof latestGw === 'number' && relevantGws.includes(latestGw)) {
+        const fixturesForCurrentGwRes = await (supabase as any).from('app_fixtures').select('fixture_index').eq('gw', latestGw);
+        if (fixturesForCurrentGwRes.error) throw fixturesForCurrentGwRes.error;
+        const fixtureCount = (fixturesForCurrentGwRes.data ?? []).length;
+        const resultCountForCurrentGw = Array.from(outcomeByGwFixture.keys()).filter(
+          (k) => Number.parseInt(k.split(':')[0] ?? '', 10) === latestGw
+        ).length;
+        if (fixtureCount > 0 && resultCountForCurrentGw < fixtureCount) {
+          relevantGws = relevantGws.filter((gw) => gw < latestGw);
+        }
+      } else if (typeof latestGw === 'number') {
+        // current GW is not in results yet, so exclude it (and anything beyond).
+        relevantGws = relevantGws.filter((gw) => gw < latestGw);
       }
-      if (completeGws.length === 0) return [];
+
+      if (relevantGws.length === 0) return [];
 
       const picksRes = await (supabase as any)
         .from('app_picks')
         .select('user_id,gw,fixture_index,pick')
         .in('user_id', memberIds)
-        .in('gw', completeGws);
+        .in('gw', relevantGws);
       if (picksRes.error) throw picksRes.error;
       const picks: Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }> =
         picksRes.data ?? [];
 
       type GwScore = { user_id: string; score: number; unicorns: number };
       const perGw = new Map<number, Map<string, GwScore>>();
-      completeGws.forEach((g) => {
+      relevantGws.forEach((g) => {
         const m = new Map<string, GwScore>();
         memberIds.forEach((uid) => m.set(uid, { user_id: uid, score: 0, unicorns: 0 }));
         perGw.set(g, m);
@@ -476,14 +491,16 @@ export default function LeagueDetailScreen() {
         picksByGwFixture.set(key, arr);
       });
 
-      completeGws.forEach((g) => {
+      relevantGws.forEach((g) => {
         const gwMap = perGw.get(g)!;
-        // Iterate fixtures for this GW using outcomes map keys for that GW
-        const fixtureIdxs = fixtures.filter((f) => f.gw === g).map((f) => f.fixture_index);
-        fixtureIdxs.forEach((idx) => {
-          const out = outcomeByGwFixture.get(`${g}:${idx}`);
-          if (!out) return;
-          const these = picksByGwFixture.get(`${g}:${idx}`) ?? [];
+        // Iterate outcomes for this GW (do not require all fixtures to have results).
+        const outcomesForGw = Array.from(outcomeByGwFixture.entries())
+          .filter(([k]) => Number.parseInt(k.split(':')[0] ?? '', 10) === g)
+          .map(([k, out]) => ({ fixtureIndex: Number.parseInt(k.split(':')[1] ?? '', 10), out }))
+          .filter((x) => Number.isFinite(x.fixtureIndex));
+
+        outcomesForGw.forEach(({ fixtureIndex, out }) => {
+          const these = picksByGwFixture.get(`${g}:${fixtureIndex}`) ?? [];
           const correct = these.filter((p) => p.pick === out).map((p) => p.user_id);
 
           these.forEach((p) => {
@@ -515,7 +532,7 @@ export default function LeagueDetailScreen() {
         form.set(uid, []);
       });
 
-      completeGws.forEach((g) => {
+      relevantGws.forEach((g) => {
         const rows = Array.from(perGw.get(g)!.values());
         rows.forEach((r) => {
           ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);

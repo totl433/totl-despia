@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Alert, TextInput, View } from 'react-native';
-import { Button, Card, Screen, TotlText } from '@totl/ui';
+import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { supabase } from '../lib/supabase';
 
 export default function AuthScreen() {
+  const t = useTokens();
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,7 +33,7 @@ export default function AuthScreen() {
       <TotlText variant="heading" style={{ marginBottom: 12 }}>
         TOTL
       </TotlText>
-      <TotlText variant="muted" style={{ marginBottom: 16 }}>
+      <TotlText variant="muted" style={{ marginBottom: 16, color: t.color.text }}>
         {mode === 'signIn' ? 'Sign in to continue' : 'Create your account'}
       </TotlText>
 

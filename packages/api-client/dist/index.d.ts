@@ -49,6 +49,7 @@ export declare function createApiClient(opts: ApiClientOptions): {
             score: number;
             unicorns: number;
         }>;
+        submittedUserIds: string[];
         submittedCount: number;
         totalMembers: number;
     }>;

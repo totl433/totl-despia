@@ -361,7 +361,10 @@ export default function PredictionsScreen() {
   // - Show once picks are submitted (normal screen with bottom nav).
   React.useEffect(() => {
     const hideTabBar = mode !== 'list';
-    navigation.setOptions({ tabBarStyle: hideTabBar ? { display: 'none' } : undefined });
+    // @bottom-tabs/react-navigation doesn't reliably support `tabBarStyle: { display: 'none' }`
+    // for fully hiding the native bar. Instead, we communicate intent via route params and let
+    // our custom `FloatingTabBar` decide whether to render.
+    navigation.setParams?.({ hideTabBar });
   }, [mode, navigation]);
 
   React.useEffect(() => {
@@ -527,7 +530,8 @@ export default function PredictionsScreen() {
           paddingBottom: 10,
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          justifyContent: 'center',
+          position: 'relative',
         }}
       >
         <Pressable
@@ -535,6 +539,8 @@ export default function PredictionsScreen() {
           accessibilityLabel="Close predictions"
           onPress={goHome}
           style={({ pressed }) => ({
+            position: 'absolute',
+            left: t.space[4],
             width: 32,
             height: 32,
             alignItems: 'center',
@@ -546,9 +552,21 @@ export default function PredictionsScreen() {
           <Ionicons name="close" size={22} color={t.color.text} />
         </Pressable>
 
-        <TotlText style={{ fontWeight: '900', fontSize: 18, color: t.color.text }}>{title}</TotlText>
+        <TotlText style={{ fontWeight: '900', fontSize: 18, color: t.color.text, textAlign: 'center' }} numberOfLines={1}>
+          {title}
+        </TotlText>
 
-        <View style={{ minWidth: 44, alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
+        <View
+          style={{
+            position: 'absolute',
+            right: t.space[4],
+            minWidth: 44,
+            alignItems: 'flex-end',
+            flexDirection: 'row',
+            justifyContent: 'flex-end',
+            gap: 10,
+          }}
+        >
           {right ? (right as any) : null}
         </View>
       </View>
@@ -777,25 +795,9 @@ export default function PredictionsScreen() {
         />
         {renderTopBar({
           title: typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek',
-          right: (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open review list"
-              onPress={() => setMode('review')}
-              style={({ pressed }) => ({
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderRadius: 999,
-                backgroundColor: '#1C8376',
-                opacity: pressed ? 0.92 : 1,
-              })}
-            >
-              <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 12 }}>List View</TotlText>
-            </Pressable>
-          ),
         })}
 
-        <View style={{ paddingHorizontal: t.space[4], alignItems: 'center' }}>
+        <View style={{ paddingHorizontal: t.space[4], alignItems: 'center', marginTop: 16 }}>
           <View style={{ borderRadius: 999, backgroundColor: '#EAF3F2', paddingHorizontal: 12 }}>
             <PredictionsProgressPills
               total={fixtures.length}

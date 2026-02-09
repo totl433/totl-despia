@@ -1,9 +1,22 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { tokens as baseTokens } from '../tokens';
 
-export type Tokens = typeof baseTokens;
+type WidenTokenGroup<T extends Record<string | number, unknown>> = {
+  [K in keyof T]: T[K] extends string ? string : T[K] extends number ? number : T[K];
+};
 
-const ThemeContext = createContext<Tokens>(baseTokens);
+/**
+ * Tokens are keyed like `baseTokens`, but values are widened to `string`/`number`
+ * so callers can override them without fighting `as const` literal types.
+ */
+export type Tokens = {
+  color: WidenTokenGroup<typeof baseTokens.color>;
+  space: WidenTokenGroup<typeof baseTokens.space>;
+  radius: WidenTokenGroup<typeof baseTokens.radius>;
+  font: WidenTokenGroup<typeof baseTokens.font>;
+};
+
+const ThemeContext = createContext<Tokens>(baseTokens as unknown as Tokens);
 
 type TokensOverride = {
   // Widen values for overrides (base tokens are typed as string/number literals).

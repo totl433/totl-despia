@@ -75,25 +75,10 @@ export default function SwipePredictionCard({
       }}
     >
       <View style={{ paddingTop: 14, paddingHorizontal: 18, paddingBottom: 18, backgroundColor: '#FFFFFF' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <TotlText variant="muted" style={{ fontWeight: '700', color: '#64748B' }}>
+        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+          <TotlText variant="muted" style={{ fontWeight: '700', color: '#64748B', textAlign: 'center' }}>
             {kickoffLabel ?? 'TBD'}
           </TotlText>
-
-          {showSwipeHint ? (
-            <View
-              style={{
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 999,
-                backgroundColor: 'rgba(28,131,118,0.08)',
-                borderWidth: 1,
-                borderColor: 'rgba(28,131,118,0.18)',
-              }}
-            >
-              <TotlText style={{ color: '#1C8376', fontWeight: '800', fontSize: 12 }}>Swipe</TotlText>
-            </View>
-          ) : null}
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20 }}>

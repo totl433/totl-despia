@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image, Pressable, View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 function initial1(name: string): string {
   const trimmed = String(name ?? '').trim();
@@ -8,29 +9,39 @@ function initial1(name: string): string {
   return trimmed[0]!.toUpperCase();
 }
 
-function MemberChip({ name, avatarUri }: { name: string; avatarUri?: string | null }) {
+function MemberChip({
+  name,
+  avatarUri,
+  hasSubmitted = false,
+}: {
+  name: string;
+  avatarUri?: string | null;
+  hasSubmitted?: boolean;
+}) {
   const t = useTokens();
   const size = 32;
   return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: 999,
-        // Flat chips (no coloured rings)
-        backgroundColor: '#CED5D2',
-        overflow: 'hidden',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      {avatarUri ? (
-        <Image source={{ uri: avatarUri }} style={{ width: size, height: size }} />
-      ) : (
-        <TotlText variant="caption" style={{ fontWeight: '900', color: '#0F172A' }}>
-          {initial1(name)}
-        </TotlText>
-      )}
+    <View style={{ width: size, height: size }}>
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 999,
+          // Flat chips (no coloured rings)
+          backgroundColor: '#CED5D2',
+          overflow: 'hidden',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={{ width: size, height: size }} />
+        ) : (
+          <TotlText variant="caption" style={{ fontWeight: '900', color: '#0F172A' }}>
+            {initial1(name)}
+          </TotlText>
+        )}
+      </View>
     </View>
   );
 }
@@ -41,6 +52,9 @@ export default function MiniLeagueListItem({
   submittedCount,
   totalMembers,
   membersPreview,
+  memberCount,
+  myRank,
+  rankDelta,
   unreadCount,
   onPress,
 }: {
@@ -48,7 +62,10 @@ export default function MiniLeagueListItem({
   avatarUri: string | null;
   submittedCount: number | null;
   totalMembers: number | null;
-  membersPreview: Array<{ id: string; name: string; avatarUri?: string | null }>;
+  membersPreview: Array<{ id: string; name: string; avatarUri?: string | null; hasSubmitted?: boolean }>;
+  memberCount?: number | null;
+  myRank?: number | null;
+  rankDelta?: number | null;
   unreadCount?: number | null;
   onPress: () => void;
 }) {
@@ -59,14 +76,24 @@ export default function MiniLeagueListItem({
   const badgeLabel = String(badgeNumber);
   const badgeIsSingleDigit = badgeLabel.length === 1;
 
-  const allSubmitted = !!totalMembers && !!submittedCount && submittedCount === totalMembers && totalMembers > 0;
-  const statusText =
-    typeof submittedCount === 'number' && typeof totalMembers === 'number' && totalMembers > 0
-      ? allSubmitted
-        ? 'All Submitted'
-        : `${submittedCount}/${totalMembers} Submitted`
-      : '—';
-  const statusColor = allSubmitted ? '#1C8376' : t.color.muted;
+  function ordinal(n: number): string {
+    const mod10 = n % 10;
+    const mod100 = n % 100;
+    if (mod10 === 1 && mod100 !== 11) return `${n}st`;
+    if (mod10 === 2 && mod100 !== 12) return `${n}nd`;
+    if (mod10 === 3 && mod100 !== 13) return `${n}rd`;
+    return `${n}th`;
+  }
+
+  const rankArrow =
+    typeof rankDelta === 'number' && Number.isFinite(rankDelta) ? (rankDelta > 0 ? 'up' : rankDelta < 0 ? 'down' : 'same') : 'same';
+  const arrowColor = rankArrow === 'up' ? '#1C8376' : rankArrow === 'down' ? '#DC2626' : t.color.muted;
+  const arrowIcon = rankArrow === 'up' ? 'arrow-up' : rankArrow === 'down' ? 'arrow-down' : 'remove';
+  const deltaLabel =
+    typeof rankDelta === 'number' && Number.isFinite(rankDelta) && rankDelta !== 0 ? String(Math.abs(Math.round(rankDelta))) : '0';
+  const rankLabel = typeof myRank === 'number' && Number.isFinite(myRank) ? ordinal(Math.max(1, Math.round(myRank))) : '—';
+
+  const submittedMembers = React.useMemo(() => membersPreview.filter((m) => !!m.hasSubmitted), [membersPreview]);
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.96 : 1, transform: [{ scale: pressed ? 0.995 : 1 }] })}>
@@ -102,16 +129,37 @@ export default function MiniLeagueListItem({
               {title}
             </TotlText>
 
-            <TotlText variant="caption" style={{ color: statusColor, fontWeight: '800', marginTop: 4 }}>
-              {statusText}
-            </TotlText>
-
-            <View style={{ marginTop: 8, flexDirection: 'row' }}>
-              {membersPreview.slice(0, 4).map((m, idx) => (
-                <View key={m.id} style={{ marginLeft: idx === 0 ? 0 : -10 }}>
-                  <MemberChip name={m.name} avatarUri={m.avatarUri ?? null} />
+            {/* Avatars directly under the league name */}
+            <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center' }}>
+              {submittedMembers.map((m, idx) => (
+                <View
+                  key={m.id}
+                  style={{
+                    marginLeft: idx === 0 ? 0 : -10,
+                    zIndex: idx,
+                    elevation: idx,
+                  }}
+                >
+                  <MemberChip name={m.name} avatarUri={m.avatarUri ?? null} hasSubmitted />
                 </View>
               ))}
+            </View>
+
+            {/* Metrics row under avatars (Despia-style 103×16 strip) */}
+            <View style={{ marginTop: 8 }}>
+              <View style={{ width: 103, height: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="people-outline" size={14} color={t.color.muted} />
+                  <TotlText style={{ fontSize: 14, lineHeight: 16, color: t.color.text, fontWeight: '700' }}>
+                    {typeof memberCount === 'number' && Number.isFinite(memberCount) ? String(memberCount) : '—'}
+                  </TotlText>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <TotlText style={{ fontSize: 14, lineHeight: 16, color: t.color.text, fontWeight: '700' }}>{rankLabel}</TotlText>
+                  <Ionicons name={arrowIcon as any} size={14} color={arrowColor} />
+                  <TotlText style={{ fontSize: 14, lineHeight: 16, color: arrowColor, fontWeight: '700' }}>{deltaLabel}</TotlText>
+                </View>
+              </View>
             </View>
           </View>
 

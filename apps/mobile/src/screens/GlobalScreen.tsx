@@ -2,7 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
-import { useScrollToTop } from '@react-navigation/native';
+import { useNavigation, useRoute, useScrollToTop } from '@react-navigation/native';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
@@ -22,11 +22,28 @@ function byValueThenName(a: LeaderboardRow, b: LeaderboardRow) {
 
 export default function GlobalScreen() {
   const t = useTokens();
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const listRef = React.useRef<any>(null);
   useScrollToTop(listRef);
 
-  const [tab, setTab] = React.useState<LeaderboardsTab>('gw');
-  const [scope, setScope] = React.useState<LeaderboardsScope>('all');
+  const initialTabParam = (route.params as any)?.initialTab as LeaderboardsTab | undefined;
+  const initialScopeParam = (route.params as any)?.initialScope as LeaderboardsScope | undefined;
+
+  const [tab, setTab] = React.useState<LeaderboardsTab>(initialTabParam ?? 'gw');
+  const [scope, setScope] = React.useState<LeaderboardsScope>(initialScopeParam ?? 'all');
+
+  // Allow other screens (e.g. Home performance cards) to deep-link into a specific leaderboard section.
+  // We consume the param once and then clear it so manual tab changes won't be overridden.
+  React.useEffect(() => {
+    if (!initialTabParam && !initialScopeParam) return;
+    if (initialTabParam && initialTabParam !== tab) setTab(initialTabParam);
+    if (initialScopeParam && initialScopeParam !== scope) setScope(initialScopeParam);
+    requestAnimationFrame(() => {
+      navigation.setParams?.({ initialTab: undefined, initialScope: undefined });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTabParam, initialScopeParam]);
 
   const { data: userData } = useQuery({
     queryKey: ['authUser'],

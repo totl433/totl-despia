@@ -767,6 +767,11 @@ export default function HomeScreen() {
           <SectionHeaderRow title="Performance" />
         </View>
 
+        {/*
+          GW kickoff countdown banner (disabled for now).
+          Keeping the implementation here for easy re-enable later.
+        */}
+        {/*
         {(() => {
           const wallNowMs = Date.now();
           const firstFixture = fixtures
@@ -805,6 +810,7 @@ export default function HomeScreen() {
             </View>
           );
         })()}
+        */}
 
         {/* Full-bleed horizontal row (remove side margins from the page padding) */}
         <Animated.ScrollView
@@ -863,7 +869,7 @@ export default function HomeScreen() {
                   score={score}
                   totalFixtures={total}
                   displayText={lastGwDisplay}
-                  onPress={() => navigation.navigate('Global')}
+                  onPress={() => navigation.navigate('Global', { initialTab: 'gw' })}
                 />
               ),
             });
@@ -877,7 +883,11 @@ export default function HomeScreen() {
                     title={title}
                     badge={badge}
                     displayText={String(b.percentileLabel ?? 'Top —')}
-                    onPress={() => navigation.navigate('Global')}
+                    onPress={() =>
+                      navigation.navigate('Global', {
+                        initialTab: title === '5-WEEK FORM' ? 'form5' : title === '10-WEEK FORM' ? 'form10' : 'overall',
+                      })
+                    }
                   />
                 ),
               });

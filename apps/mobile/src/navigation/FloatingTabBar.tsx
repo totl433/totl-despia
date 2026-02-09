@@ -1,6 +1,6 @@
 import React from 'react';
 import { Animated, Pressable, View, useWindowDimensions } from 'react-native';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import type { BottomTabBarProps } from '@bottom-tabs/react-navigation';
 import { TotlText, useTokens } from '@totl/ui';
 import Svg, { G, Path } from 'react-native-svg';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
@@ -89,10 +89,12 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
   // When the active tab is `Leagues` and the nested stack route is `LeagueDetail`, render nothing.
   const activeTabRoute = state.routes[state.index];
   const nested = getFocusedRouteName(activeTabRoute);
+  const hideForPredictionsFlow = activeTabRoute?.name === 'Predictions' && (activeTabRoute as any)?.params?.hideTabBar === true;
   const shouldHide =
     (activeTabRoute?.name === 'Leagues' && (nested === 'LeagueDetail' || nested === 'LeagueChat')) ||
     (activeTabRoute?.name === 'Chat' && nested === 'ChatThread') ||
-    activeTabRoute?.name === 'Profile';
+    activeTabRoute?.name === 'Profile' ||
+    hideForPredictionsFlow;
 
   const containerWidth = Math.min(360, Math.max(280, screenWidth - 32));
   const itemWidth = containerWidth / WEB_TABS.length;

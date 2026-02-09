@@ -78,6 +78,7 @@ export default function LeagueChatTab({
   const insets = useSafeAreaInsets();
   const chatBg = t.color.background;
   const listRef = React.useRef<FlatList<any> | null>(null);
+  const atBottomRef = React.useRef(true);
   const [draft, setDraft] = React.useState('');
   const [sending, setSending] = React.useState(false);
   const [replyTo, setReplyTo] = React.useState<{ id: string; content: string; authorName?: string } | null>(null);
@@ -98,11 +99,20 @@ export default function LeagueChatTab({
 
   const bottomInset = keyboardOpen ? 8 : Math.max(8, insets.bottom);
 
-  const listBottomSpacerStyle = useAnimatedStyle(() => {
-    // In an inverted FlatList, ListHeaderComponent is rendered at the bottom (next to the composer).
-    // This spacer ensures the newest message never sits behind the composer or keyboard.
-    return { height: composerHeightSv.value + keyboardHeight.value + 8 };
+  const listViewportStyle = useAnimatedStyle(() => {
+    // Reserve space so the list viewport never extends behind the sticky composer or the keyboard.
+    // This avoids the “newest bubble hidden behind keyboard” issue without requiring user scroll.
+    return { paddingBottom: composerHeightSv.value + keyboardHeight.value };
   }, [keyboardHeight]);
+
+  React.useEffect(() => {
+    if (!keyboardOpen) return;
+    if (!atBottomRef.current) return;
+    // With inverted list, offset ~0 is "at bottom / latest".
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    });
+  }, [keyboardOpen]);
 
   const { data: me } = useQuery({
     queryKey: ['me'],
@@ -196,92 +206,98 @@ export default function LeagueChatTab({
         </Card>
       ) : null}
 
-      <FlatList
-        ref={(n) => {
-          listRef.current = n;
-        }}
-        data={listItems}
-        keyExtractor={(it) => (it.type === 'message' ? it.message.id : it.key)}
-        inverted
-        style={{ flex: 1, backgroundColor: chatBg }}
-        // No inset "frame" — keep the list full-bleed and apply row padding within message rows instead.
-        contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 8, paddingTop: 0 }}
-        onScroll={(e) => {
-          // With inverted list, offset ~0 means "at bottom / latest"
-          if (e.nativeEvent.contentOffset.y < 40) {
-            const newest = messages[messages.length - 1]?.created_at ?? null;
-            markAsRead({ lastReadAtOverride: newest });
+      <Animated.View style={[{ flex: 1, backgroundColor: chatBg }, listViewportStyle]}>
+        <FlatList
+          ref={(n) => {
+            listRef.current = n;
+          }}
+          data={listItems}
+          keyExtractor={(it) => (it.type === 'message' ? it.message.id : it.key)}
+          inverted
+          style={{ flex: 1, backgroundColor: chatBg }}
+          // No inset "frame" — keep the list full-bleed and apply row padding within message rows instead.
+          contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 0, paddingTop: 0 }}
+          onScroll={(e) => {
+            const atBottom = e.nativeEvent.contentOffset.y < 40;
+            atBottomRef.current = atBottom;
+
+            // With inverted list, offset ~0 means "at bottom / latest"
+            if (atBottom) {
+              const newest = messages[messages.length - 1]?.created_at ?? null;
+              markAsRead({ lastReadAtOverride: newest });
+            }
+          }}
+          scrollEventThrottle={16}
+          onEndReached={() => {
+            if (hasOlder && !isFetchingOlder) void fetchOlder();
+          }}
+          onEndReachedThreshold={0.2}
+          ListHeaderComponent={
+            <View style={{ paddingHorizontal: 8 }}>
+              {/* Small breathing room between newest message and composer */}
+              <View style={{ height: 8 }} />
+              {isLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
+            </View>
           }
-        }}
-        scrollEventThrottle={16}
-        onEndReached={() => {
-          if (hasOlder && !isFetchingOlder) void fetchOlder();
-        }}
-        onEndReachedThreshold={0.2}
-        ListHeaderComponent={
-          <View style={{ paddingHorizontal: 8 }}>
-            <Animated.View style={listBottomSpacerStyle} />
-            {isLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
-          </View>
-        }
-        renderItem={({ item, index }) => {
-          if (item.type === 'day') {
-            if (!item.label) return <View style={{ height: 10 }} />;
-            return (
-              <View style={{ alignItems: 'center', marginVertical: 10 }}>
-                <View
-                  style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 999,
-                    backgroundColor: 'rgba(148,163,184,0.18)',
-                  }}
-                >
-                  <TotlText style={{ fontFamily: 'System', fontSize: 12, lineHeight: 14, color: 'rgba(15,23,42,0.55)' }}>
-                    {item.label}
-                  </TotlText>
+          renderItem={({ item, index }) => {
+            if (item.type === 'day') {
+              if (!item.label) return <View style={{ height: 10 }} />;
+              return (
+                <View style={{ alignItems: 'center', marginVertical: 10 }}>
+                  <View
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 999,
+                      backgroundColor: 'rgba(148,163,184,0.18)',
+                    }}
+                  >
+                    <TotlText style={{ fontFamily: 'System', fontSize: 12, lineHeight: 14, color: 'rgba(15,23,42,0.55)' }}>
+                      {item.label}
+                    </TotlText>
+                  </View>
                 </View>
-              </View>
+              );
+            }
+
+            const msg = item.message;
+            const isMe = !!meId && msg.user_id === meId;
+            const authorName = isMe ? meName : nameById.get(msg.user_id) ?? 'Unknown';
+            const avatarUri = isMe ? null : avatarById.get(msg.user_id) ?? null;
+            const r = reactions[msg.id] ?? [];
+
+            const prev = prevMessage(listItems, index); // newer (visually below)
+            const next = nextMessage(listItems, index); // older (visually above)
+            const sameAsPrev = !!prev && prev.user_id === msg.user_id;
+            const sameAsNext = !!next && next.user_id === msg.user_id;
+            const speakerChanged = !!prev && prev.user_id !== msg.user_id;
+
+            // Strict grouping:
+            // - same sender in a run: keep bubbles aligned + tight spacing
+            // - show avatar once per run (newest message in that run)
+            // - show name once per run (oldest message in that run)
+            const showAvatar = !isMe && !sameAsPrev;
+            const showAuthorName = !isMe && !sameAsNext;
+            const topSpacing = sameAsPrev ? 2 : speakerChanged ? 14 : 10;
+
+            return (
+              <ChatMessageBubble
+                message={msg}
+                isMe={isMe}
+                authorName={authorName}
+                avatarLabel={authorName}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                showAuthorName={showAuthorName}
+                topSpacing={topSpacing}
+                reactions={r}
+                onPressReaction={(emoji) => void toggleReaction(msg.id, emoji)}
+                onLongPress={() => setActionsFor({ id: msg.id, content: msg.content, authorName })}
+              />
             );
-          }
-
-          const msg = item.message;
-          const isMe = !!meId && msg.user_id === meId;
-          const authorName = isMe ? meName : nameById.get(msg.user_id) ?? 'Unknown';
-          const avatarUri = isMe ? null : avatarById.get(msg.user_id) ?? null;
-          const r = reactions[msg.id] ?? [];
-
-          const prev = prevMessage(listItems, index); // newer (visually below)
-          const next = nextMessage(listItems, index); // older (visually above)
-          const sameAsPrev = !!prev && prev.user_id === msg.user_id;
-          const sameAsNext = !!next && next.user_id === msg.user_id;
-          const speakerChanged = !!prev && prev.user_id !== msg.user_id;
-
-          // Strict grouping:
-          // - same sender in a run: keep bubbles aligned + tight spacing
-          // - show avatar once per run (newest message in that run)
-          // - show name once per run (oldest message in that run)
-          const showAvatar = !isMe && !sameAsPrev;
-          const showAuthorName = !isMe && !sameAsNext;
-          const topSpacing = sameAsPrev ? 2 : speakerChanged ? 14 : 10;
-
-          return (
-            <ChatMessageBubble
-              message={msg}
-              isMe={isMe}
-              authorName={authorName}
-              avatarLabel={authorName}
-              avatarUri={avatarUri}
-              showAvatar={showAvatar}
-              showAuthorName={showAuthorName}
-              topSpacing={topSpacing}
-              reactions={r}
-              onPressReaction={(emoji) => void toggleReaction(msg.id, emoji)}
-              onLongPress={() => setActionsFor({ id: msg.id, content: msg.content, authorName })}
-            />
-          );
-        }}
-      />
+          }}
+        />
+      </Animated.View>
 
       <KeyboardStickyView offset={{ closed: 0, opened: 0 }} style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
         <View

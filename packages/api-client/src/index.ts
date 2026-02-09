@@ -159,6 +159,7 @@ export function createApiClient(opts: ApiClientOptions) {
       leagueId: string;
       gw: number;
       rows: Array<{ user_id: string; name: string; avatar_url?: string | null; score: number; unicorns: number }>;
+      submittedUserIds: string[];
       submittedCount: number;
       totalMembers: number;
     }> {
