@@ -97,7 +97,7 @@ export default function TabsNavigator() {
         name="Global"
         component={GlobalScreen}
         options={{
-          title: 'Leaderboards',
+          title: '2025/26',
           tabBarIcon: ({ color, size }) => <TabSvgIcon xml={LEADERBOARDS_SVG} size={size} color={color} />,
         }}
       />

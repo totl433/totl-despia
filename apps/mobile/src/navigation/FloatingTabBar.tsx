@@ -69,7 +69,7 @@ function LeaderboardsIcon({ color }: { color: string }) {
 }
 
 const WEB_TABS: Array<{
-  label: 'Home' | 'Predictions' | 'Mini Leagues' | 'Chat' | 'Leaderboards';
+  label: 'Home' | 'Predictions' | 'Mini Leagues' | 'Chat' | '2025/26';
   routeName: 'Home' | 'Predictions' | 'Leagues' | 'Chat' | 'Global';
   renderIcon: (args: { color: string }) => React.ReactElement;
 }> = [
@@ -77,7 +77,7 @@ const WEB_TABS: Array<{
   { label: 'Predictions', routeName: 'Predictions', renderIcon: ({ color }) => <PredictionsIcon color={color} /> },
   { label: 'Mini Leagues', routeName: 'Leagues', renderIcon: ({ color }) => <MiniLeaguesIcon color={color} /> },
   { label: 'Chat', routeName: 'Chat', renderIcon: ({ color }) => <ChatIcon color={color} /> },
-  { label: 'Leaderboards', routeName: 'Global', renderIcon: ({ color }) => <LeaderboardsIcon color={color} /> },
+  { label: '2025/26', routeName: 'Global', renderIcon: ({ color }) => <LeaderboardsIcon color={color} /> },
 ];
 
 export default function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
