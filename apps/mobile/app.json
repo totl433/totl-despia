@@ -1,5 +1,4 @@
 {
-
   "expo": {
     "name": "mobile",
     "slug": "mobile",
@@ -17,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.totl.mobile",
-      "buildNumber": "8",
+      "buildNumber": "9",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -29,7 +28,8 @@
       },
       "softwareKeyboardLayoutMode": "resize",
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.totl.mobile"
     },
     "web": {
       "favicon": "./assets/favicon.png"

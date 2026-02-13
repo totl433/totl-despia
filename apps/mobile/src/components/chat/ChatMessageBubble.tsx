@@ -19,7 +19,7 @@ function initial1(name: string): string {
   return (parts[0]![0] ?? '?').toUpperCase();
 }
 
-export default function ChatMessageBubble({
+const ChatMessageBubble = React.memo(function ChatMessageBubble({
   message,
   isMe,
   authorName,
@@ -214,5 +214,7 @@ export default function ChatMessageBubble({
       </View>
     </View>
   );
-}
+});
+
+export default ChatMessageBubble;
 

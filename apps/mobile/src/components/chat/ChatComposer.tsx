@@ -9,6 +9,8 @@ export default function ChatComposer({
   onSend,
   sending,
   bottomInset,
+  onInputFocus,
+  onInputBlur,
   replyPreview,
   onCancelReply,
 }: {
@@ -17,6 +19,8 @@ export default function ChatComposer({
   onSend: () => void;
   sending: boolean;
   bottomInset?: number;
+  onInputFocus?: () => void;
+  onInputBlur?: () => void;
   replyPreview: { content: string; authorName?: string } | null;
   onCancelReply: () => void;
 }) {
@@ -72,6 +76,8 @@ export default function ChatComposer({
             <TextInput
               value={value}
               onChangeText={onChange}
+              onFocus={onInputFocus}
+              onBlur={onInputBlur}
               placeholder="Message…"
               placeholderTextColor={t.color.muted}
               multiline

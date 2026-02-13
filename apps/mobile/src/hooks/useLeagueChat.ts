@@ -44,6 +44,18 @@ function sortAsc(list: LeagueChatMessage[]) {
   return [...list].sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
+function dedupeById(list: LeagueChatMessage[]) {
+  const seen = new Set<string>();
+  const out: LeagueChatMessage[] = [];
+  for (const m of list) {
+    const id = String(m.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(m);
+  }
+  return out;
+}
+
 function makeClientMsgId(): string {
   return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -189,7 +201,7 @@ export function useLeagueChat({
 
   const messages = React.useMemo(() => {
     const rows = q.data?.pages.flatMap((p) => p.rows) ?? [];
-    return sortAsc(rows);
+    return sortAsc(dedupeById(rows));
   }, [q.data?.pages]);
 
   // Realtime: insert new messages (skip optimistic ones by dedupe on id).
@@ -209,9 +221,8 @@ export function useLeagueChat({
             const exists = prev.pages.some((p: Page) => p.rows.some((m) => m.id === incoming.id));
             if (exists) return prev;
             const pages = [...prev.pages];
-            const lastIdx = pages.length - 1;
-            const last = pages[lastIdx] as Page;
-            pages[lastIdx] = { ...last, rows: sortAsc([...last.rows, incoming]) };
+            const first = pages[0] as Page;
+            pages[0] = { ...first, rows: sortAsc([...first.rows, incoming]) };
             return { ...prev, pages };
           });
         }
@@ -268,9 +279,8 @@ export function useLeagueChat({
       queryClient.setQueryData(['leagueChat', leagueId], (prev: any) => {
         if (!prev?.pages) return prev;
         const pages = [...prev.pages];
-        const lastIdx = pages.length - 1;
-        const last = pages[lastIdx] as Page;
-        pages[lastIdx] = { ...last, rows: sortAsc([...last.rows, optimistic]) };
+        const first = pages[0] as Page;
+        pages[0] = { ...first, rows: sortAsc([...first.rows, optimistic]) };
         return { ...prev, pages };
       });
 
@@ -318,8 +328,11 @@ export function useLeagueChat({
         queryClient.setQueryData(['leagueChat', leagueId], (prev: any) => {
           if (!prev?.pages) return prev;
           const pages = prev.pages.map((p: Page) => ({ ...p, rows: p.rows.filter((m) => m.id !== optimistic.id) }));
-          const lastIdx = pages.length - 1;
-          pages[lastIdx] = { ...pages[lastIdx], rows: sortAsc([...pages[lastIdx].rows, saved]) };
+          const exists = pages.some((p: Page) => p.rows.some((m) => m.id === saved.id));
+          if (!exists) {
+            const first = pages[0] as Page;
+            pages[0] = { ...first, rows: sortAsc([...first.rows, saved]) };
+          }
           return { ...prev, pages };
         });
 

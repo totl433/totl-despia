@@ -1,0 +1,53 @@
+diff --git a/node_modules/react-native-gifted-chat/types/index.d.ts b/node_modules/react-native-gifted-chat/types/index.d.ts
+new file mode 100644
+index 0000000..5e181e9
+--- /dev/null
++++ b/node_modules/react-native-gifted-chat/types/index.d.ts
+@@ -0,0 +1,47 @@
++import * as React from 'react';
++import type { TextInput, TextInputProps, StyleProp, ViewStyle } from 'react-native';
++
++export type User = {
++  _id: string | number;
++  name?: string;
++  avatar?: string;
++};
++
++export type IMessage = {
++  _id: string | number;
++  text: string;
++  createdAt: Date;
++  user: User;
++  [key: string]: unknown;
++};
++
++export type InputToolbarProps<TMessage extends IMessage = IMessage> = {
++  containerStyle?: StyleProp<ViewStyle>;
++  // passthrough for safety
++  [key: string]: unknown;
++};
++
++export type GiftedChatProps<TMessage extends IMessage = IMessage> = {
++  messages?: TMessage[];
++  user?: User;
++  onSend?: (messages: TMessage[]) => void;
++  onLongPressMessage?: (context: unknown, message: TMessage) => void;
++  textInputProps?: Partial<TextInputProps> & { ref?: React.RefObject<TextInput> };
++  keyboardShouldPersistTaps?: 'always' | 'never' | 'handled';
++
++  /** Custom input toolbar */
++  renderInputToolbar?:
++    | React.ComponentType<InputToolbarProps<TMessage>>
++    | React.ReactElement
++    | ((props: InputToolbarProps<TMessage>) => React.ReactNode)
++    | null;
++
++  /** Additional props used by some forks/builds */
++  bottomOffset?: number;
++
++  [key: string]: unknown;
++};
++
++export const GiftedChat: React.ComponentType<GiftedChatProps<IMessage>>;
++export const InputToolbar: React.ComponentType<InputToolbarProps<IMessage>>;
++

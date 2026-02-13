@@ -63,7 +63,15 @@ function formatTimestamp(iso: string): string {
   return `${dd}.${mm}.${yy}`;
 }
 
-export default function ChatInboxScreen() {
+export default function ChatInboxScreen({
+  threadRouteName = 'ChatThread',
+  title = 'Chat',
+  subtitle = 'All your mini league chats',
+}: {
+  threadRouteName?: 'ChatThread' | 'Chat2Thread';
+  title?: string;
+  subtitle?: string;
+} = {}) {
   const t = useTokens();
   const navigation = useNavigation<any>();
   const listRef = React.useRef<FlatList<any> | null>(null);
@@ -205,7 +213,7 @@ export default function ChatInboxScreen() {
 
   return (
     <Screen fullBleed>
-      <PageHeader title="Chat" subtitle="All your mini league chats" />
+      <PageHeader title={title} subtitle={subtitle} />
       <FlatList
         ref={listRef}
         data={rows}
@@ -274,7 +282,7 @@ export default function ChatInboxScreen() {
 
           return (
             <Pressable
-              onPress={() => navigation.navigate('ChatThread', { leagueId, name: String(l.name ?? '') })}
+              onPress={() => navigation.navigate(threadRouteName, { leagueId, name: String(l.name ?? '') })}
               style={({ pressed }) => ({
                 paddingVertical: 14,
                 opacity: pressed ? 0.92 : 1,

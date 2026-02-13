@@ -1,8 +1,10 @@
 import React from 'react';
-import { Alert, Pressable, View } from 'react-native';
+import { Alert, Keyboard, Pressable, View } from 'react-native';
 import { BottomSheetBackdrop, BottomSheetModal, BottomSheetView } from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
 import { TotlText, useTokens } from '@totl/ui';
+import { KeyboardController } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type LeagueOverflowAction =
   | 'editBadge'
@@ -70,6 +72,7 @@ export default function LeagueOverflowMenu({
   showInviteChat?: boolean;
 }) {
   const t = useTokens();
+  const insets = useSafeAreaInsets();
   const ref = React.useRef<BottomSheetModal>(null);
   const snapPoints = React.useMemo(() => {
     // Roughly 54px per row + chrome. Keep this simple and forgiving.
@@ -83,6 +86,25 @@ export default function LeagueOverflowMenu({
 
   React.useEffect(() => {
     if (open) {
+      // Native UX: if the keyboard is open (chat composer), dismiss it before showing the menu.
+      const wasKeyboardVisible = KeyboardController.isVisible();
+      if (wasKeyboardVisible) {
+        Keyboard.dismiss();
+        let presented = false;
+        const present = () => {
+          if (presented) return;
+          presented = true;
+          requestAnimationFrame(() => ref.current?.present());
+        };
+        const sub = Keyboard.addListener('keyboardDidHide', present);
+        // Fallback in case we miss the event.
+        const timeout = setTimeout(present, 500);
+        return () => {
+          sub.remove();
+          clearTimeout(timeout);
+        };
+      }
+
       requestAnimationFrame(() => ref.current?.present());
       return;
     }
@@ -97,11 +119,18 @@ export default function LeagueOverflowMenu({
       onDismiss={onClose}
       backgroundStyle={{ backgroundColor: t.color.surface }}
       handleIndicatorStyle={{ backgroundColor: t.color.border }}
+      // Ensure the sheet stays above the keyboard when it's open.
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      // Keep the sheet background flush to the bottom edge; pad content instead.
+      bottomInset={0}
+      enableBlurKeyboardOnGesture
       backdropComponent={(props) => (
         <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.5} pressBehavior="close" />
       )}
     >
-      <BottomSheetView style={{ paddingTop: 8, paddingBottom: 26 }}>
+      <BottomSheetView style={{ paddingTop: 8, paddingBottom: insets.bottom + 12 }}>
         {extraItems.map((it) => (
           <MenuRow key={it.key} label={it.label} icon={it.icon} onPress={it.onPress} />
         ))}

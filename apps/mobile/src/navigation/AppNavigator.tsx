@@ -11,6 +11,7 @@ import LeagueDetailScreen from '../screens/LeagueDetailScreen';
 import LeagueChatScreen from '../screens/LeagueChatScreen';
 import CreateLeagueScreen from '../screens/CreateLeagueScreen';
 import ChatThreadScreen from '../screens/ChatThreadScreen';
+import Chat2ThreadScreen from '../screens/Chat2ThreadScreen';
 import ProfileNavigator from './ProfileNavigator';
 
 export type RootStackParamList = {
@@ -19,6 +20,7 @@ export type RootStackParamList = {
   LeagueChat: { leagueId: string; name: string };
   CreateLeague: undefined;
   ChatThread: { leagueId: string; name: string };
+  Chat2Thread: { leagueId: string; name: string };
   Profile: undefined;
   GameweekResults: { gw: number };
 };
@@ -126,9 +128,32 @@ export default function AppNavigator() {
       >
         <Stack.Screen name="Tabs" component={TabsNavigator} />
         <Stack.Screen name="LeagueDetail" component={LeagueDetailScreen} />
-        <Stack.Screen name="LeagueChat" component={LeagueChatScreen} />
+        <Stack.Screen
+          name="LeagueChat"
+          component={LeagueChatScreen}
+          options={{
+            headerShown: true,
+            headerShadowVisible: false,
+            headerStyle: { backgroundColor: t.color.background },
+            headerTintColor: t.color.text,
+            headerTitle: '',
+            headerTitleAlign: 'left',
+          }}
+        />
         <Stack.Screen name="CreateLeague" component={CreateLeagueScreen} />
         <Stack.Screen name="ChatThread" component={ChatThreadScreen} />
+        <Stack.Screen
+          name="Chat2Thread"
+          component={Chat2ThreadScreen}
+          options={{
+            headerShown: true,
+            headerShadowVisible: false,
+            headerStyle: { backgroundColor: t.color.background },
+            headerTintColor: t.color.text,
+            headerTitle: '',
+            headerTitleAlign: 'left',
+          }}
+        />
         <Stack.Screen name="Profile" component={ProfileNavigator} />
         <Stack.Screen
           name="GameweekResults"

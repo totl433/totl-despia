@@ -93,6 +93,7 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
   const shouldHide =
     (activeTabRoute?.name === 'Leagues' && (nested === 'LeagueDetail' || nested === 'LeagueChat')) ||
     (activeTabRoute?.name === 'Chat' && nested === 'ChatThread') ||
+    (activeTabRoute?.name === 'Chat' && nested === 'Chat2Thread') ||
     activeTabRoute?.name === 'Profile' ||
     hideForPredictionsFlow;
 
