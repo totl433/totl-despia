@@ -1,12 +1,13 @@
 import React from 'react';
 import { AppState, Animated, Image, Pressable, Share, View, useWindowDimensions } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { Ionicons } from '@expo/vector-icons';
 import Carousel from 'react-native-reanimated-carousel';
 import type { ICarouselInstance } from 'react-native-reanimated-carousel';
-import { Extrapolation, interpolate, useSharedValue } from 'react-native-reanimated';
+import Reanimated, { Extrapolation, FadeIn, FadeOut, LinearTransition, interpolate, useSharedValue } from 'react-native-reanimated';
 import type { Fixture, GwResultRow, GwResults, HomeRanks, HomeSnapshot, LiveScore, LiveStatus, Pick } from '@totl/domain';
 import { api } from '../lib/api';
 import { TotlRefreshControl } from '../lib/refreshControl';
@@ -34,6 +35,10 @@ import MiniLeagueLiveCard from '../components/home/MiniLeagueLiveCard';
 import { useLiveScores } from '../hooks/useLiveScores';
 import TopStatusBanner from '../components/home/TopStatusBanner';
 import AppTopHeader from '../components/AppTopHeader';
+import WinnerShimmer from '../components/WinnerShimmer';
+import { TEAM_BADGES } from '../lib/teamBadges';
+import { normalizeTeamCode } from '../lib/teamColors';
+import { getMediumName } from '../../../../src/lib/teamNames';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -84,6 +89,15 @@ function fixtureDateLabel(kickoff: string | null | undefined) {
   const d = new Date(kickoff);
   if (Number.isNaN(d.getTime())) return 'No date';
   return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function fixtureDateTimeLabel(kickoff: string | null | undefined) {
+  if (!kickoff) return 'No date';
+  const d = new Date(kickoff);
+  if (Number.isNaN(d.getTime())) return 'No date';
+  const datePart = d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
+  const timePart = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return `${datePart} • ${timePart}`;
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -384,6 +398,198 @@ export default function HomeScreen() {
       variant="grouped"
     />
   );
+  const FixtureCardDetailsRow = ({ f }: { f: Fixture }) => (
+    <FixtureCard
+      {...({
+        fixture: f,
+        liveScore: liveByFixtureIndex.get(f.fixture_index) ?? null,
+        pick: userPicks[String(f.fixture_index)],
+        result: resultByFixtureIndex.get(Number(f.fixture_index)) ?? null,
+        pickPercentages: pickPercentagesByFixture.get(Number(f.fixture_index)) ?? null,
+        showPickButtons: !!home?.hasSubmittedViewingGw,
+        variant: 'grouped',
+        detailsOnly: true,
+      } as any)}
+    />
+  );
+  const [expandedFixtureId, setExpandedFixtureId] = React.useState<string | null>(null);
+  const [showAllExpanded, setShowAllExpanded] = React.useState(false);
+  const [popFixtureId, setPopFixtureId] = React.useState<string | null>(null);
+  const popScale = React.useRef(new Animated.Value(1)).current;
+  const [cardHeightsById, setCardHeightsById] = React.useState<Record<string, number>>({});
+  const [scrollSpreadPx, setScrollSpreadPx] = React.useState(0);
+  const scrollSpreadRef = React.useRef(0);
+  const hasUserScrolledRef = React.useRef(false);
+  const introBreathValue = React.useRef(new Animated.Value(0)).current;
+  const stackFixtures = React.useMemo(
+    () => [...fixtures].sort((a, b) => Number(a?.fixture_index ?? 0) - Number(b?.fixture_index ?? 0)),
+    [fixtures]
+  );
+  const renderedStackFixtures = React.useMemo(() => {
+    return stackFixtures;
+  }, [stackFixtures]);
+  const anyFixtureExpanded = showAllExpanded || !!expandedFixtureId;
+  const expandedFixtureIndex = React.useMemo(
+    () => (expandedFixtureId ? stackFixtures.findIndex((f) => String(f.id) === expandedFixtureId) : -1),
+    [expandedFixtureId, stackFixtures]
+  );
+  const collapsedStackStep = 75;
+  const collapsedStackTailHeight = React.useMemo(() => {
+    const last = renderedStackFixtures[renderedStackFixtures.length - 1];
+    if (!last) return 320;
+    return cardHeightsById[String(last.id)] ?? 320;
+  }, [cardHeightsById, renderedStackFixtures]);
+  const collapsedStackHeight = React.useMemo(() => {
+    const count = renderedStackFixtures.length;
+    if (count <= 0) return 0;
+    return (count - 1) * collapsedStackStep + collapsedStackTailHeight;
+  }, [collapsedStackStep, collapsedStackTailHeight, renderedStackFixtures.length]);
+  const expandedCardHeight = React.useMemo(() => {
+    if (!expandedFixtureId) return 320;
+    return cardHeightsById[expandedFixtureId] ?? 320;
+  }, [cardHeightsById, expandedFixtureId]);
+  const expandedStackPush = React.useMemo(() => {
+    if (expandedFixtureIndex < 0) return 0;
+    const revealedGapPx = 12;
+    // Keep a fixed gap between bottom of revealed card and top of next stacked card.
+    return Math.max(0, expandedCardHeight - collapsedStackStep + revealedGapPx);
+  }, [collapsedStackStep, expandedCardHeight, expandedFixtureIndex]);
+  const stackSpreadHeight = React.useMemo(
+    () => Math.max(0, renderedStackFixtures.length - 1) * scrollSpreadPx,
+    [renderedStackFixtures.length, scrollSpreadPx]
+  );
+  const stackContainerHeight = React.useMemo(() => {
+    if (showAllExpanded) return 0;
+    if (!anyFixtureExpanded || expandedFixtureIndex < 0) return collapsedStackHeight + stackSpreadHeight;
+    const expandedTop = expandedFixtureIndex * collapsedStackStep;
+    const expandedBottom = expandedTop + expandedCardHeight + 12;
+    const shiftedStackBottom = collapsedStackHeight + expandedStackPush;
+    return Math.max(expandedBottom, shiftedStackBottom) + stackSpreadHeight;
+  }, [
+    showAllExpanded,
+    anyFixtureExpanded,
+    collapsedStackHeight,
+    collapsedStackStep,
+    expandedCardHeight,
+    expandedFixtureIndex,
+    expandedStackPush,
+    stackSpreadHeight,
+  ]);
+
+  const handleMainScroll = React.useCallback((e: any) => {
+    if (!hasUserScrolledRef.current) {
+      hasUserScrolledRef.current = true;
+      introBreathValue.stopAnimation();
+    }
+    const y = Number(e?.nativeEvent?.contentOffset?.y ?? 0);
+    const pull = Math.max(0, -y);
+    const down = Math.max(0, y);
+    // Subtle "breathing" spread: stronger on pull-to-refresh, lighter on normal scroll.
+    const nextSpread = Math.min(14, pull * 0.16 + Math.min(6, down * 0.03));
+    if (Math.abs(nextSpread - scrollSpreadRef.current) < 0.25) return;
+    scrollSpreadRef.current = nextSpread;
+    setScrollSpreadPx(nextSpread);
+  }, [introBreathValue]);
+
+  React.useEffect(() => {
+    const id = introBreathValue.addListener(({ value }) => {
+      if (hasUserScrolledRef.current) return;
+      scrollSpreadRef.current = value;
+      setScrollSpreadPx(value);
+    });
+
+    const startId = setTimeout(() => {
+      if (hasUserScrolledRef.current) return;
+      Animated.sequence([
+        Animated.timing(introBreathValue, {
+          toValue: 6,
+          duration: 240,
+          useNativeDriver: false,
+        }),
+        Animated.timing(introBreathValue, {
+          toValue: 0,
+          duration: 320,
+          useNativeDriver: false,
+        }),
+      ]).start();
+    }, 120);
+
+    return () => {
+      clearTimeout(startId);
+      introBreathValue.stopAnimation();
+      introBreathValue.removeListener(id);
+    };
+  }, [introBreathValue]);
+
+  const triggerRevealPop = React.useCallback((fixtureId: string) => {
+    setPopFixtureId(fixtureId);
+    popScale.stopAnimation();
+    popScale.setValue(1);
+    Animated.sequence([
+      Animated.spring(popScale, {
+        toValue: 1.032,
+        friction: 7,
+        tension: 145,
+        useNativeDriver: true,
+      }),
+      Animated.spring(popScale, {
+        toValue: 0.994,
+        friction: 8,
+        tension: 135,
+        useNativeDriver: true,
+      }),
+      Animated.spring(popScale, {
+        toValue: 1,
+        friction: 9,
+        tension: 120,
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (finished) {
+        setPopFixtureId((current) => (current === fixtureId ? null : current));
+      }
+    });
+  }, [popScale]);
+
+  const handleToggleFixture = React.useCallback((fixtureId: string) => {
+    if (showAllExpanded) {
+      setShowAllExpanded(false);
+    }
+    if (expandedFixtureId === fixtureId) {
+      setExpandedFixtureId(null);
+      setPopFixtureId(null);
+      popScale.stopAnimation();
+      popScale.setValue(1);
+      return;
+    }
+
+    setExpandedFixtureId(fixtureId);
+    triggerRevealPop(fixtureId);
+  }, [expandedFixtureId, popScale, showAllExpanded, triggerRevealPop]);
+
+  const handleShowAll = React.useCallback(() => {
+    if (showAllExpanded) {
+      setShowAllExpanded(false);
+      return;
+    }
+    setShowAllExpanded(true);
+    setExpandedFixtureId(null);
+    setPopFixtureId(null);
+    popScale.stopAnimation();
+    popScale.setValue(1);
+  }, [popScale, showAllExpanded]);
+
+  React.useEffect(() => {
+    if (!expandedFixtureId) return;
+    const exists = stackFixtures.some((f) => String(f.id) === expandedFixtureId);
+    if (!exists) setExpandedFixtureId(null);
+  }, [expandedFixtureId, stackFixtures]);
+
+  React.useEffect(() => {
+    return () => {
+      popScale.stopAnimation();
+    };
+  }, [popScale]);
 
   const handleShare = async () => {
     try {
@@ -598,6 +804,8 @@ export default function HomeScreen() {
         <Animated.ScrollView
           ref={scrollRef}
           style={{ flex: 1 }}
+          onScroll={handleMainScroll}
+          scrollEventThrottle={16}
           contentContainerStyle={{
             paddingHorizontal: t.space[4],
             paddingTop: 8,
@@ -1016,38 +1224,71 @@ export default function HomeScreen() {
           <SectionHeaderRow
             title={typeof home?.viewingGw === 'number' ? `Gameweek ${home.viewingGw}` : 'Gameweek'}
             right={
-              <Pressable
-                onPress={handleShare}
-                accessibilityRole="button"
-                accessibilityLabel={`Share score ${shareScoreLabel}`}
-                style={({ pressed }) => ({
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingVertical: 11,
-                  paddingHorizontal: 12,
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: 'rgba(15,23,42,0.14)',
-                  backgroundColor: '#FFFFFF',
-                  opacity: fixtures.length === 0 ? 0.45 : pressed ? 0.92 : 1,
-                  transform: [{ scale: pressed ? 0.97 : 1 }],
-                })}
-                disabled={fixtures.length === 0}
-              >
-                <TotlText
-                  style={{
-                    color: '#1C8376',
-                    fontFamily: 'Gramatika-Medium',
-                    fontWeight: '900',
-                    fontSize: 15,
-                    lineHeight: 16,
-                  }}
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Pressable
+                  onPress={handleShowAll}
+                  accessibilityRole="button"
+                  accessibilityLabel={showAllExpanded ? 'Return to stack view' : 'Show all fixtures'}
+                  style={({ pressed }) => ({
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: 40,
+                    paddingHorizontal: 12,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: 'rgba(15,23,42,0.14)',
+                    backgroundColor: '#FFFFFF',
+                    marginRight: 8,
+                    opacity: pressed ? 0.92 : 1,
+                    transform: [{ scale: pressed ? 0.97 : 1 }],
+                  })}
                 >
-                  {shareScoreLabel}
-                </TotlText>
-                <View style={{ width: 7 }} />
-                <Ionicons name="share-outline" size={18} color="#334155" />
-              </Pressable>
+                  <TotlText
+                    style={{
+                      color: '#334155',
+                      fontFamily: 'Gramatika-Medium',
+                      fontWeight: '700',
+                      fontSize: 13,
+                      lineHeight: 14,
+                    }}
+                  >
+                      {showAllExpanded ? 'Stack view' : 'Show all'}
+                  </TotlText>
+                </Pressable>
+                <Pressable
+                  onPress={handleShare}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Share score ${shareScoreLabel}`}
+                  style={({ pressed }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: 40,
+                    paddingHorizontal: 12,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: 'rgba(15,23,42,0.14)',
+                    backgroundColor: '#FFFFFF',
+                    opacity: fixtures.length === 0 ? 0.45 : pressed ? 0.92 : 1,
+                    transform: [{ scale: pressed ? 0.97 : 1 }],
+                  })}
+                  disabled={fixtures.length === 0}
+                >
+                  <TotlText
+                    style={{
+                      color: '#1C8376',
+                      fontFamily: 'Gramatika-Medium',
+                      fontWeight: '900',
+                      fontSize: 15,
+                      lineHeight: 16,
+                    }}
+                  >
+                    {shareScoreLabel}
+                  </TotlText>
+                  <View style={{ width: 7 }} />
+                  <Ionicons name="share-outline" size={18} color="#334155" />
+                </Pressable>
+              </View>
             }
           />
         </View>
@@ -1068,70 +1309,257 @@ export default function HomeScreen() {
             </View>
           </Card>
         ) : (
-          fixturesByDate.map((g, groupIdx) => (
-            <View
-              key={`${g.date}-${groupIdx}`}
-              style={{ marginBottom: groupIdx === fixturesByDate.length - 1 ? 0 : 12 }}
-            >
-              <Card
+          <View style={showAllExpanded ? undefined : { position: 'relative', height: stackContainerHeight }}>
+          {renderedStackFixtures.map((f: Fixture, idx: number) => {
+            const fixtureId = String(f.id);
+            const isExpanded = expandedFixtureId === fixtureId;
+            const isExpandedVisual = showAllExpanded || isExpanded;
+            const baseTop = idx * collapsedStackStep;
+            const spread = scrollSpreadPx * idx;
+            const top = anyFixtureExpanded && idx > expandedFixtureIndex
+              ? baseTop + expandedStackPush + spread
+              : baseTop + spread;
+            const ls = liveByFixtureIndex.get(f.fixture_index) ?? null;
+            const st: LiveStatus = (ls?.status as LiveStatus) ?? 'SCHEDULED';
+            const hasScore =
+              typeof ls?.home_score === 'number' &&
+              typeof ls?.away_score === 'number' &&
+              (st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED');
+            const headerPrimary = hasScore
+              ? `${ls?.home_score ?? 0} - ${ls?.away_score ?? 0}`
+              : fixtureDateLabel(f.kickoff_time ?? null);
+            const headerSecondary = hasScore ? formatMinute(st, ls?.minute) : '';
+            const homeCode = normalizeTeamCode(f.home_code);
+            const awayCode = normalizeTeamCode(f.away_code);
+            const homeBadge = TEAM_BADGES[homeCode] ?? null;
+            const awayBadge = TEAM_BADGES[awayCode] ?? null;
+            const headerHome = getMediumName(String(f.home_name ?? f.home_team ?? homeCode ?? 'Home'));
+            const headerAway = getMediumName(String(f.away_name ?? f.away_team ?? awayCode ?? 'Away'));
+            const pick = userPicks[String(f.fixture_index)];
+            const resultFromDb = resultByFixtureIndex.get(Number(f.fixture_index)) ?? null;
+            const hasFinalResult = resultFromDb === 'H' || resultFromDb === 'D' || resultFromDb === 'A';
+            const derivedOutcome: Pick | null =
+              hasFinalResult
+                ? resultFromDb
+                : typeof ls?.home_score === 'number' && typeof ls?.away_score === 'number'
+                  ? ls.home_score > ls.away_score
+                    ? 'H'
+                    : ls.home_score < ls.away_score
+                      ? 'A'
+                      : 'D'
+                  : null;
+            const isCorrectPick =
+              !!pick &&
+              !!derivedOutcome &&
+              pick === derivedOutcome &&
+              (hasFinalResult || st === 'FINISHED');
+            const isIncorrectPick =
+              !!pick &&
+              !!derivedOutcome &&
+              pick !== derivedOutcome &&
+              (hasFinalResult || st === 'FINISHED');
+            const borderInset = isIncorrectPick || isCorrectPick ? 0 : 6;
+
+            return (
+              <Reanimated.View
+                key={fixtureId}
+                layout={LinearTransition.springify().damping(20).stiffness(220).mass(0.95)}
+                entering={FadeIn.duration(90)}
+                exiting={FadeOut.duration(90)}
+                onLayout={(event) => {
+                  const measured = event.nativeEvent.layout.height;
+                  if (!Number.isFinite(measured) || measured <= 0) return;
+                  setCardHeightsById((prev) => {
+                    const existing = prev[fixtureId];
+                    if (typeof existing === 'number' && Math.abs(existing - measured) <= 1) return prev;
+                    return { ...prev, [fixtureId]: measured };
+                  });
+                }}
                 style={{
-                  padding: 0,
-                  shadowOpacity: 0,
-                  shadowRadius: 0,
-                  shadowOffset: { width: 0, height: 0 },
-                  elevation: 0,
+                  ...(showAllExpanded
+                    ? {
+                        position: 'relative',
+                        left: undefined,
+                        right: undefined,
+                        top: undefined,
+                        zIndex: undefined,
+                        marginTop: idx === 0 ? 0 : 8,
+                      }
+                    : {
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        top,
+                        zIndex: idx + 1,
+                      }),
+                  shadowColor: '#0F172A',
+                  shadowOpacity: 0.2,
+                  shadowRadius: 2.4,
+                  shadowOffset: { width: 0, height: -0.6 },
+                  elevation: 2,
                 }}
               >
-                <View style={{ borderRadius: 14, overflow: 'hidden' }}>
-                  {/* Card header: date */}
-                  <View
+                <Animated.View
+                  style={{
+                    transform: [{ scale: popFixtureId === fixtureId ? popScale : 1 }],
+                  }}
+                >
+                <View
+                  style={{
+                    borderTopLeftRadius: 20,
+                    borderTopRightRadius: 20,
+                    borderBottomLeftRadius: 20,
+                    borderBottomRightRadius: 20,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {isCorrectPick ? (
+                    <LinearGradient
+                      colors={['#FACC15', '#F97316', '#EC4899', '#9333EA']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}
+                    >
+                      <WinnerShimmer durationMs={1600} delayMs={0} opacity={0.45} tint="white" />
+                      <WinnerShimmer durationMs={2200} delayMs={420} opacity={0.22} tint="gold" />
+                    </LinearGradient>
+                  ) : (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        top: 0,
+                        bottom: 0,
+                        backgroundColor: '#98A2B3',
+                      }}
+                    />
+                  )}
+                  <Card
                     style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      paddingHorizontal: 16,
-                      paddingTop: 14,
-                      paddingBottom: 12,
-                      borderBottomWidth: 1,
-                      borderBottomColor: 'rgba(15,23,42,0.06)',
+                      marginLeft: borderInset,
+                      marginRight: borderInset,
+                      marginTop: borderInset,
+                      marginBottom: borderInset,
+                      padding: 0,
+                      borderTopLeftRadius: 14,
+                      borderTopRightRadius: 14,
+                      borderBottomLeftRadius: 14,
+                      borderBottomRightRadius: 14,
+                      shadowOpacity: 0,
+                      shadowRadius: 0,
+                      shadowOffset: { width: 0, height: 0 },
+                      elevation: 0,
                     }}
                   >
-                    <TotlText
-                      style={{
-                        color: t.color.text,
-                        fontFamily: 'Gramatika-Medium',
-                        fontSize: 14,
-                        lineHeight: 14,
-                        letterSpacing: 0.6,
-                      }}
-                      numberOfLines={1}
+                  <View style={{ borderRadius: 14, overflow: 'hidden' }}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`${headerHome} versus ${headerAway}`}
+                      onPress={() => handleToggleFixture(fixtureId)}
+                      style={({ pressed }) => ({
+                        paddingHorizontal: 16,
+                        paddingTop: 17,
+                        paddingBottom: 17,
+                        backgroundColor: '#FFFFFF',
+                        opacity: pressed ? 0.96 : 1,
+                      })}
                     >
-                      {String(g.date ?? '').toUpperCase()}
-                    </TotlText>
-                  </View>
+                      <View>
+                        {isCorrectPick ? (
+                          <View
+                            style={{
+                              position: 'absolute',
+                              left: 2,
+                              top: 0,
+                              width: 28,
+                              height: 28,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              zIndex: 2,
+                            }}
+                          >
+                            <Ionicons name="checkmark-sharp" size={24} color="#16A34A" />
+                          </View>
+                        ) : isIncorrectPick ? (
+                          <View
+                            style={{
+                              position: 'absolute',
+                              left: 2,
+                              top: 0,
+                              width: 28,
+                              height: 28,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              zIndex: 2,
+                            }}
+                          >
+                            <Ionicons name="close-sharp" size={24} color="#DC2626" />
+                          </View>
+                        ) : null}
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+                            <TotlText numberOfLines={1} style={{ fontWeight: '800', color: t.color.text, flexShrink: 1, textAlign: 'right' }}>
+                              {headerHome}
+                            </TotlText>
+                          </View>
 
-                  {g.fixtures.map((f: Fixture, idx: number) => (
-                    <View key={f.id} style={{ position: 'relative' }}>
-                      {idx < g.fixtures.length - 1 ? (
-                        <View
+                          <View style={{ minWidth: 98, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                              {homeBadge ? <Image source={homeBadge} style={{ width: 22, height: 22, marginRight: 4 }} /> : null}
+                              <TotlText style={{ fontWeight: '900', color: t.color.text }}>{headerPrimary}</TotlText>
+                              {awayBadge ? <Image source={awayBadge} style={{ width: 22, height: 22, marginLeft: 4 }} /> : null}
+                            </View>
+                          </View>
+
+                          <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}>
+                            <TotlText numberOfLines={1} style={{ fontWeight: '800', color: t.color.text, flexShrink: 1, textAlign: 'left' }}>
+                              {headerAway}
+                            </TotlText>
+                          </View>
+                        </View>
+
+                        {headerSecondary ? (
+                          <View style={{ alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
+                            <TotlText variant="microMuted">{headerSecondary}</TotlText>
+                          </View>
+                        ) : null}
+                      </View>
+                    </Pressable>
+
+                    <View>
+                      <FixtureCardDetailsRow f={f} />
+                      <View
+                        style={{
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          paddingTop: 4,
+                          paddingBottom: 12,
+                          backgroundColor: '#FFFFFF',
+                        }}
+                      >
+                        <TotlText
                           style={{
-                            position: 'absolute',
-                            left: 16,
-                            right: 16,
-                            bottom: 0,
-                            height: 1,
-                            backgroundColor: 'rgba(148,163,184,0.18)',
-                            zIndex: 2,
+                            color: '#64748B',
+                            fontFamily: 'Gramatika-Medium',
+                            fontSize: 13,
+                            lineHeight: 14,
+                            letterSpacing: 0.4,
                           }}
-                        />
-                      ) : null}
-                      <FixtureCardRow f={f} />
+                          numberOfLines={1}
+                        >
+                          {fixtureDateTimeLabel(f.kickoff_time ?? null)}
+                        </TotlText>
+                      </View>
                     </View>
-                  ))}
+                  </View>
+                  </Card>
                 </View>
-              </Card>
-            </View>
-          ))
+                </Animated.View>
+              </Reanimated.View>
+            );
+          })}
+          </View>
         )}
         {__DEV__ ? (
           <View style={{ marginTop: 12 }}>

@@ -160,7 +160,7 @@ const CLUBS: Record<
   'sunderland': {
     medium: 'Sunderland',
     slug: 'sunderland',
-    aliases: ['sunderland', 'sunderland fc', 'sun'],
+    aliases: ['sunderland', 'sunderland afc', 'sunderland a f c', 'sunderland fc', 'sun'],
   },
   'burnley': {
     medium: 'Burnley',

@@ -6,7 +6,6 @@ import WinnerShimmer from './WinnerShimmer';
 import { TEAM_BADGES } from '../lib/teamBadges';
 import { areTeamNamesSimilar, getMediumName } from '../../../../src/lib/teamNames';
 import { formatLocalTimeHHmm } from '../lib/dateTime';
-import { Ionicons } from '@expo/vector-icons';
 
 export type Pick = 'H' | 'D' | 'A';
 export type LiveStatus = 'TIMED' | 'IN_PLAY' | 'PAUSED' | 'FINISHED' | 'SCHEDULED';
@@ -80,6 +79,7 @@ export default function FixtureCard({
   onPick,
   pickButtonsDisabled = false,
   variant = 'standalone',
+  detailsOnly = false,
 }: {
   fixture: FixtureLike;
   liveScore?: LiveScoreLike | null;
@@ -96,6 +96,8 @@ export default function FixtureCard({
    * - `grouped`: renders borderless, intended to sit inside a parent `Card` list
    */
   variant?: 'standalone' | 'grouped';
+  /** In grouped stacks, reveal only scorers/tabs without repeating matchup header. */
+  detailsOnly?: boolean;
 }) {
   const t = useTokens();
   const BADGE_SIZE = 20; // ~10% bigger than 18
@@ -178,7 +180,11 @@ export default function FixtureCard({
     return { bg: t.color.surface2, border: t.color.border, text: t.color.text, isPicked, isCorrect, isWrong, isCorrectResult };
   };
 
-  const renderGoalsTimeline = (teamCandidates: string[], align: 'flex-start' | 'flex-end') => {
+  const renderGoalsTimeline = (
+    teamCandidates: string[],
+    align: 'flex-start' | 'flex-end',
+    compact = false
+  ) => {
     if (!showScore) return null;
     const goals = parseGoals((ls as any)?.goals);
     if (!goals.length) return null;
@@ -209,7 +215,7 @@ export default function FixtureCard({
     });
 
     return (
-      <View style={{ marginTop: 10, marginBottom: 6, alignItems: align }}>
+      <View style={{ marginTop: compact ? 0 : 10, marginBottom: compact ? 0 : 6, alignItems: align }}>
         {lines.slice(0, 3).map((txt, idx) => (
           <TotlText key={`${txt}-${idx}`} variant="microMuted">
             {txt}
@@ -224,7 +230,7 @@ export default function FixtureCard({
     const pct = typeof pickPercentages?.[side] === 'number' ? Math.round(Number(pickPercentages?.[side])) : null;
     const commonStyle = {
       flex: 1,
-      height: 48,
+      height: 54,
       borderRadius: 12,
       borderWidth: 2,
       borderColor: s.border,
@@ -234,7 +240,6 @@ export default function FixtureCard({
       position: 'relative' as const,
     };
 
-    const showWrongX = s.isWrong && isFinished;
     const text = (
       <View style={{ alignItems: 'center', justifyContent: 'center' }}>
         <TotlText
@@ -265,35 +270,6 @@ export default function FixtureCard({
             {`${pct}%`}
           </TotlText>
         ) : null}
-      </View>
-    );
-
-    const wrongX = (
-      <View
-        style={{
-          ...commonStyle,
-          backgroundColor: '#FFDFDE',
-          borderWidth: 2,
-          borderColor: '#FFCAC9',
-        }}
-      >
-        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="close" size={24} color="#FF5E5C" />
-          {pct !== null ? (
-            <TotlText
-              variant="microMuted"
-              style={{
-                color: '#FF5E5C',
-                fontWeight: '700',
-                fontSize: 11,
-                lineHeight: 12,
-                marginTop: 1,
-              }}
-            >
-              {`${pct}%`}
-            </TotlText>
-          ) : null}
-        </View>
       </View>
     );
 
@@ -334,7 +310,7 @@ export default function FixtureCard({
       );
     }
 
-    return wrap(showWrongX ? wrongX : <View style={{ backgroundColor: s.bg, ...commonStyle }}>{text}</View>);
+    return wrap(<View style={{ backgroundColor: s.bg, ...commonStyle }}>{text}</View>);
   };
 
   return (
@@ -354,6 +330,7 @@ export default function FixtureCard({
               ) : null}
 
               {/* Teams + score */}
+              {!detailsOnly ? (
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: isOngoing ? 16 : 0 }}>
                 {/* Home */}
                 <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end', paddingRight: 8 }}>
@@ -418,6 +395,25 @@ export default function FixtureCard({
                   {renderGoalsTimeline([awayName, String(fixture.away_team ?? ''), String(fixture.away_name ?? ''), awayCode], 'flex-start')}
                 </View>
               </View>
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: isOngoing ? 16 : 0 }}>
+                  <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end', paddingRight: 8 }}>
+                    {renderGoalsTimeline(
+                      [homeName, String(fixture.home_team ?? ''), String(fixture.home_name ?? ''), homeCode],
+                      'flex-end',
+                      true
+                    )}
+                  </View>
+                  <View style={{ width: SCORE_COL_WIDTH }} />
+                  <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start', paddingLeft: 8 }}>
+                    {renderGoalsTimeline(
+                      [awayName, String(fixture.away_team ?? ''), String(fixture.away_name ?? ''), awayCode],
+                      'flex-start',
+                      true
+                    )}
+                  </View>
+                </View>
+              )}
 
               {/* Picks */}
               {showPickButtons ? (
@@ -436,7 +432,7 @@ export default function FixtureCard({
         </Card>
       ) : (
         // `grouped`: no outer card/border — parent list card handles borders & radius.
-        <View style={{ paddingVertical: 20 }}>
+        <View style={{ paddingTop: detailsOnly ? 0 : 20, paddingBottom: detailsOnly ? 10 : 20 }}>
           {/* LIVE indicator */}
           {isOngoing ? (
             <View style={{ position: 'absolute', left: 16, top: 10, flexDirection: 'row', alignItems: 'center' }}>
@@ -448,6 +444,7 @@ export default function FixtureCard({
           ) : null}
 
           {/* Teams + score */}
+          {!detailsOnly ? (
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: isOngoing ? 16 : 0 }}>
             {/* Home */}
             <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end', paddingRight: 8 }}>
@@ -510,10 +507,29 @@ export default function FixtureCard({
               {renderGoalsTimeline([awayName, String(fixture.away_team ?? ''), String(fixture.away_name ?? ''), awayCode], 'flex-start')}
             </View>
           </View>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: detailsOnly ? 0 : isOngoing ? 16 : 0 }}>
+              <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end', paddingRight: 8 }}>
+                {renderGoalsTimeline(
+                  [homeName, String(fixture.home_team ?? ''), String(fixture.home_name ?? ''), homeCode],
+                  'flex-end',
+                  true
+                )}
+              </View>
+              <View style={{ width: SCORE_COL_WIDTH }} />
+              <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start', paddingLeft: 8 }}>
+                {renderGoalsTimeline(
+                  [awayName, String(fixture.away_team ?? ''), String(fixture.away_name ?? ''), awayCode],
+                  'flex-start',
+                  true
+                )}
+              </View>
+            </View>
+          )}
 
           {/* Picks */}
           {showPickButtons ? (
-            <View style={{ flexDirection: 'row', marginTop: 12, paddingHorizontal: 16 }}>
+            <View style={{ flexDirection: 'row', marginTop: detailsOnly ? 20 : 12, paddingHorizontal: 16 }}>
               <View style={{ flex: 1, marginRight: 12 }}>
                 <ButtonChip side="H" label="Home Win" />
               </View>
