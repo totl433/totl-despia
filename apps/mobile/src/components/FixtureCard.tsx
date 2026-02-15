@@ -75,6 +75,7 @@ export default function FixtureCard({
   liveScore,
   pick,
   result,
+  pickPercentages,
   showPickButtons = true,
   onPick,
   pickButtonsDisabled = false,
@@ -85,6 +86,8 @@ export default function FixtureCard({
   pick?: Pick;
   /** Optional authoritative outcome (e.g. from `app_gw_results`). */
   result?: Pick | null;
+  /** Optional community pick percentages per outcome for this fixture. */
+  pickPercentages?: Partial<Record<Pick, number>> | null;
   showPickButtons?: boolean;
   onPick?: (pick: Pick) => void;
   pickButtonsDisabled?: boolean;
@@ -218,6 +221,7 @@ export default function FixtureCard({
 
   const ButtonChip = ({ side, label }: { side: Pick; label: string }) => {
     const s = buttonStyle(side);
+    const pct = typeof pickPercentages?.[side] === 'number' ? Math.round(Number(pickPercentages?.[side])) : null;
     const commonStyle = {
       flex: 1,
       height: 48,
@@ -232,20 +236,36 @@ export default function FixtureCard({
 
     const showWrongX = s.isWrong && isFinished;
     const text = (
-      <TotlText
-        variant="body"
-        style={{
-          color: s.text,
-          fontFamily: 'Gramatika-Medium',
-          fontStyle: 'normal',
-          fontWeight: '500',
-          fontSize: 14,
-          lineHeight: 17,
-          letterSpacing: -0.004,
-        }}
-      >
-        {label}
-      </TotlText>
+      <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <TotlText
+          variant="body"
+          style={{
+            color: s.text,
+            fontFamily: 'Gramatika-Medium',
+            fontStyle: 'normal',
+            fontWeight: '500',
+            fontSize: 14,
+            lineHeight: 17,
+            letterSpacing: -0.004,
+          }}
+        >
+          {label}
+        </TotlText>
+        {pct !== null ? (
+          <TotlText
+            variant="microMuted"
+            style={{
+              color: s.text,
+              fontWeight: '700',
+              fontSize: 11,
+              lineHeight: 12,
+              marginTop: 1,
+            }}
+          >
+            {`${pct}%`}
+          </TotlText>
+        ) : null}
+      </View>
     );
 
     const wrongX = (
@@ -257,7 +277,23 @@ export default function FixtureCard({
           borderColor: '#FFCAC9',
         }}
       >
-        <Ionicons name="close" size={24} color="#FF5E5C" />
+        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="close" size={24} color="#FF5E5C" />
+          {pct !== null ? (
+            <TotlText
+              variant="microMuted"
+              style={{
+                color: '#FF5E5C',
+                fontWeight: '700',
+                fontSize: 11,
+                lineHeight: 12,
+                marginTop: 1,
+              }}
+            >
+              {`${pct}%`}
+            </TotlText>
+          ) : null}
+        </View>
       </View>
     );
 

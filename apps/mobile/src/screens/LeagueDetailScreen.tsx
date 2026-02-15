@@ -170,23 +170,38 @@ export default function LeagueDetailScreen() {
   const seasonShowUnicorns = members.length >= 3;
   const [seasonShowForm, setSeasonShowForm] = React.useState(false);
   const [seasonRulesOpen, setSeasonRulesOpen] = React.useState(false);
+  const { data: resolvedLeagueStartGw } = useQuery<number>({
+    enabled: typeof currentGw === 'number' && !!leagueId,
+    queryKey: [
+      'leagueStartGw',
+      leagueId,
+      currentGw,
+      String(leagueMeta?.name ?? params.name ?? ''),
+      String(leagueMeta?.created_at ?? ''),
+    ],
+    queryFn: async () =>
+      resolveLeagueStartGw(
+        {
+          id: leagueId,
+          name: String(leagueMeta?.name ?? params.name ?? ''),
+          created_at: typeof leagueMeta?.created_at === 'string' ? leagueMeta.created_at : undefined,
+        },
+        currentGw as number
+      ),
+    staleTime: 5 * 60_000,
+  });
+  const seasonStartGwResolved = typeof resolvedLeagueStartGw === 'number';
+  const seasonStartGw = typeof resolvedLeagueStartGw === 'number' ? resolvedLeagueStartGw : 1;
+  const seasonIsLateStartingLeague = seasonStartGw > 1;
+  const tableAvailableGws = React.useMemo(() => availableGws.filter((gw) => gw >= seasonStartGw), [availableGws, seasonStartGw]);
 
-  const seasonIsLateStartingLeague = React.useMemo(() => {
-    const name = String(params.name ?? '');
-    const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League'];
-    const gw7StartLeagues = ['The Bird league'];
-    const gw8StartLeagues = ['gregVjofVcarl', 'Let Down'];
-    return !!(name && !specialLeagues.includes(name) && !gw7StartLeagues.includes(name) && !gw8StartLeagues.includes(name));
-  }, [params.name]);
-
-  const seasonStartGw = React.useMemo(() => {
-    const name = String(params.name ?? '');
-    const gw7StartLeagues = ['The Bird league'];
-    const gw8StartLeagues = ['gregVjofVcarl', 'Let Down'];
-    if (gw7StartLeagues.includes(name)) return 7;
-    if (gw8StartLeagues.includes(name)) return 8;
-    return 1;
-  }, [params.name]);
+  React.useEffect(() => {
+    if (!seasonStartGwResolved) return;
+    if (selectedGw === null) return;
+    if (selectedGw >= seasonStartGw) return;
+    const nextGw = tableAvailableGws[tableAvailableGws.length - 1] ?? seasonStartGw;
+    setSelectedGw(nextGw);
+  }, [seasonStartGw, seasonStartGwResolved, selectedGw, tableAvailableGws]);
 
   const handleEditBadge = React.useCallback(async () => {
     const leagueName = String(leagueMeta?.name ?? params.name ?? 'Mini league');
@@ -415,8 +430,8 @@ export default function LeagueDetailScreen() {
   const { data: seasonRows, isLoading: seasonLoading, refetch: refetchSeasonRows, isRefetching: seasonRowsRefetching } = useQuery<
     LeagueSeasonRow[]
   >({
-    enabled: tab === 'season' && members.length > 0 && typeof currentGw === 'number',
-    queryKey: ['leagueSeasonTable', leagueId, currentGw, members.map((m: any) => String(m.id ?? '')).join(',')],
+    enabled: tab === 'season' && members.length > 0 && typeof currentGw === 'number' && seasonStartGwResolved,
+    queryKey: ['leagueSeasonTable', leagueId, currentGw, seasonStartGw, members.map((m: any) => String(m.id ?? '')).join(',')],
     queryFn: async () => {
       const memberIds = members.map((m: any) => String(m.id));
       const showUnicorns = memberIds.length >= 3;
@@ -578,6 +593,11 @@ export default function LeagueDetailScreen() {
       out.sort((a, b) => b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name));
       return out;
     },
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnReconnect: true,
+    // Keep season standings fresh while user is on this tab.
+    refetchInterval: tab === 'season' ? 20_000 : false,
   });
 
   const picksGw = React.useMemo(() => {
@@ -604,9 +624,14 @@ export default function LeagueDetailScreen() {
     refetch: refetchPredictions,
     isRefetching: predictionsRefetching,
   } = useQuery<LeaguePredictionsData>({
-    enabled: tab === 'predictions' && members.length > 0 && typeof picksGw === 'number' && picksGw >= seasonStartGw,
+    enabled:
+      tab === 'predictions' &&
+      members.length > 0 &&
+      typeof picksGw === 'number' &&
+      seasonStartGwResolved &&
+      picksGw >= seasonStartGw,
     // NOTE: v2 key to invalidate older persisted cache that contained Map/Set (non-serializable).
-    queryKey: ['leaguePredictionsV2', leagueId, picksGw, members.map((m: any) => String(m.id)).join(',')],
+    queryKey: ['leaguePredictionsV2', leagueId, picksGw, seasonStartGw, members.map((m: any) => String(m.id)).join(',')],
     queryFn: async () => {
       const gw = picksGw as number;
       const memberIds = members.map((m: any) => String(m.id));
@@ -732,7 +757,9 @@ export default function LeagueDetailScreen() {
 
     if (tab === 'predictions') {
       const actions: Array<Promise<any>> = [refetchHome(), refetchMe()];
-      if (members.length > 0 && typeof picksGw === 'number' && picksGw >= seasonStartGw) actions.push(refetchPredictions());
+      if (members.length > 0 && typeof picksGw === 'number' && seasonStartGwResolved && picksGw >= seasonStartGw) {
+        actions.push(refetchPredictions());
+      }
       void Promise.all(actions);
     }
   }, [
@@ -745,6 +772,7 @@ export default function LeagueDetailScreen() {
     refetchPredictions,
     refetchSeasonRows,
     refetchTable,
+    seasonStartGwResolved,
     seasonStartGw,
     selectedGw,
     tab,
@@ -806,7 +834,34 @@ export default function LeagueDetailScreen() {
             title={String(params.name ?? '')}
             subtitle={typeof selectedGw === 'number' ? `Gameweek ${selectedGw}` : viewingGw ? `Gameweek ${viewingGw}` : 'Gameweek'}
             avatarUri={headerAvatarUri}
-            onPressBack={() => navigation.goBack()}
+            onPressBack={() => {
+              // Prefer native back-stack pop to avoid chat <-> league navigation loops.
+              if (navigation?.canGoBack?.()) {
+                navigation.goBack();
+                return;
+              }
+              if (params.returnTo === 'chat2') {
+                navigation.navigate('Chat2Thread' as any, {
+                  leagueId: String(params.leagueId),
+                  name: String(params.name ?? ''),
+                });
+                return;
+              }
+              if (params.returnTo === 'chat') {
+                navigation.navigate('ChatThread' as any, {
+                  leagueId: String(params.leagueId),
+                  name: String(params.name ?? ''),
+                });
+                return;
+              }
+              navigation.goBack();
+            }}
+            onPressChat={() =>
+              navigation.navigate('Chat2Thread' as any, {
+                leagueId,
+                name: String(leagueMeta?.name ?? params.name ?? ''),
+              })
+            }
             onPressMenu={() => setMenuOpen(true)}
           />
 
@@ -843,7 +898,7 @@ export default function LeagueDetailScreen() {
                 />
 
                 <LeagueGwControlsRow
-                  availableGws={availableGws}
+                  availableGws={tableAvailableGws}
                   selectedGw={selectedGw}
                   onChangeGw={setSelectedGw}
                   onPressRules={() => setRulesOpen(true)}

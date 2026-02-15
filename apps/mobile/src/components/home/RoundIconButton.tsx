@@ -17,8 +17,8 @@ export default function RoundIconButton({
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
-        width: 46,
-        height: 46,
+        width: 38,
+        height: 38,
         borderRadius: 999,
         backgroundColor: t.color.brand,
         borderWidth: 1,
@@ -31,7 +31,7 @@ export default function RoundIconButton({
       })}
     >
       {imageUri ? (
-        <Image source={{ uri: imageUri }} style={{ width: 46, height: 46, resizeMode: 'cover' }} />
+        <Image source={{ uri: imageUri }} style={{ width: 38, height: 38, resizeMode: 'cover' }} />
       ) : (
         <Image source={icon} style={{ width: 22, height: 22, resizeMode: 'contain' }} />
       )}

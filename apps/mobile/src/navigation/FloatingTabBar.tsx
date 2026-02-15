@@ -13,17 +13,6 @@ function getFocusedRouteName(route: any): string | null {
   return child?.name ? String(child.name) : null;
 }
 
-function HomeIcon({ color }: { color: string }) {
-  return (
-    <Svg width={24} height={24} viewBox="0 0 36 36" fill="none">
-      <Path
-        d="M7.00586 18.7812C6.38086 18.7812 6 18.3516 6 17.8438C6 17.5703 6.12695 17.2871 6.38086 17.0723L16.5566 8.52734C16.9863 8.17578 17.4551 8 17.9238 8C18.3926 8 18.8613 8.17578 19.291 8.52734L24.1152 12.5898V10.8516C24.1152 10.4219 24.4082 10.1387 24.8477 10.1387H26.166C26.5957 10.1387 26.8789 10.4219 26.8789 10.8516V14.9043L29.4668 17.0723C29.7207 17.2871 29.8477 17.5703 29.8477 17.8438C29.8477 18.3516 29.4668 18.7812 28.8516 18.7812C28.5488 18.7812 28.2754 18.625 28.041 18.4199L26.8789 17.4531V26.623C26.8789 28.0684 26.0098 28.918 24.5352 28.918H11.3223C9.83789 28.918 8.96875 28.0684 8.96875 26.623V17.4531L7.80664 18.4199C7.57227 18.625 7.30859 18.7812 7.00586 18.7812ZM20.7461 21.3301V27.0039H24.0273C24.6328 27.0039 24.9648 26.6621 24.9648 26.0469V15.8418L18.3438 10.2852C18.207 10.168 18.0605 10.1191 17.9238 10.1191C17.7871 10.1191 17.6406 10.168 17.5137 10.2852L10.8828 15.8418V26.0469C10.8828 26.6621 11.2148 27.0039 11.8203 27.0039H15.1016V21.3301C15.1016 20.8711 15.4043 20.5781 15.8633 20.5781H19.9941C20.4531 20.5781 20.7461 20.8711 20.7461 21.3301Z"
-        fill={color}
-      />
-    </Svg>
-  );
-}
-
 function PredictionsIcon({ color }: { color: string }) {
   return (
     <Svg width={24} height={24} viewBox="0 0 36 36" fill="none">
@@ -46,17 +35,6 @@ function MiniLeaguesIcon({ color }: { color: string }) {
   );
 }
 
-function ChatIcon({ color }: { color: string }) {
-  return (
-    <Svg width={24} height={24} viewBox="0 0 36 36" fill="none">
-      <Path
-        d="M19.0586 25.9746C17.0664 25.9746 15.709 25.2031 15.0938 23.7871L11.7832 26.707C11.1191 27.3027 10.709 27.5664 10.1621 27.5664C9.38086 27.5664 8.92188 27.0195 8.92188 26.1602V23.748H8.52148C5.68945 23.748 4 22.0684 4 19.1582V11.5898C4 8.67969 5.65039 7 8.58984 7H21.041C23.9805 7 25.6309 8.68945 25.6309 11.5898V11.873H28.2676C31.0801 11.873 32.6133 13.4355 32.6133 16.1895V21.7168C32.6133 24.4414 31.0996 25.9746 28.3262 25.9746H28.1504V28.2109C28.1504 29.0605 27.6914 29.6074 26.9199 29.6074C26.3926 29.6074 25.9434 29.3145 25.3086 28.7578L22.0566 25.9746H19.0586ZM10.6406 22.6348V25.418L13.7363 22.3516C14.0684 22.0098 14.3223 21.8828 14.7129 21.8438C14.7129 21.8047 14.7031 21.7656 14.7031 21.7266V16.1895C14.7031 13.4355 16.2461 11.873 19.0586 11.873H23.7168V11.6484C23.7168 9.85156 22.8281 8.91406 20.9824 8.91406H8.63867C6.79297 8.91406 5.91406 9.85156 5.91406 11.6484V19.0996C5.91406 20.8965 6.79297 21.834 8.63867 21.834H9.83984C10.3965 21.834 10.6406 22.0488 10.6406 22.6348ZM19.2051 24.0996H22.0176C22.4668 24.0996 22.8477 24.2559 23.2188 24.6074L26.4316 27.5176V24.9785C26.4316 24.3926 26.793 24.0996 27.2715 24.0996H28.1211C29.9082 24.0996 30.7188 23.2207 30.7188 21.5117V16.3359C30.7188 14.627 29.9082 13.748 28.1211 13.748H19.2051C17.418 13.748 16.6074 14.627 16.6074 16.3359V21.5117C16.6074 23.2207 17.418 24.0996 19.2051 24.0996ZM20.3184 17.9961C19.8691 17.9961 19.5469 17.6445 19.5469 17.2148C19.5469 16.7656 19.8691 16.4336 20.3184 16.4336H27.0566C27.5059 16.4336 27.8379 16.7656 27.8379 17.2148C27.8379 17.6445 27.5059 17.9961 27.0566 17.9961H20.3184ZM20.3184 21.5605C19.8691 21.5605 19.5469 21.2285 19.5469 20.7891C19.5469 20.3496 19.8691 19.998 20.3184 19.998H25.2109C25.6504 19.998 25.9922 20.3496 25.9922 20.7891C25.9922 21.2285 25.6504 21.5605 25.2109 21.5605H20.3184Z"
-        fill={color}
-      />
-    </Svg>
-  );
-}
-
 function LeaderboardsIcon({ color }: { color: string }) {
   return (
     <Svg width={24} height={24} viewBox="0 0 36 36" fill="none">
@@ -69,14 +47,12 @@ function LeaderboardsIcon({ color }: { color: string }) {
 }
 
 const WEB_TABS: Array<{
-  label: 'Home' | 'Predictions' | 'Mini Leagues' | 'Chat' | '2025/26';
-  routeName: 'Home' | 'Predictions' | 'Leagues' | 'Chat' | 'Global';
+  label: 'Predictions' | 'Mini Leagues' | '2025/26';
+  routeName: 'Predictions' | 'Leagues' | 'Global';
   renderIcon: (args: { color: string }) => React.ReactElement;
 }> = [
-  { label: 'Home', routeName: 'Home', renderIcon: ({ color }) => <HomeIcon color={color} /> },
   { label: 'Predictions', routeName: 'Predictions', renderIcon: ({ color }) => <PredictionsIcon color={color} /> },
   { label: 'Mini Leagues', routeName: 'Leagues', renderIcon: ({ color }) => <MiniLeaguesIcon color={color} /> },
-  { label: 'Chat', routeName: 'Chat', renderIcon: ({ color }) => <ChatIcon color={color} /> },
   { label: '2025/26', routeName: 'Global', renderIcon: ({ color }) => <LeaderboardsIcon color={color} /> },
 ];
 
@@ -92,8 +68,6 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
   const hideForPredictionsFlow = activeTabRoute?.name === 'Predictions' && (activeTabRoute as any)?.params?.hideTabBar === true;
   const shouldHide =
     (activeTabRoute?.name === 'Leagues' && (nested === 'LeagueDetail' || nested === 'LeagueChat')) ||
-    (activeTabRoute?.name === 'Chat' && nested === 'ChatThread') ||
-    (activeTabRoute?.name === 'Chat' && nested === 'Chat2Thread') ||
     activeTabRoute?.name === 'Profile' ||
     hideForPredictionsFlow;
 
@@ -175,8 +149,8 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
         {WEB_TABS.map((tab, idx) => {
           const route = state.routes.find((r) => r.name === tab.routeName);
           const isActive = idx === activeIndex;
-          const color = isActive ? t.color.brand : '#353536';
-          const showDot = tab.routeName === 'Chat' && showChatDot;
+          const color = isActive ? '#0F172A' : '#94A3B8';
+          const showDot = false;
           // TS note: some monorepo setups end up with duplicated React type packages,
           // causing ReactElement/ReactNode incompatibilities across packages.
           // We keep the runtime behavior fully typed, and cast at the final render boundary.

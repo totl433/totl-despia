@@ -167,7 +167,7 @@ export default function ChatThreadScreen() {
               icon: <Ionicons name="trophy-outline" size={18} color="#000000" />,
               onPress: () => {
                 setMenuOpen(false);
-                navigation.navigate('LeagueDetail' as any, { leagueId, name: leagueName });
+                navigation.navigate('LeagueDetail' as any, { leagueId, name: leagueName, returnTo: 'chat' });
               },
             },
           ]}

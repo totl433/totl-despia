@@ -54,7 +54,6 @@ export default function MiniLeagueListItem({
   membersPreview,
   memberCount,
   myRank,
-  rankDelta,
   unreadCount,
   onPress,
 }: {
@@ -65,7 +64,6 @@ export default function MiniLeagueListItem({
   membersPreview: Array<{ id: string; name: string; avatarUri?: string | null; hasSubmitted?: boolean }>;
   memberCount?: number | null;
   myRank?: number | null;
-  rankDelta?: number | null;
   unreadCount?: number | null;
   onPress: () => void;
 }) {
@@ -85,15 +83,7 @@ export default function MiniLeagueListItem({
     return `${n}th`;
   }
 
-  const rankArrow =
-    typeof rankDelta === 'number' && Number.isFinite(rankDelta) ? (rankDelta > 0 ? 'up' : rankDelta < 0 ? 'down' : 'same') : 'same';
-  const arrowColor = rankArrow === 'up' ? '#1C8376' : rankArrow === 'down' ? '#DC2626' : t.color.muted;
-  const arrowIcon = rankArrow === 'up' ? 'arrow-up' : rankArrow === 'down' ? 'arrow-down' : 'remove';
-  const deltaLabel =
-    typeof rankDelta === 'number' && Number.isFinite(rankDelta) && rankDelta !== 0 ? String(Math.abs(Math.round(rankDelta))) : '0';
   const rankLabel = typeof myRank === 'number' && Number.isFinite(myRank) ? ordinal(Math.max(1, Math.round(myRank))) : '—';
-
-  const submittedMembers = React.useMemo(() => membersPreview.filter((m) => !!m.hasSubmitted), [membersPreview]);
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.96 : 1, transform: [{ scale: pressed ? 0.995 : 1 }] })}>
@@ -125,13 +115,13 @@ export default function MiniLeagueListItem({
           </View>
 
           <View style={{ flex: 1, minWidth: 0 }}>
-            <TotlText variant="body" numberOfLines={1} style={{ fontWeight: '900' }}>
+            <TotlText variant="body" numberOfLines={1} style={{ fontWeight: '700' }}>
               {title}
             </TotlText>
 
-            {/* Avatars directly under the league name */}
+            {/* Avatars under title */}
             <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center' }}>
-              {submittedMembers.map((m, idx) => (
+              {membersPreview.map((m, idx) => (
                 <View
                   key={m.id}
                   style={{
@@ -145,19 +135,18 @@ export default function MiniLeagueListItem({
               ))}
             </View>
 
-            {/* Metrics row under avatars (Despia-style 103×16 strip) */}
+            {/* Metrics row under avatars */}
             <View style={{ marginTop: 8 }}>
-              <View style={{ width: 103, height: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ minHeight: 16, flexDirection: 'row', alignItems: 'flex-end', gap: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3 }}>
                   <Ionicons name="people-outline" size={14} color={t.color.muted} />
-                  <TotlText style={{ fontSize: 14, lineHeight: 16, color: t.color.text, fontWeight: '700' }}>
+                  <TotlText style={{ fontSize: 14, lineHeight: 14, color: t.color.text, fontWeight: '700' }}>
                     {typeof memberCount === 'number' && Number.isFinite(memberCount) ? String(memberCount) : '—'}
                   </TotlText>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <TotlText style={{ fontSize: 14, lineHeight: 16, color: t.color.text, fontWeight: '700' }}>{rankLabel}</TotlText>
-                  <Ionicons name={arrowIcon as any} size={14} color={arrowColor} />
-                  <TotlText style={{ fontSize: 14, lineHeight: 16, color: arrowColor, fontWeight: '700' }}>{deltaLabel}</TotlText>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3 }}>
+                  <Ionicons name="medal-outline" size={14} color={t.color.muted} />
+                  <TotlText style={{ fontSize: 14, lineHeight: 14, color: t.color.text, fontWeight: '700' }}>{rankLabel}</TotlText>
                 </View>
               </View>
             </View>

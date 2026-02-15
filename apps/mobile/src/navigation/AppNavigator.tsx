@@ -13,16 +13,21 @@ import CreateLeagueScreen from '../screens/CreateLeagueScreen';
 import ChatThreadScreen from '../screens/ChatThreadScreen';
 import Chat2ThreadScreen from '../screens/Chat2ThreadScreen';
 import ProfileNavigator from './ProfileNavigator';
+import PredictionsScreen from '../screens/PredictionsScreen';
+import Chat2Navigator from './Chat2Navigator';
 
 export type RootStackParamList = {
   Tabs: undefined;
-  LeagueDetail: { leagueId: string; name: string };
+  LeagueDetail: { leagueId: string; name: string; returnTo?: 'chat' | 'chat2' };
   LeagueChat: { leagueId: string; name: string };
   CreateLeague: undefined;
   ChatThread: { leagueId: string; name: string };
   Chat2Thread: { leagueId: string; name: string };
+  ChatHub: undefined;
   Profile: undefined;
-  GameweekResults: { gw: number };
+  PredictionsFlow: undefined;
+  PredictionsTestFlow: undefined;
+  GameweekResults: { gw: number; mode?: 'roundup' | 'fixturesShare' };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -143,23 +148,49 @@ export default function AppNavigator() {
         <Stack.Screen name="CreateLeague" component={CreateLeagueScreen} />
         <Stack.Screen name="ChatThread" component={ChatThreadScreen} />
         <Stack.Screen
+          name="ChatHub"
+          component={Chat2Navigator}
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="PredictionsFlow"
+          component={PredictionsScreen}
+          options={{
+            presentation: 'fullScreenModal',
+          }}
+        />
+        <Stack.Screen
+          name="PredictionsTestFlow"
+          component={PredictionsScreen}
+          options={{
+            presentation: 'fullScreenModal',
+          }}
+        />
+        <Stack.Screen
           name="Chat2Thread"
           component={Chat2ThreadScreen}
           options={{
-            headerShown: true,
-            headerShadowVisible: false,
-            headerStyle: { backgroundColor: t.color.background },
-            headerTintColor: t.color.text,
-            headerTitle: '',
-            headerTitleAlign: 'left',
+            headerShown: false,
           }}
         />
         <Stack.Screen name="Profile" component={ProfileNavigator} />
         <Stack.Screen
           name="GameweekResults"
           component={GameweekResultsModalScreen}
-          options={{
-            presentation: 'fullScreenModal',
+          options={({ route }) => {
+            const mode = route.params?.mode;
+            if (mode === 'fixturesShare') {
+              return {
+                presentation: 'transparentModal',
+                animation: 'fade',
+                contentStyle: { backgroundColor: 'transparent' },
+              };
+            }
+            return {
+              presentation: 'fullScreenModal',
+            };
           }}
         />
       </Stack.Navigator>

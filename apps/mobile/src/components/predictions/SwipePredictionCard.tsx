@@ -1,11 +1,12 @@
 import React from 'react';
 import { Image, View } from 'react-native';
-import Svg, { Polygon } from 'react-native-svg';
+import Svg, { ClipPath, Defs, G, Polygon, Rect, SvgUri } from 'react-native-svg';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import type { Fixture } from '@totl/domain';
 import { TEAM_BADGES } from '../../lib/teamBadges';
 import { getMediumName } from '../../../../../src/lib/teamNames';
 import { getTeamColor, normalizeTeamCode } from '../../lib/teamColors';
+import { getStripedPatternFallbackColor, getTeamPatternUri, hasStripedPattern } from '../../lib/teamPatterns';
 import { formatLocalDateTimeLabel } from '../../lib/dateTime';
 
 function formatKickoffLabel(kickoff: string | null | undefined): string | null {
@@ -34,7 +35,20 @@ function FormDots({ form }: { form: string | null | undefined }) {
   );
 }
 
-export default function SwipePredictionCard({
+const STRIPE_COLORS: Record<string, { primary: string; secondary: string }> = {
+  BOU: { primary: '#DA291C', secondary: '#111111' },
+  BRE: { primary: '#E30613', secondary: '#F7F7F7' },
+  BHA: { primary: '#0057B8', secondary: '#F7F7F7' },
+  CRY: { primary: '#1B458F', secondary: '#C4122E' },
+  NEW: { primary: '#101010', secondary: '#F3F4F6' },
+  SUN: { primary: '#E03A3E', secondary: '#F7F7F7' },
+};
+
+const STRIPE_ANGLE = 35;
+const STRIPE_BAND_WIDTH = 14;
+const STRIPE_BAND_STEP = 28;
+
+function SwipePredictionCard({
   fixture,
   homeForm,
   awayForm,
@@ -60,6 +74,28 @@ export default function SwipePredictionCard({
   const kickoffLabel = formatKickoffLabel(fixture.kickoff_time ?? null);
   const homeColor = getTeamColor(homeCode, fixture.home_name ?? fixture.home_team ?? null);
   const awayColor = getTeamColor(awayCode, fixture.away_name ?? fixture.away_team ?? null);
+  const homePatternUri = getTeamPatternUri(homeCode);
+  const awayPatternUri = getTeamPatternUri(awayCode);
+  const homeHasStripes = hasStripedPattern(homeCode);
+  const awayHasStripes = hasStripedPattern(awayCode);
+  const bothHaveStripes = homeHasStripes && awayHasStripes;
+  const awaySolidColor = bothHaveStripes ? getStripedPatternFallbackColor(awayCode) : null;
+  const finalAwayPatternUri = bothHaveStripes ? null : awayPatternUri;
+  const [diagonalAngle, setDiagonalAngle] = React.useState(45);
+  // Match Despia/web behavior:
+  // - striped patterns use fixed 35deg
+  // - non-striped follow card diagonal
+  // - away side offset by +45deg
+  const homeAngle = homeHasStripes ? STRIPE_ANGLE : diagonalAngle;
+  const awayAngle = awayHasStripes ? STRIPE_ANGLE : diagonalAngle + 45;
+  const homeScale = homeHasStripes ? 1 : 1.85;
+  const awayScale = awayHasStripes ? 1 : 1.85;
+  const homeStripe = STRIPE_COLORS[homeCode] ?? { primary: '#111111', secondary: '#F3F4F6' };
+  const awayStripe = STRIPE_COLORS[awayCode] ?? { primary: '#111111', secondary: '#F3F4F6' };
+  const stripeBandOffsets = React.useMemo(
+    () => Array.from({ length: 32 }, (_, i) => -260 + i * STRIPE_BAND_STEP),
+    []
+  );
 
   return (
     <Card
@@ -108,13 +144,80 @@ export default function SwipePredictionCard({
           minHeight: 160,
           backgroundColor: '#EEF4F3',
         }}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          if (width > 0 && height > 0) {
+            const nextAngle = (Math.atan2(height, width) * 180) / Math.PI;
+            setDiagonalAngle(nextAngle);
+          }
+        }}
       >
         <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <Polygon points="0,0 0,100 100,100" fill={homeColor} />
-          <Polygon points="0,0 100,0 100,100" fill={awayColor} />
+          <Defs>
+            <ClipPath id="homeClip">
+              <Polygon points="0,0 0,100 100,100" />
+            </ClipPath>
+            <ClipPath id="awayClip">
+              <Polygon points="0,0 100,0 100,100" />
+            </ClipPath>
+          </Defs>
+
+          {homeHasStripes ? (
+            <G clipPath="url(#homeClip)">
+              <Rect x={0} y={0} width={100} height={100} fill={homeStripe.secondary} />
+              <G transform={`translate(50 50) rotate(${homeAngle}) translate(-50 -50)`}>
+                {stripeBandOffsets.map((x) => (
+                  <Rect
+                    key={`home-stripe-${x}`}
+                    x={x}
+                    y={-220}
+                    width={STRIPE_BAND_WIDTH}
+                    height={540}
+                    fill={homeStripe.primary}
+                  />
+                ))}
+              </G>
+            </G>
+          ) : homePatternUri ? (
+            <G clipPath="url(#homeClip)">
+              <G transform={`translate(50 50) rotate(${homeAngle}) scale(${homeScale}) translate(-50 -50)`}>
+                <SvgUri uri={homePatternUri} x={0} y={0} width={100} height={100} />
+              </G>
+            </G>
+          ) : (
+            <Polygon points="0,0 0,100 100,100" fill={homeColor} />
+          )}
+
+          {awayHasStripes && !bothHaveStripes ? (
+            <G clipPath="url(#awayClip)">
+              <Rect x={0} y={0} width={100} height={100} fill={awayStripe.secondary} />
+              <G transform={`translate(50 50) rotate(${awayAngle}) translate(-50 -50)`}>
+                {stripeBandOffsets.map((x) => (
+                  <Rect
+                    key={`away-stripe-${x}`}
+                    x={x}
+                    y={-220}
+                    width={STRIPE_BAND_WIDTH}
+                    height={540}
+                    fill={awayStripe.primary}
+                  />
+                ))}
+              </G>
+            </G>
+          ) : finalAwayPatternUri ? (
+            <G clipPath="url(#awayClip)">
+              <G transform={`translate(50 50) rotate(${awayAngle}) scale(${awayScale}) translate(-50 -50)`}>
+                <SvgUri uri={finalAwayPatternUri} x={0} y={0} width={100} height={100} />
+              </G>
+            </G>
+          ) : (
+            <Polygon points="0,0 100,0 100,100" fill={awaySolidColor ?? awayColor} />
+          )}
         </Svg>
       </View>
     </Card>
   );
 }
+
+export default React.memo(SwipePredictionCard);
 

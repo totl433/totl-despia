@@ -75,33 +75,35 @@ export default function LeagueGwTable({
         </View>
 
         {rows.length ? (
-          rows.map((r, rowIdx) => (
-            <View
-              key={`${r.user_id}-${rowIdx}`}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingVertical: 10,
-                borderBottomWidth: rowIdx === rows.length - 1 ? 0 : 1,
-                borderBottomColor: 'rgba(148,163,184,0.12)',
-              }}
-            >
-              <TotlText variant="caption" style={{ width: 24, fontWeight: '700', color: t.color.muted }}>
-                {rowIdx + 1}
-              </TotlText>
-              <TotlText variant="caption" numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1 }}>
-                {r.name}
-              </TotlText>
-              <TotlText variant="caption" style={{ width: 56, textAlign: 'right', color: t.color.brand, fontWeight: '900' }}>
-                {r.score}
-              </TotlText>
-              {showUnicorns ? (
-                <TotlText variant="caption" style={{ width: 36, textAlign: 'right' }}>
-                  {r.unicorns}
+          rows.map((r, rowIdx) => {
+            return (
+              <View
+                key={`${r.user_id}-${rowIdx}`}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 10,
+                  borderBottomWidth: rowIdx === rows.length - 1 ? 0 : 1,
+                  borderBottomColor: 'rgba(148,163,184,0.12)',
+                }}
+              >
+                <TotlText variant="caption" style={{ width: 24, fontWeight: '700', color: t.color.muted }}>
+                  {rowIdx + 1}
                 </TotlText>
-              ) : null}
-            </View>
-          ))
+                <TotlText variant="caption" numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1 }}>
+                  {r.name}
+                </TotlText>
+                <TotlText variant="caption" style={{ width: 56, textAlign: 'right', color: t.color.brand, fontWeight: '900' }}>
+                  {r.score}
+                </TotlText>
+                {showUnicorns ? (
+                  <TotlText variant="caption" style={{ width: 36, textAlign: 'right' }}>
+                    {r.unicorns}
+                  </TotlText>
+                ) : null}
+              </View>
+            );
+          })
         ) : (
           <View style={{ paddingVertical: 12 }}>
             <TotlText variant="muted">No table yet.</TotlText>

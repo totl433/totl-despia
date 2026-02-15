@@ -44,7 +44,11 @@ export default function ChatStackHeaderTitle({
         <TotlText numberOfLines={1} style={{ fontWeight: '900' }}>
           {title}
         </TotlText>
-        <TotlText numberOfLines={1} variant="caption" style={{ marginTop: 1, color: t.color.muted, fontWeight: '800' }}>
+        <TotlText
+          numberOfLines={1}
+          variant="caption"
+          style={{ marginTop: 1, color: t.color.muted, fontWeight: '700', fontSize: 12, lineHeight: 14 }}
+        >
           {subtitle}
         </TotlText>
       </View>

@@ -17,6 +17,6 @@ export default function LeaderboardsTabs({
     { key: 'overall', label: '🏆' },
   ];
 
-  return <SegmentedPillControl items={items} value={value} onChange={onChange} height={46} />;
+  return <SegmentedPillControl items={items} value={value} onChange={onChange} height={40} />;
 }
 

@@ -15,8 +15,8 @@ import type { SharedValue } from 'react-native-reanimated'
 import { useTokens } from '@totl/ui'
 
 /**
- * iOS-style pagination dots:
- * - Shows a maximum of 4 dots (sliding window over pages)
+ * Instagram-style pagination dots:
+ * - Shows a maximum of 7 dots (sliding window over pages)
  * - Smooth transitions driven by a carousel progress SharedValue
  * - Tap-to-jump supported via `onPress` mapping
  */
@@ -27,7 +27,7 @@ export default function CarouselDots({
   onPress,
   style,
   carouselName,
-  maxDots = 4,
+  maxDots = 7,
 }: {
   progress: SharedValue<number>
   count: number
@@ -50,7 +50,7 @@ export default function CarouselDots({
   const visibleCount = Math.min(Math.max(0, count), maxDots)
   if (visibleCount <= 1) return null
 
-  const ACTIVE_SLOT = Math.min(2, visibleCount - 1)
+  const ACTIVE_SLOT = Math.floor((visibleCount - 1) / 2)
   // JS mapping for taps (matches the worklet windowing behavior at snapped positions).
   const maxStart = Math.max(0, count - visibleCount)
   const windowStart = Math.min(Math.max(currentIndex - ACTIVE_SLOT, 0), maxStart)
@@ -60,6 +60,7 @@ export default function CarouselDots({
   const dotStep = dotSize + dotGap
   const containerWidth = visibleCount * dotSize + (visibleCount - 1) * dotGap
   const containerHeight = 12
+  const hasOverflow = count > visibleCount
 
   // Animated “window start” (integer) + a transient strip shift to avoid re-render jump.
   const windowStartSV = useSharedValue(windowStart)
@@ -75,7 +76,7 @@ export default function CarouselDots({
     () => {
       const total = count
       const vCount = Math.min(Math.max(0, total), maxDots)
-      const activeSlot = Math.min(2, vCount - 1)
+      const activeSlot = Math.floor((vCount - 1) / 2)
       const maxStart = Math.max(0, total - vCount)
       const currentPage = Math.round(progress.value)
       const nextStart = Math.min(Math.max(currentPage - activeSlot, 0), maxStart)
@@ -106,13 +107,13 @@ export default function CarouselDots({
   const activeStyle = useAnimatedStyle(() => {
     const total = count
     const vCount = Math.min(Math.max(0, total), maxDots)
-    const activeSlot = Math.min(2, vCount - 1)
+    const activeSlot = Math.floor((vCount - 1) / 2)
     const maxStart = Math.max(0, total - vCount)
     const currentPage = Math.round(progress.value)
     const start = Math.min(Math.max(currentPage - activeSlot, 0), maxStart)
     const activePos = Math.min(Math.max(currentPage - start, 0), vCount - 1)
     return {
-      transform: [{ translateX: activePos * dotStep }, { scale: 1.55 }],
+      transform: [{ translateX: activePos * dotStep }, { scale: 1.45 }],
       opacity: 1,
       backgroundColor: activeDotColor,
     }
@@ -147,6 +148,19 @@ export default function CarouselDots({
         >
           {Array.from({ length: visibleCount }).map((_, i) => {
             const pageIndex = windowStart + i
+            let edgeOpacity = 1
+            let edgeScale = 1
+            if (hasOverflow) {
+              const atOuterEdge = i === 0 || i === visibleCount - 1
+              const atNearEdge = i === 1 || i === visibleCount - 2
+              if (atOuterEdge) {
+                edgeOpacity = 0.35
+                edgeScale = 0.68
+              } else if (atNearEdge) {
+                edgeOpacity = 0.62
+                edgeScale = 0.84
+              }
+            }
             return (
               <Pressable
                 key={i}
@@ -163,8 +177,8 @@ export default function CarouselDots({
                   height: dotSize,
                   borderRadius: 999,
                   backgroundColor: inactiveDotColor,
-                  // Avoid compounding opacity on an already-transparent token (border is rgba in both themes).
-                  opacity: pressed ? 0.7 : 1,
+                  opacity: (pressed ? 0.75 : 1) * edgeOpacity,
+                  transform: [{ scale: edgeScale }],
                   marginRight: i === visibleCount - 1 ? 0 : dotGap,
                 })}
               />
@@ -173,7 +187,7 @@ export default function CarouselDots({
         </Animated.View>
       </View>
 
-      {/* Active dot overlay (appears “fixed” at slot 3 in the middle). */}
+      {/* Active dot overlay (appears fixed at the center slot). */}
       <Animated.View
         pointerEvents="none"
         style={[

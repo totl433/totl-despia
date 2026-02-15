@@ -80,14 +80,17 @@ function ChatFooterKeyboardSpacer({ height }: { height: number }) {
 export default function LeagueChatTabV2({
   leagueId,
   members,
+  keyboardHeaderOffset,
 }: {
   leagueId: string;
   members: Array<{ id: string; name: string; avatar_url?: string | null }>;
+  keyboardHeaderOffset?: number;
 }) {
   const t = useTokens();
   const chatBg = t.color.background;
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
+  const effectiveHeaderOffset = typeof keyboardHeaderOffset === 'number' ? keyboardHeaderOffset : headerHeight;
   const nameById = React.useMemo(() => new Map(members.map((m) => [m.id, m.name])), [members]);
   const avatarById = React.useMemo(() => new Map(members.map((m) => [m.id, m.avatar_url ?? null])), [members]);
 
@@ -211,7 +214,7 @@ export default function LeagueChatTabV2({
           // With a native stack header, our screen content starts *below* the header, so we must
           // offset by the header height (otherwise the toolbar can sit under the keyboard).
           keyboardAvoidingViewProps={{
-            keyboardVerticalOffset: headerHeight,
+            keyboardVerticalOffset: effectiveHeaderOffset,
             behavior: 'padding' as any,
           }}
           keyboardProviderProps={{ preload: false }}

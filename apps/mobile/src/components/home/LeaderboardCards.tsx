@@ -136,18 +136,101 @@ export function LeaderboardCardSimple({
   )
 }
 
-export function LeaderboardCardResultsCta({
+export function LeaderboardCardPerformanceSummary({
   gw,
-  badge,
+  gwLabel,
+  fiveWeekLabel,
+  tenWeekLabel,
+  seasonLabel,
   onPress,
 }: {
-  gw: number
-  badge: any | null
+  gw: number | null
+  gwLabel: string
+  fiveWeekLabel: string
+  tenWeekLabel: string
+  seasonLabel: string
   onPress?: () => void
+}) {
+  const t = useTokens()
+
+  const rows = [
+    { label: gw ? `GW${gw}` : 'GW', value: gwLabel },
+    { label: '5W', value: fiveWeekLabel },
+    { label: '10W', value: tenWeekLabel },
+    { label: 'SEASON', value: seasonLabel },
+  ]
+
+  return (
+    <Pressable
+      disabled={!onPress}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        transform: [{ scale: pressed ? 0.99 : 1 }],
+        opacity: pressed ? 0.96 : 1,
+      })}
+    >
+      <Card style={{ width: 306, height: 148, padding: 12, borderRadius: 14 }}>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <TotlText
+              variant="caption"
+              style={{ color: t.color.muted, fontWeight: '700', letterSpacing: 0.8, fontSize: 14, lineHeight: 18 }}
+            >
+              PERFORMANCE
+            </TotlText>
+            <TotlText
+              variant="caption"
+              style={{ color: t.color.muted, fontWeight: '900', marginTop: 2, fontSize: 18, lineHeight: 18 }}
+            >
+              ›
+            </TotlText>
+          </View>
+          <View style={{ flex: 1, justifyContent: 'space-between' }}>
+            {rows.map((row) => (
+              <View key={row.label} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '800', fontSize: 12, lineHeight: 16 }}>
+                  {row.label}
+                </TotlText>
+                <TotlText style={{ fontSize: 15, lineHeight: 18, fontWeight: '900' }}>{row.value}</TotlText>
+              </View>
+            ))}
+          </View>
+        </View>
+      </Card>
+    </Pressable>
+  )
+}
+
+export function LeaderboardCardResultsCta({
+  gw,
+  topLabel,
+  badge,
+  leftNode,
+  score,
+  totalFixtures,
+  gradientColors,
+  showSheen = true,
+  onPress,
+  label = 'Your results',
+}: {
+  gw?: number
+  topLabel?: string
+  badge: any | null
+  leftNode?: React.ReactNode
+  score?: string
+  totalFixtures?: string
+  gradientColors?: [string, string]
+  showSheen?: boolean
+  onPress?: () => void
+  label?: string
 }) {
   const shimmer = useSharedValue(0)
 
   React.useEffect(() => {
+    if (!showSheen) {
+      shimmer.value = 0
+      return
+    }
     // One sweep, then pause so the full cycle is ~5s.
     const SWEEP_MS = 1100
     const PAUSE_MS = 3900
@@ -159,7 +242,7 @@ export function LeaderboardCardResultsCta({
       -1,
       false
     )
-  }, [shimmer])
+  }, [showSheen, shimmer])
 
   const shimmerStyle = useAnimatedStyle(() => {
     // Translate a narrow highlight band across the card.
@@ -183,20 +266,41 @@ export function LeaderboardCardResultsCta({
       <View style={{ width: 148, height: 148, borderRadius: 14, overflow: 'hidden' }}>
         <AnimatedPerimeterGlow active radius={14} />
         <LinearGradient
-          colors={['#10B981', '#0D9488']}
+          colors={gradientColors ?? ['#10B981', '#0D9488']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{ flex: 1, padding: 12 }}
         >
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
-              {badge ? <Image source={badge} style={{ width: 28, height: 28 }} /> : <View style={{ width: 28, height: 28 }} />}
-              <TotlText
-                variant="caption"
-                style={{ color: 'rgba(255,255,255,0.95)', fontWeight: '900', marginTop: 2, fontSize: 18, lineHeight: 18 }}
-              >
-                ›
-              </TotlText>
+              {typeof score === 'string' && typeof totalFixtures === 'string' ? (
+                <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                  <TotlText style={{ fontSize: 32, fontWeight: '300', color: '#FFFFFF', lineHeight: 38 }}>{score}</TotlText>
+                  <TotlText
+                    variant="caption"
+                    style={{ color: 'rgba(255,255,255,0.92)', fontSize: 16, lineHeight: 20, fontWeight: '700' }}
+                  >
+                    {' '}
+                    /{totalFixtures}
+                  </TotlText>
+                </View>
+              ) : leftNode ? (
+                <View style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>{leftNode}</View>
+              ) : badge ? (
+                <Image source={badge} style={{ width: 28, height: 28 }} />
+              ) : (
+                <View style={{ width: 28, height: 28 }} />
+              )}
+              {onPress ? (
+                <TotlText
+                  variant="caption"
+                  style={{ color: 'rgba(255,255,255,0.95)', fontWeight: '900', marginTop: 2, fontSize: 18, lineHeight: 18 }}
+                >
+                  ›
+                </TotlText>
+              ) : (
+                <View style={{ width: 18, height: 18 }} />
+              )}
             </View>
             <View style={{ flex: 1, justifyContent: 'flex-end' }}>
               <TotlText
@@ -211,34 +315,38 @@ export function LeaderboardCardResultsCta({
                   textTransform: 'uppercase',
                 }}
               >
-                {`Gameweek ${gw}`}
+                {topLabel ?? (typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek')}
               </TotlText>
-              <TotlText style={{ fontSize: 18, lineHeight: 22, fontWeight: '900', color: '#FFFFFF' }}>Your results</TotlText>
+              <TotlText numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '900', color: '#FFFFFF' }}>
+                {label}
+              </TotlText>
             </View>
           </View>
         </LinearGradient>
         {/* Shimmer sweep (premium "shine") - must render ABOVE the background gradient */}
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            {
-              position: 'absolute',
-              top: -40,
-              left: 0,
-              width: 110,
-              height: 220,
-            },
-            shimmerStyle,
-          ]}
-        >
-          <LinearGradient
-            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.92)', 'rgba(255,255,255,0)']}
-            locations={[0, 0.5, 1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={{ flex: 1 }}
-          />
-        </Animated.View>
+        {showSheen ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              {
+                position: 'absolute',
+                top: -40,
+                left: 0,
+                width: 110,
+                height: 220,
+              },
+              shimmerStyle,
+            ]}
+          >
+            <LinearGradient
+              colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.92)', 'rgba(255,255,255,0)']}
+              locations={[0, 0.5, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{ flex: 1 }}
+            />
+          </Animated.View>
+        ) : null}
       </View>
     </Pressable>
   )

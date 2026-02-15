@@ -3,6 +3,7 @@ import { FlatList, Image, Pressable, View } from 'react-native';
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
@@ -67,10 +68,12 @@ export default function ChatInboxScreen({
   threadRouteName = 'ChatThread',
   title = 'Chat',
   subtitle = 'All your mini league chats',
+  showBackButton = false,
 }: {
   threadRouteName?: 'ChatThread' | 'Chat2Thread';
   title?: string;
   subtitle?: string;
+  showBackButton?: boolean;
 } = {}) {
   const t = useTokens();
   const navigation = useNavigation<any>();
@@ -213,7 +216,35 @@ export default function ChatInboxScreen({
 
   return (
     <Screen fullBleed>
-      <PageHeader title={title} subtitle={subtitle} />
+      <PageHeader
+        title={title}
+        subtitle={subtitle}
+        leftAction={
+          showBackButton ? (
+            <Pressable
+              onPress={() => {
+                if (navigation?.canGoBack?.()) {
+                  navigation.goBack();
+                  return;
+                }
+                navigation.navigate('Tabs', { screen: 'Predictions' });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              style={({ pressed }) => ({
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.75 : 1,
+              })}
+            >
+              <Ionicons name="chevron-back" size={22} color={t.color.text} />
+            </Pressable>
+          ) : null
+        }
+      />
       <FlatList
         ref={listRef}
         data={rows}

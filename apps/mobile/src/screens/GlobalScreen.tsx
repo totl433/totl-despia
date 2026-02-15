@@ -1,16 +1,18 @@
 import React from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { useNavigation, useRoute, useScrollToTop } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import LeaderboardsTabs, { type LeaderboardsTab } from '../components/leaderboards/LeaderboardsTabs';
-import LeaderboardsScopeToggle, { type LeaderboardsScope } from '../components/leaderboards/LeaderboardsScopeToggle';
+import { type LeaderboardsScope } from '../components/leaderboards/LeaderboardsScopeToggle';
 import LeaderboardTable, { type LeaderboardRow } from '../components/leaderboards/LeaderboardTable';
-import PageHeader from '../components/PageHeader';
+import LeaderboardPlayerPicksSheet from '../components/leaderboards/LeaderboardPlayerPicksSheet';
 import CenteredSpinner from '../components/CenteredSpinner';
+import AppTopHeader from '../components/AppTopHeader';
 
 type OverallRow = { user_id: string; name: string | null; ocp: number | null };
 type GwPointsRow = { user_id: string; gw: number; points: number };
@@ -18,6 +20,22 @@ type GwPointsRow = { user_id: string; gw: number; points: number };
 function byValueThenName(a: LeaderboardRow, b: LeaderboardRow) {
   if (b.value !== a.value) return b.value - a.value;
   return a.name.localeCompare(b.name);
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error('refresh-timeout')), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(id);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(id);
+        reject(error);
+      }
+    );
+  });
 }
 
 export default function GlobalScreen() {
@@ -32,6 +50,10 @@ export default function GlobalScreen() {
 
   const [tab, setTab] = React.useState<LeaderboardsTab>(initialTabParam ?? 'gw');
   const [scope, setScope] = React.useState<LeaderboardsScope>(initialScopeParam ?? 'all');
+  const [pullRefreshing, setPullRefreshing] = React.useState(false);
+  const [playerPicksOpen, setPlayerPicksOpen] = React.useState(false);
+  const [playerPicksUserId, setPlayerPicksUserId] = React.useState<string | null>(null);
+  const [playerPicksUserName, setPlayerPicksUserName] = React.useState<string | null>(null);
 
   // Allow other screens (e.g. Home performance cards) to deep-link into a specific leaderboard section.
   // We consume the param once and then clear it so manual tab changes won't be overridden.
@@ -53,6 +75,18 @@ export default function GlobalScreen() {
     },
   });
   const userId = userData?.id ?? null;
+  const { data: avatarRow } = useQuery<{ avatar_url: string | null } | null>({
+    enabled: !!userId,
+    queryKey: ['profile-avatar-url', userId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('users').select('avatar_url').eq('id', userId).maybeSingle();
+      if (error && (error as any).code !== 'PGRST116') throw error;
+      if (!data) return null;
+      return { avatar_url: typeof (data as any).avatar_url === 'string' ? (data as any).avatar_url : null };
+    },
+    staleTime: 60_000,
+  });
+  const avatarUrl = typeof avatarRow?.avatar_url === 'string' ? String(avatarRow.avatar_url) : null;
 
   const { data: ranks, refetch: refetchRanks, isRefetching: ranksRefetching } = useQuery({
     queryKey: ['homeRanks'],
@@ -218,40 +252,83 @@ export default function GlobalScreen() {
   }, [latestGw, scope, tab]);
 
   const valueLabel = tab === 'overall' ? 'OCP' : tab === 'gw' && latestGw ? `GW${latestGw}` : tab === 'form5' ? '5WK' : tab === 'form10' ? '10WK' : '—';
-
   const loading = overallLoading || gwPointsLoading || friendsLoading;
   const error = (overallError as any) ?? (gwPointsError as any);
   const showInitialSpinner = loading && !error && rows.length === 0;
 
-  const refreshing = overallRefetching || gwPointsRefetching || ranksRefetching || friendIdsRefetching;
-  const onRefresh = React.useCallback(() => {
-    void Promise.all([
-      refetchRanks(),
-      refetchOverall(),
-      refetchGwPoints(),
-      scope === 'friends' ? refetchFriendIds() : Promise.resolve(),
-    ]);
-  }, [refetchFriendIds, refetchGwPoints, refetchOverall, refetchRanks, scope]);
+  const refreshing = pullRefreshing;
+  const onRefresh = React.useCallback(async () => {
+    if (pullRefreshing) return;
+    setPullRefreshing(true);
+    try {
+      await Promise.allSettled([
+        withTimeout(refetchRanks(), 8000),
+        withTimeout(refetchOverall(), 8000),
+        withTimeout(refetchGwPoints(), 8000),
+        scope === 'friends' ? withTimeout(refetchFriendIds(), 8000) : Promise.resolve(),
+      ]);
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [pullRefreshing, refetchFriendIds, refetchGwPoints, refetchOverall, refetchRanks, scope]);
 
   return (
     <Screen fullBleed>
       {/* No extra bottom padding here; the table handles its own scroll padding.
           This lets the leaderboard container run off-screen at the bottom (more obvious scroll affordance). */}
       <View style={{ flex: 1 }}>
-        <PageHeader title="Performance" />
+        <AppTopHeader
+          onPressChat={() => navigation.navigate('ChatHub')}
+          onPressProfile={() => navigation.navigate('Profile')}
+          avatarUrl={avatarUrl}
+          title="Leaderboards"
+          leftAction={
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Pressable
+                onPress={() => setScope((prev) => (prev === 'all' ? 'friends' : 'all'))}
+                accessibilityRole="button"
+                accessibilityLabel={scope === 'friends' ? 'Filter active: Mini League Friends' : 'Filter active: All Players'}
+                style={({ pressed }) => ({
+                  width: 38,
+                  height: 38,
+                  borderRadius: 999,
+                  borderWidth: scope === 'friends' ? 2 : 1.5,
+                  borderColor: scope === 'friends' ? '#1C8376' : t.color.border,
+                  backgroundColor: scope === 'friends' ? 'rgba(28,131,118,0.10)' : '#FFFFFF',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: pressed ? 0.86 : 1,
+                })}
+              >
+                <Ionicons name="funnel" size={16} color={scope === 'friends' ? '#1C8376' : t.color.muted} />
+              </Pressable>
+              <Pressable
+                onPress={() => navigation.navigate('Profile' as any, { screen: 'ProfileStats' } as any)}
+                accessibilityRole="button"
+                accessibilityLabel="Open stats"
+                style={({ pressed }) => ({
+                  width: 30,
+                  height: 38,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: pressed ? 0.86 : 1,
+                })}
+              >
+                <Ionicons name="analytics-outline" size={24} color={t.color.muted} />
+              </Pressable>
+            </View>
+          }
+        />
 
         <View style={{ flex: 1, paddingHorizontal: t.space[4], paddingBottom: 0 }}>
-
-        <View style={{ marginTop: 10 }}>
-          <LeaderboardsScopeToggle value={scope} onChange={setScope} />
-        </View>
-
         <View style={{ marginTop: 12 }}>
           <LeaderboardsTabs value={tab} onChange={setTab} />
         </View>
 
         <View style={{ marginTop: 14, marginBottom: 10, alignItems: 'center' }}>
-          <TotlText variant="sectionSubtitle">{subtitle}</TotlText>
+          <TotlText variant="sectionSubtitle" style={{ fontSize: 13, lineHeight: 18 }}>
+            {subtitle}
+          </TotlText>
         </View>
 
         {showInitialSpinner ? <CenteredSpinner loading /> : null}
@@ -282,6 +359,11 @@ export default function GlobalScreen() {
             refreshing={refreshing}
             onRefresh={onRefresh}
             listRef={listRef}
+            onPressRow={(row) => {
+              setPlayerPicksUserId(String(row.user_id));
+              setPlayerPicksUserName(String(row.name ?? 'Player'));
+              setPlayerPicksOpen(true);
+            }}
             style={{
               flex: 1,
               // Remove bottom rounding so it can visually run off-screen.
@@ -294,6 +376,14 @@ export default function GlobalScreen() {
         ) : null}
         </View>
       </View>
+
+      <LeaderboardPlayerPicksSheet
+        open={playerPicksOpen}
+        onClose={() => setPlayerPicksOpen(false)}
+        gw={latestGw}
+        userId={playerPicksUserId}
+        userName={playerPicksUserName}
+      />
     </Screen>
   );
 }

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 
@@ -13,7 +14,31 @@ import { getGameweekStateFromSnapshot } from '../../lib/gameweekState';
 
 export default function ProfileStatsScreen() {
   const t = useTokens();
+  const navigation = useNavigation<any>();
   const lastAutoRefreshedGwRef = React.useRef<number | null>(null);
+  const backAction = (
+    <Pressable
+      onPress={() => {
+        if (navigation?.canGoBack?.()) {
+          navigation.goBack();
+          return;
+        }
+        navigation.navigate('Tabs', { screen: 'Global' });
+      }}
+      accessibilityRole="button"
+      accessibilityLabel="Back"
+      style={({ pressed }) => ({
+        width: 38,
+        height: 38,
+        borderRadius: 999,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: pressed ? 0.82 : 1,
+      })}
+    >
+      <Ionicons name="chevron-back" size={20} color={t.color.muted} />
+    </Pressable>
+  );
 
   const homeSnapshotQ = useQuery({
     queryKey: ['homeSnapshot'],
@@ -63,7 +88,7 @@ export default function ProfileStatsScreen() {
   if (showInitialSpinner) {
     return (
       <Screen fullBleed>
-        <PageHeader title="Stats" />
+        <PageHeader title="Stats" leftAction={backAction} />
         <CenteredSpinner loading />
       </Screen>
     );
@@ -94,7 +119,7 @@ export default function ProfileStatsScreen() {
 
   return (
     <Screen fullBleed>
-      <PageHeader title="Stats" />
+      <PageHeader title="Stats" leftAction={backAction} />
 
       <ScrollView
         style={{ flex: 1 }}

@@ -7,6 +7,7 @@ import ProfileStatsScreen from '../screens/profile/ProfileStatsScreen';
 import NotificationCentreScreen from '../screens/profile/NotificationCentreScreen';
 import EmailPreferencesScreen from '../screens/profile/EmailPreferencesScreen';
 import EditAvatarScreen from '../screens/profile/EditAvatarScreen';
+import AdminHomeScreen from '../screens/profile/AdminHomeScreen';
 
 export type ProfileStackParamList = {
   ProfileHome: undefined;
@@ -14,6 +15,7 @@ export type ProfileStackParamList = {
   NotificationCentre: undefined;
   EmailPreferences: undefined;
   EditAvatar: undefined;
+  AdminHome: undefined;
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -32,6 +34,7 @@ export default function ProfileNavigator() {
       <Stack.Screen name="NotificationCentre" component={NotificationCentreScreen} />
       <Stack.Screen name="EmailPreferences" component={EmailPreferencesScreen} />
       <Stack.Screen name="EditAvatar" component={EditAvatarScreen} />
+      <Stack.Screen name="AdminHome" component={AdminHomeScreen} />
     </Stack.Navigator>
   );
 }

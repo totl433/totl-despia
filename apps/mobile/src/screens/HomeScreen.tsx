@@ -1,15 +1,13 @@
 import React from 'react';
-import { AppState, Animated, type ImageSourcePropType, Image, Pressable, Share, View, useWindowDimensions } from 'react-native';
+import { AppState, Animated, Image, Pressable, Share, View, useWindowDimensions } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
-import { Asset } from 'expo-asset';
-import { SvgUri } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import Carousel from 'react-native-reanimated-carousel';
 import type { ICarouselInstance } from 'react-native-reanimated-carousel';
 import { Extrapolation, interpolate, useSharedValue } from 'react-native-reanimated';
-import type { Fixture, GwResultRow, GwResults, HomeRanks, HomeSnapshot, LiveScore, LiveStatus, Pick, RankBadge } from '@totl/domain';
+import type { Fixture, GwResultRow, GwResults, HomeRanks, HomeSnapshot, LiveScore, LiveStatus, Pick } from '@totl/domain';
 import { api } from '../lib/api';
 import { TotlRefreshControl } from '../lib/refreshControl';
 import { supabase } from '../lib/supabase';
@@ -20,13 +18,12 @@ import FixtureCard from '../components/FixtureCard';
 import { MiniLeaguesDefaultBatchCard } from '../components/MiniLeaguesDefaultList';
 import { getGameweekStateFromSnapshot, type GameweekState } from '../lib/gameweekState';
 import PickPill from '../components/home/PickPill';
-import RoundIconButton from '../components/home/RoundIconButton';
 import SectionHeaderRow from '../components/home/SectionHeaderRow';
 import CarouselDots from '../components/home/CarouselDots';
 import CarouselWithPagination from '../components/home/CarouselWithPagination';
 import CarouselFocusShell from '../components/home/CarouselFocusShell';
 import SectionTitle from '../components/home/SectionTitle';
-import { LeaderboardCardLastGw, LeaderboardCardResultsCta, LeaderboardCardSimple } from '../components/home/LeaderboardCards';
+import { LeaderboardCardResultsCta } from '../components/home/LeaderboardCards';
 import { resolveLeagueAvatarUri } from '../lib/leagueAvatars';
 import CenteredSpinner from '../components/CenteredSpinner';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../lib/layout';
@@ -35,6 +32,8 @@ import { sortLeaguesByUnread } from '../lib/sortLeaguesByUnread';
 import GameweekCountdownItem from '../components/home/GameweekCountdownItem';
 import MiniLeagueLiveCard from '../components/home/MiniLeagueLiveCard';
 import { useLiveScores } from '../hooks/useLiveScores';
+import TopStatusBanner from '../components/home/TopStatusBanner';
+import AppTopHeader from '../components/AppTopHeader';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -87,18 +86,34 @@ function fixtureDateLabel(kickoff: string | null | undefined) {
   return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error('refresh-timeout')), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(id);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(id);
+        reject(error);
+      }
+    );
+  });
+}
+
 export default function HomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
   const scrollRef = React.useRef<any>(null);
   useScrollToTop(scrollRef);
-  const scrollY = React.useRef(new Animated.Value(0)).current;
   const { width: screenWidth } = useWindowDimensions();
   const advanceTransition = useGameweekAdvanceTransition({ totalMs: 1050 });
   const [nowMs, setNowMs] = React.useState(() => Date.now());
   const [hasAccessToken, setHasAccessToken] = React.useState<boolean | null>(null);
   const { unreadByLeagueId } = useLeagueUnreadCounts();
   const [dismissedCountdownGw, setDismissedCountdownGw] = React.useState<number | null>(null);
+  const [pullRefreshing, setPullRefreshing] = React.useState(false);
 
   React.useEffect(() => {
     // Keep countdowns fresh without being noisy.
@@ -332,10 +347,20 @@ export default function HomeScreen() {
     return { started, live, correct, total: fixtures.length };
   }, [fixtures, liveByFixtureIndex, resultByFixtureIndex, userPicks]);
 
-  const refreshing = homeRefetching || leaguesRefetching || ranksRefetching;
-  const onRefresh = () => {
-    void Promise.all([refetchHome(), refetchLeagues(), refetchRanks()]);
-  };
+  const refreshing = pullRefreshing;
+  const onRefresh = React.useCallback(async () => {
+    if (pullRefreshing) return;
+    setPullRefreshing(true);
+    try {
+      await Promise.allSettled([
+        withTimeout(refetchHome(), 8000),
+        withTimeout(refetchLeagues(), 8000),
+        withTimeout(refetchRanks(), 8000),
+      ]);
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [pullRefreshing, refetchHome, refetchLeagues, refetchRanks]);
   const [activeLeagueIndex, setActiveLeagueIndex] = React.useState<number>(0);
   const mlAbsoluteProgress = useSharedValue(0);
   const mlCarouselItemWidthSV = useSharedValue(0);
@@ -345,25 +370,6 @@ export default function HomeScreen() {
   // SectionTitle/RoundIconButton/PickPill/SectionHeaderRow/LeaderboardCards are extracted into `src/components/home/*`.
 
   const LB_BADGE_5 = require('../../../../dist/assets/5-week-form-badge.png');
-  const LB_BADGE_10 = require('../../../../dist/assets/10-week-form-badge.png');
-  const LB_BADGE_SEASON = require('../../../../dist/assets/season-rank-badge.png');
-
-  function leaderboardBadgeFor(title: string): ImageSourcePropType | null {
-    const t = title.toUpperCase();
-    if (t.includes('5')) return LB_BADGE_5;
-    if (t.includes('10')) return LB_BADGE_10;
-    if (t.includes('SEASON')) return LB_BADGE_SEASON;
-    return null;
-  }
-
-  function leaderboardIconText(title: string): string {
-    const t = title.toUpperCase();
-    if (t.includes('GW')) return 'GW';
-    if (t.includes('5')) return '5';
-    if (t.includes('10')) return '10';
-    if (t.includes('SEASON')) return 'S';
-    return '—';
-  }
 
   // Leaderboard cards and pills are now shared components.
 
@@ -373,6 +379,7 @@ export default function HomeScreen() {
       liveScore={liveByFixtureIndex.get(f.fixture_index) ?? null}
       pick={userPicks[String(f.fixture_index)]}
       result={resultByFixtureIndex.get(Number(f.fixture_index)) ?? null}
+      pickPercentages={pickPercentagesByFixture.get(Number(f.fixture_index)) ?? null}
       showPickButtons={!!home?.hasSubmittedViewingGw}
       variant="grouped"
     />
@@ -381,12 +388,11 @@ export default function HomeScreen() {
   const handleShare = async () => {
     try {
       const gw = home?.viewingGw ?? home?.currentGw ?? null;
-      const line1 = gw ? `TOTL — Gameweek ${gw}` : 'TOTL';
-      const line2 =
-        home && scoreSummary && home.hasSubmittedViewingGw
-          ? `My score: ${scoreSummary.correct}/${scoreSummary.total}`
-          : 'Join me on TOTL.';
-      await Share.share({ message: `${line1}\n${line2}` });
+      if (typeof gw === 'number') {
+        navigation.navigate('GameweekResults', { gw, mode: 'fixturesShare' });
+        return;
+      }
+      await Share.share({ message: 'Join me on TOTL.' });
     } catch {
       // ignore
     }
@@ -414,15 +420,83 @@ export default function HomeScreen() {
     if (label === 'Live') return { label, score, total, bg: '#DC2626', border: 'transparent', dot: true };
     return { label, score, total, bg: t.color.surface2, border: t.color.border, dot: false };
   }, [home?.hasSubmittedViewingGw, scoreSummary, t.color.border, t.color.surface2]);
+  const shareScoreLabel = `${scorePill.score}/${scorePill.total}`;
+  const gwState: GameweekState | null = React.useMemo(() => {
+    if (!home) return null;
+    return getGameweekStateFromSnapshot({
+      fixtures: home.fixtures ?? [],
+      liveScores: home.liveScores ?? [],
+      hasSubmittedViewingGw: !!home.hasSubmittedViewingGw,
+      now: new Date(nowMs),
+    });
+  }, [home, nowMs]);
 
   const gwIsLive = (scoreSummary?.live ?? 0) > 0;
   const viewingGw = home?.viewingGw ?? null;
   const currentGw = home?.currentGw ?? null;
+  const hasActiveLiveGames = React.useMemo(() => {
+    const liveScores = home?.liveScores ?? [];
+    return liveScores.some((ls) => ls?.status === 'IN_PLAY' || ls?.status === 'PAUSED');
+  }, [home?.liveScores]);
+  const hasAnyGwResults = (home?.gwResults?.length ?? 0) > 0;
+  const inferredResultsPreGw = !hasActiveLiveGames && hasAnyGwResults;
+  const isResultsPreGw = gwState === 'RESULTS_PRE_GW' || inferredResultsPreGw;
   const showReadyToMoveOn =
     typeof currentGw === 'number' && typeof viewingGw === 'number' ? viewingGw < currentGw : false;
+  const showComingSoonBanner =
+    isResultsPreGw &&
+    typeof currentGw === 'number' &&
+    typeof viewingGw === 'number' &&
+    viewingGw >= currentGw;
+  const performanceRailTopMargin = 16;
   const hasMovedOn = typeof currentGw === 'number' && typeof viewingGw === 'number' ? viewingGw >= currentGw : true;
   const deadline = React.useMemo(() => deadlineCountdown(fixtures, nowMs), [fixtures, nowMs]);
   const deadlineExpired = deadline?.expired ?? false;
+  const viewingGwForPickPercentages = typeof home?.viewingGw === 'number' ? home.viewingGw : null;
+
+  const { data: pickPercentageRows } = useQuery<Array<{ fixture_index: number; pick: Pick }>>({
+    enabled: deadlineExpired && typeof viewingGwForPickPercentages === 'number',
+    queryKey: ['home-pick-percentages', viewingGwForPickPercentages],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('app_picks')
+        .select('fixture_index, pick')
+        .eq('gw', viewingGwForPickPercentages as number);
+      if (error) {
+        console.warn('[HomeScreen] Failed to load pick percentages', error.message);
+        return [];
+      }
+      const rows = (data ?? []) as Array<{ fixture_index: unknown; pick: unknown }>;
+      return rows
+        .filter(
+          (row): row is { fixture_index: number; pick: Pick } =>
+            typeof row.fixture_index === 'number' && (row.pick === 'H' || row.pick === 'D' || row.pick === 'A')
+        )
+        .map((row) => ({ fixture_index: row.fixture_index, pick: row.pick }));
+    },
+    staleTime: 30_000,
+  });
+
+  const pickPercentagesByFixture = React.useMemo(() => {
+    const out = new Map<number, Partial<Record<Pick, number>>>();
+    const countsByFixture = new Map<number, { H: number; D: number; A: number; total: number }>();
+    (pickPercentageRows ?? []).forEach((row) => {
+      const current = countsByFixture.get(row.fixture_index) ?? { H: 0, D: 0, A: 0, total: 0 };
+      current[row.pick] += 1;
+      current.total += 1;
+      countsByFixture.set(row.fixture_index, current);
+    });
+
+    countsByFixture.forEach((counts, fixtureIndex) => {
+      if (counts.total <= 0) return;
+      out.set(fixtureIndex, {
+        H: Math.round((counts.H / counts.total) * 100),
+        D: Math.round((counts.D / counts.total) * 100),
+        A: Math.round((counts.A / counts.total) * 100),
+      });
+    });
+    return out;
+  }, [pickPercentageRows]);
 
   const contentWidth = Math.max(280, screenWidth - t.space[4] * 2);
   /**
@@ -454,25 +528,6 @@ export default function HomeScreen() {
     mlFirstItemOffsetSV.value = mlCarouselOuterGutter;
   }, [mlCarouselItemWidth, mlSidePeek, mlCarouselOuterGutter, mlCarouselItemWidthSV, mlSidePeekSV, mlFirstItemOffsetSV]);
 
-  const totlLogoUri = React.useMemo(() => {
-    const isLightMode = t.color.background.toLowerCase() === '#f8fafc';
-    return Asset.fromModule(
-      isLightMode
-        ? require('../../../../public/assets/badges/totl-logo1-black.svg')
-        : require('../../../../public/assets/badges/totl-logo1.svg')
-    ).uri;
-  }, [t.color.background]);
-
-  const gwState: GameweekState | null = React.useMemo(() => {
-    if (!home) return null;
-    return getGameweekStateFromSnapshot({
-      fixtures: home.fixtures ?? [],
-      liveScores: home.liveScores ?? [],
-      hasSubmittedViewingGw: !!home.hasSubmittedViewingGw,
-      now: new Date(nowMs),
-    });
-  }, [home, nowMs]);
-
   const showMakePicksBanner =
     hasMovedOn &&
     (gwState === 'GW_OPEN' || gwState === 'DEADLINE_PASSED') &&
@@ -490,7 +545,9 @@ export default function HomeScreen() {
     return sortLeaguesByUnread(leagues?.leagues ?? [], unreadByLeagueId);
   }, [leagues?.leagues, unreadByLeagueId]);
 
-  const showMiniLeaguesLiveCards = gwState === 'LIVE' && typeof viewingGw === 'number';
+  // Keep Mini Leagues in live-table mode during LIVE and RESULTS_PRE_GW.
+  // This includes the period before/after next GW publish, until user moves on.
+  const showMiniLeaguesLiveCards = typeof viewingGw === 'number' && (gwState === 'LIVE' || isResultsPreGw);
 
   const miniLeaguesPageCount = showMiniLeaguesLiveCards ? liveLeagueList.length : defaultLeagueBatches.length;
 
@@ -532,144 +589,46 @@ export default function HomeScreen() {
   return (
     <GameweekAdvanceTransition controller={advanceTransition}>
       <Screen fullBleed>
-        {/* Floating menu buttons (stay visible while scrolling) */}
-        <Animated.View
-          pointerEvents="box-none"
-          style={{
-            position: 'absolute',
-            top: t.space[2],
-            right: t.space[4],
-            zIndex: 50,
-            opacity: scrollY.interpolate({
-              inputRange: [0, 60],
-              outputRange: [1, 0],
-              extrapolate: 'clamp',
-            }),
-            transform: [
-              {
-                scale: scrollY.interpolate({
-                  inputRange: [0, 60],
-                  outputRange: [1, 0.72],
-                  extrapolate: 'clamp',
-                }),
-              },
-            ],
-          }}
-        >
-          <View style={{ flexDirection: 'row' }}>
-            <RoundIconButton
-              onPress={() => navigation.navigate('Profile')}
-              icon={require('../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')}
-              imageUri={avatarUrl}
-            />
-          </View>
-        </Animated.View>
+        <AppTopHeader
+          onPressChat={() => navigation.navigate('ChatHub')}
+          onPressProfile={() => navigation.navigate('Profile')}
+          avatarUrl={avatarUrl}
+        />
 
         <Animated.ScrollView
           ref={scrollRef}
           style={{ flex: 1 }}
-          scrollEventThrottle={16}
-          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
           contentContainerStyle={{
             paddingHorizontal: t.space[4],
-            paddingTop: 0,
+            paddingTop: 8,
             // Ensure the last fixture isn't hidden behind the floating bottom tab bar.
             paddingBottom: FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
           }}
           refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
-        {/* Header (scrolls with content) */}
-        <View style={{ marginBottom: 0, paddingTop: 16, paddingBottom: 0, alignItems: 'center' }}>
-          {/* Real TOTL logo (from web assets), simple + static */}
-          <View>
-            <SvgUri uri={totlLogoUri} width={165} height={77} />
-          </View>
-        </View>
-
-        {__DEV__ ? (
-          <View style={{ marginBottom: 10 }}>
-            <TotlText variant="muted">Dev: BFF {String(env.EXPO_PUBLIC_BFF_URL)}</TotlText>
-            <TotlText variant="muted">
-              Dev: Auth token {hasAccessToken === null ? 'unknown' : hasAccessToken ? 'present' : 'missing'}
-            </TotlText>
-          </View>
-        ) : null}
-
         {isHomeLoading && <TotlText variant="muted">Loading…</TotlText>}
+
+        {/* Coming soon state is now represented as a carousel card. */}
 
         {/* GW Transition banner (RESULTS_PRE_GW but next GW published) */}
         {showReadyToMoveOn ? (
-          <View
-            style={{
-              backgroundColor: '#e9f0ef',
-              borderRadius: 16,
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              marginBottom: 10,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
+          <TopStatusBanner
+            title="Ready to move on?"
+            icon="flash"
+            actionLabel={typeof currentGw === 'number' ? `Gameweek ${currentGw}` : 'Gameweek'}
+            actionAccessibilityLabel="Move to next gameweek"
+            actionDisabled={advanceTransition.isAnimating}
+            onActionPress={() => {
+              if (typeof currentGw !== 'number') return;
+              advanceTransition.start({
+                nextGameweekLabel: `GAMEWEEK ${currentGw}`,
+                onAdvance: async () => {
+                  await api.updateNotificationPrefs({ current_viewing_gw: currentGw });
+                  await Promise.all([refetchHome(), refetchLeagues(), refetchRanks()]);
+                },
+              });
             }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
-              <View
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: 10,
-                  backgroundColor: '#1C8376',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginRight: 10,
-                }}
-              >
-                <Ionicons name="flash" size={12} color="#FFFFFF" />
-              </View>
-              <TotlText style={{ fontFamily: 'Gramatika-Bold', fontWeight: '700', fontSize: 16, lineHeight: 18 }}>
-                Ready to move on?
-              </TotlText>
-            </View>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Move to next gameweek"
-              disabled={advanceTransition.isAnimating}
-              onPress={() => {
-                if (typeof currentGw !== 'number') return;
-                advanceTransition.start({
-                  nextGameweekLabel: `GAMEWEEK ${currentGw}`,
-                  onAdvance: async () => {
-                    await api.updateNotificationPrefs({ current_viewing_gw: currentGw });
-                    await Promise.all([refetchHome(), refetchLeagues(), refetchRanks()]);
-                  },
-                });
-              }}
-              style={({ pressed }) => ({
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                borderRadius: t.radius.pill,
-                backgroundColor: '#1C8376',
-                opacity: advanceTransition.isAnimating ? 0.7 : pressed ? 0.9 : 1,
-                flexDirection: 'row',
-                alignItems: 'center',
-                transform: [{ scale: pressed ? 0.99 : 1 }],
-              })}
-            >
-              <TotlText
-                style={{
-                  color: '#FFFFFF',
-                  fontFamily: 'Gramatika-Medium',
-                  fontWeight: '500',
-                  fontSize: 14,
-                  lineHeight: 14,
-                }}
-              >
-                {typeof currentGw === 'number' ? `Gameweek ${currentGw}` : 'Gameweek'}
-              </TotlText>
-              <View style={{ width: 6 }} />
-              <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
-            </Pressable>
-          </View>
+          />
         ) : null}
 
         {/* Predictions banner (after move-on, user hasn't submitted for current GW) */}
@@ -681,7 +640,7 @@ export default function HomeScreen() {
             onPress={() => {
               if (advanceTransition.isAnimating) return;
               if (deadlineExpired) return;
-              navigation.navigate('Predictions');
+              navigation.navigate('PredictionsFlow');
             }}
             style={({ pressed }) => ({
               backgroundColor: '#e9f0ef',
@@ -762,11 +721,6 @@ export default function HomeScreen() {
           </Card>
         )}
 
-        {/* Leaderboards row (match web card structure) */}
-        <View style={{ marginTop: SECTION_GAP_Y }}>
-          <SectionHeaderRow title="Performance" />
-        </View>
-
         {/*
           GW kickoff countdown banner (disabled for now).
           Keeping the implementation here for easy re-enable later.
@@ -816,7 +770,7 @@ export default function HomeScreen() {
         <Animated.ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={{ marginHorizontal: -t.space[4], marginBottom: SECTION_GAP_Y }}
+          style={{ marginHorizontal: -t.space[4], marginTop: performanceRailTopMargin, marginBottom: SECTION_GAP_Y }}
           contentContainerStyle={{ paddingHorizontal: t.space[4], paddingBottom: 12 }}
         >
           {(() => {
@@ -844,58 +798,68 @@ export default function HomeScreen() {
 
             const cards: Array<{ key: string; node: React.JSX.Element }> = [];
 
+            const showReadyToPredictCta = showMakePicksBanner && typeof home?.viewingGw === 'number' && !deadlineExpired;
             const showResultsCta =
               gwState === 'RESULTS_PRE_GW' && !!home?.hasSubmittedViewingGw && typeof home?.viewingGw === 'number';
             const resultsGw = typeof home?.viewingGw === 'number' ? home.viewingGw : ranks?.latestGw ?? null;
 
-            if (showResultsCta && resultsGw) {
+            if (showReadyToPredictCta && resultsGw) {
+              cards.push({
+                key: 'gw-ready-to-predict',
+                node: (
+                  <LeaderboardCardResultsCta
+                    gw={resultsGw}
+                    badge={LB_BADGE_5}
+                    label="Ready to predict (swipe)"
+                    onPress={() => navigation.navigate('PredictionsFlow')}
+                  />
+                ),
+              });
+            } else if (showResultsCta && resultsGw) {
               cards.push({
                 key: 'gw-results',
                 node: (
                   <LeaderboardCardResultsCta
                     gw={resultsGw}
                     badge={LB_BADGE_5}
+                    score={score}
+                    totalFixtures={total}
                     onPress={() => navigation.navigate('GameweekResults', { gw: resultsGw })}
                   />
                 ),
               });
             }
 
-            cards.push({
-              key: 'last-gw',
-              node: (
-                <LeaderboardCardLastGw
-                  gw={gw}
-                  score={score}
-                  totalFixtures={total}
-                  displayText={lastGwDisplay}
-                  onPress={() => navigation.navigate('Global', { initialTab: 'gw' })}
-                />
-              ),
-            });
-
-            const add = (b: RankBadge | null | undefined, badge: ImageSourcePropType | null, title: string) => {
-              if (!b) return;
+            if (showComingSoonBanner) {
+              const upcomingGw = typeof currentGw === 'number' ? currentGw + 1 : null;
               cards.push({
-                key: title,
+                key: 'gw-coming-soon',
                 node: (
-                  <LeaderboardCardSimple
-                    title={title}
-                    badge={badge}
-                    displayText={String(b.percentileLabel ?? 'Top —')}
-                    onPress={() =>
-                      navigation.navigate('Global', {
-                        initialTab: title === '5-WEEK FORM' ? 'form5' : title === '10-WEEK FORM' ? 'form10' : 'overall',
-                      })
-                    }
+                  <LeaderboardCardResultsCta
+                    topLabel={upcomingGw ? `Gameweek ${upcomingGw}` : 'Gameweek'}
+                    leftNode={<Ionicons name="time-outline" size={24} color="#FFFFFF" />}
+                    badge={null}
+                    label="Coming Soon!"
+                    gradientColors={['#2D7F77', '#2A9D8F']}
+                    showSheen={false}
                   />
                 ),
               });
-            };
+            }
 
-            add(ranks?.fiveWeekForm, LB_BADGE_5, '5-WEEK FORM');
-            add(ranks?.tenWeekForm, LB_BADGE_10, '10-WEEK FORM');
-            add(ranks?.seasonRank, LB_BADGE_SEASON, 'SEASON RANK');
+            cards.push({
+              key: 'performance-summary-cta',
+              node: (
+                <LeaderboardCardResultsCta
+                  topLabel="OVERALL"
+                  badge={LB_BADGE_5}
+                  gradientColors={['#6FCFC1', '#8ED9CF']}
+                  showSheen={false}
+                  label="Your Performance"
+                  onPress={() => navigation.navigate('Global', { initialTab: 'overall' })}
+                />
+              ),
+            });
 
             return cards.map((c, idx) => (
               <View key={c.key} style={{ marginRight: idx === cards.length - 1 ? 0 : 10 }}>
@@ -905,7 +869,9 @@ export default function HomeScreen() {
           })()}
         </Animated.ScrollView>
 
-        {/* Mini leagues (match web order: before gameweek section) */}
+        {/* Mini leagues list removed from merged Predictions hub (moved to Mini Leagues page top rail). */}
+        {false ? (
+        <>
         <View style={{ marginTop: 0 }}>
           <SectionHeaderRow
             title="Mini leagues"
@@ -1042,12 +1008,47 @@ export default function HomeScreen() {
             <TotlText variant="muted">No leagues yet.</TotlText>
           </Card>
         )}
+        </>
+        ) : null}
 
         {/* Predictions section */}
         <View style={{ marginTop: 0 }}>
           <SectionHeaderRow
-            title="Predictions"
-            titleRight={`${scorePill.score}/${scorePill.total}`}
+            title={typeof home?.viewingGw === 'number' ? `Gameweek ${home.viewingGw}` : 'Gameweek'}
+            right={
+              <Pressable
+                onPress={handleShare}
+                accessibilityRole="button"
+                accessibilityLabel={`Share score ${shareScoreLabel}`}
+                style={({ pressed }) => ({
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 11,
+                  paddingHorizontal: 12,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: 'rgba(15,23,42,0.14)',
+                  backgroundColor: '#FFFFFF',
+                  opacity: fixtures.length === 0 ? 0.45 : pressed ? 0.92 : 1,
+                  transform: [{ scale: pressed ? 0.97 : 1 }],
+                })}
+                disabled={fixtures.length === 0}
+              >
+                <TotlText
+                  style={{
+                    color: '#1C8376',
+                    fontFamily: 'Gramatika-Medium',
+                    fontWeight: '900',
+                    fontSize: 15,
+                    lineHeight: 16,
+                  }}
+                >
+                  {shareScoreLabel}
+                </TotlText>
+                <View style={{ width: 7 }} />
+                <Ionicons name="share-outline" size={18} color="#334155" />
+              </Pressable>
+            }
           />
         </View>
 
@@ -1082,7 +1083,7 @@ export default function HomeScreen() {
                 }}
               >
                 <View style={{ borderRadius: 14, overflow: 'hidden' }}>
-                  {/* Card header: date + Share (spec) */}
+                  {/* Card header: date */}
                   <View
                     style={{
                       flexDirection: 'row',
@@ -1107,41 +1108,6 @@ export default function HomeScreen() {
                     >
                       {String(g.date ?? '').toUpperCase()}
                     </TotlText>
-
-                    {/* Only show once when there are multiple date groups to avoid repetition */}
-                    {(!showFixtureDateSections || groupIdx === 0) && (
-                      <Pressable
-                        onPress={handleShare}
-                        accessibilityRole="button"
-                        accessibilityLabel="Share"
-                        style={({ pressed }) => ({
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          paddingVertical: 8,
-                          paddingHorizontal: 12,
-                          borderRadius: 16,
-                          borderWidth: 1,
-                          borderColor: '#DFEBE9',
-                          backgroundColor: 'transparent',
-                          opacity: pressed ? 0.85 : 1,
-                          transform: [{ scale: pressed ? 0.98 : 1 }],
-                        })}
-                      >
-                        <Ionicons name="share-outline" size={12} color="#000000" />
-                        <View style={{ width: 6 }} />
-                        <TotlText
-                          style={{
-                            color: '#000000',
-                            fontFamily: 'Gramatika-Regular',
-                            fontWeight: '400',
-                            fontSize: 12,
-                            lineHeight: 12,
-                          }}
-                        >
-                          Share
-                        </TotlText>
-                      </Pressable>
-                    )}
                   </View>
 
                   {g.fixtures.map((f: Fixture, idx: number) => (
@@ -1167,6 +1133,14 @@ export default function HomeScreen() {
             </View>
           ))
         )}
+        {__DEV__ ? (
+          <View style={{ marginTop: 12 }}>
+            <TotlText variant="muted">Dev: BFF {String(env.EXPO_PUBLIC_BFF_URL)}</TotlText>
+            <TotlText variant="muted">
+              Dev: Auth token {hasAccessToken === null ? 'unknown' : hasAccessToken ? 'present' : 'missing'}
+            </TotlText>
+          </View>
+        ) : null}
         </Animated.ScrollView>
       </Screen>
     </GameweekAdvanceTransition>

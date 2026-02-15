@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation, useScrollToTop } from '@react-navigation/native';
+import { useNavigation, useRoute, useScrollToTop } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Fixture, Pick } from '@totl/domain';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -15,6 +15,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
@@ -83,6 +84,51 @@ function fixtureDateLabel(kickoff: string | null | undefined) {
   return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
+function buildFakeFixtures(): Fixture[] {
+  const now = Date.now();
+  const teams: Array<[string, string, string, string]> = [
+    ['NEW', 'Newcastle', 'BOU', 'Bournemouth'],
+    ['LIV', 'Liverpool', 'TOT', 'Tottenham'],
+    ['MCI', 'Man City', 'MUN', 'Man Utd'],
+    ['ARS', 'Arsenal', 'CHE', 'Chelsea'],
+    ['BHA', 'Brighton', 'WHU', 'West Ham'],
+    ['BRE', 'Brentford', 'AVL', 'Aston Villa'],
+    ['CRY', 'Crystal Palace', 'EVE', 'Everton'],
+    ['LEE', 'Leeds', 'WOL', 'Wolves'],
+    ['FUL', 'Fulham', 'NFO', 'Nottingham Forest'],
+    ['SUN', 'Sunderland', 'BUR', 'Burnley'],
+  ];
+
+  return teams.map(([homeCode, homeName, awayCode, awayName], idx) => {
+    const kickoff = new Date(now + (idx + 1) * 3 * 60 * 60 * 1000);
+    return {
+      id: `test-fixture-${idx + 1}`,
+      gw: 99,
+      fixture_index: idx,
+      kickoff_time: kickoff.toISOString(),
+      api_match_id: null,
+      home_team: homeName,
+      away_team: awayName,
+      home_name: homeName,
+      away_name: awayName,
+      home_code: homeCode,
+      away_code: awayCode,
+      home_crest: null,
+      away_crest: null,
+    };
+  });
+}
+
+function normalizeTeamForms(input: Record<string, string> | null | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  Object.entries(input ?? {}).forEach(([rawCode, rawForm]) => {
+    const code = normalizeTeamCode(rawCode);
+    const form = typeof rawForm === 'string' ? rawForm.trim().toUpperCase() : '';
+    if (code && form) out[code] = form;
+  });
+  return out;
+}
+
 function PickChip({
   label,
   active,
@@ -116,7 +162,10 @@ function PickChip({
 
 export default function PredictionsScreen() {
   const t = useTokens();
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const isTestMode = route?.name === 'PredictionsTestFlow';
   const scrollRef = React.useRef<any>(null);
   useScrollToTop(scrollRef);
   const queryClient = useQueryClient();
@@ -182,14 +231,33 @@ export default function PredictionsScreen() {
   }, []);
 
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
-    queryKey: ['predictions'],
+    queryKey: ['predictions', isTestMode ? 'test' : 'live'],
+    enabled: !isTestMode,
     queryFn: () => api.getPredictions(),
   });
+  const { data: testModePredictions } = useQuery({
+    queryKey: ['predictions-test-forms'],
+    enabled: isTestMode,
+    queryFn: () => api.getPredictions(),
+    staleTime: 30_000,
+  });
+
+  const fakeFixtures = React.useMemo(() => buildFakeFixtures(), []);
+  const effectiveData = React.useMemo(() => {
+    if (!isTestMode) return data;
+    return {
+      gw: 99,
+      fixtures: fakeFixtures,
+      picks: [],
+      submitted: false,
+      teamForms: {},
+    };
+  }, [data, fakeFixtures, isTestMode]);
 
   const fixtures = React.useMemo(() => {
-    const fx = (data?.fixtures ?? []) as Fixture[];
+    const fx = (effectiveData?.fixtures ?? []) as Fixture[];
     return [...fx].sort((a, b) => (a.fixture_index ?? 0) - (b.fixture_index ?? 0));
-  }, [data?.fixtures]);
+  }, [effectiveData?.fixtures]);
 
   const fixturesByDate = React.useMemo(() => {
     const groups = new Map<string, Fixture[]>();
@@ -220,70 +288,53 @@ export default function PredictionsScreen() {
     return keys.map((k) => ({ date: k, fixtures: groups.get(k) ?? [] }));
   }, [fixtures]);
 
-  const gw = data?.gw ?? null;
-  const submitted = data?.submitted ?? false;
-  const teamFormsFromApi = data?.teamForms ?? {};
-  const [fallbackTeamForms, setFallbackTeamForms] = React.useState<Record<string, string>>({});
-
-  // Fallback: if API doesn't provide teamForms (or it's empty), load from Supabase directly.
-  React.useEffect(() => {
-    let alive = true;
-    if (typeof gw !== 'number') return;
-    if (Object.keys(teamFormsFromApi).length > 0) {
-      setFallbackTeamForms({});
-      return;
-    }
-
-    (async () => {
-      try {
-        const { data: rows, error: formsError } = await supabase
-          .from('app_team_forms')
-          .select('team_code, form')
-          .eq('gw', gw);
-        if (!alive) return;
-        if (formsError) {
-          setFallbackTeamForms({});
-          return;
-        }
-
-        const out: Record<string, string> = {};
-        (rows ?? []).forEach((row: any) => {
-          const code = normalizeTeamCode(row?.team_code);
-          const form = typeof row?.form === 'string' ? row.form.trim().toUpperCase() : '';
-          if (code && form) out[code] = form;
-        });
-        setFallbackTeamForms(out);
-      } catch {
-        if (!alive) return;
-        setFallbackTeamForms({});
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [gw, teamFormsFromApi]);
+  const gw = effectiveData?.gw ?? null;
+  const submitted = effectiveData?.submitted ?? false;
+  const teamFormsFromApi = React.useMemo(
+    () => normalizeTeamForms((effectiveData?.teamForms ?? {}) as Record<string, string>),
+    [effectiveData?.teamForms]
+  );
+  const testModeTeamForms = React.useMemo(
+    () => normalizeTeamForms((testModePredictions?.teamForms ?? {}) as Record<string, string>),
+    [testModePredictions?.teamForms]
+  );
 
   const teamForms = React.useMemo(() => {
-    // Prefer API values (authoritative for the mobile BFF), but fill gaps with fallback.
-    return { ...fallbackTeamForms, ...teamFormsFromApi };
-  }, [fallbackTeamForms, teamFormsFromApi]);
+    // Keep forms API-driven (same source as Despia setup):
+    // - Real modal: /v1/predictions response used by this screen.
+    // - Test modal: separate /v1/predictions call only for teamForms.
+    if (isTestMode && Object.keys(testModeTeamForms).length > 0) return testModeTeamForms;
+    return teamFormsFromApi;
+  }, [isTestMode, teamFormsFromApi, testModeTeamForms]);
+  const formsByFixtureIndex = React.useMemo(() => {
+    const out = new Map<number, { home: string | null; away: string | null }>();
+    fixtures.forEach((f) => {
+      const homeCode = normalizeTeamCode(f.home_code);
+      const awayCode = normalizeTeamCode(f.away_code);
+      out.set(f.fixture_index, {
+        home: homeCode ? (teamForms[homeCode] ?? null) : null,
+        away: awayCode ? (teamForms[awayCode] ?? null) : null,
+      });
+    });
+    return out;
+  }, [fixtures, teamForms]);
 
   const serverPicks = React.useMemo(() => {
     const out: Record<number, Pick> = {};
-    (data?.picks ?? []).forEach((p: any) => {
+    (effectiveData?.picks ?? []).forEach((p: any) => {
       const idx = Number(p?.fixture_index);
       const pick = p?.pick;
       if (Number.isFinite(idx) && isPick(pick)) out[idx] = pick;
     });
     return out;
-  }, [data?.picks]);
+  }, [effectiveData?.picks]);
 
   const [draftPicks, setDraftPicks] = React.useState<Record<number, Pick>>({});
 
   // Load draft picks (once per user+gw).
   const loadedDraftForRef = React.useRef<string | null>(null);
   React.useEffect(() => {
+    if (isTestMode) return;
     if (!userId) return;
     if (typeof gw !== 'number') return;
     const k = draftKey(userId, gw);
@@ -307,23 +358,25 @@ export default function PredictionsScreen() {
         // ignore
       }
     })();
-  }, [gw, userId]);
+  }, [gw, isTestMode, userId]);
 
   // Persist drafts.
   React.useEffect(() => {
+    if (isTestMode) return;
     if (!userId) return;
     if (typeof gw !== 'number') return;
     const k = draftKey(userId, gw);
     void AsyncStorage.setItem(k, JSON.stringify(draftPicks)).catch(() => {});
-  }, [draftPicks, gw, userId]);
+  }, [draftPicks, gw, isTestMode, userId]);
 
   // Clear drafts if submission is now confirmed.
   React.useEffect(() => {
+    if (isTestMode) return;
     if (!userId) return;
     if (typeof gw !== 'number') return;
     if (!submitted) return;
     void AsyncStorage.removeItem(draftKey(userId, gw)).catch(() => {});
-  }, [gw, submitted, userId]);
+  }, [gw, isTestMode, submitted, userId]);
 
   const picks: Record<number, Pick> = React.useMemo(() => {
     // If submitted, treat server as the source of truth.
@@ -390,6 +443,9 @@ export default function PredictionsScreen() {
   React.useEffect(() => {
     setCardIndex(initialCardIndex);
   }, [initialCardIndex]);
+  const nextUnpickedCardIndex = React.useMemo(() => {
+    return fixtures.findIndex((f, i) => i > cardIndex && !isPick(picks[f.fixture_index]));
+  }, [cardIndex, fixtures, picks]);
 
   const setPickLocal = React.useCallback(
     (fixture_index: number, pick: Pick) => {
@@ -406,6 +462,7 @@ export default function PredictionsScreen() {
       if (deadlineExpired) throw new Error('Deadline has passed');
       if (typeof gw !== 'number') throw new Error('Missing gameweek');
       if (!fixtures.length) throw new Error('No fixtures');
+      if (isTestMode) return { gw: 99 };
 
       // Ensure we have a pick for every fixture.
       const picksArray = fixtures.map((f) => {
@@ -419,6 +476,12 @@ export default function PredictionsScreen() {
       return { gw };
     },
     onSuccess: async () => {
+      if (isTestMode) {
+        requestAnimationFrame(() => {
+          if (navigation?.canGoBack?.()) navigation.goBack();
+        });
+        return;
+      }
       // Clear draft immediately (server is now canonical).
       setDraftPicks({});
       confetti.fire({
@@ -438,7 +501,11 @@ export default function PredictionsScreen() {
 
       // Navigate on next frame so the overlay is mounted before the tab switch.
       requestAnimationFrame(() => {
-        navigation.navigate('Home');
+        if (navigation?.canGoBack?.()) {
+          navigation.goBack();
+          return;
+        }
+        navigation.navigate('Tabs', { screen: 'Predictions' });
       });
     },
     onError: (err) => {
@@ -447,7 +514,13 @@ export default function PredictionsScreen() {
     },
   });
 
-  const goHome = React.useCallback(() => navigation.navigate('Home'), [navigation]);
+  const goHome = React.useCallback(() => {
+    if (navigation?.canGoBack?.()) {
+      navigation.goBack();
+      return;
+    }
+    navigation.navigate('Tabs', { screen: 'Predictions' });
+  }, [navigation]);
 
   const renderGroupedFixtures = React.useCallback(
     ({ interactive }: { interactive: boolean }) => {
@@ -526,12 +599,13 @@ export default function PredictionsScreen() {
       <View
         style={{
           paddingHorizontal: t.space[4],
-          paddingTop: t.space[2],
+          paddingTop: insets.top + 4,
           paddingBottom: 10,
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
           position: 'relative',
+          backgroundColor: '#FFFFFF',
         }}
       >
         <Pressable
@@ -762,6 +836,10 @@ export default function PredictionsScreen() {
   }, [animateOut, isAnimatingSV, tx, ty]);
 
   const showInitialSpinner = isLoading && !data && !error;
+  const onRefresh = React.useCallback(() => {
+    if (isTestMode) return Promise.resolve();
+    return refetch();
+  }, [isTestMode, refetch]);
 
   // --- Render modes ---
   if (showInitialSpinner) {
@@ -774,13 +852,10 @@ export default function PredictionsScreen() {
 
   if (mode === 'cards') {
     const current = fixtures[cardIndex] ?? null;
-    const next = fixtures[cardIndex + 1] ?? null;
+    const next = nextUnpickedCardIndex >= 0 ? (fixtures[nextUnpickedCardIndex] ?? null) : null;
     const cardWidth = Math.min(420, screenWidth - t.space[4] * 2);
-    const formFor = (code: string | null | undefined) => {
-      const k = normalizeTeamCode(code);
-      if (!k) return null;
-      return teamForms[k] ?? null;
-    };
+    const currentForms = current ? formsByFixtureIndex.get(current.fixture_index) ?? { home: null, away: null } : null;
+    const nextForms = next ? formsByFixtureIndex.get(next.fixture_index) ?? { home: null, away: null } : null;
 
     return (
       <Screen fullBleed>
@@ -794,7 +869,7 @@ export default function PredictionsScreen() {
           }}
         />
         {renderTopBar({
-          title: typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek',
+          title: isTestMode ? 'Make Your Predictions Test' : typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek',
         })}
 
         <View style={{ paddingHorizontal: t.space[4], alignItems: 'center', marginTop: 16 }}>
@@ -833,23 +908,29 @@ export default function PredictionsScreen() {
           {current ? (
             <View style={{ width: cardWidth, height: cardWidth / 0.75 }}>
               {next ? (
-                <Animated.View style={[{ position: 'absolute', inset: 0 }, nextCardStyle]}>
+                <Animated.View
+                  key={`next-${String(next.id)}-${next.fixture_index}`}
+                  style={[{ position: 'absolute', inset: 0 }, nextCardStyle]}
+                >
                   <SwipePredictionCard
                     fixture={next}
                     showSwipeHint={false}
-                    homeForm={formFor(next.home_code)}
-                    awayForm={formFor(next.away_code)}
+                    homeForm={nextForms?.home ?? null}
+                    awayForm={nextForms?.away ?? null}
                   />
                 </Animated.View>
               ) : null}
 
               <GestureDetector gesture={gesture}>
-                <Animated.View style={[{ position: 'absolute', inset: 0 }, cardStyle]}>
+                <Animated.View
+                  key={`current-${String(current.id)}-${current.fixture_index}`}
+                  style={[{ position: 'absolute', inset: 0 }, cardStyle]}
+                >
                   <SwipePredictionCard
                     fixture={current}
                     showSwipeHint
-                    homeForm={formFor(current.home_code)}
-                    awayForm={formFor(current.away_code)}
+                    homeForm={currentForms?.home ?? null}
+                    awayForm={currentForms?.away ?? null}
                   />
                 </Animated.View>
               </GestureDetector>
@@ -988,7 +1069,7 @@ export default function PredictionsScreen() {
           <ScrollView
             style={{ flex: 1 }}
             contentContainerStyle={{ padding: t.space[4], paddingBottom: 140 }}
-            refreshControl={<TotlRefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
+            refreshControl={<TotlRefreshControl refreshing={!isTestMode && isRefetching} onRefresh={onRefresh} />}
           >
             {!reviewTipDismissed ? (
               <View
@@ -1093,9 +1174,9 @@ export default function PredictionsScreen() {
                 opacity: submitted || deadlineExpired || confirmMutation.isPending ? 0.55 : pressed ? 0.92 : 1,
               })}
             >
-              <TotlText style={{ color: '#FFFFFF', fontWeight: '900' }}>
-                {confirmMutation.isPending ? 'Confirming…' : 'Confirm'}
-              </TotlText>
+                <TotlText style={{ color: '#FFFFFF', fontWeight: '900' }}>
+                  {confirmMutation.isPending ? (isTestMode ? 'Finishing…' : 'Confirming…') : isTestMode ? 'Finish Test' : 'Confirm'}
+                </TotlText>
             </Pressable>
           </View>
         </View>
@@ -1106,7 +1187,10 @@ export default function PredictionsScreen() {
   // List mode (submitted or deadline passed)
   return (
     <Screen fullBleed>
-      <PageHeader title="Predictions" subtitle={typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek'} />
+      <PageHeader
+        title={isTestMode ? 'Make Your Predictions Test' : 'Predictions'}
+        subtitle={typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek'}
+      />
 
       <ScrollView
         ref={scrollRef}
@@ -1117,7 +1201,7 @@ export default function PredictionsScreen() {
           paddingTop: t.space[4],
           paddingBottom: FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
         }}
-        refreshControl={<TotlRefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
+        refreshControl={<TotlRefreshControl refreshing={!isTestMode && isRefetching} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
         {isLoading ? <TotlText variant="muted">Loading…</TotlText> : null}

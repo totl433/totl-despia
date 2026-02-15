@@ -26,8 +26,8 @@ export default function PredictionsProgressPills({
 }) {
   if (total <= 0) return null;
 
-  const DOT = 16;
-  const CURRENT_W = 34;
+  const DOT = 12;
+  const CURRENT_W = 28;
 
   return (
     <View
@@ -35,8 +35,8 @@ export default function PredictionsProgressPills({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 10,
-        paddingVertical: 10,
+        gap: 8,
+        paddingVertical: 8,
       }}
     >
       {Array.from({ length: total }, (_, idx) => {

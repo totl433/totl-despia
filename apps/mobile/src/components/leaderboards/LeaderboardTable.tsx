@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList, Image, type ViewStyle, View } from 'react-native';
+import { FlatList, Image, Pressable, type ViewStyle, View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import { TotlRefreshControl } from '../../lib/refreshControl';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
@@ -29,6 +29,7 @@ export default function LeaderboardTable({
   refreshing,
   onRefresh,
   listRef,
+  onPressRow,
 }: {
   rows: LeaderboardRow[];
   valueLabel: string;
@@ -37,6 +38,7 @@ export default function LeaderboardTable({
   refreshing?: boolean;
   onRefresh?: () => void;
   listRef?: React.RefObject<FlatList<any> | null>;
+  onPressRow?: (row: LeaderboardRow) => void;
 }) {
   const t = useTokens();
 
@@ -110,7 +112,8 @@ export default function LeaderboardTable({
           const showTrophy = item.rank === 1;
           const AVATAR_SIZE = 20;
           return (
-            <View
+            <Pressable
+              onPress={onPressRow ? () => onPressRow(item.row) : undefined}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -156,7 +159,7 @@ export default function LeaderboardTable({
               </View>
 
               <TotlText style={{ width: 70, textAlign: 'right', fontWeight: '900' }}>{String(item.row.value)}</TotlText>
-            </View>
+            </Pressable>
           );
         }}
       />

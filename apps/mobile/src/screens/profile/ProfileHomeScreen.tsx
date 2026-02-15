@@ -92,12 +92,12 @@ export default function ProfileHomeScreen() {
   const menuItems: Array<{ label: string; onPress: () => void }> = [
     { label: 'Notification Centre', onPress: () => navigation.navigate('NotificationCentre') },
     { label: 'Email Preferences', onPress: () => navigation.navigate('EmailPreferences') },
+    ...(isAdmin ? [{ label: 'Admin', onPress: () => navigation.navigate('AdminHome') }] : []),
     { label: 'How To Play', onPress: () => openUrl('https://playtotl.com/how-to-play') },
     { label: 'Contact Us', onPress: () => openUrl('mailto:hello@playtotl.com') },
     { label: 'Cookie Policy', onPress: () => openUrl('https://playtotl.com/cookie-policy') },
     { label: 'Privacy Policy', onPress: () => openUrl('https://playtotl.com/privacy-policy') },
     { label: 'Terms and Conditions', onPress: () => openUrl('https://playtotl.com/terms-and-conditions') },
-    ...(isAdmin ? [{ label: 'Admin Data', onPress: () => openUrl('https://playtotl.com/admin-data') }] : []),
   ];
 
   return (

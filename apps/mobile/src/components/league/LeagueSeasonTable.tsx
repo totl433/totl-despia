@@ -29,6 +29,7 @@ export default function LeagueSeasonTable({
   isLateStartingLeague: boolean;
 }) {
   const t = useTokens();
+  const ROW_HEIGHT = 42;
 
   return (
     <Card
@@ -92,7 +93,7 @@ export default function LeagueSeasonTable({
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingVertical: 10,
+              height: ROW_HEIGHT,
               borderBottomWidth: idx === rows.length - 1 ? 0 : 1,
               borderBottomColor: 'rgba(148,163,184,0.12)',
             }}
@@ -105,7 +106,7 @@ export default function LeagueSeasonTable({
             </TotlText>
 
             {showForm ? (
-              <View style={{ width: 150, alignItems: 'flex-start' }}>
+              <View style={{ width: 150, height: ROW_HEIGHT, alignItems: 'flex-start', justifyContent: 'center' }}>
                 <LeagueFormDisplay form={r.form} />
               </View>
             ) : (
