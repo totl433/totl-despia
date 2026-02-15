@@ -80,6 +80,7 @@ export default function FixtureCard({
   pickButtonsDisabled = false,
   variant = 'standalone',
   detailsOnly = false,
+  inverted = false,
 }: {
   fixture: FixtureLike;
   liveScore?: LiveScoreLike | null;
@@ -98,6 +99,8 @@ export default function FixtureCard({
   variant?: 'standalone' | 'grouped';
   /** In grouped stacks, reveal only scorers/tabs without repeating matchup header. */
   detailsOnly?: boolean;
+  /** Optional white-on-dark treatment for gradient card surfaces. */
+  inverted?: boolean;
 }) {
   const t = useTokens();
   const BADGE_SIZE = 20; // ~10% bigger than 18
@@ -170,6 +173,17 @@ export default function FixtureCard({
     const isWrong = isPicked && showScore && !isCorrectResult;
     const isWrongFinished = isWrong && isFinished;
 
+    if (inverted) {
+      if (isFinished && isCorrect)
+        return { bg: 'transparent', border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult, gradient: true };
+      if (isWrongFinished) return { bg: 'rgba(220,38,38,0.38)', border: 'rgba(255,255,255,0.2)', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult };
+      if (isPicked) return { bg: 'rgba(255,255,255,0.24)', border: 'rgba(255,255,255,0.48)', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult };
+      if (showScore && isCorrectResult && !isPicked) {
+        return { bg: 'rgba(255,255,255,0.16)', border: 'rgba(255,255,255,0.9)', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult };
+      }
+      return { bg: 'rgba(255,255,255,0.14)', border: 'rgba(255,255,255,0.35)', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult };
+    }
+
     if (isOngoing && isCorrect)
       return { bg: t.color.brand, border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult, gradient: false };
     if (isFinished && isCorrect)
@@ -215,9 +229,9 @@ export default function FixtureCard({
     });
 
     return (
-      <View style={{ marginTop: compact ? 0 : 10, marginBottom: compact ? 0 : 6, alignItems: align }}>
+      <View style={{ marginTop: compact ? 1 : 10, marginBottom: compact ? 3 : 6, alignItems: align }}>
         {lines.slice(0, 3).map((txt, idx) => (
-          <TotlText key={`${txt}-${idx}`} variant="microMuted">
+          <TotlText key={`${txt}-${idx}`} variant="microMuted" style={{ color: inverted ? 'rgba(255,255,255,0.88)' : undefined }}>
             {txt}
           </TotlText>
         ))}

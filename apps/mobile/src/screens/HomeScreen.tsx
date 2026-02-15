@@ -37,7 +37,7 @@ import TopStatusBanner from '../components/home/TopStatusBanner';
 import AppTopHeader from '../components/AppTopHeader';
 import WinnerShimmer from '../components/WinnerShimmer';
 import { TEAM_BADGES } from '../lib/teamBadges';
-import { normalizeTeamCode } from '../lib/teamColors';
+import { getTeamColor, normalizeTeamCode } from '../lib/teamColors';
 import { getMediumName } from '../../../../src/lib/teamNames';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
@@ -409,6 +409,7 @@ export default function HomeScreen() {
         showPickButtons: !!home?.hasSubmittedViewingGw,
         variant: 'grouped',
         detailsOnly: true,
+        inverted: false,
       } as any)}
     />
   );
@@ -417,6 +418,7 @@ export default function HomeScreen() {
   const [popFixtureId, setPopFixtureId] = React.useState<string | null>(null);
   const popScale = React.useRef(new Animated.Value(1)).current;
   const [cardHeightsById, setCardHeightsById] = React.useState<Record<string, number>>({});
+  const scoreCardId = '__gw_score_card__';
   const [scrollSpreadPx, setScrollSpreadPx] = React.useState(0);
   const scrollSpreadRef = React.useRef(0);
   const hasUserScrolledRef = React.useRef(false);
@@ -433,17 +435,21 @@ export default function HomeScreen() {
     () => (expandedFixtureId ? stackFixtures.findIndex((f) => String(f.id) === expandedFixtureId) : -1),
     [expandedFixtureId, stackFixtures]
   );
-  const collapsedStackStep = 75;
-  const collapsedStackTailHeight = React.useMemo(() => {
-    const last = renderedStackFixtures[renderedStackFixtures.length - 1];
-    if (!last) return 320;
-    return cardHeightsById[String(last.id)] ?? 320;
+  const collapsedStackStep = 62;
+  const referenceFixtureCardHeight = React.useMemo(() => {
+    const firstFixture = renderedStackFixtures[0];
+    if (!firstFixture) return 320;
+    return cardHeightsById[String(firstFixture.id)] ?? 320;
   }, [cardHeightsById, renderedStackFixtures]);
+  const stackCardCount = renderedStackFixtures.length + 1;
+  const collapsedStackTailHeight = React.useMemo(() => {
+    return cardHeightsById[scoreCardId] ?? referenceFixtureCardHeight;
+  }, [cardHeightsById, referenceFixtureCardHeight, scoreCardId]);
   const collapsedStackHeight = React.useMemo(() => {
-    const count = renderedStackFixtures.length;
+    const count = stackCardCount;
     if (count <= 0) return 0;
     return (count - 1) * collapsedStackStep + collapsedStackTailHeight;
-  }, [collapsedStackStep, collapsedStackTailHeight, renderedStackFixtures.length]);
+  }, [collapsedStackStep, collapsedStackTailHeight, stackCardCount]);
   const expandedCardHeight = React.useMemo(() => {
     if (!expandedFixtureId) return 320;
     return cardHeightsById[expandedFixtureId] ?? 320;
@@ -455,8 +461,8 @@ export default function HomeScreen() {
     return Math.max(0, expandedCardHeight - collapsedStackStep + revealedGapPx);
   }, [collapsedStackStep, expandedCardHeight, expandedFixtureIndex]);
   const stackSpreadHeight = React.useMemo(
-    () => Math.max(0, renderedStackFixtures.length - 1) * scrollSpreadPx,
-    [renderedStackFixtures.length, scrollSpreadPx]
+    () => Math.max(0, stackCardCount - 1) * scrollSpreadPx,
+    [stackCardCount, scrollSpreadPx]
   );
   const stackContainerHeight = React.useMemo(() => {
     if (showAllExpanded) return 0;
@@ -1358,7 +1364,9 @@ export default function HomeScreen() {
               !!derivedOutcome &&
               pick !== derivedOutcome &&
               (hasFinalResult || st === 'FINISHED');
-            const borderInset = isIncorrectPick || isCorrectPick ? 0 : 6;
+            const homeGradientColor = getTeamColor(homeCode, headerHome);
+            const awayGradientColor = getTeamColor(awayCode, headerAway);
+            const gradientBorderWidth = 10;
 
             return (
               <Reanimated.View
@@ -1393,10 +1401,10 @@ export default function HomeScreen() {
                         zIndex: idx + 1,
                       }),
                   shadowColor: '#0F172A',
-                  shadowOpacity: 0.2,
-                  shadowRadius: 2.4,
-                  shadowOffset: { width: 0, height: -0.6 },
-                  elevation: 2,
+                  shadowOpacity: 0,
+                  shadowRadius: 0,
+                  shadowOffset: { width: 0, height: 0 },
+                  elevation: 0,
                 }}
               >
                 <Animated.View
@@ -1413,35 +1421,37 @@ export default function HomeScreen() {
                     overflow: 'hidden',
                   }}
                 >
-                  {isCorrectPick ? (
-                    <LinearGradient
-                      colors={['#FACC15', '#F97316', '#EC4899', '#9333EA']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}
-                    >
-                      <WinnerShimmer durationMs={1600} delayMs={0} opacity={0.45} tint="white" />
-                      <WinnerShimmer durationMs={2200} delayMs={420} opacity={0.22} tint="gold" />
-                    </LinearGradient>
-                  ) : (
-                    <View
-                      style={{
-                        position: 'absolute',
-                        left: 0,
-                        right: 0,
-                        top: 0,
-                        bottom: 0,
-                        backgroundColor: '#98A2B3',
-                      }}
-                    />
-                  )}
+                  <LinearGradient
+                    colors={[homeGradientColor, '#F1F5F9', '#F1F5F9', awayGradientColor]}
+                    locations={[0, 0.34, 0.66, 1]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}
+                  />
+                  <LinearGradient
+                    colors={['rgba(255,255,255,0.28)', 'rgba(255,255,255,0.14)', 'rgba(255,255,255,0.22)']}
+                    locations={[0, 0.45, 1]}
+                    start={{ x: 0.04, y: 0 }}
+                    end={{ x: 0.98, y: 1 }}
+                    style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}
+                  />
+                  <LinearGradient
+                    colors={['rgba(248,250,252,0.16)', 'rgba(241,245,249,0.12)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}
+                  />
+                  {isCorrectPick ? <WinnerShimmer durationMs={1900} delayMs={0} opacity={0.12} tint="white" /> : null}
                   <Card
                     style={{
-                      marginLeft: borderInset,
-                      marginRight: borderInset,
-                      marginTop: borderInset,
-                      marginBottom: borderInset,
+                      marginLeft: gradientBorderWidth,
+                      marginRight: gradientBorderWidth,
+                      marginTop: gradientBorderWidth,
+                      marginBottom: gradientBorderWidth,
                       padding: 0,
+                      backgroundColor: '#FFFFFF',
+                      borderColor: 'transparent',
+                      borderWidth: 0,
                       borderTopLeftRadius: 14,
                       borderTopRightRadius: 14,
                       borderBottomLeftRadius: 14,
@@ -1458,14 +1468,10 @@ export default function HomeScreen() {
                       accessibilityLabel={`${headerHome} versus ${headerAway}`}
                       onPress={() => handleToggleFixture(fixtureId)}
                       style={({ pressed }) => ({
-                        paddingHorizontal: 16,
-                        paddingTop: 17,
-                        paddingBottom: 17,
-                        backgroundColor: '#FFFFFF',
                         opacity: pressed ? 0.96 : 1,
                       })}
                     >
-                      <View>
+                        <View style={{ paddingHorizontal: 16, paddingTop: 17, paddingBottom: 2, backgroundColor: '#FFFFFF' }}>
                         {isCorrectPick ? (
                           <View
                             style={{
@@ -1479,27 +1485,12 @@ export default function HomeScreen() {
                               zIndex: 2,
                             }}
                           >
-                            <Ionicons name="checkmark-sharp" size={24} color="#16A34A" />
-                          </View>
-                        ) : isIncorrectPick ? (
-                          <View
-                            style={{
-                              position: 'absolute',
-                              left: 2,
-                              top: 0,
-                              width: 28,
-                              height: 28,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              zIndex: 2,
-                            }}
-                          >
-                            <Ionicons name="close-sharp" size={24} color="#DC2626" />
+                            <Ionicons name="checkmark-circle" size={24} color="#16A34A" />
                           </View>
                         ) : null}
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                           <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
-                            <TotlText numberOfLines={1} style={{ fontWeight: '800', color: t.color.text, flexShrink: 1, textAlign: 'right' }}>
+                            <TotlText numberOfLines={1} style={{ fontWeight: '800', color: '#0F172A', flexShrink: 1, textAlign: 'right' }}>
                               {headerHome}
                             </TotlText>
                           </View>
@@ -1507,13 +1498,13 @@ export default function HomeScreen() {
                           <View style={{ minWidth: 98, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
                               {homeBadge ? <Image source={homeBadge} style={{ width: 22, height: 22, marginRight: 4 }} /> : null}
-                              <TotlText style={{ fontWeight: '900', color: t.color.text }}>{headerPrimary}</TotlText>
+                              <TotlText style={{ fontWeight: '900', color: '#0F172A' }}>{headerPrimary}</TotlText>
                               {awayBadge ? <Image source={awayBadge} style={{ width: 22, height: 22, marginLeft: 4 }} /> : null}
                             </View>
                           </View>
 
                           <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}>
-                            <TotlText numberOfLines={1} style={{ fontWeight: '800', color: t.color.text, flexShrink: 1, textAlign: 'left' }}>
+                            <TotlText numberOfLines={1} style={{ fontWeight: '800', color: '#0F172A', flexShrink: 1, textAlign: 'left' }}>
                               {headerAway}
                             </TotlText>
                           </View>
@@ -1521,10 +1512,10 @@ export default function HomeScreen() {
 
                         {headerSecondary ? (
                           <View style={{ alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
-                            <TotlText variant="microMuted">{headerSecondary}</TotlText>
+                            <TotlText variant="microMuted" style={{ color: '#334155' }}>{headerSecondary}</TotlText>
                           </View>
                         ) : null}
-                      </View>
+                        </View>
                     </Pressable>
 
                     <View>
@@ -1540,7 +1531,7 @@ export default function HomeScreen() {
                       >
                         <TotlText
                           style={{
-                            color: '#64748B',
+                            color: '#334155',
                             fontFamily: 'Gramatika-Medium',
                             fontSize: 13,
                             lineHeight: 14,
@@ -1559,6 +1550,120 @@ export default function HomeScreen() {
               </Reanimated.View>
             );
           })}
+          {(() => {
+            const idx = renderedStackFixtures.length;
+            const baseTop = idx * collapsedStackStep;
+            const spread = scrollSpreadPx * idx;
+            const top = anyFixtureExpanded && idx > expandedFixtureIndex
+              ? baseTop + expandedStackPush + spread
+              : baseTop + spread;
+            const scoreTitle = typeof home?.viewingGw === 'number' ? `Gameweek ${home.viewingGw} Score` : 'Gameweek Score';
+            return (
+              <Reanimated.View
+                key={scoreCardId}
+                layout={LinearTransition.springify().damping(20).stiffness(220).mass(0.95)}
+                entering={FadeIn.duration(90)}
+                exiting={FadeOut.duration(90)}
+                onLayout={(event) => {
+                  const measured = event.nativeEvent.layout.height;
+                  if (!Number.isFinite(measured) || measured <= 0) return;
+                  setCardHeightsById((prev) => {
+                    const existing = prev[scoreCardId];
+                    if (typeof existing === 'number' && Math.abs(existing - measured) <= 1) return prev;
+                    return { ...prev, [scoreCardId]: measured };
+                  });
+                }}
+                style={{
+                  ...(showAllExpanded
+                    ? {
+                        position: 'relative',
+                        left: undefined,
+                        right: undefined,
+                        top: undefined,
+                        zIndex: undefined,
+                        marginTop: 8,
+                      }
+                    : {
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        top,
+                        zIndex: idx + 1,
+                      }),
+                }}
+              >
+                <View
+                  style={{
+                    borderTopLeftRadius: 20,
+                    borderTopRightRadius: 20,
+                    borderBottomLeftRadius: 20,
+                    borderBottomRightRadius: 20,
+                    overflow: 'hidden',
+                    minHeight: referenceFixtureCardHeight,
+                  }}
+                >
+                  <LinearGradient
+                    colors={['#34D399', '#10B981', '#059669']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={{ flex: 1 }}
+                  >
+                    <WinnerShimmer durationMs={2000} delayMs={0} opacity={0.14} tint="white" />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Share ${scoreTitle}`}
+                      onPress={handleShare}
+                      style={({ pressed }) => ({
+                        flex: 1,
+                        paddingHorizontal: 16,
+                        paddingVertical: 16,
+                        opacity: pressed ? 0.96 : 1,
+                      })}
+                    >
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                          <TotlText style={{ fontSize: 32, fontWeight: '300', color: '#FFFFFF', lineHeight: 38 }}>
+                            {scorePill.score}
+                          </TotlText>
+                          <TotlText
+                            variant="caption"
+                            style={{ color: 'rgba(255,255,255,0.92)', fontSize: 16, lineHeight: 20, fontWeight: '700' }}
+                          >
+                            {' '}
+                            /{scorePill.total}
+                          </TotlText>
+                        </View>
+                        <Ionicons name="share-outline" size={24} color="rgba(255,255,255,0.95)" />
+                      </View>
+                      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                        <TotlText
+                          variant="caption"
+                          style={{
+                            color: 'rgba(255,255,255,0.8)',
+                            marginBottom: 8,
+                            fontWeight: '700',
+                            letterSpacing: 0.8,
+                            fontSize: 14,
+                            lineHeight: 18,
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {typeof home?.viewingGw === 'number' ? `Gameweek ${home.viewingGw}` : scoreTitle}
+                        </TotlText>
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+                          <TotlText numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '900', color: '#FFFFFF', flex: 1 }}>
+                            Your results
+                          </TotlText>
+                        </View>
+                      </View>
+                    </View>
+                    </Pressable>
+                  </LinearGradient>
+                </View>
+              </Reanimated.View>
+            );
+          })()}
           </View>
         )}
         {__DEV__ ? (
