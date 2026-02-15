@@ -212,6 +212,8 @@ export function LeaderboardCardResultsCta({
   showSheen = true,
   onPress,
   label = 'Your results',
+  textColor = '#FFFFFF',
+  secondaryTextColor = 'rgba(255,255,255,0.85)',
 }: {
   gw?: number
   topLabel?: string
@@ -223,6 +225,8 @@ export function LeaderboardCardResultsCta({
   showSheen?: boolean
   onPress?: () => void
   label?: string
+  textColor?: string
+  secondaryTextColor?: string
 }) {
   const shimmer = useSharedValue(0)
 
@@ -275,10 +279,10 @@ export function LeaderboardCardResultsCta({
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
               {typeof score === 'string' && typeof totalFixtures === 'string' ? (
                 <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                  <TotlText style={{ fontSize: 32, fontWeight: '300', color: '#FFFFFF', lineHeight: 38 }}>{score}</TotlText>
+                  <TotlText style={{ fontSize: 32, fontWeight: '300', color: textColor, lineHeight: 38 }}>{score}</TotlText>
                   <TotlText
                     variant="caption"
-                    style={{ color: 'rgba(255,255,255,0.92)', fontSize: 16, lineHeight: 20, fontWeight: '700' }}
+                    style={{ color: secondaryTextColor, fontSize: 16, lineHeight: 20, fontWeight: '700' }}
                   >
                     {' '}
                     /{totalFixtures}
@@ -294,7 +298,7 @@ export function LeaderboardCardResultsCta({
               {onPress ? (
                 <TotlText
                   variant="caption"
-                  style={{ color: 'rgba(255,255,255,0.95)', fontWeight: '900', marginTop: 2, fontSize: 18, lineHeight: 18 }}
+                  style={{ color: textColor, fontWeight: '900', marginTop: 2, fontSize: 18, lineHeight: 18 }}
                 >
                   ›
                 </TotlText>
@@ -306,7 +310,7 @@ export function LeaderboardCardResultsCta({
               <TotlText
                 variant="caption"
                 style={{
-                  color: 'rgba(255,255,255,0.8)',
+                  color: secondaryTextColor,
                   marginBottom: 8,
                   fontWeight: '700',
                   letterSpacing: 0.8,
@@ -317,7 +321,7 @@ export function LeaderboardCardResultsCta({
               >
                 {topLabel ?? (typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek')}
               </TotlText>
-              <TotlText numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '900', color: '#FFFFFF' }}>
+              <TotlText numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '900', color: textColor }}>
                 {label}
               </TotlText>
             </View>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { Animated, Easing, Image, Pressable, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import WinnerShimmer from './WinnerShimmer';
@@ -81,6 +81,7 @@ export default function FixtureCard({
   variant = 'standalone',
   detailsOnly = false,
   inverted = false,
+  pickedAvatarUri,
 }: {
   fixture: FixtureLike;
   liveScore?: LiveScoreLike | null;
@@ -101,6 +102,8 @@ export default function FixtureCard({
   detailsOnly?: boolean;
   /** Optional white-on-dark treatment for gradient card surfaces. */
   inverted?: boolean;
+  /** Optional tiny avatar marker shown on the user's picked tab. */
+  pickedAvatarUri?: string | null;
 }) {
   const t = useTokens();
   const BADGE_SIZE = 20; // ~10% bigger than 18
@@ -178,9 +181,6 @@ export default function FixtureCard({
         return { bg: 'transparent', border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult, gradient: true };
       if (isWrongFinished) return { bg: 'rgba(220,38,38,0.38)', border: 'rgba(255,255,255,0.2)', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult };
       if (isPicked) return { bg: 'rgba(255,255,255,0.24)', border: 'rgba(255,255,255,0.48)', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult };
-      if (showScore && isCorrectResult && !isPicked) {
-        return { bg: 'rgba(255,255,255,0.16)', border: 'rgba(255,255,255,0.9)', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult };
-      }
       return { bg: 'rgba(255,255,255,0.14)', border: 'rgba(255,255,255,0.35)', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult };
     }
 
@@ -190,7 +190,6 @@ export default function FixtureCard({
       return { bg: 'transparent', border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult, gradient: true };
     if (isWrongFinished) return { bg: '#FFDFDE', border: 'transparent', text: '#FF5E5C', isPicked, isCorrect, isWrong, isCorrectResult };
     if (isPicked) return { bg: t.color.brand, border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult };
-    if (showScore && isCorrectResult && !isPicked) return { bg: t.color.surface2, border: t.color.brand, text: t.color.text, isPicked, isCorrect, isWrong, isCorrectResult };
     return { bg: t.color.surface2, border: t.color.border, text: t.color.text, isPicked, isCorrect, isWrong, isCorrectResult };
   };
 
@@ -242,50 +241,169 @@ export default function FixtureCard({
   const ButtonChip = ({ side, label }: { side: Pick; label: string }) => {
     const s = buttonStyle(side);
     const pct = typeof pickPercentages?.[side] === 'number' ? Math.round(Number(pickPercentages?.[side])) : null;
+    const showPickedAvatar = s.isPicked && typeof pickedAvatarUri === 'string' && pickedAvatarUri.length > 0;
+    const showPickedAvatarOverlay = showPickedAvatar && Boolean((s as any).gradient);
+    const showPickedAvatarInline = showPickedAvatar && !showPickedAvatarOverlay;
+    const avatarFloat = React.useRef(new Animated.Value(0)).current;
+    React.useEffect(() => {
+      if (!showPickedAvatar) {
+        avatarFloat.stopAnimation();
+        avatarFloat.setValue(0);
+        return;
+      }
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(avatarFloat, {
+            toValue: 1,
+            duration: 1700,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(avatarFloat, {
+            toValue: -1,
+            duration: 1700,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+        { resetBeforeIteration: false }
+      );
+      loop.start();
+      return () => loop.stop();
+    }, [avatarFloat, showPickedAvatar]);
+    const avatarFloatStyle = {
+      transform: [
+        { translateY: avatarFloat.interpolate({ inputRange: [-1, 1], outputRange: [-1.8, 1.8] }) },
+        { translateX: avatarFloat.interpolate({ inputRange: [-1, 1], outputRange: [-0.8, 0.8] }) },
+        { rotate: avatarFloat.interpolate({ inputRange: [-1, 1], outputRange: ['-1.9deg', '1.9deg'] }) },
+      ],
+    };
     const commonStyle = {
       flex: 1,
       height: 54,
       borderRadius: 12,
-      borderWidth: 2,
+      borderWidth: 0,
       borderColor: s.border,
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
-      overflow: 'hidden' as const,
+      overflow: 'visible' as const,
       position: 'relative' as const,
     };
 
     const text = (
       <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-        <TotlText
-          variant="body"
-          style={{
-            color: s.text,
-            fontFamily: 'Gramatika-Medium',
-            fontStyle: 'normal',
-            fontWeight: '500',
-            fontSize: 14,
-            lineHeight: 17,
-            letterSpacing: -0.004,
-          }}
-        >
-          {label}
-        </TotlText>
-        {pct !== null ? (
-          <TotlText
-            variant="microMuted"
+        {showPickedAvatarInline ? (
+          <Animated.View
             style={{
-              color: s.text,
-              fontWeight: '700',
-              fontSize: 11,
-              lineHeight: 12,
-              marginTop: 1,
+              position: 'absolute',
+              left: -20,
+              top: -23,
+              width: 22,
+              height: 22,
+              borderRadius: 999,
+              overflow: 'hidden',
+              borderWidth: 1.5,
+              borderColor: 'rgba(255,255,255,0.9)',
+              backgroundColor: 'rgba(255,255,255,0.28)',
+              ...(avatarFloatStyle as any),
             }}
           >
-            {`${pct}%`}
-          </TotlText>
+            <Image source={{ uri: pickedAvatarUri }} style={{ width: '100%', height: '100%' }} />
+          </Animated.View>
         ) : null}
+        {pct !== null ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            {side === 'H' && homeBadge ? <Image source={homeBadge} style={{ width: 18, height: 18, marginRight: 6 }} /> : null}
+            {side === 'A' && awayBadge ? <Image source={awayBadge} style={{ width: 18, height: 18, marginRight: 6 }} /> : null}
+            <TotlText
+              variant="body"
+              style={{
+                color: s.text,
+                fontFamily: 'Gramatika-Medium',
+                fontStyle: 'normal',
+                fontWeight: '500',
+                fontSize: 14,
+                lineHeight: 17,
+                letterSpacing: -0.004,
+              }}
+            >
+              {side === 'D' ? (
+                <>
+                  <TotlText
+                    variant="body"
+                    style={{
+                      color: s.text,
+                      opacity: 0.82,
+                      fontFamily: 'Gramatika-Medium',
+                      fontStyle: 'normal',
+                      fontWeight: '500',
+                      fontSize: 12,
+                      lineHeight: 15,
+                      letterSpacing: -0.003,
+                    }}
+                  >
+                    Draw
+                  </TotlText>
+                  <TotlText
+                    variant="body"
+                    style={{
+                      color: s.text,
+                      fontFamily: 'Gramatika-Medium',
+                      fontStyle: 'normal',
+                      fontWeight: '500',
+                      fontSize: 14,
+                      lineHeight: 17,
+                      letterSpacing: -0.004,
+                    }}
+                  >
+                    {` ${pct}%`}
+                  </TotlText>
+                </>
+              ) : (
+                `${pct}%`
+              )}
+            </TotlText>
+          </View>
+        ) : (
+          <TotlText
+            variant="body"
+            style={{
+              color: s.text,
+              fontFamily: 'Gramatika-Medium',
+              fontStyle: 'normal',
+              fontWeight: '500',
+              fontSize: 14,
+              lineHeight: 17,
+              letterSpacing: -0.004,
+            }}
+          >
+            {label}
+          </TotlText>
+        )}
       </View>
     );
+
+    const avatarOverlay = showPickedAvatarOverlay ? (
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: -8,
+          top: -16,
+          width: 22,
+          height: 22,
+          borderRadius: 999,
+          overflow: 'hidden',
+          borderWidth: 1.5,
+          borderColor: 'rgba(255,255,255,0.9)',
+          backgroundColor: 'rgba(255,255,255,0.28)',
+          zIndex: 6,
+          ...(avatarFloatStyle as any),
+        }}
+      >
+        <Image source={{ uri: pickedAvatarUri }} style={{ width: '100%', height: '100%' }} />
+      </Animated.View>
+    ) : null;
 
     const interactive = typeof onPick === 'function' && !pickButtonsDisabled;
     const wrap = (child: React.ReactElement) => {
@@ -298,12 +416,19 @@ export default function FixtureCard({
             flex: 1,
             opacity: pressed ? 0.92 : 1,
             transform: [{ scale: pressed ? 0.99 : 1 }],
+            overflow: 'visible',
           })}
         >
-          {child as any}
+          <View style={{ flex: 1, position: 'relative', overflow: 'visible' }}>
+            {child as any}
+            {avatarOverlay}
+          </View>
         </Pressable>
       ) : (
-        <View style={{ flex: 1, opacity: pickButtonsDisabled ? 0.55 : 1 }}>{child as any}</View>
+        <View style={{ flex: 1, opacity: pickButtonsDisabled ? 0.55 : 1, position: 'relative', overflow: 'visible' }}>
+          {child as any}
+          {avatarOverlay}
+        </View>
       );
     };
 

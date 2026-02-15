@@ -1,6 +1,7 @@
 import React from 'react';
 import { AppState, Animated, Image, Pressable, Share, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Polygon, Stop } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
@@ -395,6 +396,7 @@ export default function HomeScreen() {
       result={resultByFixtureIndex.get(Number(f.fixture_index)) ?? null}
       pickPercentages={pickPercentagesByFixture.get(Number(f.fixture_index)) ?? null}
       showPickButtons={!!home?.hasSubmittedViewingGw}
+      pickedAvatarUri={avatarUrl}
       variant="grouped"
     />
   );
@@ -407,6 +409,7 @@ export default function HomeScreen() {
         result: resultByFixtureIndex.get(Number(f.fixture_index)) ?? null,
         pickPercentages: pickPercentagesByFixture.get(Number(f.fixture_index)) ?? null,
         showPickButtons: !!home?.hasSubmittedViewingGw,
+        pickedAvatarUri: avatarUrl,
         variant: 'grouped',
         detailsOnly: true,
         inverted: false,
@@ -1054,7 +1057,7 @@ export default function HomeScreen() {
                     leftNode={<Ionicons name="time-outline" size={24} color="#FFFFFF" />}
                     badge={null}
                     label="Coming Soon!"
-                    gradientColors={['#2D7F77', '#2A9D8F']}
+                    gradientColors={['#73B6AC', '#5FA39A']}
                     showSheen={false}
                   />
                 ),
@@ -1067,7 +1070,7 @@ export default function HomeScreen() {
                 <LeaderboardCardResultsCta
                   topLabel="OVERALL"
                   badge={LB_BADGE_5}
-                  gradientColors={['#6FCFC1', '#8ED9CF']}
+                  gradientColors={['#73B6AC', '#5FA39A']}
                   showSheen={false}
                   label="Your Performance"
                   onPress={() => navigation.navigate('Global', { initialTab: 'overall' })}
@@ -1366,7 +1369,7 @@ export default function HomeScreen() {
               (hasFinalResult || st === 'FINISHED');
             const homeGradientColor = getTeamColor(homeCode, headerHome);
             const awayGradientColor = getTeamColor(awayCode, headerAway);
-            const gradientBorderWidth = 10;
+            const gradientBorderWidth = 5;
 
             return (
               <Reanimated.View
@@ -1422,8 +1425,7 @@ export default function HomeScreen() {
                   }}
                 >
                   <LinearGradient
-                    colors={[homeGradientColor, '#F1F5F9', '#F1F5F9', awayGradientColor]}
-                    locations={[0, 0.34, 0.66, 1]}
+                    colors={[homeGradientColor, awayGradientColor]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}
@@ -1476,16 +1478,27 @@ export default function HomeScreen() {
                           <View
                             style={{
                               position: 'absolute',
-                              left: 2,
+                              left: 0,
                               top: 0,
-                              width: 28,
-                              height: 28,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              zIndex: 2,
+                              width: 40,
+                              height: 40,
+                              zIndex: 3,
                             }}
                           >
-                            <Ionicons name="checkmark-circle" size={24} color="#16A34A" />
+                            <Svg width={40} height={40} viewBox="0 0 40 40">
+                              <Defs>
+                                <SvgLinearGradient id={`winner-corner-${idx}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                                  <Stop offset="0%" stopColor="#FACC15" />
+                                  <Stop offset="35%" stopColor="#F97316" />
+                                  <Stop offset="68%" stopColor="#EC4899" />
+                                  <Stop offset="100%" stopColor="#9333EA" />
+                                </SvgLinearGradient>
+                              </Defs>
+                              <Polygon points="0,0 40,0 0,40" fill={`url(#winner-corner-${idx})`} />
+                            </Svg>
+                            <View style={{ position: 'absolute', left: 7, top: 4 }}>
+                              <Ionicons name="checkmark-sharp" size={15} color="#FFFFFF" />
+                            </View>
                           </View>
                         ) : null}
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -1497,9 +1510,9 @@ export default function HomeScreen() {
 
                           <View style={{ minWidth: 98, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-                              {homeBadge ? <Image source={homeBadge} style={{ width: 22, height: 22, marginRight: 4 }} /> : null}
+                              {homeBadge ? <Image source={homeBadge} style={{ width: 26, height: 26, marginRight: 4 }} /> : null}
                               <TotlText style={{ fontWeight: '900', color: '#0F172A' }}>{headerPrimary}</TotlText>
-                              {awayBadge ? <Image source={awayBadge} style={{ width: 22, height: 22, marginLeft: 4 }} /> : null}
+                              {awayBadge ? <Image source={awayBadge} style={{ width: 26, height: 26, marginLeft: 4 }} /> : null}
                             </View>
                           </View>
 
