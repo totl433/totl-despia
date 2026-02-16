@@ -16,6 +16,17 @@ export default function ProfileStatsScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
   const lastAutoRefreshedGwRef = React.useRef<number | null>(null);
+
+  const NO_CARD_SHADOW = React.useMemo(
+    () => ({
+      shadowColor: 'transparent' as const,
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 0,
+    }),
+    []
+  );
   const backAction = (
     <Pressable
       onPress={() => {
@@ -132,7 +143,7 @@ export default function ProfileStatsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {(statsQ.error || unicornsQ.error) ? (
-          <Card style={{ marginBottom: 12 }}>
+          <Card style={[{ marginBottom: 12 }, NO_CARD_SHADOW]}>
             <TotlText variant="heading" style={{ marginBottom: 6 }}>
               Couldn’t load stats
             </TotlText>
@@ -143,7 +154,7 @@ export default function ProfileStatsScreen() {
           </Card>
         ) : null}
 
-        <Card style={{ marginBottom: 12, padding: 16 }}>
+        <Card style={[{ marginBottom: 12, padding: 16 }, NO_CARD_SHADOW]}>
           <TotlText variant="heading" style={{ marginBottom: 10 }}>
             Your performance
           </TotlText>
@@ -184,7 +195,7 @@ export default function ProfileStatsScreen() {
           </View>
         </Card>
 
-        <Card style={{ marginBottom: 12, padding: 16 }}>
+        <Card style={[{ marginBottom: 12, padding: 16 }, NO_CARD_SHADOW]}>
           <TotlText variant="heading" style={{ marginBottom: 10 }}>
             Highlights
           </TotlText>
@@ -204,7 +215,7 @@ export default function ProfileStatsScreen() {
           </View>
         </Card>
 
-        <Card style={{ marginBottom: 12, padding: 16 }}>
+        <Card style={[{ marginBottom: 12, padding: 16 }, NO_CARD_SHADOW]}>
           <TotlText variant="heading" style={{ marginBottom: 10 }}>
             Trophy cabinet
           </TotlText>
@@ -235,7 +246,7 @@ export default function ProfileStatsScreen() {
           </View>
         </Card>
 
-        <Card style={{ marginBottom: 12, padding: 16 }}>
+        <Card style={[{ marginBottom: 12, padding: 16 }, NO_CARD_SHADOW]}>
           <TotlText variant="heading" style={{ marginBottom: 10 }}>
             Chaos Index
           </TotlText>
@@ -249,7 +260,7 @@ export default function ProfileStatsScreen() {
           ) : null}
         </Card>
 
-        <Card style={{ marginBottom: 12, padding: 16 }}>
+        <Card style={[{ marginBottom: 12, padding: 16 }, NO_CARD_SHADOW]}>
           <TotlText variant="heading" style={{ marginBottom: 10 }}>
             Teams
           </TotlText>
@@ -292,7 +303,7 @@ export default function ProfileStatsScreen() {
           </View>
         </Card>
 
-        <Card style={{ marginBottom: 12, padding: 16 }}>
+        <Card style={[{ marginBottom: 12, padding: 16 }, NO_CARD_SHADOW]}>
           <TotlText variant="heading" style={{ marginBottom: 10 }}>
             Your unicorns
           </TotlText>
@@ -339,7 +350,7 @@ export default function ProfileStatsScreen() {
         </Card>
 
         {Array.isArray(stats?.weeklyParData) && stats!.weeklyParData.length > 0 ? (
-          <Card style={{ marginBottom: 12, padding: 16 }}>
+          <Card style={[{ marginBottom: 12, padding: 16 }, NO_CARD_SHADOW]}>
             <TotlText variant="heading" style={{ marginBottom: 10 }}>
               Weekly par
             </TotlText>

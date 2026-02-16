@@ -202,7 +202,8 @@ export default function LeagueHeader({
                 marginRight: 4,
               })}
             >
-              {secondaryActionIcon ?? <ChatNavIcon color={t.color.muted} />}
+              {/* TS note: monorepo React type duplication can cause ReactNode incompatibilities. */}
+              {(secondaryActionIcon ?? <ChatNavIcon color={t.color.muted} />) as any}
             </Pressable>
           ) : onPressChat ? (
             <Pressable

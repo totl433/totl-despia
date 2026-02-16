@@ -383,6 +383,7 @@ export default function HomeScreen() {
   // SectionTitle/RoundIconButton/PickPill/SectionHeaderRow/LeaderboardCards are extracted into `src/components/home/*`.
 
   const LB_BADGE_5 = require('../../../../dist/assets/5-week-form-badge.png');
+  const TIME_ICON = require('../../assets/icons/time.png');
 
   // Leaderboard cards and pills are now shared components.
 
@@ -435,7 +436,7 @@ export default function HomeScreen() {
     () => (expandedFixtureId ? stackFixtures.findIndex((f) => String(f.id) === expandedFixtureId) : -1),
     [expandedFixtureId, stackFixtures]
   );
-  const collapsedStackStep = 58;
+  const collapsedStackStep = 64;
   const referenceFixtureCardHeight = React.useMemo(() => {
     const firstFixture = renderedStackFixtures[0];
     if (!firstFixture) return 320;
@@ -1030,6 +1031,45 @@ export default function HomeScreen() {
                 ),
               });
             } else if (showResultsCta && resultsGw) {
+              const predictionsLocked = Boolean(home?.hasSubmittedViewingGw) || deadlineExpired;
+              const viewingGwForCountdown =
+                typeof home?.viewingGw === 'number' ? home.viewingGw : typeof home?.currentGw === 'number' ? home.currentGw : null;
+
+              if (predictionsLocked && typeof viewingGwForCountdown === 'number') {
+                const wallNowMs = Date.now();
+                const firstFixture = fixtures
+                  .filter((f) => {
+                    const k = f?.kickoff_time ? new Date(f.kickoff_time).getTime() : NaN;
+                    return Number.isFinite(k);
+                  })
+                  .map((f) => ({ f, k: new Date(f.kickoff_time as string).getTime() }))
+                  .sort((a, b) => a.k - b.k)[0]?.f;
+
+                const firstFixtureKickoffTimeMs = firstFixture?.kickoff_time ? new Date(firstFixture.kickoff_time).getTime() : null;
+
+                const countdownVisible =
+                  typeof firstFixtureKickoffTimeMs === 'number' &&
+                  Number.isFinite(firstFixtureKickoffTimeMs) &&
+                  wallNowMs < firstFixtureKickoffTimeMs &&
+                  dismissedCountdownGw !== viewingGwForCountdown;
+
+                if (countdownVisible && firstFixtureKickoffTimeMs && firstFixture) {
+                  cards.push({
+                    key: 'gw-kickoff-countdown',
+                    node: (
+                      <GameweekCountdownItem
+                        variant="tile"
+                        gw={viewingGwForCountdown}
+                        kickoffTimeMs={firstFixtureKickoffTimeMs}
+                        homeCode={String(firstFixture?.home_code ?? '').toUpperCase() || null}
+                        awayCode={String(firstFixture?.away_code ?? '').toUpperCase() || null}
+                        onKickedOff={() => setDismissedCountdownGw(viewingGwForCountdown)}
+                      />
+                    ),
+                  });
+                }
+              }
+
               cards.push({
                 key: 'gw-results',
                 node: (
@@ -1051,10 +1091,10 @@ export default function HomeScreen() {
                 node: (
                   <LeaderboardCardResultsCta
                     topLabel={upcomingGw ? `Gameweek ${upcomingGw}` : 'Gameweek'}
-                    leftNode={<Ionicons name="time-outline" size={24} color="#FFFFFF" />}
+                    leftNode={<Image source={TIME_ICON} style={{ width: 28, height: 28 }} resizeMode="contain" />}
                     badge={null}
                     label="Coming Soon!"
-                    gradientColors={['#73B6AC', '#5FA39A']}
+                    tone="light"
                     showSheen={false}
                   />
                 ),
@@ -1067,7 +1107,7 @@ export default function HomeScreen() {
                 <LeaderboardCardResultsCta
                   topLabel="OVERALL"
                   badge={LB_BADGE_5}
-                  gradientColors={['#73B6AC', '#5FA39A']}
+                  tone="light"
                   showSheen={false}
                   label="Your Performance"
                   onPress={() => navigation.navigate('Global', { initialTab: 'overall' })}

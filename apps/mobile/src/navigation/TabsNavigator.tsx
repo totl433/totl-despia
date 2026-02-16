@@ -37,7 +37,7 @@ export default function TabsNavigator() {
       initialRouteName="Predictions"
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#0F172A',
+        tabBarActiveTintColor: t.color.brand,
         tabBarInactiveTintColor: '#475569',
         tabBarStyle: {
           backgroundColor: t.color.surface,

@@ -61,7 +61,8 @@ export default function AppTopHeader({
             icon={require('../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')}
             imageUri={avatarUrl}
           />
-          {leftAction ? <View>{leftAction}</View> : null}
+          {/* TS note: monorepo React type duplication can cause ReactNode incompatibilities. */}
+          {leftAction ? <View>{leftAction as any}</View> : null}
         </View>
 
         <View style={{ alignItems: 'center', justifyContent: 'center' }}>

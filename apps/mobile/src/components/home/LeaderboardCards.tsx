@@ -209,6 +209,7 @@ export function LeaderboardCardResultsCta({
   score,
   totalFixtures,
   gradientColors,
+  tone = 'gradient',
   showSheen = true,
   onPress,
   label = 'Your results',
@@ -222,12 +223,14 @@ export function LeaderboardCardResultsCta({
   score?: string
   totalFixtures?: string
   gradientColors?: [string, string]
+  tone?: 'gradient' | 'light'
   showSheen?: boolean
   onPress?: () => void
   label?: string
   textColor?: string
   secondaryTextColor?: string
 }) {
+  const t = useTokens()
   const shimmer = useSharedValue(0)
 
   React.useEffect(() => {
@@ -257,6 +260,94 @@ export function LeaderboardCardResultsCta({
       transform: [{ translateX: x }, { rotate: '-18deg' }],
     }
   })
+
+  if (tone === 'light') {
+    const topLabelColor = '#94A3B8'
+    const mainTextColor = '#0F172A'
+    const borderColor = 'rgba(148,163,184,0.22)'
+
+    return (
+      <Pressable
+        disabled={!onPress}
+        onPress={onPress}
+        style={({ pressed }) => ({
+          transform: [{ scale: pressed ? 0.99 : 1 }],
+          opacity: pressed ? 0.96 : 1,
+        })}
+      >
+        <Card
+          style={{
+            width: 148,
+            height: 148,
+            padding: 12,
+            borderRadius: 14,
+            backgroundColor: '#FFFFFF',
+            borderWidth: 1,
+            borderColor,
+            shadowOpacity: 0,
+            shadowRadius: 0,
+            shadowOffset: { width: 0, height: 0 },
+            elevation: 0,
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
+              {typeof score === 'string' && typeof totalFixtures === 'string' ? (
+                <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                  <TotlText style={{ fontSize: 32, fontWeight: '300', color: t.color.brand, lineHeight: 38 }}>{score}</TotlText>
+                  <TotlText variant="caption" style={{ color: topLabelColor, fontSize: 16, lineHeight: 20, fontWeight: '700' }}>
+                    {' '}
+                    /{totalFixtures}
+                  </TotlText>
+                </View>
+              ) : leftNode ? (
+                <View style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>{leftNode as any}</View>
+              ) : badge ? (
+                <Image source={badge} style={{ width: 28, height: 28 }} />
+              ) : (
+                <View style={{ width: 28, height: 28 }} />
+              )}
+
+              {/* Always show chevron in light tiles (even if disabled), to match the design language. */}
+              <TotlText
+                variant="caption"
+                style={{
+                  color: topLabelColor,
+                  fontWeight: '900',
+                  marginTop: 2,
+                  fontSize: 18,
+                  lineHeight: 18,
+                  opacity: onPress ? 1 : 0.9,
+                }}
+              >
+                ›
+              </TotlText>
+            </View>
+
+            <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+              <TotlText
+                variant="caption"
+                style={{
+                  color: topLabelColor,
+                  marginBottom: 8,
+                  fontWeight: '700',
+                  letterSpacing: 0.8,
+                  fontSize: 14,
+                  lineHeight: 18,
+                  textTransform: 'uppercase',
+                }}
+              >
+                {topLabel ?? (typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek')}
+              </TotlText>
+              <TotlText numberOfLines={1} style={{ fontSize: 16, lineHeight: 20, fontWeight: '900', color: mainTextColor }}>
+                {label}
+              </TotlText>
+            </View>
+          </View>
+        </Card>
+      </Pressable>
+    )
+  }
 
   return (
     <Pressable
@@ -289,7 +380,7 @@ export function LeaderboardCardResultsCta({
                   </TotlText>
                 </View>
               ) : leftNode ? (
-                <View style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>{leftNode}</View>
+                <View style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>{leftNode as any}</View>
               ) : badge ? (
                 <Image source={badge} style={{ width: 28, height: 28 }} />
               ) : (

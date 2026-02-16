@@ -62,21 +62,6 @@ export default function Chat2ThreadScreen() {
   const [infoOpen, setInfoOpen] = React.useState(false);
   const [chatMuted, setChatMuted] = React.useState(false);
 
-  const handleOpenLeagueDetail = React.useCallback(() => {
-    Keyboard.dismiss();
-    const nextHop = chatMlHopCount + 1;
-    if (nextHop >= 3) {
-      navigation.navigate('Tabs', { screen: 'Home' });
-      return;
-    }
-    navigation.replace('LeagueDetail' as any, {
-      leagueId,
-      name: String(leagueMeta?.name ?? params.name ?? ''),
-      returnTo: 'chat2',
-      chatMlHopCount: nextHop,
-    });
-  }, [chatMlHopCount, leagueId, leagueMeta?.name, navigation, params.name]);
-
   const { optimisticallyClear } = useLeagueUnreadCounts();
   React.useEffect(() => {
     optimisticallyClear(leagueId);
@@ -99,6 +84,21 @@ export default function Chat2ThreadScreen() {
     [members]
   );
   const leagueMeta = (leagueDetails?.league ?? null) as null | { id?: string; name?: string; code?: string; avatar?: string | null };
+
+  const handleOpenLeagueDetail = React.useCallback(() => {
+    Keyboard.dismiss();
+    const nextHop = chatMlHopCount + 1;
+    if (nextHop >= 3) {
+      navigation.navigate('Tabs', { screen: 'Home' });
+      return;
+    }
+    navigation.replace('LeagueDetail' as any, {
+      leagueId,
+      name: String(leagueMeta?.name ?? params.name ?? ''),
+      returnTo: 'chat2',
+      chatMlHopCount: nextHop,
+    });
+  }, [chatMlHopCount, leagueId, leagueMeta?.name, navigation, params.name]);
 
   const headerAvatarUri = React.useMemo(() => {
     const a = resolveLeagueAvatarUri(leagueMeta?.avatar);
