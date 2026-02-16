@@ -18,11 +18,11 @@ import Chat2Navigator from './Chat2Navigator';
 
 export type RootStackParamList = {
   Tabs: undefined;
-  LeagueDetail: { leagueId: string; name: string; returnTo?: 'chat' | 'chat2' };
+  LeagueDetail: { leagueId: string; name: string; returnTo?: 'chat' | 'chat2'; chatMlHopCount?: number };
   LeagueChat: { leagueId: string; name: string };
   CreateLeague: undefined;
   ChatThread: { leagueId: string; name: string };
-  Chat2Thread: { leagueId: string; name: string };
+  Chat2Thread: { leagueId: string; name: string; chatMlHopCount?: number };
   ChatHub: undefined;
   Profile: undefined;
   PredictionsFlow: undefined;
@@ -172,7 +172,12 @@ export default function AppNavigator() {
           name="Chat2Thread"
           component={Chat2ThreadScreen}
           options={{
-            headerShown: false,
+            headerShown: true,
+            headerShadowVisible: false,
+            headerStyle: { backgroundColor: t.color.background },
+            headerTintColor: t.color.text,
+            headerTitle: '',
+            headerTitleAlign: 'left',
           }}
         />
         <Stack.Screen name="Profile" component={ProfileNavigator} />

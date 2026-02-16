@@ -313,7 +313,7 @@ export default function ChatInboxScreen({
 
           return (
             <Pressable
-              onPress={() => navigation.navigate(threadRouteName, { leagueId, name: String(l.name ?? '') })}
+              onPress={() => navigation.push(threadRouteName, { leagueId, name: String(l.name ?? '') })}
               style={({ pressed }) => ({
                 paddingVertical: 14,
                 opacity: pressed ? 0.92 : 1,

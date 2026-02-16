@@ -36,7 +36,6 @@ import MiniLeagueLiveCard from '../components/home/MiniLeagueLiveCard';
 import { useLiveScores } from '../hooks/useLiveScores';
 import TopStatusBanner from '../components/home/TopStatusBanner';
 import AppTopHeader from '../components/AppTopHeader';
-import WinnerShimmer from '../components/WinnerShimmer';
 import { TEAM_BADGES } from '../lib/teamBadges';
 import { normalizeTeamCode } from '../lib/teamColors';
 import { getMediumName } from '../../../../src/lib/teamNames';
@@ -57,16 +56,6 @@ function formatMinute(status: LiveStatus, minute: number | null | undefined) {
   if (status === 'IN_PLAY') return typeof minute === 'number' ? `${minute}'` : 'LIVE';
   return '';
 }
-
-function getOrdinalSuffix(rank: number): string {
-  const mod10 = rank % 10;
-  const mod100 = rank % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'st';
-  if (mod10 === 2 && mod100 !== 12) return 'nd';
-  if (mod10 === 3 && mod100 !== 13) return 'rd';
-  return 'th';
-}
-
 
 function deadlineCountdown(
   fixtures: Fixture[],
@@ -430,7 +419,6 @@ export default function HomeScreen() {
   const [scaledFixtureId, setScaledFixtureId] = React.useState<string | null>(null);
   const cardScale = React.useRef(new Animated.Value(1)).current;
   const [cardHeightsById, setCardHeightsById] = React.useState<Record<string, number>>({});
-  const scoreCardId = '__gw_score_card__';
   const [scrollSpreadPx, setScrollSpreadPx] = React.useState(0);
   const scrollSpreadRef = React.useRef(0);
   const hasUserScrolledRef = React.useRef(false);
@@ -453,15 +441,12 @@ export default function HomeScreen() {
     if (!firstFixture) return 320;
     return cardHeightsById[String(firstFixture.id)] ?? 320;
   }, [cardHeightsById, renderedStackFixtures]);
-  const stackCardCount = renderedStackFixtures.length + 1;
-  const collapsedStackTailHeight = React.useMemo(() => {
-    return cardHeightsById[scoreCardId] ?? referenceFixtureCardHeight;
-  }, [cardHeightsById, referenceFixtureCardHeight, scoreCardId]);
+  const stackCardCount = renderedStackFixtures.length;
   const collapsedStackHeight = React.useMemo(() => {
     const count = stackCardCount;
     if (count <= 0) return 0;
-    return (count - 1) * collapsedStackStep + collapsedStackTailHeight;
-  }, [collapsedStackStep, collapsedStackTailHeight, stackCardCount]);
+    return (count - 1) * collapsedStackStep + referenceFixtureCardHeight;
+  }, [collapsedStackStep, referenceFixtureCardHeight, stackCardCount]);
   const expandedCardHeight = React.useMemo(() => {
     if (!expandedFixtureId) return 320;
     return cardHeightsById[expandedFixtureId] ?? 320;
@@ -648,45 +633,6 @@ export default function HomeScreen() {
     return { label, score, total, bg: t.color.surface2, border: t.color.border, dot: false };
   }, [home?.hasSubmittedViewingGw, scoreSummary, t.color.border, t.color.surface2]);
   const shareScoreLabel = `${scorePill.score}/${scorePill.total}`;
-  const viewingGw = home?.viewingGw ?? null;
-  const { data: submittedPlayersCount } = useQuery<number>({
-    enabled: typeof viewingGw === 'number',
-    queryKey: ['home-gw-submitted-count', viewingGw],
-    queryFn: async () => {
-      const { count, error } = await (supabase as any)
-        .from('app_gw_submissions')
-        .select('user_id', { count: 'exact', head: true })
-        .eq('gw', viewingGw as number)
-        .not('submitted_at', 'is', null);
-      if (error) {
-        console.warn('[HomeScreen] Failed to load GW submitted count', error.message);
-        return 0;
-      }
-      return typeof count === 'number' && Number.isFinite(count) ? count : 0;
-    },
-    staleTime: 60_000,
-  });
-  const gwRankDisplay = React.useMemo(() => {
-    const rank = ranks?.gwRank?.rank;
-    const total =
-      typeof submittedPlayersCount === 'number' && submittedPlayersCount > 0 ? submittedPlayersCount : ranks?.gwRank?.total;
-    if (typeof rank === 'number' && typeof total === 'number' && total > 0) {
-      return { rank: String(rank), suffix: getOrdinalSuffix(rank).toUpperCase(), total: String(total) };
-    }
-    return { rank: '--', suffix: '', total: '--' };
-  }, [ranks?.gwRank?.rank, ranks?.gwRank?.total, submittedPlayersCount]);
-  const topPercentLabel = React.useMemo(() => {
-    const rank = ranks?.gwRank?.rank;
-    const total =
-      typeof submittedPlayersCount === 'number' && submittedPlayersCount > 0 ? submittedPlayersCount : ranks?.gwRank?.total;
-    if (typeof rank === 'number' && typeof total === 'number' && total > 0) {
-      const pct = Math.max(1, Math.min(100, Math.round((rank / total) * 100)));
-      return `Top ${pct}%`;
-    }
-    const preset = ranks?.gwRank?.percentileLabel;
-    if (typeof preset === 'string' && preset.trim().length > 0) return preset;
-    return 'Top --%';
-  }, [ranks?.gwRank?.percentileLabel, ranks?.gwRank?.rank, ranks?.gwRank?.total, submittedPlayersCount]);
   const gwState: GameweekState | null = React.useMemo(() => {
     if (!home) return null;
     return getGameweekStateFromSnapshot({
@@ -698,6 +644,7 @@ export default function HomeScreen() {
   }, [home, nowMs]);
 
   const gwIsLive = (scoreSummary?.live ?? 0) > 0;
+  const viewingGw = home?.viewingGw ?? null;
   const currentGw = home?.currentGw ?? null;
   const hasActiveLiveGames = React.useMemo(() => {
     const liveScores = home?.liveScores ?? [];
@@ -1582,29 +1529,31 @@ export default function HomeScreen() {
                         </View>
                     </Pressable>
 
-                    <View>
-                      <FixtureCardDetailsRow f={f} />
-                      <View
-                        style={{
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          paddingTop: 4,
-                          paddingBottom: 12,
-                          backgroundColor: '#FFFFFF',
-                        }}
-                      >
-                        <TotlText
+                    <View style={{ position: 'relative', overflow: 'hidden', backgroundColor: '#FFFFFF' }}>
+                      <View style={{ position: 'relative', zIndex: 1 }}>
+                        <FixtureCardDetailsRow f={f} />
+                        <View
                           style={{
-                            color: '#334155',
-                            fontFamily: 'Gramatika-Medium',
-                            fontSize: 13,
-                            lineHeight: 14,
-                            letterSpacing: 0.4,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            paddingTop: 4,
+                            paddingBottom: 12,
+                            backgroundColor: 'transparent',
                           }}
-                          numberOfLines={1}
                         >
-                          {fixtureDateTimeLabel(f.kickoff_time ?? null)}
-                        </TotlText>
+                          <TotlText
+                            style={{
+                              color: '#334155',
+                              fontFamily: 'Gramatika-Medium',
+                              fontSize: 13,
+                              lineHeight: 14,
+                              letterSpacing: 0.4,
+                            }}
+                            numberOfLines={1}
+                          >
+                            {fixtureDateTimeLabel(f.kickoff_time ?? null)}
+                          </TotlText>
+                        </View>
                       </View>
                     </View>
                   </View>
@@ -1614,175 +1563,6 @@ export default function HomeScreen() {
               </Reanimated.View>
             );
           })}
-          {(() => {
-            const idx = renderedStackFixtures.length;
-            const baseTop = idx * collapsedStackStep;
-            const spread = scrollSpreadPx * idx;
-            const top = anyFixtureExpanded && idx > expandedFixtureIndex
-              ? baseTop + expandedStackPush + spread
-              : baseTop + spread;
-            const scoreTitle = typeof home?.viewingGw === 'number' ? `Gameweek ${home.viewingGw} Score` : 'Gameweek Score';
-            return (
-              <Reanimated.View
-                key={scoreCardId}
-                layout={LinearTransition.springify().damping(20).stiffness(220).mass(0.95)}
-                entering={FadeIn.duration(90)}
-                exiting={FadeOut.duration(90)}
-                onLayout={(event) => {
-                  const measured = event.nativeEvent.layout.height;
-                  if (!Number.isFinite(measured) || measured <= 0) return;
-                  setCardHeightsById((prev) => {
-                    const existing = prev[scoreCardId];
-                    if (typeof existing === 'number' && Math.abs(existing - measured) <= 1) return prev;
-                    return { ...prev, [scoreCardId]: measured };
-                  });
-                }}
-                style={{
-                  ...(showAllExpanded
-                    ? {
-                        position: 'relative',
-                        left: undefined,
-                        right: undefined,
-                        top: undefined,
-                        zIndex: undefined,
-                        marginTop: 8,
-                      }
-                    : {
-                        position: 'absolute',
-                        left: 0,
-                        right: 0,
-                        top,
-                        zIndex: idx + 1,
-                      }),
-                }}
-              >
-                <View
-                  style={{
-                    borderTopLeftRadius: 20,
-                    borderTopRightRadius: 20,
-                    borderBottomLeftRadius: 20,
-                    borderBottomRightRadius: 20,
-                    overflow: 'hidden',
-                    minHeight: referenceFixtureCardHeight,
-                  }}
-                >
-                  <LinearGradient
-                    colors={['#34D399', '#10B981', '#059669']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={{ flex: 1 }}
-                  >
-                    <WinnerShimmer durationMs={2000} delayMs={0} opacity={0.14} tint="white" />
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Share ${scoreTitle}`}
-                      onPress={handleShare}
-                      style={({ pressed }) => ({
-                        flex: 1,
-                        paddingHorizontal: 16,
-                        paddingVertical: 16,
-                        opacity: pressed ? 0.96 : 1,
-                      })}
-                    >
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                          <TotlText style={{ fontSize: 32, fontWeight: '300', color: '#FFFFFF', lineHeight: 38 }}>
-                            {scorePill.score}
-                          </TotlText>
-                          <TotlText
-                            variant="caption"
-                            style={{ color: 'rgba(255,255,255,0.92)', fontSize: 16, lineHeight: 20, fontWeight: '700' }}
-                          >
-                            {' '}
-                            /{scorePill.total}
-                          </TotlText>
-                        </View>
-                        <Ionicons name="share-outline" size={24} color="rgba(255,255,255,0.95)" />
-                      </View>
-                      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-                        <View>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <TotlText
-                              numberOfLines={1}
-                              style={{
-                                color: 'rgba(255,255,255,0.98)',
-                                fontSize: 16,
-                                lineHeight: 20,
-                                fontWeight: '800',
-                                letterSpacing: 0.8,
-                                textTransform: 'uppercase',
-                              }}
-                            >
-                              {gwRankDisplay.rank}
-                              {gwRankDisplay.suffix ? (
-                                <TotlText
-                                  style={{
-                                    color: 'rgba(255,255,255,0.98)',
-                                    fontSize: 10,
-                                    lineHeight: 12,
-                                    fontWeight: '900',
-                                    letterSpacing: 0.6,
-                                  }}
-                                >
-                                  {gwRankDisplay.suffix}
-                                </TotlText>
-                              ) : null}
-                            </TotlText>
-                            <Ionicons name="people-outline" size={14} color="rgba(255,255,255,0.9)" />
-                            <TotlText
-                              numberOfLines={1}
-                              style={{
-                                color: 'rgba(255,255,255,0.95)',
-                                fontSize: 16,
-                                lineHeight: 20,
-                                fontWeight: '800',
-                                letterSpacing: 0.8,
-                                textTransform: 'uppercase',
-                              }}
-                            >
-                              {gwRankDisplay.total}
-                            </TotlText>
-                          </View>
-                          <TotlText
-                            numberOfLines={1}
-                            style={{
-                              color: 'rgba(255,255,255,0.9)',
-                              fontSize: 16,
-                              lineHeight: 20,
-                              fontWeight: '800',
-                              letterSpacing: 0.8,
-                              textTransform: 'uppercase',
-                            }}
-                          >
-                            {topPercentLabel}
-                          </TotlText>
-                        </View>
-                        <View style={{ alignItems: 'flex-end' }}>
-                          <TotlText
-                            variant="caption"
-                            style={{
-                              color: 'rgba(255,255,255,0.8)',
-                              marginBottom: 2,
-                              fontWeight: '700',
-                              letterSpacing: 0.8,
-                              fontSize: 14,
-                              lineHeight: 18,
-                              textTransform: 'uppercase',
-                              textAlign: 'right',
-                            }}
-                          >
-                            {typeof home?.viewingGw === 'number' ? `Gameweek ${home.viewingGw}` : scoreTitle}
-                          </TotlText>
-                        </View>
-                      </View>
-                    </View>
-                    </Pressable>
-                  </LinearGradient>
-                </View>
-              </Reanimated.View>
-            );
-          })()}
           </View>
         )}
         {__DEV__ ? (

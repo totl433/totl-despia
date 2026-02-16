@@ -62,6 +62,7 @@ export default function LeagueDetailScreen() {
   const [inviteMode, setInviteMode] = React.useState<'league' | 'chat'>('league');
   const [avatarOverrideUri, setAvatarOverrideUri] = React.useState<string | null>(null);
   const [leavingLeague, setLeavingLeague] = React.useState(false);
+  const chatMlHopCount = typeof params.chatMlHopCount === 'number' ? params.chatMlHopCount : 0;
 
   type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
   type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -826,6 +827,27 @@ export default function LeagueDetailScreen() {
       });
   }, [navigation, tab]);
 
+  const handleOpenChatThread = React.useCallback(() => {
+    const nextHop = chatMlHopCount + 1;
+    if (nextHop >= 3) {
+      navigation.navigate('Tabs', { screen: 'Home' });
+      return;
+    }
+
+    const nextParams = {
+      leagueId,
+      name: String(leagueMeta?.name ?? params.name ?? ''),
+      chatMlHopCount: nextHop,
+    };
+
+    if (params.returnTo === 'chat2' || chatMlHopCount > 0) {
+      navigation.replace('Chat2Thread' as any, nextParams);
+      return;
+    }
+
+    navigation.push('Chat2Thread' as any, nextParams);
+  }, [chatMlHopCount, leagueId, leagueMeta?.name, navigation, params.name, params.returnTo]);
+
   return (
     <Screen fullBleed>
       <GestureDetector gesture={swipeTabsGesture}>
@@ -856,12 +878,7 @@ export default function LeagueDetailScreen() {
               }
               navigation.goBack();
             }}
-            onPressChat={() =>
-              navigation.navigate('Chat2Thread' as any, {
-                leagueId,
-                name: String(leagueMeta?.name ?? params.name ?? ''),
-              })
-            }
+            onPressChat={handleOpenChatThread}
             onPressMenu={() => setMenuOpen(true)}
           />
 

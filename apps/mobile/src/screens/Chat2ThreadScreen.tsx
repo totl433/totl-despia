@@ -1,14 +1,14 @@
 import React from 'react';
-import { Alert, View } from 'react-native';
+import { Alert, Keyboard, Pressable, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTokens } from '@totl/ui';
 import Svg, { Path } from 'react-native-svg';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Ionicons } from '@expo/vector-icons';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
@@ -17,8 +17,8 @@ import CenteredSpinner from '../components/CenteredSpinner';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { resolveLeagueAvatarUri } from '../lib/leagueAvatars';
-import LeagueHeader from '../components/league/LeagueHeader';
 import ChatLeagueInfoSheet from '../components/chat/ChatLeagueInfoSheet';
+import ChatStackHeaderTitle from '../components/chat/ChatStackHeaderTitle';
 
 function MiniLeaguesNavIcon({ color }: { color: string }) {
   return (
@@ -45,13 +45,37 @@ export default function Chat2ThreadScreen() {
   const navigation = useNavigation<any>();
   const t = useTokens();
   const queryClient = useQueryClient();
-  const insets = useSafeAreaInsets();
 
   const leagueId = String(params.leagueId);
   const leagueName = String(params.name ?? '');
+  const chatMlHopCount = typeof params.chatMlHopCount === 'number' ? params.chatMlHopCount : 0;
+
+  const handleBackPress = React.useCallback(() => {
+    Keyboard.dismiss();
+    if (navigation?.canGoBack?.()) {
+      navigation.goBack();
+      return;
+    }
+    navigation.navigate('ChatHub');
+  }, [navigation]);
 
   const [infoOpen, setInfoOpen] = React.useState(false);
   const [chatMuted, setChatMuted] = React.useState(false);
+
+  const handleOpenLeagueDetail = React.useCallback(() => {
+    Keyboard.dismiss();
+    const nextHop = chatMlHopCount + 1;
+    if (nextHop >= 3) {
+      navigation.navigate('Tabs', { screen: 'Home' });
+      return;
+    }
+    navigation.replace('LeagueDetail' as any, {
+      leagueId,
+      name: String(leagueMeta?.name ?? params.name ?? ''),
+      returnTo: 'chat2',
+      chatMlHopCount: nextHop,
+    });
+  }, [chatMlHopCount, leagueId, leagueMeta?.name, navigation, params.name]);
 
   const { optimisticallyClear } = useLeagueUnreadCounts();
   React.useEffect(() => {
@@ -100,6 +124,57 @@ export default function Chat2ThreadScreen() {
     if (unique.length <= MAX) return unique.join(', ');
     return `${unique.slice(0, MAX).join(', ')} +${unique.length - MAX}`;
   }, [members]);
+
+  React.useLayoutEffect(() => {
+    navigation.setOptions({
+      headerBackVisible: false,
+      headerLeft: () => (
+        <Pressable
+          onPress={handleBackPress}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={10}
+          style={({ pressed }) => ({ paddingRight: 6, opacity: pressed ? 0.85 : 1 })}
+        >
+          <Ionicons name="chevron-back" size={24} color={t.color.text} />
+        </Pressable>
+      ),
+      headerTitle: () => (
+        <ChatStackHeaderTitle
+          title={leagueName || 'Chat'}
+          subtitle={participantNamesLabel || 'Chat'}
+          avatarUri={headerAvatarUri}
+        />
+      ),
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Pressable
+            onPress={() => {
+              Keyboard.dismiss();
+              setInfoOpen(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Chat info"
+            hitSlop={10}
+            style={({ pressed }) => ({ paddingHorizontal: 6, opacity: pressed ? 0.85 : 1 })}
+          >
+            <Ionicons name="information-circle-outline" size={22} color={t.color.text} />
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              handleOpenLeagueDetail();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Open mini league"
+            hitSlop={10}
+            style={({ pressed }) => ({ paddingLeft: 6, opacity: pressed ? 0.85 : 1 })}
+          >
+            <MiniLeaguesNavIcon color={t.color.text} />
+          </Pressable>
+        </View>
+      ),
+    });
+  }, [handleBackPress, handleOpenLeagueDetail, headerAvatarUri, leagueName, participantNamesLabel, t.color.text, navigation]);
 
   React.useEffect(() => {
     let active = true;
@@ -224,37 +299,10 @@ export default function Chat2ThreadScreen() {
   }
 
   return (
-    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: t.color.background }}>
+    <View style={{ flex: 1, backgroundColor: t.color.background }}>
       <View style={{ flex: 1 }}>
-        <LeagueHeader
-          title={leagueName || 'Chat'}
-          subtitle={participantNamesLabel || 'Chat'}
-          avatarUri={headerAvatarUri}
-          compactSubtitle
-          onPressHeaderInfo={() => setInfoOpen(true)}
-          onPressBack={() => {
-            if (navigation?.canGoBack?.()) {
-              navigation.goBack();
-              return;
-            }
-            navigation.navigate('Tabs' as any, { screen: 'Chat' } as any);
-          }}
-          onPressSecondaryAction={() =>
-            navigation.navigate('LeagueDetail' as any, {
-              leagueId,
-              name: String(leagueMeta?.name ?? params.name ?? ''),
-              returnTo: 'chat2',
-            })
-          }
-          secondaryActionIcon={<MiniLeaguesNavIcon color={t.color.muted} />}
-        />
-
         <View style={{ flex: 1 }}>
-          <LeagueChatTabV2
-            leagueId={leagueId}
-            members={membersForChat}
-            keyboardHeaderOffset={0}
-          />
+          <LeagueChatTabV2 leagueId={leagueId} members={membersForChat} />
         </View>
 
         <ChatLeagueInfoSheet
@@ -267,11 +315,7 @@ export default function Chat2ThreadScreen() {
           onToggleMuted={handleToggleMuted}
           onPressOpenLeague={() => {
             setInfoOpen(false);
-            navigation.navigate('LeagueDetail' as any, {
-              leagueId,
-              name: String(leagueMeta?.name ?? params.name ?? ''),
-              returnTo: 'chat2',
-            });
+            handleOpenLeagueDetail();
           }}
           onPressChooseIcon={handleChooseGroupIcon}
           onPressResetIcon={handleResetGroupIcon}
