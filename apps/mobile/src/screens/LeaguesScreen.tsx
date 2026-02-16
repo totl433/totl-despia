@@ -1,5 +1,6 @@
 import React from 'react';
 import { FlatList, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
@@ -401,22 +402,17 @@ export default function LeaguesScreen() {
         accessibilityRole="button"
         accessibilityLabel="Create or join mini league"
         style={({ pressed }) => ({
-          width: 38,
+          width: 30,
           height: 38,
-          borderRadius: 999,
-          backgroundColor: t.color.brand,
-          borderWidth: 1,
-          borderColor: 'rgba(255,255,255,0.16)',
           alignItems: 'center',
           justifyContent: 'center',
-          opacity: pressed ? 0.92 : 1,
-          transform: [{ scale: pressed ? 0.98 : 1 }],
+          opacity: pressed ? 0.86 : 1,
         })}
       >
-        <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 20, lineHeight: 20 }}>+</TotlText>
+        <Ionicons name="add" size={24} color={t.color.muted} />
       </Pressable>
     ),
-    [t.color.brand]
+    [t.color.muted]
   );
   const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 35 }).current;
   const onViewableItemsChanged = React.useRef(
@@ -474,7 +470,7 @@ export default function LeaguesScreen() {
           onPressProfile={() => navigation.navigate('Profile')}
           avatarUrl={avatarUrl}
           title="Mini Leagues"
-          leftAction={renderCreateJoinHeaderButton()}
+          rightAction={renderCreateJoinHeaderButton()}
         />
         <CenteredSpinner loading />
         <CreateJoinLeagueSheet
@@ -522,7 +518,7 @@ export default function LeaguesScreen() {
         onPressProfile={() => navigation.navigate('Profile')}
         avatarUrl={avatarUrl}
         title="Mini Leagues"
-        leftAction={renderCreateJoinHeaderButton()}
+        rightAction={renderCreateJoinHeaderButton()}
       />
 
       <FlatList

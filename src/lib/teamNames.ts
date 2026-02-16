@@ -55,7 +55,7 @@ const CLUBS: Record<
     aliases: ['aston villa', 'aston villa fc', 'villa', 'avl'],
   },
   'bournemouth': {
-    medium: "B'mouth",
+    medium: 'Bournemouth',
     slug: 'bournemouth',
     aliases: ['bournemouth', 'afc bournemouth', 'bournemouth fc', 'bou'],
   },
@@ -204,7 +204,7 @@ export function getTruncatedName(input: string): string {
   const truncatedMap: Partial<Record<TeamKey, string>> = {
     'newcastle': 'Newcastle',
     'sunderland': 'Sunderland',
-    'bournemouth': "B'mouth",
+    'bournemouth': 'Bournemouth',
     'man-united': 'Man Utd',
     'man-city': 'Man City',
     'crystal-palace': 'Palace',

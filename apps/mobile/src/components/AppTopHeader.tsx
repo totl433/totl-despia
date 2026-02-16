@@ -13,12 +13,14 @@ export default function AppTopHeader({
   avatarUrl,
   title,
   leftAction,
+  rightAction,
 }: {
   onPressChat: () => void;
   onPressProfile: () => void;
   avatarUrl?: string | null;
   title?: string;
   leftAction?: React.ReactNode;
+  rightAction?: React.ReactNode;
 }) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
@@ -53,7 +55,14 @@ export default function AppTopHeader({
       }}
     >
       <View style={{ height: 60, justifyContent: 'center', alignItems: 'center' }}>
-        {leftAction ? <View style={{ position: 'absolute', left: 0 }}>{leftAction}</View> : null}
+        <View style={{ position: 'absolute', left: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <RoundIconButton
+            onPress={onPressProfile}
+            icon={require('../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')}
+            imageUri={avatarUrl}
+          />
+          {leftAction ? <View>{leftAction}</View> : null}
+        </View>
 
         <View style={{ alignItems: 'center', justifyContent: 'center' }}>
           {title ? (
@@ -64,6 +73,7 @@ export default function AppTopHeader({
         </View>
 
         <View style={{ position: 'absolute', right: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {rightAction ? <View>{rightAction as any}</View> : null}
           <Pressable
             onPress={onPressChat}
             accessibilityRole="button"
@@ -114,11 +124,6 @@ export default function AppTopHeader({
               </View>
             ) : null}
           </Pressable>
-          <RoundIconButton
-            onPress={onPressProfile}
-            icon={require('../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')}
-            imageUri={avatarUrl}
-          />
         </View>
       </View>
     </View>

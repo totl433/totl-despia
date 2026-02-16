@@ -283,40 +283,40 @@ export default function GlobalScreen() {
           avatarUrl={avatarUrl}
           title="Leaderboards"
           leftAction={
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Pressable
-                onPress={() => setScope((prev) => (prev === 'all' ? 'friends' : 'all'))}
-                accessibilityRole="button"
-                accessibilityLabel={scope === 'friends' ? 'Filter active: Mini League Friends' : 'Filter active: All Players'}
-                style={({ pressed }) => ({
-                  width: 38,
-                  height: 38,
-                  borderRadius: 999,
-                  borderWidth: scope === 'friends' ? 2 : 1.5,
-                  borderColor: scope === 'friends' ? '#1C8376' : t.color.border,
-                  backgroundColor: scope === 'friends' ? 'rgba(28,131,118,0.10)' : '#FFFFFF',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: pressed ? 0.86 : 1,
-                })}
-              >
-                <Ionicons name="funnel" size={16} color={scope === 'friends' ? '#1C8376' : t.color.muted} />
-              </Pressable>
-              <Pressable
-                onPress={() => navigation.navigate('Profile' as any, { screen: 'ProfileStats' } as any)}
-                accessibilityRole="button"
-                accessibilityLabel="Open stats"
-                style={({ pressed }) => ({
-                  width: 30,
-                  height: 38,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: pressed ? 0.86 : 1,
-                })}
-              >
-                <Ionicons name="analytics-outline" size={24} color={t.color.muted} />
-              </Pressable>
-            </View>
+            <Pressable
+              onPress={() => setScope((prev) => (prev === 'all' ? 'friends' : 'all'))}
+              accessibilityRole="button"
+              accessibilityLabel={scope === 'friends' ? 'Filter active: Mini League Friends' : 'Filter active: All Players'}
+              style={({ pressed }) => ({
+                width: 38,
+                height: 38,
+                borderRadius: 999,
+                borderWidth: scope === 'friends' ? 2 : 1.5,
+                borderColor: scope === 'friends' ? '#1C8376' : t.color.border,
+                backgroundColor: scope === 'friends' ? 'rgba(28,131,118,0.10)' : '#FFFFFF',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.86 : 1,
+              })}
+            >
+              <Ionicons name="funnel" size={16} color={scope === 'friends' ? '#1C8376' : t.color.muted} />
+            </Pressable>
+          }
+          rightAction={
+            <Pressable
+              onPress={() => navigation.navigate('Profile' as any, { screen: 'ProfileStats' } as any)}
+              accessibilityRole="button"
+              accessibilityLabel="Open stats"
+              style={({ pressed }) => ({
+                width: 30,
+                height: 38,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.86 : 1,
+              })}
+            >
+              <Ionicons name="analytics-outline" size={24} color={t.color.muted} />
+            </Pressable>
           }
         />
 

@@ -168,6 +168,10 @@ export default function FixtureCard({
   const awayName = getMediumName(awayKey);
 
   const derivedOutcome: Pick | null = showScore ? (result ?? (hs > as ? 'H' : hs < as ? 'A' : 'D')) : null;
+  const homeTeamNameWeight: '600' | '800' =
+    pick === 'H' ? '800' : pick === 'D' || pick === 'A' ? '600' : hs > as && showScore ? '800' : '600';
+  const awayTeamNameWeight: '600' | '800' =
+    pick === 'A' ? '800' : pick === 'D' || pick === 'H' ? '600' : as > hs && showScore ? '800' : '600';
 
   const buttonStyle = (side: Pick) => {
     const isPicked = pick === side;
@@ -478,7 +482,7 @@ export default function FixtureCard({
                       numberOfLines={1}
                       ellipsizeMode="tail"
                       style={{
-                        fontWeight: hs > as && showScore ? '800' : '600',
+                        fontWeight: homeTeamNameWeight,
                         flexGrow: 1,
                         flexShrink: 1,
                         textAlign: 'right',
@@ -527,7 +531,7 @@ export default function FixtureCard({
                     {!showScore && awayBadge ? (
                       <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginRight: BADGE_GAP }} />
                     ) : null}
-                    <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontWeight: as > hs && showScore ? '800' : '600', flexShrink: 1 }}>
+                    <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontWeight: awayTeamNameWeight, flexShrink: 1 }}>
                       {awayName}
                     </TotlText>
                   </View>
@@ -592,7 +596,7 @@ export default function FixtureCard({
                   numberOfLines={1}
                   ellipsizeMode="tail"
                   style={{
-                    fontWeight: hs > as && showScore ? '800' : '600',
+                    fontWeight: homeTeamNameWeight,
                     flexGrow: 1,
                     flexShrink: 1,
                     textAlign: 'right',
@@ -639,7 +643,7 @@ export default function FixtureCard({
                 {!showScore && awayBadge ? (
                   <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginRight: BADGE_GAP }} />
                 ) : null}
-                <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontWeight: as > hs && showScore ? '800' : '600', flexShrink: 1 }}>
+                <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontWeight: awayTeamNameWeight, flexShrink: 1 }}>
                   {awayName}
                 </TotlText>
               </View>

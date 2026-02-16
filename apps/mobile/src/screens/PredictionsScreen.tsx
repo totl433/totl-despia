@@ -15,7 +15,6 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
@@ -26,7 +25,7 @@ import PredictionsProgressPills from '../components/predictions/PredictionsProgr
 import PredictionsHowToSheet from '../components/predictions/PredictionsHowToSheet';
 import { normalizeTeamCode } from '../lib/teamColors';
 import { useConfetti } from '../lib/confetti';
-import PageHeader from '../components/PageHeader';
+import AppTopHeader from '../components/AppTopHeader';
 import CenteredSpinner from '../components/CenteredSpinner';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../lib/layout';
 
@@ -162,7 +161,6 @@ function PickChip({
 
 export default function PredictionsScreen() {
   const t = useTokens();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const isTestMode = route?.name === 'PredictionsTestFlow';
@@ -191,6 +189,18 @@ export default function PredictionsScreen() {
       alive = false;
     };
   }, []);
+  const { data: avatarRow } = useQuery<{ avatar_url: string | null } | null>({
+    enabled: !!userId,
+    queryKey: ['profile-avatar-url', userId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('users').select('avatar_url').eq('id', userId).maybeSingle();
+      if (error && (error as any).code !== 'PGRST116') throw error;
+      if (!data) return null;
+      return { avatar_url: typeof (data as any).avatar_url === 'string' ? (data as any).avatar_url : null };
+    },
+    staleTime: 60_000,
+  });
+  const avatarUrl = typeof avatarRow?.avatar_url === 'string' ? String(avatarRow.avatar_url) : null;
 
   const [howToSuppressed, setHowToSuppressed] = React.useState<boolean>(false);
   const [howToOpen, setHowToOpen] = React.useState(false);
@@ -514,14 +524,6 @@ export default function PredictionsScreen() {
     },
   });
 
-  const goHome = React.useCallback(() => {
-    if (navigation?.canGoBack?.()) {
-      navigation.goBack();
-      return;
-    }
-    navigation.navigate('Tabs', { screen: 'Predictions' });
-  }, [navigation]);
-
   const renderGroupedFixtures = React.useCallback(
     ({ interactive }: { interactive: boolean }) => {
       return fixturesByDate.map((g, groupIdx) => (
@@ -594,58 +596,14 @@ export default function PredictionsScreen() {
     [deadlineExpired, fixturesByDate, picks, setPickLocal, submitted, t.color.text]
   );
 
-  const renderTopBar = ({ title, right }: { title: string; right?: React.ReactNode }) => {
-    return (
-      <View
-        style={{
-          paddingHorizontal: t.space[4],
-          paddingTop: insets.top + 4,
-          paddingBottom: 10,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          position: 'relative',
-          backgroundColor: '#FFFFFF',
-        }}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close predictions"
-          onPress={goHome}
-          style={({ pressed }) => ({
-            position: 'absolute',
-            left: t.space[4],
-            width: 32,
-            height: 32,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 16,
-            opacity: pressed ? 0.75 : 1,
-          })}
-        >
-          <Ionicons name="close" size={22} color={t.color.text} />
-        </Pressable>
-
-        <TotlText style={{ fontWeight: '900', fontSize: 18, color: t.color.text, textAlign: 'center' }} numberOfLines={1}>
-          {title}
-        </TotlText>
-
-        <View
-          style={{
-            position: 'absolute',
-            right: t.space[4],
-            minWidth: 44,
-            alignItems: 'flex-end',
-            flexDirection: 'row',
-            justifyContent: 'flex-end',
-            gap: 10,
-          }}
-        >
-          {right ? (right as any) : null}
-        </View>
-      </View>
-    );
-  };
+  const renderTopBar = ({ title }: { title: string }) => (
+    <AppTopHeader
+      onPressChat={() => navigation.navigate('ChatHub')}
+      onPressProfile={() => navigation.navigate('Profile')}
+      avatarUrl={avatarUrl}
+      title={title}
+    />
+  );
 
   // --- Swipe deck animation state ---
   const isAnimatingSV = useSharedValue(0);
@@ -1187,9 +1145,11 @@ export default function PredictionsScreen() {
   // List mode (submitted or deadline passed)
   return (
     <Screen fullBleed>
-      <PageHeader
+      <AppTopHeader
+        onPressChat={() => navigation.navigate('ChatHub')}
+        onPressProfile={() => navigation.navigate('Profile')}
+        avatarUrl={avatarUrl}
         title={isTestMode ? 'Make Your Predictions Test' : 'Predictions'}
-        subtitle={typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek'}
       />
 
       <ScrollView
