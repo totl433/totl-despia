@@ -369,20 +369,41 @@ export default function FixtureCard({
             </TotlText>
           </View>
         ) : (
-          <TotlText
-            variant="body"
-            style={{
-              color: s.text,
-              fontFamily: 'Gramatika-Medium',
-              fontStyle: 'normal',
-              fontWeight: '500',
-              fontSize: 14,
-              lineHeight: 17,
-              letterSpacing: -0.004,
-            }}
-          >
-            {label}
-          </TotlText>
+          detailsOnly && side !== 'D' ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+              {side === 'H' && homeBadge ? <Image source={homeBadge} style={{ width: 18, height: 18, marginRight: 6 }} /> : null}
+              {side === 'A' && awayBadge ? <Image source={awayBadge} style={{ width: 18, height: 18, marginRight: 6 }} /> : null}
+              <TotlText
+                variant="body"
+                style={{
+                  color: s.text,
+                  fontFamily: 'Gramatika-Medium',
+                  fontStyle: 'normal',
+                  fontWeight: '500',
+                  fontSize: 14,
+                  lineHeight: 17,
+                  letterSpacing: -0.004,
+                }}
+              >
+                Win
+              </TotlText>
+            </View>
+          ) : (
+            <TotlText
+              variant="body"
+              style={{
+                color: s.text,
+                fontFamily: 'Gramatika-Medium',
+                fontStyle: 'normal',
+                fontWeight: '500',
+                fontSize: 14,
+                lineHeight: 17,
+                letterSpacing: -0.004,
+              }}
+            >
+              {label}
+            </TotlText>
+          )
         )}
       </View>
     );

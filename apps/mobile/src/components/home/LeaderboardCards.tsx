@@ -339,7 +339,7 @@ export function LeaderboardCardResultsCta({
               >
                 {topLabel ?? (typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek')}
               </TotlText>
-              <TotlText numberOfLines={1} style={{ fontSize: 16, lineHeight: 20, fontWeight: '900', color: mainTextColor }}>
+              <TotlText numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '900', color: mainTextColor }}>
                 {label}
               </TotlText>
             </View>
