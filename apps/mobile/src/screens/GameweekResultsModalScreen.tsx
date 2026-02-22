@@ -390,7 +390,7 @@ function ShareCaptureCard({
 
                     {pickCorrect === true ? (
                       <LinearGradient
-                        colors={['#F59E0B', '#EC4899', '#9333EA']}
+                        colors={['#FACC15', '#F97316', '#EC4899', '#9333EA']}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
                         style={{
@@ -422,7 +422,7 @@ function ShareCaptureCard({
                           borderRadius: 999,
                           paddingHorizontal: 10,
                           paddingVertical: 5,
-                          backgroundColor: pickCorrect === false ? '#94A3B8' : 'rgba(15,23,42,0.12)',
+                          backgroundColor: pick ? 'rgba(28,131,118,0.7)' : 'rgba(15,23,42,0.12)',
                         }}
                       >
                         <TotlText
@@ -465,7 +465,6 @@ export default function GameweekResultsModalScreen() {
   const [shareSnapshot, setShareSnapshot] = React.useState<HomeSnapshot | null>(null);
   const [fixturesCardHeight, setFixturesCardHeight] = React.useState<number>(0);
   const [selectedShareAssetIndex, setSelectedShareAssetIndex] = React.useState(0);
-  const selectedShareAssetMode: 'fixturesOnly' | 'roundup' = selectedShareAssetIndex === 1 ? 'roundup' : 'fixturesOnly';
 
   const { data: results, isLoading, error } = useQuery<GwResults>({
     enabled: typeof gw === 'number',
@@ -484,6 +483,35 @@ export default function GameweekResultsModalScreen() {
   });
   const shareUserName = profileSummary?.name ?? null;
   const effectiveShareSnapshot = shareSnapshot ?? shareSnapshotFromQuery ?? null;
+  const gwHasEndedForShare = React.useMemo(() => {
+    const fixtures = effectiveShareSnapshot?.fixtures ?? [];
+    if (!fixtures.length) return false;
+
+    const fixtureCount = fixtures.length;
+    const uniqueResultFixtures = new Set<number>();
+    (effectiveShareSnapshot?.gwResults ?? []).forEach((r) => {
+      if (typeof r?.fixture_index === 'number') uniqueResultFixtures.add(r.fixture_index);
+    });
+
+    const liveByFixture = new Map<number, string>();
+    (effectiveShareSnapshot?.liveScores ?? []).forEach((ls) => {
+      if (typeof ls?.fixture_index === 'number') {
+        liveByFixture.set(ls.fixture_index, typeof ls.status === 'string' ? ls.status : 'SCHEDULED');
+      }
+    });
+
+    const hasActiveLiveGames = fixtures.some((f) => {
+      const st = liveByFixture.get(f.fixture_index);
+      return st === 'IN_PLAY' || st === 'PAUSED';
+    });
+    if (hasActiveLiveGames) return false;
+
+    const allHaveResults = uniqueResultFixtures.size >= fixtureCount;
+    const allFinishedStatus = fixtures.every((f) => liveByFixture.get(f.fixture_index) === 'FINISHED');
+    return allHaveResults || allFinishedStatus;
+  }, [effectiveShareSnapshot]);
+  const selectedShareAssetMode: 'fixturesOnly' | 'roundup' =
+    gwHasEndedForShare && selectedShareAssetIndex === 1 ? 'roundup' : 'fixturesOnly';
   const shareSummaryText = React.useMemo(() => {
     if (typeof gw !== 'number' || !results) return 'Check out my TOTL results!';
     const name = shareUserName?.trim() ? `${shareUserName} ` : '';
@@ -616,6 +644,9 @@ export default function GameweekResultsModalScreen() {
     setSelectedShareAssetIndex(0);
     setFixturesCardHeight(0);
   }, [gw, isFixturesShareMode]);
+  React.useEffect(() => {
+    if (!gwHasEndedForShare && selectedShareAssetIndex !== 0) setSelectedShareAssetIndex(0);
+  }, [gwHasEndedForShare, selectedShareAssetIndex]);
 
   if (isLoading && !results && !error) {
     return (
@@ -651,6 +682,8 @@ export default function GameweekResultsModalScreen() {
   }
 
   if (isFixturesShareMode) {
+    const shareAssetModes = gwHasEndedForShare ? (['fixturesOnly', 'roundup'] as const) : (['fixturesOnly'] as const);
+    const hasShareSnapshotFixtures = (effectiveShareSnapshot?.fixtures?.length ?? 0) > 0;
     const PREVIEW_CARD_BASE_WIDTH = 390;
     const PREVIEW_CARD_SCALE = 0.78;
     const PREVIEW_CARD_DISPLAY_WIDTH = Math.round(PREVIEW_CARD_BASE_WIDTH * PREVIEW_CARD_SCALE);
@@ -681,25 +714,22 @@ export default function GameweekResultsModalScreen() {
           indicatorBottomOffset={INDICATOR_BOTTOM_GAP}
           indicatorReservedHeight={DOT_INDICATOR_SIZE + INDICATOR_BOTTOM_GAP + 8}
           indicator={
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-              <View
-                style={{
-                  width: DOT_INDICATOR_SIZE,
-                  height: DOT_INDICATOR_SIZE,
-                  borderRadius: 999,
-                  marginRight: 8,
-                  backgroundColor: selectedShareAssetIndex === 0 ? '#1C8376' : 'rgba(100,116,139,0.45)',
-                }}
-              />
-              <View
-                style={{
-                  width: DOT_INDICATOR_SIZE,
-                  height: DOT_INDICATOR_SIZE,
-                  borderRadius: 999,
-                  backgroundColor: selectedShareAssetIndex === 1 ? '#1C8376' : 'rgba(100,116,139,0.45)',
-                }}
-              />
-            </View>
+            shareAssetModes.length > 1 ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                {shareAssetModes.map((_, idx) => (
+                  <View
+                    key={`share-dot-${idx}`}
+                    style={{
+                      width: DOT_INDICATOR_SIZE,
+                      height: DOT_INDICATOR_SIZE,
+                      borderRadius: 999,
+                      marginRight: idx === shareAssetModes.length - 1 ? 0 : 8,
+                      backgroundColor: selectedShareAssetIndex === idx ? '#1C8376' : 'rgba(100,116,139,0.45)',
+                    }}
+                  />
+                ))}
+              </View>
+            ) : null
           }
           onClose={closeFixturesShare}
           footer={
@@ -806,7 +836,7 @@ export default function GameweekResultsModalScreen() {
             </View>
           }
         >
-          {results ? (
+          {results && hasShareSnapshotFixtures ? (
             <View
               style={{
                 width: PREVIEW_CAROUSEL_VIEWPORT_WIDTH,
@@ -836,16 +866,16 @@ export default function GameweekResultsModalScreen() {
                 }}
                 onMomentumScrollEnd={(e) => {
                   const rawIndex = e.nativeEvent.contentOffset.x / PREVIEW_CARD_PAGE_WIDTH;
-                  const nextIndex = Math.max(0, Math.min(1, Math.round(rawIndex)));
+                  const nextIndex = Math.max(0, Math.min(shareAssetModes.length - 1, Math.round(rawIndex)));
                   setSelectedShareAssetIndex(nextIndex);
                 }}
               >
-                {(['fixturesOnly', 'roundup'] as const).map((assetMode, idx) => (
+                {shareAssetModes.map((assetMode, idx) => (
                   <View
                     key={`share-asset-${assetMode}`}
                     style={{
                       width: PREVIEW_CARD_DISPLAY_WIDTH,
-                      marginRight: idx === 1 ? 0 : PREVIEW_CARD_GAP,
+                      marginRight: idx === shareAssetModes.length - 1 ? 0 : PREVIEW_CARD_GAP,
                       overflow: 'visible',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -880,6 +910,7 @@ export default function GameweekResultsModalScreen() {
                           onLayout={
                             idx === 0
                               ? (e) => {
+                                  if (!hasShareSnapshotFixtures) return;
                                   const nextHeight = Math.round(e.nativeEvent.layout.height);
                                   if (nextHeight > 0 && nextHeight !== fixturesCardHeight) setFixturesCardHeight(nextHeight);
                                 }
@@ -899,7 +930,7 @@ export default function GameweekResultsModalScreen() {
                             userName={shareUserName}
                             mode={assetMode}
                             width={PREVIEW_CARD_BASE_WIDTH}
-                            fixedHeight={fixturesCardHeight > 0 ? fixturesCardHeight : undefined}
+                            fixedHeight={hasShareSnapshotFixtures && fixturesCardHeight > 0 ? fixturesCardHeight : undefined}
                           />
                         </Card>
                       </View>
@@ -909,7 +940,11 @@ export default function GameweekResultsModalScreen() {
               </ScrollView>
 
             </View>
-          ) : null}
+          ) : (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', width: PREVIEW_CAROUSEL_VIEWPORT_WIDTH }}>
+              <CenteredSpinner loading />
+            </View>
+          )}
         </ShareResultsTray>
 
         {/* Off-screen capture card for PNG sharing */}
@@ -925,7 +960,7 @@ export default function GameweekResultsModalScreen() {
               snapshot={effectiveShareSnapshot}
               userName={shareUserName}
               mode={selectedShareAssetMode}
-              fixedHeight={fixturesCardHeight > 0 ? fixturesCardHeight : undefined}
+              fixedHeight={hasShareSnapshotFixtures && fixturesCardHeight > 0 ? fixturesCardHeight : undefined}
             />
           </ViewShot>
         ) : null}

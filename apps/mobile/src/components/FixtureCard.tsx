@@ -80,6 +80,8 @@ export default function FixtureCard({
   pickButtonsDisabled = false,
   variant = 'standalone',
   detailsOnly = false,
+  compactPreview = false,
+  showScorers = true,
   inverted = false,
   pickedAvatarUri,
 }: {
@@ -100,6 +102,10 @@ export default function FixtureCard({
   variant?: 'standalone' | 'grouped';
   /** In grouped stacks, reveal only scorers/tabs without repeating matchup header. */
   detailsOnly?: boolean;
+  /** In grouped stacks, compact mode keeps tighter chip spacing and no extra content. */
+  compactPreview?: boolean;
+  /** Optional scorer visibility override used by compact stack cards. */
+  showScorers?: boolean;
   /** Optional white-on-dark treatment for gradient card surfaces. */
   inverted?: boolean;
   /** Optional tiny avatar marker shown on the user's picked tab. */
@@ -174,6 +180,7 @@ export default function FixtureCard({
     pick === 'A' ? '800' : pick === 'D' || pick === 'H' ? '600' : as > hs && showScore ? '800' : '600';
 
   const buttonStyle = (side: Pick) => {
+    const activePickColor = '#1C8376';
     const isPicked = pick === side;
     const isCorrectResult = showScore ? derivedOutcome === side : false;
     const isCorrect = isPicked && isCorrectResult;
@@ -189,11 +196,22 @@ export default function FixtureCard({
     }
 
     if (isOngoing && isCorrect)
-      return { bg: t.color.brand, border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult, gradient: false };
+      return { bg: activePickColor, border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult, gradient: false };
+    if (isOngoing && isPicked && !isCorrectResult)
+      return { bg: 'rgba(28,131,118,0.7)', border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult, gradient: false };
     if (isFinished && isCorrect)
       return { bg: 'transparent', border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult, gradient: true };
-    if (isWrongFinished) return { bg: '#FFDFDE', border: 'transparent', text: '#FF5E5C', isPicked, isCorrect, isWrong, isCorrectResult };
-    if (isPicked) return { bg: t.color.brand, border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult };
+    if (isWrongFinished)
+      return {
+        bg: 'rgba(148,163,184,0.2)',
+        border: 'rgba(148,163,184,0.35)',
+        text: '#64748B',
+        isPicked,
+        isCorrect,
+        isWrong,
+        isCorrectResult,
+      };
+    if (isPicked) return { bg: activePickColor, border: 'transparent', text: '#FFFFFF', isPicked, isCorrect, isWrong, isCorrectResult };
     return { bg: t.color.surface2, border: t.color.border, text: t.color.text, isPicked, isCorrect, isWrong, isCorrectResult };
   };
 
@@ -284,8 +302,8 @@ export default function FixtureCard({
     };
     const commonStyle = {
       flex: 1,
-      height: 54,
-      borderRadius: 12,
+      height: detailsOnly ? (compactPreview ? 40 : 42) : 54,
+      borderRadius: detailsOnly ? 9 : 12,
       borderWidth: 0,
       borderColor: s.border,
       alignItems: 'center' as const,
@@ -516,7 +534,9 @@ export default function FixtureCard({
                       <Image source={homeBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginLeft: BADGE_GAP }} />
                     ) : null}
                   </View>
-                  {renderGoalsTimeline([homeName, String(fixture.home_team ?? ''), String(fixture.home_name ?? ''), homeCode], 'flex-end')}
+                  {showScorers
+                    ? renderGoalsTimeline([homeName, String(fixture.home_team ?? ''), String(fixture.home_name ?? ''), homeCode], 'flex-end')
+                    : null}
                 </View>
 
                 {/* Score / kickoff */}
@@ -556,7 +576,9 @@ export default function FixtureCard({
                       {awayName}
                     </TotlText>
                   </View>
-                  {renderGoalsTimeline([awayName, String(fixture.away_team ?? ''), String(fixture.away_name ?? ''), awayCode], 'flex-start')}
+                  {showScorers
+                    ? renderGoalsTimeline([awayName, String(fixture.away_team ?? ''), String(fixture.away_name ?? ''), awayCode], 'flex-start')
+                    : null}
                 </View>
               </View>
               ) : (
@@ -674,26 +696,30 @@ export default function FixtureCard({
           ) : (
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: detailsOnly ? 0 : isOngoing ? 16 : 0 }}>
               <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end', paddingRight: 8 }}>
-                {renderGoalsTimeline(
-                  [homeName, String(fixture.home_team ?? ''), String(fixture.home_name ?? ''), homeCode],
-                  'flex-end',
-                  true
-                )}
+                {showScorers
+                  ? renderGoalsTimeline(
+                      [homeName, String(fixture.home_team ?? ''), String(fixture.home_name ?? ''), homeCode],
+                      'flex-end',
+                      true
+                    )
+                  : null}
               </View>
               <View style={{ width: SCORE_COL_WIDTH }} />
               <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start', paddingLeft: 8 }}>
-                {renderGoalsTimeline(
-                  [awayName, String(fixture.away_team ?? ''), String(fixture.away_name ?? ''), awayCode],
-                  'flex-start',
-                  true
-                )}
+                {showScorers
+                  ? renderGoalsTimeline(
+                      [awayName, String(fixture.away_team ?? ''), String(fixture.away_name ?? ''), awayCode],
+                      'flex-start',
+                      true
+                    )
+                  : null}
               </View>
             </View>
           )}
 
           {/* Picks */}
           {showPickButtons ? (
-            <View style={{ flexDirection: 'row', marginTop: detailsOnly ? 20 : 12, paddingHorizontal: 16 }}>
+            <View style={{ flexDirection: 'row', marginTop: detailsOnly ? (compactPreview ? 6 : 12) : 12, paddingHorizontal: 16 }}>
               <View style={{ flex: 1, marginRight: 12 }}>
                 <ButtonChip side="H" label="Home Win" />
               </View>

@@ -166,6 +166,15 @@ export function createApiClient(opts: ApiClientOptions) {
       return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/gw/${encodeURIComponent(String(gw))}/table`, { method: 'GET' });
     },
 
+    async getGlobalGwLiveTable(
+      gw: number
+    ): Promise<{
+      gw: number;
+      rows: Array<{ user_id: string; name: string; score: number }>;
+    }> {
+      return requestJson(opts, `/v1/leaderboards/gw/${encodeURIComponent(String(gw))}/live`, { method: 'GET' });
+    },
+
     async getPredictions(params?: { gw?: number }): Promise<PredictionsResponse> {
       const q = params?.gw ? `?gw=${encodeURIComponent(String(params.gw))}` : '';
       return requestJson(opts, `/v1/predictions${q}`, {

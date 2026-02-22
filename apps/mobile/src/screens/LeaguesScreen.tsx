@@ -585,7 +585,7 @@ export default function LeaguesScreen() {
                               leagueAvatar={typeof league.avatar === 'string' ? league.avatar : null}
                               gw={viewingGw as number}
                               width={liveCardWidth}
-                              enabled={idx < 4}
+                              enabled
                               onPress={() =>
                                 navigation.navigate(
                                   'LeagueDetail',

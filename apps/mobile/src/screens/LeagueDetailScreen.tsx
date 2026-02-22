@@ -34,6 +34,7 @@ import LeagueOverflowMenu, { type LeagueOverflowAction } from '../components/lea
 import LeagueInviteSheet from '../components/league/LeagueInviteSheet';
 import { env } from '../env';
 import { resolveLeagueStartGw } from '../lib/leagueStart';
+import { getGameweekStateFromSnapshot } from '../lib/gameweekState';
 import CenteredSpinner from '../components/CenteredSpinner';
 import { Ionicons } from '@expo/vector-icons';
 import { useLiveScores } from '../hooks/useLiveScores';
@@ -88,6 +89,17 @@ export default function LeagueDetailScreen() {
   });
   const viewingGw = home?.viewingGw ?? null;
   const currentGw = home?.currentGw ?? viewingGw ?? null;
+  // Season standings should align to the GW context the user is currently viewing.
+  const seasonGw = typeof viewingGw === 'number' ? viewingGw : currentGw;
+  const seasonGwState = React.useMemo(() => {
+    if (!home) return null;
+    return getGameweekStateFromSnapshot({
+      fixtures: home.fixtures ?? [],
+      liveScores: home.liveScores ?? [],
+      hasSubmittedViewingGw: !!home.hasSubmittedViewingGw,
+      now: new Date(),
+    });
+  }, [home]);
 
   const [selectedGw, setSelectedGw] = React.useState<number | null>(null);
   React.useEffect(() => {
@@ -172,11 +184,11 @@ export default function LeagueDetailScreen() {
   const [seasonShowForm, setSeasonShowForm] = React.useState(false);
   const [seasonRulesOpen, setSeasonRulesOpen] = React.useState(false);
   const { data: resolvedLeagueStartGw } = useQuery<number>({
-    enabled: typeof currentGw === 'number' && !!leagueId,
+    enabled: typeof seasonGw === 'number' && !!leagueId,
     queryKey: [
       'leagueStartGw',
       leagueId,
-      currentGw,
+      seasonGw,
       String(leagueMeta?.name ?? params.name ?? ''),
       String(leagueMeta?.created_at ?? ''),
     ],
@@ -187,7 +199,7 @@ export default function LeagueDetailScreen() {
           name: String(leagueMeta?.name ?? params.name ?? ''),
           created_at: typeof leagueMeta?.created_at === 'string' ? leagueMeta.created_at : undefined,
         },
-        currentGw as number
+        seasonGw as number
       ),
     staleTime: 5 * 60_000,
   });
@@ -431,12 +443,12 @@ export default function LeagueDetailScreen() {
   const { data: seasonRows, isLoading: seasonLoading, refetch: refetchSeasonRows, isRefetching: seasonRowsRefetching } = useQuery<
     LeagueSeasonRow[]
   >({
-    enabled: tab === 'season' && members.length > 0 && typeof currentGw === 'number' && seasonStartGwResolved,
-    queryKey: ['leagueSeasonTable', leagueId, currentGw, seasonStartGw, members.map((m: any) => String(m.id ?? '')).join(',')],
+    enabled: tab === 'season' && members.length > 0 && typeof seasonGw === 'number' && seasonStartGwResolved,
+    queryKey: ['leagueSeasonTable', leagueId, seasonGw, seasonStartGw, members.map((m: any) => String(m.id ?? '')).join(',')],
     queryFn: async () => {
       const memberIds = members.map((m: any) => String(m.id));
       const showUnicorns = memberIds.length >= 3;
-      const latestGw = currentGw as number;
+      const latestGw = seasonGw as number;
 
       const resultsRes = await (supabase as any)
         .from('app_gw_results')
@@ -453,7 +465,8 @@ export default function LeagueDetailScreen() {
         outcomeByGwFixture.set(`${r.gw}:${r.fixture_index}`, r.result);
       });
 
-      // Match Despia/web: count any GW with results; only exclude current GW if incomplete.
+      // Match leaderboard/OCP behavior: include any GW that already has saved results,
+      // including partially completed current GW fixtures.
       const gwsWithResults = Array.from(
         new Set(
           Array.from(outcomeByGwFixture.keys())
@@ -463,39 +476,43 @@ export default function LeagueDetailScreen() {
       ).sort((a, b) => a - b);
 
       let relevantGws = gwsWithResults.filter((gw) => gw >= seasonStartGw);
-
-      // CRITICAL: exclude current GW only if still live (not all fixtures have results).
-      if (typeof latestGw === 'number' && relevantGws.includes(latestGw)) {
-        const fixturesForCurrentGwRes = await (supabase as any).from('app_fixtures').select('fixture_index').eq('gw', latestGw);
-        if (fixturesForCurrentGwRes.error) throw fixturesForCurrentGwRes.error;
-        const fixtureCount = (fixturesForCurrentGwRes.data ?? []).length;
-        const resultCountForCurrentGw = Array.from(outcomeByGwFixture.keys()).filter(
-          (k) => Number.parseInt(k.split(':')[0] ?? '', 10) === latestGw
-        ).length;
-        if (fixtureCount > 0 && resultCountForCurrentGw < fixtureCount) {
-          relevantGws = relevantGws.filter((gw) => gw < latestGw);
-        }
-      } else if (typeof latestGw === 'number') {
-        // current GW is not in results yet, so exclude it (and anything beyond).
+      // Product rule: Season table does not include the current GW while that GW is LIVE.
+      if (seasonGwState === 'LIVE') {
         relevantGws = relevantGws.filter((gw) => gw < latestGw);
       }
 
       if (relevantGws.length === 0) return [];
 
-      const picksRes = await (supabase as any)
-        .from('app_picks')
-        .select('user_id,gw,fixture_index,pick')
-        .in('user_id', memberIds)
-        .in('gw', relevantGws);
+      const [gwPointsRes, picksRes] = await Promise.all([
+        (supabase as any)
+          .from('app_v_gw_points')
+          .select('user_id,gw,points')
+          .in('user_id', memberIds)
+          .in('gw', relevantGws),
+        (supabase as any).from('app_picks').select('user_id,gw,fixture_index,pick').in('user_id', memberIds).in('gw', relevantGws),
+      ]);
+      if (gwPointsRes.error) throw gwPointsRes.error;
       if (picksRes.error) throw picksRes.error;
-      const picks: Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }> =
-        picksRes.data ?? [];
+
+      const gwPointsRows: Array<{ user_id: string; gw: number; points: number }> = gwPointsRes.data ?? [];
+      const picks: Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }> = picksRes.data ?? [];
+      const pointsByUserGw = new Map<string, number>();
+      gwPointsRows.forEach((row) => {
+        pointsByUserGw.set(`${String(row.user_id)}:${Number(row.gw)}`, Number(row.points ?? 0));
+      });
 
       type GwScore = { user_id: string; score: number; unicorns: number };
       const perGw = new Map<number, Map<string, GwScore>>();
       relevantGws.forEach((g) => {
         const m = new Map<string, GwScore>();
-        memberIds.forEach((uid) => m.set(uid, { user_id: uid, score: 0, unicorns: 0 }));
+        memberIds.forEach((uid) =>
+          m.set(uid, {
+            user_id: uid,
+            // Source scores from app_v_gw_points so OCP matches leaderboard baseline.
+            score: pointsByUserGw.get(`${uid}:${g}`) ?? 0,
+            unicorns: 0,
+          })
+        );
         perGw.set(g, m);
       });
 
@@ -518,12 +535,6 @@ export default function LeagueDetailScreen() {
         outcomesForGw.forEach(({ fixtureIndex, out }) => {
           const these = picksByGwFixture.get(`${g}:${fixtureIndex}`) ?? [];
           const correct = these.filter((p) => p.pick === out).map((p) => p.user_id);
-
-          these.forEach((p) => {
-            if (p.pick !== out) return;
-            const row = gwMap.get(p.user_id);
-            if (row) row.score += 1;
-          });
 
           if (showUnicorns && correct.length === 1) {
             const uid = correct[0];
@@ -724,7 +735,7 @@ export default function LeagueDetailScreen() {
   });
 
   const { data: me, refetch: refetchMe, isRefetching: meRefetching } = useQuery<{ id: string } | null>({
-    enabled: tab === 'predictions',
+    enabled: true,
     queryKey: ['me'],
     queryFn: async () => {
       const { data } = await supabase.auth.getUser();
@@ -751,7 +762,7 @@ export default function LeagueDetailScreen() {
 
     if (tab === 'season') {
       const actions: Array<Promise<any>> = [refetchHome(), refetchLeagueDetails()];
-      if (members.length > 0 && typeof currentGw === 'number') actions.push(refetchSeasonRows());
+      if (members.length > 0 && typeof seasonGw === 'number') actions.push(refetchSeasonRows());
       void Promise.all(actions);
       return;
     }
@@ -764,7 +775,6 @@ export default function LeagueDetailScreen() {
       void Promise.all(actions);
     }
   }, [
-    currentGw,
     members.length,
     picksGw,
     refetchHome,
@@ -773,6 +783,7 @@ export default function LeagueDetailScreen() {
     refetchPredictions,
     refetchSeasonRows,
     refetchTable,
+    seasonGw,
     seasonStartGwResolved,
     seasonStartGw,
     selectedGw,
@@ -999,66 +1010,60 @@ export default function LeagueDetailScreen() {
                           />
                         ) : null}
 
-                        {predictions.sections.map((sec) => (
-                          <View key={sec.label} style={{ marginTop: 12 }}>
-                            <TotlText variant="body" style={{ fontWeight: '900', marginBottom: 10 }}>
-                              {sec.label}
-                            </TotlText>
+                        <View style={{ marginTop: 12 }}>
+                          {predictions.fixtures.map((f) => {
+                            const k = String(f.fixture_index);
+                            const live = liveByFixtureIndexRealtime.get(f.fixture_index) ?? null;
+                            const lsNoGoals = live ? ({ ...(live as any), goals: undefined } as any) : null;
+                            const outcomeFromDb = predictions.outcomeByFixtureIndex[k] ?? null;
+                            const outcomeFromLive: LeaguePick | null = (() => {
+                              if (!live) return null;
+                              const st: LiveStatus = (live?.status ?? 'SCHEDULED') as LiveStatus;
+                              const started = st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED';
+                              if (!started) return null;
+                              const hs = typeof live.home_score === 'number' ? live.home_score : null;
+                              const as = typeof live.away_score === 'number' ? live.away_score : null;
+                              if (hs === null || as === null) return null;
+                              return hs > as ? 'H' : hs < as ? 'A' : 'D';
+                            })();
+                            const outcome = outcomeFromDb ?? outcomeFromLive;
+                            const picksMap =
+                              new Map<string, LeaguePick>(Object.entries(predictions.picksByFixtureIndex[k] ?? {}));
 
-                            <View
-                              style={{
-                                borderRadius: 14,
-                                overflow: 'hidden',
-                                borderWidth: 1,
-                                borderColor: 'rgba(148,163,184,0.14)',
-                              }}
-                            >
-                              {sec.fixtures.map((f, idx) => {
-                                const k = String(f.fixture_index);
-                                const live = liveByFixtureIndexRealtime.get(f.fixture_index) ?? null;
-                                const lsNoGoals = live ? ({ ...(live as any), goals: undefined } as any) : null;
-                                const outcomeFromDb = predictions.outcomeByFixtureIndex[k] ?? null;
-                                const outcomeFromLive: LeaguePick | null = (() => {
-                                  if (!live) return null;
-                                  const st: LiveStatus = (live?.status ?? 'SCHEDULED') as LiveStatus;
-                                  const started = st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED';
-                                  if (!started) return null;
-                                  const hs = typeof live.home_score === 'number' ? live.home_score : null;
-                                  const as = typeof live.away_score === 'number' ? live.away_score : null;
-                                  if (hs === null || as === null) return null;
-                                  return hs > as ? 'H' : hs < as ? 'A' : 'D';
-                                })();
-                                const outcome = outcomeFromDb ?? outcomeFromLive;
-                                const picksMap =
-                                  new Map<string, LeaguePick>(Object.entries(predictions.picksByFixtureIndex[k] ?? {}));
-
-                                return (
-                                  <View
-                                    key={`${predictions.picksGw}-${f.fixture_index}`}
-                                    style={{
-                                      borderTopWidth: idx === 0 ? 0 : 1,
-                                      borderTopColor: 'rgba(148,163,184,0.14)',
-                                    }}
-                                  >
-                                    <FixtureCard
-                                      fixture={f as any}
-                                      liveScore={lsNoGoals}
-                                      showPickButtons={false}
-                                      variant="grouped"
-                                      result={outcome}
-                                    />
-                                    <LeaguePickChipsRow
-                                      members={predictions.members}
-                                      picksByUserId={picksMap}
-                                      outcome={outcome}
-                                      currentUserId={me?.id ?? null}
-                                    />
-                                  </View>
-                                );
-                              })}
-                            </View>
-                          </View>
-                        ))}
+                            return (
+                              <View
+                                key={`${predictions.picksGw}-${f.fixture_index}`}
+                                style={{
+                                  marginBottom: 10,
+                                  borderRadius: 14,
+                                  overflow: 'hidden',
+                                  borderWidth: 1,
+                                  borderColor: 'rgba(148,163,184,0.16)',
+                                  backgroundColor: '#FFFFFF',
+                                  shadowColor: '#0F172A',
+                                  shadowOpacity: 0.05,
+                                  shadowRadius: 7,
+                                  shadowOffset: { width: 0, height: 2 },
+                                  elevation: 1,
+                                }}
+                              >
+                                <FixtureCard
+                                  fixture={f as any}
+                                  liveScore={lsNoGoals}
+                                  showPickButtons={false}
+                                  variant="grouped"
+                                  result={outcome}
+                                />
+                                <LeaguePickChipsRow
+                                  members={predictions.members}
+                                  picksByUserId={picksMap}
+                                  outcome={outcome}
+                                  currentUserId={me?.id ?? null}
+                                />
+                              </View>
+                            );
+                          })}
+                        </View>
                       </>
                     );
                   })()}

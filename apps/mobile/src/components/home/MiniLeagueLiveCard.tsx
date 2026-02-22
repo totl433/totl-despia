@@ -31,7 +31,7 @@ export default function MiniLeagueLiveCard({
   enabled: boolean;
   onPress: () => void;
 }) {
-  const { data, isLoading } = useQuery<LeagueTableResponse>({
+  const { data, isLoading, isError } = useQuery<LeagueTableResponse>({
     enabled: enabled && typeof gw === 'number',
     queryKey: ['leagueGwTable', leagueId, gw],
     queryFn: () => api.getLeagueGwTable(leagueId, gw),
@@ -66,7 +66,7 @@ export default function MiniLeagueLiveCard({
         rows={rows}
         width={width}
         fixedRowCount={4}
-        emptyLabel={isLoading ? 'Loading table…' : 'No table yet.'}
+        emptyLabel={isLoading ? 'Loading table…' : isError ? 'Couldn’t load table.' : 'No table yet.'}
       />
     </Pressable>
   );

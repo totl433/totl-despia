@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Linking, Pressable, ScrollView, View } from 'react-native';
+import { Image, Pressable, ScrollView, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -51,16 +51,6 @@ export default function ProfileHomeScreen() {
     return `${parts[0]!.slice(0, 1)}${parts[parts.length - 1]!.slice(0, 1)}`.toUpperCase();
   }, [name]);
 
-  const openUrl = React.useCallback(async (url: string) => {
-    try {
-      const can = await Linking.canOpenURL(url);
-      if (!can) return;
-      await Linking.openURL(url);
-    } catch {
-      // ignore
-    }
-  }, []);
-
   if (isLoading && !data && !error) {
     return (
       <Screen fullBleed>
@@ -89,15 +79,32 @@ export default function ProfileHomeScreen() {
     );
   }
 
-  const menuItems: Array<{ label: string; onPress: () => void }> = [
-    { label: 'Notification Centre', onPress: () => navigation.navigate('NotificationCentre') },
-    { label: 'Email Preferences', onPress: () => navigation.navigate('EmailPreferences') },
-    ...(isAdmin ? [{ label: 'Admin', onPress: () => navigation.navigate('AdminHome') }] : []),
-    { label: 'How To Play', onPress: () => openUrl('https://playtotl.com/how-to-play') },
-    { label: 'Contact Us', onPress: () => openUrl('mailto:hello@playtotl.com') },
-    { label: 'Cookie Policy', onPress: () => openUrl('https://playtotl.com/cookie-policy') },
-    { label: 'Privacy Policy', onPress: () => openUrl('https://playtotl.com/privacy-policy') },
-    { label: 'Terms and Conditions', onPress: () => openUrl('https://playtotl.com/terms-and-conditions') },
+  const accountSections: Array<{ title: string; items: Array<{ label: string; onPress: () => void }> }> = [
+    {
+      title: 'Preferences',
+      items: [
+        { label: 'Notification Centre', onPress: () => navigation.navigate('NotificationCentre') },
+        { label: 'Email Preferences', onPress: () => navigation.navigate('EmailPreferences') },
+      ],
+    },
+    {
+      title: 'Help',
+      items: [
+        { label: 'How To Play', onPress: () => navigation.navigate('HowToPlay') },
+        { label: 'Contact Us', onPress: () => navigation.navigate('ContactUs') },
+        { label: 'Cookie Policy', onPress: () => navigation.navigate('CookiePolicy') },
+        { label: 'Privacy Policy', onPress: () => navigation.navigate('PrivacyPolicy') },
+        { label: 'Terms and Conditions', onPress: () => navigation.navigate('TermsConditions') },
+      ],
+    },
+    ...(isAdmin
+      ? [
+          {
+            title: 'Admin',
+            items: [{ label: 'Admin', onPress: () => navigation.navigate('AdminHome') }],
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -227,39 +234,54 @@ export default function ProfileHomeScreen() {
         </Card>
 
         <Card style={{ marginBottom: 12, padding: 16 }}>
-          <TotlText variant="heading" style={{ marginBottom: 10 }}>
-            Your Account
-          </TotlText>
-          {email ? (
-            <View style={{ paddingBottom: 12, marginBottom: 6, borderBottomWidth: 1, borderBottomColor: 'rgba(148,163,184,0.25)' }}>
-              <TotlText variant="muted">{email}</TotlText>
-            </View>
-          ) : null}
-
           <View>
-            {menuItems.map((item, idx) => {
-              const isLast = idx === menuItems.length - 1;
-              return (
-                <Pressable
-                  key={item.label}
-                  accessibilityRole="button"
-                  accessibilityLabel={item.label}
-                  onPress={item.onPress}
-                  style={({ pressed }) => ({
-                    paddingVertical: 14,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    opacity: pressed ? 0.85 : 1,
-                    borderBottomWidth: isLast ? 0 : 1,
-                    borderBottomColor: 'rgba(148,163,184,0.18)',
-                  })}
-                >
-                  <TotlText style={{ fontWeight: '700' }}>{item.label}</TotlText>
-                  <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
-                </Pressable>
-              );
-            })}
+            {accountSections.map((section, sectionIdx) => (
+              <View
+                key={section.title}
+                style={{
+                  marginTop: sectionIdx === 0 ? 0 : 16,
+                  paddingTop: sectionIdx === 0 ? 0 : 12,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                  <TotlText
+                    style={{
+                      fontSize: 20,
+                      lineHeight: 24,
+                      letterSpacing: 0,
+                      fontWeight: '900',
+                      color: 'rgba(15,23,42,0.95)',
+                    }}
+                  >
+                    {section.title}
+                  </TotlText>
+                </View>
+                {section.items.map((item, idx) => {
+                  const isLast = idx === section.items.length - 1;
+                  return (
+                    <Pressable
+                      key={item.label}
+                      accessibilityRole="button"
+                      accessibilityLabel={item.label}
+                      onPress={item.onPress}
+                      style={({ pressed }) => ({
+                        paddingVertical: 11,
+                        paddingHorizontal: 0,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        opacity: pressed ? 0.8 : 1,
+                        backgroundColor: pressed ? 'rgba(241,245,249,0.55)' : 'transparent',
+                        borderBottomWidth: 0,
+                      })}
+                    >
+                      <TotlText style={{ fontWeight: '700' }}>{item.label}</TotlText>
+                      <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
           </View>
 
           <View style={{ height: 8 }} />

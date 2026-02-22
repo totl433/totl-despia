@@ -1,6 +1,7 @@
 import React from 'react'
 import { Image, Pressable, View } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
+import { Ionicons } from '@expo/vector-icons'
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from 'react-native-reanimated'
 import { Card, TotlText, useTokens } from '@totl/ui'
 import AnimatedPerimeterGlow from '../AnimatedPerimeterGlow'
@@ -215,6 +216,7 @@ export function LeaderboardCardResultsCta({
   label = 'Your results',
   textColor = '#FFFFFF',
   secondaryTextColor = 'rgba(255,255,255,0.85)',
+  rightActionIcon = 'chevron',
 }: {
   gw?: number
   topLabel?: string
@@ -229,6 +231,7 @@ export function LeaderboardCardResultsCta({
   label?: string
   textColor?: string
   secondaryTextColor?: string
+  rightActionIcon?: 'chevron' | 'share'
 }) {
   const t = useTokens()
   const shimmer = useSharedValue(0)
@@ -308,20 +311,26 @@ export function LeaderboardCardResultsCta({
                 <View style={{ width: 28, height: 28 }} />
               )}
 
-              {/* Always show chevron in light tiles (even if disabled), to match the design language. */}
-              <TotlText
-                variant="caption"
-                style={{
-                  color: topLabelColor,
-                  fontWeight: '900',
-                  marginTop: 2,
-                  fontSize: 18,
-                  lineHeight: 18,
-                  opacity: onPress ? 1 : 0.9,
-                }}
-              >
-                ›
-              </TotlText>
+              {rightActionIcon === 'share' ? (
+                <View style={{ width: 18, height: 18, alignItems: 'center', justifyContent: 'center', opacity: onPress ? 1 : 0.9 }}>
+                  <Ionicons name="share-outline" size={16} color={topLabelColor} />
+                </View>
+              ) : (
+                // Always show chevron in light tiles (even if disabled), to match the design language.
+                <TotlText
+                  variant="caption"
+                  style={{
+                    color: topLabelColor,
+                    fontWeight: '900',
+                    marginTop: 2,
+                    fontSize: 18,
+                    lineHeight: 18,
+                    opacity: onPress ? 1 : 0.9,
+                  }}
+                >
+                  ›
+                </TotlText>
+              )}
             </View>
 
             <View style={{ flex: 1, justifyContent: 'flex-end' }}>
@@ -387,12 +396,18 @@ export function LeaderboardCardResultsCta({
                 <View style={{ width: 28, height: 28 }} />
               )}
               {onPress ? (
-                <TotlText
-                  variant="caption"
-                  style={{ color: textColor, fontWeight: '900', marginTop: 2, fontSize: 18, lineHeight: 18 }}
-                >
-                  ›
-                </TotlText>
+                rightActionIcon === 'share' ? (
+                  <View style={{ width: 18, height: 18, alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>
+                    <Ionicons name="share-outline" size={17} color={textColor} />
+                  </View>
+                ) : (
+                  <TotlText
+                    variant="caption"
+                    style={{ color: textColor, fontWeight: '900', marginTop: 2, fontSize: 18, lineHeight: 18 }}
+                  >
+                    ›
+                  </TotlText>
+                )
               ) : (
                 <View style={{ width: 18, height: 18 }} />
               )}

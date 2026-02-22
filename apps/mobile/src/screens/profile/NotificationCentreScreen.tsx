@@ -1,6 +1,8 @@
 import React from 'react';
-import { ScrollView, Switch, View } from 'react-native';
+import { Pressable, ScrollView, Switch, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import { api } from '../../lib/api';
@@ -11,6 +13,7 @@ import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
 
 export default function NotificationCentreScreen() {
   const t = useTokens();
+  const navigation = useNavigation<any>();
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['notification-prefs'],
     queryFn: () => api.getNotificationPrefs(),
@@ -39,7 +42,26 @@ export default function NotificationCentreScreen() {
   if (isLoading && !data && !error) {
     return (
       <Screen fullBleed>
-        <PageHeader title="Notification Centre" />
+        <PageHeader
+          title="Notification Centre"
+          leftAction={
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              onPress={() => navigation.goBack()}
+              style={({ pressed }) => ({
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.75 : 1,
+              })}
+            >
+              <Ionicons name="chevron-back" size={24} color={t.color.text} />
+            </Pressable>
+          }
+        />
         <CenteredSpinner loading />
       </Screen>
     );
@@ -99,7 +121,26 @@ export default function NotificationCentreScreen() {
 
   return (
     <Screen fullBleed>
-      <PageHeader title="Notification Centre" />
+      <PageHeader
+        title="Notification Centre"
+        leftAction={
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            onPress={() => navigation.goBack()}
+            style={({ pressed }) => ({
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.75 : 1,
+            })}
+          >
+            <Ionicons name="chevron-back" size={24} color={t.color.text} />
+          </Pressable>
+        }
+      />
 
       <ScrollView
         style={{ flex: 1 }}

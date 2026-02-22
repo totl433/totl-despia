@@ -1,7 +1,6 @@
 import React from 'react';
 import { AppState, Animated, Image, Pressable, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Defs, LinearGradient as SvgLinearGradient, Polygon, Stop } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
@@ -16,7 +15,6 @@ import { supabase } from '../lib/supabase';
 import { env } from '../env';
 import GameweekAdvanceTransition from '../components/transitions/GameweekAdvanceTransition';
 import { useGameweekAdvanceTransition } from '../hooks/useGameweekAdvanceTransition';
-import FixtureCard from '../components/FixtureCard';
 import { MiniLeaguesDefaultBatchCard } from '../components/MiniLeaguesDefaultList';
 import { getGameweekStateFromSnapshot, type GameweekState } from '../lib/gameweekState';
 import PickPill from '../components/home/PickPill';
@@ -39,6 +37,7 @@ import AppTopHeader from '../components/AppTopHeader';
 import { TEAM_BADGES } from '../lib/teamBadges';
 import { normalizeTeamCode } from '../lib/teamColors';
 import { getMediumName } from '../../../../src/lib/teamNames';
+import WinnerShimmer from '../components/WinnerShimmer';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -97,134 +96,35 @@ function fixtureKickoffTimeLabel(kickoff: string | null | undefined) {
   return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
-function normalizeTeamForms(input: Record<string, string> | null | undefined): Record<string, string> {
-  const out: Record<string, string> = {};
-  Object.entries(input ?? {}).forEach(([rawCode, rawForm]) => {
-    const code = normalizeTeamCode(rawCode);
-    const form = typeof rawForm === 'string' ? rawForm.trim().toUpperCase() : '';
-    if (code && form) out[code] = form;
-  });
-  return out;
-}
-
-function FormDots({ form }: { form: string | null | undefined }) {
-  const dots = React.useMemo(() => {
-    const raw = (form ?? '').trim().toUpperCase();
-    const lastFive = (raw || '?????').slice(-5).padStart(5, '?');
-    return lastFive.split('');
-  }, [form]);
-
-  const dotColor = (c: string) => {
-    if (c === 'W') return '#10B981';
-    if (c === 'L') return '#DC2626';
-    return '#D1D5DB';
-  };
-
-  return (
-    <View style={{ flexDirection: 'row', gap: 4, marginTop: 5 }}>
-      {dots.map((c, i) => (
-        <View key={`${c}-${i}`} style={{ width: 7, height: 7, borderRadius: 999, backgroundColor: dotColor(c) }} />
-      ))}
-    </View>
-  );
-}
-
 function FixtureHeaderMorph({
   expanded,
-  hasScore,
   headerPrimary,
-  headerSecondary,
   headerHome,
   headerAway,
   homeBadge,
   awayBadge,
   homeTeamFontWeight,
   awayTeamFontWeight,
-  homeForm,
-  awayForm,
 }: {
   expanded: boolean;
-  hasScore: boolean;
   headerPrimary: string;
-  headerSecondary: string;
   headerHome: string;
   headerAway: string;
   homeBadge: any | null;
   awayBadge: any | null;
   homeTeamFontWeight: '600' | '800';
   awayTeamFontWeight: '600' | '800';
-  homeForm: string | null | undefined;
-  awayForm: string | null | undefined;
 }) {
-  if (expanded) {
-    return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', paddingRight: 6 }}>
-          {homeBadge ? <Image source={homeBadge} style={{ width: 36, height: 36, marginBottom: 6 }} /> : null}
-          <TotlText
-            numberOfLines={1}
-            style={{
-              fontWeight: homeTeamFontWeight,
-              color: '#0F172A',
-              fontSize: 14,
-              lineHeight: 20,
-              textAlign: 'center',
-            }}
-          >
-            {headerHome}
-          </TotlText>
-          <FormDots form={homeForm} />
-        </View>
-        <View style={{ minWidth: 120, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
-          <TotlText
-            style={{
-              fontWeight: '900',
-              color: '#0F172A',
-              fontSize: hasScore ? 17 : 18,
-              lineHeight: hasScore ? 20 : 21,
-              fontVariant: ['tabular-nums'],
-            }}
-          >
-            {headerPrimary}
-          </TotlText>
-          {hasScore && headerSecondary ? (
-            <TotlText
-              style={{
-                color: '#475569',
-                fontFamily: 'Gramatika-Medium',
-                fontSize: 14,
-                lineHeight: 16,
-              }}
-              numberOfLines={1}
-            >
-              {headerSecondary}
-            </TotlText>
-          ) : null}
-        </View>
-        <View style={{ flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', paddingLeft: 6 }}>
-          {awayBadge ? <Image source={awayBadge} style={{ width: 36, height: 36, marginBottom: 6 }} /> : null}
-          <TotlText
-            numberOfLines={1}
-            style={{
-              fontWeight: awayTeamFontWeight,
-              color: '#0F172A',
-              fontSize: 14,
-              lineHeight: 20,
-              textAlign: 'center',
-            }}
-          >
-            {headerAway}
-          </TotlText>
-          <FormDots form={awayForm} />
-        </View>
-      </View>
-    );
-  }
-
   return (
     <>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: expanded ? 'space-between' : 'center',
+        }}
+      >
+        <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end', paddingRight: 6 }}>
           <TotlText
             numberOfLines={1}
             style={{
@@ -239,14 +139,14 @@ function FixtureHeaderMorph({
             {headerHome}
           </TotlText>
         </View>
-        <View style={{ minWidth: 98, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 }}>
+        <View style={{ minWidth: 118, alignItems: 'center', justifyContent: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-            {homeBadge ? <Image source={homeBadge} style={{ width: 22, height: 22, marginRight: 4 }} /> : null}
-            <TotlText style={{ fontWeight: '800', color: '#0F172A', fontSize: 14, lineHeight: 20 }}>{headerPrimary}</TotlText>
-            {awayBadge ? <Image source={awayBadge} style={{ width: 22, height: 22, marginLeft: 4 }} /> : null}
+            {homeBadge ? <Image source={homeBadge} style={{ width: 24, height: 24, marginRight: 6 }} /> : null}
+            <TotlText style={{ fontWeight: '800', color: '#111827', fontSize: 14, lineHeight: 20 }}>{headerPrimary}</TotlText>
+            {awayBadge ? <Image source={awayBadge} style={{ width: 24, height: 24, marginLeft: 6 }} /> : null}
           </View>
         </View>
-        <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}>
+        <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start', paddingLeft: 6 }}>
           <TotlText
             numberOfLines={1}
             style={{
@@ -262,13 +162,6 @@ function FixtureHeaderMorph({
           </TotlText>
         </View>
       </View>
-      {headerSecondary ? (
-        <View style={{ alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
-          <TotlText variant="microMuted" style={{ color: '#334155' }}>
-            {headerSecondary}
-          </TotlText>
-        </View>
-      ) : null}
     </>
   );
 }
@@ -336,12 +229,6 @@ export default function HomeScreen() {
     queryFn: () => api.getHomeSnapshot(),
   });
 
-  const { data: predictionsForForms } = useQuery({
-    queryKey: ['home-team-forms'],
-    queryFn: () => api.getPredictions(),
-    staleTime: 60_000,
-  });
-
   const isHomeLoading = Boolean(homeLoading);
 
   const {
@@ -405,22 +292,6 @@ export default function HomeScreen() {
 
   const fixtures: Fixture[] = home?.fixtures ?? [];
   const userPicks: Record<string, Pick> = home?.userPicks ?? {};
-  const teamForms = React.useMemo(
-    () => normalizeTeamForms((predictionsForForms as any)?.teamForms ?? {}),
-    [(predictionsForForms as any)?.teamForms]
-  );
-  const formsByFixtureIndex = React.useMemo(() => {
-    const out = new Map<number, { home: string | null; away: string | null }>();
-    fixtures.forEach((f) => {
-      const homeCode = normalizeTeamCode(f.home_code);
-      const awayCode = normalizeTeamCode(f.away_code);
-      out.set(f.fixture_index, {
-        home: homeCode ? (teamForms[homeCode] ?? null) : null,
-        away: awayCode ? (teamForms[awayCode] ?? null) : null,
-      });
-    });
-    return out;
-  }, [fixtures, teamForms]);
 
   const liveScoresGw =
     typeof home?.viewingGw === 'number' ? home.viewingGw : typeof home?.currentGw === 'number' ? home.currentGw : null;
@@ -482,37 +353,11 @@ export default function HomeScreen() {
   }, [home, liveByFixtureIndexRealtime]);
 
   const fixturesByDate = React.useMemo(() => {
-    const groups = new Map<string, Fixture[]>();
-    fixtures.forEach((f: Fixture) => {
-      const key = fixtureDateLabel(f.kickoff_time ?? null);
-      const arr = groups.get(key) ?? [];
-      arr.push(f);
-      groups.set(key, arr);
-    });
-
-    // Sort fixtures within each group by fixture_index (matches web’s stable ordering)
-    groups.forEach((arr, key) => {
-      groups.set(
-        key,
-        [...arr].sort((a, b) => Number(a?.fixture_index ?? 0) - Number(b?.fixture_index ?? 0))
-      );
-    });
-
-    // Sort chronologically when possible (like web)
-    const keys = Array.from(groups.keys()).sort((a, b) => {
-      if (a === 'No date') return 1;
-      if (b === 'No date') return -1;
-      const a0 = groups.get(a)?.[0]?.kickoff_time;
-      const b0 = groups.get(b)?.[0]?.kickoff_time;
-      const da = a0 ? new Date(a0).getTime() : Number.POSITIVE_INFINITY;
-      const db = b0 ? new Date(b0).getTime() : Number.POSITIVE_INFINITY;
-      return da - db;
-    });
-
-    return keys.map((k) => ({ date: k, fixtures: groups.get(k) ?? [] }));
+    const ordered = [...fixtures].sort((a, b) => Number(a?.fixture_index ?? 0) - Number(b?.fixture_index ?? 0));
+    return [{ date: '', fixtures: ordered }];
   }, [fixtures]);
 
-  const showFixtureDateSections = fixturesByDate.length > 0;
+  const showFixtureDateSections = false;
 
   const scoreSummary = React.useMemo(() => {
     if (!fixtures.length) return null;
@@ -581,35 +426,8 @@ export default function HomeScreen() {
 
   // Leaderboard cards and pills are now shared components.
 
-  const FixtureCardRow = ({ f }: { f: Fixture }) => (
-    <FixtureCard
-      fixture={f}
-      liveScore={liveByFixtureIndex.get(f.fixture_index) ?? null}
-      pick={userPicks[String(f.fixture_index)]}
-      result={resultByFixtureIndex.get(Number(f.fixture_index)) ?? null}
-      pickPercentages={pickPercentagesByFixture.get(Number(f.fixture_index)) ?? null}
-      showPickButtons={!!home?.hasSubmittedViewingGw}
-      pickedAvatarUri={avatarUrl}
-      variant="grouped"
-    />
-  );
-  const FixtureCardDetailsRow = ({ f }: { f: Fixture }) => (
-    <FixtureCard
-      {...({
-        fixture: f,
-        liveScore: liveByFixtureIndex.get(f.fixture_index) ?? null,
-        pick: userPicks[String(f.fixture_index)],
-        result: resultByFixtureIndex.get(Number(f.fixture_index)) ?? null,
-        pickPercentages: pickPercentagesByFixture.get(Number(f.fixture_index)) ?? null,
-        showPickButtons: true,
-        pickedAvatarUri: avatarUrl,
-        variant: 'grouped',
-        detailsOnly: true,
-        inverted: false,
-      } as any)}
-    />
-  );
   const [expandedFixtureId, setExpandedFixtureId] = React.useState<string | null>(null);
+  const [cardHeightsById, setCardHeightsById] = React.useState<Record<string, number>>({});
   const [showAllExpanded, setShowAllExpanded] = React.useState(false);
   const [viewMenuOpen, setViewMenuOpen] = React.useState(false);
   const fixturesTransition = React.useRef(new Animated.Value(1)).current;
@@ -713,7 +531,7 @@ export default function HomeScreen() {
   const showReadyToMoveOn =
     typeof currentGw === 'number' && typeof viewingGw === 'number' ? viewingGw < currentGw : false;
   const showComingSoonBanner =
-    isResultsPreGw &&
+    gwState === 'RESULTS_PRE_GW' &&
     typeof currentGw === 'number' &&
     typeof viewingGw === 'number' &&
     viewingGw >= currentGw;
@@ -801,6 +619,9 @@ export default function HomeScreen() {
     hasMovedOn &&
     (gwState === 'GW_OPEN' || gwState === 'DEADLINE_PASSED') &&
     home?.hasSubmittedViewingGw === false;
+  const isDetailsOnlyState = gwState === 'GW_OPEN' || gwState === 'GW_PREDICTED' || gwState === 'DEADLINE_PASSED';
+  const isDetailsViewActive = isDetailsOnlyState || showAllExpanded;
+  const collapsedStackStep = gwState === 'GW_OPEN' ? 58 : 125;
 
   const defaultLeagueBatches = React.useMemo(() => {
     const leagueList: LeagueSummary[] = sortLeaguesByUnread(leagues?.leagues ?? [], unreadByLeagueId);
@@ -862,6 +683,7 @@ export default function HomeScreen() {
           onPressChat={() => navigation.navigate('ChatHub')}
           onPressProfile={() => navigation.navigate('Profile')}
           avatarUrl={avatarUrl}
+          isRefreshing={refreshing}
         />
 
         <Animated.ScrollView
@@ -1137,6 +959,25 @@ export default function HomeScreen() {
                   />
                 ),
               });
+            } else if (!showComingSoonBanner && resultsGw) {
+              const currentScore = typeof scoreSummary?.correct === 'number' ? String(scoreSummary.correct) : '--';
+              const currentTotal = typeof scoreSummary?.total === 'number' && scoreSummary.total > 0 ? String(scoreSummary.total) : '--';
+              cards.push({
+                key: 'gw-current-score',
+                node: (
+                  <LeaderboardCardResultsCta
+                    gw={resultsGw}
+                    badge={LB_BADGE_5}
+                    score={currentScore}
+                    totalFixtures={currentTotal}
+                    label="Current Score"
+                    tone="gradient"
+                    showSheen
+                    rightActionIcon="share"
+                    onPress={() => navigation.navigate('GameweekResults', { gw: resultsGw, mode: 'fixturesShare' })}
+                  />
+                ),
+              });
             }
 
             if (showComingSoonBanner) {
@@ -1327,26 +1168,30 @@ export default function HomeScreen() {
             right={
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <View style={{ position: 'relative', marginRight: 8 }}>
-                  <Pressable
-                    onPress={() => setViewMenuOpen((v) => !v)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Change fixture card view"
-                    style={({ pressed }) => ({
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      height: 40,
-                      width: 48,
-                      borderRadius: 999,
-                      borderWidth: 1,
-                      borderColor: 'rgba(15,23,42,0.14)',
-                      backgroundColor: '#FFFFFF',
-                      opacity: pressed ? 0.92 : 1,
-                      transform: [{ scale: pressed ? 0.97 : 1 }],
-                    })}
-                  >
-                    <Ionicons name="albums-outline" size={20} color="#334155" />
-                  </Pressable>
-                  {viewMenuOpen ? (
+                  {!isDetailsOnlyState ? (
+                    <Pressable
+                      onPress={() => setViewMenuOpen((v) => !v)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Change fixture card view"
+                      style={({ pressed }) => ({
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: 40,
+                        width: 48,
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: 'rgba(15,23,42,0.14)',
+                        backgroundColor: '#FFFFFF',
+                        opacity: pressed ? 0.92 : 1,
+                        transform: [{ scale: pressed ? 0.97 : 1 }],
+                      })}
+                    >
+                      <Ionicons name="albums-outline" size={20} color="#334155" />
+                    </Pressable>
+                  ) : (
+                    <View style={{ height: 40, width: 48 }} />
+                  )}
+                  {viewMenuOpen && !isDetailsOnlyState ? (
                     <View
                       style={{
                         position: 'absolute',
@@ -1369,7 +1214,7 @@ export default function HomeScreen() {
                     >
                       <Pressable
                         onPress={() => {
-                          if (showAllExpanded) handleShowAll();
+                          if (isDetailsViewActive) handleShowAll();
                           setViewMenuOpen(false);
                         }}
                         accessibilityRole="button"
@@ -1388,12 +1233,12 @@ export default function HomeScreen() {
                           Compact
                         </TotlText>
                         <View style={{ flex: 1 }} />
-                        {!showAllExpanded ? <Ionicons name="checkmark" size={20} color="#1C8376" /> : null}
+                        {!isDetailsViewActive ? <Ionicons name="checkmark" size={20} color="#1C8376" /> : null}
                       </Pressable>
                       <View style={{ height: 1, backgroundColor: 'rgba(15,23,42,0.10)', marginVertical: 6 }} />
                       <Pressable
                         onPress={() => {
-                          if (!showAllExpanded) handleShowAll();
+                          if (!isDetailsViewActive) handleShowAll();
                           setViewMenuOpen(false);
                         }}
                         accessibilityRole="button"
@@ -1412,7 +1257,7 @@ export default function HomeScreen() {
                           Details
                         </TotlText>
                         <View style={{ flex: 1 }} />
-                        {showAllExpanded ? <Ionicons name="checkmark" size={20} color="#1C8376" /> : null}
+                        {isDetailsViewActive ? <Ionicons name="checkmark" size={20} color="#1C8376" /> : null}
                       </Pressable>
                     </View>
                   ) : null}
@@ -1473,9 +1318,16 @@ export default function HomeScreen() {
                 ) : null}
                 {section.fixtures.map((f: Fixture, idx: number) => {
                   const fixtureId = String(f.id);
+                  const sectionExpandedIndex = section.fixtures.findIndex((sf) => String(sf.id) === expandedFixtureId);
+                  const isCompactStack = !isDetailsViewActive;
+                  const isAfterExpandedInCompact = isCompactStack && sectionExpandedIndex >= 0 && idx > sectionExpandedIndex;
+                  const previousFixtureId = idx > 0 ? String(section.fixtures[idx - 1]?.id ?? '') : null;
+                  const previousFixtureHeight = previousFixtureId ? (cardHeightsById[previousFixtureId] ?? 168) : 168;
+                  const overlapAmount = Math.max(0, previousFixtureHeight - collapsedStackStep);
+                  const compactStackMarginTop = idx === 0 ? 0 : isAfterExpandedInCompact ? 8 : -overlapAmount;
+                  const fixtureMarginTop = isCompactStack ? compactStackMarginTop : idx === 0 ? 0 : 8;
                   const isExpanded = expandedFixtureId === fixtureId;
-                  const isExpandedVisual = showAllExpanded || isExpanded;
-                  const fixtureForms = formsByFixtureIndex.get(Number(f.fixture_index)) ?? { home: null, away: null };
+                  const isExpandedVisual = isDetailsOnlyState || showAllExpanded || isExpanded;
                   const ls = liveByFixtureIndex.get(f.fixture_index) ?? null;
                   const st: LiveStatus = (ls?.status as LiveStatus) ?? 'SCHEDULED';
                   const hasScore =
@@ -1493,7 +1345,6 @@ export default function HomeScreen() {
                   const headerHome = getMediumName(String(f.home_name ?? f.home_team ?? homeCode ?? 'Home'));
                   const headerAway = getMediumName(String(f.away_name ?? f.away_team ?? awayCode ?? 'Away'));
                   const pick = userPicks[String(f.fixture_index)];
-                  const compactPickBadgeLabel = pick === 'H' || pick === 'D' || pick === 'A' ? pick : null;
                   const homeTeamFontWeight =
                     pick === 'H' ? '800' : pick === 'D' ? '600' : pick === 'A' ? '600' : '800';
                   const awayTeamFontWeight =
@@ -1510,173 +1361,295 @@ export default function HomeScreen() {
                             ? 'A'
                             : 'D'
                         : null;
-                  const isCorrectPick =
-                    !!pick &&
-                    !!derivedOutcome &&
-                    pick === derivedOutcome &&
-                    (hasFinalResult || st === 'FINISHED');
-                  const isIncorrectPick =
-                    !!pick &&
-                    !!derivedOutcome &&
-                    pick !== derivedOutcome &&
-                    (hasFinalResult || st === 'FINISHED');
+                  const isLiveOrResultsCard = gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW';
+                  const isFinished = st === 'FINISHED';
+                  const showTabsRow = gwState !== 'GW_OPEN';
+                  const showTabPercentages = isLiveOrResultsCard || gwState === 'DEADLINE_PASSED';
+                  const hideRepeatedKickoffInDetails =
+                    (gwState === 'GW_OPEN' || gwState === 'GW_PREDICTED' || gwState === 'DEADLINE_PASSED') &&
+                    isExpandedVisual &&
+                    !hasScore;
+                  const hideRepeatedKickoffInCompact = !isExpandedVisual && !hasScore;
+                  const hideRepeatedKickoffInLiveScheduled = gwState === 'LIVE' && !hasScore;
+                  const hideStatusRowCompletely = gwState === 'GW_OPEN';
+                  const isCompactCard = !isDetailsViewActive && !isExpandedVisual;
+                  const pctFromData = pickPercentagesByFixture.get(Number(f.fixture_index)) ?? null;
+                  const percentBySide: Record<Pick, number> =
+                    pctFromData && typeof pctFromData.H === 'number' && typeof pctFromData.D === 'number' && typeof pctFromData.A === 'number'
+                      ? {
+                          H: Math.round(pctFromData.H),
+                          D: Math.round(pctFromData.D),
+                          A: Math.round(pctFromData.A),
+                        }
+                      : {
+                          H: 36 + (idx % 4) * 5,
+                          D: 22 + (idx % 3) * 3,
+                          A: 100 - (36 + (idx % 4) * 5) - (22 + (idx % 3) * 3),
+                        };
+                  const showPercentagesOnTabs = showTabPercentages;
+                  const tabsAboveScorers = gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW';
+                  const kickoffDetail = f.kickoff_time
+                    ? new Date(f.kickoff_time).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }) +
+                      ' • ' +
+                      fixtureKickoffTimeLabel(f.kickoff_time)
+                    : '';
+                  const goalsRaw = Array.isArray((ls as any)?.goals) ? ((ls as any).goals as Array<any>) : [];
+                  const homeCandidates = [String(f.home_name ?? ''), String(f.home_team ?? ''), headerHome].map((v) => v.toLowerCase());
+                  const awayCandidates = [String(f.away_name ?? ''), String(f.away_team ?? ''), headerAway].map((v) => v.toLowerCase());
+                  const formatScorerLine = (g: any) => {
+                    const full = typeof g?.scorer === 'string' ? g.scorer.trim() : 'Unknown';
+                    const surname = full.split(/\s+/).filter(Boolean).slice(-1)[0] ?? full;
+                    const minute = typeof g?.minute === 'number' ? `${g.minute}'` : "";
+                    return `${surname} ${minute}`.trim();
+                  };
+                  const homeScorers = goalsRaw
+                    .filter((g) => {
+                      const team = String(g?.team ?? '').toLowerCase();
+                      return team && homeCandidates.some((c) => c && (team.includes(c) || c.includes(team)));
+                    })
+                    .map(formatScorerLine)
+                    .slice(0, 3);
+                  const awayScorers = goalsRaw
+                    .filter((g) => {
+                      const team = String(g?.team ?? '').toLowerCase();
+                      return team && awayCandidates.some((c) => c && (team.includes(c) || c.includes(team)));
+                    })
+                    .map(formatScorerLine)
+                    .slice(0, 3);
 
                   return (
                     <Reanimated.View
                       key={fixtureId}
+                      onLayout={(event) => {
+                        const measured = event.nativeEvent.layout.height;
+                        if (!Number.isFinite(measured) || measured <= 0) return;
+                        setCardHeightsById((prev) => {
+                          const existing = prev[fixtureId];
+                          if (typeof existing === 'number' && Math.abs(existing - measured) <= 1) return prev;
+                          return { ...prev, [fixtureId]: measured };
+                        });
+                      }}
                       style={{
-                        marginTop: idx === 0 ? 0 : 8,
-                        elevation: 0,
+                        marginTop: fixtureMarginTop,
+                        elevation: isCompactStack ? idx + 1 : 0,
+                        zIndex: isCompactStack ? (sectionExpandedIndex === idx ? 300 : idx + 1) : 0,
+                        shadowColor: '#0F172A',
+                        shadowOpacity: 0.06,
+                        shadowRadius: 1.8,
+                        shadowOffset: { width: 0, height: -0.8 },
                       }}
                     >
-                        <View
-                          style={{
-                            borderTopLeftRadius: 20,
-                            borderTopRightRadius: 20,
-                            borderBottomLeftRadius: 20,
-                            borderBottomRightRadius: 20,
-                            borderWidth: 1,
-                            borderColor: 'rgba(148,163,184,0.18)',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          <Card
-                            style={{
-                              marginLeft: 0,
-                              marginRight: 0,
-                              marginTop: 0,
-                              marginBottom: 0,
-                              padding: 0,
-                              backgroundColor: '#FFFFFF',
-                              borderColor: 'transparent',
-                              borderWidth: 0,
-                              borderTopLeftRadius: 14,
-                              borderTopRightRadius: 14,
-                              borderBottomLeftRadius: 14,
-                              borderBottomRightRadius: 14,
-                              shadowOpacity: 0,
-                              shadowRadius: 0,
-                              shadowOffset: { width: 0, height: 0 },
-                              elevation: 0,
-                            }}
-                          >
-                            <View style={{ borderRadius: 14, overflow: 'hidden' }}>
-                              <Pressable
-                                accessibilityRole="button"
-                                accessibilityLabel={`${headerHome} versus ${headerAway}`}
-                                onPress={() => handleToggleFixture(fixtureId)}
-                                style={({ pressed }) => ({
-                                  opacity: pressed ? 0.96 : 1,
-                                })}
-                              >
-                                <View style={{ paddingHorizontal: 16, paddingTop: 17, paddingBottom: 10, backgroundColor: '#FFFFFF' }}>
-                                  {!isExpandedVisual && compactPickBadgeLabel ? (
-                                    <View
-                                      style={{
-                                        position: 'absolute',
-                                        left: 10,
-                                        top: 0,
-                                        bottom: 0,
-                                        justifyContent: 'center',
-                                        zIndex: 4,
-                                      }}
-                                    >
-                                      <View
-                                        style={{
-                                          width: 18,
-                                          height: 18,
-                                          borderRadius: 999,
-                                          backgroundColor: '#1C8376',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                        }}
-                                      >
-                                        <TotlText
-                                          style={{
-                                            color: '#FFFFFF',
-                                            fontFamily: 'Gramatika-Medium',
-                                            fontWeight: '900',
-                                            fontSize: 10,
-                                            lineHeight: 10,
-                                          }}
-                                        >
-                                          {compactPickBadgeLabel}
-                                        </TotlText>
-                                      </View>
-                                    </View>
-                                  ) : null}
-                                  {isCorrectPick ? (
-                                    <View
-                                      style={{
-                                        position: 'absolute',
-                                        left: 0,
-                                        top: 0,
-                                        width: 40,
-                                        height: 40,
-                                        zIndex: 3,
-                                      }}
-                                    >
-                                      <Svg width={40} height={40} viewBox="0 0 40 40">
-                                        <Defs>
-                                          <SvgLinearGradient id={`winner-corner-${fixtureId}`} x1="0%" y1="0%" x2="100%" y2="100%">
-                                            <Stop offset="0%" stopColor="#FACC15" />
-                                            <Stop offset="35%" stopColor="#F97316" />
-                                            <Stop offset="68%" stopColor="#EC4899" />
-                                            <Stop offset="100%" stopColor="#9333EA" />
-                                          </SvgLinearGradient>
-                                        </Defs>
-                                        <Polygon points="0,0 40,0 0,40" fill={`url(#winner-corner-${fixtureId})`} />
-                                      </Svg>
-                                      <View style={{ position: 'absolute', left: 7, top: 4 }}>
-                                        <Ionicons name="checkmark-sharp" size={15} color="#FFFFFF" />
-                                      </View>
-                                    </View>
-                                  ) : null}
-                                  {isIncorrectPick ? (
-                                    <View
-                                      style={{
-                                        position: 'absolute',
-                                        left: 0,
-                                        top: 0,
-                                        width: 40,
-                                        height: 40,
-                                        zIndex: 3,
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                      }}
-                                    >
-                                      <Ionicons name="close-circle" size={16} color="#EF4444" />
-                                    </View>
-                                  ) : null}
-                                  <FixtureHeaderMorph
-                                    expanded={isExpandedVisual}
-                                    hasScore={hasScore}
-                                    headerPrimary={headerPrimary}
-                                    headerSecondary={headerSecondary}
-                                    headerHome={headerHome}
-                                    headerAway={headerAway}
-                                    homeBadge={homeBadge}
-                                    awayBadge={awayBadge}
-                                    homeTeamFontWeight={homeTeamFontWeight}
-                                    awayTeamFontWeight={awayTeamFontWeight}
-                                    homeForm={fixtureForms.home}
-                                    awayForm={fixtureForms.away}
-                                  />
-                                </View>
-                              </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`${headerHome} versus ${headerAway}`}
+                        onPress={() => {
+                          if (isDetailsOnlyState) return;
+                          handleToggleFixture(fixtureId);
+                        }}
+                        style={({ pressed }) => ({
+                          borderWidth: 1,
+                          borderColor: 'rgba(148,163,184,0.2)',
+                          borderTopLeftRadius: 18,
+                          borderTopRightRadius: 18,
+                          borderBottomLeftRadius: 18,
+                          borderBottomRightRadius: 18,
+                          paddingHorizontal: gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW' ? 16 : 12,
+                          paddingTop: gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW' ? 14 : 12,
+                          paddingBottom: gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW' ? 14 : 12,
+                          backgroundColor: '#FFFFFF',
+                          opacity: pressed ? 0.96 : 1,
+                          transform: [{ scale: pressed ? 0.995 : 1 }],
+                        })}
+                      >
+                        <View style={{ paddingLeft: 0 }}>
+                          <FixtureHeaderMorph
+                            expanded={isExpandedVisual}
+                            headerPrimary={headerPrimary}
+                            headerHome={headerHome}
+                            headerAway={headerAway}
+                            homeBadge={homeBadge}
+                            awayBadge={awayBadge}
+                            homeTeamFontWeight={homeTeamFontWeight}
+                            awayTeamFontWeight={awayTeamFontWeight}
+                          />
+                        </View>
 
-                              {isExpandedVisual ? (
-                                <Reanimated.View>
-                                  <View style={{ position: 'relative', overflow: 'hidden', backgroundColor: '#FFFFFF' }}>
-                                    <View style={{ position: 'relative', zIndex: 1 }}>
-                                      <FixtureCardDetailsRow f={f} />
+                        {isExpandedVisual || !isDetailsViewActive ? (
+                          <Reanimated.View>
+                            <View style={{ position: 'relative', overflow: 'hidden', backgroundColor: '#FFFFFF' }}>
+                              <View style={{ position: 'relative', zIndex: 1, paddingHorizontal: 0, paddingBottom: 2 }}>
+                                {!hideStatusRowCompletely ? (
+                                  <View style={{ marginTop: 2, alignItems: 'center' }}>
+                                    <TotlText
+                                      style={{
+                                        color: '#64748B',
+                                        fontSize: 12,
+                                        opacity:
+                                          hideRepeatedKickoffInDetails || hideRepeatedKickoffInCompact || hideRepeatedKickoffInLiveScheduled ? 0 : 1,
+                                      }}
+                                    >
+                                      {headerSecondary}
+                                    </TotlText>
+                                  </View>
+                                ) : null}
+                                {isLiveOrResultsCard && !tabsAboveScorers && homeScorers.length + awayScorers.length > 0 ? (
+                                  <View style={{ marginTop: 14, flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12 }}>
+                                    <View style={{ width: '40%', alignItems: 'flex-end', paddingRight: 6 }}>
+                                      {homeScorers.map((line) => (
+                                        <TotlText key={`${fixtureId}-h-${line}`} numberOfLines={1} style={{ fontSize: 11, lineHeight: 17, color: '#0F172A', textAlign: 'right' }}>
+                                          {line}
+                                        </TotlText>
+                                      ))}
+                                    </View>
+                                    <View style={{ width: '20%' }} />
+                                    <View style={{ width: '40%', alignItems: 'flex-start', paddingLeft: 6 }}>
+                                      {awayScorers.map((line) => (
+                                        <TotlText key={`${fixtureId}-a-${line}`} numberOfLines={1} style={{ fontSize: 11, lineHeight: 17, color: '#0F172A', textAlign: 'left' }}>
+                                          {line}
+                                        </TotlText>
+                                      ))}
                                     </View>
                                   </View>
-                                </Reanimated.View>
-                              ) : null}
+                                ) : null}
+                                {showTabsRow ? (
+                                  <View style={{ marginTop: isLiveOrResultsCard ? 12 : 4, flexDirection: 'row', gap: isLiveOrResultsCard ? 6 : 8, paddingHorizontal: 12 }}>
+                                    {(['H', 'D', 'A'] as const).map((side) => {
+                                      const active = pick === side;
+                                      const sideBadge = side === 'H' ? homeBadge : side === 'A' ? awayBadge : null;
+                                      const showPercentagesForCard = showPercentagesOnTabs && !isCompactCard;
+                                      const label = showPercentagesForCard && side === 'D' ? 'Draw' : '';
+                                      const showWinnerTabShiny = isLiveOrResultsCard && isFinished && !!pick && !!derivedOutcome && pick === derivedOutcome && derivedOutcome === side;
+                                      const showOngoingCorrectShimmer =
+                                        isLiveOrResultsCard && !isFinished && active && !!pick && !!derivedOutcome && pick === derivedOutcome && derivedOutcome === side;
+                                      const showLiveWrongPicked = (gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW') && active && isFinished && !!pick && !!derivedOutcome && pick !== derivedOutcome;
+                                      const showWrongFinishedPickedTab =
+                                        isFinished && active && !!pick && !!derivedOutcome && pick !== derivedOutcome && !showLiveWrongPicked;
+                                      const showSolidPickedTab =
+                                        (gwState !== 'GW_OPEN' && active && !isFinished && !showWinnerTabShiny && !showWrongFinishedPickedTab) || showLiveWrongPicked;
+                                      return (
+                                        <View
+                                          key={`${fixtureId}-${side}`}
+                                          style={{
+                                            flex: 1,
+                                            borderRadius: 9,
+                                            borderWidth: showWinnerTabShiny ? 0 : 1,
+                                            borderColor: showWrongFinishedPickedTab
+                                              ? 'rgba(203,213,225,0.9)'
+                                              : showLiveWrongPicked
+                                                ? 'rgba(28,131,118,0.7)'
+                                                : showSolidPickedTab
+                                                  ? '#1C8376'
+                                                  : active
+                                                    ? 'rgba(28,131,118,0.45)'
+                                                    : 'rgba(148,163,184,0.22)',
+                                            backgroundColor: showWinnerTabShiny
+                                              ? 'transparent'
+                                              : showWrongFinishedPickedTab
+                                                ? '#E2E8F0'
+                                                : showLiveWrongPicked
+                                                  ? 'rgba(28,131,118,0.7)'
+                                                  : showSolidPickedTab
+                                                    ? '#1C8376'
+                                                    : isLiveOrResultsCard
+                                                      ? active
+                                                        ? 'rgba(28,131,118,0.12)'
+                                                        : '#E2E8F0'
+                                                      : active
+                                                        ? 'rgba(28,131,118,0.12)'
+                                                        : '#F8FAFC',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            paddingVertical: isLiveOrResultsCard ? 10 : 5,
+                                            overflow: 'hidden',
+                                          }}
+                                        >
+                                          {showWinnerTabShiny ? (
+                                            <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 9, overflow: 'hidden' }}>
+                                              <LinearGradient
+                                                colors={['#FACC15', '#F97316', '#EC4899', '#9333EA']}
+                                                start={{ x: 0, y: 0 }}
+                                                end={{ x: 1, y: 1 }}
+                                                style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+                                              />
+                                              <WinnerShimmer durationMs={1200} delayMs={0} opacity={0.95} tint="white" />
+                                              <WinnerShimmer durationMs={1800} delayMs={380} opacity={0.55} tint="gold" />
+                                            </View>
+                                          ) : showOngoingCorrectShimmer ? (
+                                            <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
+                                              <WinnerShimmer durationMs={1200} delayMs={0} opacity={0.62} tint="white" />
+                                            </View>
+                                          ) : null}
+                                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            {sideBadge ? <Image source={sideBadge} style={{ width: 16, height: 16, marginRight: 4 }} /> : null}
+                                            {label ? (
+                                              <TotlText style={{ fontSize: 13, fontWeight: '500', color: showWinnerTabShiny || showSolidPickedTab ? '#FFFFFF' : '#1F2937' }}>
+                                                {label}{' '}
+                                              </TotlText>
+                                            ) : null}
+                                            {showPercentagesForCard ? (
+                                              <TotlText
+                                                style={{
+                                                  fontSize: 15,
+                                                  fontWeight: active ? '700' : '500',
+                                                  color: showWinnerTabShiny
+                                                    ? '#FFFFFF'
+                                                    : showSolidPickedTab
+                                                      ? '#FFFFFF'
+                                                      : showWrongFinishedPickedTab
+                                                        ? '#94A3B8'
+                                                        : active
+                                                          ? '#1C8376'
+                                                          : '#1F2937',
+                                                }}
+                                              >
+                                                {`${percentBySide[side]}%`}
+                                              </TotlText>
+                                            ) : (
+                                              <TotlText
+                                                style={{
+                                                  fontSize: 14,
+                                                  fontWeight: active ? '800' : '600',
+                                                  color: showWinnerTabShiny ? '#FFFFFF' : showSolidPickedTab ? '#FFFFFF' : active ? '#047857' : '#475569',
+                                                }}
+                                              >
+                                                {side === 'D' ? 'Draw' : 'Win'}
+                                              </TotlText>
+                                            )}
+                                          </View>
+                                        </View>
+                                      );
+                                    })}
+                                  </View>
+                                ) : null}
+                                {isLiveOrResultsCard && tabsAboveScorers && homeScorers.length + awayScorers.length > 0 ? (
+                                  <View style={{ marginTop: 14, flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12 }}>
+                                    <View style={{ width: '40%', alignItems: 'flex-end', paddingRight: 6 }}>
+                                      {homeScorers.map((line) => (
+                                        <TotlText key={`${fixtureId}-h2-${line}`} numberOfLines={1} style={{ fontSize: 11, lineHeight: 17, color: '#0F172A', textAlign: 'right' }}>
+                                          {line}
+                                        </TotlText>
+                                      ))}
+                                    </View>
+                                    <View style={{ width: '20%' }} />
+                                    <View style={{ width: '40%', alignItems: 'flex-start', paddingLeft: 6 }}>
+                                      {awayScorers.map((line) => (
+                                        <TotlText key={`${fixtureId}-a2-${line}`} numberOfLines={1} style={{ fontSize: 11, lineHeight: 17, color: '#0F172A', textAlign: 'left' }}>
+                                          {line}
+                                        </TotlText>
+                                      ))}
+                                    </View>
+                                  </View>
+                                ) : null}
+                                {isLiveOrResultsCard && kickoffDetail ? (
+                                  <View style={{ marginTop: 14, alignItems: 'center' }}>
+                                    <TotlText style={{ fontSize: 14, color: '#334155' }}>{kickoffDetail}</TotlText>
+                                  </View>
+                                ) : null}
+                              </View>
                             </View>
-                          </Card>
-                        </View>
+                          </Reanimated.View>
+                        ) : null}
+                      </Pressable>
                     </Reanimated.View>
                   );
                 })}

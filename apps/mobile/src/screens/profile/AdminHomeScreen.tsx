@@ -33,6 +33,10 @@ export default function AdminHomeScreen() {
     parent?.navigate?.('PredictionsTestFlow');
   }, [navigation]);
 
+  const openHpSimulator = React.useCallback(() => {
+    navigation.navigate('AdminHomeSimulator');
+  }, [navigation]);
+
   return (
     <Screen fullBleed>
       <PageHeader
@@ -77,6 +81,24 @@ export default function AdminHomeScreen() {
             })}
           >
             <TotlText style={{ fontWeight: '700' }}>Make Your Predictions Test</TotlText>
+            <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Home page game state simulator"
+            onPress={openHpSimulator}
+            style={({ pressed }) => ({
+              paddingVertical: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottomWidth: 1,
+              borderBottomColor: 'rgba(148,163,184,0.18)',
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <TotlText style={{ fontWeight: '700' }}>HP Simulator (Native)</TotlText>
             <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
           </Pressable>
 

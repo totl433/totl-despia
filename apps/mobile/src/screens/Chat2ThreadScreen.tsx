@@ -99,6 +99,10 @@ export default function Chat2ThreadScreen() {
       chatMlHopCount: nextHop,
     });
   }, [chatMlHopCount, leagueId, leagueMeta?.name, navigation, params.name]);
+  const handleOpenInfoSheet = React.useCallback(() => {
+    Keyboard.dismiss();
+    setInfoOpen(true);
+  }, []);
 
   const headerAvatarUri = React.useMemo(() => {
     const a = resolveLeagueAvatarUri(leagueMeta?.avatar);
@@ -126,6 +130,12 @@ export default function Chat2ThreadScreen() {
   }, [members]);
 
   React.useLayoutEffect(() => {
+    const iconButtonStyle = ({ pressed }: { pressed: boolean }) => ({
+      paddingHorizontal: 2,
+      opacity: pressed ? 0.85 : 1,
+      backgroundColor: 'transparent',
+    });
+
     navigation.setOptions({
       headerBackVisible: false,
       headerLeft: () => (
@@ -134,7 +144,7 @@ export default function Chat2ThreadScreen() {
           accessibilityRole="button"
           accessibilityLabel="Go back"
           hitSlop={10}
-          style={({ pressed }) => ({ paddingRight: 6, opacity: pressed ? 0.85 : 1 })}
+          style={iconButtonStyle}
         >
           <Ionicons name="chevron-back" size={24} color={t.color.text} />
         </Pressable>
@@ -144,22 +154,11 @@ export default function Chat2ThreadScreen() {
           title={leagueName || 'Chat'}
           subtitle={participantNamesLabel || 'Chat'}
           avatarUri={headerAvatarUri}
+          onPress={handleOpenInfoSheet}
         />
       ),
       headerRight: () => (
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Pressable
-            onPress={() => {
-              Keyboard.dismiss();
-              setInfoOpen(true);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Chat info"
-            hitSlop={10}
-            style={({ pressed }) => ({ paddingHorizontal: 6, opacity: pressed ? 0.85 : 1 })}
-          >
-            <Ionicons name="information-circle-outline" size={22} color={t.color.text} />
-          </Pressable>
           <Pressable
             onPress={() => {
               handleOpenLeagueDetail();
@@ -167,14 +166,14 @@ export default function Chat2ThreadScreen() {
             accessibilityRole="button"
             accessibilityLabel="Open mini league"
             hitSlop={10}
-            style={({ pressed }) => ({ paddingLeft: 6, opacity: pressed ? 0.85 : 1 })}
+            style={iconButtonStyle}
           >
             <MiniLeaguesNavIcon color={t.color.text} />
           </Pressable>
         </View>
       ),
     });
-  }, [handleBackPress, handleOpenLeagueDetail, headerAvatarUri, leagueName, participantNamesLabel, t.color.text, navigation]);
+  }, [handleBackPress, handleOpenLeagueDetail, handleOpenInfoSheet, headerAvatarUri, leagueName, participantNamesLabel, t.color.text, navigation]);
 
   React.useEffect(() => {
     let active = true;
@@ -299,7 +298,7 @@ export default function Chat2ThreadScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.color.background }}>
+    <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
       <View style={{ flex: 1 }}>
         <View style={{ flex: 1 }}>
           <LeagueChatTabV2 leagueId={leagueId} members={membersForChat} />

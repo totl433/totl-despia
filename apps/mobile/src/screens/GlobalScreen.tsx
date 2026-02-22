@@ -124,6 +124,87 @@ export default function GlobalScreen() {
     },
   });
 
+  const { data: gwLiveTable, refetch: refetchGwLiveTable } = useQuery({
+    enabled: typeof latestGw === 'number',
+    queryKey: ['leaderboards', 'gwLiveTable', latestGw],
+    queryFn: () => api.getGlobalGwLiveTable(latestGw as number),
+    refetchInterval: tab === 'gw' ? 10_000 : false,
+  });
+  const { data: gwLiveFallbackScores, refetch: refetchGwLiveFallbackScores } = useQuery<{
+    scores: Record<string, number>;
+    hasActiveLiveGames: boolean;
+  }>({
+    enabled: typeof latestGw === 'number',
+    queryKey: ['leaderboards', 'gwLiveFallbackScores', latestGw],
+    queryFn: async () => {
+      const gw = latestGw as number;
+      const [submissionsRes, picksRes, liveScoresRes, resultsRes, fixturesRes] = await Promise.all([
+        supabase.from('app_gw_submissions').select('user_id').eq('gw', gw),
+        supabase.from('app_picks').select('user_id, fixture_index, pick').eq('gw', gw),
+        supabase.from('live_scores').select('api_match_id, fixture_index, home_score, away_score, status').eq('gw', gw),
+        supabase.from('app_gw_results').select('fixture_index, result').eq('gw', gw),
+        supabase.from('app_fixtures').select('fixture_index, api_match_id').eq('gw', gw),
+      ]);
+      if (submissionsRes.error) throw submissionsRes.error;
+      if (picksRes.error) throw picksRes.error;
+      if (liveScoresRes.error) throw liveScoresRes.error;
+      if (resultsRes.error) throw resultsRes.error;
+      if (fixturesRes.error) throw fixturesRes.error;
+
+      const picks = (picksRes.data ?? []).filter((p: any) => p.pick === 'H' || p.pick === 'D' || p.pick === 'A');
+      const submittedIds = new Set<string>([
+        ...((submissionsRes.data ?? []) as any[]).map((s: any) => String(s.user_id)),
+        ...picks.map((p: any) => String(p.user_id)),
+      ]);
+      const outcomeByFixtureIndex = new Map<number, 'H' | 'D' | 'A'>();
+      (resultsRes.data ?? []).forEach((r: any) => {
+        if (r?.result === 'H' || r?.result === 'D' || r?.result === 'A') outcomeByFixtureIndex.set(Number(r.fixture_index), r.result);
+      });
+      const apiMatchIdToFixture = new Map<number, number>();
+      (fixturesRes.data ?? []).forEach((f: any) => {
+        if (typeof f?.api_match_id === 'number' && typeof f?.fixture_index === 'number') apiMatchIdToFixture.set(f.api_match_id, f.fixture_index);
+      });
+      let hasActiveLiveGames = false;
+      (liveScoresRes.data ?? []).forEach((ls: any) => {
+        const status = ls?.status;
+        const started = status === 'IN_PLAY' || status === 'PAUSED' || status === 'FINISHED';
+        if (status === 'IN_PLAY' || status === 'PAUSED') hasActiveLiveGames = true;
+        if (!started) return;
+        const fixtureIndex =
+          typeof ls?.fixture_index === 'number'
+            ? ls.fixture_index
+            : typeof ls?.api_match_id === 'number'
+              ? apiMatchIdToFixture.get(ls.api_match_id)
+              : undefined;
+        if (typeof fixtureIndex !== 'number') return;
+        const hs = Number(ls?.home_score ?? 0);
+        const as = Number(ls?.away_score ?? 0);
+        outcomeByFixtureIndex.set(fixtureIndex, hs > as ? 'H' : hs < as ? 'A' : 'D');
+      });
+
+      const scores: Record<string, number> = {};
+      submittedIds.forEach((uid) => {
+        scores[uid] = 0;
+      });
+      const picksByFixture = new Map<number, Array<{ user_id: string; pick: 'H' | 'D' | 'A' }>>();
+      picks.forEach((p: any) => {
+        const uid = String(p.user_id);
+        if (!submittedIds.has(uid)) return;
+        const arr = picksByFixture.get(Number(p.fixture_index)) ?? [];
+        arr.push({ user_id: uid, pick: p.pick });
+        picksByFixture.set(Number(p.fixture_index), arr);
+      });
+      outcomeByFixtureIndex.forEach((outcome, fixtureIndex) => {
+        const thesePicks = picksByFixture.get(fixtureIndex) ?? [];
+        thesePicks.forEach((p) => {
+          if (p.pick === outcome) scores[p.user_id] = (scores[p.user_id] ?? 0) + 1;
+        });
+      });
+      return { scores, hasActiveLiveGames };
+    },
+    refetchInterval: tab === 'gw' || tab === 'overall' ? 10_000 : false,
+  });
+
   const {
     data: friendIds,
     isLoading: friendsLoading,
@@ -194,10 +275,44 @@ export default function GlobalScreen() {
   const rowsBase: LeaderboardRow[] = React.useMemo(() => {
     const gw = latestGw ?? null;
     if (!overall || !gwPoints) return [];
+    const gwPointsByUser = new Map<string, number>();
+    const gwLiveByUser = new Map<string, number>();
+    const liveRows = gwLiveTable?.rows ?? [];
+    if (liveRows.length > 0) {
+      liveRows.forEach((r) => {
+        gwLiveByUser.set(String(r.user_id), Number(r.score ?? 0));
+      });
+    } else {
+      Object.entries(gwLiveFallbackScores?.scores ?? {}).forEach(([uid, score]) => {
+        gwLiveByUser.set(String(uid), Number(score ?? 0));
+      });
+    }
+    const hasLiveGwScores = gwLiveByUser.size > 0;
+    const hasActiveLiveGames = gwLiveFallbackScores?.hasActiveLiveGames === true;
+    if (gw) {
+      gwPoints
+        .filter((p) => p.gw === gw)
+        .forEach((p) => {
+          gwPointsByUser.set(p.user_id, Number(p.points ?? 0));
+        });
+    }
 
     if (tab === 'overall') {
       const r = overall
-        .map((o) => ({ user_id: o.user_id, name: o.name ?? 'User', value: Math.round(Number(o.ocp ?? 0)) }))
+        .map((o) => ({
+          user_id: o.user_id,
+          name: o.name ?? 'User',
+          value:
+            hasActiveLiveGames && hasLiveGwScores
+              ? Math.round(Number(o.ocp ?? 0)) + (gwLiveByUser.get(o.user_id) ?? 0)
+              : Math.round(Number(o.ocp ?? 0)),
+          secondaryValue:
+            gw
+              ? hasLiveGwScores
+                ? (gwLiveByUser.get(o.user_id) ?? 0)
+                : (gwPointsByUser.get(o.user_id) ?? 0)
+              : undefined,
+        }))
         .sort(byValueThenName);
       return filterScope(r);
     }
@@ -207,12 +322,26 @@ export default function GlobalScreen() {
 
     // GW tab: last completed gameweek
     if (!gw) return [];
+    if (hasLiveGwScores) {
+      const r = Array.from(gwLiveByUser.entries())
+        .map(([uid, score]) => ({
+          user_id: uid,
+          name: nameByUserId.get(uid) ?? 'User',
+          value: Number(score ?? 0),
+        }))
+        .sort(byValueThenName);
+      return filterScope(r);
+    }
     const pts = gwPoints
       .filter((p) => p.gw === gw)
-      .map((p) => ({ user_id: p.user_id, name: nameByUserId.get(p.user_id) ?? 'User', value: Number(p.points ?? 0) }))
+      .map((p) => ({
+        user_id: p.user_id,
+        name: nameByUserId.get(p.user_id) ?? 'User',
+        value: Number(p.points ?? 0),
+      }))
       .sort(byValueThenName);
     return filterScope(pts);
-  }, [computeFormRows, filterScope, gwPoints, latestGw, nameByUserId, overall, tab]);
+  }, [computeFormRows, filterScope, gwLiveFallbackScores, gwLiveTable?.rows, gwPoints, latestGw, nameByUserId, overall, tab]);
 
   const visibleUserIds = React.useMemo(() => {
     const ids = Array.from(new Set(rowsBase.map((r) => r.user_id))).filter(Boolean);
@@ -251,7 +380,8 @@ export default function GlobalScreen() {
     return latestGw ? `${who} who submitted for GW${latestGw}` : `${who} who submitted for the last GW`;
   }, [latestGw, scope, tab]);
 
-  const valueLabel = tab === 'overall' ? 'OCP' : tab === 'gw' && latestGw ? `GW${latestGw}` : tab === 'form5' ? '5WK' : tab === 'form10' ? '10WK' : '—';
+  const valueLabel = tab === 'overall' ? 'OCP' : tab === 'gw' && latestGw ? `GW${latestGw}` : tab === 'form5' ? 'PTS' : tab === 'form10' ? 'PTS' : '—';
+  const secondaryValueLabel = tab === 'overall' && latestGw ? `GW${latestGw}` : undefined;
   const loading = overallLoading || gwPointsLoading || friendsLoading;
   const error = (overallError as any) ?? (gwPointsError as any);
   const showInitialSpinner = loading && !error && rows.length === 0;
@@ -265,12 +395,14 @@ export default function GlobalScreen() {
         withTimeout(refetchRanks(), 8000),
         withTimeout(refetchOverall(), 8000),
         withTimeout(refetchGwPoints(), 8000),
+        typeof latestGw === 'number' ? withTimeout(refetchGwLiveTable(), 8000) : Promise.resolve(),
+        typeof latestGw === 'number' ? withTimeout(refetchGwLiveFallbackScores(), 8000) : Promise.resolve(),
         scope === 'friends' ? withTimeout(refetchFriendIds(), 8000) : Promise.resolve(),
       ]);
     } finally {
       setPullRefreshing(false);
     }
-  }, [pullRefreshing, refetchFriendIds, refetchGwPoints, refetchOverall, refetchRanks, scope]);
+  }, [latestGw, pullRefreshing, refetchFriendIds, refetchGwLiveFallbackScores, refetchGwLiveTable, refetchGwPoints, refetchOverall, refetchRanks, scope]);
 
   return (
     <Screen fullBleed>
@@ -282,26 +414,6 @@ export default function GlobalScreen() {
           onPressProfile={() => navigation.navigate('Profile')}
           avatarUrl={avatarUrl}
           title="Leaderboards"
-          leftAction={
-            <Pressable
-              onPress={() => setScope((prev) => (prev === 'all' ? 'friends' : 'all'))}
-              accessibilityRole="button"
-              accessibilityLabel={scope === 'friends' ? 'Filter active: Mini League Friends' : 'Filter active: All Players'}
-              style={({ pressed }) => ({
-                width: 38,
-                height: 38,
-                borderRadius: 999,
-                borderWidth: scope === 'friends' ? 2 : 1.5,
-                borderColor: scope === 'friends' ? '#1C8376' : t.color.border,
-                backgroundColor: scope === 'friends' ? 'rgba(28,131,118,0.10)' : '#FFFFFF',
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: pressed ? 0.86 : 1,
-              })}
-            >
-              <Ionicons name="funnel" size={16} color={scope === 'friends' ? '#1C8376' : t.color.muted} />
-            </Pressable>
-          }
           rightAction={
             <Pressable
               onPress={() => navigation.navigate('Profile' as any, { screen: 'ProfileStats' } as any)}
@@ -355,6 +467,7 @@ export default function GlobalScreen() {
           <LeaderboardTable
             rows={rows}
             valueLabel={valueLabel}
+            secondaryValueLabel={secondaryValueLabel}
             highlightUserId={userId}
             refreshing={refreshing}
             onRefresh={onRefresh}

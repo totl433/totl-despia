@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { Animated, Easing, Pressable, View } from 'react-native';
 import { Asset } from 'expo-asset';
 import Svg, { Path, SvgUri } from 'react-native-svg';
 import { TotlText, useTokens } from '@totl/ui';
@@ -14,6 +14,7 @@ export default function AppTopHeader({
   title,
   leftAction,
   rightAction,
+  isRefreshing = false,
 }: {
   onPressChat: () => void;
   onPressProfile: () => void;
@@ -21,6 +22,7 @@ export default function AppTopHeader({
   title?: string;
   leftAction?: React.ReactNode;
   rightAction?: React.ReactNode;
+  isRefreshing?: boolean;
 }) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
@@ -35,6 +37,50 @@ export default function AppTopHeader({
   );
   const showUnreadBadge = unreadCount > 0;
   const unreadLabel = unreadCount > 99 ? '99+' : String(unreadCount);
+  const hasLiveGames = true;
+  const liveDotOpacity = React.useRef(new Animated.Value(1)).current;
+  const logoFlip = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    if (!hasLiveGames) {
+      liveDotOpacity.stopAnimation();
+      liveDotOpacity.setValue(1);
+      return;
+    }
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(liveDotOpacity, { toValue: 0.25, duration: 420, useNativeDriver: true }),
+        Animated.timing(liveDotOpacity, { toValue: 1, duration: 420, useNativeDriver: true }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [hasLiveGames, liveDotOpacity]);
+  React.useEffect(() => {
+    if (!isRefreshing) {
+      logoFlip.stopAnimation();
+      logoFlip.setValue(0);
+      return;
+    }
+    const flipLoop = Animated.loop(
+      Animated.timing(logoFlip, {
+        toValue: 1,
+        duration: 760,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    flipLoop.start();
+    return () => flipLoop.stop();
+  }, [isRefreshing, logoFlip]);
+  const logoRotateY = logoFlip.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+  const logoScale = logoFlip.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [1, 1.04, 1],
+  });
 
   const fixedHeaderLogoUri = React.useMemo(() => {
     const isLightMode = t.color.background.toLowerCase() === '#f8fafc';
@@ -61,6 +107,31 @@ export default function AppTopHeader({
             icon={require('../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')}
             imageUri={avatarUrl}
           />
+          {hasLiveGames ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 12 }}>
+              <Animated.View
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: 999,
+                  backgroundColor: '#EF4444',
+                  marginRight: 7,
+                  opacity: liveDotOpacity,
+                }}
+              />
+              <TotlText
+                style={{
+                  color: '#EF4444',
+                  fontWeight: '900',
+                  fontSize: 14,
+                  lineHeight: 15,
+                  letterSpacing: 0.6,
+                }}
+              >
+                LIVE
+              </TotlText>
+            </View>
+          ) : null}
           {/* TS note: monorepo React type duplication can cause ReactNode incompatibilities. */}
           {leftAction ? <View>{leftAction as any}</View> : null}
         </View>
@@ -69,7 +140,44 @@ export default function AppTopHeader({
           {title ? (
             <TotlText style={{ fontWeight: '900', fontSize: 20, lineHeight: 24, color: t.color.text }}>{title}</TotlText>
           ) : (
-            <SvgUri uri={fixedHeaderLogoUri} width={159} height={50} />
+            <Animated.View
+              style={{
+                width: 159,
+                height: 50,
+                overflow: 'visible',
+                transform: [{ perspective: 1200 }, { rotateY: logoRotateY }, { scale: logoScale }],
+              }}
+            >
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  left: 0,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backfaceVisibility: 'hidden',
+                }}
+              >
+                <SvgUri uri={fixedHeaderLogoUri} width={159} height={50} />
+              </View>
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  left: 0,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backfaceVisibility: 'hidden',
+                  transform: [{ rotateY: '180deg' }, { scaleX: -1 }],
+                }}
+              >
+                <SvgUri uri={fixedHeaderLogoUri} width={159} height={50} />
+              </View>
+            </Animated.View>
           )}
         </View>
 

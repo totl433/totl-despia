@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 
 import { TotlText, useTokens } from '@totl/ui';
 
@@ -7,16 +7,19 @@ export default function ChatStackHeaderTitle({
   title,
   subtitle,
   avatarUri,
+  onPress,
 }: {
   title: string;
   subtitle: string;
   avatarUri: string | null;
+  onPress?: () => void;
 }) {
   const t = useTokens();
   const AVATAR = 34;
+  const rootStyle = { flexDirection: 'row' as const, alignItems: 'center' as const };
 
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+  const content = (
+    <>
       <View
         style={{
           width: AVATAR,
@@ -52,7 +55,21 @@ export default function ChatStackHeaderTitle({
           {subtitle}
         </TotlText>
       </View>
-    </View>
+    </>
+  );
+
+  if (!onPress) return <View style={rootStyle}>{content}</View>;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel="Open chat info"
+      hitSlop={8}
+      style={rootStyle}
+    >
+      {content}
+    </Pressable>
   );
 }
 
