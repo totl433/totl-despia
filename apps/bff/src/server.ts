@@ -444,7 +444,7 @@ app.get('/v1/predictions', async (req) => {
       .eq('user_id', userId)
       .eq('gw', gw)
       .maybeSingle(),
-    (supa as any).from('app_team_forms').select('team_code, form').eq('gw', gw),
+    (supa as any).from('app_team_forms').select('team_code, form, league_position').eq('gw', gw),
   ]);
 
   if (fixturesRes.error) throw fixturesRes.error;
@@ -453,10 +453,13 @@ app.get('/v1/predictions', async (req) => {
   if (formsRes.error) throw formsRes.error;
 
   const teamForms: Record<string, string> = {};
+  const teamPositions: Record<string, number> = {};
   (formsRes.data ?? []).forEach((row: any) => {
     const code = typeof row?.team_code === 'string' ? row.team_code.trim().toUpperCase() : '';
     const form = typeof row?.form === 'string' ? row.form.trim().toUpperCase() : '';
+    const position = Number(row?.league_position);
     if (code && form) teamForms[code] = form;
+    if (code && Number.isFinite(position) && position > 0) teamPositions[code] = Math.trunc(position);
   });
 
   return {
@@ -465,6 +468,7 @@ app.get('/v1/predictions', async (req) => {
     picks: picksRes.data ?? [],
     submitted: !!submissionRes.data?.submitted_at,
     teamForms,
+    teamPositions,
   };
 });
 

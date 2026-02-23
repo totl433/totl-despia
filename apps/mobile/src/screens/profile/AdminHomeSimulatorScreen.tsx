@@ -3,6 +3,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Screen, TotlText, useTokens } from '@totl/ui';
 import { useNavigation } from '@react-navigation/native';
+import { useQuery } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TEAM_BADGES } from '../../lib/teamBadges';
 import { Image } from 'react-native';
@@ -11,6 +12,8 @@ import WinnerShimmer from '../../components/WinnerShimmer';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import PageHeader from '../../components/PageHeader';
+import { api } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 
 type SimGameState = 'GW_OPEN' | 'GW_PREDICTED' | 'DEADLINE_PASSED' | 'LIVE' | 'RESULTS_PRE_GW';
 type SimFixtureStatus = 'SCHEDULED' | 'IN_PLAY' | 'PAUSED' | 'FINISHED';
@@ -35,6 +38,7 @@ type SimFixture = {
 const GAME_STATES: SimGameState[] = ['GW_OPEN', 'GW_PREDICTED', 'DEADLINE_PASSED', 'LIVE', 'RESULTS_PRE_GW'];
 const PICKS: Pick[] = ['H', 'D', 'A', 'H', 'A', 'D', 'H', 'D', 'A', 'H'];
 const LB_BADGE_5 = require('../../../../../dist/assets/5-week-form-badge.png');
+const MINI_LAYOUT_TRANSITION = LinearTransition.springify().damping(42).stiffness(260).mass(0.7);
 const TEAMS: Array<{ name: string; code: string }> = [
   { name: 'Arsenal', code: 'ARS' },
   { name: 'Villa', code: 'AVL' },
@@ -67,6 +71,18 @@ function resultForScore(homeScore: number, awayScore: number): Pick {
   if (homeScore > awayScore) return 'H';
   if (homeScore < awayScore) return 'A';
   return 'D';
+}
+
+function ordinalLabel(value: number | null | undefined): string {
+  if (!Number.isFinite(value ?? NaN)) return '—';
+  const n = Math.trunc(Number(value));
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+  const mod10 = n % 10;
+  if (mod10 === 1) return `${n}st`;
+  if (mod10 === 2) return `${n}nd`;
+  if (mod10 === 3) return `${n}rd`;
+  return `${n}th`;
 }
 
 function buildFixtures(state: SimGameState): SimFixture[] {
@@ -130,6 +146,64 @@ export default function AdminHomeSimulatorScreen() {
   const [expandedFixtureId, setExpandedFixtureId] = React.useState<string | null>(null);
   const [miniExpandedFixtureId, setMiniExpandedFixtureId] = React.useState<string | null>(null);
   const [cardHeightsById, setCardHeightsById] = React.useState<Record<string, number>>({});
+  const { data: teamPositionsByCode } = useQuery({
+    queryKey: ['predictions-team-positions-hp-sim'],
+    queryFn: async () => {
+      const fromPredictions = await api
+        .getPredictions()
+        .then((res) => {
+          const out: Record<string, number> = {};
+          const raw = (res?.teamPositions ?? {}) as Record<string, unknown>;
+          Object.entries(raw).forEach(([code, positionRaw]) => {
+            const normalizedCode = String(code ?? '').trim().toUpperCase();
+            const position = Number(positionRaw);
+            if (!normalizedCode) return;
+            if (!Number.isFinite(position) || position <= 0) return;
+            out[normalizedCode] = Math.trunc(position);
+          });
+          return out;
+        })
+        .catch(() => ({} as Record<string, number>));
+
+      if (Object.keys(fromPredictions).length > 0) return fromPredictions;
+
+      const { data: meta } = await supabase.from('app_meta').select('current_gw').eq('id', 1).maybeSingle();
+      const currentGw = Number((meta as any)?.current_gw);
+      const gwToTry = Number.isFinite(currentGw) && currentGw > 0 ? Math.trunc(currentGw) : null;
+
+      const readPositionsForGw = async (gw: number) => {
+        const { data } = await supabase.from('app_team_forms').select('team_code, league_position').eq('gw', gw);
+        const out: Record<string, number> = {};
+        (data ?? []).forEach((row: any) => {
+          const code = String(row?.team_code ?? '').trim().toUpperCase();
+          const pos = Number(row?.league_position);
+          if (!code) return;
+          if (!Number.isFinite(pos) || pos <= 0) return;
+          out[code] = Math.trunc(pos);
+        });
+        return out;
+      };
+
+      if (gwToTry) {
+        const fromCurrentGw = await readPositionsForGw(gwToTry);
+        if (Object.keys(fromCurrentGw).length > 0) return fromCurrentGw;
+      }
+
+      const { data: latestWithPosition } = await supabase
+        .from('app_team_forms')
+        .select('gw')
+        .not('league_position', 'is', null)
+        .order('gw', { ascending: false })
+        .limit(1);
+      const fallbackGw = Number(latestWithPosition?.[0]?.gw);
+      if (Number.isFinite(fallbackGw) && fallbackGw > 0) {
+        return readPositionsForGw(Math.trunc(fallbackGw));
+      }
+
+      return {} as Record<string, number>;
+    },
+    staleTime: 60_000,
+  });
   const fixtures = React.useMemo(() => buildFixtures(state), [state]);
   const fixturesByMiniDay = React.useMemo(() => {
     const dayOrder = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
@@ -473,12 +547,19 @@ export default function AdminHomeSimulatorScreen() {
           </View>
           {isMiniLayoutSelected ? (
             <View>
-              {fixturesByMiniDay.map((section, sectionIdx) => (
-                <View key={`mini-day-${section.day}`} style={{ marginBottom: sectionIdx === fixturesByMiniDay.length - 1 ? 0 : 8 }}>
-                  <View style={{ marginBottom: 10 }}>
+              {fixturesByMiniDay.map((section, sectionIdx) => {
+                return (
+                <Animated.View
+                  key={`mini-day-${section.day}`}
+                  layout={MINI_LAYOUT_TRANSITION}
+                  style={{
+                    marginBottom: sectionIdx === fixturesByMiniDay.length - 1 ? 0 : 8,
+                  }}
+                >
+                  <View style={{ marginBottom: 10, zIndex: 1 }}>
                     <TotlText style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: '#0F172A' }}>{section.dateLabel}</TotlText>
                   </View>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
+                  <Animated.View layout={MINI_LAYOUT_TRANSITION} style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6, zIndex: 20 }}>
                     {section.fixtures.map((fixture, idx) => {
                       const homeBadge = TEAM_BADGES[fixture.homeCode] ?? null;
                       const awayBadge = TEAM_BADGES[fixture.awayCode] ?? null;
@@ -522,15 +603,20 @@ export default function AdminHomeSimulatorScreen() {
                       const showExpandedScorers = isMiniExpanded && (state === 'LIVE' || state === 'RESULTS_PRE_GW');
                       const isExpandedLiveOrResults = isMiniExpanded && (state === 'LIVE' || state === 'RESULTS_PRE_GW');
                       const miniPickIndex = miniPick === 'H' ? 0 : miniPick === 'D' ? 1 : 2;
+                      const homePositionLabel = ordinalLabel(teamPositionsByCode?.[String(fixture.homeCode ?? '').toUpperCase()] ?? null);
+                      const awayPositionLabel = ordinalLabel(teamPositionsByCode?.[String(fixture.awayCode ?? '').toUpperCase()] ?? null);
 
                       return (
                         <Animated.View
                           key={`mini-${fixture.id}`}
-                          layout={LinearTransition.springify().damping(48).stiffness(280)}
+                          layout={MINI_LAYOUT_TRANSITION}
                           style={{
                             width: isMiniExpanded ? '100%' : '50%',
                             paddingHorizontal: 6,
                             marginBottom: 12,
+                            position: 'relative',
+                            zIndex: isMiniExpanded ? 80 : 30,
+                            elevation: isMiniExpanded ? 6 : 2,
                           }}
                         >
                           <Pressable
@@ -556,13 +642,13 @@ export default function AdminHomeSimulatorScreen() {
                               <View style={{ flexDirection: 'row', alignItems: 'stretch' }}>
                                 <View
                                   style={{
-                                    width: isMiniExpanded ? '38%' : '33.3333%',
+                                    width: isMiniExpanded ? '37%' : '33.3333%',
                                     aspectRatio: isMiniExpanded ? undefined : 1,
-                                    height: isMiniExpanded ? 92 : undefined,
+                                    height: isMiniExpanded ? 70 : undefined,
                                     alignItems: 'center',
                                     justifyContent: isMiniExpanded ? 'flex-start' : 'center',
                                     backgroundColor: '#FFFFFF',
-                                    paddingTop: isMiniExpanded ? 30 : 0,
+                                    paddingTop: isMiniExpanded ? 15 : 0,
                                   }}
                                 >
                                   {homeBadge ? (
@@ -573,13 +659,13 @@ export default function AdminHomeSimulatorScreen() {
                                 </View>
                                 <View
                                   style={{
-                                    width: isMiniExpanded ? '24%' : '33.3333%',
+                                    width: isMiniExpanded ? '26%' : '33.3333%',
                                     aspectRatio: isMiniExpanded ? undefined : 1,
-                                    height: isMiniExpanded ? 92 : undefined,
+                                    height: isMiniExpanded ? 70 : undefined,
                                     alignItems: 'center',
                                     justifyContent: isMiniExpanded ? 'flex-start' : 'center',
                                     backgroundColor: '#FFFFFF',
-                                    paddingTop: isMiniExpanded ? 42 : 0,
+                                    paddingTop: isMiniExpanded ? 27 : 0,
                                   }}
                                 >
                                   <View style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}>
@@ -604,13 +690,13 @@ export default function AdminHomeSimulatorScreen() {
                                 </View>
                                 <View
                                   style={{
-                                    width: isMiniExpanded ? '38%' : '33.3333%',
+                                    width: isMiniExpanded ? '37%' : '33.3333%',
                                     aspectRatio: isMiniExpanded ? undefined : 1,
-                                    height: isMiniExpanded ? 92 : undefined,
+                                    height: isMiniExpanded ? 70 : undefined,
                                     alignItems: 'center',
                                     justifyContent: isMiniExpanded ? 'flex-start' : 'center',
                                     backgroundColor: '#FFFFFF',
-                                    paddingTop: isMiniExpanded ? 30 : 0,
+                                    paddingTop: isMiniExpanded ? 15 : 0,
                                   }}
                                 >
                                   {awayBadge ? (
@@ -637,7 +723,7 @@ export default function AdminHomeSimulatorScreen() {
                                     borderTopLeftRadius: 2,
                                     borderTopRightRadius: 2,
                                     overflow: 'hidden',
-                                    backgroundColor: miniLivePickIncorrect ? 'rgba(28,131,118,0.7)' : '#1C8376',
+                                    backgroundColor: miniLivePickIncorrect ? '#E2E8F0' : '#1C8376',
                                   }}
                                 >
                                   {miniLivePickCorrect ? (
@@ -656,19 +742,54 @@ export default function AdminHomeSimulatorScreen() {
                               ) : null}
 
                               {isMiniExpanded ? (
-                                <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)} style={{ padding: 12, paddingTop: 4 }}>
+                                <Animated.View
+                                  entering={FadeIn.duration(180)}
+                                  exiting={FadeOut.duration(120)}
+                                  style={{
+                                    paddingTop: 2,
+                                    paddingBottom: 15,
+                                    paddingHorizontal: 0,
+                                  }}
+                                >
                                   {isExpandedLiveOrResults ? (
                                     <View style={{ marginTop: 7, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                      <View style={{ width: '38%', alignItems: 'center' }}>
-                                        <TotlText numberOfLines={1} style={{ fontSize: 15, fontWeight: '900', color: '#0F172A', textAlign: 'center' }}>
+                                      <View style={{ width: '37%', alignItems: 'center' }}>
+                                        <TotlText
+                                          numberOfLines={1}
+                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: '#0F172A', textAlign: 'center' }}
+                                        >
                                           {fixture.home}
                                         </TotlText>
                                       </View>
-                                      <View style={{ width: '24%', alignItems: 'center' }}>
+                                      <View style={{ width: '26%', alignItems: 'center' }}>
                                         <TotlText style={{ fontSize: 12, fontWeight: '700', color: '#334155', textAlign: 'center' }}>{miniSecondaryLabel}</TotlText>
                                       </View>
-                                      <View style={{ width: '38%', alignItems: 'center' }}>
-                                        <TotlText numberOfLines={1} style={{ fontSize: 15, fontWeight: '900', color: '#0F172A', textAlign: 'center' }}>
+                                      <View style={{ width: '37%', alignItems: 'center' }}>
+                                        <TotlText
+                                          numberOfLines={1}
+                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: '#0F172A', textAlign: 'center' }}
+                                        >
+                                          {fixture.away}
+                                        </TotlText>
+                                      </View>
+                                    </View>
+                                  ) : null}
+                                  {!isExpandedLiveOrResults ? (
+                                    <View style={{ marginTop: 0, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                      <View style={{ width: '37%', alignItems: 'center' }}>
+                                        <TotlText
+                                          numberOfLines={1}
+                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: '#0F172A', textAlign: 'center' }}
+                                        >
+                                          {fixture.home}
+                                        </TotlText>
+                                      </View>
+                                      <View style={{ width: '26%' }} />
+                                      <View style={{ width: '37%', alignItems: 'center' }}>
+                                        <TotlText
+                                          numberOfLines={1}
+                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: '#0F172A', textAlign: 'center' }}
+                                        >
                                           {fixture.away}
                                         </TotlText>
                                       </View>
@@ -703,7 +824,7 @@ export default function AdminHomeSimulatorScreen() {
                                     </View>
                                   ) : null}
                                   {state !== 'GW_OPEN' ? (
-                                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                                    <View style={{ flexDirection: 'row', gap: 8, marginHorizontal: 12 }}>
                                       {(['H', 'D', 'A'] as const).map((side) => {
                                         const active = fixture.pick === side;
                                         const sideBadge = side === 'H' ? homeBadge : side === 'A' ? awayBadge : null;
@@ -766,25 +887,28 @@ export default function AdminHomeSimulatorScreen() {
                                       })}
                                     </View>
                                   ) : (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                      <View style={{ width: '30%', alignItems: 'center' }}>
-                                        <View style={{ flexDirection: 'row', gap: 4 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                                      <View style={{ width: '37%', alignItems: 'center' }}>
+                                        <View style={{ width: 56, height: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                           {['#CBD5E1', '#DC2626', '#DC2626', '#DC2626', '#10B981'].map((color, i) => (
                                             <View key={`home-form-${fixture.id}-${i}`} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
                                           ))}
                                         </View>
-                                        <TotlText style={{ marginTop: 7, fontSize: 13, fontWeight: '700', color: '#0F172A' }}>15th</TotlText>
+                                        <TotlText style={{ marginTop: 8, fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{homePositionLabel}</TotlText>
                                       </View>
-                                      <TotlText style={{ fontSize: 13, color: '#475569' }}>
-                                        {String(fixture.kickoffDetail).split('•')[0].trim()}
-                                      </TotlText>
-                                      <View style={{ width: '30%', alignItems: 'center' }}>
-                                        <View style={{ flexDirection: 'row', gap: 4 }}>
+                                      <View style={{ width: '26%', alignItems: 'center' }}>
+                                        <View style={{ height: 8 }} />
+                                        <TotlText style={{ marginTop: 8, fontSize: 13, color: '#475569', textAlign: 'center' }}>
+                                          {String(fixture.kickoffDetail).split('•')[0].trim()}
+                                        </TotlText>
+                                      </View>
+                                      <View style={{ width: '37%', alignItems: 'center' }}>
+                                        <View style={{ width: 56, height: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                           {['#CBD5E1', '#DC2626', '#DC2626', '#DC2626', '#10B981'].map((color, i) => (
                                             <View key={`away-form-${fixture.id}-${i}`} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
                                           ))}
                                         </View>
-                                        <TotlText style={{ marginTop: 7, fontSize: 13, fontWeight: '700', color: '#0F172A' }}>4th</TotlText>
+                                        <TotlText style={{ marginTop: 8, fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{awayPositionLabel}</TotlText>
                                       </View>
                                     </View>
                                   )}
@@ -795,9 +919,10 @@ export default function AdminHomeSimulatorScreen() {
                         </Animated.View>
                       );
                     })}
-                  </View>
-                </View>
-              ))}
+                  </Animated.View>
+                </Animated.View>
+              );
+              })}
             </View>
           ) : (
           <View style={showAllExpanded ? undefined : { position: 'relative', height: stackContainerHeight }}>
@@ -1024,7 +1149,7 @@ export default function AdminHomeSimulatorScreen() {
                                     fixture.pick !== fixture.outcome &&
                                     !showLiveWrongPicked;
                                   const showSolidPickedTab =
-                                    (state !== 'GW_OPEN' && active && !isFinished && !showWinnerTabShiny && !showWrongFinishedPickedTab) ||
+                                    (active && !isFinished && !showWinnerTabShiny && !showWrongFinishedPickedTab) ||
                                     showLiveWrongPicked;
                                   const activeBorder = 'rgba(28,131,118,0.45)';
                                   const activeBackground = 'rgba(28,131,118,0.12)';
@@ -1039,7 +1164,7 @@ export default function AdminHomeSimulatorScreen() {
                                         borderColor: showWrongFinishedPickedTab
                                           ? 'rgba(203,213,225,0.9)'
                                           : showLiveWrongPicked
-                                            ? 'rgba(28,131,118,0.7)'
+                                            ? 'rgba(203,213,225,0.9)'
                                           : showSolidPickedTab
                                             ? '#1C8376'
                                           : active
@@ -1050,7 +1175,7 @@ export default function AdminHomeSimulatorScreen() {
                                           : showWrongFinishedPickedTab
                                             ? '#E2E8F0'
                                           : showLiveWrongPicked
-                                            ? 'rgba(28,131,118,0.7)'
+                                            ? '#E2E8F0'
                                           : showSolidPickedTab
                                             ? '#1C8376'
                                           : isLiveOrResultsCard

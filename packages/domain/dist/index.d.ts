@@ -103,6 +103,7 @@ export declare const PredictionsResponseSchema: z.ZodObject<{
     }, z.core.$strip>>;
     submitted: z.ZodBoolean;
     teamForms: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>>;
+    teamPositions: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>>;
 }, z.core.$strip>;
 export type PredictionsResponse = z.infer<typeof PredictionsResponseSchema>;
 export declare const HomeSnapshotSchema: z.ZodObject<{

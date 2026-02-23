@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS app_team_forms (
   gw INTEGER NOT NULL,
   team_code TEXT NOT NULL, -- e.g., 'CHE', 'ARS', 'MCI'
   form TEXT NOT NULL, -- e.g., 'WWLDW' (last 5 games: Win/Win/Loss/Draw/Win)
+  league_position INTEGER, -- e.g., 1..20 from PL standings table
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(gw, team_code)

@@ -49,6 +49,8 @@ export const PredictionsResponseSchema = z.object({
     submitted: z.boolean(),
     // Optional for backwards compatibility; mobile treats missing as empty.
     teamForms: z.record(z.string(), z.string()).optional().default({}),
+    // Optional for backwards compatibility; keyed by team code (e.g. "ARS" => 2).
+    teamPositions: z.record(z.string(), z.number().int().positive()).optional().default({}),
 });
 export const HomeSnapshotSchema = z.object({
     currentGw: z.number().int().positive(),
