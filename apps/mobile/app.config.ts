@@ -58,6 +58,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const oneSignalMode =
     process.env.EXPO_PUBLIC_ONESIGNAL_MODE === 'production' || isProductionBuild ? 'production' : 'development';
 
+  const oneSignalAppGroup = 'group.com.totl.mobile.onesignal';
+  const existingIosEntitlements =
+    (config.ios as any)?.entitlements && typeof (config.ios as any).entitlements === 'object' ? (config.ios as any).entitlements : {};
+  const existingAppGroups = Array.isArray(existingIosEntitlements['com.apple.security.application-groups'])
+    ? (existingIosEntitlements['com.apple.security.application-groups'] as string[])
+    : [];
+  const nextAppGroups = Array.from(new Set([...existingAppGroups, oneSignalAppGroup]));
+
   return {
     ...config,
     // `ConfigContext.config` is typed as partially-defined; ensure required fields exist.
@@ -70,6 +78,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // Reanimated v4 (pulled in by Storybook UI deps) requires New Architecture.
     // Keep the main app on legacy for stability unless Storybook is enabled.
     newArchEnabled: storybookEnabled ? true : (config as any).newArchEnabled ?? false,
+    ios: {
+      ...(config.ios ?? {}),
+      entitlements: {
+        ...existingIosEntitlements,
+        // OneSignal notification service extension needs this app group entitlement.
+        'com.apple.security.application-groups': nextAppGroups,
+      },
+    },
     plugins: [
       ...(oneSignalAppId
         ? ([
