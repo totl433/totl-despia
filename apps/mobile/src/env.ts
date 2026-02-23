@@ -8,6 +8,8 @@ const EnvSchema = z.object({
   // Base URL for Netlify functions (push notifications, etc).
   // Set to https://playtotl.com in prod; default to playtotl.com for convenience.
   EXPO_PUBLIC_SITE_URL: z.string().url().default('https://playtotl.com'),
+  // Optional OneSignal App ID for native push integration.
+  EXPO_PUBLIC_ONESIGNAL_APP_ID: z.string().min(1).optional(),
 });
 
 export type MobileEnv = z.infer<typeof EnvSchema>;
@@ -37,6 +39,7 @@ function readRawEnv() {
     EXPO_PUBLIC_SUPABASE_ANON_KEY: getExtraValue('EXPO_PUBLIC_SUPABASE_ANON_KEY'),
     EXPO_PUBLIC_BFF_URL: getExtraValue('EXPO_PUBLIC_BFF_URL'),
     EXPO_PUBLIC_SITE_URL: getExtraValue('EXPO_PUBLIC_SITE_URL'),
+    EXPO_PUBLIC_ONESIGNAL_APP_ID: getExtraValue('EXPO_PUBLIC_ONESIGNAL_APP_ID'),
   } as const;
 }
 
@@ -61,5 +64,6 @@ export const env: MobileEnv = parsed.success
       EXPO_PUBLIC_SUPABASE_ANON_KEY: 'invalid',
       EXPO_PUBLIC_BFF_URL: 'http://localhost:8787',
       EXPO_PUBLIC_SITE_URL: 'https://playtotl.com',
+      EXPO_PUBLIC_ONESIGNAL_APP_ID: undefined,
     };
 

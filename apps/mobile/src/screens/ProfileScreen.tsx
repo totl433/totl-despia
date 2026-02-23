@@ -4,7 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import { api } from '../lib/api';
-import { supabase } from '../lib/supabase';
+import { signOutWithPushCleanup } from '../lib/signOut';
 import PageHeader from '../components/PageHeader';
 import { TotlRefreshControl } from '../lib/refreshControl';
 import CenteredSpinner from '../components/CenteredSpinner';
@@ -87,7 +87,7 @@ export default function ProfileScreen() {
         </Card>
 
         <View style={{ gap: 10 }}>
-          <Button title="Sign out" onPress={() => supabase.auth.signOut()} />
+          <Button title="Sign out" onPress={() => void signOutWithPushCleanup()} />
         </View>
       </ScrollView>
     </Screen>

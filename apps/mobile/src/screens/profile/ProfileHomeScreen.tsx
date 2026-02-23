@@ -6,7 +6,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import { api } from '../../lib/api';
-import { supabase } from '../../lib/supabase';
+import { signOutWithPushCleanup } from '../../lib/signOut';
 import PageHeader from '../../components/PageHeader';
 import CenteredSpinner from '../../components/CenteredSpinner';
 import { TotlRefreshControl } from '../../lib/refreshControl';
@@ -289,8 +289,7 @@ export default function ProfileHomeScreen() {
             title="Log out"
             variant="secondary"
             onPress={() => {
-              // Keep behavior consistent with the rest of the app: Supabase sign out.
-              void supabase.auth.signOut();
+              void signOutWithPushCleanup();
             }}
           />
         </Card>

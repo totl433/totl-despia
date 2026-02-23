@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { Button, Card, Screen, ThemeProvider, TotlText } from '@totl/ui';
+import { AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Font from 'expo-font';
 
 import { queryClient, queryPersister } from './lib/queryClient';
 import { initSentry } from './lib/sentry';
 import { supabase } from './lib/supabase';
-import { registerForPushNotifications } from './lib/push';
+import { initPushSdk, registerForPushNotifications, resetPushSessionState, updateHeartbeat } from './lib/push';
 import { ConfettiProvider } from './lib/confetti';
 import { LeagueUnreadCountsProvider } from './context/LeagueUnreadCountsContext';
 import { envStatus } from './env';
@@ -84,11 +85,65 @@ export default function AppRoot() {
   }, []);
 
   useEffect(() => {
+    initPushSdk();
+  }, []);
+
+  useEffect(() => {
     if (!authed) return;
     if (!envStatus.ok) return;
-    registerForPushNotifications().catch(() => {
-      // Non-fatal in v1: token registration is best-effort.
+
+    let cancelled = false;
+
+    const withSession = async (
+      fn: (session: Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']) => Promise<void>
+    ) => {
+      const { data } = await supabase.auth.getSession();
+      if (cancelled) return;
+      await fn(data.session);
+    };
+
+    const register = async (force = false) => {
+      await withSession(async (session) => {
+        if (!session) return;
+        await registerForPushNotifications(session, { force, userId: session.user.id });
+      });
+    };
+
+    const heartbeat = async (forceRegister = false) => {
+      await withSession(async (session) => {
+        if (!session) return;
+        await updateHeartbeat(session, { userId: session.user.id });
+        if (forceRegister) {
+          await registerForPushNotifications(session, { force: true, userId: session.user.id });
+        }
+      });
+    };
+
+    const initialTimeout = setTimeout(() => {
+      void register(false);
+    }, 500);
+
+    const heartbeatInterval = setInterval(() => {
+      void heartbeat(false);
+    }, 5 * 60 * 1000);
+
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void heartbeat(true);
+      }
     });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(initialTimeout);
+      clearInterval(heartbeatInterval);
+      appStateSub.remove();
+    };
+  }, [authed]);
+
+  useEffect(() => {
+    if (authed) return;
+    resetPushSessionState();
   }, [authed]);
 
   if (!fontsReady || !sessionReady) return null;

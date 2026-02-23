@@ -53,6 +53,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     return typeof fromConfig === 'string' ? fromConfig : undefined;
   };
 
+  const oneSignalAppId = pick('EXPO_PUBLIC_ONESIGNAL_APP_ID');
+  const isProductionBuild = process.env.EAS_BUILD_PROFILE === 'production';
+  const oneSignalMode =
+    process.env.EXPO_PUBLIC_ONESIGNAL_MODE === 'production' || isProductionBuild ? 'production' : 'development';
+
   return {
     ...config,
     // `ConfigContext.config` is typed as partially-defined; ensure required fields exist.
@@ -62,17 +67,31 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // Expo will try to open `exp+<slug>://...` by default; on some iOS versions that scheme
     // doesn't route correctly. Force a known-good scheme that iOS registers for this app.
     scheme: 'com.despia.totlnative',
+    // Reanimated v4 (pulled in by Storybook UI deps) requires New Architecture.
+    // Keep the main app on legacy for stability unless Storybook is enabled.
+    newArchEnabled: storybookEnabled ? true : (config as any).newArchEnabled ?? false,
+    plugins: [
+      ...(oneSignalAppId
+        ? ([
+            [
+              'onesignal-expo-plugin',
+              {
+                mode: oneSignalMode,
+              },
+            ],
+          ] as any[])
+        : []),
+      ...(config.plugins ?? []),
+      '@react-native-community/datetimepicker',
+    ],
     extra: {
       ...(config.extra ?? {}),
       EXPO_PUBLIC_SUPABASE_URL: pick('EXPO_PUBLIC_SUPABASE_URL'),
       EXPO_PUBLIC_SUPABASE_ANON_KEY: pick('EXPO_PUBLIC_SUPABASE_ANON_KEY'),
       EXPO_PUBLIC_BFF_URL: pick('EXPO_PUBLIC_BFF_URL'),
       EXPO_PUBLIC_SITE_URL: pick('EXPO_PUBLIC_SITE_URL'),
+      EXPO_PUBLIC_ONESIGNAL_APP_ID: oneSignalAppId,
     },
-    // Reanimated v4 (pulled in by Storybook UI deps) requires New Architecture.
-    // Keep the main app on legacy for stability unless Storybook is enabled.
-    newArchEnabled: storybookEnabled ? true : (config as any).newArchEnabled ?? false,
-    plugins: [...(config.plugins ?? []), '@react-native-community/datetimepicker'],
   };
 };
 
