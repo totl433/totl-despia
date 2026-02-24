@@ -69,7 +69,7 @@ Use `sotbjof+cursor@gmail.com` / `cursor123` for testing. This is a dedicated ag
 - `postinstall` runs `patch-package` (patches `react-native-gifted-chat`). If the `patches/` dir is missing, `npm install` still succeeds but the patch won't apply.
 - The `env.local` file (not `.env`) is read by `app.config.ts` at startup. Restart Metro after changing it.
 - The app gracefully handles missing Supabase credentials (shows auth UI instead of crashing).
-- No iOS simulator available in Cloud Agent VM; use `expo start --web` for UI verification.
+- No iOS simulator available in Cloud Agent VM; use `expo start --web` for UI verification. Always use Chrome DevTools device toolbar (Ctrl+Shift+M → iPhone 14 Pro Max) so the app renders at mobile dimensions, not desktop-wide.
 - When testing in Expo web mode, the Supabase auth storage key is `supabase.auth.token` (not the default `sb-<ref>-auth-token`). React Native's AsyncStorage maps to this key in the browser.
 - React Native Web `TextInput` components don't accept standard browser automation typing. Use the console to inject auth sessions for testing.
 - No git hooks or pre-commit config in this repo.
