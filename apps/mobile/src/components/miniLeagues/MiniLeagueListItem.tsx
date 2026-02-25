@@ -37,7 +37,7 @@ function MemberChip({
         {avatarUri ? (
           <Image source={{ uri: avatarUri }} style={{ width: size, height: size }} />
         ) : (
-          <TotlText variant="caption" style={{ fontWeight: '900', color: '#0F172A' }}>
+          <TotlText variant="caption" style={{ fontWeight: '900', color: t.color.text }}>
             {initial1(name)}
           </TotlText>
         )}

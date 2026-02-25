@@ -87,7 +87,7 @@ export default function LeagueChatTabV2({
   keyboardHeaderOffset?: number;
 }) {
   const t = useTokens();
-  const chatBg = '#FFFFFF';
+  const chatBg = t.color.background;
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const effectiveHeaderOffset = typeof keyboardHeaderOffset === 'number' ? keyboardHeaderOffset : headerHeight;

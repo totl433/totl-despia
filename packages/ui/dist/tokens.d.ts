@@ -17,7 +17,7 @@ export declare const darkColors: {
     readonly surface2: "#334155";
     readonly text: "#F8FAFC";
     readonly muted: "#94A3B8";
-    readonly border: "rgba(148,163,184,0.25)";
+    readonly border: "rgba(148,163,184,0.15)";
     readonly danger: "#EF4444";
     readonly warning: "#FBBF24";
     readonly success: "#34D399";

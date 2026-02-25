@@ -17,7 +17,7 @@ export const darkColors = {
     surface2: '#334155',
     text: '#F8FAFC',
     muted: '#94A3B8',
-    border: 'rgba(148,163,184,0.25)',
+    border: 'rgba(148,163,184,0.15)',
     danger: '#EF4444',
     warning: '#FBBF24',
     success: '#34D399',

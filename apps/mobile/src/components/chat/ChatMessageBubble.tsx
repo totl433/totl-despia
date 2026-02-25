@@ -50,7 +50,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
   const time = formatTimeHHMM(message.created_at);
 
   // iOS/HIG-ish surfaces (lighter chrome, no heavy borders)
-  const incomingBubble = '#FFFFFF';
+  const incomingBubble = t.color.surface;
   const outgoingBubble = 'rgba(28,131,118,0.18)'; // brand-tinted, subtle (not WhatsApp green)
   const bubbleBg = isMe ? outgoingBubble : incomingBubble;
 
@@ -159,7 +159,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
             </View>
           ) : null}
 
-          <TotlText style={{ fontFamily: 'System', fontSize: 16, lineHeight: 20, color: '#0F172A' }}>{message.content}</TotlText>
+          <TotlText style={{ fontFamily: 'System', fontSize: 16, lineHeight: 20, color: t.color.text }}>{message.content}</TotlText>
 
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4 }}>
             {statusLabel ? (
