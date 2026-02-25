@@ -1,19 +1,29 @@
+export const lightColors = {
+    brand: '#1C8376',
+    background: '#F8FAFC',
+    surface: '#FFFFFF',
+    surface2: '#E2E8F0',
+    text: '#0F172A',
+    muted: '#475569',
+    border: 'rgba(15,23,42,0.12)',
+    danger: '#DC2626',
+    warning: '#F59E0B',
+    success: '#10B981',
+};
+export const darkColors = {
+    brand: '#1C8376',
+    background: '#0F172A',
+    surface: '#1E293B',
+    surface2: '#334155',
+    text: '#F8FAFC',
+    muted: '#94A3B8',
+    border: 'rgba(148,163,184,0.25)',
+    danger: '#EF4444',
+    warning: '#FBBF24',
+    success: '#34D399',
+};
 export const tokens = {
-    color: {
-        brand: '#1C8376',
-        // Web dark mode base: slate-900
-        background: '#0F172A',
-        // Web card surface: slate-800
-        surface: '#1E293B',
-        // Web elevated / border-y surface: slate-700
-        surface2: '#334155',
-        text: '#F8FAFC',
-        muted: '#94A3B8',
-        border: 'rgba(148,163,184,0.25)',
-        danger: '#DC2626',
-        warning: '#F59E0B',
-        success: '#10B981',
-    },
+    color: lightColors,
     space: {
         0: 0,
         1: 4,
@@ -34,8 +44,6 @@ export const tokens = {
         pill: 999,
     },
     font: {
-        // Match web: Gramatika for UI, PressStart2P for "old school" bits.
-        // On mobile, these are loaded via `expo-font` in the Expo app.
         body: 'Gramatika-Regular',
         heading: 'Gramatika-Bold',
         mono: 'PressStart2P-Regular',

@@ -46,13 +46,13 @@ export default function AuthScreen() {
           value={email}
           onChangeText={setEmail}
           placeholder="you@example.com"
-          placeholderTextColor="#64748B"
+          placeholderTextColor={t.color.muted}
           style={{
             borderWidth: 1,
-            borderColor: 'rgba(148,163,184,0.25)',
+            borderColor: t.color.border,
             borderRadius: 12,
             padding: 12,
-            color: '#F8FAFC',
+            color: t.color.text,
             marginBottom: 12,
           }}
         />
@@ -63,13 +63,13 @@ export default function AuthScreen() {
           value={password}
           onChangeText={setPassword}
           placeholder="••••••••"
-          placeholderTextColor="#64748B"
+          placeholderTextColor={t.color.muted}
           style={{
             borderWidth: 1,
-            borderColor: 'rgba(148,163,184,0.25)',
+            borderColor: t.color.border,
             borderRadius: 12,
             padding: 12,
-            color: '#F8FAFC',
+            color: t.color.text,
             marginBottom: 16,
           }}
         />

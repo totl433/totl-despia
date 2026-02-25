@@ -149,7 +149,7 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
         {WEB_TABS.map((tab, idx) => {
           const route = state.routes.find((r) => r.name === tab.routeName);
           const isActive = idx === activeIndex;
-          const color = isActive ? '#0F172A' : '#94A3B8';
+          const color = isActive ? t.color.text : t.color.muted;
           const showDot = false;
           // TS note: some monorepo setups end up with duplicated React type packages,
           // causing ReactElement/ReactNode incompatibilities across packages.

@@ -1,8 +1,9 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { DarkTheme, NavigationContainer, createNavigationContainerRef, type Theme } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer, createNavigationContainerRef, type Theme } from '@react-navigation/native';
 import { Linking } from 'react-native';
 import { useTokens } from '@totl/ui';
+import { useThemePreference } from '../context/ThemePreferenceContext';
 
 import TabsNavigator from './TabsNavigator';
 import GameweekResultsModalScreen from '../screens/GameweekResultsModalScreen';
@@ -35,6 +36,7 @@ const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 export default function AppNavigator() {
   const t = useTokens();
+  const { isDark } = useThemePreference();
   const pendingUrlRef = React.useRef<string | null>(null);
 
   const handleIncomingUrl = React.useCallback(async (url: string) => {
@@ -100,11 +102,12 @@ export default function AppNavigator() {
     return () => sub.remove();
   }, [handleIncomingUrl]);
 
+  const baseTheme = isDark ? DarkTheme : DefaultTheme;
   const navTheme: Theme = {
-    ...DarkTheme,
-    dark: true,
+    ...baseTheme,
+    dark: isDark,
     colors: {
-      ...DarkTheme.colors,
+      ...baseTheme.colors,
       primary: t.color.brand,
       background: t.color.background,
       card: t.color.surface,

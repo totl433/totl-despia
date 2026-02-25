@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, ScrollView, View } from 'react-native';
+import { Image, Pressable, ScrollView, Switch, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -7,14 +7,22 @@ import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import { api } from '../../lib/api';
 import { signOutWithPushCleanup } from '../../lib/signOut';
+import { useThemePreference, type ThemePreference } from '../../context/ThemePreferenceContext';
 import PageHeader from '../../components/PageHeader';
 import CenteredSpinner from '../../components/CenteredSpinner';
 import { TotlRefreshControl } from '../../lib/refreshControl';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
 
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
+
 export default function ProfileHomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
+  const { preference, setPreference, isDark } = useThemePreference();
 
   const goHome = React.useCallback(() => {
     const parent = (navigation as any).getParent?.();
@@ -219,7 +227,7 @@ export default function ProfileHomeScreen() {
               width: '100%',
               height: 54,
               borderRadius: 16,
-              backgroundColor: '#1C8376',
+              backgroundColor: t.color.brand,
               alignItems: 'center',
               justifyContent: 'center',
               flexDirection: 'row',
@@ -231,6 +239,54 @@ export default function ProfileHomeScreen() {
             <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 16 }}>View Your Stats</TotlText>
             <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
           </Pressable>
+        </Card>
+
+        <Card style={{ marginBottom: 12, padding: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+            <TotlText
+              style={{
+                fontSize: 20,
+                lineHeight: 24,
+                letterSpacing: 0,
+                fontWeight: '900',
+                color: t.color.text,
+              }}
+            >
+              Appearance
+            </TotlText>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {THEME_OPTIONS.map((opt) => {
+              const active = preference === opt.value;
+              return (
+                <Pressable
+                  key={opt.value}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${opt.label} theme`}
+                  onPress={() => setPreference(opt.value)}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    height: 42,
+                    borderRadius: 12,
+                    backgroundColor: active ? t.color.brand : t.color.surface2,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: pressed ? 0.85 : 1,
+                  })}
+                >
+                  <TotlText
+                    style={{
+                      fontWeight: '700',
+                      fontSize: 14,
+                      color: active ? '#FFFFFF' : t.color.text,
+                    }}
+                  >
+                    {opt.label}
+                  </TotlText>
+                </Pressable>
+              );
+            })}
+          </View>
         </Card>
 
         <Card style={{ marginBottom: 12, padding: 16 }}>
@@ -250,7 +306,7 @@ export default function ProfileHomeScreen() {
                       lineHeight: 24,
                       letterSpacing: 0,
                       fontWeight: '900',
-                      color: 'rgba(15,23,42,0.95)',
+                      color: t.color.text,
                     }}
                   >
                     {section.title}

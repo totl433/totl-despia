@@ -38,7 +38,7 @@ export default function TabsNavigator() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: t.color.brand,
-        tabBarInactiveTintColor: '#475569',
+        tabBarInactiveTintColor: t.color.muted,
         tabBarStyle: {
           backgroundColor: t.color.surface,
           borderTopColor: t.color.border,
