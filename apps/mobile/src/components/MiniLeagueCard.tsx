@@ -37,7 +37,7 @@ export default function MiniLeagueCard({
   const isLightMode = t.color.background.toLowerCase() === '#f8fafc';
   const CARD_HEIGHT = 330;
   const CARD_RADIUS = 16;
-  const CARD_BORDER = '#DFEBE9';
+  const CARD_BORDER = t.color.border;
 
   const displayRows: Array<MiniLeagueTableRowWithAvatar | null> = React.useMemo(() => {
     if (!fixedRowCount) return rows;

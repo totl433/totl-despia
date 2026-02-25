@@ -184,7 +184,7 @@ export function MiniLeaguesDefaultBatchCard({
   // This avoids the “single league” case looking taller than other default cards.
   const DEFAULT_CONTAINER_HEIGHT = 290;
   const CARD_RADIUS = 16;
-  const CARD_BORDER = '#DFEBE9';
+  const CARD_BORDER = t.color.border;
   return (
     <Card
       style={{
