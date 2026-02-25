@@ -1488,7 +1488,7 @@ export default function HomeScreen() {
                                         borderTopLeftRadius: 2,
                                         borderTopRightRadius: 2,
                                         overflow: 'hidden',
-                                        backgroundColor: miniLivePickIncorrect ? '#E2E8F0' : '#1C8376',
+                                        backgroundColor: miniLivePickIncorrect ? t.color.surface2 : t.color.brand,
                                       }}
                                     >
                                       {miniLivePickCorrect ? (
@@ -1555,7 +1555,7 @@ export default function HomeScreen() {
                                                   borderRadius: 11,
                                                   borderWidth: showExpandedWinnerShiny ? 0 : 1,
                                                   borderColor: showExpandedWinnerShiny ? 'transparent' : active ? 'rgba(28,131,118,0.4)' : 'rgba(148,163,184,0.2)',
-                                                  backgroundColor: showExpandedWinnerShiny ? 'transparent' : active ? '#1C8376' : '#E5E7EB',
+                                                  backgroundColor: showExpandedWinnerShiny ? 'transparent' : active ? t.color.brand : t.color.surface2,
                                                   alignItems: 'center',
                                                   justifyContent: 'center',
                                                   flexDirection: 'row',
@@ -1862,18 +1862,18 @@ export default function HomeScreen() {
                                             backgroundColor: showWinnerTabShiny
                                               ? 'transparent'
                                               : showWrongFinishedPickedTab
-                                                ? '#E2E8F0'
+                                                ? t.color.surface2
                                                 : showLiveWrongPicked
-                                                  ? '#E2E8F0'
+                                                  ? t.color.surface2
                                                   : showSolidPickedTab
                                                     ? '#1C8376'
                                                     : isLiveOrResultsCard
                                                       ? active
                                                         ? 'rgba(28,131,118,0.12)'
-                                                        : '#E2E8F0'
+                                                        : t.color.surface2
                                                       : active
                                                         ? 'rgba(28,131,118,0.12)'
-                                                        : '#F8FAFC',
+                                                        : t.color.background,
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                             paddingVertical: isLiveOrResultsCard ? 10 : 5,
