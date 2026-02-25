@@ -51,7 +51,8 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
 
   // iOS/HIG-ish surfaces (lighter chrome, no heavy borders)
   const incomingBubble = t.color.surface;
-  const outgoingBubble = 'rgba(28,131,118,0.18)'; // brand-tinted, subtle (not WhatsApp green)
+  const isDark = t.color.background === '#0F172A';
+  const outgoingBubble = isDark ? 'rgba(28,131,118,0.35)' : 'rgba(28,131,118,0.18)';
   const bubbleBg = isMe ? outgoingBubble : incomingBubble;
 
   // Bubble corner rules:
@@ -128,7 +129,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                 fontFamily: t.font.regular,
                 fontSize: 13,
                 lineHeight: 16,
-                color: 'rgba(15,23,42,0.55)',
+                color: t.color.muted,
               }}
             >
               {authorName}
@@ -144,16 +145,16 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                 paddingVertical: 4,
                 marginBottom: 6,
                 borderRadius: 8,
-                backgroundColor: 'rgba(15,23,42,0.04)',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)',
               }}
             >
               <TotlText
                 numberOfLines={1}
-                style={{ fontFamily: t.font.regular, fontSize: 12, lineHeight: 14, color: 'rgba(15,23,42,0.70)' }}
+                style={{ fontFamily: t.font.regular, fontSize: 12, lineHeight: 14, color: t.color.text }}
               >
                 Reply
               </TotlText>
-              <TotlText numberOfLines={2} style={{ fontFamily: t.font.regular, fontSize: 12, lineHeight: 16, color: 'rgba(15,23,42,0.60)' }}>
+              <TotlText numberOfLines={2} style={{ fontFamily: t.font.regular, fontSize: 12, lineHeight: 16, color: t.color.muted }}>
                 {message.reply_to.content}
               </TotlText>
             </View>
@@ -163,12 +164,12 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
 
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4 }}>
             {statusLabel ? (
-              <TotlText style={{ marginRight: 6, fontFamily: t.font.regular, fontSize: 11, lineHeight: 12, color: message.status === 'error' ? '#EF4444' : 'rgba(15,23,42,0.45)' }}>
+              <TotlText style={{ marginRight: 6, fontFamily: t.font.regular, fontSize: 11, lineHeight: 12, color: message.status === 'error' ? t.color.danger : t.color.muted }}>
                 {statusLabel}
               </TotlText>
             ) : null}
             {time ? (
-              <TotlText style={{ fontFamily: t.font.regular, fontSize: 11, lineHeight: 12, color: 'rgba(15,23,42,0.45)' }}>
+              <TotlText style={{ fontFamily: t.font.regular, fontSize: 11, lineHeight: 12, color: t.color.muted }}>
                 {time}
               </TotlText>
             ) : null}
@@ -190,7 +191,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                   paddingVertical: 4,
                   borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: 'rgba(15,23,42,0.10)',
+                  borderColor: t.color.border,
                   backgroundColor: r.hasUserReacted ? 'rgba(28,131,118,0.12)' : 'rgba(255,255,255,0.85)',
                   opacity: pressed ? 0.9 : 1,
                 })}
