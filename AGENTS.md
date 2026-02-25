@@ -30,8 +30,9 @@ All commands run from the repo root unless noted.
 
 ### TypeScript checks
 
-- BFF: `npm run bff:check`
+- BFF: `cd apps/bff && npm run check` (3 pre-existing implicit-`any` errors in `server.ts` — not from app changes). Note: the root-level `npm run bff:check` may fail with workspace resolution errors; use the direct `cd` approach.
 - Mobile: `cd apps/mobile && npx tsc --noEmit` (pre-existing third-party lib errors from react-native-gifted-chat — not from app code)
+- Unit tests: `npx vitest run -c vitest.unit.config.ts` (runs from repo root)
 
 ### Environment variables
 
