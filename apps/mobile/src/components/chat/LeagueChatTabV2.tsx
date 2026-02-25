@@ -88,6 +88,7 @@ export default function LeagueChatTabV2({
 }) {
   const t = useTokens();
   const chatBg = t.color.background;
+  const isDark = t.color.background === '#0F172A';
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const effectiveHeaderOffset = typeof keyboardHeaderOffset === 'number' ? keyboardHeaderOffset : headerHeight;
@@ -207,7 +208,27 @@ export default function LeagueChatTabV2({
           onSend={handleSend}
           user={{ _id: meId ?? 'anon', name: meName }}
           onLongPressMessage={handleLongPress}
-          textInputProps={{ placeholder: 'Message…' }}
+          textInputProps={{ placeholder: 'Message…', placeholderTextColor: t.color.muted, style: { color: t.color.text } }}
+          renderBubble={(props: any) => {
+            const Bubble = require('react-native-gifted-chat').Bubble;
+            return (
+              <Bubble
+                {...props}
+                wrapperStyle={{
+                  left: { backgroundColor: t.color.surface },
+                  right: { backgroundColor: isDark ? 'rgba(28,131,118,0.35)' : 'rgba(28,131,118,0.18)' },
+                }}
+                textStyle={{
+                  left: { color: t.color.text },
+                  right: { color: t.color.text },
+                }}
+                timeTextStyle={{
+                  left: { color: t.color.muted },
+                  right: { color: t.color.muted },
+                }}
+              />
+            );
+          }}
           // Ensure areas revealed during keyboard animation are painted (avoid gray underlay).
           messagesContainerStyle={{ backgroundColor: chatBg }}
           // GiftedChat uses `react-native-keyboard-controller`'s KeyboardAvoidingView internally.
