@@ -24,6 +24,7 @@ function TabButton({
   onPress: () => void;
   onLayout: (e: LayoutChangeEvent) => void;
 }) {
+  const t = useTokens();
   const labelStyle = useAnimatedStyle(() => {
     const x = activeIndexSV.value;
     const opacity = interpolate(x, [index - 0.6, index, index + 0.6], [0.75, 1, 0.75], Extrapolation.CLAMP);
@@ -47,7 +48,7 @@ function TabButton({
           {
             fontSize: 14,
             lineHeight: 20,
-            fontWeight: '900',
+            fontFamily: t.font.medium,
           },
           labelStyle,
         ]}
