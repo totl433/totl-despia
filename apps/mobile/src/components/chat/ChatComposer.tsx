@@ -45,7 +45,7 @@ export default function ChatComposer({
             style={{
               borderWidth: 1,
               borderColor: 'rgba(15,23,42,0.10)',
-              backgroundColor: '#FFFFFF',
+              backgroundColor: t.color.surface,
               borderRadius: 14,
               paddingHorizontal: 12,
               paddingVertical: 10,
@@ -86,7 +86,7 @@ export default function ChatComposer({
                 maxHeight: 120,
                 borderWidth: 1,
                 borderColor: 'rgba(60,60,67,0.18)',
-                backgroundColor: '#FFFFFF',
+                backgroundColor: t.color.surface,
                 borderRadius: 22,
                 paddingHorizontal: 14,
                 paddingVertical: 12,

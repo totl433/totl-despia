@@ -284,7 +284,7 @@ export function LeaderboardCardResultsCta({
             height: 148,
             padding: 12,
             borderRadius: 14,
-            backgroundColor: '#FFFFFF',
+            backgroundColor: t.color.surface,
             borderWidth: 1,
             borderColor,
             shadowOpacity: 0,

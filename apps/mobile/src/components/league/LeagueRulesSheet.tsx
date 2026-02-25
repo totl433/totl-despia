@@ -12,7 +12,7 @@ export default function LeagueRulesSheet({
   onClose: () => void;
 }) {
   const t = useTokens();
-  const headingColor = '#0F172A';
+  const headingColor = t.color.text;
   const bodyColor = '#334155';
   const ref = React.useRef<BottomSheetModal>(null);
   const snapPoints = React.useMemo(() => [410], []);

@@ -46,7 +46,7 @@ export default function GameweekCountdownItem({
   onKickedOff: () => void;
   variant?: 'tile' | 'banner';
 }) {
-  useTokens(); // keep theme provider wiring consistent (even though styles are mostly fixed)
+  const t = useTokens();
 
   // Keep time drift-free: always compare against Date.now() and kickoffTimeMs.
   const [nowMs, setNowMs] = React.useState(() => Date.now());
@@ -176,7 +176,7 @@ export default function GameweekCountdownItem({
             shadowOffset: { width: 0, height: 0 },
             elevation: 0,
             overflow: 'hidden',
-            backgroundColor: '#FFFFFF',
+            backgroundColor: t.color.surface,
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -253,7 +253,7 @@ export default function GameweekCountdownItem({
           shadowOffset: { width: 0, height: 0 },
           elevation: 0,
           overflow: 'hidden',
-          backgroundColor: '#FFFFFF',
+          backgroundColor: t.color.surface,
         }}
       >
         <View style={{ flex: 1, paddingHorizontal: 10, paddingTop: 10, paddingBottom: 14 }}>

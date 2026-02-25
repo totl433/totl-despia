@@ -1,11 +1,7 @@
 import React from 'react';
 import { RefreshControl } from 'react-native';
+import { useTokens } from '@totl/ui';
 
-/**
- * High-contrast RefreshControl for TOTL dark theme.
- * The default iOS/Android spinner can look grey-on-dark; this forces a bright spinner
- * without changing background styling.
- */
 export function TotlRefreshControl({
   refreshing,
   onRefresh,
@@ -13,16 +9,16 @@ export function TotlRefreshControl({
   refreshing: boolean;
   onRefresh: () => void;
 }) {
-  // Keep this very bright for visibility on the dark background.
-  const spinnerColor = '#FFFFFF';
+  const t = useTokens();
+  const isDark = t.color.background === '#0F172A';
+  const spinnerColor = isDark ? '#FFFFFF' : '#1C8376';
 
   return (
     <RefreshControl
       refreshing={refreshing}
       onRefresh={onRefresh}
-      tintColor={spinnerColor} // iOS
-      colors={[spinnerColor]} // Android
+      tintColor={spinnerColor}
+      colors={[spinnerColor]}
     />
   );
 }
-

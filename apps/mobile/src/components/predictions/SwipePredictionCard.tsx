@@ -110,7 +110,7 @@ function SwipePredictionCard({
         elevation: 0,
       }}
     >
-      <View style={{ paddingTop: 14, paddingHorizontal: 18, paddingBottom: 18, backgroundColor: '#FFFFFF' }}>
+      <View style={{ paddingTop: 14, paddingHorizontal: 18, paddingBottom: 18, backgroundColor: t.color.surface }}>
         <View style={{ alignItems: 'center', justifyContent: 'center' }}>
           <TotlText variant="muted" style={{ fontWeight: '700', color: '#64748B', textAlign: 'center' }}>
             {kickoffLabel ?? 'TBD'}

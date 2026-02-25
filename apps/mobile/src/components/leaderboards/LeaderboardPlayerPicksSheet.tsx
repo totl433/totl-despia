@@ -132,7 +132,7 @@ export default function LeaderboardPlayerPicksSheet({
         </View>
 
         <View style={{ marginBottom: 12 }}>
-          <TotlText style={{ color: '#0F172A', fontFamily: 'Gramatika-Bold', fontWeight: '900', fontSize: 16, lineHeight: 18 }}>
+          <TotlText style={{ color: t.color.text, fontFamily: 'Gramatika-Bold', fontWeight: '900', fontSize: 16, lineHeight: 18 }}>
             {userName && userName.trim().length > 0 ? userName : 'Player'}
           </TotlText>
           <TotlText style={{ color: '#1C8376', fontFamily: 'Gramatika-Medium', fontWeight: '700', fontSize: 15, lineHeight: 18, marginTop: 2 }}>
@@ -182,7 +182,7 @@ export default function LeaderboardPlayerPicksSheet({
                     ) : (
                       <TotlText
                         style={{
-                          color: '#0F172A',
+                          color: t.color.text,
                           fontFamily: 'Gramatika-Bold',
                           fontWeight: '900',
                           fontSize: 20,
@@ -199,7 +199,7 @@ export default function LeaderboardPlayerPicksSheet({
                       <TotlText
                         numberOfLines={1}
                         style={{
-                          color: '#0F172A',
+                          color: t.color.text,
                           fontSize: 12,
                           lineHeight: 13,
                           textAlign: 'right',
@@ -217,7 +217,7 @@ export default function LeaderboardPlayerPicksSheet({
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                           <TotlText
                             style={{
-                              color: '#0F172A',
+                              color: t.color.text,
                               fontFamily: 'Gramatika-Medium',
                               fontWeight: '700',
                               fontSize: 16,
@@ -240,7 +240,7 @@ export default function LeaderboardPlayerPicksSheet({
                           </TotlText>
                           <TotlText
                             style={{
-                              color: '#0F172A',
+                              color: t.color.text,
                               fontFamily: 'Gramatika-Medium',
                               fontWeight: '700',
                               fontSize: 16,
@@ -258,7 +258,7 @@ export default function LeaderboardPlayerPicksSheet({
                       <TotlText
                         numberOfLines={1}
                         style={{
-                          color: '#0F172A',
+                          color: t.color.text,
                           fontSize: 12,
                           lineHeight: 13,
                           fontWeight:
@@ -304,7 +304,7 @@ export default function LeaderboardPlayerPicksSheet({
                       <TotlText
                         style={{
                           textAlign: 'center',
-                          color: '#0F172A',
+                          color: t.color.text,
                           fontSize: 11,
                           lineHeight: 11,
                           fontFamily: 'Gramatika-Medium',
