@@ -33,7 +33,7 @@ export default function GlobalButton({
     variant === 'primary'
       ? 'transparent'
       : active
-        ? '#1C8376'
+        ? t.color.brand
         : t.color.border;
 
   const textColor =
@@ -61,7 +61,7 @@ export default function GlobalButton({
               ? t.color.brand
               : pressed && !isDisabled
                 ? 'rgba(148,163,184,0.10)'
-                : '#FFFFFF',
+                : t.color.surface,
           borderWidth: 1,
           borderColor,
           opacity: isDisabled ? 0.5 : pressed ? 0.92 : 1,

@@ -333,7 +333,7 @@ export default function ProfileStatsScreen() {
                         <TotlText variant="muted" style={{ fontWeight: '900' }}>
                           {u.pick}
                         </TotlText>
-                        <Ionicons name="sparkles" size={16} color="#1C8376" />
+                        <Ionicons name="sparkles" size={16} color={t.color.brand} />
                       </View>
                     </View>
                     <TotlText style={{ marginTop: 8, fontWeight: '900' }} numberOfLines={1}>

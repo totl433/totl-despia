@@ -198,7 +198,7 @@ export function MiniLeaguesDefaultBatchCard({
         paddingHorizontal: 20,
         paddingBottom: 20,
         borderRadius: CARD_RADIUS,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: t.color.surface,
         borderWidth: 1,
         borderColor: CARD_BORDER,
         ...(isLightMode

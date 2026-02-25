@@ -53,7 +53,7 @@ export default function MiniLeagueCard({
         height: CARD_HEIGHT,
         padding: 20,
         borderRadius: CARD_RADIUS,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: t.color.surface,
         borderWidth: 1,
         borderColor: CARD_BORDER,
         ...(isLightMode

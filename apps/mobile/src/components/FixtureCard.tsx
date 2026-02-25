@@ -180,7 +180,7 @@ export default function FixtureCard({
     pick === 'A' ? '800' : pick === 'D' || pick === 'H' ? '600' : as > hs && showScore ? '800' : '600';
 
   const buttonStyle = (side: Pick) => {
-    const activePickColor = '#1C8376';
+    const activePickColor = t.color.brand;
     const isPicked = pick === side;
     const isCorrectResult = showScore ? derivedOutcome === side : false;
     const isCorrect = isPicked && isCorrectResult;
@@ -205,7 +205,7 @@ export default function FixtureCard({
       return {
         bg: 'rgba(148,163,184,0.2)',
         border: 'rgba(148,163,184,0.35)',
-        text: '#64748B',
+        text: t.color.muted,
         isPicked,
         isCorrect,
         isWrong,
