@@ -51,17 +51,17 @@ export default function ChatComposerV2({
         >
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flex: 1, paddingRight: 8 }}>
-              <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 13, lineHeight: 14, color: 'rgba(15,23,42,0.75)' }}>
+              <TotlText style={{ fontSize: 13, lineHeight: 14, color: 'rgba(15,23,42,0.75)' }}>
                 Replying{replyPreview.authorName ? ` to ${replyPreview.authorName}` : ''}
               </TotlText>
             </View>
             <Pressable onPress={onCancelReply} style={{ paddingHorizontal: 8, paddingVertical: 6 }}>
-              <TotlText style={{ fontFamily: 'Gramatika-Medium', color: 'rgba(15,23,42,0.55)' }}>✕</TotlText>
+              <TotlText style={{ color: 'rgba(15,23,42,0.55)' }}>✕</TotlText>
             </Pressable>
           </View>
           <TotlText
             numberOfLines={2}
-            style={{ marginTop: 4, fontFamily: 'Gramatika-Regular', fontSize: 12, lineHeight: 16, color: 'rgba(15,23,42,0.55)' }}
+            style={{ marginTop: 4, fontSize: 12, lineHeight: 16, color: 'rgba(15,23,42,0.55)' }}
           >
             {replyPreview.content}
           </TotlText>
@@ -97,7 +97,6 @@ export default function ChatComposerV2({
             maxHeight: 120,
             paddingVertical: 0,
             color: t.color.text,
-            fontFamily: 'Gramatika-Regular',
             fontSize: 16,
             lineHeight: 22,
           }}
@@ -118,7 +117,7 @@ export default function ChatComposerV2({
             opacity: sending ? 0.6 : pressed ? 0.9 : 1,
           })}
         >
-          <TotlText style={{ color: '#FFFFFF', fontFamily: 'System', fontSize: 18, lineHeight: 18 }}>
+          <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.regular, fontSize: 18, lineHeight: 18 }}>
             {sending ? '…' : '➤'}
           </TotlText>
         </Pressable>

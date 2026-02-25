@@ -25,7 +25,6 @@ export default function SectionHeaderRow({
           <TotlText
             style={{
               color: t.color.text,
-              fontFamily: 'Gramatika-Medium',
               fontSize: 22,
               lineHeight: 22,
             }}
@@ -38,7 +37,6 @@ export default function SectionHeaderRow({
                 style={{
                   marginLeft: 8,
                   color: '#ADADB1',
-                  fontFamily: 'Gramatika-Regular',
                   fontSize: 22,
                   lineHeight: 22,
                   fontVariant: ['tabular-nums'],

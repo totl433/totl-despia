@@ -35,7 +35,7 @@ export default function LeaguePointsFormToggle({
           opacity: pressed ? 0.92 : 1,
         })}
       >
-        <TotlText variant="caption" style={{ fontWeight: '900', color: !showForm ? '#FFFFFF' : t.color.muted }}>
+        <TotlText variant="caption" style={{ fontFamily: t.font.medium, color: !showForm ? '#FFFFFF' : t.color.muted }}>
           Points
         </TotlText>
       </Pressable>
@@ -50,7 +50,7 @@ export default function LeaguePointsFormToggle({
           opacity: pressed ? 0.92 : 1,
         })}
       >
-        <TotlText variant="caption" style={{ fontWeight: '900', color: showForm ? '#FFFFFF' : t.color.muted }}>
+        <TotlText variant="caption" style={{ fontFamily: t.font.medium, color: showForm ? '#FFFFFF' : t.color.muted }}>
           Form
         </TotlText>
       </Pressable>

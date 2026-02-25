@@ -38,8 +38,7 @@ function MemberChip({ name, avatarUri }: { name: string; avatarUri?: string | nu
       ) : (
         <TotlText
           style={{
-            fontFamily: 'System',
-            fontWeight: '600',
+            fontFamily: t.font.medium,
             fontSize: 12.5,
             lineHeight: 13,
             color: '#000000',
@@ -106,8 +105,6 @@ export function MiniLeaguesDefaultRow({
             ellipsizeMode="tail"
             style={{
               color: t.color.text,
-              fontFamily: 'Gramatika-Regular',
-              fontWeight: '400',
               fontSize: 16,
               lineHeight: 16,
             }}
@@ -149,8 +146,7 @@ export function MiniLeaguesDefaultRow({
                 color: '#FFFFFF',
                 // iOS spec: SF Pro Display, 14/17, weight 500.
                 // RN-safe fallback: System + fontWeight.
-                fontFamily: 'SF Pro Display',
-                fontWeight: '500',
+                fontFamily: t.font.medium,
                 fontSize: 14,
                 lineHeight: 17,
                 textAlign: 'center',

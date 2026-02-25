@@ -90,7 +90,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
               {avatarUri ? (
                 <Image source={{ uri: avatarUri }} style={{ width: 32, height: 32 }} resizeMode="cover" />
               ) : (
-                <TotlText variant="caption" style={{ fontWeight: '900' }}>
+                <TotlText variant="caption" style={{ fontFamily: t.font.medium }}>
                   {initial1(avatarLabel ?? authorName)}
                 </TotlText>
               )}
@@ -125,7 +125,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
             <TotlText
               style={{
                 marginBottom: 4,
-                fontFamily: 'System',
+                fontFamily: t.font.regular,
                 fontSize: 13,
                 lineHeight: 16,
                 color: 'rgba(15,23,42,0.55)',
@@ -149,26 +149,26 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
             >
               <TotlText
                 numberOfLines={1}
-                style={{ fontFamily: 'System', fontSize: 12, lineHeight: 14, color: 'rgba(15,23,42,0.70)' }}
+                style={{ fontFamily: t.font.regular, fontSize: 12, lineHeight: 14, color: 'rgba(15,23,42,0.70)' }}
               >
                 Reply
               </TotlText>
-              <TotlText numberOfLines={2} style={{ fontFamily: 'System', fontSize: 12, lineHeight: 16, color: 'rgba(15,23,42,0.60)' }}>
+              <TotlText numberOfLines={2} style={{ fontFamily: t.font.regular, fontSize: 12, lineHeight: 16, color: 'rgba(15,23,42,0.60)' }}>
                 {message.reply_to.content}
               </TotlText>
             </View>
           ) : null}
 
-          <TotlText style={{ fontFamily: 'System', fontSize: 16, lineHeight: 20, color: t.color.text }}>{message.content}</TotlText>
+          <TotlText style={{ fontFamily: t.font.regular, fontSize: 16, lineHeight: 20, color: t.color.text }}>{message.content}</TotlText>
 
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4 }}>
             {statusLabel ? (
-              <TotlText style={{ marginRight: 6, fontFamily: 'System', fontSize: 11, lineHeight: 12, color: message.status === 'error' ? '#EF4444' : 'rgba(15,23,42,0.45)' }}>
+              <TotlText style={{ marginRight: 6, fontFamily: t.font.regular, fontSize: 11, lineHeight: 12, color: message.status === 'error' ? '#EF4444' : 'rgba(15,23,42,0.45)' }}>
                 {statusLabel}
               </TotlText>
             ) : null}
             {time ? (
-              <TotlText style={{ fontFamily: 'System', fontSize: 11, lineHeight: 12, color: 'rgba(15,23,42,0.45)' }}>
+              <TotlText style={{ fontFamily: t.font.regular, fontSize: 11, lineHeight: 12, color: 'rgba(15,23,42,0.45)' }}>
                 {time}
               </TotlText>
             ) : null}
@@ -204,7 +204,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                 >
                   {r.emoji}
                 </TotlText>
-                <TotlText style={{ marginLeft: 6, fontFamily: 'System', fontSize: 12, lineHeight: 14, color: 'rgba(15,23,42,0.55)' }}>
+                <TotlText style={{ marginLeft: 6, fontFamily: t.font.regular, fontSize: 12, lineHeight: 14, color: 'rgba(15,23,42,0.55)' }}>
                   {r.count}
                 </TotlText>
               </Pressable>

@@ -51,7 +51,6 @@ export default function PageHeader({
           ellipsizeMode="tail"
           style={{
             color: t.color.text,
-            fontFamily: 'Gramatika-Medium',
             fontSize: 32,
             lineHeight: 36,
             letterSpacing: 0.4,

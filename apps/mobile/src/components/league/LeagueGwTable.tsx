@@ -42,7 +42,7 @@ export default function LeagueGwTable({
     >
       {submittedLabel ? (
         <View style={{ paddingHorizontal: 14, paddingTop: 12 }}>
-          <TotlText variant="caption" style={{ color: allSubmitted ? t.color.brand : t.color.muted, fontWeight: '900' }}>
+          <TotlText variant="caption" style={{ color: allSubmitted ? t.color.brand : t.color.muted, fontFamily: t.font.medium }}>
             {submittedLabel}
           </TotlText>
         </View>
@@ -61,14 +61,14 @@ export default function LeagueGwTable({
           }}
         >
           <View style={{ width: 24 }} />
-          <TotlText variant="caption" style={{ flex: 1, color: t.color.muted, fontWeight: '700' }}>
+          <TotlText variant="caption" style={{ flex: 1, color: t.color.muted, fontFamily: t.font.medium }}>
             Player
           </TotlText>
-          <TotlText variant="caption" style={{ width: 56, textAlign: 'right', color: t.color.muted, fontWeight: '700' }}>
+          <TotlText variant="caption" style={{ width: 56, textAlign: 'right', color: t.color.muted, fontFamily: t.font.medium }}>
             Score
           </TotlText>
           {showUnicorns ? (
-            <TotlText variant="caption" style={{ width: 36, textAlign: 'right', color: t.color.muted, fontWeight: '700' }}>
+            <TotlText variant="caption" style={{ width: 36, textAlign: 'right', color: t.color.muted, fontFamily: t.font.medium }}>
               🦄
             </TotlText>
           ) : null}
@@ -87,13 +87,13 @@ export default function LeagueGwTable({
                   borderBottomColor: 'rgba(148,163,184,0.12)',
                 }}
               >
-                <TotlText variant="caption" style={{ width: 24, fontWeight: '700', color: t.color.muted }}>
+                <TotlText variant="caption" style={{ width: 24, fontFamily: t.font.medium, color: t.color.muted }}>
                   {rowIdx + 1}
                 </TotlText>
                 <TotlText variant="caption" numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1 }}>
                   {r.name}
                 </TotlText>
-                <TotlText variant="caption" style={{ width: 56, textAlign: 'right', color: t.color.brand, fontWeight: '900' }}>
+                <TotlText variant="caption" style={{ width: 56, textAlign: 'right', color: t.color.brand, fontFamily: t.font.medium }}>
                   {r.score}
                 </TotlText>
                 {showUnicorns ? (

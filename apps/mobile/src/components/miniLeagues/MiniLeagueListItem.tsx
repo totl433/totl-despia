@@ -37,7 +37,7 @@ function MemberChip({
         {avatarUri ? (
           <Image source={{ uri: avatarUri }} style={{ width: size, height: size }} />
         ) : (
-          <TotlText variant="caption" style={{ fontWeight: '900', color: t.color.text }}>
+          <TotlText variant="caption" style={{ fontFamily: t.font.medium, color: t.color.text }}>
             {initial1(name)}
           </TotlText>
         )}
@@ -115,7 +115,7 @@ export default function MiniLeagueListItem({
           </View>
 
           <View style={{ flex: 1, minWidth: 0 }}>
-            <TotlText variant="body" numberOfLines={1} style={{ fontWeight: '700' }}>
+            <TotlText variant="body" numberOfLines={1} style={{ fontFamily: t.font.medium }}>
               {title}
             </TotlText>
 
@@ -140,13 +140,13 @@ export default function MiniLeagueListItem({
               <View style={{ minHeight: 16, flexDirection: 'row', alignItems: 'flex-end', gap: 16 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3 }}>
                   <Ionicons name="people-outline" size={14} color={t.color.muted} />
-                  <TotlText style={{ fontSize: 14, lineHeight: 14, color: t.color.text, fontWeight: '700' }}>
+                  <TotlText style={{ fontSize: 14, lineHeight: 14, color: t.color.text, fontFamily: t.font.medium }}>
                     {typeof memberCount === 'number' && Number.isFinite(memberCount) ? String(memberCount) : '—'}
                   </TotlText>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3 }}>
                   <Ionicons name="medal-outline" size={14} color={t.color.muted} />
-                  <TotlText style={{ fontSize: 14, lineHeight: 14, color: t.color.text, fontWeight: '700' }}>{rankLabel}</TotlText>
+                  <TotlText style={{ fontSize: 14, lineHeight: 14, color: t.color.text, fontFamily: t.font.medium }}>{rankLabel}</TotlText>
                 </View>
               </View>
             </View>
@@ -169,8 +169,7 @@ export default function MiniLeagueListItem({
               <TotlText
                 style={{
                   color: '#FFFFFF',
-                  fontFamily: 'SF Pro Display',
-                  fontWeight: '500',
+                  fontFamily: t.font.medium,
                   fontSize: 14,
                   lineHeight: 17,
                   textAlign: 'center',
@@ -181,7 +180,7 @@ export default function MiniLeagueListItem({
               </TotlText>
             </View>
           ) : (
-            <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '900', fontSize: 22, lineHeight: 22, marginLeft: 10 }}>
+            <TotlText variant="caption" style={{ color: t.color.muted, fontFamily: t.font.medium, fontSize: 22, lineHeight: 22, marginLeft: 10 }}>
               ›
             </TotlText>
           )}

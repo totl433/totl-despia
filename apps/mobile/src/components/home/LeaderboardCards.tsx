@@ -59,14 +59,14 @@ export function LeaderboardCardLastGw({
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
             <TotlText style={{ fontSize: 32, fontWeight: '300', color: t.color.brand, lineHeight: 38 }}>{score}</TotlText>
-            <TotlText variant="caption" style={{ color: t.color.muted, fontSize: 16, lineHeight: 20, fontWeight: '700' }}>
+            <TotlText variant="caption" style={{ color: t.color.muted, fontSize: 16, lineHeight: 20, fontFamily: t.font.medium }}>
               {' '}
               /{totalFixtures}
             </TotlText>
           </View>
           <TotlText
             variant="caption"
-            style={{ color: t.color.muted, fontWeight: '900', marginTop: 2, fontSize: 18, lineHeight: 18 }}
+            style={{ color: t.color.muted, fontFamily: t.font.medium, marginTop: 2, fontSize: 18, lineHeight: 18 }}
           >
             ›
           </TotlText>
@@ -84,7 +84,7 @@ export function LeaderboardCardLastGw({
           >
             {gw ? `Gameweek ${gw}` : 'Gameweek'}
           </TotlText>
-          <TotlText style={{ fontSize: 16, lineHeight: 20, fontWeight: '900' }}>{displayText}</TotlText>
+          <TotlText style={{ fontSize: 16, lineHeight: 20, fontFamily: t.font.medium }}>{displayText}</TotlText>
         </View>
       </View>
     </LeaderboardCardShell>
@@ -111,7 +111,7 @@ export function LeaderboardCardSimple({
           {badge ? <Image source={badge} style={{ width: 28, height: 28 }} /> : <View style={{ width: 28, height: 28 }} />}
           <TotlText
             variant="caption"
-            style={{ color: t.color.muted, fontWeight: '900', marginTop: 2, fontSize: 18, lineHeight: 18 }}
+            style={{ color: t.color.muted, fontFamily: t.font.medium, marginTop: 2, fontSize: 18, lineHeight: 18 }}
           >
             ›
           </TotlText>
@@ -122,7 +122,7 @@ export function LeaderboardCardSimple({
             style={{
               color: t.color.muted,
               marginBottom: 8,
-              fontWeight: '700',
+              fontFamily: t.font.medium,
               letterSpacing: 0.8,
               fontSize: 14,
               lineHeight: 18,
@@ -130,7 +130,7 @@ export function LeaderboardCardSimple({
           >
             {title}
           </TotlText>
-          <TotlText style={{ fontSize: 16, lineHeight: 20, fontWeight: '900' }}>{displayText}</TotlText>
+          <TotlText style={{ fontSize: 16, lineHeight: 20, fontFamily: t.font.medium }}>{displayText}</TotlText>
         </View>
       </View>
     </LeaderboardCardShell>
@@ -175,13 +175,13 @@ export function LeaderboardCardPerformanceSummary({
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <TotlText
               variant="caption"
-              style={{ color: t.color.muted, fontWeight: '700', letterSpacing: 0.8, fontSize: 14, lineHeight: 18 }}
+              style={{ color: t.color.muted, fontFamily: t.font.medium, letterSpacing: 0.8, fontSize: 14, lineHeight: 18 }}
             >
               PERFORMANCE
             </TotlText>
             <TotlText
               variant="caption"
-              style={{ color: t.color.muted, fontWeight: '900', marginTop: 2, fontSize: 18, lineHeight: 18 }}
+              style={{ color: t.color.muted, fontFamily: t.font.medium, marginTop: 2, fontSize: 18, lineHeight: 18 }}
             >
               ›
             </TotlText>
@@ -189,10 +189,10 @@ export function LeaderboardCardPerformanceSummary({
           <View style={{ flex: 1, justifyContent: 'space-between' }}>
             {rows.map((row) => (
               <View key={row.label} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '800', fontSize: 12, lineHeight: 16 }}>
+                <TotlText variant="caption" style={{ color: t.color.muted, fontFamily: t.font.medium, fontSize: 12, lineHeight: 16 }}>
                   {row.label}
                 </TotlText>
-                <TotlText style={{ fontSize: 15, lineHeight: 18, fontWeight: '900' }}>{row.value}</TotlText>
+                <TotlText style={{ fontSize: 15, lineHeight: 18, fontFamily: t.font.medium }}>{row.value}</TotlText>
               </View>
             ))}
           </View>
@@ -298,7 +298,7 @@ export function LeaderboardCardResultsCta({
               {typeof score === 'string' && typeof totalFixtures === 'string' ? (
                 <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
                   <TotlText style={{ fontSize: 32, fontWeight: '300', color: t.color.brand, lineHeight: 38 }}>{score}</TotlText>
-                  <TotlText variant="caption" style={{ color: topLabelColor, fontSize: 16, lineHeight: 20, fontWeight: '700' }}>
+                  <TotlText variant="caption" style={{ color: topLabelColor, fontSize: 16, lineHeight: 20, fontFamily: t.font.medium }}>
                     {' '}
                     /{totalFixtures}
                   </TotlText>
@@ -321,7 +321,7 @@ export function LeaderboardCardResultsCta({
                   variant="caption"
                   style={{
                     color: topLabelColor,
-                    fontWeight: '900',
+                    fontFamily: t.font.medium,
                     marginTop: 2,
                     fontSize: 18,
                     lineHeight: 18,
@@ -339,7 +339,7 @@ export function LeaderboardCardResultsCta({
                 style={{
                   color: topLabelColor,
                   marginBottom: 8,
-                  fontWeight: '700',
+                  fontFamily: t.font.medium,
                   letterSpacing: 0.8,
                   fontSize: 14,
                   lineHeight: 18,
@@ -348,7 +348,7 @@ export function LeaderboardCardResultsCta({
               >
                 {topLabel ?? (typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek')}
               </TotlText>
-              <TotlText numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '900', color: mainTextColor }}>
+              <TotlText numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontFamily: t.font.medium, color: mainTextColor }}>
                 {label}
               </TotlText>
             </View>
@@ -382,7 +382,7 @@ export function LeaderboardCardResultsCta({
                   <TotlText style={{ fontSize: 32, fontWeight: '300', color: textColor, lineHeight: 38 }}>{score}</TotlText>
                   <TotlText
                     variant="caption"
-                    style={{ color: secondaryTextColor, fontSize: 16, lineHeight: 20, fontWeight: '700' }}
+                    style={{ color: secondaryTextColor, fontSize: 16, lineHeight: 20, fontFamily: t.font.medium }}
                   >
                     {' '}
                     /{totalFixtures}
@@ -403,7 +403,7 @@ export function LeaderboardCardResultsCta({
                 ) : (
                   <TotlText
                     variant="caption"
-                    style={{ color: textColor, fontWeight: '900', marginTop: 2, fontSize: 18, lineHeight: 18 }}
+                    style={{ color: textColor, fontFamily: t.font.medium, marginTop: 2, fontSize: 18, lineHeight: 18 }}
                   >
                     ›
                   </TotlText>
@@ -418,7 +418,7 @@ export function LeaderboardCardResultsCta({
                 style={{
                   color: secondaryTextColor,
                   marginBottom: 8,
-                  fontWeight: '700',
+                  fontFamily: t.font.medium,
                   letterSpacing: 0.8,
                   fontSize: 14,
                   lineHeight: 18,
@@ -427,7 +427,7 @@ export function LeaderboardCardResultsCta({
               >
                 {topLabel ?? (typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek')}
               </TotlText>
-              <TotlText numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontWeight: '900', color: textColor }}>
+              <TotlText numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontFamily: t.font.medium, color: textColor }}>
                 {label}
               </TotlText>
             </View>

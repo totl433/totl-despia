@@ -653,7 +653,7 @@ export default function LeaguesScreen() {
                   transform: [{ scale: pressed ? 0.99 : 1 }],
                 })}
               >
-                <TotlText style={{ color: '#FFFFFF', fontWeight: '900', textAlign: 'center' }}>Create or Join</TotlText>
+                <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, textAlign: 'center' }}>Create or Join</TotlText>
               </Pressable>
             </View>
           ) : null

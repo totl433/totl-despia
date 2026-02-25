@@ -183,12 +183,12 @@ export default function ProfileHomeScreen() {
               {avatarUrl ? (
                 <Image source={{ uri: avatarUrl }} style={{ width: 74, height: 74 }} />
               ) : (
-                <TotlText style={{ fontWeight: '900', fontSize: 20 }}>{initials}</TotlText>
+                <TotlText style={{ fontFamily: t.font.medium, fontSize: 20 }}>{initials}</TotlText>
               )}
             </Pressable>
 
             <View style={{ flex: 1, minWidth: 0 }}>
-              <TotlText style={{ fontWeight: '900', fontSize: 20, color: t.color.text }} numberOfLines={1}>
+              <TotlText style={{ fontFamily: t.font.medium, fontSize: 20, color: t.color.text }} numberOfLines={1}>
                 {name}
               </TotlText>
               {email ? (
@@ -206,15 +206,15 @@ export default function ProfileHomeScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <TotlText variant="muted">OCP</TotlText>
-              <TotlText style={{ fontWeight: '900' }}>{String(Math.round(Number(data?.ocp ?? 0)))}</TotlText>
+              <TotlText style={{ fontFamily: t.font.medium }}>{String(Math.round(Number(data?.ocp ?? 0)))}</TotlText>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <TotlText variant="muted">Mini Leagues</TotlText>
-              <TotlText style={{ fontWeight: '900' }}>{String(data?.miniLeaguesCount ?? 0)}</TotlText>
+              <TotlText style={{ fontFamily: t.font.medium }}>{String(data?.miniLeaguesCount ?? 0)}</TotlText>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <TotlText variant="muted">Streak</TotlText>
-              <TotlText style={{ fontWeight: '900' }}>{String(data?.weeksStreak ?? 0)}</TotlText>
+              <TotlText style={{ fontFamily: t.font.medium }}>{String(data?.weeksStreak ?? 0)}</TotlText>
             </View>
           </View>
 
@@ -236,7 +236,7 @@ export default function ProfileHomeScreen() {
               transform: [{ scale: pressed ? 0.99 : 1 }],
             })}
           >
-            <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 16 }}>View Your Stats</TotlText>
+            <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, fontSize: 16 }}>View Your Stats</TotlText>
             <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
           </Pressable>
         </Card>
@@ -248,7 +248,7 @@ export default function ProfileHomeScreen() {
                 fontSize: 20,
                 lineHeight: 24,
                 letterSpacing: 0,
-                fontWeight: '900',
+                fontFamily: t.font.medium,
                 color: t.color.text,
               }}
             >
@@ -276,7 +276,7 @@ export default function ProfileHomeScreen() {
                 >
                   <TotlText
                     style={{
-                      fontWeight: '700',
+                      fontFamily: t.font.medium,
                       fontSize: 14,
                       color: active ? '#FFFFFF' : t.color.text,
                     }}
@@ -305,7 +305,7 @@ export default function ProfileHomeScreen() {
                       fontSize: 20,
                       lineHeight: 24,
                       letterSpacing: 0,
-                      fontWeight: '900',
+                      fontFamily: t.font.medium,
                       color: t.color.text,
                     }}
                   >
@@ -331,7 +331,7 @@ export default function ProfileHomeScreen() {
                         borderBottomWidth: 0,
                       })}
                     >
-                      <TotlText style={{ fontWeight: '700' }}>{item.label}</TotlText>
+                      <TotlText style={{ fontFamily: t.font.medium }}>{item.label}</TotlText>
                       <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
                     </Pressable>
                   );

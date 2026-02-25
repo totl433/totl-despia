@@ -330,7 +330,7 @@ export default function LeagueChatTab({
                       backgroundColor: 'rgba(148,163,184,0.18)',
                     }}
                   >
-                    <TotlText style={{ fontFamily: 'System', fontSize: 12, lineHeight: 14, color: 'rgba(15,23,42,0.55)' }}>
+                    <TotlText style={{ fontFamily: t.font.regular, fontSize: 12, lineHeight: 14, color: 'rgba(15,23,42,0.55)' }}>
                       {item.label}
                     </TotlText>
                   </View>

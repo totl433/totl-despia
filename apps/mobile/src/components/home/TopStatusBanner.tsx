@@ -50,7 +50,7 @@ export default function TopStatusBanner({
         >
           <Ionicons name={iconName} size={12} color="#FFFFFF" />
         </View>
-        <TotlText style={{ fontFamily: 'Gramatika-Bold', fontWeight: '700', fontSize: 16, lineHeight: 18 }}>
+        <TotlText style={{ fontFamily: t.font.medium, fontSize: 16, lineHeight: 18 }}>
           {title}
         </TotlText>
       </View>
@@ -75,8 +75,7 @@ export default function TopStatusBanner({
           <TotlText
             style={{
               color: '#FFFFFF',
-              fontFamily: 'Gramatika-Medium',
-              fontWeight: '500',
+              fontFamily: t.font.medium,
               fontSize: 14,
               lineHeight: 14,
             }}

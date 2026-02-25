@@ -183,8 +183,6 @@ export default function GameweekCountdownItem({
             <View style={{ flex: 1, minWidth: 0 }}>
               <TotlText
                 style={{
-                  fontFamily: 'Gramatika-Regular',
-                  fontWeight: '400',
                   fontSize: 12,
                   color: '#59687C',
                   letterSpacing: 0.5,
@@ -201,7 +199,7 @@ export default function GameweekCountdownItem({
                   <TotlText style={{ fontFamily: 'BarlowCondensed-Light', fontSize: 40, lineHeight: 40, color: '#202020' }}>
                     {pad2(days)}
                   </TotlText>
-                  <TotlText style={{ fontFamily: 'Gramatika-Regular', fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
+                  <TotlText style={{ fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
                     DAYS
                   </TotlText>
                 </View>
@@ -209,7 +207,7 @@ export default function GameweekCountdownItem({
                   <TotlText style={{ fontFamily: 'BarlowCondensed-Light', fontSize: 40, lineHeight: 40, color: '#202020' }}>
                     {pad2(hours)}
                   </TotlText>
-                  <TotlText style={{ fontFamily: 'Gramatika-Regular', fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
+                  <TotlText style={{ fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
                     HRS
                   </TotlText>
                 </View>
@@ -217,7 +215,7 @@ export default function GameweekCountdownItem({
                   <TotlText style={{ fontFamily: 'BarlowCondensed-Light', fontSize: 40, lineHeight: 40, color: '#202020' }}>
                     {pad2(minutes)}
                   </TotlText>
-                  <TotlText style={{ fontFamily: 'Gramatika-Regular', fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
+                  <TotlText style={{ fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
                     MINS
                   </TotlText>
                 </View>
@@ -260,8 +258,6 @@ export default function GameweekCountdownItem({
           <TotlText
             style={{
               textAlign: 'center',
-              fontFamily: 'Gramatika-Regular',
-              fontWeight: '400',
               fontSize: 12,
               color: '#59687C',
             }}
@@ -277,7 +273,7 @@ export default function GameweekCountdownItem({
               <TotlText style={{ fontFamily: 'BarlowCondensed-Light', fontSize: 40, lineHeight: 40, color: '#202020' }}>
                 {pad2(days)}
               </TotlText>
-              <TotlText style={{ fontFamily: 'Gramatika-Regular', fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
+              <TotlText style={{ fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
                 DAYS
               </TotlText>
             </View>
@@ -285,7 +281,7 @@ export default function GameweekCountdownItem({
               <TotlText style={{ fontFamily: 'BarlowCondensed-Light', fontSize: 40, lineHeight: 40, color: '#202020' }}>
                 {pad2(hours)}
               </TotlText>
-              <TotlText style={{ fontFamily: 'Gramatika-Regular', fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
+              <TotlText style={{ fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
                 HRS
               </TotlText>
             </View>
@@ -293,7 +289,7 @@ export default function GameweekCountdownItem({
               <TotlText style={{ fontFamily: 'BarlowCondensed-Light', fontSize: 40, lineHeight: 40, color: '#202020' }}>
                 {pad2(minutes)}
               </TotlText>
-              <TotlText style={{ fontFamily: 'Gramatika-Regular', fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
+              <TotlText style={{ fontSize: 8, color: '#ADADB1', marginTop: -6 }}>
                 MINS
               </TotlText>
             </View>

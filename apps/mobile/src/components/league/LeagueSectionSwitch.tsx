@@ -30,8 +30,7 @@ export default function LeagueSectionSwitch({
 
   const textStyle = (selected: boolean) => ({
     color: selected ? '#FFFFFF' : t.color.muted,
-    fontFamily: 'Gramatika-Medium',
-    fontWeight: '700' as const,
+    fontFamily: t.font.medium,
     fontSize: 13,
     lineHeight: 13,
   });

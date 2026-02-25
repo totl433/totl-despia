@@ -78,7 +78,6 @@ export default function GameweekAdvanceTransition({
           <Animated.View style={headlineStyle}>
             <TotlText
               style={{
-                fontFamily: 'Gramatika-Bold',
                 fontWeight: '900',
                 fontSize: 44,
                 lineHeight: 44,

@@ -132,10 +132,10 @@ export default function LeaderboardPlayerPicksSheet({
         </View>
 
         <View style={{ marginBottom: 12 }}>
-          <TotlText style={{ color: t.color.text, fontFamily: 'Gramatika-Bold', fontWeight: '900', fontSize: 16, lineHeight: 18 }}>
+          <TotlText style={{ color: t.color.text, fontFamily: t.font.medium, fontSize: 16, lineHeight: 18 }}>
             {userName && userName.trim().length > 0 ? userName : 'Player'}
           </TotlText>
-          <TotlText style={{ color: '#1C8376', fontFamily: 'Gramatika-Medium', fontWeight: '700', fontSize: 15, lineHeight: 18, marginTop: 2 }}>
+          <TotlText style={{ color: '#1C8376', fontFamily: t.font.medium, fontSize: 15, lineHeight: 18, marginTop: 2 }}>
             Gameweek {typeof gw === 'number' ? gw : '--'}
           </TotlText>
         </View>
@@ -183,8 +183,7 @@ export default function LeaderboardPlayerPicksSheet({
                       <TotlText
                         style={{
                           color: t.color.text,
-                          fontFamily: 'Gramatika-Bold',
-                          fontWeight: '900',
+                          fontFamily: t.font.medium,
                           fontSize: 20,
                           lineHeight: 20,
                         }}
@@ -218,8 +217,7 @@ export default function LeaderboardPlayerPicksSheet({
                           <TotlText
                             style={{
                               color: t.color.text,
-                              fontFamily: 'Gramatika-Medium',
-                              fontWeight: '700',
+                              fontFamily: t.font.medium,
                               fontSize: 16,
                               lineHeight: 16,
                             }}
@@ -230,8 +228,7 @@ export default function LeaderboardPlayerPicksSheet({
                             style={{
                               color: '#334155',
                               marginHorizontal: 4,
-                              fontFamily: 'Gramatika-Medium',
-                              fontWeight: '700',
+                              fontFamily: t.font.medium,
                               fontSize: 16,
                               lineHeight: 16,
                             }}
@@ -241,8 +238,7 @@ export default function LeaderboardPlayerPicksSheet({
                           <TotlText
                             style={{
                               color: t.color.text,
-                              fontFamily: 'Gramatika-Medium',
-                              fontWeight: '700',
+                              fontFamily: t.font.medium,
                               fontSize: 16,
                               lineHeight: 16,
                             }}
@@ -283,8 +279,7 @@ export default function LeaderboardPlayerPicksSheet({
                           color: '#FFFFFF',
                           fontSize: 11,
                           lineHeight: 11,
-                          fontFamily: 'Gramatika-Medium',
-                          fontWeight: '700',
+                          fontFamily: t.font.medium,
                         }}
                       >
                         {pick === 'H' ? 'Home' : pick === 'D' ? 'Draw' : pick === 'A' ? 'Away' : '-'}
@@ -307,8 +302,7 @@ export default function LeaderboardPlayerPicksSheet({
                           color: t.color.text,
                           fontSize: 11,
                           lineHeight: 11,
-                          fontFamily: 'Gramatika-Medium',
-                          fontWeight: '800',
+                          fontFamily: t.font.medium,
                           textDecorationLine: 'none',
                         }}
                       >

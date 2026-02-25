@@ -170,16 +170,16 @@ export default function CreateLeagueScreen() {
             marginRight: 10,
           })}
         >
-          <TotlText style={{ color: t.color.muted, fontWeight: '900', fontSize: 22, lineHeight: 22 }}>‹</TotlText>
+          <TotlText style={{ color: t.color.muted, fontFamily: t.font.medium, fontSize: 22, lineHeight: 22 }}>‹</TotlText>
         </Pressable>
 
-        <TotlText style={{ flex: 1, color: t.color.text, fontFamily: 'Gramatika-Medium', fontSize: 22, lineHeight: 22 }}>
+        <TotlText style={{ flex: 1, color: t.color.text, fontSize: 22, lineHeight: 22 }}>
           Create League
         </TotlText>
       </View>
 
       <View style={{ paddingHorizontal: t.space[4], paddingTop: 8 }}>
-        <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 14, lineHeight: 18, color: t.color.muted, fontWeight: '700' }}>
+        <TotlText style={{ fontSize: 14, lineHeight: 18, color: t.color.muted, fontFamily: t.font.medium }}>
           Choose a name and optionally upload a badge.
         </TotlText>
 
@@ -214,10 +214,10 @@ export default function CreateLeagueScreen() {
             {badgeUri ? <Image source={{ uri: badgeUri }} style={{ width: 56, height: 56 }} /> : null}
           </View>
           <View style={{ flex: 1 }}>
-            <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 16, lineHeight: 20, fontWeight: '600', color: t.color.text }}>
+            <TotlText style={{ fontSize: 16, lineHeight: 20, fontFamily: t.font.medium, color: t.color.text }}>
               {badgeUri ? 'Change badge' : 'Add badge (optional)'}
             </TotlText>
-            <TotlText style={{ marginTop: 2, fontFamily: 'Gramatika-Medium', fontSize: 12, lineHeight: 14, color: t.color.muted }}>
+            <TotlText style={{ marginTop: 2, fontSize: 12, lineHeight: 14, color: t.color.muted }}>
               Square images work best.
             </TotlText>
           </View>
@@ -238,10 +238,9 @@ export default function CreateLeagueScreen() {
             borderColor: t.color.border,
             backgroundColor: t.color.surface,
             paddingHorizontal: 16,
-            fontFamily: 'Gramatika-Medium',
             fontSize: 18,
             lineHeight: 22,
-            fontWeight: '600',
+            fontFamily: t.font.medium,
             color: t.color.text,
             letterSpacing: 0,
           }}
@@ -265,7 +264,7 @@ export default function CreateLeagueScreen() {
             transform: [{ scale: pressed ? 0.99 : 1 }],
           })}
         >
-          <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Medium', fontSize: 16, lineHeight: 16, fontWeight: '600' }}>
+          <TotlText style={{ color: '#FFFFFF', fontSize: 16, lineHeight: 16, fontFamily: t.font.medium }}>
             {creating ? 'Creating…' : 'Create League'}
           </TotlText>
         </Pressable>

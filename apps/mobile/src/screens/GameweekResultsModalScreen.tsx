@@ -132,16 +132,16 @@ function ShareCaptureCard({
                   backgroundColor: '#64748B',
                 }}
               >
-                <TotlText style={{ textAlign: 'center', color: '#FFFFFF', fontFamily: 'Gramatika-Bold', fontWeight: '900', fontSize: 16, lineHeight: 16 }}>
+                <TotlText style={{ textAlign: 'center', color: '#FFFFFF', fontFamily: t.font.medium, fontSize: 16, lineHeight: 16 }}>
                   {String(results.score)}/{String(results.totalFixtures)}
                 </TotlText>
               </View>
 
               <View style={{ alignItems: 'center', flex: 1 }}>
-                <TotlText style={{ color: '#1C8376', fontFamily: 'Gramatika-Medium', fontWeight: '700', fontSize: 18, lineHeight: 20 }}>
+                <TotlText style={{ color: '#1C8376', fontFamily: t.font.medium, fontSize: 18, lineHeight: 20 }}>
                   Gameweek {gw}
                 </TotlText>
-                <TotlText style={{ color: '#0F172A', fontFamily: 'Gramatika-Bold', fontWeight: '900', fontSize: 16, lineHeight: 18 }}>
+                <TotlText style={{ color: '#0F172A', fontFamily: t.font.medium, fontSize: 16, lineHeight: 18 }}>
                   {userName && userName.trim().length > 0 ? userName : 'You'}
                 </TotlText>
               </View>
@@ -158,10 +158,10 @@ function ShareCaptureCard({
                   alignItems: 'baseline',
                 }}
               >
-                <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Medium', fontWeight: '700', fontSize: 13, lineHeight: 13, marginRight: 5 }}>
+                <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, fontSize: 13, lineHeight: 13, marginRight: 5 }}>
                   Top
                 </TotlText>
-                <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Bold', fontWeight: '900', fontSize: 16, lineHeight: 16 }}>
+                <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, fontSize: 16, lineHeight: 16 }}>
                   {topPercentLabel ? topPercentLabel.replace('Top ', '') : '--'}
                 </TotlText>
               </View>
@@ -171,8 +171,7 @@ function ShareCaptureCard({
           <TotlText
             style={{
               textAlign: 'center',
-              fontFamily: 'Gramatika-Bold',
-              fontWeight: '900',
+              fontFamily: t.font.medium,
               fontSize: 18,
               lineHeight: 22,
               color: '#0F172A',
@@ -192,8 +191,7 @@ function ShareCaptureCard({
                 style={{
                   fontSize: 44,
                   lineHeight: 44,
-                  fontFamily: 'Gramatika-Bold',
-                  fontWeight: '900',
+                  fontFamily: t.font.medium,
                   color: '#1C8376',
                 }}
               >
@@ -203,8 +201,7 @@ function ShareCaptureCard({
                 style={{
                   fontSize: 32,
                   lineHeight: 38,
-                  fontFamily: 'Gramatika-Bold',
-                  fontWeight: '900',
+                  fontFamily: t.font.medium,
                   color: '#1C8376',
                 }}
               >
@@ -217,7 +214,7 @@ function ShareCaptureCard({
 
         {!isFixturesOnly && results.mlVictories > 0 ? (
           <View style={{ marginBottom: 14 }}>
-            <TotlText style={{ textAlign: 'center', fontFamily: 'Gramatika-Bold', fontWeight: '900', marginBottom: 10 }}>
+            <TotlText style={{ textAlign: 'center', fontFamily: t.font.medium, marginBottom: 10 }}>
               Won {results.mlVictories} Mini-League{results.mlVictories === 1 ? '' : 's'}!
             </TotlText>
             <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -264,7 +261,7 @@ function ShareCaptureCard({
             <TotlText style={{ textAlign: 'center', color: t.color.muted, marginBottom: 8 }}>Gameweek {gw} Leaderboard</TotlText>
             <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end' }}>
               <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                <TotlText style={{ fontFamily: 'Gramatika-Bold', fontWeight: '900', fontSize: 34, lineHeight: 36 }}>
+                <TotlText style={{ fontFamily: t.font.medium, fontSize: 34, lineHeight: 36 }}>
                   {String(results.gwRank)}
                 </TotlText>
                 <TotlText style={{ marginLeft: 6, color: t.color.muted, fontSize: 12 }}>
@@ -272,7 +269,7 @@ function ShareCaptureCard({
                 </TotlText>
               </View>
               {topPercentLabel ? (
-                <TotlText style={{ marginLeft: 12, fontFamily: 'Gramatika-Bold', fontWeight: '900', color: t.color.brand, fontSize: 22 }}>
+                <TotlText style={{ marginLeft: 12, fontFamily: t.font.medium, color: t.color.brand, fontSize: 22 }}>
                   {topPercentLabel}
                 </TotlText>
               ) : null}
@@ -325,7 +322,7 @@ function ShareCaptureCard({
                       ) : pickCorrect === false ? (
                         <Ionicons name="close-sharp" size={28} color="#DC2626" />
                       ) : (
-                        <TotlText style={{ color: 'rgba(15,23,42,0.4)', fontFamily: 'Gramatika-Bold', fontWeight: '900', fontSize: 20, lineHeight: 20 }}>
+                        <TotlText style={{ color: 'rgba(15,23,42,0.4)', fontFamily: t.font.medium, fontSize: 20, lineHeight: 20 }}>
                           -
                         </TotlText>
                       )}
@@ -351,21 +348,20 @@ function ShareCaptureCard({
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
                           {homeBadge ? <Image source={homeBadge} style={{ width: 16, height: 16, marginRight: 9 }} /> : null}
                           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <TotlText style={{ fontFamily: 'Gramatika-Medium', fontWeight: '700', fontSize: 16, lineHeight: 16 }}>
+                            <TotlText style={{ fontFamily: t.font.medium, fontSize: 16, lineHeight: 16 }}>
                               {scoreHomeText}
                             </TotlText>
                             <TotlText
                               style={{
                                 marginHorizontal: 4,
-                                fontFamily: 'Gramatika-Medium',
-                                fontWeight: '700',
+                                fontFamily: t.font.medium,
                                 fontSize: 16,
                                 lineHeight: 16,
                               }}
                             >
                               -
                             </TotlText>
-                            <TotlText style={{ fontFamily: 'Gramatika-Medium', fontWeight: '700', fontSize: 16, lineHeight: 16 }}>
+                            <TotlText style={{ fontFamily: t.font.medium, fontSize: 16, lineHeight: 16 }}>
                               {scoreAwayText}
                             </TotlText>
                           </View>
@@ -407,8 +403,7 @@ function ShareCaptureCard({
                             color: '#FFFFFF',
                             fontSize: 11,
                             lineHeight: 11,
-                            fontFamily: 'Gramatika-Medium',
-                            fontWeight: '700',
+                            fontFamily: t.font.medium,
                           }}
                         >
                           {pick === 'H' ? 'Home' : pick === 'D' ? 'Draw' : pick === 'A' ? 'Away' : '-'}
@@ -431,8 +426,7 @@ function ShareCaptureCard({
                             color: '#FFFFFF',
                             fontSize: 11,
                             lineHeight: 11,
-                            fontFamily: 'Gramatika-Medium',
-                            fontWeight: '700',
+                            fontFamily: t.font.medium,
                             textDecorationLine: pickCorrect === false ? 'line-through' : 'none',
                           }}
                         >
@@ -763,7 +757,7 @@ export default function GameweekResultsModalScreen() {
                     <Ionicons name="logo-instagram" size={24} color="#FFFFFF" />
                   </LinearGradient>
                   <TotlText
-                    style={{ marginTop: 8, fontSize: 12, lineHeight: 12, fontFamily: 'Gramatika-Medium', fontWeight: '600' }}
+                    style={{ marginTop: 8, fontSize: 12, lineHeight: 12, fontFamily: t.font.medium }}
                   >
                     Instagram
                   </TotlText>
@@ -794,7 +788,7 @@ export default function GameweekResultsModalScreen() {
                     <Ionicons name="logo-whatsapp" size={24} color="#FFFFFF" />
                   </View>
                   <TotlText
-                    style={{ marginTop: 8, fontSize: 12, lineHeight: 12, fontFamily: 'Gramatika-Medium', fontWeight: '600' }}
+                    style={{ marginTop: 8, fontSize: 12, lineHeight: 12, fontFamily: t.font.medium }}
                   >
                     WhatsApp
                   </TotlText>
@@ -827,7 +821,7 @@ export default function GameweekResultsModalScreen() {
                     <Ionicons name="share-social-outline" size={24} color="#111827" />
                   </View>
                   <TotlText
-                    style={{ marginTop: 8, fontSize: 12, lineHeight: 12, fontFamily: 'Gramatika-Medium', fontWeight: '600' }}
+                    style={{ marginTop: 8, fontSize: 12, lineHeight: 12, fontFamily: t.font.medium }}
                   >
                     More
                   </TotlText>
@@ -1039,10 +1033,9 @@ export default function GameweekResultsModalScreen() {
                       style={{
                         fontSize: 56,
                         lineHeight: 56,
-                        fontWeight: '900',
+                        fontFamily: t.font.medium,
                         color: t.color.brand,
-                        fontFamily: 'Gramatika-Bold',
-                      }}
+                        }}
                     >
                       {String(results.score)}
                     </TotlText>
@@ -1050,9 +1043,8 @@ export default function GameweekResultsModalScreen() {
                       style={{
                         fontSize: 40,
                         lineHeight: 48,
-                        fontWeight: '900',
+                        fontFamily: t.font.medium,
                         color: t.color.brand,
-                        fontFamily: 'Gramatika-Bold',
                         marginLeft: 2,
                       }}
                     >
@@ -1079,8 +1071,7 @@ export default function GameweekResultsModalScreen() {
                     <TotlText
                       style={{
                         color: '#FFFFFF',
-                        fontFamily: 'Gramatika-Bold',
-                        fontWeight: '900',
+                        fontFamily: t.font.medium,
                         fontSize: 20,
                         lineHeight: 22,
                         textAlign: 'center',
@@ -1126,8 +1117,7 @@ export default function GameweekResultsModalScreen() {
                   <TotlText
                     style={{
                       textAlign: 'center',
-                      fontFamily: 'Gramatika-Bold',
-                      fontWeight: '900',
+                      fontFamily: t.font.medium,
                       fontSize: 22,
                       lineHeight: 24,
                       marginBottom: 12,
@@ -1203,8 +1193,7 @@ export default function GameweekResultsModalScreen() {
                     <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
                       <TotlText
                         style={{
-                          fontFamily: 'Gramatika-Bold',
-                          fontWeight: '900',
+                          fontFamily: t.font.medium,
                           fontSize: 42,
                           lineHeight: 44,
                           color: t.color.text,
@@ -1220,8 +1209,7 @@ export default function GameweekResultsModalScreen() {
                       <TotlText
                         style={{
                           marginLeft: 14,
-                          fontFamily: 'Gramatika-Bold',
-                          fontWeight: '900',
+                          fontFamily: t.font.medium,
                           fontSize: 28,
                           lineHeight: 34,
                           color: t.color.brand,
@@ -1252,17 +1240,17 @@ export default function GameweekResultsModalScreen() {
                   <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap' }}>
                     {results.leaderboardChanges?.overall?.after ? (
                       <TotlText style={{ marginHorizontal: 10 }}>
-                        Overall: <TotlText style={{ fontWeight: '900' }}>#{results.leaderboardChanges.overall.after}</TotlText>
+                        Overall: <TotlText style={{ fontFamily: t.font.medium }}>#{results.leaderboardChanges.overall.after}</TotlText>
                       </TotlText>
                     ) : null}
                     {results.leaderboardChanges?.form5?.after ? (
                       <TotlText style={{ marginHorizontal: 10 }}>
-                        5W: <TotlText style={{ fontWeight: '900' }}>#{results.leaderboardChanges.form5.after}</TotlText>
+                        5W: <TotlText style={{ fontFamily: t.font.medium }}>#{results.leaderboardChanges.form5.after}</TotlText>
                       </TotlText>
                     ) : null}
                     {results.leaderboardChanges?.form10?.after ? (
                       <TotlText style={{ marginHorizontal: 10 }}>
-                        10W: <TotlText style={{ fontWeight: '900' }}>#{results.leaderboardChanges.form10.after}</TotlText>
+                        10W: <TotlText style={{ fontFamily: t.font.medium }}>#{results.leaderboardChanges.form10.after}</TotlText>
                       </TotlText>
                     ) : null}
                   </View>
@@ -1289,8 +1277,7 @@ export default function GameweekResultsModalScreen() {
                 {sharing ? (
                   <TotlText
                     style={{
-                      fontFamily: 'Gramatika-Medium',
-                      fontWeight: '500',
+                      fontFamily: t.font.medium,
                       fontSize: 14,
                       lineHeight: 22,
                       letterSpacing: -0.04,
@@ -1305,9 +1292,8 @@ export default function GameweekResultsModalScreen() {
                     <View style={{ width: 10 }} />
                     <TotlText
                       style={{
-                        fontFamily: 'Gramatika-Medium',
                         fontStyle: 'normal',
-                        fontWeight: '500',
+                        fontFamily: t.font.medium,
                         fontSize: 14,
                         lineHeight: 22,
                         letterSpacing: -0.04,

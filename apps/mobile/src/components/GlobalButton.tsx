@@ -72,10 +72,9 @@ export default function GlobalButton({
     >
       <TotlText
         style={{
-          fontFamily: 'Gramatika-Medium',
           fontSize: 16,
           lineHeight: 22,
-          fontWeight: '900',
+          fontFamily: t.font.medium,
           color: textColor,
           textAlign: 'center',
         }}

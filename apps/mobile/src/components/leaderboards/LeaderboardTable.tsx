@@ -106,18 +106,18 @@ export default function LeaderboardTable({
           borderBottomColor: t.color.border,
         }}
       >
-        <TotlText variant="caption" style={{ color: t.color.muted, width: 36, fontWeight: '900' }}>
+        <TotlText variant="caption" style={{ color: t.color.muted, width: 36, fontFamily: t.font.medium }}>
           #
         </TotlText>
-        <TotlText variant="caption" style={{ color: t.color.muted, flex: 1, fontWeight: '900' }}>
+        <TotlText variant="caption" style={{ color: t.color.muted, flex: 1, fontFamily: t.font.medium }}>
           Player
         </TotlText>
         {secondaryValueLabel ? (
-          <TotlText variant="caption" style={{ color: t.color.muted, width: 62, textAlign: 'center', fontWeight: '900' }}>
+          <TotlText variant="caption" style={{ color: t.color.muted, width: 62, textAlign: 'center', fontFamily: t.font.medium }}>
             {secondaryValueLabel}
           </TotlText>
         ) : null}
-        <TotlText variant="caption" style={{ color: t.color.muted, width: 70, textAlign: 'center', fontWeight: '900' }}>
+        <TotlText variant="caption" style={{ color: t.color.muted, width: 70, textAlign: 'center', fontFamily: t.font.medium }}>
           {valueLabel}
         </TotlText>
       </View>
@@ -160,7 +160,7 @@ export default function LeaderboardTable({
                 backgroundColor: isMe ? 'rgba(28,131,118,0.45)' : 'transparent',
               }}
             >
-              <TotlText style={{ width: 36, fontWeight: '900', fontSize: 13, lineHeight: 18 }}>{formatRank(item.rank, item.tied)}</TotlText>
+              <TotlText style={{ width: 36, fontFamily: t.font.medium, fontSize: 13, lineHeight: 18 }}>{formatRank(item.rank, item.tied)}</TotlText>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                 <View
@@ -180,14 +180,14 @@ export default function LeaderboardTable({
                   {item.row.avatar_url ? (
                     <Image source={{ uri: item.row.avatar_url }} style={{ width: AVATAR_SIZE, height: AVATAR_SIZE }} />
                   ) : (
-                  <TotlText variant="caption" style={{ fontWeight: '900' }}>
+                  <TotlText variant="caption" style={{ fontFamily: t.font.medium }}>
                       {initial1(item.row.name)}
                   </TotlText>
                   )}
                 </View>
 
                 {showTrophy ? (
-                  <TotlText style={{ marginRight: 8, color: '#FACC15', fontWeight: '900' }}>🏆</TotlText>
+                  <TotlText style={{ marginRight: 8, color: '#FACC15', fontFamily: t.font.medium }}>🏆</TotlText>
                 ) : null}
 
                 {/* Match Home mini-league table row typography */}
@@ -197,11 +197,11 @@ export default function LeaderboardTable({
               </View>
 
               {secondaryValueLabel ? (
-                <TotlText style={{ width: 62, textAlign: 'center', fontWeight: '900', fontSize: 13, lineHeight: 18 }}>
+                <TotlText style={{ width: 62, textAlign: 'center', fontFamily: t.font.medium, fontSize: 13, lineHeight: 18 }}>
                   {typeof item.row.secondaryValue === 'number' ? String(item.row.secondaryValue) : '—'}
                 </TotlText>
               ) : null}
-              <TotlText style={{ width: 70, textAlign: 'center', fontWeight: '900', fontSize: 13, lineHeight: 18 }}>{String(item.row.value)}</TotlText>
+              <TotlText style={{ width: 70, textAlign: 'center', fontFamily: t.font.medium, fontSize: 13, lineHeight: 18 }}>{String(item.row.value)}</TotlText>
             </Pressable>
           );
         }}

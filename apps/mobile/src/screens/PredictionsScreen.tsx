@@ -155,7 +155,7 @@ function PickChip({
         transform: [{ scale: pressed ? 0.99 : 1 }],
       })}
     >
-      <TotlText style={{ color: active ? '#FFFFFF' : t.color.text, fontWeight: '900' }}>{label}</TotlText>
+      <TotlText style={{ color: active ? '#FFFFFF' : t.color.text, fontFamily: t.font.medium }}>{label}</TotlText>
     </Pressable>
   );
 }
@@ -549,7 +549,6 @@ export default function PredictionsScreen() {
                 <TotlText
                   style={{
                     color: t.color.text,
-                    fontFamily: 'Gramatika-Medium',
                     fontSize: 14,
                     lineHeight: 14,
                     letterSpacing: 0.6,
@@ -925,9 +924,8 @@ export default function PredictionsScreen() {
                   <Animated.Text
                     style={[
                       {
-                        fontFamily: 'Gramatika-Medium',
                         fontStyle: 'normal',
-                        fontWeight: '500',
+                        fontFamily: t.font.medium,
                         fontSize: 14,
                         lineHeight: 17,
                         textAlign: 'center',
@@ -960,9 +958,8 @@ export default function PredictionsScreen() {
                   <Animated.Text
                     style={[
                       {
-                        fontFamily: 'Gramatika-Medium',
                         fontStyle: 'normal',
-                        fontWeight: '500',
+                        fontFamily: t.font.medium,
                         fontSize: 14,
                         lineHeight: 17,
                         textAlign: 'center',
@@ -995,9 +992,8 @@ export default function PredictionsScreen() {
                   <Animated.Text
                     style={[
                       {
-                        fontFamily: 'Gramatika-Medium',
                         fontStyle: 'normal',
-                        fontWeight: '500',
+                        fontFamily: t.font.medium,
                         fontSize: 14,
                         lineHeight: 17,
                         textAlign: 'center',
@@ -1056,11 +1052,11 @@ export default function PredictionsScreen() {
                     marginTop: 2,
                   }}
                 >
-                  <TotlText style={{ color: t.color.brand, fontWeight: '900' }}>!</TotlText>
+                  <TotlText style={{ color: t.color.brand, fontFamily: t.font.medium }}>!</TotlText>
                 </View>
 
                 <View style={{ flex: 1, paddingRight: 8 }}>
-                  <TotlText style={{ fontFamily: 'Gramatika-Medium', fontWeight: '500', lineHeight: 20 }}>
+                  <TotlText style={{ fontFamily: t.font.medium, lineHeight: 20 }}>
                     Want to change anything? Tap a prediction to update it. Your picks lock in when you confirm.
                   </TotlText>
                 </View>
@@ -1079,7 +1075,7 @@ export default function PredictionsScreen() {
                     opacity: pressed ? 0.7 : 1,
                   })}
                 >
-                  <TotlText style={{ color: 'rgba(100,116,139,0.7)', fontWeight: '900', fontSize: 18 }}>✕</TotlText>
+                  <TotlText style={{ color: 'rgba(100,116,139,0.7)', fontFamily: t.font.medium, fontSize: 18 }}>✕</TotlText>
                 </Pressable>
               </View>
             ) : null}
@@ -1133,7 +1129,7 @@ export default function PredictionsScreen() {
                 opacity: submitted || deadlineExpired || confirmMutation.isPending ? 0.55 : pressed ? 0.92 : 1,
               })}
             >
-                <TotlText style={{ color: '#FFFFFF', fontWeight: '900' }}>
+                <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium }}>
                   {confirmMutation.isPending ? (isTestMode ? 'Finishing…' : 'Confirming…') : isTestMode ? 'Finish Test' : 'Confirm'}
                 </TotlText>
             </Pressable>

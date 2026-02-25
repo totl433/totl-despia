@@ -41,7 +41,7 @@ function FixtureHeaderMorph({
           <TotlText
             numberOfLines={1}
             style={{
-              fontWeight: homeTeamFontWeight,
+              fontFamily: homeTeamFontWeight === '800' ? t.font.medium : t.font.regular,
               color: t.color.text,
               fontSize: 14,
               lineHeight: 20,
@@ -55,7 +55,7 @@ function FixtureHeaderMorph({
         <View style={{ minWidth: 118, alignItems: 'center', justifyContent: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
             {homeBadge ? <Image source={homeBadge} style={{ width: 24, height: 24, marginRight: 6 }} /> : null}
-            <TotlText style={{ fontWeight: '800', color: t.color.text, fontSize: 14, lineHeight: 20 }}>{headerPrimary}</TotlText>
+            <TotlText style={{ fontFamily: t.font.medium, color: t.color.text, fontSize: 14, lineHeight: 20 }}>{headerPrimary}</TotlText>
             {awayBadge ? <Image source={awayBadge} style={{ width: 24, height: 24, marginLeft: 6 }} /> : null}
           </View>
         </View>
@@ -63,7 +63,7 @@ function FixtureHeaderMorph({
           <TotlText
             numberOfLines={1}
             style={{
-              fontWeight: awayTeamFontWeight,
+              fontFamily: awayTeamFontWeight === '800' ? t.font.medium : t.font.regular,
               color: t.color.text,
               fontSize: 14,
               lineHeight: 20,
@@ -278,7 +278,7 @@ export default function ExpandedFixtureCard({
                           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             {sideBadge ? <Image source={sideBadge} style={{ width: 16, height: 16, marginRight: 4 }} /> : null}
                             {label ? (
-                              <TotlText style={{ fontSize: 13, fontWeight: '500', color: showWinnerTabShiny || showSolidPickedTab ? '#FFFFFF' : t.color.text }}>
+                              <TotlText style={{ fontSize: 13, fontFamily: t.font.medium, color: showWinnerTabShiny || showSolidPickedTab ? '#FFFFFF' : t.color.text }}>
                                 {label}{' '}
                               </TotlText>
                             ) : null}
@@ -286,7 +286,7 @@ export default function ExpandedFixtureCard({
                               <TotlText
                                 style={{
                                   fontSize: 15,
-                                  fontWeight: active ? '700' : '500',
+                                  fontFamily: t.font.medium,
                                   color: showWinnerTabShiny
                                     ? '#FFFFFF'
                                     : showSolidPickedTab
@@ -304,7 +304,7 @@ export default function ExpandedFixtureCard({
                               <TotlText
                                 style={{
                                   fontSize: 14,
-                                  fontWeight: active ? '800' : '600',
+                                  fontFamily: t.font.medium,
                                   color: showWinnerTabShiny ? '#FFFFFF' : showSolidPickedTab ? '#FFFFFF' : active ? '#047857' : t.color.muted,
                                 }}
                               >

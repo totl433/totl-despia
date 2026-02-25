@@ -35,7 +35,7 @@ export default function LeagueWinnerBanner({ winnerName, isDraw }: LeagueWinnerB
       <WinnerShimmer durationMs={1800} delayMs={380} opacity={0.55} tint="gold" />
 
       <View style={{ alignItems: 'center' }}>
-        <TotlText style={{ color: '#FFFFFF', fontWeight: '900', textAlign: 'center' }}>
+        <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, textAlign: 'center' }}>
           {isDraw ? "It's a Draw!" : `${winnerName} Wins!`}
         </TotlText>
       </View>

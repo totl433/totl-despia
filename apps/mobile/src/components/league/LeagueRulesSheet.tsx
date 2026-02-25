@@ -56,14 +56,14 @@ export default function LeagueRulesSheet({
                 color: '#0F766E',
                 fontSize: 14,
                 lineHeight: 18,
-                fontWeight: '900',
+                fontFamily: t.font.medium,
                 letterSpacing: 0.8,
                 textTransform: 'uppercase',
               }}
             >
               How to Win the Week
             </TotlText>
-            <TotlText style={{ marginTop: 8, color: bodyColor, fontSize: 16, lineHeight: 24, fontWeight: '500' }}>
+            <TotlText style={{ marginTop: 8, color: bodyColor, fontSize: 16, lineHeight: 24, fontFamily: t.font.medium }}>
               The player with the most correct predictions wins.
             </TotlText>
           </View>
@@ -74,14 +74,14 @@ export default function LeagueRulesSheet({
                 color: '#0F766E',
                 fontSize: 14,
                 lineHeight: 18,
-                fontWeight: '900',
+                fontFamily: t.font.medium,
                 letterSpacing: 0.8,
                 textTransform: 'uppercase',
               }}
             >
               Unicorns
             </TotlText>
-            <TotlText style={{ marginTop: 8, color: bodyColor, fontSize: 16, lineHeight: 24, fontWeight: '500' }}>
+            <TotlText style={{ marginTop: 8, color: bodyColor, fontSize: 16, lineHeight: 24, fontFamily: t.font.medium }}>
               In Mini-Leagues with 3 or more players, if you're the only person to correctly predict a fixture, that's a
               Unicorn. In ties, the player with most Unicorns wins!
             </TotlText>

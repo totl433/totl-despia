@@ -414,7 +414,7 @@ export default function AdminHomeSimulatorScreen() {
                   >
                     <TotlText style={{ color: '#FFFFFF', fontSize: 10, lineHeight: 10 }}>!</TotlText>
                   </View>
-                  <TotlText style={{ fontFamily: 'Gramatika-Bold', fontWeight: '700', fontSize: 16, lineHeight: 18 }}>
+                  <TotlText style={{ fontWeight: '700', fontSize: 16, lineHeight: 18 }}>
                     Gameweek Predictions
                   </TotlText>
                 </View>
@@ -437,7 +437,7 @@ export default function AdminHomeSimulatorScreen() {
                     alignItems: 'center',
                   }}
                 >
-                  <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Medium', fontWeight: '500' }}>Go</TotlText>
+                  <TotlText style={{ color: '#FFFFFF', fontWeight: '500' }}>Go</TotlText>
                   <View style={{ width: 6 }} />
                   <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
                 </View>
@@ -477,7 +477,7 @@ export default function AdminHomeSimulatorScreen() {
 
         <View style={{ position: 'relative' }}>
           <View style={{ marginBottom: 10, zIndex: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 22, lineHeight: 22, color: t.color.text }}>
+            <TotlText style={{ fontSize: 22, lineHeight: 22, color: t.color.text }}>
               Gameweek 39
             </TotlText>
             {supportsMiniCompactLayout || !isDetailsOnlyState ? (

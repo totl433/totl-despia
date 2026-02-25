@@ -55,13 +55,13 @@ export default function CreateJoinLeagueSheet({
       )}
     >
       <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 6, paddingBottom: 30 }}>
-        <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 22, lineHeight: 22, color: '#000000' }}>
+        <TotlText style={{ fontSize: 22, lineHeight: 22, color: '#000000' }}>
           Create or join
         </TotlText>
 
         <View style={{ height: 18 }} />
 
-        <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 14, lineHeight: 14, color: '#ADADB1' }}>
+        <TotlText style={{ fontSize: 14, lineHeight: 14, color: '#ADADB1' }}>
           Create a league
         </TotlText>
         <View style={{ height: 10 }} />
@@ -69,7 +69,7 @@ export default function CreateJoinLeagueSheet({
 
         <View style={{ height: 22 }} />
 
-        <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 14, lineHeight: 14, color: '#ADADB1' }}>
+        <TotlText style={{ fontSize: 14, lineHeight: 14, color: '#ADADB1' }}>
           join with code
         </TotlText>
         <View style={{ height: 10 }} />
@@ -88,7 +88,6 @@ export default function CreateJoinLeagueSheet({
             borderColor: t.color.border,
             backgroundColor: t.color.surface2,
             paddingHorizontal: 16,
-            fontFamily: 'Gramatika-Medium',
             fontSize: 14,
             lineHeight: 14,
             letterSpacing: 4,
@@ -120,7 +119,7 @@ export default function CreateJoinLeagueSheet({
                 paddingVertical: 10,
               }}
             >
-              <TotlText style={{ fontFamily: 'System', fontSize: 13, lineHeight: 16, fontWeight: '700', color: '#DC2626' }}>
+              <TotlText style={{ fontFamily: t.font.regular, fontSize: 13, lineHeight: 16, fontWeight: '700', color: '#DC2626' }}>
                 {joinError}
               </TotlText>
             </View>

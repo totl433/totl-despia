@@ -37,7 +37,7 @@ export default function PredictionsHowToSheet({
       )}
     >
       <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 30 }}>
-        <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 22, lineHeight: 24, color: t.color.text }}>
+        <TotlText style={{ fontSize: 22, lineHeight: 24, color: t.color.text }}>
           Quick tip
         </TotlText>
 
@@ -62,7 +62,7 @@ export default function PredictionsHowToSheet({
             opacity: pressed ? 0.92 : 1,
           })}
         >
-          <TotlText style={{ color: '#FFFFFF', fontWeight: '900' }}>Got it</TotlText>
+          <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium }}>Got it</TotlText>
         </Pressable>
 
         <View style={{ height: 10 }} />

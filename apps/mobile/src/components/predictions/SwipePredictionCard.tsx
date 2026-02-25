@@ -112,7 +112,7 @@ function SwipePredictionCard({
     >
       <View style={{ paddingTop: 14, paddingHorizontal: 18, paddingBottom: 18, backgroundColor: t.color.surface }}>
         <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-          <TotlText variant="muted" style={{ fontWeight: '700', color: '#64748B', textAlign: 'center' }}>
+          <TotlText variant="muted" style={{ fontFamily: t.font.medium, color: '#64748B', textAlign: 'center' }}>
             {kickoffLabel ?? 'TBD'}
           </TotlText>
         </View>
@@ -120,7 +120,7 @@ function SwipePredictionCard({
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20 }}>
           <View style={{ flex: 1, alignItems: 'center' }}>
             {homeBadge ? <Image source={homeBadge} style={{ width: 104, height: 104 }} /> : null}
-            <TotlText style={{ marginTop: 8, fontWeight: '900', color: t.color.text }} numberOfLines={2}>
+            <TotlText style={{ marginTop: 8, fontFamily: t.font.medium, color: t.color.text }} numberOfLines={2}>
               {homeName}
             </TotlText>
             <FormDots form={homeForm} />
@@ -130,7 +130,7 @@ function SwipePredictionCard({
 
           <View style={{ flex: 1, alignItems: 'center' }}>
             {awayBadge ? <Image source={awayBadge} style={{ width: 104, height: 104 }} /> : null}
-            <TotlText style={{ marginTop: 8, fontWeight: '900', color: t.color.text }} numberOfLines={2}>
+            <TotlText style={{ marginTop: 8, fontFamily: t.font.medium, color: t.color.text }} numberOfLines={2}>
               {awayName}
             </TotlText>
             <FormDots form={awayForm} />

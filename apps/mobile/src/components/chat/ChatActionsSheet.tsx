@@ -55,7 +55,7 @@ export default function ChatActionsSheet({
       )}
     >
       <BottomSheetView style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 + insets.bottom }}>
-        <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '900', marginBottom: 10 }}>
+        <TotlText variant="caption" style={{ color: t.color.muted, fontFamily: t.font.medium, marginBottom: 10 }}>
           React
         </TotlText>
         <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
@@ -102,7 +102,7 @@ export default function ChatActionsSheet({
             alignItems: 'center',
           })}
         >
-          <TotlText style={{ color: '#FFFFFF', fontWeight: '900' }}>Reply</TotlText>
+          <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium }}>Reply</TotlText>
         </Pressable>
       </BottomSheetView>
     </BottomSheetModal>

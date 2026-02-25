@@ -41,7 +41,7 @@ function MenuRow({
       })}
     >
       <View style={{ width: 22, alignItems: 'center', marginRight: 12 }}>{icon}</View>
-      <TotlText style={{ flex: 1, fontFamily: 'System', fontSize: 16, lineHeight: 20, color: textColor }}>
+      <TotlText style={{ flex: 1, fontFamily: t.font.regular, fontSize: 16, lineHeight: 20, color: textColor }}>
         {label}
       </TotlText>
     </Pressable>

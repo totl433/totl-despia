@@ -31,10 +31,10 @@ function MemberRow({
         {avatarUrl ? (
           <Image source={{ uri: avatarUrl }} style={{ width: 28, height: 28 }} />
         ) : (
-          <TotlText style={{ fontSize: 11, fontWeight: '800' }}>{String(name || '?').slice(0, 1).toUpperCase()}</TotlText>
+          <TotlText style={{ fontSize: 11, fontFamily: t.font.medium }}>{String(name || '?').slice(0, 1).toUpperCase()}</TotlText>
         )}
       </View>
-      <TotlText numberOfLines={1} style={{ flex: 1, fontWeight: '700', color: '#334155' }}>
+      <TotlText numberOfLines={1} style={{ flex: 1, fontFamily: t.font.medium, color: '#334155' }}>
         {name}
       </TotlText>
     </View>
@@ -119,7 +119,7 @@ export default function ChatLeagueInfoSheet({
             )}
           </View>
           <View style={{ flex: 1 }}>
-            <TotlText numberOfLines={1} style={{ fontSize: 19, lineHeight: 24, fontWeight: '800', color: '#0F172A' }}>
+            <TotlText numberOfLines={1} style={{ fontSize: 19, lineHeight: 24, fontFamily: t.font.medium, color: '#0F172A' }}>
               {leagueName}
             </TotlText>
             <TotlText style={{ marginTop: 2, color: '#475569' }}>{members.length} members</TotlText>
@@ -129,7 +129,7 @@ export default function ChatLeagueInfoSheet({
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Ionicons name="notifications-off-outline" size={18} color={t.color.muted} style={{ marginRight: 8 }} />
-            <TotlText style={{ fontWeight: '700', color: '#334155' }}>Mute chat</TotlText>
+            <TotlText style={{ fontFamily: t.font.medium, color: '#334155' }}>Mute chat</TotlText>
           </View>
           <Switch value={muted} onValueChange={onToggleMuted} />
         </View>
@@ -150,7 +150,7 @@ export default function ChatLeagueInfoSheet({
                   opacity: pressed ? 0.9 : 1,
                 })}
               >
-                <TotlText style={{ fontWeight: '700', color: '#334155' }}>Open Mini League</TotlText>
+                <TotlText style={{ fontFamily: t.font.medium, color: '#334155' }}>Open Mini League</TotlText>
               </Pressable>
               <Pressable
                 onPress={() => setMode('iconOptions')}
@@ -165,7 +165,7 @@ export default function ChatLeagueInfoSheet({
                   opacity: pressed ? 0.9 : 1,
                 })}
               >
-                <TotlText style={{ fontWeight: '700', color: '#334155' }}>Change Group Icon</TotlText>
+                <TotlText style={{ fontFamily: t.font.medium, color: '#334155' }}>Change Group Icon</TotlText>
               </Pressable>
             </View>
 
@@ -174,7 +174,7 @@ export default function ChatLeagueInfoSheet({
                 color: '#0F766E',
                 fontSize: 13,
                 lineHeight: 17,
-                fontWeight: '800',
+                fontFamily: t.font.medium,
                 letterSpacing: 0.5,
                 textTransform: 'uppercase',
               }}
@@ -202,7 +202,7 @@ export default function ChatLeagueInfoSheet({
                   color: '#0F766E',
                   fontSize: 13,
                   lineHeight: 17,
-                  fontWeight: '800',
+                  fontFamily: t.font.medium,
                   letterSpacing: 0.5,
                   textTransform: 'uppercase',
                 }}
@@ -224,7 +224,7 @@ export default function ChatLeagueInfoSheet({
                 marginBottom: 10,
               })}
             >
-              <TotlText style={{ fontWeight: '700', color: '#334155' }}>Choose from Photos</TotlText>
+              <TotlText style={{ fontFamily: t.font.medium, color: '#334155' }}>Choose from Photos</TotlText>
             </Pressable>
 
             <Pressable
@@ -239,7 +239,7 @@ export default function ChatLeagueInfoSheet({
                 opacity: pressed ? 0.9 : 1,
               })}
             >
-              <TotlText style={{ fontWeight: '700', color: '#DC2626' }}>Reset to Default</TotlText>
+              <TotlText style={{ fontFamily: t.font.medium, color: '#DC2626' }}>Reset to Default</TotlText>
             </Pressable>
           </>
         )}

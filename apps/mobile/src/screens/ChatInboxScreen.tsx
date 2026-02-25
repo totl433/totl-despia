@@ -337,7 +337,7 @@ export default function ChatInboxScreen({
                   {avatarUri ? (
                     <Image source={{ uri: avatarUri }} style={{ width: 44, height: 44 }} />
                   ) : (
-                    <TotlText style={{ fontFamily: 'Gramatika-Bold', fontWeight: '900' }}>{initials || 'ML'}</TotlText>
+                    <TotlText style={{ fontFamily: t.font.medium }}>{initials || 'ML'}</TotlText>
                   )}
                 </View>
 
@@ -346,8 +346,7 @@ export default function ChatInboxScreen({
                     <TotlText
                       style={{
                         flex: 1,
-                        fontFamily: 'Gramatika-Bold',
-                        fontWeight: '900',
+                        fontFamily: t.font.medium,
                         fontSize: 16,
                         color: t.color.text,
                       }}
@@ -389,7 +388,7 @@ export default function ChatInboxScreen({
                       justifyContent: 'center',
                     }}
                   >
-                    <TotlText style={{ color: '#FFFFFF', fontFamily: 'System', fontWeight: '800', fontSize: 12 }}>
+                    <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, fontSize: 12 }}>
                       {unread > 99 ? '99+' : String(unread)}
                     </TotlText>
                   </View>

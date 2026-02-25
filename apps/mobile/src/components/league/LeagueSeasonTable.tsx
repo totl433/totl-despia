@@ -55,31 +55,31 @@ export default function LeagueSeasonTable({
           }}
         >
           <View style={{ width: 24 }} />
-          <TotlText variant="caption" style={{ flex: 1, color: t.color.muted, fontWeight: '700' }}>
+          <TotlText variant="caption" style={{ flex: 1, color: t.color.muted, fontFamily: t.font.medium }}>
             Player
           </TotlText>
 
           {showForm ? (
-            <TotlText variant="caption" style={{ width: 150, color: t.color.muted, fontWeight: '700' }}>
+            <TotlText variant="caption" style={{ width: 150, color: t.color.muted, fontFamily: t.font.medium }}>
               Form
             </TotlText>
           ) : (
             <>
-              <TotlText variant="caption" style={{ width: 28, textAlign: 'center', color: t.color.muted, fontWeight: '700' }}>
+              <TotlText variant="caption" style={{ width: 28, textAlign: 'center', color: t.color.muted, fontFamily: t.font.medium }}>
                 W
               </TotlText>
-              <TotlText variant="caption" style={{ width: 28, textAlign: 'center', color: t.color.muted, fontWeight: '700' }}>
+              <TotlText variant="caption" style={{ width: 28, textAlign: 'center', color: t.color.muted, fontFamily: t.font.medium }}>
                 D
               </TotlText>
-              <TotlText variant="caption" style={{ width: 36, textAlign: 'center', color: t.color.muted, fontWeight: '700' }}>
+              <TotlText variant="caption" style={{ width: 36, textAlign: 'center', color: t.color.muted, fontFamily: t.font.medium }}>
                 {isLateStartingLeague ? 'CP' : 'OCP'}
               </TotlText>
               {showUnicorns ? (
-                <TotlText variant="caption" style={{ width: 32, textAlign: 'center', color: t.color.muted, fontWeight: '700' }}>
+                <TotlText variant="caption" style={{ width: 32, textAlign: 'center', color: t.color.muted, fontFamily: t.font.medium }}>
                   🦄
                 </TotlText>
               ) : null}
-              <TotlText variant="caption" style={{ width: 40, textAlign: 'right', color: t.color.muted, fontWeight: '700' }}>
+              <TotlText variant="caption" style={{ width: 40, textAlign: 'right', color: t.color.muted, fontFamily: t.font.medium }}>
                 PTS
               </TotlText>
             </>
@@ -98,7 +98,7 @@ export default function LeagueSeasonTable({
               borderBottomColor: 'rgba(148,163,184,0.12)',
             }}
           >
-            <TotlText variant="caption" style={{ width: 24, fontWeight: '700', color: t.color.muted }}>
+            <TotlText variant="caption" style={{ width: 24, fontFamily: t.font.medium, color: t.color.muted }}>
               {idx + 1}
             </TotlText>
             <TotlText variant="caption" numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1 }}>
@@ -127,7 +127,7 @@ export default function LeagueSeasonTable({
                 ) : null}
                 <TotlText
                   variant="caption"
-                  style={{ width: 40, textAlign: 'right', color: t.color.brand, fontWeight: '900' }}
+                  style={{ width: 40, textAlign: 'right', color: t.color.brand, fontFamily: t.font.medium }}
                 >
                   {r.mltPts}
                 </TotlText>

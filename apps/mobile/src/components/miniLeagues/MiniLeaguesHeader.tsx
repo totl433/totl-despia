@@ -46,7 +46,7 @@ export default function MiniLeaguesHeader({
           transform: [{ scale: pressed ? 0.98 : 1 }],
         })}
       >
-        <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 22, lineHeight: 22 }}>+</TotlText>
+        <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, fontSize: 22, lineHeight: 22 }}>+</TotlText>
       </Pressable>
     </View>
   );

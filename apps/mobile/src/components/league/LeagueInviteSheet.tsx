@@ -74,8 +74,8 @@ export default function LeagueInviteSheet({
       )}
     >
       <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 24 }}>
-        <TotlText style={{ fontFamily: 'System', fontSize: 16, lineHeight: 20, fontWeight: '700' }}>{title}</TotlText>
-        <TotlText style={{ marginTop: 6, fontFamily: 'System', fontSize: 13, lineHeight: 16, color: t.color.muted }}>
+        <TotlText style={{ fontSize: 16, lineHeight: 20, fontFamily: t.font.medium }}>{title}</TotlText>
+        <TotlText style={{ marginTop: 6, fontFamily: t.font.regular, fontSize: 13, lineHeight: 16, color: t.color.muted }}>
           Share this code with friends:
         </TotlText>
 
@@ -90,13 +90,13 @@ export default function LeagueInviteSheet({
             paddingHorizontal: 14,
           }}
         >
-          <TotlText style={{ fontFamily: 'System', fontSize: 18, lineHeight: 22, fontWeight: '800', letterSpacing: 1.2 }}>
+          <TotlText style={{ fontSize: 18, lineHeight: 22, fontFamily: t.font.medium, letterSpacing: 1.2 }}>
             {leagueCode}
           </TotlText>
         </View>
 
         {toast ? (
-          <TotlText style={{ marginTop: 8, fontFamily: 'System', fontSize: 12, lineHeight: 14, color: t.color.muted }}>
+          <TotlText style={{ marginTop: 8, fontFamily: t.font.regular, fontSize: 12, lineHeight: 14, color: t.color.muted }}>
             {toast}
           </TotlText>
         ) : null}
@@ -120,7 +120,7 @@ export default function LeagueInviteSheet({
             })}
           >
             <Ionicons name="copy-outline" size={18} color={t.color.muted} />
-            <TotlText style={{ fontFamily: 'System', fontSize: 14, lineHeight: 18, fontWeight: '700' }}>Copy code</TotlText>
+            <TotlText style={{ fontSize: 14, lineHeight: 18, fontFamily: t.font.medium }}>Copy code</TotlText>
           </Pressable>
 
           <Pressable
@@ -138,7 +138,7 @@ export default function LeagueInviteSheet({
             })}
           >
             <Ionicons name="share-outline" size={18} color="#FFFFFF" />
-            <TotlText style={{ color: '#FFFFFF', fontFamily: 'System', fontSize: 14, lineHeight: 18, fontWeight: '800' }}>Share</TotlText>
+            <TotlText style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 18, fontFamily: t.font.medium }}>Share</TotlText>
           </Pressable>
         </View>
       </BottomSheetView>

@@ -171,7 +171,7 @@ function FixtureHeaderMorph({
         <View style={{ minWidth: 118, alignItems: 'center', justifyContent: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
             {homeBadge ? <Image source={homeBadge} style={{ width: 24, height: 24, marginRight: 6 }} /> : null}
-            <TotlText style={{ fontWeight: '800', color: t.color.text, fontSize: 14, lineHeight: 20 }}>{headerPrimary}</TotlText>
+            <TotlText style={{ fontFamily: t.font.medium, color: t.color.text, fontSize: 14, lineHeight: 20 }}>{headerPrimary}</TotlText>
             {awayBadge ? <Image source={awayBadge} style={{ width: 24, height: 24, marginLeft: 6 }} /> : null}
           </View>
         </View>
@@ -840,14 +840,14 @@ export default function HomeScreen() {
                   >
                     <TotlText style={{ color: '#FFFFFF', fontSize: 10, lineHeight: 10 }}>!</TotlText>
                   </View>
-                  <TotlText style={{ fontFamily: 'Gramatika-Bold', fontWeight: '700', fontSize: 16, lineHeight: 18 }}>
+                  <TotlText style={{ fontFamily: t.font.medium, fontSize: 16, lineHeight: 18 }}>
                     Gameweek {viewingGw} Predictions
                   </TotlText>
                 </View>
                 <TotlText variant="muted" style={{ marginLeft: 30 }}>
                   Deadline{' '}
                   {deadline?.text ? (
-                    <TotlText style={{ color: deadlineExpired ? '#64748B' : '#1C8376', fontWeight: '700' }}>
+                    <TotlText style={{ color: deadlineExpired ? '#64748B' : '#1C8376', fontFamily: t.font.medium }}>
                       {deadline.text}
                     </TotlText>
                   ) : (
@@ -867,7 +867,7 @@ export default function HomeScreen() {
                     alignItems: 'center',
                   }}
                 >
-                  <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Medium', fontWeight: '500' }}>Go</TotlText>
+                  <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium }}>Go</TotlText>
                   <View style={{ width: 6 }} />
                   <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
                 </View>
@@ -1121,8 +1121,6 @@ export default function HomeScreen() {
                 >
                   <TotlText
                     style={{
-                      fontFamily: 'Gramatika-Regular',
-                      fontWeight: '400',
                       fontSize: 14,
                       lineHeight: 14,
                       color: '#1C8376',
@@ -1350,7 +1348,7 @@ export default function HomeScreen() {
                       style={{ marginBottom: sectionIdx === fixturesByDate.length - 1 ? 0 : 8 }}
                     >
                       <View style={{ marginBottom: 10, zIndex: 1 }}>
-                        <TotlText style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: t.color.text }}>{section.date}</TotlText>
+                        <TotlText style={{ fontSize: 17, lineHeight: 21, fontFamily: t.font.medium, color: t.color.text }}>{section.date}</TotlText>
                       </View>
                       <Reanimated.View layout={miniLayoutTransition} style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6, zIndex: 20 }}>
                         {section.fixtures.map((f: Fixture, idx: number) => {
@@ -1461,20 +1459,20 @@ export default function HomeScreen() {
                                 >
                                   <View style={{ flexDirection: 'row', alignItems: 'stretch' }}>
                                     <View style={{ width: isMiniExpanded ? '37%' : '33.3333%', aspectRatio: isMiniExpanded ? undefined : 1, height: isMiniExpanded ? 70 : undefined, alignItems: 'center', justifyContent: isMiniExpanded ? 'flex-start' : 'center', backgroundColor: t.color.surface, paddingTop: isMiniExpanded ? 15 : 0 }}>
-                                      {homeBadge ? <Image source={homeBadge} style={{ width: isMiniExpanded ? 54 : 37, height: isMiniExpanded ? 54 : 37 }} /> : <TotlText style={{ fontWeight: '800' }}>{homeCode}</TotlText>}
+                                      {homeBadge ? <Image source={homeBadge} style={{ width: isMiniExpanded ? 54 : 37, height: isMiniExpanded ? 54 : 37 }} /> : <TotlText style={{ fontFamily: t.font.medium }}>{homeCode}</TotlText>}
                                     </View>
                                     <View style={{ width: isMiniExpanded ? '26%' : '33.3333%', aspectRatio: isMiniExpanded ? undefined : 1, height: isMiniExpanded ? 70 : undefined, alignItems: 'center', justifyContent: isMiniExpanded ? 'flex-start' : 'center', backgroundColor: t.color.surface, paddingTop: isMiniExpanded ? 27 : 0 }}>
                                       <View style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}>
-                                        <TotlText style={{ color: t.color.text, fontWeight: '900', fontSize: isMiniExpanded ? 30 : 16, lineHeight: isMiniExpanded ? 32 : 18, letterSpacing: isMiniExpanded ? 0.9 : 0, textAlign: 'center' }}>
+                                        <TotlText style={{ color: t.color.text, fontFamily: t.font.medium, fontSize: isMiniExpanded ? 30 : 16, lineHeight: isMiniExpanded ? 32 : 18, letterSpacing: isMiniExpanded ? 0.9 : 0, textAlign: 'center' }}>
                                           {miniPrimaryExpandedLabel}
                                         </TotlText>
                                         {miniSecondaryLabel && !isMiniExpanded ? (
-                                          <TotlText style={{ color: t.color.muted, fontWeight: '700', fontSize: 11, lineHeight: 13, textAlign: 'center', marginTop: 2 }}>{miniSecondaryLabel}</TotlText>
+                                          <TotlText style={{ color: t.color.muted, fontFamily: t.font.medium, fontSize: 11, lineHeight: 13, textAlign: 'center', marginTop: 2 }}>{miniSecondaryLabel}</TotlText>
                                         ) : null}
                                       </View>
                                     </View>
                                     <View style={{ width: isMiniExpanded ? '37%' : '33.3333%', aspectRatio: isMiniExpanded ? undefined : 1, height: isMiniExpanded ? 70 : undefined, alignItems: 'center', justifyContent: isMiniExpanded ? 'flex-start' : 'center', backgroundColor: t.color.surface, paddingTop: isMiniExpanded ? 15 : 0 }}>
-                                      {awayBadge ? <Image source={awayBadge} style={{ width: isMiniExpanded ? 54 : 37, height: isMiniExpanded ? 54 : 37 }} /> : <TotlText style={{ fontWeight: '800' }}>{awayCode}</TotlText>}
+                                      {awayBadge ? <Image source={awayBadge} style={{ width: isMiniExpanded ? 54 : 37, height: isMiniExpanded ? 54 : 37 }} /> : <TotlText style={{ fontFamily: t.font.medium }}>{awayCode}</TotlText>}
                                     </View>
                                   </View>
                                   {gwState !== 'GW_OPEN' &&
@@ -1507,15 +1505,15 @@ export default function HomeScreen() {
                                     <Reanimated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)} style={{ paddingTop: 2, paddingBottom: 15, paddingHorizontal: 0 }}>
                                       {(gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW') ? (
                                         <View style={{ marginTop: 7, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                          <View style={{ width: '37%', alignItems: 'center' }}><TotlText numberOfLines={1} style={{ width: '100%', fontSize: 15, fontWeight: '900', color: t.color.text, textAlign: 'center' }}>{headerHome}</TotlText></View>
-                                          <View style={{ width: '26%', alignItems: 'center' }}><TotlText style={{ fontSize: 12, fontWeight: '700', color: t.color.muted, textAlign: 'center' }}>{miniSecondaryLabel}</TotlText></View>
-                                          <View style={{ width: '37%', alignItems: 'center' }}><TotlText numberOfLines={1} style={{ width: '100%', fontSize: 15, fontWeight: '900', color: t.color.text, textAlign: 'center' }}>{headerAway}</TotlText></View>
+                                          <View style={{ width: '37%', alignItems: 'center' }}><TotlText numberOfLines={1} style={{ width: '100%', fontSize: 15, fontFamily: t.font.medium, color: t.color.text, textAlign: 'center' }}>{headerHome}</TotlText></View>
+                                          <View style={{ width: '26%', alignItems: 'center' }}><TotlText style={{ fontSize: 12, fontFamily: t.font.medium, color: t.color.muted, textAlign: 'center' }}>{miniSecondaryLabel}</TotlText></View>
+                                          <View style={{ width: '37%', alignItems: 'center' }}><TotlText numberOfLines={1} style={{ width: '100%', fontSize: 15, fontFamily: t.font.medium, color: t.color.text, textAlign: 'center' }}>{headerAway}</TotlText></View>
                                         </View>
                                       ) : (
                                         <View style={{ marginTop: 0, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                          <View style={{ width: '37%', alignItems: 'center' }}><TotlText numberOfLines={1} style={{ width: '100%', fontSize: 15, fontWeight: '900', color: t.color.text, textAlign: 'center' }}>{headerHome}</TotlText></View>
+                                          <View style={{ width: '37%', alignItems: 'center' }}><TotlText numberOfLines={1} style={{ width: '100%', fontSize: 15, fontFamily: t.font.medium, color: t.color.text, textAlign: 'center' }}>{headerHome}</TotlText></View>
                                           <View style={{ width: '26%' }} />
-                                          <View style={{ width: '37%', alignItems: 'center' }}><TotlText numberOfLines={1} style={{ width: '100%', fontSize: 15, fontWeight: '900', color: t.color.text, textAlign: 'center' }}>{headerAway}</TotlText></View>
+                                          <View style={{ width: '37%', alignItems: 'center' }}><TotlText numberOfLines={1} style={{ width: '100%', fontSize: 15, fontFamily: t.font.medium, color: t.color.text, textAlign: 'center' }}>{headerAway}</TotlText></View>
                                         </View>
                                       )}
 
@@ -1523,13 +1521,13 @@ export default function HomeScreen() {
                                         <View style={{ marginTop: 8, marginBottom: 16, flexDirection: 'row', alignItems: 'flex-start' }}>
                                           <View style={{ width: '42%', alignItems: 'flex-end', paddingRight: 6 }}>
                                             {homeScorers.map((line) => (
-                                              <TotlText key={`${fixtureId}-eh-${line}`} numberOfLines={1} style={{ fontSize: 12, lineHeight: 16, fontWeight: '900', color: t.color.text, textAlign: 'right' }}>{line}</TotlText>
+                                              <TotlText key={`${fixtureId}-eh-${line}`} numberOfLines={1} style={{ fontSize: 12, lineHeight: 16, fontFamily: t.font.medium, color: t.color.text, textAlign: 'right' }}>{line}</TotlText>
                                             ))}
                                           </View>
                                           <View style={{ width: '16%' }} />
                                           <View style={{ width: '42%', alignItems: 'flex-start', paddingLeft: 6 }}>
                                             {awayScorers.map((line) => (
-                                              <TotlText key={`${fixtureId}-ea-${line}`} numberOfLines={1} style={{ fontSize: 12, lineHeight: 16, fontWeight: '900', color: t.color.text, textAlign: 'left' }}>{line}</TotlText>
+                                              <TotlText key={`${fixtureId}-ea-${line}`} numberOfLines={1} style={{ fontSize: 12, lineHeight: 16, fontFamily: t.font.medium, color: t.color.text, textAlign: 'left' }}>{line}</TotlText>
                                             ))}
                                           </View>
                                         </View>
@@ -1572,7 +1570,7 @@ export default function HomeScreen() {
                                                   </>
                                                 ) : null}
                                                 {sideBadge ? <Image source={sideBadge} style={{ width: 18, height: 18, marginRight: 5 }} /> : null}
-                                                <TotlText style={{ fontSize: 13, fontWeight: '700', color: showExpandedWinnerShiny || active ? '#FFFFFF' : t.color.text }}>
+                                                <TotlText style={{ fontSize: 13, fontFamily: t.font.medium, color: showExpandedWinnerShiny || active ? '#FFFFFF' : t.color.text }}>
                                                   {showExpandedPercentages ? (side === 'D' ? `Draw ${pct}%` : `${pct}%`) : side === 'D' ? 'Draw' : 'Win'}
                                                 </TotlText>
                                               </View>
@@ -1587,7 +1585,7 @@ export default function HomeScreen() {
                                                 <View key={`home-form-${fixtureId}-${i}`} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
                                               ))}
                                             </View>
-                                            <TotlText style={{ marginTop: 8, fontSize: 13, fontWeight: '700', color: t.color.text }}>{homePositionLabel}</TotlText>
+                                            <TotlText style={{ marginTop: 8, fontSize: 13, fontFamily: t.font.medium, color: t.color.text }}>{homePositionLabel}</TotlText>
                                           </View>
                                           <View style={{ width: '26%', alignItems: 'center' }}>
                                             <View style={{ height: 8 }} />
@@ -1599,7 +1597,7 @@ export default function HomeScreen() {
                                                 <View key={`away-form-${fixtureId}-${i}`} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
                                               ))}
                                             </View>
-                                            <TotlText style={{ marginTop: 8, fontSize: 13, fontWeight: '700', color: t.color.text }}>{awayPositionLabel}</TotlText>
+                                            <TotlText style={{ marginTop: 8, fontSize: 13, fontFamily: t.font.medium, color: t.color.text }}>{awayPositionLabel}</TotlText>
                                           </View>
                                         </View>
                                       )}
@@ -1624,8 +1622,7 @@ export default function HomeScreen() {
                     <TotlText
                       style={{
                         color: '#475569',
-                        fontFamily: 'Gramatika-Medium',
-                        fontWeight: '700',
+                        fontFamily: t.font.medium,
                         fontSize: 13,
                         lineHeight: 14,
                         letterSpacing: 0.4,
@@ -1902,7 +1899,7 @@ export default function HomeScreen() {
                                           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                             {sideBadge ? <Image source={sideBadge} style={{ width: 16, height: 16, marginRight: 4 }} /> : null}
                                             {label ? (
-                                              <TotlText style={{ fontSize: 13, fontWeight: '500', color: showWinnerTabShiny || showSolidPickedTab ? '#FFFFFF' : t.color.text }}>
+                                              <TotlText style={{ fontSize: 13, fontFamily: t.font.medium, color: showWinnerTabShiny || showSolidPickedTab ? '#FFFFFF' : t.color.text }}>
                                                 {label}{' '}
                                               </TotlText>
                                             ) : null}

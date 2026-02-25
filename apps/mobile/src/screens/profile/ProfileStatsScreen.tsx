@@ -118,7 +118,7 @@ export default function ProfileStatsScreen() {
     <View style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: t.color.border }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
         <TotlText variant="muted">{label}</TotlText>
-        <TotlText style={{ fontWeight: '900' }}>{value}</TotlText>
+        <TotlText style={{ fontFamily: t.font.medium }}>{value}</TotlText>
       </View>
       {sub ? (
         <TotlText variant="muted" style={{ marginTop: 6 }}>
@@ -184,7 +184,7 @@ export default function ProfileStatsScreen() {
 
           <View style={{ paddingVertical: 12 }}>
             <TotlText variant="muted">Best streak (top 25%)</TotlText>
-            <TotlText style={{ marginTop: 4, fontWeight: '900' }}>
+            <TotlText style={{ marginTop: 4, fontFamily: t.font.medium }}>
               {stats?.bestStreak ? `${stats.bestStreak} weeks` : '—'}
             </TotlText>
             {stats?.bestStreakGwRange ? (
@@ -202,13 +202,13 @@ export default function ProfileStatsScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <TotlText variant="muted">Best gameweek</TotlText>
-              <TotlText style={{ fontWeight: '900' }}>
+              <TotlText style={{ fontFamily: t.font.medium }}>
                 {stats?.bestSingleGw ? `${stats.bestSingleGw.points} (GW${stats.bestSingleGw.gw})` : '—'}
               </TotlText>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <TotlText variant="muted">Lowest gameweek</TotlText>
-              <TotlText style={{ fontWeight: '900' }}>
+              <TotlText style={{ fontFamily: t.font.medium }}>
                 {stats?.lowestSingleGw ? `${stats.lowestSingleGw.points} (GW${stats.lowestSingleGw.gw})` : '—'}
               </TotlText>
             </View>
@@ -240,7 +240,7 @@ export default function ProfileStatsScreen() {
                 }}
               >
                 <TotlText variant="muted">{x.label}</TotlText>
-                <TotlText style={{ marginTop: 6, fontWeight: '900', fontSize: 18 }}>{String(x.v)}</TotlText>
+                <TotlText style={{ marginTop: 6, fontFamily: t.font.medium, fontSize: 18 }}>{String(x.v)}</TotlText>
               </View>
             ))}
           </View>
@@ -250,7 +250,7 @@ export default function ProfileStatsScreen() {
           <TotlText variant="heading" style={{ marginBottom: 10 }}>
             Chaos Index
           </TotlText>
-          <TotlText style={{ fontWeight: '900', fontSize: 20 }}>
+          <TotlText style={{ fontFamily: t.font.medium, fontSize: 20 }}>
             {typeof stats?.chaosIndex === 'number' ? `${stats.chaosIndex.toFixed(0)}%` : '—'}
           </TotlText>
           {typeof stats?.chaosTotalCount === 'number' && typeof stats?.chaosCorrectCount === 'number' ? (
@@ -275,7 +275,7 @@ export default function ProfileStatsScreen() {
               }}
             >
               <TotlText variant="muted">Most correct</TotlText>
-              <TotlText style={{ marginTop: 6, fontWeight: '900' }}>{stats?.mostCorrectTeam?.name ?? '—'}</TotlText>
+              <TotlText style={{ marginTop: 6, fontFamily: t.font.medium }}>{stats?.mostCorrectTeam?.name ?? '—'}</TotlText>
               {typeof stats?.mostCorrectTeam?.percentage === 'number' ? (
                 <TotlText variant="muted" style={{ marginTop: 4 }}>
                   {stats.mostCorrectTeam.percentage.toFixed(0)}% correct
@@ -293,7 +293,7 @@ export default function ProfileStatsScreen() {
               }}
             >
               <TotlText variant="muted">Most incorrect</TotlText>
-              <TotlText style={{ marginTop: 6, fontWeight: '900' }}>{stats?.mostIncorrectTeam?.name ?? '—'}</TotlText>
+              <TotlText style={{ marginTop: 6, fontFamily: t.font.medium }}>{stats?.mostIncorrectTeam?.name ?? '—'}</TotlText>
               {typeof stats?.mostIncorrectTeam?.percentage === 'number' ? (
                 <TotlText variant="muted" style={{ marginTop: 4 }}>
                   {stats.mostIncorrectTeam.percentage.toFixed(0)}% incorrect
@@ -328,15 +328,15 @@ export default function ProfileStatsScreen() {
                     }}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <TotlText style={{ fontWeight: '900' }}>{`GW${u.gw}`}</TotlText>
+                      <TotlText style={{ fontFamily: t.font.medium }}>{`GW${u.gw}`}</TotlText>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <TotlText variant="muted" style={{ fontWeight: '900' }}>
+                        <TotlText variant="muted" style={{ fontFamily: t.font.medium }}>
                           {u.pick}
                         </TotlText>
                         <Ionicons name="sparkles" size={16} color={t.color.brand} />
                       </View>
                     </View>
-                    <TotlText style={{ marginTop: 8, fontWeight: '900' }} numberOfLines={1}>
+                    <TotlText style={{ marginTop: 8, fontFamily: t.font.medium }} numberOfLines={1}>
                       {u.home_name ?? u.home_team} v {u.away_name ?? u.away_team}
                     </TotlText>
                     <TotlText variant="muted" style={{ marginTop: 6 }} numberOfLines={2}>
@@ -374,11 +374,11 @@ export default function ProfileStatsScreen() {
                     }}
                   >
                     <TotlText variant="muted">{`GW${w.gw}`}</TotlText>
-                    <TotlText style={{ marginTop: 6, fontWeight: '900' }}>{String(w.userPoints)}</TotlText>
+                    <TotlText style={{ marginTop: 6, fontFamily: t.font.medium }}>{String(w.userPoints)}</TotlText>
                     <TotlText variant="muted" style={{ marginTop: 4 }}>
                       av. {w.averagePoints.toFixed(1)}
                     </TotlText>
-                    <TotlText style={{ marginTop: 6, fontWeight: '900', color: above ? '#059669' : diff < 0 ? t.color.danger : t.color.text }}>
+                    <TotlText style={{ marginTop: 6, fontFamily: t.font.medium, color: above ? '#059669' : diff < 0 ? t.color.danger : t.color.text }}>
                       {diff === 0 ? 'Par' : `${diff > 0 ? '+' : ''}${diff.toFixed(1)}`}
                     </TotlText>
                   </View>

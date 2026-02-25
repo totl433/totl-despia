@@ -32,6 +32,7 @@ function SegmentButton<K extends string>({
   onPress: () => void;
   onLayout: (e: LayoutChangeEvent) => void;
 }) {
+  const t = useTokens();
   return (
     <Pressable
       onPress={onPress}
@@ -48,7 +49,7 @@ function SegmentButton<K extends string>({
       <TotlText
         variant="body"
         style={{
-          fontWeight: '900',
+          fontFamily: t.font.medium,
           color: active ? '#FFFFFF' : inactiveColor,
         }}
       >

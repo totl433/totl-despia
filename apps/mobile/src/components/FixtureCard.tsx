@@ -341,9 +341,8 @@ export default function FixtureCard({
               variant="body"
               style={{
                 color: s.text,
-                fontFamily: 'Gramatika-Medium',
                 fontStyle: 'normal',
-                fontWeight: '500',
+                fontFamily: t.font.medium,
                 fontSize: 14,
                 lineHeight: 17,
                 letterSpacing: -0.004,
@@ -356,9 +355,8 @@ export default function FixtureCard({
                     style={{
                       color: s.text,
                       opacity: 0.82,
-                      fontFamily: 'Gramatika-Medium',
                       fontStyle: 'normal',
-                      fontWeight: '500',
+                      fontFamily: t.font.medium,
                       fontSize: 12,
                       lineHeight: 15,
                       letterSpacing: -0.003,
@@ -370,9 +368,8 @@ export default function FixtureCard({
                     variant="body"
                     style={{
                       color: s.text,
-                      fontFamily: 'Gramatika-Medium',
                       fontStyle: 'normal',
-                      fontWeight: '500',
+                      fontFamily: t.font.medium,
                       fontSize: 14,
                       lineHeight: 17,
                       letterSpacing: -0.004,
@@ -395,9 +392,8 @@ export default function FixtureCard({
                 variant="body"
                 style={{
                   color: s.text,
-                  fontFamily: 'Gramatika-Medium',
                   fontStyle: 'normal',
-                  fontWeight: '500',
+                  fontFamily: t.font.medium,
                   fontSize: 14,
                   lineHeight: 17,
                   letterSpacing: -0.004,
@@ -411,9 +407,8 @@ export default function FixtureCard({
               variant="body"
               style={{
                 color: s.text,
-                fontFamily: 'Gramatika-Medium',
                 fontStyle: 'normal',
-                fontWeight: '500',
+                fontFamily: t.font.medium,
                 fontSize: 14,
                 lineHeight: 17,
                 letterSpacing: -0.004,
@@ -505,7 +500,7 @@ export default function FixtureCard({
               {isOngoing ? (
                 <View style={{ position: 'absolute', left: 16, top: 10, flexDirection: 'row', alignItems: 'center' }}>
                   <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: '#EF4444', marginRight: 8 }} />
-                  <TotlText variant="caption" style={{ color: '#EF4444', fontWeight: '900', letterSpacing: 0.6 }}>
+                  <TotlText variant="caption" style={{ color: '#EF4444', fontFamily: t.font.medium, letterSpacing: 0.6 }}>
                     LIVE
                   </TotlText>
                 </View>
@@ -545,7 +540,7 @@ export default function FixtureCard({
                     <>
                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
                         {homeBadge ? <Image source={homeBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginRight: 8 }} /> : null}
-                        <TotlText style={{ fontWeight: '900', fontSize: 16 }}>
+                        <TotlText style={{ fontFamily: t.font.medium, fontSize: 16 }}>
                           {hs} - {as}
                         </TotlText>
                         {awayBadge ? <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginLeft: 8 }} /> : null}
@@ -553,13 +548,13 @@ export default function FixtureCard({
                       {isFinished ? (
                         <TotlText variant="microMuted">{formatMinute(st, effectiveMinute)}</TotlText>
                       ) : (
-                        <TotlText variant="caption" style={{ color: isOngoing ? '#DC2626' : t.color.muted, fontWeight: '800' }}>
+                        <TotlText variant="caption" style={{ color: isOngoing ? '#DC2626' : t.color.muted, fontFamily: t.font.medium }}>
                           {formatMinute(st, effectiveMinute)}
                         </TotlText>
                       )}
                     </>
                   ) : (
-                    <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '700' }}>
+                    <TotlText variant="caption" style={{ color: t.color.muted, fontFamily: t.font.medium }}>
                       {formatKickoffLocal(fixture.kickoff_time ?? null)}
                     </TotlText>
                   )}
@@ -623,7 +618,7 @@ export default function FixtureCard({
           {isOngoing ? (
             <View style={{ position: 'absolute', left: 16, top: 10, flexDirection: 'row', alignItems: 'center' }}>
               <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: '#EF4444', marginRight: 8 }} />
-              <TotlText variant="caption" style={{ color: '#EF4444', fontWeight: '900', letterSpacing: 0.6 }}>
+              <TotlText variant="caption" style={{ color: '#EF4444', fontFamily: t.font.medium, letterSpacing: 0.6 }}>
                 LIVE
               </TotlText>
             </View>
@@ -660,7 +655,7 @@ export default function FixtureCard({
                 <>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
                     {homeBadge ? <Image source={homeBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginRight: 8 }} /> : null}
-                    <TotlText style={{ fontWeight: '900', fontSize: 16 }}>
+                    <TotlText style={{ fontFamily: t.font.medium, fontSize: 16 }}>
                       {hs} - {as}
                     </TotlText>
                     {awayBadge ? <Image source={awayBadge} style={{ width: BADGE_SIZE, height: BADGE_SIZE, marginLeft: 8 }} /> : null}
@@ -668,13 +663,13 @@ export default function FixtureCard({
                   {isFinished ? (
                     <TotlText variant="microMuted">{formatMinute(st, effectiveMinute)}</TotlText>
                   ) : (
-                    <TotlText variant="caption" style={{ color: isOngoing ? '#DC2626' : t.color.muted, fontWeight: '800' }}>
+                    <TotlText variant="caption" style={{ color: isOngoing ? '#DC2626' : t.color.muted, fontFamily: t.font.medium }}>
                       {formatMinute(st, effectiveMinute)}
                     </TotlText>
                   )}
                 </>
               ) : (
-                <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '700' }}>
+                <TotlText variant="caption" style={{ color: t.color.muted, fontFamily: t.font.medium }}>
                   {formatKickoffLocal(fixture.kickoff_time ?? null)}
                 </TotlText>
               )}

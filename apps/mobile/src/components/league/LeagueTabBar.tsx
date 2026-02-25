@@ -45,7 +45,6 @@ function TabButton({
       <AnimatedText
         style={[
           {
-            fontFamily: 'Gramatika-Regular',
             fontSize: 14,
             lineHeight: 20,
             fontWeight: '900',

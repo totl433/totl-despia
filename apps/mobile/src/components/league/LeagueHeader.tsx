@@ -59,7 +59,7 @@ export default function LeagueHeader({
             marginRight: 10,
           })}
         >
-          <TotlText style={{ color: t.color.muted, fontWeight: '900', fontSize: 22, lineHeight: 22 }}>‹</TotlText>
+          <TotlText style={{ color: t.color.muted, fontFamily: t.font.medium, fontSize: 22, lineHeight: 22 }}>‹</TotlText>
         </Pressable>
 
         {onPressHeaderInfo ? (
@@ -99,7 +99,7 @@ export default function LeagueHeader({
             </View>
 
             <View style={{ flex: 1, minWidth: 0 }}>
-              <TotlText variant="body" numberOfLines={1} style={{ fontWeight: '900' }}>
+              <TotlText variant="body" numberOfLines={1} style={{ fontFamily: t.font.medium }}>
                 {title}
               </TotlText>
               <TotlText
@@ -143,7 +143,7 @@ export default function LeagueHeader({
             </View>
 
             <View style={{ flex: 1, minWidth: 0 }}>
-              <TotlText variant="body" numberOfLines={1} style={{ fontWeight: '900' }}>
+              <TotlText variant="body" numberOfLines={1} style={{ fontFamily: t.font.medium }}>
                 {title}
               </TotlText>
               {onPressSubtitle ? (
@@ -238,7 +238,7 @@ export default function LeagueHeader({
                 opacity: pressed ? 0.85 : 1,
               })}
             >
-              <TotlText style={{ color: t.color.muted, fontWeight: '900', fontSize: 22, lineHeight: 22 }}>⋯</TotlText>
+              <TotlText style={{ color: t.color.muted, fontFamily: t.font.medium, fontSize: 22, lineHeight: 22 }}>⋯</TotlText>
             </Pressable>
           ) : null}
         </View>

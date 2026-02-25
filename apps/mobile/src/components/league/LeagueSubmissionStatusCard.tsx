@@ -59,7 +59,7 @@ export default function LeagueSubmissionStatusCard({
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <TotlText variant="body" style={{ fontWeight: '900' }}>
+        <TotlText variant="body" style={{ fontFamily: t.font.medium }}>
           {allSubmitted
             ? `All ${members.length} members have submitted.`
             : `Waiting for ${remaining} of ${members.length} to submit.`}
@@ -76,7 +76,7 @@ export default function LeagueSubmissionStatusCard({
               opacity: pressed ? 0.92 : 1,
             })}
           >
-            <TotlText variant="caption" style={{ color: '#FFFFFF', fontWeight: '900' }}>
+            <TotlText variant="caption" style={{ color: '#FFFFFF', fontFamily: t.font.medium }}>
               Share reminder
             </TotlText>
           </Pressable>
@@ -100,7 +100,7 @@ export default function LeagueSubmissionStatusCard({
             const submitted = submittedSet.has(m.id);
             return (
               <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <TotlText variant="caption" numberOfLines={1} style={{ flex: 1, fontWeight: '800' }}>
+                <TotlText variant="caption" numberOfLines={1} style={{ flex: 1, fontFamily: t.font.medium }}>
                   {m.name}
                 </TotlText>
                 <View
@@ -115,7 +115,7 @@ export default function LeagueSubmissionStatusCard({
                     alignItems: 'center',
                   }}
                 >
-                  <TotlText variant="caption" style={{ fontWeight: '900', color: submitted ? '#22C55E' : '#F59E0B' }}>
+                  <TotlText variant="caption" style={{ fontFamily: t.font.medium, color: submitted ? '#22C55E' : '#F59E0B' }}>
                     {submitted ? 'Submitted' : 'Not yet'}
                   </TotlText>
                 </View>
