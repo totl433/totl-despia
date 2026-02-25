@@ -115,7 +115,7 @@ export default function ProfileStatsScreen() {
   };
 
   const StatRow = ({ label, value, sub }: { label: string; value: string; sub?: string }) => (
-    <View style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(148,163,184,0.18)' }}>
+    <View style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: t.color.border }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
         <TotlText variant="muted">{label}</TotlText>
         <TotlText style={{ fontWeight: '900' }}>{value}</TotlText>
@@ -234,9 +234,9 @@ export default function ProfileStatsScreen() {
                   paddingVertical: 14,
                   paddingHorizontal: 14,
                   borderRadius: 16,
-                  backgroundColor: 'rgba(148,163,184,0.10)',
+                  backgroundColor: t.color.border,
                   borderWidth: 1,
-                  borderColor: 'rgba(148,163,184,0.22)',
+                  borderColor: t.color.border,
                 }}
               >
                 <TotlText variant="muted">{x.label}</TotlText>
@@ -369,8 +369,8 @@ export default function ProfileStatsScreen() {
                       padding: 12,
                       borderRadius: 16,
                       borderWidth: 1,
-                      borderColor: 'rgba(148,163,184,0.18)',
-                      backgroundColor: '#FFFFFF',
+                      borderColor: t.color.border,
+                      backgroundColor: t.color.surface,
                     }}
                   >
                     <TotlText variant="muted">{`GW${w.gw}`}</TotlText>
@@ -378,7 +378,7 @@ export default function ProfileStatsScreen() {
                     <TotlText variant="muted" style={{ marginTop: 4 }}>
                       av. {w.averagePoints.toFixed(1)}
                     </TotlText>
-                    <TotlText style={{ marginTop: 6, fontWeight: '900', color: above ? '#059669' : diff < 0 ? '#DC2626' : t.color.text }}>
+                    <TotlText style={{ marginTop: 6, fontWeight: '900', color: above ? '#059669' : diff < 0 ? t.color.danger : t.color.text }}>
                       {diff === 0 ? 'Par' : `${diff > 0 ? '+' : ''}${diff.toFixed(1)}`}
                     </TotlText>
                   </View>

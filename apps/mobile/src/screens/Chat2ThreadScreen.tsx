@@ -298,7 +298,7 @@ export default function Chat2ThreadScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+    <View style={{ flex: 1, backgroundColor: t.color.surface }}>
       <View style={{ flex: 1 }}>
         <View style={{ flex: 1 }}>
           <LeagueChatTabV2 leagueId={leagueId} members={membersForChat} />

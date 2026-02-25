@@ -1038,8 +1038,8 @@ export default function LeagueDetailScreen() {
                                   borderRadius: 14,
                                   overflow: 'hidden',
                                   borderWidth: 1,
-                                  borderColor: 'rgba(148,163,184,0.16)',
-                                  backgroundColor: '#FFFFFF',
+                                  borderColor: t.color.border,
+                                  backgroundColor: t.color.surface,
                                   shadowColor: '#0F172A',
                                   shadowOpacity: 0.05,
                                   shadowRadius: 7,
@@ -1081,7 +1081,7 @@ export default function LeagueDetailScreen() {
           {
             key: 'go-to-chat',
             label: 'Go to chat',
-            icon: <Ionicons name="chatbubble-ellipses-outline" size={18} color="#000000" />,
+            icon: <Ionicons name="chatbubble-ellipses-outline" size={18} color={t.color.text} />,
             onPress: () => {
               setMenuOpen(false);
               navigation.navigate('ChatThread' as any, {

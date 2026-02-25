@@ -310,7 +310,7 @@ export default function AdminHomeSimulatorScreen() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: t.space[4], paddingTop: t.space[4], paddingBottom: 24 }}>
         <View style={{ marginBottom: 10, zIndex: 40 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <TotlText style={{ fontSize: 13, fontWeight: '700', color: '#475569' }}>Game State</TotlText>
+            <TotlText style={{ fontSize: 13, fontWeight: '700', color: t.color.muted }}>Game State</TotlText>
 
             <Pressable
               accessibilityRole="button"
@@ -328,9 +328,9 @@ export default function AdminHomeSimulatorScreen() {
                 opacity: pressed ? 0.85 : 1,
               })}
             >
-              <TotlText style={{ fontSize: 12, fontWeight: '800', color: '#1C8376' }}>{state}</TotlText>
+              <TotlText style={{ fontSize: 12, fontWeight: '800', color: t.color.brand }}>{state}</TotlText>
               <View style={{ width: 6 }} />
-              <Ionicons name={stateMenuOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#1C8376" />
+              <Ionicons name={stateMenuOpen ? 'chevron-up' : 'chevron-down'} size={14} color={t.color.brand} />
             </Pressable>
           </View>
 
@@ -343,8 +343,8 @@ export default function AdminHomeSimulatorScreen() {
                 width: 190,
                 borderRadius: 12,
                 borderWidth: 1,
-                borderColor: 'rgba(148,163,184,0.2)',
-                backgroundColor: '#FFFFFF',
+                borderColor: t.color.border,
+                backgroundColor: t.color.surface,
                 shadowColor: '#0F172A',
                 shadowOpacity: 0.04,
                 shadowRadius: 4,
@@ -366,14 +366,14 @@ export default function AdminHomeSimulatorScreen() {
                       paddingHorizontal: 12,
                       paddingVertical: 10,
                       borderTopWidth: idx === 0 ? 0 : 1,
-                      borderTopColor: 'rgba(148,163,184,0.14)',
+                      borderTopColor: t.color.border,
                       flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                     }}
                   >
-                    <TotlText style={{ fontSize: 12, fontWeight: active ? '800' : '600', color: active ? '#1C8376' : '#334155' }}>{s}</TotlText>
-                    {active ? <Ionicons name="checkmark" size={16} color="#1C8376" /> : null}
+                    <TotlText style={{ fontSize: 12, fontWeight: active ? '800' : '600', color: active ? t.color.brand : t.color.muted }}>{s}</TotlText>
+                    {active ? <Ionicons name="checkmark" size={16} color={t.color.brand} /> : null}
                   </Pressable>
                 );
               })}
@@ -406,7 +406,7 @@ export default function AdminHomeSimulatorScreen() {
                       width: 20,
                       height: 20,
                       borderRadius: 10,
-                      backgroundColor: '#1C8376',
+                      backgroundColor: t.color.brand,
                       alignItems: 'center',
                       justifyContent: 'center',
                       marginRight: 10,
@@ -420,7 +420,7 @@ export default function AdminHomeSimulatorScreen() {
                 </View>
                 <TotlText variant="muted" style={{ marginLeft: 30 }}>
                   Deadline{' '}
-                  <TotlText style={{ color: '#1C8376', fontWeight: '700' }}>
+                  <TotlText style={{ color: t.color.brand, fontWeight: '700' }}>
                     {fixtures[0]?.kickoff ?? 'TBD'}
                   </TotlText>
                 </TotlText>
@@ -432,7 +432,7 @@ export default function AdminHomeSimulatorScreen() {
                     paddingHorizontal: 14,
                     paddingVertical: 10,
                     borderRadius: t.radius.pill,
-                    backgroundColor: '#1C8376',
+                    backgroundColor: t.color.brand,
                     flexDirection: 'row',
                     alignItems: 'center',
                   }}
@@ -477,7 +477,7 @@ export default function AdminHomeSimulatorScreen() {
 
         <View style={{ position: 'relative' }}>
           <View style={{ marginBottom: 10, zIndex: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 22, lineHeight: 22, color: '#0F172A' }}>
+            <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 22, lineHeight: 22, color: t.color.text }}>
               Gameweek 39
             </TotlText>
             {supportsMiniCompactLayout || !isDetailsOnlyState ? (
@@ -487,8 +487,8 @@ export default function AdminHomeSimulatorScreen() {
                   alignItems: 'center',
                   borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: 'rgba(148,163,184,0.26)',
-                  backgroundColor: '#FFFFFF',
+                  borderColor: t.color.border,
+                  backgroundColor: t.color.surface,
                   padding: 4,
                 }}
               >
@@ -512,7 +512,7 @@ export default function AdminHomeSimulatorScreen() {
                     opacity: pressed ? 0.86 : 1,
                   })}
                 >
-                  <Ionicons name="grid-outline" size={18} color={isMiniToggleActive ? '#1C8376' : '#475569'} />
+                  <Ionicons name="grid-outline" size={18} color={isMiniToggleActive ? t.color.brand : t.color.muted} />
                 </Pressable>
 
                 <Pressable
@@ -538,7 +538,7 @@ export default function AdminHomeSimulatorScreen() {
                     opacity: pressed ? 0.86 : 1,
                   })}
                 >
-                  <Ionicons name="tablet-landscape-outline" size={18} color={isExpandedToggleActive ? '#1C8376' : '#475569'} />
+                  <Ionicons name="tablet-landscape-outline" size={18} color={isExpandedToggleActive ? t.color.brand : t.color.muted} />
                 </Pressable>
               </View>
             ) : (
@@ -557,7 +557,7 @@ export default function AdminHomeSimulatorScreen() {
                   }}
                 >
                   <View style={{ marginBottom: 10, zIndex: 1 }}>
-                    <TotlText style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: '#0F172A' }}>{section.dateLabel}</TotlText>
+                    <TotlText style={{ fontSize: 17, lineHeight: 21, fontWeight: '800', color: t.color.text }}>{section.dateLabel}</TotlText>
                   </View>
                   <Animated.View layout={MINI_LAYOUT_TRANSITION} style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6, zIndex: 20 }}>
                     {section.fixtures.map((fixture, idx) => {
@@ -629,9 +629,9 @@ export default function AdminHomeSimulatorScreen() {
                               style={{
                                 borderRadius: isMiniExpanded ? 18 : 16,
                                 borderWidth: 1,
-                                borderColor: 'rgba(148,163,184,0.2)',
+                                borderColor: t.color.border,
                                 overflow: 'hidden',
-                                backgroundColor: '#FFFFFF',
+                                backgroundColor: t.color.surface,
                                 shadowColor: '#0F172A',
                                 shadowOpacity: 0.05,
                                 shadowRadius: 3,
@@ -647,7 +647,7 @@ export default function AdminHomeSimulatorScreen() {
                                     height: isMiniExpanded ? 70 : undefined,
                                     alignItems: 'center',
                                     justifyContent: isMiniExpanded ? 'flex-start' : 'center',
-                                    backgroundColor: '#FFFFFF',
+                                    backgroundColor: t.color.surface,
                                     paddingTop: isMiniExpanded ? 15 : 0,
                                   }}
                                 >
@@ -664,14 +664,14 @@ export default function AdminHomeSimulatorScreen() {
                                     height: isMiniExpanded ? 70 : undefined,
                                     alignItems: 'center',
                                     justifyContent: isMiniExpanded ? 'flex-start' : 'center',
-                                    backgroundColor: '#FFFFFF',
+                                    backgroundColor: t.color.surface,
                                     paddingTop: isMiniExpanded ? 27 : 0,
                                   }}
                                 >
                                   <View style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}>
                                     <TotlText
                                       style={{
-                                        color: '#0F172A',
+                                        color: t.color.text,
                                         fontWeight: '900',
                                         fontSize: isMiniExpanded ? 30 : 16,
                                         lineHeight: isMiniExpanded ? 32 : 18,
@@ -682,7 +682,7 @@ export default function AdminHomeSimulatorScreen() {
                                       {miniPrimaryExpandedLabel}
                                     </TotlText>
                                     {miniSecondaryLabel && !isMiniExpanded ? (
-                                      <TotlText style={{ color: '#334155', fontWeight: '700', fontSize: 11, lineHeight: 13, textAlign: 'center', marginTop: 2 }}>
+                                      <TotlText style={{ color: t.color.muted, fontWeight: '700', fontSize: 11, lineHeight: 13, textAlign: 'center', marginTop: 2 }}>
                                         {miniSecondaryLabel}
                                       </TotlText>
                                     ) : null}
@@ -695,7 +695,7 @@ export default function AdminHomeSimulatorScreen() {
                                     height: isMiniExpanded ? 70 : undefined,
                                     alignItems: 'center',
                                     justifyContent: isMiniExpanded ? 'flex-start' : 'center',
-                                    backgroundColor: '#FFFFFF',
+                                    backgroundColor: t.color.surface,
                                     paddingTop: isMiniExpanded ? 15 : 0,
                                   }}
                                 >
@@ -723,7 +723,7 @@ export default function AdminHomeSimulatorScreen() {
                                     borderTopLeftRadius: 2,
                                     borderTopRightRadius: 2,
                                     overflow: 'hidden',
-                                    backgroundColor: miniLivePickIncorrect ? '#E2E8F0' : '#1C8376',
+                                    backgroundColor: miniLivePickIncorrect ? t.color.surface2 : t.color.brand,
                                   }}
                                 >
                                   {miniLivePickCorrect ? (
@@ -756,18 +756,18 @@ export default function AdminHomeSimulatorScreen() {
                                       <View style={{ width: '37%', alignItems: 'center' }}>
                                         <TotlText
                                           numberOfLines={1}
-                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: '#0F172A', textAlign: 'center' }}
+                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: t.color.text, textAlign: 'center' }}
                                         >
                                           {fixture.home}
                                         </TotlText>
                                       </View>
                                       <View style={{ width: '26%', alignItems: 'center' }}>
-                                        <TotlText style={{ fontSize: 12, fontWeight: '700', color: '#334155', textAlign: 'center' }}>{miniSecondaryLabel}</TotlText>
+                                        <TotlText style={{ fontSize: 12, fontWeight: '700', color: t.color.muted, textAlign: 'center' }}>{miniSecondaryLabel}</TotlText>
                                       </View>
                                       <View style={{ width: '37%', alignItems: 'center' }}>
                                         <TotlText
                                           numberOfLines={1}
-                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: '#0F172A', textAlign: 'center' }}
+                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: t.color.text, textAlign: 'center' }}
                                         >
                                           {fixture.away}
                                         </TotlText>
@@ -779,7 +779,7 @@ export default function AdminHomeSimulatorScreen() {
                                       <View style={{ width: '37%', alignItems: 'center' }}>
                                         <TotlText
                                           numberOfLines={1}
-                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: '#0F172A', textAlign: 'center' }}
+                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: t.color.text, textAlign: 'center' }}
                                         >
                                           {fixture.home}
                                         </TotlText>
@@ -788,7 +788,7 @@ export default function AdminHomeSimulatorScreen() {
                                       <View style={{ width: '37%', alignItems: 'center' }}>
                                         <TotlText
                                           numberOfLines={1}
-                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: '#0F172A', textAlign: 'center' }}
+                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: t.color.text, textAlign: 'center' }}
                                         >
                                           {fixture.away}
                                         </TotlText>
@@ -803,7 +803,7 @@ export default function AdminHomeSimulatorScreen() {
                                           <TotlText
                                             key={`${fixture.id}-eh-${line}`}
                                             numberOfLines={1}
-                                            style={{ fontSize: 12, lineHeight: 16, fontWeight: '900', color: '#0F172A', textAlign: 'right' }}
+                                            style={{ fontSize: 12, lineHeight: 16, fontWeight: '900', color: t.color.text, textAlign: 'right' }}
                                           >
                                             {line}
                                           </TotlText>
@@ -815,7 +815,7 @@ export default function AdminHomeSimulatorScreen() {
                                           <TotlText
                                             key={`${fixture.id}-ea-${line}`}
                                             numberOfLines={1}
-                                            style={{ fontSize: 12, lineHeight: 16, fontWeight: '900', color: '#0F172A', textAlign: 'left' }}
+                                            style={{ fontSize: 12, lineHeight: 16, fontWeight: '900', color: t.color.text, textAlign: 'left' }}
                                           >
                                             {line}
                                           </TotlText>
@@ -850,8 +850,8 @@ export default function AdminHomeSimulatorScreen() {
                                                 ? 'transparent'
                                                 : active
                                                   ? 'rgba(28,131,118,0.4)'
-                                                  : 'rgba(148,163,184,0.2)',
-                                              backgroundColor: showExpandedWinnerShiny ? 'transparent' : active ? '#1C8376' : '#E5E7EB',
+                                                  : t.color.border,
+                                              backgroundColor: showExpandedWinnerShiny ? 'transparent' : active ? t.color.brand : t.color.surface2,
                                               alignItems: 'center',
                                               justifyContent: 'center',
                                               flexDirection: 'row',
@@ -872,7 +872,7 @@ export default function AdminHomeSimulatorScreen() {
                                             ) : null}
                                             {sideBadge ? <Image source={sideBadge} style={{ width: 18, height: 18, marginRight: 5 }} /> : null}
                                             <TotlText
-                                              style={{ fontSize: 13, fontWeight: '700', color: showExpandedWinnerShiny || active ? '#FFFFFF' : '#111827' }}
+                                              style={{ fontSize: 13, fontWeight: '700', color: showExpandedWinnerShiny || active ? '#FFFFFF' : t.color.text }}
                                             >
                                               {showExpandedPercentages
                                                 ? side === 'D'
@@ -890,25 +890,25 @@ export default function AdminHomeSimulatorScreen() {
                                     <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                                       <View style={{ width: '37%', alignItems: 'center' }}>
                                         <View style={{ width: 56, height: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                          {['#CBD5E1', '#DC2626', '#DC2626', '#DC2626', '#10B981'].map((color, i) => (
+                                          {[t.color.border, t.color.danger, t.color.danger, t.color.danger, t.color.success].map((color, i) => (
                                             <View key={`home-form-${fixture.id}-${i}`} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
                                           ))}
                                         </View>
-                                        <TotlText style={{ marginTop: 8, fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{homePositionLabel}</TotlText>
+                                        <TotlText style={{ marginTop: 8, fontSize: 13, fontWeight: '700', color: t.color.text }}>{homePositionLabel}</TotlText>
                                       </View>
                                       <View style={{ width: '26%', alignItems: 'center' }}>
                                         <View style={{ height: 8 }} />
-                                        <TotlText style={{ marginTop: 8, fontSize: 13, color: '#475569', textAlign: 'center' }}>
+                                        <TotlText style={{ marginTop: 8, fontSize: 13, color: t.color.muted, textAlign: 'center' }}>
                                           {String(fixture.kickoffDetail).split('•')[0].trim()}
                                         </TotlText>
                                       </View>
                                       <View style={{ width: '37%', alignItems: 'center' }}>
                                         <View style={{ width: 56, height: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                          {['#CBD5E1', '#DC2626', '#DC2626', '#DC2626', '#10B981'].map((color, i) => (
+                                          {[t.color.border, t.color.danger, t.color.danger, t.color.danger, t.color.success].map((color, i) => (
                                             <View key={`away-form-${fixture.id}-${i}`} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
                                           ))}
                                         </View>
-                                        <TotlText style={{ marginTop: 8, fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{awayPositionLabel}</TotlText>
+                                        <TotlText style={{ marginTop: 8, fontSize: 13, fontWeight: '700', color: t.color.text }}>{awayPositionLabel}</TotlText>
                                       </View>
                                     </View>
                                   )}
@@ -980,7 +980,7 @@ export default function AdminHomeSimulatorScreen() {
                       <TotlText
                         key={`${fixture.id}-h-${line}`}
                         numberOfLines={1}
-                        style={{ fontSize: 11, lineHeight: 17, color: '#0F172A', textAlign: 'right' }}
+                        style={{ fontSize: 11, lineHeight: 17, color: t.color.text, textAlign: 'right' }}
                       >
                         {line}
                       </TotlText>
@@ -992,7 +992,7 @@ export default function AdminHomeSimulatorScreen() {
                       <TotlText
                         key={`${fixture.id}-a-${line}`}
                         numberOfLines={1}
-                        style={{ fontSize: 11, lineHeight: 17, color: '#0F172A', textAlign: 'left' }}
+                        style={{ fontSize: 11, lineHeight: 17, color: t.color.text, textAlign: 'left' }}
                       >
                         {line}
                       </TotlText>
@@ -1051,7 +1051,7 @@ export default function AdminHomeSimulatorScreen() {
                     }}
                     style={({ pressed }) => ({
                       borderWidth: 1,
-                      borderColor: 'rgba(148,163,184,0.2)',
+                      borderColor: t.color.border,
                       borderTopLeftRadius: 18,
                       borderTopRightRadius: 18,
                       borderBottomLeftRadius: 18,
@@ -1059,7 +1059,7 @@ export default function AdminHomeSimulatorScreen() {
                       paddingHorizontal: isLiveOrResultsCard ? 16 : 12,
                       paddingTop: isLiveOrResultsCard ? 14 : 12,
                       paddingBottom: isLiveOrResultsCard ? 14 : 12,
-                      backgroundColor: '#FFFFFF',
+                      backgroundColor: t.color.surface,
                       opacity: pressed ? 0.96 : 1,
                       transform: [{ scale: pressed ? 0.995 : 1 }],
                     })}
@@ -1067,32 +1067,32 @@ export default function AdminHomeSimulatorScreen() {
                       <View style={{ paddingLeft: 0 }}>
                         {isGwOpenState ? (
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-                            <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: '#0F172A' }}>
+                            <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: t.color.text }}>
                               {fixture.home}
                             </TotlText>
                             {homeBadge ? <Image source={homeBadge} style={{ width: 24, height: 24, marginLeft: 8, marginRight: 6 }} /> : null}
-                            <TotlText style={{ fontWeight: '800', fontSize: 14, color: '#111827' }}>{centerLabel}</TotlText>
+                            <TotlText style={{ fontWeight: '800', fontSize: 14, color: t.color.text }}>{centerLabel}</TotlText>
                             {awayBadge ? <Image source={awayBadge} style={{ width: 24, height: 24, marginLeft: 6, marginRight: 8 }} /> : null}
-                            <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: '#0F172A' }}>
+                            <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: t.color.text }}>
                               {fixture.away}
                             </TotlText>
                           </View>
                         ) : (
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', transform: [{ translateY: 5 }] }}>
                             <View style={{ flex: 1, alignItems: 'flex-end', paddingRight: 6 }}>
-                              <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: '#0F172A' }}>
+                              <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: t.color.text }}>
                                 {fixture.home}
                               </TotlText>
                             </View>
                             <View style={{ minWidth: 118, alignItems: 'center', justifyContent: 'center' }}>
                               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
                                 {homeBadge ? <Image source={homeBadge} style={{ width: 24, height: 24, marginRight: 6 }} /> : null}
-                                <TotlText style={{ fontWeight: '800', fontSize: 14, color: '#111827' }}>{centerLabel}</TotlText>
+                                <TotlText style={{ fontWeight: '800', fontSize: 14, color: t.color.text }}>{centerLabel}</TotlText>
                                 {awayBadge ? <Image source={awayBadge} style={{ width: 24, height: 24, marginLeft: 6 }} /> : null}
                               </View>
                             </View>
                             <View style={{ flex: 1, alignItems: 'flex-start', paddingLeft: 6 }}>
-                              <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: '#0F172A' }}>
+                              <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: t.color.text }}>
                                 {fixture.away}
                               </TotlText>
                             </View>
@@ -1102,7 +1102,7 @@ export default function AdminHomeSimulatorScreen() {
                           <View style={{ marginTop: 2, alignItems: 'center' }}>
                             <TotlText
                               style={{
-                                color: '#64748B',
+                                color: t.color.muted,
                                 fontSize: 12,
                                 opacity:
                                   hideRepeatedKickoffInDetails || hideRepeatedKickoffInCompact || hideRepeatedKickoffInLiveScheduled ? 0 : 1,
@@ -1153,7 +1153,7 @@ export default function AdminHomeSimulatorScreen() {
                                     showLiveWrongPicked;
                                   const activeBorder = 'rgba(28,131,118,0.45)';
                                   const activeBackground = 'rgba(28,131,118,0.12)';
-                                  const activeText = '#1C8376';
+                                  const activeText = t.color.brand;
                                   return (
                                     <View
                                       key={`${fixture.id}-${side}`}
@@ -1166,25 +1166,25 @@ export default function AdminHomeSimulatorScreen() {
                                           : showLiveWrongPicked
                                             ? 'rgba(203,213,225,0.9)'
                                           : showSolidPickedTab
-                                            ? '#1C8376'
+                                            ? t.color.brand
                                           : active
                                             ? activeBorder
-                                            : 'rgba(148,163,184,0.22)',
+                                            : t.color.border,
                                         backgroundColor: showWinnerTabShiny
                                           ? 'transparent'
                                           : showWrongFinishedPickedTab
-                                            ? '#E2E8F0'
+                                            ? t.color.surface2
                                           : showLiveWrongPicked
-                                            ? '#E2E8F0'
+                                            ? t.color.surface2
                                           : showSolidPickedTab
-                                            ? '#1C8376'
+                                            ? t.color.brand
                                           : isLiveOrResultsCard
                                             ? active
                                               ? activeBackground
-                                              : '#E2E8F0'
+                                              : t.color.surface2
                                             : active
                                               ? activeBackground
-                                              : '#F8FAFC',
+                                              : t.color.background,
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         paddingVertical: isLiveOrResultsCard ? 10 : 5,
@@ -1207,7 +1207,7 @@ export default function AdminHomeSimulatorScreen() {
                                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                         {sideBadge ? <Image source={sideBadge} style={{ width: 16, height: 16, marginRight: 4 }} /> : null}
                                         {label ? (
-                                          <TotlText style={{ fontSize: 13, fontWeight: '500', color: showWinnerTabShiny || showSolidPickedTab ? '#FFFFFF' : '#1F2937' }}>
+                                          <TotlText style={{ fontSize: 13, fontWeight: '500', color: showWinnerTabShiny || showSolidPickedTab ? '#FFFFFF' : t.color.text }}>
                                             {label}{' '}
                                           </TotlText>
                                         ) : null}
@@ -1216,7 +1216,7 @@ export default function AdminHomeSimulatorScreen() {
                                             style={{
                                               fontSize: 15,
                                               fontWeight: active ? '700' : '500',
-                                              color: showSolidPickedTab ? '#FFFFFF' : active ? '#1C8376' : '#64748B',
+                                              color: showSolidPickedTab ? '#FFFFFF' : active ? t.color.brand : t.color.muted,
                                             }}
                                           >
                                             --%
@@ -1235,10 +1235,10 @@ export default function AdminHomeSimulatorScreen() {
                                                 : isLiveOrResultsCard
                                                   ? active
                                                     ? activeText
-                                                    : '#1F2937'
+                                                    : t.color.text
                                                   : active
                                                     ? activeText
-                                                    : '#1F2937',
+                                                    : t.color.text,
                                             }}
                                           >
                                             {`${percentBySide[side]}%`}
@@ -1248,7 +1248,7 @@ export default function AdminHomeSimulatorScreen() {
                                             style={{
                                               fontSize: 14,
                                               fontWeight: active ? '800' : '600',
-                                              color: showWinnerTabShiny ? '#FFFFFF' : showSolidPickedTab ? '#FFFFFF' : active ? '#047857' : '#475569',
+                                              color: showWinnerTabShiny ? '#FFFFFF' : showSolidPickedTab ? '#FFFFFF' : active ? '#047857' : t.color.muted,
                                             }}
                                           >
                                             {side === 'D' ? 'Draw' : 'Win'}
@@ -1263,7 +1263,7 @@ export default function AdminHomeSimulatorScreen() {
                             {isLiveOrResultsCard && tabsAboveScorers ? scorersBlock : null}
                             {isLiveOrResultsCard ? (
                               <View style={{ marginTop: 14, alignItems: 'center' }}>
-                                <TotlText style={{ fontSize: 14, color: '#334155' }}>{fixture.kickoffDetail}</TotlText>
+                                <TotlText style={{ fontSize: 14, color: t.color.muted }}>{fixture.kickoffDetail}</TotlText>
                               </View>
                             ) : null}
                         </>

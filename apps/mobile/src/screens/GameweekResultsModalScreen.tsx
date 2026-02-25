@@ -255,7 +255,7 @@ function ShareCaptureCard({
         {!isFixturesOnly && results.gwRank && results.gwRankTotal ? (
           <View
             style={{
-              backgroundColor: 'rgba(15,23,42,0.04)',
+              backgroundColor: t.color.border,
               borderRadius: 16,
               paddingVertical: 12,
               paddingHorizontal: 12,
@@ -272,7 +272,7 @@ function ShareCaptureCard({
                 </TotlText>
               </View>
               {topPercentLabel ? (
-                <TotlText style={{ marginLeft: 12, fontFamily: 'Gramatika-Bold', fontWeight: '900', color: '#1C8376', fontSize: 22 }}>
+                <TotlText style={{ marginLeft: 12, fontFamily: 'Gramatika-Bold', fontWeight: '900', color: t.color.brand, fontSize: 22 }}>
                   {topPercentLabel}
                 </TotlText>
               ) : null}
@@ -724,7 +724,7 @@ export default function GameweekResultsModalScreen() {
                       height: DOT_INDICATOR_SIZE,
                       borderRadius: 999,
                       marginRight: idx === shareAssetModes.length - 1 ? 0 : 8,
-                      backgroundColor: selectedShareAssetIndex === idx ? '#1C8376' : 'rgba(100,116,139,0.45)',
+                      backgroundColor: selectedShareAssetIndex === idx ? t.color.brand : 'rgba(100,116,139,0.45)',
                     }}
                   />
                 ))}
@@ -1040,7 +1040,7 @@ export default function GameweekResultsModalScreen() {
                         fontSize: 56,
                         lineHeight: 56,
                         fontWeight: '900',
-                        color: '#1C8376',
+                        color: t.color.brand,
                         fontFamily: 'Gramatika-Bold',
                       }}
                     >
@@ -1051,7 +1051,7 @@ export default function GameweekResultsModalScreen() {
                         fontSize: 40,
                         lineHeight: 48,
                         fontWeight: '900',
-                        color: '#1C8376',
+                        color: t.color.brand,
                         fontFamily: 'Gramatika-Bold',
                         marginLeft: 2,
                       }}
@@ -1150,7 +1150,7 @@ export default function GameweekResultsModalScreen() {
                             paddingVertical: 10,
                             paddingHorizontal: 8,
                             borderRadius: 14,
-                            backgroundColor: 'rgba(15,23,42,0.04)',
+                            backgroundColor: t.color.border,
                             alignItems: 'center',
                             marginRight: 10,
                           }}
@@ -1160,7 +1160,7 @@ export default function GameweekResultsModalScreen() {
                               width: 54,
                               height: 54,
                               borderRadius: 27,
-                              backgroundColor: 'rgba(15,23,42,0.06)',
+                              backgroundColor: t.color.border,
                               overflow: 'hidden',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -1224,7 +1224,7 @@ export default function GameweekResultsModalScreen() {
                           fontWeight: '900',
                           fontSize: 28,
                           lineHeight: 34,
-                          color: '#1C8376',
+                          color: t.color.brand,
                         }}
                       >
                         {topPercentLabel}
@@ -1281,7 +1281,7 @@ export default function GameweekResultsModalScreen() {
                   justifyContent: 'center',
                   height: 56,
                   borderRadius: 16,
-                  backgroundColor: '#1C8376',
+                  backgroundColor: t.color.brand,
                   opacity: sharing ? 0.6 : pressed ? 0.92 : 1,
                   transform: [{ scale: pressed ? 0.99 : 1 }],
                 })}

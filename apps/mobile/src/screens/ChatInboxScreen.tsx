@@ -276,7 +276,7 @@ export default function ChatInboxScreen({
             ) : null}
           </View>
         }
-        ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: 'rgba(15,23,42,0.06)' }} />}
+        ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: t.color.border }} />}
         ListEmptyComponent={
           leaguesQ.isLoading ? null : (
             <Card>
@@ -384,7 +384,7 @@ export default function ChatInboxScreen({
                       height: 22,
                       paddingHorizontal: 7,
                       borderRadius: 999,
-                      backgroundColor: '#DC2626',
+                      backgroundColor: t.color.danger,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}

@@ -139,6 +139,7 @@ function PickChip({
   disabled: boolean;
   onPress: () => void;
 }) {
+  const t = useTokens();
   return (
     <Pressable
       disabled={disabled}
@@ -149,12 +150,12 @@ function PickChip({
         borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: active ? '#1C8376' : '#E6F3F0',
+        backgroundColor: active ? t.color.brand : '#E6F3F0',
         opacity: disabled ? 0.5 : pressed ? 0.92 : 1,
         transform: [{ scale: pressed ? 0.99 : 1 }],
       })}
     >
-      <TotlText style={{ color: active ? '#FFFFFF' : '#0F172A', fontWeight: '900' }}>{label}</TotlText>
+      <TotlText style={{ color: active ? '#FFFFFF' : t.color.text, fontWeight: '900' }}>{label}</TotlText>
     </Pressable>
   );
 }
@@ -542,7 +543,7 @@ export default function PredictionsScreen() {
                   paddingTop: 14,
                   paddingBottom: 12,
                   borderBottomWidth: 1,
-                  borderBottomColor: 'rgba(15,23,42,0.06)',
+                  borderBottomColor: t.color.border,
                 }}
               >
                 <TotlText
@@ -571,7 +572,7 @@ export default function PredictionsScreen() {
                           right: 16,
                           bottom: 0,
                           height: 1,
-                          backgroundColor: 'rgba(148,163,184,0.18)',
+                          backgroundColor: t.color.border,
                           zIndex: 2,
                         }}
                       />
@@ -649,10 +650,10 @@ export default function PredictionsScreen() {
     };
   }, []);
 
-  const ACTIVE_BG = '#1C8376';
+  const ACTIVE_BG = t.color.brand;
   const INACTIVE_BG = '#E6F3F0';
   const ACTIVE_TEXT = '#FFFFFF';
-  const INACTIVE_TEXT = '#0F172A';
+  const INACTIVE_TEXT = t.color.text;
 
   const homeWrapStyle = useAnimatedStyle(() => {
     const absX = Math.abs(tx.value);
@@ -1034,8 +1035,8 @@ export default function PredictionsScreen() {
                 style={{
                   borderRadius: 22,
                   borderWidth: 1,
-                  borderColor: 'rgba(148,163,184,0.30)',
-                  backgroundColor: '#FFFFFF',
+                  borderColor: t.color.border,
+                  backgroundColor: t.color.surface,
                   paddingVertical: 14,
                   paddingHorizontal: 14,
                   flexDirection: 'row',
@@ -1055,7 +1056,7 @@ export default function PredictionsScreen() {
                     marginTop: 2,
                   }}
                 >
-                  <TotlText style={{ color: '#1C8376', fontWeight: '900' }}>!</TotlText>
+                  <TotlText style={{ color: t.color.brand, fontWeight: '900' }}>!</TotlText>
                 </View>
 
                 <View style={{ flex: 1, paddingRight: 8 }}>
@@ -1113,9 +1114,9 @@ export default function PredictionsScreen() {
               paddingHorizontal: t.space[4],
               paddingTop: 12,
               paddingBottom: t.space[6],
-              backgroundColor: 'rgba(255,255,255,0.98)',
+              backgroundColor: t.color.surface,
               borderTopWidth: 1,
-              borderTopColor: 'rgba(148,163,184,0.25)',
+              borderTopColor: t.color.border,
             }}
           >
             <Pressable
@@ -1128,7 +1129,7 @@ export default function PredictionsScreen() {
                 borderRadius: 16,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: allPicksMade ? '#1C8376' : '#CBD5E1',
+                backgroundColor: allPicksMade ? t.color.brand : t.color.border,
                 opacity: submitted || deadlineExpired || confirmMutation.isPending ? 0.55 : pressed ? 0.92 : 1,
               })}
             >
