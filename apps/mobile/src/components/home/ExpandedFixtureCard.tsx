@@ -33,7 +33,7 @@ function FixtureHeaderMorph({
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent: expanded ? 'space-between' : 'center',
           paddingVertical: 2,
         }}
       >

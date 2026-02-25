@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-native';
 import React from 'react';
 import { Screen } from '@totl/ui';
-import ExpandedFixtureCard from '../components/home/ExpandedFixtureCard';
-import type { ExpandedFixtureCardProps } from '../components/home/fixtureCardTypes';
-import { TEAM_BADGES } from '../lib/teamBadges';
+import ExpandedFixtureCard from '../../components/home/ExpandedFixtureCard';
+import type { ExpandedFixtureCardProps } from '../../components/home/fixtureCardTypes';
+import { TEAM_BADGES } from '../../lib/teamBadges';
 
 const baseProps: ExpandedFixtureCardProps = {
   fixtureId: 'fx-1',

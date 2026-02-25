@@ -2,10 +2,10 @@ import type { Meta, StoryObj } from '@storybook/react-native';
 import React from 'react';
 import { View } from 'react-native';
 import { Screen } from '@totl/ui';
-import MiniFixtureCard from '../components/home/MiniFixtureCard';
-import type { MiniFixtureCardProps } from '../components/home/fixtureCardTypes';
-import type { GameweekState } from '../lib/gameweekState';
-import { TEAM_BADGES } from '../lib/teamBadges';
+import MiniFixtureCard from '../../components/home/MiniFixtureCard';
+import type { MiniFixtureCardProps } from '../../components/home/fixtureCardTypes';
+import type { GameweekState } from '../../lib/gameweekState';
+import { TEAM_BADGES } from '../../lib/teamBadges';
 
 const baseProps: MiniFixtureCardProps = {
   fixtureId: 'fx-1',

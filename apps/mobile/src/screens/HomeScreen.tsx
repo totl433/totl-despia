@@ -171,7 +171,7 @@ function FixtureHeaderMorph({
         <View style={{ minWidth: 118, alignItems: 'center', justifyContent: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
             {homeBadge ? <Image source={homeBadge} style={{ width: 24, height: 24, marginRight: 6 }} /> : null}
-            <TotlText style={{ fontWeight: '800', color: '#111827', fontSize: 14, lineHeight: 20 }}>{headerPrimary}</TotlText>
+            <TotlText style={{ fontWeight: '800', color: t.color.text, fontSize: 14, lineHeight: 20 }}>{headerPrimary}</TotlText>
             {awayBadge ? <Image source={awayBadge} style={{ width: 24, height: 24, marginLeft: 6 }} /> : null}
           </View>
         </View>
@@ -1469,7 +1469,7 @@ export default function HomeScreen() {
                                           {miniPrimaryExpandedLabel}
                                         </TotlText>
                                         {miniSecondaryLabel && !isMiniExpanded ? (
-                                          <TotlText style={{ color: '#334155', fontWeight: '700', fontSize: 11, lineHeight: 13, textAlign: 'center', marginTop: 2 }}>{miniSecondaryLabel}</TotlText>
+                                          <TotlText style={{ color: t.color.muted, fontWeight: '700', fontSize: 11, lineHeight: 13, textAlign: 'center', marginTop: 2 }}>{miniSecondaryLabel}</TotlText>
                                         ) : null}
                                       </View>
                                     </View>
@@ -1508,7 +1508,7 @@ export default function HomeScreen() {
                                       {(gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW') ? (
                                         <View style={{ marginTop: 7, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                           <View style={{ width: '37%', alignItems: 'center' }}><TotlText numberOfLines={1} style={{ width: '100%', fontSize: 15, fontWeight: '900', color: t.color.text, textAlign: 'center' }}>{headerHome}</TotlText></View>
-                                          <View style={{ width: '26%', alignItems: 'center' }}><TotlText style={{ fontSize: 12, fontWeight: '700', color: '#334155', textAlign: 'center' }}>{miniSecondaryLabel}</TotlText></View>
+                                          <View style={{ width: '26%', alignItems: 'center' }}><TotlText style={{ fontSize: 12, fontWeight: '700', color: t.color.muted, textAlign: 'center' }}>{miniSecondaryLabel}</TotlText></View>
                                           <View style={{ width: '37%', alignItems: 'center' }}><TotlText numberOfLines={1} style={{ width: '100%', fontSize: 15, fontWeight: '900', color: t.color.text, textAlign: 'center' }}>{headerAway}</TotlText></View>
                                         </View>
                                       ) : (
@@ -1572,7 +1572,7 @@ export default function HomeScreen() {
                                                   </>
                                                 ) : null}
                                                 {sideBadge ? <Image source={sideBadge} style={{ width: 18, height: 18, marginRight: 5 }} /> : null}
-                                                <TotlText style={{ fontSize: 13, fontWeight: '700', color: showExpandedWinnerShiny || active ? '#FFFFFF' : '#111827' }}>
+                                                <TotlText style={{ fontSize: 13, fontWeight: '700', color: showExpandedWinnerShiny || active ? '#FFFFFF' : t.color.text }}>
                                                   {showExpandedPercentages ? (side === 'D' ? `Draw ${pct}%` : `${pct}%`) : side === 'D' ? 'Draw' : 'Win'}
                                                 </TotlText>
                                               </View>
@@ -1802,7 +1802,7 @@ export default function HomeScreen() {
                                   <View style={{ marginTop: 2, alignItems: 'center' }}>
                                     <TotlText
                                       style={{
-                                        color: '#64748B',
+                                        color: t.color.muted,
                                         fontSize: 12,
                                         opacity:
                                           hideRepeatedKickoffInDetails || hideRepeatedKickoffInCompact || hideRepeatedKickoffInLiveScheduled ? 0 : 1,
@@ -1902,7 +1902,7 @@ export default function HomeScreen() {
                                           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                             {sideBadge ? <Image source={sideBadge} style={{ width: 16, height: 16, marginRight: 4 }} /> : null}
                                             {label ? (
-                                              <TotlText style={{ fontSize: 13, fontWeight: '500', color: showWinnerTabShiny || showSolidPickedTab ? '#FFFFFF' : '#1F2937' }}>
+                                              <TotlText style={{ fontSize: 13, fontWeight: '500', color: showWinnerTabShiny || showSolidPickedTab ? '#FFFFFF' : t.color.text }}>
                                                 {label}{' '}
                                               </TotlText>
                                             ) : null}
@@ -1919,7 +1919,7 @@ export default function HomeScreen() {
                                                         ? '#94A3B8'
                                                         : active
                                                           ? '#1C8376'
-                                                          : '#1F2937',
+                                                          : t.color.text,
                                                 }}
                                               >
                                                 {`${percentBySide[side]}%`}
