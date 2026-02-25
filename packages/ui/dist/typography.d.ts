@@ -1,5 +1,5 @@
 export type TotlTextVariant = 'body' | 'muted' | 'caption' | 'micro' | 'microMuted' | 'heading' | 'section' | 'sectionTitle' | 'sectionSubtitle';
-export type TotlTypographyFontRole = 'body' | 'heading';
+export type TotlTypographyFontRole = 'body' | 'heading' | 'regular' | 'medium' | 'bold';
 export type TotlTypographyColorRole = 'text' | 'muted';
 export type TotlTextVariantSpec = {
     variant: TotlTextVariant;

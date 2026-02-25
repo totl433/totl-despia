@@ -55,6 +55,9 @@ export declare const tokens: {
         readonly pill: 999;
     };
     readonly font: {
+        readonly regular: "Gramatika-Regular";
+        readonly medium: "Gramatika-Medium";
+        readonly bold: "Gramatika-Bold";
         readonly body: "Gramatika-Regular";
         readonly heading: "Gramatika-Bold";
         readonly mono: "PressStart2P-Regular";

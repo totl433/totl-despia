@@ -44,6 +44,9 @@ export const tokens = {
         pill: 999,
     },
     font: {
+        regular: 'Gramatika-Regular',
+        medium: 'Gramatika-Medium',
+        bold: 'Gramatika-Bold',
         body: 'Gramatika-Regular',
         heading: 'Gramatika-Bold',
         mono: 'PressStart2P-Regular',

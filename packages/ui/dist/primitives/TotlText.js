@@ -6,7 +6,11 @@ export function TotlText({ variant = 'body', style, ...props }) {
     const t = useTokens();
     const spec = getTotlTextVariantSpec(variant);
     const color = spec.colorRole === 'muted' ? t.color.muted : t.color.text;
-    const fontFamily = spec.fontRole === 'heading' ? t.font.heading : t.font.body;
+    const fontFamily = spec.fontRole === 'bold' || spec.fontRole === 'heading'
+        ? t.font.bold
+        : spec.fontRole === 'medium'
+            ? t.font.medium
+            : t.font.regular;
     const textTransform = spec.textTransform === 'uppercase' ? 'uppercase' : undefined;
     const letterSpacing = typeof spec.letterSpacing === 'number' ? spec.letterSpacing : undefined;
     return (_jsx(Text, { ...props, style: [
