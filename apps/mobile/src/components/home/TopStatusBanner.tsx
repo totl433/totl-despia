@@ -26,7 +26,7 @@ export default function TopStatusBanner({
   return (
     <View
       style={{
-        backgroundColor: '#e9f0ef',
+        backgroundColor: t.color.surface,
         borderRadius: 16,
         paddingVertical: 10,
         paddingHorizontal: 12,

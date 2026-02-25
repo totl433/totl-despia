@@ -150,7 +150,7 @@ function PickChip({
         borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: active ? t.color.brand : '#E6F3F0',
+        backgroundColor: active ? t.color.brand : t.color.surface2,
         opacity: disabled ? 0.5 : pressed ? 0.92 : 1,
         transform: [{ scale: pressed ? 0.99 : 1 }],
       })}
@@ -650,7 +650,7 @@ export default function PredictionsScreen() {
   }, []);
 
   const ACTIVE_BG = t.color.brand;
-  const INACTIVE_BG = '#E6F3F0';
+  const INACTIVE_BG = t.color.surface2;
   const ACTIVE_TEXT = '#FFFFFF';
   const INACTIVE_TEXT = t.color.text;
 
@@ -831,7 +831,7 @@ export default function PredictionsScreen() {
         })}
 
         <View style={{ paddingHorizontal: t.space[4], alignItems: 'center', marginTop: 16 }}>
-          <View style={{ borderRadius: 999, backgroundColor: '#EAF3F2', paddingHorizontal: 12 }}>
+          <View style={{ borderRadius: 999, backgroundColor: t.color.surface2, paddingHorizontal: 12 }}>
             <PredictionsProgressPills
               total={fixtures.length}
               currentIndex={cardIndex}

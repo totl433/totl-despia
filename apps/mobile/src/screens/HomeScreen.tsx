@@ -816,7 +816,7 @@ export default function HomeScreen() {
               navigation.navigate('PredictionsFlow');
             }}
             style={({ pressed }) => ({
-              backgroundColor: '#e9f0ef',
+              backgroundColor: t.color.surface,
               borderRadius: 16,
               paddingVertical: 10,
               paddingHorizontal: 12,
