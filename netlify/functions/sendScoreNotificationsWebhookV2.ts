@@ -521,13 +521,12 @@ export const handler: Handler = async (event, context) => {
           console.log(`[scoreWebhookV2] [${requestId}] All ${apiMatchIds.length} games finished for GW ${gw}`);
 
           // Get all users with picks in this GW
-          let gwPicks: any[] = [];
-          if (isAppFixture) {
-            const { data } = await supabase.from('app_picks').select('user_id').eq('gw', gw);
-            gwPicks = data || [];
-          }
+          const { data: gwPicks } = await supabase
+            .from('app_picks')
+            .select('user_id')
+            .eq('gw', gw);
 
-          const gwUserIds = [...new Set(gwPicks.map((p: any) => p.user_id))];
+          const gwUserIds = [...new Set((gwPicks || []).map((p: any) => p.user_id))];
 
           if (gwUserIds.length > 0) {
             const result = await sendGameweekCompleteNotification(gwUserIds, gw);
@@ -558,6 +557,67 @@ export const handler: Handler = async (event, context) => {
       }
 
       return { statusCode: 200, headers, body: JSON.stringify({ message: 'Final whistle notification sent', sentTo: totalSent }) };
+    }
+
+    // 5b. Safety: if we ever observe a FINISHED/FT record, re-check GW completion.
+    // This avoids missing `gameweek-complete` if we didn't see the exact status transition (e.g. missing old_record).
+    if (isFinished) {
+      const { data: allFixtures } = await supabase
+        .from('app_fixtures')
+        .select('api_match_id')
+        .eq('gw', gw)
+        .not('api_match_id', 'is', null);
+
+      if (allFixtures && allFixtures.length > 0) {
+        const apiMatchIds = allFixtures.map((f: any) => f.api_match_id);
+        const { data: liveScores } = await supabase
+          .from('live_scores')
+          .select('api_match_id, status')
+          .in('api_match_id', apiMatchIds);
+
+        const finishedCount = (liveScores || []).filter((s: any) => s.status === 'FINISHED' || s.status === 'FT').length;
+        const missingCount = apiMatchIds.length - (liveScores || []).length;
+
+        if (missingCount > 0) {
+          console.warn(`[scoreWebhookV2] [${requestId}] GW ${gw} completion check: ${missingCount} missing live_scores row(s)`);
+        }
+
+        if (finishedCount === apiMatchIds.length && missingCount === 0) {
+          const { data: gwPicks } = await supabase
+            .from('app_picks')
+            .select('user_id')
+            .eq('gw', gw);
+
+          const gwUserIds = [...new Set((gwPicks || []).map((p: any) => p.user_id))];
+
+          if (gwUserIds.length > 0) {
+            const result = await sendGameweekCompleteNotification(gwUserIds, gw);
+            console.log(`[scoreWebhookV2] [${requestId}] (safety) Gameweek complete: ${result.results.accepted} sent`);
+
+            // Only trigger Volley on the first successful send to avoid duplicates.
+            if (result.results.accepted > 0) {
+              try {
+                const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://playtotl.com';
+                const volleyRes = await fetch(`${baseUrl}/.netlify/functions/sendVolleyGwCongratulations`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ gameweek: gw })
+                });
+
+                const volleyData = await volleyRes.json().catch(() => ({}));
+
+                if (volleyRes.ok && volleyData.ok) {
+                  console.log(`[scoreWebhookV2] [${requestId}] (safety) Volley congratulations sent to ${volleyData.totalLeagues || 0} leagues`);
+                } else {
+                  console.warn(`[scoreWebhookV2] [${requestId}] (safety) Volley congratulations failed:`, volleyData);
+                }
+              } catch (volleyError) {
+                console.error(`[scoreWebhookV2] [${requestId}] (safety) Error sending Volley congratulations:`, volleyError);
+              }
+            }
+          }
+        }
+      }
     }
 
     return { statusCode: 200, headers, body: JSON.stringify({ message: 'No notification needed', sentTo: totalSent }) };

@@ -28,17 +28,7 @@ export const handler: Handler = async (event) => {
     // Get all subscriptions with user info
     const { data: subscriptions, error: subsError } = await supabase
       .from('push_subscriptions')
-      .select(`
-        user_id,
-        player_id,
-        platform,
-        is_active,
-        subscribed,
-        last_checked_at,
-        last_active_at,
-        invalid,
-        users!inner(name, email)
-      `)
+      .select('user_id, player_id, platform, is_active, subscribed, last_checked_at, last_active_at, invalid')
       .order('last_active_at', { ascending: false, nullsFirst: false });
 
     if (subsError) {
@@ -54,6 +44,18 @@ export const handler: Handler = async (event) => {
         subscriptions: [],
       });
     }
+
+    // Load user names (no FK relationship required)
+    const uniqueUserIds = Array.from(new Set((subscriptions || []).map((s: any) => s.user_id).filter(Boolean)));
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, name')
+      .in('id', uniqueUserIds)
+      .then(r => r, () => ({ data: null as any }));
+
+    const usersById = new Map<string, { name: string | null }>(
+      (users || []).map((u: any) => [u.id, { name: u.name ?? null }])
+    );
 
     // Verify subscription status with OneSignal for each device
     const subscriptionsWithStatus = await Promise.all(
@@ -79,8 +81,7 @@ export const handler: Handler = async (event) => {
 
         return {
           user_id: sub.user_id,
-          user_name: sub.users?.name || 'Unknown',
-          user_email: sub.users?.email || 'Unknown',
+          user_name: usersById.get(sub.user_id)?.name || 'Unknown',
           player_id: sub.player_id ? sub.player_id.slice(0, 20) + '...' : null,
           platform: sub.platform,
           is_active: sub.is_active,

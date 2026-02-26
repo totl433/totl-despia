@@ -53,8 +53,10 @@ export const handler: Handler = async (event) => {
   const { data: subs, error: subErr } = await admin
     .from('push_subscriptions')
     .select('user_id')
-    .eq('is_active', true)
-    .eq('subscribed', true);
+    // IMPORTANT: do NOT filter on subscribed=true here.
+    // The `subscribed` flag can be stale/incorrect (we verify subscription status per-send in the dispatcher),
+    // and filtering here can silently drop the entire broadcast audience.
+    .eq('is_active', true);
 
   if (subErr) {
     console.error('[sendPushAllV2] Failed to fetch subscriptions:', subErr);

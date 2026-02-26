@@ -1,8 +1,23 @@
 import { Handler } from '@netlify/functions';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+let supabaseClient: SupabaseClient | null = null;
+
+function getSupabase(): SupabaseClient {
+  if (supabaseClient) return supabaseClient;
+
+  const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
+  const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('Missing Supabase environment variables (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)');
+  }
+
+  supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false },
+  });
+  return supabaseClient;
+}
 const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY || 'ed3153d132b847db836289243894706e';
 const FOOTBALL_DATA_BASE_URL = 'https://api.football-data.org/v4';
 
@@ -51,11 +66,6 @@ function normalizeTeamName(apiTeamName: string | null | undefined): string | nul
     .trim();
 }
 
-// Initialize Supabase admin client
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
-});
-
 async function fetchMatchScore(apiMatchId: number): Promise<any> {
   const apiUrl = `${FOOTBALL_DATA_BASE_URL}/matches/${apiMatchId}`;
   
@@ -80,7 +90,7 @@ async function fetchMatchScore(apiMatchId: number): Promise<any> {
   return await response.json();
 }
 
-async function pollAllLiveScores() {
+async function pollAllLiveScores(supabase: SupabaseClient) {
   try {
     // Get current GW from app_meta table (used by the app)
     const { data: metaData, error: metaError } = await supabase
@@ -535,6 +545,7 @@ export const handler: Handler = async (event) => {
   const MIN_RUN_INTERVAL_MS = 15 * 1000; // 15 seconds minimum between runs (for test API)
   
   try {
+    const supabase = getSupabase();
     // Add small random delay (0-2 seconds) to prevent thundering herd
     const randomDelay = Math.floor(Math.random() * 2000);
     await new Promise(resolve => setTimeout(resolve, randomDelay));
@@ -660,7 +671,7 @@ export const handler: Handler = async (event) => {
       rawUrl: event.rawUrl || 'none'
     });
     
-    await pollAllLiveScores();
+    await pollAllLiveScores(supabase);
     return {
       statusCode: 200,
       headers: {

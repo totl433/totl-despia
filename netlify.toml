@@ -22,6 +22,14 @@
 [functions."sendPredictionReminder"]
   schedule = "*/15 * * * *"  # Every 15 minutes
 
+# Scheduled function: announce new gameweek once per GW (idempotent)
+[functions."sendNewGameweekBroadcast"]
+  schedule = "*/15 * * * *"  # Every 15 minutes
+
+# Scheduled function: safety net for gameweek-complete (idempotent)
+[functions."sendGameweekCompleteSafetyNet"]
+  schedule = "*/30 * * * *"  # Every 30 minutes
+
 # REMOVED: sendScoreNotifications scheduled function
 # Notifications are now handled by sendScoreNotificationsWebhook (triggered by database webhook)
 # The scheduled version was removed as it was redundant and less reliable than webhook-triggered notifications

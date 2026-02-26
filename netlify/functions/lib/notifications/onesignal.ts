@@ -148,10 +148,12 @@ export async function sendNotification(
       };
     }
     
+    const recipients = typeof body.recipients === 'number' ? body.recipients : undefined;
+
     return {
       success: true,
       notification_id: body.id,
-      recipients: body.recipients || 0,
+      recipients,
     };
   } catch (err: any) {
     return {
