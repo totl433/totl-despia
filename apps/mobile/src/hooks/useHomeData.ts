@@ -18,6 +18,29 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   });
 }
 
+function deadlineCountdown(
+  fixtures: Fixture[],
+  nowMs: number
+): { text: string; expired: boolean } | null {
+  const firstKickoff = fixtures
+    .map((f) => (f.kickoff_time ? new Date(f.kickoff_time).getTime() : NaN))
+    .filter((t) => Number.isFinite(t))
+    .sort((a, b) => a - b)[0];
+  if (typeof firstKickoff !== 'number') return null;
+
+  const DEADLINE_BUFFER_MINUTES = 75;
+  const deadline = firstKickoff - DEADLINE_BUFFER_MINUTES * 60 * 1000;
+  const diffMs = deadline - nowMs;
+  if (diffMs <= 0) return { text: '0d 0h 0m', expired: true };
+
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+
+  return { text: `${days}d ${hours}h ${minutes}m`, expired: false };
+}
+
 export function useHomeData() {
   const [nowMs, setNowMs] = React.useState(() => Date.now());
   const [hasAccessToken, setHasAccessToken] = React.useState<boolean | null>(null);
@@ -183,9 +206,11 @@ export function useHomeData() {
   });
 
   const viewingGwForPickPercentages = typeof home?.viewingGw === 'number' ? home.viewingGw : null;
+  const deadline = React.useMemo(() => deadlineCountdown(fixtures, nowMs), [fixtures, nowMs]);
+  const deadlineExpired = deadline?.expired ?? false;
 
   const { data: pickPercentageRows } = useQuery<Array<{ fixture_index: number; pick: Pick }>>({
-    enabled: typeof viewingGwForPickPercentages === 'number',
+    enabled: deadlineExpired && typeof viewingGwForPickPercentages === 'number',
     queryKey: ['home-pick-percentages', viewingGwForPickPercentages],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -250,6 +275,9 @@ export function useHomeData() {
     homeLoading: Boolean(homeLoading),
     homeError,
     homeRefetching,
+    refetchHome,
+    refetchLeagues,
+    refetchRanks,
     leagues,
     leaguesError,
     leaguesRefetching,
@@ -265,6 +293,8 @@ export function useHomeData() {
     pickPercentagesByFixture,
     viewingGw,
     currentGw,
+    deadline,
+    deadlineExpired,
     refreshing,
     onRefresh,
   };
