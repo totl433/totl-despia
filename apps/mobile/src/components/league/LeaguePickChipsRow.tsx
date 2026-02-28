@@ -64,27 +64,31 @@ function SmoothChipShimmer() {
 function Chip({
   name,
   avatarUri,
+  avatarBgColor,
   ring,
   isMe,
   overlap,
   shiny = false,
+  size = 34,
 }: {
   name: string;
   avatarUri?: string | null;
+  avatarBgColor?: string | null;
   ring: string;
   isMe: boolean;
   overlap: number;
   shiny?: boolean;
+  size?: number;
 }) {
   const t = useTokens();
-  const SIZE = 28;
+  const SIZE = size;
   return (
     <View
       style={{
         width: SIZE,
         height: SIZE,
         borderRadius: 999,
-        backgroundColor: t.color.surface2,
+        backgroundColor: avatarUri ? t.color.surface2 : (avatarBgColor ?? t.color.surface2),
         borderWidth: shiny ? 0 : isMe ? 2 : 1,
         borderColor: isMe ? t.color.brand : ring,
         alignItems: 'center',
@@ -101,7 +105,7 @@ function Chip({
       {avatarUri ? (
         <Image source={{ uri: avatarUri }} style={{ width: SIZE, height: SIZE }} resizeMode="cover" />
       ) : (
-        <TotlText variant="caption" style={{ fontWeight: '900' }}>
+        <TotlText variant="caption" style={{ fontWeight: '900', color: '#FFFFFF' }}>
           {initial1(name)}
         </TotlText>
       )}
@@ -131,16 +135,18 @@ export default function LeaguePickChipsRow({
   picksByUserId,
   outcome,
   currentUserId,
+  compact = false,
 }: {
-  members: Array<{ id: string; name: string; avatar_url?: string | null }>;
+  members: Array<{ id: string; name: string; avatar_url?: string | null; avatar_bg_color?: string | null }>;
   picksByUserId: Map<string, LeaguePick>;
   outcome: LeaguePick | null;
   currentUserId: string | null;
+  compact?: boolean;
 }) {
   const t = useTokens();
 
   const byPick = React.useMemo(() => {
-    const m = new Map<LeaguePick, Array<{ id: string; name: string; avatar_url?: string | null }>>([
+    const m = new Map<LeaguePick, Array<{ id: string; name: string; avatar_url?: string | null; avatar_bg_color?: string | null }>>([
       ['H', []],
       ['D', []],
       ['A', []],
@@ -148,7 +154,12 @@ export default function LeaguePickChipsRow({
     members.forEach((mem) => {
       const p = picksByUserId.get(mem.id);
       if (!p) return;
-      m.get(p)!.push({ id: mem.id, name: mem.name, avatar_url: mem.avatar_url ?? null });
+      m.get(p)!.push({
+        id: mem.id,
+        name: mem.name,
+        avatar_url: mem.avatar_url ?? null,
+        avatar_bg_color: mem.avatar_bg_color ?? null,
+      });
     });
     return m;
   }, [members, picksByUserId]);
@@ -161,17 +172,23 @@ export default function LeaguePickChipsRow({
   const renderBucket = (pick: LeaguePick, align: 'flex-start' | 'center' | 'flex-end') => {
     const arr = byPick.get(pick) ?? [];
     if (!arr.length) return <View style={{ height: 28 }} />;
+    const everyonePickedThis = members.length > 0 && arr.length === members.length;
+    const stackedOverlap = compact ? -19 : -20;
+    const defaultOverlap = compact ? -10 : -8;
+    const chipSize = everyonePickedThis ? (compact ? 22 : 30) : compact ? 22 : 34;
     return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: align }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: align, maxWidth: '100%' }}>
         {arr.map((u, idx) => (
           <Chip
             key={u.id}
             name={u.name}
             avatarUri={u.avatar_url ?? null}
+            avatarBgColor={u.avatar_bg_color ?? null}
             ring={ringFor(pick)}
             isMe={!!currentUserId && u.id === currentUserId}
-            overlap={idx === 0 ? 0 : -8}
+            overlap={idx === 0 ? 0 : everyonePickedThis ? stackedOverlap : defaultOverlap}
             shiny={!!outcome && pick === outcome}
+            size={chipSize}
           />
         ))}
       </View>
@@ -179,11 +196,11 @@ export default function LeaguePickChipsRow({
   };
 
   return (
-    <View style={{ paddingHorizontal: 16, paddingBottom: 12, paddingTop: 2 }}>
+    <View style={{ paddingHorizontal: compact ? 2 : 8, paddingBottom: compact ? 2 : 12, paddingTop: compact ? 0 : 2 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <View style={{ flex: 1, alignItems: 'flex-end' }}>{renderBucket('H', 'flex-end')}</View>
-        <View style={{ width: 84, alignItems: 'center' }}>{renderBucket('D', 'center')}</View>
-        <View style={{ flex: 1, alignItems: 'flex-start' }}>{renderBucket('A', 'flex-start')}</View>
+        <View style={{ flex: 1, alignItems: 'center' }}>{renderBucket('H', 'center')}</View>
+        <View style={{ flex: 1, alignItems: 'center' }}>{renderBucket('D', 'center')}</View>
+        <View style={{ flex: 1, alignItems: 'center' }}>{renderBucket('A', 'center')}</View>
       </View>
     </View>
   );

@@ -148,7 +148,9 @@ export default function HomeScreen() {
   const navigation = useNavigation<any>();
   const scrollRef = React.useRef<any>(null);
   useScrollToTop(scrollRef);
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const scrollYRef = React.useRef(0);
+  const fixtureNodeRefs = React.useRef<Record<string, View | null>>({});
   const advanceTransition = useGameweekAdvanceTransition({ totalMs: 1050 });
   const [nowMs, setNowMs] = React.useState(() => Date.now());
   const [hasAccessToken, setHasAccessToken] = React.useState<boolean | null>(null);
@@ -445,17 +447,45 @@ export default function HomeScreen() {
     [fixturesTransition]
   );
 
+  const queueScrollToFixture = React.useCallback((fixtureId: string) => {
+    // Wait for layout to settle, then ensure the expanded card is fully visible in viewport.
+    setTimeout(() => {
+      const node = fixtureNodeRefs.current[fixtureId];
+      if (!node?.measureInWindow) return;
+      node.measureInWindow((x, y, width, height) => {
+        const cardTop = Number(y ?? 0);
+        const cardBottom = cardTop + Number(height ?? 0);
+        if (!Number.isFinite(cardTop) || !Number.isFinite(cardBottom)) return;
+
+        // Keep card clear of top header and floating bottom tab bar.
+        const visibleTop = 130;
+        const visibleBottom = screenHeight - 110;
+        let nextScrollY = scrollYRef.current;
+
+        if (cardBottom > visibleBottom) nextScrollY += cardBottom - visibleBottom + 12;
+        if (cardTop < visibleTop) nextScrollY -= visibleTop - cardTop + 12;
+        if (nextScrollY < 0) nextScrollY = 0;
+
+        if (Math.abs(nextScrollY - scrollYRef.current) > 2) {
+          scrollRef.current?.scrollTo?.({ y: nextScrollY, animated: true });
+        }
+      });
+    }, 90);
+  }, [screenHeight]);
+
   const handleToggleFixture = React.useCallback((fixtureId: string) => {
     runFixtureTransition(() => {
       setViewMenuOpen(false);
       if (showAllExpanded) return;
       if (expandedFixtureId === fixtureId) {
         setExpandedFixtureId(null);
+        scrollRef.current?.scrollTo?.({ y: 0, animated: true });
         return;
       }
       setExpandedFixtureId(fixtureId);
+      queueScrollToFixture(fixtureId);
     });
-  }, [expandedFixtureId, runFixtureTransition, showAllExpanded]);
+  }, [expandedFixtureId, queueScrollToFixture, runFixtureTransition, showAllExpanded]);
 
   const handleShowAll = React.useCallback(() => {
     runFixtureTransition(() => {
@@ -538,6 +568,8 @@ export default function HomeScreen() {
     typeof currentGw === 'number' &&
     typeof viewingGw === 'number' &&
     viewingGw >= currentGw;
+  // Temporary visual experiment: hide the top performance carousel without deleting its implementation.
+  const showTopPerformanceCarousel = false;
   const performanceRailTopMargin = 16;
   const hasMovedOn = typeof currentGw === 'number' && typeof viewingGw === 'number' ? viewingGw >= currentGw : true;
   const deadline = React.useMemo(() => deadlineCountdown(fixtures, nowMs), [fixtures, nowMs]);
@@ -697,12 +729,17 @@ export default function HomeScreen() {
           onPressProfile={() => navigation.navigate('Profile')}
           avatarUrl={avatarUrl}
           isRefreshing={refreshing}
+          hasLiveGames={gwState === 'LIVE' && gwIsLive}
         />
 
         <Animated.ScrollView
           ref={scrollRef}
           style={{ flex: 1 }}
           onScrollBeginDrag={() => setViewMenuOpen(false)}
+          onScroll={(e) => {
+            scrollYRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
           contentContainerStyle={{
             paddingHorizontal: t.space[4],
             paddingTop: 8,
@@ -871,166 +908,168 @@ export default function HomeScreen() {
         })()}
         */}
 
-        {/* Full-bleed horizontal row (remove side margins from the page padding) */}
-        <Animated.ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ marginHorizontal: -t.space[4], marginTop: performanceRailTopMargin, marginBottom: SECTION_GAP_Y }}
-          contentContainerStyle={{ paddingHorizontal: t.space[4], paddingBottom: 12 }}
-        >
-          {(() => {
-            const gw = ranks?.latestGw ?? home?.viewingGw ?? null;
-            const scoreFromRanks = ranks?.gwRank?.score;
-            const totalFromRanks = ranks?.gwRank?.totalFixtures;
+        {showTopPerformanceCarousel ? (
+          /* Full-bleed horizontal row (remove side margins from the page padding) */
+          <Animated.ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginHorizontal: -t.space[4], marginTop: performanceRailTopMargin, marginBottom: SECTION_GAP_Y }}
+            contentContainerStyle={{ paddingHorizontal: t.space[4], paddingBottom: 12 }}
+          >
+            {(() => {
+              const gw = ranks?.latestGw ?? home?.viewingGw ?? null;
+              const scoreFromRanks = ranks?.gwRank?.score;
+              const totalFromRanks = ranks?.gwRank?.totalFixtures;
 
-            const fallbackScore =
-              typeof latestGwResults?.score === 'number' && Number.isFinite(latestGwResults.score)
-                ? String(latestGwResults.score)
-                : '--';
-            const fallbackTotal =
-              typeof latestGwResults?.totalFixtures === 'number' && Number.isFinite(latestGwResults.totalFixtures)
-                ? String(latestGwResults.totalFixtures)
-                : '--';
+              const fallbackScore =
+                typeof latestGwResults?.score === 'number' && Number.isFinite(latestGwResults.score)
+                  ? String(latestGwResults.score)
+                  : '--';
+              const fallbackTotal =
+                typeof latestGwResults?.totalFixtures === 'number' && Number.isFinite(latestGwResults.totalFixtures)
+                  ? String(latestGwResults.totalFixtures)
+                  : '--';
 
-            const score = typeof scoreFromRanks === 'number' ? String(scoreFromRanks) : fallbackScore;
-            const total = typeof totalFromRanks === 'number' ? String(totalFromRanks) : fallbackTotal;
+              const score = typeof scoreFromRanks === 'number' ? String(scoreFromRanks) : fallbackScore;
+              const total = typeof totalFromRanks === 'number' ? String(totalFromRanks) : fallbackTotal;
 
-            const lastGwDisplay =
-              ranks?.gwRank?.percentileLabel ??
-              (latestGwResults?.gwRank && latestGwResults?.gwRankTotal
-                ? `Top ${Math.max(1, Math.min(100, Math.round((latestGwResults.gwRank / latestGwResults.gwRankTotal) * 100)))}%`
-                : 'Top —');
+              const lastGwDisplay =
+                ranks?.gwRank?.percentileLabel ??
+                (latestGwResults?.gwRank && latestGwResults?.gwRankTotal
+                  ? `Top ${Math.max(1, Math.min(100, Math.round((latestGwResults.gwRank / latestGwResults.gwRankTotal) * 100)))}%`
+                  : 'Top —');
 
-            const cards: Array<{ key: string; node: React.JSX.Element }> = [];
+              const cards: Array<{ key: string; node: React.JSX.Element }> = [];
 
-            const showReadyToPredictCta = showMakePicksBanner && typeof home?.viewingGw === 'number' && !deadlineExpired;
-            const showResultsCta =
-              gwState === 'RESULTS_PRE_GW' && !!home?.hasSubmittedViewingGw && typeof home?.viewingGw === 'number';
-            const resultsGw = typeof home?.viewingGw === 'number' ? home.viewingGw : ranks?.latestGw ?? null;
+              const showReadyToPredictCta = showMakePicksBanner && typeof home?.viewingGw === 'number' && !deadlineExpired;
+              const showResultsCta =
+                gwState === 'RESULTS_PRE_GW' && !!home?.hasSubmittedViewingGw && typeof home?.viewingGw === 'number';
+              const resultsGw = typeof home?.viewingGw === 'number' ? home.viewingGw : ranks?.latestGw ?? null;
 
-            if (showReadyToPredictCta && resultsGw) {
-              cards.push({
-                key: 'gw-ready-to-predict',
-                node: (
-                  <LeaderboardCardResultsCta
-                    gw={resultsGw}
-                    badge={LB_BADGE_5}
-                    label="Ready to predict (swipe)"
-                    onPress={() => navigation.navigate('PredictionsFlow')}
-                  />
-                ),
-              });
-            } else if (showResultsCta && resultsGw) {
-              const predictionsLocked = Boolean(home?.hasSubmittedViewingGw) || deadlineExpired;
-              const viewingGwForCountdown =
-                typeof home?.viewingGw === 'number' ? home.viewingGw : typeof home?.currentGw === 'number' ? home.currentGw : null;
+              if (showReadyToPredictCta && resultsGw) {
+                cards.push({
+                  key: 'gw-ready-to-predict',
+                  node: (
+                    <LeaderboardCardResultsCta
+                      gw={resultsGw}
+                      badge={LB_BADGE_5}
+                      label="Ready to predict (swipe)"
+                      onPress={() => navigation.navigate('PredictionsFlow')}
+                    />
+                  ),
+                });
+              } else if (showResultsCta && resultsGw) {
+                const predictionsLocked = Boolean(home?.hasSubmittedViewingGw) || deadlineExpired;
+                const viewingGwForCountdown =
+                  typeof home?.viewingGw === 'number' ? home.viewingGw : typeof home?.currentGw === 'number' ? home.currentGw : null;
 
-              if (predictionsLocked && typeof viewingGwForCountdown === 'number') {
-                const wallNowMs = Date.now();
-                const firstFixture = fixtures
-                  .filter((f) => {
-                    const k = f?.kickoff_time ? new Date(f.kickoff_time).getTime() : NaN;
-                    return Number.isFinite(k);
-                  })
-                  .map((f) => ({ f, k: new Date(f.kickoff_time as string).getTime() }))
-                  .sort((a, b) => a.k - b.k)[0]?.f;
+                if (predictionsLocked && typeof viewingGwForCountdown === 'number') {
+                  const wallNowMs = Date.now();
+                  const firstFixture = fixtures
+                    .filter((f) => {
+                      const k = f?.kickoff_time ? new Date(f.kickoff_time).getTime() : NaN;
+                      return Number.isFinite(k);
+                    })
+                    .map((f) => ({ f, k: new Date(f.kickoff_time as string).getTime() }))
+                    .sort((a, b) => a.k - b.k)[0]?.f;
 
-                const firstFixtureKickoffTimeMs = firstFixture?.kickoff_time ? new Date(firstFixture.kickoff_time).getTime() : null;
+                  const firstFixtureKickoffTimeMs = firstFixture?.kickoff_time ? new Date(firstFixture.kickoff_time).getTime() : null;
 
-                const countdownVisible =
-                  typeof firstFixtureKickoffTimeMs === 'number' &&
-                  Number.isFinite(firstFixtureKickoffTimeMs) &&
-                  wallNowMs < firstFixtureKickoffTimeMs &&
-                  dismissedCountdownGw !== viewingGwForCountdown;
+                  const countdownVisible =
+                    typeof firstFixtureKickoffTimeMs === 'number' &&
+                    Number.isFinite(firstFixtureKickoffTimeMs) &&
+                    wallNowMs < firstFixtureKickoffTimeMs &&
+                    dismissedCountdownGw !== viewingGwForCountdown;
 
-                if (countdownVisible && firstFixtureKickoffTimeMs && firstFixture) {
-                  cards.push({
-                    key: 'gw-kickoff-countdown',
-                    node: (
-                      <GameweekCountdownItem
-                        variant="tile"
-                        gw={viewingGwForCountdown}
-                        kickoffTimeMs={firstFixtureKickoffTimeMs}
-                        homeCode={String(firstFixture?.home_code ?? '').toUpperCase() || null}
-                        awayCode={String(firstFixture?.away_code ?? '').toUpperCase() || null}
-                        onKickedOff={() => setDismissedCountdownGw(viewingGwForCountdown)}
-                      />
-                    ),
-                  });
+                  if (countdownVisible && firstFixtureKickoffTimeMs && firstFixture) {
+                    cards.push({
+                      key: 'gw-kickoff-countdown',
+                      node: (
+                        <GameweekCountdownItem
+                          variant="tile"
+                          gw={viewingGwForCountdown}
+                          kickoffTimeMs={firstFixtureKickoffTimeMs}
+                          homeCode={String(firstFixture?.home_code ?? '').toUpperCase() || null}
+                          awayCode={String(firstFixture?.away_code ?? '').toUpperCase() || null}
+                          onKickedOff={() => setDismissedCountdownGw(viewingGwForCountdown)}
+                        />
+                      ),
+                    });
+                  }
                 }
+
+                cards.push({
+                  key: 'gw-results',
+                  node: (
+                    <LeaderboardCardResultsCta
+                      gw={resultsGw}
+                      badge={LB_BADGE_5}
+                      score={score}
+                      totalFixtures={total}
+                      onPress={() => navigation.navigate('GameweekResults', { gw: resultsGw })}
+                    />
+                  ),
+                });
+              } else if (!showComingSoonBanner && resultsGw) {
+                const currentScore = typeof scoreSummary?.correct === 'number' ? String(scoreSummary.correct) : '--';
+                const currentTotal = typeof scoreSummary?.total === 'number' && scoreSummary.total > 0 ? String(scoreSummary.total) : '--';
+                cards.push({
+                  key: 'gw-current-score',
+                  node: (
+                    <LeaderboardCardResultsCta
+                      gw={resultsGw}
+                      badge={LB_BADGE_5}
+                      score={currentScore}
+                      totalFixtures={currentTotal}
+                      label="Current Score"
+                      tone="gradient"
+                      showSheen
+                      rightActionIcon="share"
+                      onPress={() => navigation.navigate('GameweekResults', { gw: resultsGw, mode: 'fixturesShare' })}
+                    />
+                  ),
+                });
+              }
+
+              if (showComingSoonBanner) {
+                const upcomingGw = typeof currentGw === 'number' ? currentGw + 1 : null;
+                cards.push({
+                  key: 'gw-coming-soon',
+                  node: (
+                    <LeaderboardCardResultsCta
+                      topLabel={upcomingGw ? `Gameweek ${upcomingGw}` : 'Gameweek'}
+                      leftNode={<Image source={TIME_ICON} style={{ width: 28, height: 28 }} resizeMode="contain" />}
+                      badge={null}
+                      label="Coming Soon!"
+                      tone="light"
+                      showSheen={false}
+                    />
+                  ),
+                });
               }
 
               cards.push({
-                key: 'gw-results',
+                key: 'performance-summary-cta',
                 node: (
                   <LeaderboardCardResultsCta
-                    gw={resultsGw}
+                    topLabel="OVERALL"
                     badge={LB_BADGE_5}
-                    score={score}
-                    totalFixtures={total}
-                    onPress={() => navigation.navigate('GameweekResults', { gw: resultsGw })}
-                  />
-                ),
-              });
-            } else if (!showComingSoonBanner && resultsGw) {
-              const currentScore = typeof scoreSummary?.correct === 'number' ? String(scoreSummary.correct) : '--';
-              const currentTotal = typeof scoreSummary?.total === 'number' && scoreSummary.total > 0 ? String(scoreSummary.total) : '--';
-              cards.push({
-                key: 'gw-current-score',
-                node: (
-                  <LeaderboardCardResultsCta
-                    gw={resultsGw}
-                    badge={LB_BADGE_5}
-                    score={currentScore}
-                    totalFixtures={currentTotal}
-                    label="Current Score"
-                    tone="gradient"
-                    showSheen
-                    rightActionIcon="share"
-                    onPress={() => navigation.navigate('GameweekResults', { gw: resultsGw, mode: 'fixturesShare' })}
-                  />
-                ),
-              });
-            }
-
-            if (showComingSoonBanner) {
-              const upcomingGw = typeof currentGw === 'number' ? currentGw + 1 : null;
-              cards.push({
-                key: 'gw-coming-soon',
-                node: (
-                  <LeaderboardCardResultsCta
-                    topLabel={upcomingGw ? `Gameweek ${upcomingGw}` : 'Gameweek'}
-                    leftNode={<Image source={TIME_ICON} style={{ width: 28, height: 28 }} resizeMode="contain" />}
-                    badge={null}
-                    label="Coming Soon!"
                     tone="light"
                     showSheen={false}
+                    label="Your Performance"
+                    onPress={() => navigation.navigate('Global', { initialTab: 'overall' })}
                   />
                 ),
               });
-            }
 
-            cards.push({
-              key: 'performance-summary-cta',
-              node: (
-                <LeaderboardCardResultsCta
-                  topLabel="OVERALL"
-                  badge={LB_BADGE_5}
-                  tone="light"
-                  showSheen={false}
-                  label="Your Performance"
-                  onPress={() => navigation.navigate('Global', { initialTab: 'overall' })}
-                />
-              ),
-            });
-
-            return cards.map((c, idx) => (
-              <View key={c.key} style={{ marginRight: idx === cards.length - 1 ? 0 : 10 }}>
-                {c.node}
-              </View>
-            ));
-          })()}
-        </Animated.ScrollView>
+              return cards.map((c, idx) => (
+                <View key={c.key} style={{ marginRight: idx === cards.length - 1 ? 0 : 10 }}>
+                  {c.node}
+                </View>
+              ));
+            })()}
+          </Animated.ScrollView>
+        ) : null}
 
         {/* Mini leagues list removed from merged Predictions hub (moved to Mini Leagues page top rail). */}
         {false ? (
@@ -1173,7 +1212,7 @@ export default function HomeScreen() {
         ) : null}
 
         {/* Predictions section */}
-        <View style={{ marginTop: 0 }}>
+        <View style={{ marginTop: 8 }}>
           <SectionHeaderRow
             title={typeof home?.viewingGw === 'number' ? `Gameweek ${home.viewingGw}` : 'Gameweek'}
             right={
@@ -1369,33 +1408,42 @@ export default function HomeScreen() {
                                 elevation: isMiniExpanded ? 6 : 2,
                               }}
                             >
-                              <MiniFixtureCard
-                                fixtureId={fixtureId}
-                                isExpanded={isMiniExpanded}
-                                onToggleExpand={() => setMiniExpandedFixtureId((prev) => (prev === fixtureId ? null : fixtureId))}
-                                homeCode={homeCode}
-                                awayCode={awayCode}
-                                headerHome={headerHome}
-                                headerAway={headerAway}
-                                homeBadge={homeBadge}
-                                awayBadge={awayBadge}
-                                primaryLabel={miniPrimaryLabel}
-                                primaryExpandedLabel={miniPrimaryExpandedLabel}
-                                secondaryLabel={miniSecondaryLabel}
-                                gwState={gwState}
-                                pick={pick}
-                                derivedOutcome={derivedOutcome}
-                                hasScore={hasScore}
-                                percentBySide={percentBySide}
-                                showExpandedPercentages={showExpandedPercentages}
-                                homeFormColors={homeFormColors}
-                                awayFormColors={awayFormColors}
-                                homePositionLabel={homePositionLabel}
-                                awayPositionLabel={awayPositionLabel}
-                                homeScorers={homeScorers}
-                                awayScorers={awayScorers}
-                                fixtureDateLabel={fixtureDateLabel(f.kickoff_time ?? null)}
-                              />
+                              <View ref={(node) => { fixtureNodeRefs.current[fixtureId] = node; }}>
+                                <MiniFixtureCard
+                                  fixtureId={fixtureId}
+                                  isExpanded={isMiniExpanded}
+                                  onToggleExpand={() =>
+                                    setMiniExpandedFixtureId((prev) => {
+                                      const next = prev === fixtureId ? null : fixtureId;
+                                      if (next) queueScrollToFixture(fixtureId);
+                                      else scrollRef.current?.scrollTo?.({ y: 0, animated: true });
+                                      return next;
+                                    })
+                                  }
+                                  homeCode={homeCode}
+                                  awayCode={awayCode}
+                                  headerHome={headerHome}
+                                  headerAway={headerAway}
+                                  homeBadge={homeBadge}
+                                  awayBadge={awayBadge}
+                                  primaryLabel={miniPrimaryLabel}
+                                  primaryExpandedLabel={miniPrimaryExpandedLabel}
+                                  secondaryLabel={miniSecondaryLabel}
+                                  gwState={gwState}
+                                  pick={pick}
+                                  derivedOutcome={derivedOutcome}
+                                  hasScore={hasScore}
+                                  percentBySide={percentBySide}
+                                  showExpandedPercentages={showExpandedPercentages}
+                                  homeFormColors={homeFormColors}
+                                  awayFormColors={awayFormColors}
+                                  homePositionLabel={homePositionLabel}
+                                  awayPositionLabel={awayPositionLabel}
+                                  homeScorers={homeScorers}
+                                  awayScorers={awayScorers}
+                                  fixtureDateLabel={fixtureDateLabel(f.kickoff_time ?? null)}
+                                />
+                              </View>
                             </Reanimated.View>
                           );
                         })}
@@ -1526,56 +1574,57 @@ export default function HomeScreen() {
                     .slice(0, 3);
 
                   return (
-                    <ExpandedFixtureCard
-                      key={fixtureId}
-                      fixtureId={fixtureId}
-                      isExpandedVisual={isExpandedVisual}
-                      isDetailsViewActive={isDetailsViewActive}
-                      isCompactStack={isCompactStack}
-                      isCompactCard={isCompactCard}
-                      fixtureMarginTop={fixtureMarginTop}
-                      stackZIndex={isCompactStack ? (sectionExpandedIndex === idx ? 300 : idx + 1) : 0}
-                      stackElevation={isCompactStack ? idx + 1 : 0}
-                      onPress={() => {
-                        if (isDetailsOnlyState) return;
-                        handleToggleFixture(fixtureId);
-                      }}
-                      homeCode={homeCode}
-                      awayCode={awayCode}
-                      headerPrimary={headerPrimary}
-                      headerSecondary={headerSecondary}
-                      headerHome={headerHome}
-                      headerAway={headerAway}
-                      homeBadge={homeBadge}
-                      awayBadge={awayBadge}
-                      homeTeamFontWeight={homeTeamFontWeight}
-                      awayTeamFontWeight={awayTeamFontWeight}
-                      gwState={gwState}
-                      pick={pick}
-                      derivedOutcome={derivedOutcome}
-                      hasScore={hasScore}
-                      isFinished={isFinished}
-                      isLiveOrResultsCard={isLiveOrResultsCard}
-                      percentBySide={percentBySide}
-                      showTabsRow={showTabsRow}
-                      showTabPercentages={showTabPercentages}
-                      showPercentagesOnTabs={showPercentagesOnTabs}
-                      tabsAboveScorers={tabsAboveScorers}
-                      homeScorers={homeScorers}
-                      awayScorers={awayScorers}
-                      kickoffDetail={kickoffDetail}
-                      hideStatusRowCompletely={hideStatusRowCompletely}
-                      hideRepeatedKickoffInDetails={hideRepeatedKickoffInDetails}
-                      hideRepeatedKickoffInCompact={hideRepeatedKickoffInCompact}
-                      hideRepeatedKickoffInLiveScheduled={hideRepeatedKickoffInLiveScheduled}
-                      onLayout={(height) => {
-                        setCardHeightsById((prev) => {
-                          const existing = prev[fixtureId];
-                          if (typeof existing === 'number' && Math.abs(existing - height) <= 1) return prev;
-                          return { ...prev, [fixtureId]: height };
-                        });
-                      }}
-                    />
+                    <View key={fixtureId} ref={(node) => { fixtureNodeRefs.current[fixtureId] = node; }}>
+                      <ExpandedFixtureCard
+                        fixtureId={fixtureId}
+                        isExpandedVisual={isExpandedVisual}
+                        isDetailsViewActive={isDetailsViewActive}
+                        isCompactStack={isCompactStack}
+                        isCompactCard={isCompactCard}
+                        fixtureMarginTop={fixtureMarginTop}
+                        stackZIndex={isCompactStack ? (sectionExpandedIndex === idx ? 300 : idx + 1) : 0}
+                        stackElevation={isCompactStack ? idx + 1 : 0}
+                        onPress={() => {
+                          if (isDetailsOnlyState) return;
+                          handleToggleFixture(fixtureId);
+                        }}
+                        homeCode={homeCode}
+                        awayCode={awayCode}
+                        headerPrimary={headerPrimary}
+                        headerSecondary={headerSecondary}
+                        headerHome={headerHome}
+                        headerAway={headerAway}
+                        homeBadge={homeBadge}
+                        awayBadge={awayBadge}
+                        homeTeamFontWeight={homeTeamFontWeight}
+                        awayTeamFontWeight={awayTeamFontWeight}
+                        gwState={gwState}
+                        pick={pick}
+                        derivedOutcome={derivedOutcome}
+                        hasScore={hasScore}
+                        isFinished={isFinished}
+                        isLiveOrResultsCard={isLiveOrResultsCard}
+                        percentBySide={percentBySide}
+                        showTabsRow={showTabsRow}
+                        showTabPercentages={showTabPercentages}
+                        showPercentagesOnTabs={showPercentagesOnTabs}
+                        tabsAboveScorers={tabsAboveScorers}
+                        homeScorers={homeScorers}
+                        awayScorers={awayScorers}
+                        kickoffDetail={kickoffDetail}
+                        hideStatusRowCompletely={hideStatusRowCompletely}
+                        hideRepeatedKickoffInDetails={hideRepeatedKickoffInDetails}
+                        hideRepeatedKickoffInCompact={hideRepeatedKickoffInCompact}
+                        hideRepeatedKickoffInLiveScheduled={hideRepeatedKickoffInLiveScheduled}
+                        onLayout={(height) => {
+                          setCardHeightsById((prev) => {
+                            const existing = prev[fixtureId];
+                            if (typeof existing === 'number' && Math.abs(existing - height) <= 1) return prev;
+                            return { ...prev, [fixtureId]: height };
+                          });
+                        }}
+                      />
+                    </View>
                   );
                 })}
               </View>
@@ -1585,14 +1634,6 @@ export default function HomeScreen() {
           </View>
         )}
         </Animated.View>
-        {__DEV__ ? (
-          <View style={{ marginTop: 12 }}>
-            <TotlText variant="muted">Dev: BFF {String(env.EXPO_PUBLIC_BFF_URL)}</TotlText>
-            <TotlText variant="muted">
-              Dev: Auth token {hasAccessToken === null ? 'unknown' : hasAccessToken ? 'present' : 'missing'}
-            </TotlText>
-          </View>
-        ) : null}
         </Animated.ScrollView>
       </Screen>
     </GameweekAdvanceTransition>

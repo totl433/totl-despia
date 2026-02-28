@@ -15,6 +15,7 @@ export default function AppTopHeader({
   leftAction,
   rightAction,
   isRefreshing = false,
+  hasLiveGames = false,
 }: {
   onPressChat: () => void;
   onPressProfile: () => void;
@@ -23,6 +24,7 @@ export default function AppTopHeader({
   leftAction?: React.ReactNode;
   rightAction?: React.ReactNode;
   isRefreshing?: boolean;
+  hasLiveGames?: boolean;
 }) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
@@ -37,7 +39,6 @@ export default function AppTopHeader({
   );
   const showUnreadBadge = unreadCount > 0;
   const unreadLabel = unreadCount > 99 ? '99+' : String(unreadCount);
-  const hasLiveGames = true;
   const liveDotOpacity = React.useRef(new Animated.Value(1)).current;
 
   React.useEffect(() => {

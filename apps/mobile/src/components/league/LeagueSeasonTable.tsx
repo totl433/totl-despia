@@ -48,8 +48,6 @@ export default function LeagueSeasonTable({
             flexDirection: 'row',
             alignItems: 'center',
             paddingVertical: 8,
-            borderTopWidth: 1,
-            borderTopColor: 'rgba(148,163,184,0.14)',
             borderBottomWidth: 1,
             borderBottomColor: 'rgba(148,163,184,0.14)',
           }}

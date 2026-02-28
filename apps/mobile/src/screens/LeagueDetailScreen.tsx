@@ -1,10 +1,11 @@
 import React from 'react';
-import { Alert, Share, ScrollView, View } from 'react-native';
+import { Alert, Image, Pressable, Share, ScrollView, View, useWindowDimensions } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Screen, TotlText, useTokens } from '@totl/ui';
 import type { Fixture, GwResultRow, HomeSnapshot, LiveScore, LiveStatus, Pick } from '@totl/domain';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, { LinearTransition } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 // Expo SDK 54: legacy async APIs (getInfoAsync/readAsStringAsync) moved under `expo-file-system/legacy`.
@@ -27,19 +28,41 @@ import LeagueSeasonRulesSheet from '../components/league/LeagueSeasonRulesSheet'
 import LeaguePillButton from '../components/league/LeaguePillButton';
 import LeagueSubmissionStatusCard from '../components/league/LeagueSubmissionStatusCard';
 import type { LeaguePick } from '../components/league/LeaguePickPill';
-import FixtureCard from '../components/FixtureCard';
+import MiniFixtureCard from '../components/home/MiniFixtureCard';
 import LeaguePickChipsRow from '../components/league/LeaguePickChipsRow';
 import { TotlRefreshControl } from '../lib/refreshControl';
 import LeagueOverflowMenu, { type LeagueOverflowAction } from '../components/league/LeagueOverflowMenu';
 import LeagueInviteSheet from '../components/league/LeagueInviteSheet';
 import { env } from '../env';
 import { resolveLeagueStartGw } from '../lib/leagueStart';
-import { getGameweekStateFromSnapshot } from '../lib/gameweekState';
+import { getGameweekStateFromSnapshot, type GameweekState } from '../lib/gameweekState';
 import CenteredSpinner from '../components/CenteredSpinner';
+import SectionHeaderRow from '../components/home/SectionHeaderRow';
 import { Ionicons } from '@expo/vector-icons';
 import { useLiveScores } from '../hooks/useLiveScores';
+import { TEAM_BADGES } from '../lib/teamBadges';
+import { getMediumName } from '../../../../src/lib/teamNames';
+import {
+  buildDevFixturePicks,
+  DEV_FAKE_LEAGUE_MEMBERS,
+  isDevFakeLeagueId,
+} from '../lib/devFakeLeague';
 
 const LEAGUE_TABS: LeagueTabKey[] = ['gwTable', 'predictions', 'season'];
+
+function fixtureKickoffTimeLabel(kickoff: string | null | undefined) {
+  if (!kickoff) return 'KO';
+  const d = new Date(kickoff);
+  if (Number.isNaN(d.getTime())) return 'KO';
+  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatMinute(status: LiveStatus, minute: number | null | undefined) {
+  if (status === 'FINISHED') return 'FT';
+  if (status === 'PAUSED') return 'HT';
+  if (status === 'IN_PLAY') return typeof minute === 'number' ? `${minute}'` : 'LIVE';
+  return '';
+}
 
 function base64ToUint8Array(base64: string): Uint8Array {
   // RN-safe base64 decode (atob is available in Hermes/JSC for RN; if not, we'll fail loudly).
@@ -54,6 +77,7 @@ export default function LeagueDetailScreen() {
   const route = useRoute<any>();
   const params = route.params as RootStackParamList['LeagueDetail'];
   const t = useTokens();
+  const { height: screenHeight } = useWindowDimensions();
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
   const [tab, setTab] = React.useState<LeagueTabKey>('gwTable');
@@ -63,12 +87,23 @@ export default function LeagueDetailScreen() {
   const [inviteMode, setInviteMode] = React.useState<'league' | 'chat'>('league');
   const [avatarOverrideUri, setAvatarOverrideUri] = React.useState<string | null>(null);
   const [leavingLeague, setLeavingLeague] = React.useState(false);
+  const [predictionsLayout, setPredictionsLayout] = React.useState<'expanded' | 'mini'>('expanded');
+  const [miniExpandedFixtureId, setMiniExpandedFixtureId] = React.useState<string | null>(null);
   const chatMlHopCount = typeof params.chatMlHopCount === 'number' ? params.chatMlHopCount : 0;
+  const isDevFakeLeague = isDevFakeLeagueId(String(params.leagueId));
+  const predictionsScrollRef = React.useRef<ScrollView | null>(null);
+  const predictionsScrollYRef = React.useRef(0);
+  const fixtureNodeRefs = React.useRef<Record<string, View | null>>({});
+  const miniLayoutTransition = React.useMemo(
+    () => LinearTransition.springify().damping(42).stiffness(260).mass(0.7),
+    []
+  );
 
   type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
   type LeagueSummary = LeaguesResponse['leagues'][number];
 
   const { data: leagues } = useQuery({
+    enabled: !isDevFakeLeague,
     queryKey: ['leagues'],
     queryFn: () => api.listLeagues(),
   });
@@ -103,17 +138,38 @@ export default function LeagueDetailScreen() {
 
   const [selectedGw, setSelectedGw] = React.useState<number | null>(null);
   React.useEffect(() => {
-    // Keep the GW table in sync with the user’s viewing GW by default.
-    // Only initialize once (don’t override manual selection).
+    // Default GW table behavior:
+    // - If user is still viewing an older GW, use that GW.
+    // - If user is on the newest GW, keep table on previous GW until newest GW is LIVE.
+    // - Only initialize once (don’t override manual selection).
     if (selectedGw !== null) return;
+
+    const clampGw = (gw: number) => Math.max(1, Math.trunc(gw));
+
+    if (typeof viewingGw === 'number' && typeof currentGw === 'number') {
+      if (viewingGw < currentGw) {
+        setSelectedGw(clampGw(viewingGw));
+        return;
+      }
+
+      if (viewingGw >= currentGw) {
+        const shouldUseCurrentGw = seasonGwState === 'LIVE';
+        setSelectedGw(clampGw(shouldUseCurrentGw ? currentGw : currentGw - 1));
+        return;
+      }
+    }
+
     if (typeof viewingGw === 'number') {
-      setSelectedGw(viewingGw);
+      const shouldUseViewingGw = seasonGwState === 'LIVE';
+      setSelectedGw(clampGw(shouldUseViewingGw ? viewingGw : viewingGw - 1));
       return;
     }
+
     if (typeof currentGw === 'number') {
-      setSelectedGw(currentGw);
+      const shouldUseCurrentGw = seasonGwState === 'LIVE';
+      setSelectedGw(clampGw(shouldUseCurrentGw ? currentGw : currentGw - 1));
     }
-  }, [currentGw, selectedGw, viewingGw]);
+  }, [currentGw, seasonGwState, selectedGw, viewingGw]);
 
   const availableGws = React.useMemo(() => {
     const maxGw = typeof currentGw === 'number' ? currentGw : typeof viewingGw === 'number' ? viewingGw : null;
@@ -124,7 +180,7 @@ export default function LeagueDetailScreen() {
   type LeagueTableResponse = Awaited<ReturnType<typeof api.getLeagueGwTable>>;
   const leagueId = String(params.leagueId);
   const { data: table, isLoading: tableLoading, refetch: refetchTable, isRefetching: tableRefetching } = useQuery<LeagueTableResponse>({
-    enabled: tab === 'gwTable' && typeof selectedGw === 'number',
+    enabled: tab === 'gwTable' && typeof selectedGw === 'number' && !isDevFakeLeague,
     queryKey: ['leagueGwTable', leagueId, selectedGw],
     queryFn: () => api.getLeagueGwTable(leagueId, selectedGw as number),
   });
@@ -132,11 +188,11 @@ export default function LeagueDetailScreen() {
   type LeagueMembersResponse = Awaited<ReturnType<typeof api.getLeague>>;
   const { data: leagueDetails, refetch: refetchLeagueDetails, isRefetching: leagueDetailsRefetching } = useQuery<LeagueMembersResponse>({
     // Needed across tabs (chat avatars + menu actions).
-    enabled: true,
+    enabled: !isDevFakeLeague,
     queryKey: ['league', leagueId],
     queryFn: () => api.getLeague(leagueId),
   });
-  const members = leagueDetails?.members ?? [];
+  const members = isDevFakeLeague ? DEV_FAKE_LEAGUE_MEMBERS : (leagueDetails?.members ?? []);
   const leagueMeta = (leagueDetails?.league ?? null) as null | { id?: string; name?: string; code?: string; created_at?: string | null; avatar?: string | null };
   const headerAvatarUri = React.useMemo(() => {
     if (typeof avatarOverrideUri === 'string' && avatarOverrideUri.startsWith('http')) return avatarOverrideUri;
@@ -184,7 +240,7 @@ export default function LeagueDetailScreen() {
   const [seasonShowForm, setSeasonShowForm] = React.useState(false);
   const [seasonRulesOpen, setSeasonRulesOpen] = React.useState(false);
   const { data: resolvedLeagueStartGw } = useQuery<number>({
-    enabled: typeof seasonGw === 'number' && !!leagueId,
+    enabled: typeof seasonGw === 'number' && !!leagueId && !isDevFakeLeague,
     queryKey: [
       'leagueStartGw',
       leagueId,
@@ -203,8 +259,8 @@ export default function LeagueDetailScreen() {
       ),
     staleTime: 5 * 60_000,
   });
-  const seasonStartGwResolved = typeof resolvedLeagueStartGw === 'number';
-  const seasonStartGw = typeof resolvedLeagueStartGw === 'number' ? resolvedLeagueStartGw : 1;
+  const seasonStartGwResolved = isDevFakeLeague || typeof resolvedLeagueStartGw === 'number';
+  const seasonStartGw = isDevFakeLeague ? 1 : typeof resolvedLeagueStartGw === 'number' ? resolvedLeagueStartGw : 1;
   const seasonIsLateStartingLeague = seasonStartGw > 1;
   const tableAvailableGws = React.useMemo(() => availableGws.filter((gw) => gw >= seasonStartGw), [availableGws, seasonStartGw]);
 
@@ -443,39 +499,65 @@ export default function LeagueDetailScreen() {
   const { data: seasonRows, isLoading: seasonLoading, refetch: refetchSeasonRows, isRefetching: seasonRowsRefetching } = useQuery<
     LeagueSeasonRow[]
   >({
-    enabled: tab === 'season' && members.length > 0 && typeof seasonGw === 'number' && seasonStartGwResolved,
+    enabled: tab === 'season' && members.length > 0 && typeof seasonGw === 'number' && seasonStartGwResolved && !isDevFakeLeague,
     queryKey: ['leagueSeasonTable', leagueId, seasonGw, seasonStartGw, members.map((m: any) => String(m.id ?? '')).join(',')],
     queryFn: async () => {
       const memberIds = members.map((m: any) => String(m.id));
       const showUnicorns = memberIds.length >= 3;
       const latestGw = seasonGw as number;
 
-      const resultsRes = await (supabase as any)
-        .from('app_gw_results')
-        .select('gw,fixture_index,result')
-        .gte('gw', seasonStartGw)
-        .lte('gw', latestGw);
+      const [gwPointsRes, resultsRes] = await Promise.all([
+        (supabase as any)
+          .from('app_v_gw_points')
+          .select('user_id,gw,points')
+          .in('user_id', memberIds)
+          .gte('gw', seasonStartGw)
+          .lte('gw', latestGw),
+        (supabase as any)
+          .from('app_gw_results')
+          .select('gw,fixture_index,result')
+          .gte('gw', seasonStartGw)
+          .lte('gw', latestGw),
+      ]);
+      if (gwPointsRes.error) throw gwPointsRes.error;
       if (resultsRes.error) throw resultsRes.error;
 
+      const gwPointsRows: Array<{ user_id: string; gw: number; points: number }> = gwPointsRes.data ?? [];
       const results: Array<{ gw: number; fixture_index: number; result: 'H' | 'D' | 'A' | string }> = resultsRes.data ?? [];
-
+      // IMPORTANT: fetch picks in pages to avoid silent truncation on large datasets.
+      const picks: Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }> = [];
+      const PAGE_SIZE = 1000;
+      let from = 0;
+      while (true) {
+        const pageRes = await (supabase as any)
+          .from('app_picks')
+          .select('user_id,gw,fixture_index,pick')
+          .in('user_id', memberIds)
+          .gte('gw', seasonStartGw)
+          .lte('gw', latestGw)
+          .range(from, from + PAGE_SIZE - 1);
+        if (pageRes.error) throw pageRes.error;
+        const page = (pageRes.data ?? []) as Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }>;
+        picks.push(...page);
+        if (page.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
       const outcomeByGwFixture = new Map<string, 'H' | 'D' | 'A'>();
       results.forEach((r) => {
         if (r.result !== 'H' && r.result !== 'D' && r.result !== 'A') return;
         outcomeByGwFixture.set(`${r.gw}:${r.fixture_index}`, r.result);
       });
 
-      // Match leaderboard/OCP behavior: include any GW that already has saved results,
-      // including partially completed current GW fixtures.
       const gwsWithResults = Array.from(
         new Set(
           Array.from(outcomeByGwFixture.keys())
             .map((k) => Number.parseInt(k.split(':')[0] ?? '', 10))
-            .filter((n) => Number.isFinite(n))
+            .filter((gw) => Number.isFinite(gw))
         )
       ).sort((a, b) => a - b);
 
-      let relevantGws = gwsWithResults.filter((gw) => gw >= seasonStartGw);
+      // Only count GWs with actual saved results. This prevents phantom all-draw rounds.
+      let relevantGws = gwsWithResults.filter((gw) => gw >= seasonStartGw && gw <= latestGw);
       // Product rule: Season table does not include the current GW while that GW is LIVE.
       if (seasonGwState === 'LIVE') {
         relevantGws = relevantGws.filter((gw) => gw < latestGw);
@@ -483,19 +565,6 @@ export default function LeagueDetailScreen() {
 
       if (relevantGws.length === 0) return [];
 
-      const [gwPointsRes, picksRes] = await Promise.all([
-        (supabase as any)
-          .from('app_v_gw_points')
-          .select('user_id,gw,points')
-          .in('user_id', memberIds)
-          .in('gw', relevantGws),
-        (supabase as any).from('app_picks').select('user_id,gw,fixture_index,pick').in('user_id', memberIds).in('gw', relevantGws),
-      ]);
-      if (gwPointsRes.error) throw gwPointsRes.error;
-      if (picksRes.error) throw picksRes.error;
-
-      const gwPointsRows: Array<{ user_id: string; gw: number; points: number }> = gwPointsRes.data ?? [];
-      const picks: Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }> = picksRes.data ?? [];
       const pointsByUserGw = new Map<string, number>();
       gwPointsRows.forEach((row) => {
         pointsByUserGw.set(`${String(row.user_id)}:${Number(row.gw)}`, Number(row.points ?? 0));
@@ -508,7 +577,7 @@ export default function LeagueDetailScreen() {
         memberIds.forEach((uid) =>
           m.set(uid, {
             user_id: uid,
-            // Source scores from app_v_gw_points so OCP matches leaderboard baseline.
+            // Match Leaderboards: weekly league score comes from app_v_gw_points.
             score: pointsByUserGw.get(`${uid}:${g}`) ?? 0,
             unicorns: 0,
           })
@@ -562,6 +631,7 @@ export default function LeagueDetailScreen() {
       relevantGws.forEach((g) => {
         const rows = Array.from(perGw.get(g)!.values());
         rows.forEach((r) => {
+          // OCP in this table should align to leaderboards for the same GW window.
           ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);
           unis.set(r.user_id, (unis.get(r.user_id) ?? 0) + r.unicorns);
         });
@@ -608,8 +678,8 @@ export default function LeagueDetailScreen() {
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnReconnect: true,
-    // Keep season standings fresh while user is on this tab.
-    refetchInterval: tab === 'season' ? 20_000 : false,
+    // Season standings should be stable; refresh via pull-to-refresh/navigation.
+    refetchInterval: false,
   });
 
   const picksGw = React.useMemo(() => {
@@ -622,7 +692,7 @@ export default function LeagueDetailScreen() {
     deadlinePassed: boolean;
     allSubmitted: boolean;
     submittedUserIds: string[];
-    members: Array<{ id: string; name: string }>;
+    members: Array<{ id: string; name: string; avatar_url?: string | null; avatar_bg_color?: string | null }>;
     fixtures: Fixture[];
     sections: Array<{ label: string; fixtures: Fixture[] }>;
     outcomeByFixtureIndex: Record<string, LeaguePick>;
@@ -646,6 +716,52 @@ export default function LeagueDetailScreen() {
     queryKey: ['leaguePredictionsV2', leagueId, picksGw, seasonStartGw, members.map((m: any) => String(m.id)).join(',')],
     queryFn: async () => {
       const gw = picksGw as number;
+      if (isDevFakeLeague) {
+        const fixtures = ((home?.fixtures ?? []) as Fixture[]).filter((f) => Number(f.gw) === gw);
+        const memberIds = DEV_FAKE_LEAGUE_MEMBERS.map((m) => String(m.id));
+        const submittedUserIds = [...memberIds];
+        const picksByFixtureIndex: Record<string, Record<string, LeaguePick>> = {};
+        fixtures.forEach((f) => {
+          picksByFixtureIndex[String(f.fixture_index)] = buildDevFixturePicks(memberIds, Number(f.fixture_index));
+        });
+        const fmt = (iso?: string | null) => {
+          if (!iso) return 'Fixtures';
+          const d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return 'Fixtures';
+          return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+        };
+        const buckets = new Map<string, { label: string; key: number; minFixtureIndex: number; fixtures: Fixture[] }>();
+        fixtures.forEach((f) => {
+          const label = fmt(f.kickoff_time ?? null);
+          const timeKey = f.kickoff_time ? new Date(f.kickoff_time).getTime() : Number.MAX_SAFE_INTEGER;
+          const safeTimeKey = Number.isFinite(timeKey) ? timeKey : Number.MAX_SAFE_INTEGER;
+          const b =
+            buckets.get(label) ?? { label, key: safeTimeKey, minFixtureIndex: Number(f.fixture_index ?? Number.MAX_SAFE_INTEGER), fixtures: [] };
+          b.key = Math.min(b.key, safeTimeKey);
+          b.minFixtureIndex = Math.min(b.minFixtureIndex, Number(f.fixture_index ?? Number.MAX_SAFE_INTEGER));
+          b.fixtures.push(f);
+          buckets.set(label, b);
+        });
+        const sections = Array.from(buckets.values())
+          .sort((a, b) => a.key - b.key || a.minFixtureIndex - b.minFixtureIndex)
+          .map((b) => ({ label: b.label, fixtures: [...b.fixtures].sort((a, b) => a.fixture_index - b.fixture_index) }));
+        return {
+          picksGw: gw,
+          deadlinePassed: true,
+          allSubmitted: true,
+          submittedUserIds,
+          members: DEV_FAKE_LEAGUE_MEMBERS.map((m) => ({
+            id: String(m.id),
+            name: String(m.name),
+            avatar_url: null,
+            avatar_bg_color: String(m.avatar_bg_color),
+          })),
+          fixtures,
+          sections,
+          outcomeByFixtureIndex: {},
+          picksByFixtureIndex,
+        };
+      }
       const memberIds = members.map((m: any) => String(m.id));
 
       const [fixturesRes, subsRes, picksRes, resultsRes] = await Promise.all([
@@ -725,6 +841,7 @@ export default function LeagueDetailScreen() {
           id: String(m.id),
           name: String(m.name ?? 'User'),
           avatar_url: typeof m.avatar_url === 'string' ? m.avatar_url : null,
+          avatar_bg_color: typeof m.avatar_bg_color === 'string' ? m.avatar_bg_color : null,
         })),
         fixtures,
         sections,
@@ -837,6 +954,36 @@ export default function LeagueDetailScreen() {
         setTab(LEAGUE_TABS[idx + 1] ?? 'season');
       });
   }, [navigation, tab]);
+
+  React.useEffect(() => {
+    if (tab !== 'predictions' || predictionsLayout !== 'mini') {
+      setMiniExpandedFixtureId(null);
+    }
+  }, [predictionsLayout, tab]);
+
+  const queueScrollToFixture = React.useCallback((fixtureId: string) => {
+    setTimeout(() => {
+      const node = fixtureNodeRefs.current[fixtureId];
+      if (!node?.measureInWindow) return;
+      node.measureInWindow((x, y, width, height) => {
+        const cardTop = Number(y ?? 0);
+        const cardBottom = cardTop + Number(height ?? 0);
+        if (!Number.isFinite(cardTop) || !Number.isFinite(cardBottom)) return;
+
+        const visibleTop = 130;
+        const visibleBottom = screenHeight - 110;
+        let nextScrollY = predictionsScrollYRef.current;
+
+        if (cardBottom > visibleBottom) nextScrollY += cardBottom - visibleBottom + 12;
+        if (cardTop < visibleTop) nextScrollY -= visibleTop - cardTop + 12;
+        if (nextScrollY < 0) nextScrollY = 0;
+
+        if (Math.abs(nextScrollY - predictionsScrollYRef.current) > 2) {
+          predictionsScrollRef.current?.scrollTo?.({ y: nextScrollY, animated: true });
+        }
+      });
+    }, 90);
+  }, [screenHeight]);
 
   const handleOpenChatThread = React.useCallback(() => {
     const nextHop = chatMlHopCount + 1;
@@ -971,9 +1118,14 @@ export default function LeagueDetailScreen() {
               </ScrollView>
             ) : tab === 'predictions' ? (
               <ScrollView
+                ref={predictionsScrollRef}
                 style={{ flex: 1 }}
                 contentContainerStyle={{ paddingBottom: 140 }}
                 refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                onScroll={(e) => {
+                  predictionsScrollYRef.current = e.nativeEvent.contentOffset.y;
+                }}
+                scrollEventThrottle={16}
               >
                 {typeof picksGw !== 'number' ? (
                   <TotlText variant="muted">No current gameweek available.</TotlText>
@@ -1010,59 +1162,267 @@ export default function LeagueDetailScreen() {
                           />
                         ) : null}
 
-                        <View style={{ marginTop: 12 }}>
-                          {predictions.fixtures.map((f) => {
-                            const k = String(f.fixture_index);
-                            const live = liveByFixtureIndexRealtime.get(f.fixture_index) ?? null;
-                            const lsNoGoals = live ? ({ ...(live as any), goals: undefined } as any) : null;
-                            const outcomeFromDb = predictions.outcomeByFixtureIndex[k] ?? null;
-                            const outcomeFromLive: LeaguePick | null = (() => {
-                              if (!live) return null;
-                              const st: LiveStatus = (live?.status ?? 'SCHEDULED') as LiveStatus;
-                              const started = st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED';
-                              if (!started) return null;
-                              const hs = typeof live.home_score === 'number' ? live.home_score : null;
-                              const as = typeof live.away_score === 'number' ? live.away_score : null;
-                              if (hs === null || as === null) return null;
-                              return hs > as ? 'H' : hs < as ? 'A' : 'D';
-                            })();
-                            const outcome = outcomeFromDb ?? outcomeFromLive;
-                            const picksMap =
-                              new Map<string, LeaguePick>(Object.entries(predictions.picksByFixtureIndex[k] ?? {}));
-
-                            return (
+                        <View style={{ marginTop: 6 }}>
+                          <SectionHeaderRow
+                            title={`Gameweek ${predictions.picksGw}`}
+                            right={
                               <View
-                                key={`${predictions.picksGw}-${f.fixture_index}`}
                                 style={{
-                                  marginBottom: 10,
-                                  borderRadius: 14,
-                                  overflow: 'hidden',
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  borderRadius: 999,
                                   borderWidth: 1,
-                                  borderColor: t.color.border,
+                                  borderColor: 'rgba(148,163,184,0.26)',
                                   backgroundColor: t.color.surface,
-                                  shadowColor: '#0F172A',
-                                  shadowOpacity: 0.05,
-                                  shadowRadius: 7,
-                                  shadowOffset: { width: 0, height: 2 },
-                                  elevation: 1,
+                                  padding: 4,
                                 }}
                               >
-                                <FixtureCard
-                                  fixture={f as any}
-                                  liveScore={lsNoGoals}
-                                  showPickButtons={false}
-                                  variant="grouped"
-                                  result={outcome}
-                                />
-                                <LeaguePickChipsRow
-                                  members={predictions.members}
-                                  picksByUserId={picksMap}
-                                  outcome={outcome}
-                                  currentUserId={me?.id ?? null}
-                                />
+                                <Pressable
+                                  accessibilityRole="button"
+                                  accessibilityLabel="Mini cards view"
+                                  onPress={() => {
+                                    setPredictionsLayout('mini');
+                                    setMiniExpandedFixtureId(null);
+                                  }}
+                                  style={({ pressed }) => ({
+                                    width: 34,
+                                    height: 34,
+                                    borderRadius: 17,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    backgroundColor: predictionsLayout === 'mini' ? 'rgba(28,131,118,0.14)' : 'transparent',
+                                    opacity: pressed ? 0.86 : 1,
+                                  })}
+                                >
+                                  <Ionicons name="grid-outline" size={18} color={predictionsLayout === 'mini' ? '#1C8376' : '#475569'} />
+                                </Pressable>
+                                <Pressable
+                                  accessibilityRole="button"
+                                  accessibilityLabel="Expanded cards view"
+                                  onPress={() => {
+                                    setPredictionsLayout('expanded');
+                                    setMiniExpandedFixtureId(null);
+                                  }}
+                                  style={({ pressed }) => ({
+                                    width: 34,
+                                    height: 34,
+                                    borderRadius: 17,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    backgroundColor: predictionsLayout === 'expanded' ? 'rgba(28,131,118,0.14)' : 'transparent',
+                                    opacity: pressed ? 0.86 : 1,
+                                  })}
+                                >
+                                  <Ionicons name="tablet-landscape-outline" size={18} color={predictionsLayout === 'expanded' ? '#1C8376' : '#475569'} />
+                                </Pressable>
                               </View>
-                            );
-                          })}
+                            }
+                          />
+                          {predictions.sections.map((section, sectionIdx) => (
+                            <Reanimated.View
+                              key={`pred-section-${section.label}-${sectionIdx}`}
+                              layout={miniLayoutTransition}
+                              style={{ marginBottom: sectionIdx === predictions.sections.length - 1 ? 0 : 8 }}
+                            >
+                              <View style={{ marginBottom: 10, zIndex: 1 }}>
+                                <TotlText style={{ fontSize: 17, lineHeight: 21, fontFamily: t.font.medium, color: t.color.text }}>{section.label}</TotlText>
+                              </View>
+                              {predictionsLayout === 'mini' ? (
+                                <Reanimated.View layout={miniLayoutTransition} style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
+                                  {section.fixtures.map((f) => {
+                                    const k = String(f.fixture_index);
+                                    const miniFixtureId = `league-pred-mini-${predictions.picksGw}-${f.fixture_index}`;
+                                    const isMiniExpanded = miniExpandedFixtureId === miniFixtureId;
+                                    const live = liveByFixtureIndexRealtime.get(f.fixture_index) ?? null;
+                                    const outcomeFromDb = predictions.outcomeByFixtureIndex[k] ?? null;
+                                    const outcomeFromLive: LeaguePick | null = (() => {
+                                      if (!live) return null;
+                                      const st: LiveStatus = (live?.status ?? 'SCHEDULED') as LiveStatus;
+                                      const started = st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED';
+                                      if (!started) return null;
+                                      const hs = typeof live.home_score === 'number' ? live.home_score : null;
+                                      const as = typeof live.away_score === 'number' ? live.away_score : null;
+                                      if (hs === null || as === null) return null;
+                                      return hs > as ? 'H' : hs < as ? 'A' : 'D';
+                                    })();
+                                    const outcome = outcomeFromDb ?? outcomeFromLive;
+                                    const st: LiveStatus = (live?.status ?? 'SCHEDULED') as LiveStatus;
+                                    const hasScore =
+                                      typeof live?.home_score === 'number' &&
+                                      typeof live?.away_score === 'number' &&
+                                      (st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED');
+                                    const homeCode = String(f.home_code ?? '').toUpperCase();
+                                    const awayCode = String(f.away_code ?? '').toUpperCase();
+                                    const homeBadge = TEAM_BADGES[homeCode] ?? null;
+                                    const awayBadge = TEAM_BADGES[awayCode] ?? null;
+                                    const homeLabel = getMediumName(String(f.home_name ?? f.home_team ?? homeCode ?? 'Home'));
+                                    const awayLabel = getMediumName(String(f.away_name ?? f.away_team ?? awayCode ?? 'Away'));
+                                    const picksMap = new Map<string, LeaguePick>(Object.entries(predictions.picksByFixtureIndex[k] ?? {}));
+                                    const predictionsGwState: GameweekState = predictions.deadlinePassed ? 'DEADLINE_PASSED' : 'GW_PREDICTED';
+                                    return (
+                                      <Reanimated.View
+                                        key={`mini-${predictions.picksGw}-${f.fixture_index}`}
+                                        layout={miniLayoutTransition}
+                                        style={{
+                                          width: isMiniExpanded ? '100%' : '50%',
+                                          paddingHorizontal: 6,
+                                          marginBottom: 12,
+                                          zIndex: isMiniExpanded ? 10 : 1,
+                                        }}
+                                      >
+                                        <View ref={(node) => { fixtureNodeRefs.current[miniFixtureId] = node; }}>
+                                          <MiniFixtureCard
+                                            fixtureId={miniFixtureId}
+                                            isExpanded={isMiniExpanded}
+                                            onToggleExpand={() => {
+                                              setMiniExpandedFixtureId((prev) => {
+                                                const next = prev === miniFixtureId ? null : miniFixtureId;
+                                                if (next) queueScrollToFixture(miniFixtureId);
+                                                else predictionsScrollRef.current?.scrollTo?.({ y: 0, animated: true });
+                                                return next;
+                                              });
+                                            }}
+                                            suppressExpandedDetails
+                                            footerInside={
+                                              <LeaguePickChipsRow
+                                                members={predictions.members}
+                                                picksByUserId={picksMap}
+                                                outcome={outcome}
+                                                currentUserId={me?.id ?? null}
+                                                compact
+                                              />
+                                            }
+                                            expandedFooterInside={
+                                              <LeaguePickChipsRow
+                                                members={predictions.members}
+                                                picksByUserId={picksMap}
+                                                outcome={outcome}
+                                                currentUserId={me?.id ?? null}
+                                              />
+                                            }
+                                            homeCode={homeCode}
+                                            awayCode={awayCode}
+                                            headerHome={homeLabel}
+                                            headerAway={awayLabel}
+                                            homeBadge={homeBadge}
+                                            awayBadge={awayBadge}
+                                            primaryLabel={hasScore ? `${live?.home_score ?? 0}-${live?.away_score ?? 0}` : fixtureKickoffTimeLabel(f.kickoff_time ?? null)}
+                                            primaryExpandedLabel={hasScore ? `${live?.home_score ?? 0}-${live?.away_score ?? 0}` : fixtureKickoffTimeLabel(f.kickoff_time ?? null)}
+                                            secondaryLabel={hasScore ? formatMinute(st, live?.minute) : ''}
+                                            gwState={predictionsGwState}
+                                            pick={undefined}
+                                            derivedOutcome={outcome}
+                                            hasScore={hasScore}
+                                            percentBySide={{ H: 33, D: 34, A: 33 }}
+                                            showExpandedPercentages={false}
+                                            homeFormColors={['#CBD5E1', '#CBD5E1', '#CBD5E1', '#CBD5E1', '#CBD5E1']}
+                                            awayFormColors={['#CBD5E1', '#CBD5E1', '#CBD5E1', '#CBD5E1', '#CBD5E1']}
+                                            homePositionLabel="—"
+                                            awayPositionLabel="—"
+                                            homeScorers={[]}
+                                            awayScorers={[]}
+                                            fixtureDateLabel={section.label}
+                                          />
+                                        </View>
+                                      </Reanimated.View>
+                                    );
+                                  })}
+                                </Reanimated.View>
+                              ) : (
+                                section.fixtures.map((f) => {
+                                  const k = String(f.fixture_index);
+                                  const live = liveByFixtureIndexRealtime.get(f.fixture_index) ?? null;
+                                  const outcomeFromDb = predictions.outcomeByFixtureIndex[k] ?? null;
+                                  const outcomeFromLive: LeaguePick | null = (() => {
+                                    if (!live) return null;
+                                    const st: LiveStatus = (live?.status ?? 'SCHEDULED') as LiveStatus;
+                                    const started = st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED';
+                                    if (!started) return null;
+                                    const hs = typeof live.home_score === 'number' ? live.home_score : null;
+                                    const as = typeof live.away_score === 'number' ? live.away_score : null;
+                                    if (hs === null || as === null) return null;
+                                    return hs > as ? 'H' : hs < as ? 'A' : 'D';
+                                  })();
+                                  const outcome = outcomeFromDb ?? outcomeFromLive;
+                                  const picksMap = new Map<string, LeaguePick>(Object.entries(predictions.picksByFixtureIndex[k] ?? {}));
+
+                                  return (
+                                    <View
+                                      key={`${predictions.picksGw}-${f.fixture_index}`}
+                                      style={{
+                                        marginBottom: 10,
+                                      }}
+                                    >
+                                      {(() => {
+                                        const st: LiveStatus = (live?.status ?? 'SCHEDULED') as LiveStatus;
+                                        const hasScore =
+                                          typeof live?.home_score === 'number' &&
+                                          typeof live?.away_score === 'number' &&
+                                          (st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED');
+                                        const homeCode = String(f.home_code ?? '').toUpperCase();
+                                        const awayCode = String(f.away_code ?? '').toUpperCase();
+                                        const homeBadge = TEAM_BADGES[homeCode] ?? null;
+                                        const awayBadge = TEAM_BADGES[awayCode] ?? null;
+                                        const homeLabel = getMediumName(String(f.home_name ?? f.home_team ?? homeCode ?? 'Home'));
+                                        const awayLabel = getMediumName(String(f.away_name ?? f.away_team ?? awayCode ?? 'Away'));
+                                        const centerLabel = hasScore
+                                          ? `${live?.home_score ?? 0}:${live?.away_score ?? 0}`
+                                          : fixtureKickoffTimeLabel(f.kickoff_time ?? null);
+                                        return (
+                                          <View
+                                            style={{
+                                              borderRadius: 18,
+                                              borderWidth: 1,
+                                              borderColor: t.color.border,
+                                              overflow: 'hidden',
+                                              backgroundColor: t.color.surface,
+                                            }}
+                                          >
+                                            <View style={{ paddingHorizontal: 12, paddingTop: 14, paddingBottom: 10 }}>
+                                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <View style={{ width: '34%', alignItems: 'center' }}>
+                                                  {homeBadge ? <Image source={homeBadge} style={{ width: 46, height: 46 }} /> : null}
+                                                </View>
+                                                <View style={{ width: '32%', alignItems: 'center' }}>
+                                                  <TotlText numberOfLines={1} style={{ fontSize: 32, lineHeight: 34, fontFamily: t.font.medium, color: t.color.text }}>
+                                                    {centerLabel}
+                                                  </TotlText>
+                                                </View>
+                                                <View style={{ width: '34%', alignItems: 'center' }}>
+                                                  {awayBadge ? <Image source={awayBadge} style={{ width: 46, height: 46 }} /> : null}
+                                                </View>
+                                              </View>
+                                              <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <View style={{ width: '34%', alignItems: 'center' }}>
+                                                  <TotlText numberOfLines={1} style={{ fontSize: 16, lineHeight: 20, fontFamily: t.font.medium, color: t.color.text }}>
+                                                    {homeLabel}
+                                                  </TotlText>
+                                                </View>
+                                                <View style={{ width: '32%' }} />
+                                                <View style={{ width: '34%', alignItems: 'center' }}>
+                                                  <TotlText numberOfLines={1} style={{ fontSize: 16, lineHeight: 20, fontFamily: t.font.medium, color: t.color.text }}>
+                                                    {awayLabel}
+                                                  </TotlText>
+                                                </View>
+                                              </View>
+                                            </View>
+                                            <View style={{ paddingHorizontal: 6, paddingBottom: 8 }}>
+                                              <LeaguePickChipsRow
+                                                members={predictions.members}
+                                                picksByUserId={picksMap}
+                                                outcome={outcome}
+                                                currentUserId={me?.id ?? null}
+                                              />
+                                            </View>
+                                          </View>
+                                        );
+                                      })()}
+                                    </View>
+                                  );
+                                })
+                              )}
+                            </Reanimated.View>
+                          ))}
                         </View>
                       </>
                     );

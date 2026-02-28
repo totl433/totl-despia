@@ -8,6 +8,10 @@ import PageHeader from '../components/PageHeader';
 const meta: Meta<typeof PageHeader> = {
   title: 'App/PageHeader',
   component: PageHeader,
+  argTypes: {
+    // React elements are not JSON-serializable story args.
+    rightAction: { control: false },
+  },
   decorators: [
     (Story) => (
       <Screen fullBleed>
@@ -63,7 +67,7 @@ export const WithRightAction: Story = {
   args: {
     title: 'Mini Leagues',
     subtitle: 'Create or join a private league with friends. Let the rivalry begin.',
-    rightAction: <AddButton onPress={() => {}} />,
   },
+  render: (args) => <PageHeader {...args} rightAction={<AddButton onPress={() => {}} />} />,
 };
 

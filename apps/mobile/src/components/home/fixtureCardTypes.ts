@@ -6,6 +6,9 @@ export interface MiniFixtureCardProps {
   fixtureId: string;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  footerInside?: React.ReactNode;
+  expandedFooterInside?: React.ReactNode;
+  suppressExpandedDetails?: boolean;
 
   homeCode: string;
   awayCode: string;

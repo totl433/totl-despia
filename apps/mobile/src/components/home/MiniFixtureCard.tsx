@@ -11,6 +11,9 @@ export default function MiniFixtureCard({
   fixtureId,
   isExpanded: isMiniExpanded,
   onToggleExpand,
+  footerInside,
+  expandedFooterInside,
+  suppressExpandedDetails = false,
   homeCode,
   awayCode,
   headerHome,
@@ -123,7 +126,7 @@ export default function MiniFixtureCard({
               </View>
             )}
 
-            {isLiveOrResultsMini ? (
+            {!suppressExpandedDetails && isLiveOrResultsMini ? (
               <View style={{ marginTop: 8, marginBottom: 16, flexDirection: 'row', alignItems: 'flex-start' }}>
                 <View style={{ width: '42%', alignItems: 'flex-end', paddingRight: 6 }}>
                   {homeScorers.map((line) => (
@@ -139,7 +142,7 @@ export default function MiniFixtureCard({
               </View>
             ) : null}
 
-            {gwState !== 'GW_OPEN' ? (
+            {!suppressExpandedDetails && gwState !== 'GW_OPEN' ? (
               <View style={{ flexDirection: 'row', gap: 8, marginHorizontal: 12 }}>
                 {(['H', 'D', 'A'] as const).map((side) => {
                   const active = pick === side;
@@ -183,7 +186,7 @@ export default function MiniFixtureCard({
                   );
                 })}
               </View>
-            ) : (
+            ) : !suppressExpandedDetails ? (
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                 <View style={{ width: '37%', alignItems: 'center' }}>
                   <View style={{ width: 56, height: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -206,8 +209,14 @@ export default function MiniFixtureCard({
                   <TotlText style={{ marginTop: 8, fontSize: 13, fontFamily: t.font.medium, color: t.color.text }}>{awayPositionLabel}</TotlText>
                 </View>
               </View>
-            )}
+            ) : null}
+            {suppressExpandedDetails && (expandedFooterInside ?? footerInside) ? (
+              <View style={{ paddingHorizontal: 8, paddingTop: 4, paddingBottom: 2 }}>{expandedFooterInside ?? footerInside}</View>
+            ) : null}
           </Reanimated.View>
+        ) : null}
+        {!isMiniExpanded && footerInside ? (
+          <View style={{ paddingHorizontal: 6, paddingTop: 2, paddingBottom: 4 }}>{footerInside}</View>
         ) : null}
       </View>
     </Pressable>

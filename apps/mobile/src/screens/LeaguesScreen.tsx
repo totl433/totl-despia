@@ -7,6 +7,7 @@ import { Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { useSharedValue } from 'react-native-reanimated';
 
 import { api } from '../lib/api';
+import { env } from '../env';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import MiniLeagueListItem from '../components/miniLeagues/MiniLeagueListItem';
 import { TotlRefreshControl } from '../lib/refreshControl';
@@ -24,6 +25,7 @@ import MiniLeagueLiveCard from '../components/home/MiniLeagueLiveCard';
 import CarouselDots from '../components/home/CarouselDots';
 import AppTopHeader from '../components/AppTopHeader';
 import SegmentedPillControl from '../components/SegmentedPillControl';
+import { DEV_FAKE_LEAGUE_ID, DEV_FAKE_LEAGUE_MEMBERS, DEV_FAKE_LEAGUE_NAME, isDevFakeLeagueId } from '../lib/devFakeLeague';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -55,23 +57,24 @@ function LeagueRow({
   onPress: () => void;
 }) {
   const leagueId = String(league.id);
+  const isDevFakeLeague = isDevFakeLeagueId(leagueId);
   const { unreadByLeagueId, optimisticallyClear } = useLeagueUnreadCounts();
   const unread = Number(unreadByLeagueId[leagueId] ?? 0);
 
   const { data: membersData } = useQuery<LeagueMembersResponse>({
-    enabled,
+    enabled: enabled && !isDevFakeLeague,
     queryKey: ['leagueMembers', leagueId],
     queryFn: () => api.getLeague(leagueId),
   });
 
   const { data: table } = useQuery<LeagueTableResponse>({
-    enabled: enabled && typeof currentGw === 'number',
+    enabled: enabled && typeof currentGw === 'number' && !isDevFakeLeague,
     queryKey: ['leagueGwTable', leagueId, currentGw],
     queryFn: () => api.getLeagueGwTable(leagueId, currentGw as number),
   });
 
-  const members = membersData?.members ?? [];
-  const allSubmitted = !!table && table.submittedCount === table.totalMembers && table.totalMembers > 0;
+  const members = isDevFakeLeague ? DEV_FAKE_LEAGUE_MEMBERS : (membersData?.members ?? []);
+  const allSubmitted = isDevFakeLeague ? true : !!table && table.submittedCount === table.totalMembers && table.totalMembers > 0;
 
   const memberCount: number | null =
     typeof table?.totalMembers === 'number' && Number.isFinite(table.totalMembers)
@@ -81,7 +84,7 @@ function LeagueRow({
         : null;
 
   const { data: resolvedLeagueStartGw } = useQuery<number>({
-    enabled: enabled && typeof currentGw === 'number' && !!leagueId,
+    enabled: enabled && typeof currentGw === 'number' && !!leagueId && !isDevFakeLeague,
     queryKey: [
       'leagueStartGw',
       leagueId,
@@ -107,6 +110,7 @@ function LeagueRow({
   const { data: seasonRankData } = useQuery<{ myRank: number | null; orderedUserIds: string[] }>({
     enabled:
       enabled &&
+      !isDevFakeLeague &&
       members.length > 0 &&
       typeof currentGw === 'number' &&
       typeof resolvedLeagueStartGw === 'number',
@@ -275,9 +279,17 @@ function LeagueRow({
     <MiniLeagueListItem
       title={String(league.name ?? '')}
       avatarUri={resolveLeagueAvatarUri(typeof league.avatar === 'string' ? league.avatar : null)}
-      submittedCount={typeof table?.submittedCount === 'number' ? table.submittedCount : null}
-      totalMembers={typeof table?.totalMembers === 'number' ? table.totalMembers : members.length ?? null}
+      submittedCount={isDevFakeLeague ? 8 : typeof table?.submittedCount === 'number' ? table.submittedCount : null}
+      totalMembers={isDevFakeLeague ? 8 : typeof table?.totalMembers === 'number' ? table.totalMembers : members.length ?? null}
       membersPreview={(() => {
+        if (isDevFakeLeague) {
+          return DEV_FAKE_LEAGUE_MEMBERS.map((m) => ({
+            id: String(m.id),
+            name: String(m.name),
+            avatarUri: null,
+            hasSubmitted: true,
+          }));
+        }
         const submitted = new Set<string>(
           Array.isArray((table as any)?.submittedUserIds)
             ? ((table as any).submittedUserIds as unknown[]).map((x) => String(x))
@@ -302,8 +314,8 @@ function LeagueRow({
             return a.name.localeCompare(b.name);
           });
       })()}
-      memberCount={memberCount}
-      myRank={currentRank}
+      memberCount={isDevFakeLeague ? 8 : memberCount}
+      myRank={isDevFakeLeague ? 1 : currentRank}
       unreadCount={unread}
       onPress={() => {
         onPress();
@@ -320,6 +332,24 @@ export default function LeaguesScreen() {
   useScrollToTop(listRef as any);
   const queryClient = useQueryClient();
   const { unreadByLeagueId, meId: unreadMeId } = useLeagueUnreadCounts();
+  const [hasAccessToken, setHasAccessToken] = React.useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (cancelled) return;
+        setHasAccessToken(Boolean(data.session?.access_token));
+      } catch {
+        if (cancelled) return;
+        setHasAccessToken(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const { data: authUser } = useQuery<any | null>({
     queryKey: ['authUser'],
     queryFn: async () => {
@@ -351,11 +381,20 @@ export default function LeaguesScreen() {
   const sortedLeagues = React.useMemo(() => {
     return sortLeaguesByUnread(data?.leagues ?? [], unreadByLeagueId);
   }, [data?.leagues, unreadByLeagueId]);
+  const listLeagues = React.useMemo(() => {
+    if (!__DEV__) return sortedLeagues;
+    const fake = {
+      id: DEV_FAKE_LEAGUE_ID,
+      name: DEV_FAKE_LEAGUE_NAME,
+      avatar: null,
+    } as unknown as LeagueSummary;
+    return [fake, ...sortedLeagues.filter((l) => String(l.id) !== DEV_FAKE_LEAGUE_ID)];
+  }, [sortedLeagues]);
 
   const sortedLeaguesRef = React.useRef<LeagueSummary[]>([]);
   React.useEffect(() => {
-    sortedLeaguesRef.current = sortedLeagues;
-  }, [sortedLeagues]);
+    sortedLeaguesRef.current = listLeagues;
+  }, [listLeagues]);
 
   const { data: home } = useQuery({
     queryKey: ['homeSnapshot'],
@@ -523,7 +562,7 @@ export default function LeaguesScreen() {
 
       <FlatList
         ref={listRef}
-        data={showListView ? sortedLeagues : []}
+        data={showListView ? listLeagues : []}
         style={{ flex: 1 }}
         keyExtractor={(l) => String(l.id)}
         contentContainerStyle={{
@@ -636,27 +675,37 @@ export default function LeaguesScreen() {
           ) : null
         }
         ListFooterComponent={
-          showListView && (data?.leagues?.length ?? 0) > 0 ? (
-            <View style={{ marginTop: 14, marginBottom: 6 }}>
-              <Pressable
-                onPress={() => {
-                  setJoinError(null);
-                  setCreateJoinOpen(true);
-                }}
-                style={({ pressed }) => ({
-                  width: '100%',
-                  paddingVertical: 12,
-                  paddingHorizontal: 14,
-                  borderRadius: 14,
-                  backgroundColor: t.color.brand,
-                  opacity: pressed ? 0.92 : 1,
-                  transform: [{ scale: pressed ? 0.99 : 1 }],
-                })}
-              >
-                <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, textAlign: 'center' }}>Create or Join</TotlText>
-              </Pressable>
-            </View>
-          ) : null
+          <>
+            {showListView && (data?.leagues?.length ?? 0) > 0 ? (
+              <View style={{ marginTop: 14, marginBottom: 6 }}>
+                <Pressable
+                  onPress={() => {
+                    setJoinError(null);
+                    setCreateJoinOpen(true);
+                  }}
+                  style={({ pressed }) => ({
+                    width: '100%',
+                    paddingVertical: 12,
+                    paddingHorizontal: 14,
+                    borderRadius: 14,
+                    backgroundColor: t.color.brand,
+                    opacity: pressed ? 0.92 : 1,
+                    transform: [{ scale: pressed ? 0.99 : 1 }],
+                  })}
+                >
+                  <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, textAlign: 'center' }}>Create or Join</TotlText>
+                </Pressable>
+              </View>
+            ) : null}
+            {__DEV__ ? (
+              <View style={{ marginTop: 10 }}>
+                <TotlText variant="muted">Dev: BFF {String(env.EXPO_PUBLIC_BFF_URL)}</TotlText>
+                <TotlText variant="muted">
+                  Dev: Auth token {hasAccessToken === null ? 'unknown' : hasAccessToken ? 'present' : 'missing'}
+                </TotlText>
+              </View>
+            ) : null}
+          </>
         }
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         renderItem={({ item }) => {

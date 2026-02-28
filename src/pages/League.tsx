@@ -1818,12 +1818,26 @@ ${shareUrl}`;
         return;
       }
       
-      const { data: pk } = await supabase
-        .from("app_picks")
-        .select("user_id,gw,fixture_index,pick")
-        .in("user_id", members.map((m) => m.id))
-        .in("gw", relevantGws);
-      const picksAll = (pk as PickRow[]) ?? [];
+      // IMPORTANT: app_picks can exceed default row limits; page to avoid truncated season math.
+      const picksAll: PickRow[] = [];
+      const PICK_PAGE_SIZE = 1000;
+      let pickFrom = 0;
+      while (true) {
+        const { data: pkPage, error: pkErr } = await supabase
+          .from("app_picks")
+          .select("user_id,gw,fixture_index,pick")
+          .in("user_id", members.map((m) => m.id))
+          .in("gw", relevantGws)
+          .order("gw", { ascending: true })
+          .order("fixture_index", { ascending: true })
+          .order("user_id", { ascending: true })
+          .range(pickFrom, pickFrom + PICK_PAGE_SIZE - 1);
+        if (pkErr) throw pkErr;
+        const page = (pkPage as PickRow[]) ?? [];
+        picksAll.push(...page);
+        if (page.length < PICK_PAGE_SIZE) break;
+        pickFrom += PICK_PAGE_SIZE;
+      }
 
       type GwScore = { user_id: string; score: number; unicorns: number };
       const perGw = new Map<number, Map<string, GwScore>>();

@@ -84,6 +84,23 @@ export default function MiniLeagueListItem({
   }
 
   const rankLabel = typeof myRank === 'number' && Number.isFinite(myRank) ? ordinal(Math.max(1, Math.round(myRank))) : '—';
+  const allSubmitted =
+    typeof submittedCount === 'number' &&
+    Number.isFinite(submittedCount) &&
+    typeof totalMembers === 'number' &&
+    Number.isFinite(totalMembers) &&
+    totalMembers > 0 &&
+    submittedCount === totalMembers;
+  const submittedLabel =
+    typeof submittedCount === 'number' &&
+    Number.isFinite(submittedCount) &&
+    typeof totalMembers === 'number' &&
+    Number.isFinite(totalMembers) &&
+    totalMembers > 0
+      ? allSubmitted
+        ? 'All submitted'
+        : `${submittedCount}/${totalMembers} submitted`
+      : null;
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.96 : 1, transform: [{ scale: pressed ? 0.995 : 1 }] })}>
@@ -148,6 +165,21 @@ export default function MiniLeagueListItem({
                   <Ionicons name="medal-outline" size={14} color={t.color.muted} />
                   <TotlText style={{ fontSize: 14, lineHeight: 14, color: t.color.text, fontFamily: t.font.medium }}>{rankLabel}</TotlText>
                 </View>
+                {submittedLabel ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3 }}>
+                    <Ionicons name={allSubmitted ? 'checkmark-circle' : 'checkmark-done-outline'} size={14} color={allSubmitted ? t.color.brand : t.color.muted} />
+                    <TotlText
+                      style={{
+                        fontSize: 13,
+                        lineHeight: 14,
+                        color: allSubmitted ? t.color.brand : t.color.muted,
+                        fontFamily: t.font.medium,
+                      }}
+                    >
+                      {submittedLabel}
+                    </TotlText>
+                  </View>
+                ) : null}
               </View>
             </View>
           </View>
