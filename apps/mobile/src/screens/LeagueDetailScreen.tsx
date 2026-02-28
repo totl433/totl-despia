@@ -301,7 +301,6 @@ export default function LeagueDetailScreen() {
     );
 
     const info = await FileSystem.getInfoAsync(manipulated.uri);
-    console.log('[LeagueDetailScreen] Badge file info:', { uri: manipulated.uri, size: (info as any)?.size, exists: info.exists });
     const size = typeof (info as any)?.size === 'number' ? ((info as any).size as number) : null;
     if (!info.exists || !size || size <= 0) {
       Alert.alert('Badge update failed', 'We could not read the edited image from disk. Please try again.', [{ text: 'OK' }]);
@@ -312,7 +311,6 @@ export default function LeagueDetailScreen() {
     // Use FileSystem to read the local file reliably.
     const b64 = await FileSystem.readAsStringAsync(manipulated.uri, { encoding: 'base64' });
     const bytes = base64ToUint8Array(b64);
-    console.log('[LeagueDetailScreen] Badge bytes length:', bytes.byteLength);
     if (!bytes.byteLength) {
       Alert.alert('Badge update failed', 'The edited image produced 0 bytes. Please try again.', [{ text: 'OK' }]);
       return;
@@ -330,15 +328,12 @@ export default function LeagueDetailScreen() {
     const publicUrl = publicUrlData?.publicUrl ? String(publicUrlData.publicUrl) : null;
     if (!publicUrl) throw new Error('Unable to get public URL for badge.');
     setAvatarOverrideUri(publicUrl);
-    console.log('[LeagueDetailScreen] Badge publicUrl:', publicUrl);
 
     // In dev, verify the URL is actually reachable (bucket might not be public).
     if (__DEV__) {
       try {
         const resp = await fetch(publicUrl, { method: 'GET' });
-        console.log('[LeagueDetailScreen] Badge publicUrl fetch:', { status: resp.status, ok: resp.ok });
       } catch (e) {
-        console.log('[LeagueDetailScreen] Badge publicUrl fetch failed:', String(e));
       }
     }
 
