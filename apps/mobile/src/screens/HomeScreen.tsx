@@ -1,32 +1,20 @@
 import React from 'react';
-import { Animated, Image, Pressable, View, useWindowDimensions } from 'react-native';
+import { Animated, Pressable, View, useWindowDimensions } from 'react-native';
 
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { Ionicons } from '@expo/vector-icons';
-import Carousel from 'react-native-reanimated-carousel';
-import type { ICarouselInstance } from 'react-native-reanimated-carousel';
-import Reanimated, { Extrapolation, FadeIn, FadeOut, LinearTransition, interpolate, useSharedValue } from 'react-native-reanimated';
+import Reanimated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import type { Fixture, GwResultRow, GwResults, HomeRanks, HomeSnapshot, LiveScore, LiveStatus, Pick } from '@totl/domain';
 import { TotlRefreshControl } from '../lib/refreshControl';
 import GameweekAdvanceTransition from '../components/transitions/GameweekAdvanceTransition';
 import { useGameweekAdvanceTransition } from '../hooks/useGameweekAdvanceTransition';
-import { MiniLeaguesDefaultBatchCard } from '../components/MiniLeaguesDefaultList';
 import { getGameweekStateFromSnapshot, type GameweekState } from '../lib/gameweekState';
-import PickPill from '../components/home/PickPill';
 import SectionHeaderRow from '../components/home/SectionHeaderRow';
-import CarouselDots from '../components/home/CarouselDots';
-import CarouselWithPagination from '../components/home/CarouselWithPagination';
-import CarouselFocusShell from '../components/home/CarouselFocusShell';
-import SectionTitle from '../components/home/SectionTitle';
-import { LeaderboardCardResultsCta } from '../components/home/LeaderboardCards';
-import { resolveLeagueAvatarUri } from '../lib/leagueAvatars';
 import CenteredSpinner from '../components/CenteredSpinner';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../lib/layout';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import { sortLeaguesByUnread } from '../lib/sortLeaguesByUnread';
-import GameweekCountdownItem from '../components/home/GameweekCountdownItem';
-import MiniLeagueLiveCard from '../components/home/MiniLeagueLiveCard';
 import TopStatusBanner from '../components/home/TopStatusBanner';
 import AppTopHeader from '../components/AppTopHeader';
 import { TEAM_BADGES } from '../lib/teamBadges';
@@ -38,6 +26,8 @@ import { useHomeData } from '../hooks/useHomeData';
 import { api } from '../lib/api';
 import { env } from '../env';
 import ExpandedFixtureCard from '../components/home/ExpandedFixtureCard';
+import HomeCarouselSection from '../components/home/HomeCarouselSection';
+import HomeMiniLeaguesSection from '../components/home/HomeMiniLeaguesSection';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -204,18 +194,7 @@ export default function HomeScreen() {
     return { started, live, correct, total: fixtures.length };
   }, [fixtures, liveByFixtureIndex, resultByFixtureIndex, userPicks]);
 
-  const [activeLeagueIndex, setActiveLeagueIndex] = React.useState<number>(0);
-  const mlAbsoluteProgress = useSharedValue(0);
-  const mlCarouselItemWidthSV = useSharedValue(0);
-  const mlSidePeekSV = useSharedValue(0);
-  const mlFirstItemOffsetSV = useSharedValue(0);
-
   // SectionTitle/RoundIconButton/PickPill/SectionHeaderRow/LeaderboardCards are extracted into `src/components/home/*`.
-
-  const LB_BADGE_5 = require('../../../../dist/assets/5-week-form-badge.png');
-  const TIME_ICON = require('../../assets/icons/time.png');
-
-  // Leaderboard cards and pills are now shared components.
 
   const [expandedFixtureId, setExpandedFixtureId] = React.useState<string | null>(null);
   const [cardHeightsById, setCardHeightsById] = React.useState<Record<string, number>>({});
@@ -374,36 +353,6 @@ export default function HomeScreen() {
   const showTopPerformanceCarousel = false;
   const performanceRailTopMargin = 16;
   const hasMovedOn = typeof currentGw === 'number' && typeof viewingGw === 'number' ? viewingGw >= currentGw : true;
-  const contentWidth = Math.max(280, screenWidth - t.space[4] * 2);
-  /**
-   * Mini Leagues carousel sizing:
-   * - Center the active card so (when not at the edges) you can see both left + right neighbors.
-   * - Keep a 12px gap between cards.
-   */
-  const mlCardGap = 12;
-  // Carousel viewport should be full width (cancel the ScrollView padding around it).
-  const mlCarouselViewportWidth = screenWidth;
-  const mlCarouselOuterGutter = t.space[4];
-  // Card width: 83% of the viewport with a tablet cap, so we always get a “next card” peek.
-  const ML_CARD_WIDTH_RATIO = 0.83;
-  const ML_CARD_MAX_WIDTH = 400;
-  const mlCardWidth = Math.round(Math.min(mlCarouselViewportWidth * ML_CARD_WIDTH_RATIO, ML_CARD_MAX_WIDTH));
-  // Step distance between cards (card width + gap).
-  const mlCarouselItemWidth = mlCardWidth + mlCardGap;
-  // Where the active card's LEFT edge should be when centered (index 1+).
-  const mlSidePeek = Math.max(0, (mlCarouselViewportWidth - mlCardWidth) / 2);
-  // IMPORTANT: `react-native-reanimated-carousel` defaults height to "100%" if you don't pass it,
-  // which can create a huge blank block inside a vertical ScrollView (looks like a blank screen).
-  const mlCarouselHeight = 352;
-  const mlDefaultCarouselRef = React.useRef<ICarouselInstance>(null);
-
-  React.useEffect(() => {
-    mlCarouselItemWidthSV.value = mlCarouselItemWidth;
-    mlSidePeekSV.value = mlSidePeek;
-    // Index 0: align the card with the page gutter.
-    mlFirstItemOffsetSV.value = mlCarouselOuterGutter;
-  }, [mlCarouselItemWidth, mlSidePeek, mlCarouselOuterGutter, mlCarouselItemWidthSV, mlSidePeekSV, mlFirstItemOffsetSV]);
-
   const showMakePicksBanner =
     hasMovedOn &&
     (gwState === 'GW_OPEN' || gwState === 'DEADLINE_PASSED') &&
@@ -438,31 +387,9 @@ export default function HomeScreen() {
   // This includes the period before/after next GW publish, until user moves on.
   const showMiniLeaguesLiveCards = typeof viewingGw === 'number' && (gwState === 'LIVE' || isResultsPreGw);
 
-  const miniLeaguesPageCount = showMiniLeaguesLiveCards ? liveLeagueList.length : defaultLeagueBatches.length;
-
-  React.useEffect(() => {
-    // Keep dots index stable when leagues change.
-    if (!miniLeaguesPageCount) {
-      if (activeLeagueIndex !== 0) setActiveLeagueIndex(0);
-      return;
-    }
-    if (activeLeagueIndex < 0) setActiveLeagueIndex(0);
-    if (activeLeagueIndex >= miniLeaguesPageCount) setActiveLeagueIndex(miniLeaguesPageCount - 1);
-  }, [activeLeagueIndex, miniLeaguesPageCount]);
 //VERTICAL SPACING CONTROL HERE
   const errorMessage = homeError ? getErrorMessage(homeError) : leaguesError ? getErrorMessage(leaguesError) : null;
   const SECTION_GAP_Y = 40; // visual rhythm between major sections (spec)
-  const MINI_TO_GW_GAP_Y = -20; // slightly tighter to balance the heavier mini leagues block
-
-  // Mini Leagues block spacing controls.
-  // - Gap between carousel cards and the pagination dots (per view).
-  const ML_DEFAULT_DOTS_GAP_Y = -40;
-  const ML_LIVE_DOTS_GAP_Y = 0;
-  // - Gap between the carousel section (viewport+dots) and the content below it (per view).
-  const ML_DEFAULT_SECTION_BOTTOM_PADDING = MINI_TO_GW_GAP_Y +80;
-
-  // Each view keeps its own viewport height so dots stay visually attached to the bottom of that view.
-  const ML_DEFAULT_HEIGHT = 350;
 
   // Initial/empty load: avoid rendering empty/broken home sections while waiting on BFF/Railway.
   if (isHomeLoading && !home && !homeError) {
@@ -662,308 +589,39 @@ export default function HomeScreen() {
         })()}
         */}
 
-        {showTopPerformanceCarousel ? (
-          /* Full-bleed horizontal row (remove side margins from the page padding) */
-          <Animated.ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ marginHorizontal: -t.space[4], marginTop: performanceRailTopMargin, marginBottom: SECTION_GAP_Y }}
-            contentContainerStyle={{ paddingHorizontal: t.space[4], paddingBottom: 12 }}
-          >
-            {(() => {
-              const gw = ranks?.latestGw ?? home?.viewingGw ?? null;
-              const scoreFromRanks = ranks?.gwRank?.score;
-              const totalFromRanks = ranks?.gwRank?.totalFixtures;
-
-              const fallbackScore =
-                typeof latestGwResults?.score === 'number' && Number.isFinite(latestGwResults.score)
-                  ? String(latestGwResults.score)
-                  : '--';
-              const fallbackTotal =
-                typeof latestGwResults?.totalFixtures === 'number' && Number.isFinite(latestGwResults.totalFixtures)
-                  ? String(latestGwResults.totalFixtures)
-                  : '--';
-
-              const score = typeof scoreFromRanks === 'number' ? String(scoreFromRanks) : fallbackScore;
-              const total = typeof totalFromRanks === 'number' ? String(totalFromRanks) : fallbackTotal;
-
-              const lastGwDisplay =
-                ranks?.gwRank?.percentileLabel ??
-                (latestGwResults?.gwRank && latestGwResults?.gwRankTotal
-                  ? `Top ${Math.max(1, Math.min(100, Math.round((latestGwResults.gwRank / latestGwResults.gwRankTotal) * 100)))}%`
-                  : 'Top —');
-
-              const cards: Array<{ key: string; node: React.JSX.Element }> = [];
-
-              const showReadyToPredictCta = showMakePicksBanner && typeof home?.viewingGw === 'number' && !deadlineExpired;
-              const showResultsCta =
-                gwState === 'RESULTS_PRE_GW' && !!home?.hasSubmittedViewingGw && typeof home?.viewingGw === 'number';
-              const resultsGw = typeof home?.viewingGw === 'number' ? home.viewingGw : ranks?.latestGw ?? null;
-
-              if (showReadyToPredictCta && resultsGw) {
-                cards.push({
-                  key: 'gw-ready-to-predict',
-                  node: (
-                    <LeaderboardCardResultsCta
-                      gw={resultsGw}
-                      badge={LB_BADGE_5}
-                      label="Ready to predict (swipe)"
-                      onPress={() => navigation.navigate('PredictionsFlow')}
-                    />
-                  ),
-                });
-              } else if (showResultsCta && resultsGw) {
-                const predictionsLocked = Boolean(home?.hasSubmittedViewingGw) || deadlineExpired;
-                const viewingGwForCountdown =
-                  typeof home?.viewingGw === 'number' ? home.viewingGw : typeof home?.currentGw === 'number' ? home.currentGw : null;
-
-                if (predictionsLocked && typeof viewingGwForCountdown === 'number') {
-                  const wallNowMs = Date.now();
-                  const firstFixture = fixtures
-                    .filter((f) => {
-                      const k = f?.kickoff_time ? new Date(f.kickoff_time).getTime() : NaN;
-                      return Number.isFinite(k);
-                    })
-                    .map((f) => ({ f, k: new Date(f.kickoff_time as string).getTime() }))
-                    .sort((a, b) => a.k - b.k)[0]?.f;
-
-                  const firstFixtureKickoffTimeMs = firstFixture?.kickoff_time ? new Date(firstFixture.kickoff_time).getTime() : null;
-
-                  const countdownVisible =
-                    typeof firstFixtureKickoffTimeMs === 'number' &&
-                    Number.isFinite(firstFixtureKickoffTimeMs) &&
-                    wallNowMs < firstFixtureKickoffTimeMs &&
-                    dismissedCountdownGw !== viewingGwForCountdown;
-
-                  if (countdownVisible && firstFixtureKickoffTimeMs && firstFixture) {
-                    cards.push({
-                      key: 'gw-kickoff-countdown',
-                      node: (
-                        <GameweekCountdownItem
-                          variant="tile"
-                          gw={viewingGwForCountdown}
-                          kickoffTimeMs={firstFixtureKickoffTimeMs}
-                          homeCode={String(firstFixture?.home_code ?? '').toUpperCase() || null}
-                          awayCode={String(firstFixture?.away_code ?? '').toUpperCase() || null}
-                          onKickedOff={() => setDismissedCountdownGw(viewingGwForCountdown)}
-                        />
-                      ),
-                    });
-                  }
-                }
-
-                cards.push({
-                  key: 'gw-results',
-                  node: (
-                    <LeaderboardCardResultsCta
-                      gw={resultsGw}
-                      badge={LB_BADGE_5}
-                      score={score}
-                      totalFixtures={total}
-                      onPress={() => navigation.navigate('GameweekResults', { gw: resultsGw })}
-                    />
-                  ),
-                });
-              } else if (!showComingSoonBanner && resultsGw) {
-                const currentScore = typeof scoreSummary?.correct === 'number' ? String(scoreSummary.correct) : '--';
-                const currentTotal = typeof scoreSummary?.total === 'number' && scoreSummary.total > 0 ? String(scoreSummary.total) : '--';
-                cards.push({
-                  key: 'gw-current-score',
-                  node: (
-                    <LeaderboardCardResultsCta
-                      gw={resultsGw}
-                      badge={LB_BADGE_5}
-                      score={currentScore}
-                      totalFixtures={currentTotal}
-                      label="Current Score"
-                      tone="gradient"
-                      showSheen
-                      rightActionIcon="share"
-                      onPress={() => navigation.navigate('GameweekResults', { gw: resultsGw, mode: 'fixturesShare' })}
-                    />
-                  ),
-                });
-              }
-
-              if (showComingSoonBanner) {
-                const upcomingGw = typeof currentGw === 'number' ? currentGw + 1 : null;
-                cards.push({
-                  key: 'gw-coming-soon',
-                  node: (
-                    <LeaderboardCardResultsCta
-                      topLabel={upcomingGw ? `Gameweek ${upcomingGw}` : 'Gameweek'}
-                      leftNode={<Image source={TIME_ICON} style={{ width: 28, height: 28 }} resizeMode="contain" />}
-                      badge={null}
-                      label="Coming Soon!"
-                      tone="light"
-                      showSheen={false}
-                    />
-                  ),
-                });
-              }
-
-              cards.push({
-                key: 'performance-summary-cta',
-                node: (
-                  <LeaderboardCardResultsCta
-                    topLabel="OVERALL"
-                    badge={LB_BADGE_5}
-                    tone="light"
-                    showSheen={false}
-                    label="Your Performance"
-                    onPress={() => navigation.navigate('Global', { initialTab: 'overall' })}
-                  />
-                ),
-              });
-
-              return cards.map((c, idx) => (
-                <View key={c.key} style={{ marginRight: idx === cards.length - 1 ? 0 : 10 }}>
-                  {c.node}
-                </View>
-              ));
-            })()}
-          </Animated.ScrollView>
-        ) : null}
+        <HomeCarouselSection
+          visible={showTopPerformanceCarousel}
+          marginTop={performanceRailTopMargin}
+          marginBottom={SECTION_GAP_Y}
+          ranks={ranks}
+          home={home}
+          latestGwResults={latestGwResults}
+          scoreSummary={scoreSummary}
+          fixtures={fixtures}
+          deadlineExpired={deadlineExpired}
+          showMakePicksBanner={showMakePicksBanner}
+          showComingSoonBanner={showComingSoonBanner}
+          currentGw={currentGw}
+          gwState={gwState}
+          dismissedCountdownGw={dismissedCountdownGw}
+          onDismissCountdown={setDismissedCountdownGw}
+          onNavigatePredictions={() => navigation.navigate('PredictionsFlow')}
+          onNavigateGameweekResults={(gw, mode) => navigation.navigate('GameweekResults', { gw, mode })}
+          onNavigateGlobal={(initialTab) => navigation.navigate('Global', { initialTab })}
+        />
 
         {/* Mini leagues list removed from merged Predictions hub (moved to Mini Leagues page top rail). */}
-        {false ? (
-        <>
-        <View style={{ marginTop: 0 }}>
-          <SectionHeaderRow
-            title="Mini leagues"
-            right={
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Pressable
-                  onPress={() => navigation.navigate('Leagues')}
-                  accessibilityRole="button"
-                  accessibilityLabel="See all mini leagues"
-                  style={({ pressed }) => ({
-                    paddingVertical: 6,
-                    paddingHorizontal: 8,
-                    opacity: pressed ? 0.8 : 1,
-                    transform: [{ scale: pressed ? 0.98 : 1 }],
-                  })}
-                >
-                  <TotlText
-                    style={{
-                      fontSize: 14,
-                      lineHeight: 14,
-                      color: '#1C8376',
-                      textAlign: 'right',
-                    }}
-                  >
-                    See all
-                  </TotlText>
-                </Pressable>
-              </View>
-            }
-          />
-        </View>
-        {leagues?.leagues?.length ? (
-          showMiniLeaguesLiveCards ? (
-            <CarouselWithPagination
-              carouselRef={mlDefaultCarouselRef}
-              width={mlCarouselViewportWidth}
-              height={mlCarouselHeight}
-              data={liveLeagueList}
-              progress={mlAbsoluteProgress}
-              currentIndex={activeLeagueIndex}
-              onIndexChange={(idx) => setActiveLeagueIndex(idx)}
-              dotsGap={ML_LIVE_DOTS_GAP_Y}
-              sectionBottomPadding={ML_DEFAULT_SECTION_BOTTOM_PADDING}
-              dotsName="Mini leagues"
-              customAnimation={(value) => {
-                'worklet';
-                const step = mlCarouselItemWidthSV.value;
-                const sidePeek = mlSidePeekSV.value;
-                const firstOffset = mlFirstItemOffsetSV.value;
-                const translate = value * step;
-                const offset = interpolate(mlAbsoluteProgress.value, [0, 1], [firstOffset, sidePeek], Extrapolation.CLAMP);
-                const z = Math.max(0, 100 - Math.round(Math.abs(value) * 10));
-                return { transform: [{ translateX: offset + translate }], zIndex: z, elevation: z };
-              }}
-              style={{
-                width: mlCarouselViewportWidth,
-                height: mlCarouselHeight,
-                marginHorizontal: -mlCarouselOuterGutter,
-              }}
-              containerStyle={{ paddingBottom: 0 }}
-              renderItem={({ item: league, animationValue }) => {
-                const leagueId = String(league.id);
-                const enabled =
-                  leagueId === String(liveLeagueList[activeLeagueIndex]?.id ?? '') ||
-                  leagueId === String(liveLeagueList[activeLeagueIndex - 1]?.id ?? '') ||
-                  leagueId === String(liveLeagueList[activeLeagueIndex + 1]?.id ?? '');
-
-                return (
-                  <CarouselFocusShell animationValue={animationValue} width={mlCardWidth}>
-                    <MiniLeagueLiveCard
-                      leagueId={leagueId}
-                      leagueName={String(league.name ?? '')}
-                      leagueAvatar={typeof league.avatar === 'string' ? league.avatar : null}
-                      gw={viewingGw as number}
-                      width={mlCardWidth}
-                      enabled={enabled}
-                      onPress={() =>
-                        navigation.navigate('LeagueDetail', { leagueId, name: String(league.name ?? '') })
-                      }
-                    />
-                  </CarouselFocusShell>
-                );
-              }}
-            />
-          ) : (
-            <CarouselWithPagination
-              carouselRef={mlDefaultCarouselRef}
-              width={mlCarouselViewportWidth}
-              height={ML_DEFAULT_HEIGHT}
-              data={defaultLeagueBatches}
-              progress={mlAbsoluteProgress}
-              currentIndex={activeLeagueIndex}
-              onIndexChange={(idx) => setActiveLeagueIndex(idx)}
-              dotsGap={ML_DEFAULT_DOTS_GAP_Y}
-              sectionBottomPadding={ML_DEFAULT_SECTION_BOTTOM_PADDING}
-              dotsName="Mini leagues"
-              customAnimation={(value) => {
-                'worklet';
-                const step = mlCarouselItemWidthSV.value;
-                const sidePeek = mlSidePeekSV.value;
-                const firstOffset = mlFirstItemOffsetSV.value;
-                const translate = value * step;
-                const offset = interpolate(mlAbsoluteProgress.value, [0, 1], [firstOffset, sidePeek], Extrapolation.CLAMP);
-                const z = Math.max(0, 100 - Math.round(Math.abs(value) * 10));
-                return { transform: [{ translateX: offset + translate }], zIndex: z, elevation: z };
-              }}
-              style={{
-                width: mlCarouselViewportWidth,
-                height: ML_DEFAULT_HEIGHT,
-                marginHorizontal: -mlCarouselOuterGutter,
-              }}
-              containerStyle={{ paddingBottom: 0 }}
-              renderItem={({ item: batch, animationValue }) => (
-                <CarouselFocusShell animationValue={animationValue} width={mlCardWidth}>
-                  <MiniLeaguesDefaultBatchCard
-                    width={mlCardWidth}
-                    batch={batch.map((l) => ({
-                      id: String(l.id),
-                      name: String(l.name ?? ''),
-                      avatarUri: resolveLeagueAvatarUri(typeof l.avatar === 'string' ? l.avatar : null),
-                    }))}
-                    onLeaguePress={(leagueId, name) =>
-                      navigation.navigate('LeagueDetail', { leagueId, name })
-                    }
-                  />
-                </CarouselFocusShell>
-              )}
-            />
-          )
-        ) : (
-          <Card style={{ marginBottom: MINI_TO_GW_GAP_Y }}>
-            <TotlText variant="muted">No leagues yet.</TotlText>
-          </Card>
-        )}
-        </>
-        ) : null}
+        <HomeMiniLeaguesSection
+          visible={false}
+          screenWidth={screenWidth}
+          leagues={leagues?.leagues ?? []}
+          defaultLeagueBatches={defaultLeagueBatches}
+          liveLeagueList={liveLeagueList}
+          showMiniLeaguesLiveCards={showMiniLeaguesLiveCards}
+          viewingGw={viewingGw}
+          onNavigateLeagues={() => navigation.navigate('Leagues')}
+          onNavigateLeagueDetail={(leagueId, name) => navigation.navigate('LeagueDetail', { leagueId, name })}
+        />
 
         {/* Predictions section */}
         <View style={{ marginTop: 8 }}>
