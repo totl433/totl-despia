@@ -184,7 +184,7 @@ export default function GameweekCountdownItem({
               <TotlText
                 style={{
                   fontSize: 12,
-                  color: '#59687C',
+                  color: t.color.muted,
                   letterSpacing: 0.5,
                 }}
                 numberOfLines={1}
@@ -259,7 +259,7 @@ export default function GameweekCountdownItem({
             style={{
               textAlign: 'center',
               fontSize: 12,
-              color: '#59687C',
+              color: t.color.muted,
             }}
             numberOfLines={1}
           >

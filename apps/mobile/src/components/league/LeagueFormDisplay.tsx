@@ -7,7 +7,7 @@ export type LeagueFormLetter = 'W' | 'D' | 'L';
 function FormPill({ v }: { v: LeagueFormLetter }) {
   const t = useTokens();
   const bg = v === 'W' ? 'rgba(34,197,94,0.18)' : v === 'D' ? 'rgba(148,163,184,0.22)' : 'rgba(239,68,68,0.18)';
-  const fg = v === 'W' ? '#22C55E' : v === 'D' ? t.color.muted : '#EF4444';
+  const fg = v === 'W' ? t.color.success : v === 'D' ? t.color.muted : '#EF4444';
 
   return (
     <View

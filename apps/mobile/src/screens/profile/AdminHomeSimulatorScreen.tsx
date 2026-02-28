@@ -1162,9 +1162,9 @@ export default function AdminHomeSimulatorScreen() {
                                         borderRadius: 9,
                                         borderWidth: showWinnerTabShiny ? 0 : 1,
                                         borderColor: showWrongFinishedPickedTab
-                                          ? 'rgba(203,213,225,0.9)'
+                                          ? t.color.border
                                           : showLiveWrongPicked
-                                            ? 'rgba(203,213,225,0.9)'
+                                            ? t.color.border
                                           : showSolidPickedTab
                                             ? t.color.brand
                                           : active
@@ -1248,7 +1248,7 @@ export default function AdminHomeSimulatorScreen() {
                                             style={{
                                               fontSize: 14,
                                               fontWeight: active ? '800' : '600',
-                                              color: showWinnerTabShiny ? '#FFFFFF' : showSolidPickedTab ? '#FFFFFF' : active ? '#047857' : t.color.muted,
+                                              color: showWinnerTabShiny ? '#FFFFFF' : showSolidPickedTab ? '#FFFFFF' : active ? t.color.brand : t.color.muted,
                                             }}
                                           >
                                             {side === 'D' ? 'Draw' : 'Win'}

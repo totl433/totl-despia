@@ -305,7 +305,7 @@ export default function ExpandedFixtureCard({
                                 style={{
                                   fontSize: 14,
                                   fontFamily: t.font.medium,
-                                  color: showWinnerTabShiny ? '#FFFFFF' : showSolidPickedTab ? '#FFFFFF' : active ? '#047857' : t.color.muted,
+                                  color: showWinnerTabShiny ? '#FFFFFF' : showSolidPickedTab ? '#FFFFFF' : active ? t.color.brand : t.color.muted,
                                 }}
                               >
                                 {side === 'D' ? 'Draw' : 'Win'}

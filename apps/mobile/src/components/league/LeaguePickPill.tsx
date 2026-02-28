@@ -15,10 +15,10 @@ export default function LeaguePickPill({
   const t = useTokens();
 
   const styleFor = () => {
-    if (tone === 'correct') return { bg: 'rgba(34,197,94,0.18)', border: '#22C55E', text: '#22C55E' };
+    if (tone === 'correct') return { bg: 'rgba(34,197,94,0.18)', border: t.color.success, text: t.color.success };
     if (tone === 'wrong') return { bg: 'rgba(239,68,68,0.16)', border: '#EF4444', text: '#EF4444' };
     if (tone === 'picked') return { bg: t.color.brand, border: 'transparent', text: '#FFFFFF' };
-    if (tone === 'correctResult') return { bg: t.color.surface2, border: '#22C55E', text: t.color.text };
+    if (tone === 'correctResult') return { bg: t.color.surface2, border: t.color.success, text: t.color.text };
     return { bg: t.color.surface2, border: t.color.border, text: t.color.text };
   };
 

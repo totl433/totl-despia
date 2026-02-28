@@ -115,7 +115,7 @@ export default function LeagueSubmissionStatusCard({
                     alignItems: 'center',
                   }}
                 >
-                  <TotlText variant="caption" style={{ fontFamily: t.font.medium, color: submitted ? '#22C55E' : '#F59E0B' }}>
+                  <TotlText variant="caption" style={{ fontFamily: t.font.medium, color: submitted ? t.color.success : '#F59E0B' }}>
                     {submitted ? 'Submitted' : 'Not yet'}
                   </TotlText>
                 </View>
