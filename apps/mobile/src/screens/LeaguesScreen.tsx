@@ -361,14 +361,17 @@ export default function LeaguesScreen() {
     refetchOnMount: 'always',
   });
   const meId = authUser?.id ? String(authUser.id) : null;
-  const { data: avatarRow } = useQuery<{ avatar_url: string | null } | null>({
+  type UserAvatarRow = { avatar_url: string | null };
+  const { data: avatarRow } = useQuery<UserAvatarRow | null>({
     enabled: !!meId,
     queryKey: ['profile-avatar-url', meId],
     queryFn: async () => {
       const { data, error } = await supabase.from('users').select('avatar_url').eq('id', meId).maybeSingle();
-      if (error && (error as any).code !== 'PGRST116') throw error;
+      const err = error as { code?: string } | null;
+      if (error && err?.code !== 'PGRST116') throw error;
       if (!data) return null;
-      return { avatar_url: typeof (data as any).avatar_url === 'string' ? (data as any).avatar_url : null };
+      const row = data as { avatar_url?: unknown };
+      return { avatar_url: typeof row.avatar_url === 'string' ? row.avatar_url : null };
     },
     staleTime: 60_000,
   });
