@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute, useScrollToTop } from '@react-navigation/native';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Fixture, Pick } from '@totl/domain';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -17,13 +17,12 @@ import Animated, {
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import { api } from '../lib/api';
-import { supabase } from '../lib/supabase';
 import { TotlRefreshControl } from '../lib/refreshControl';
+import { usePredictionsData } from '../hooks/usePredictionsData';
 import FixtureCard from '../components/FixtureCard';
 import SwipePredictionCard from '../components/predictions/SwipePredictionCard';
 import PredictionsProgressPills from '../components/predictions/PredictionsProgressPills';
 import PredictionsHowToSheet from '../components/predictions/PredictionsHowToSheet';
-import { normalizeTeamCode } from '../lib/teamColors';
 import { useConfetti } from '../lib/confetti';
 import AppTopHeader from '../components/AppTopHeader';
 import CenteredSpinner from '../components/CenteredSpinner';
@@ -38,94 +37,11 @@ const FLAT_CARD_STYLE = {
   elevation: 0,
 } as const;
 
-function deadlineCountdown(
-  fixtures: Fixture[],
-  nowMs: number
-): {
-  text: string;
-  expired: boolean;
-  deadlineMs: number;
-} | null {
-  const firstKickoff = fixtures
-    .map((f) => (f.kickoff_time ? new Date(f.kickoff_time) : null))
-    .filter((d): d is Date => !!d && !Number.isNaN(d.getTime()))
-    .sort((a, b) => a.getTime() - b.getTime())[0];
-  if (!firstKickoff) return null;
-
-  const DEADLINE_BUFFER_MINUTES = 75;
-  const deadline = new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000);
-  const diffMs = deadline.getTime() - nowMs;
-  if (diffMs <= 0) return { text: '0d 0h 0m', expired: true, deadlineMs: deadline.getTime() };
-
-  const totalMinutes = Math.floor(diffMs / (1000 * 60));
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-  const minutes = totalMinutes % 60;
-
-  return { text: `${days}d ${hours}h ${minutes}m`, expired: false, deadlineMs: deadline.getTime() };
-}
-
-function draftKey(userId: string, gw: number) {
-  return `totl.predictionsDraft:${userId}:${gw}`;
-}
-
 const HOW_TO_STORAGE_KEY = 'predictionsSwipeFirstVisit';
 const REVIEW_TIP_STORAGE_KEY = 'predictionsReviewTipDismissed:v1';
 
 function isPick(v: unknown): v is Pick {
   return v === 'H' || v === 'D' || v === 'A';
-}
-
-function fixtureDateLabel(kickoff: string | null | undefined) {
-  if (!kickoff) return 'No date';
-  const d = new Date(kickoff);
-  if (Number.isNaN(d.getTime())) return 'No date';
-  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-}
-
-function buildFakeFixtures(): Fixture[] {
-  const now = Date.now();
-  const teams: Array<[string, string, string, string]> = [
-    ['NEW', 'Newcastle', 'BOU', 'Bournemouth'],
-    ['LIV', 'Liverpool', 'TOT', 'Tottenham'],
-    ['MCI', 'Man City', 'MUN', 'Man Utd'],
-    ['ARS', 'Arsenal', 'CHE', 'Chelsea'],
-    ['BHA', 'Brighton', 'WHU', 'West Ham'],
-    ['BRE', 'Brentford', 'AVL', 'Aston Villa'],
-    ['CRY', 'Crystal Palace', 'EVE', 'Everton'],
-    ['LEE', 'Leeds', 'WOL', 'Wolves'],
-    ['FUL', 'Fulham', 'NFO', 'Nottingham Forest'],
-    ['SUN', 'Sunderland', 'BUR', 'Burnley'],
-  ];
-
-  return teams.map(([homeCode, homeName, awayCode, awayName], idx) => {
-    const kickoff = new Date(now + (idx + 1) * 3 * 60 * 60 * 1000);
-    return {
-      id: `test-fixture-${idx + 1}`,
-      gw: 99,
-      fixture_index: idx,
-      kickoff_time: kickoff.toISOString(),
-      api_match_id: null,
-      home_team: homeName,
-      away_team: awayName,
-      home_name: homeName,
-      away_name: awayName,
-      home_code: homeCode,
-      away_code: awayCode,
-      home_crest: null,
-      away_crest: null,
-    };
-  });
-}
-
-function normalizeTeamForms(input: Record<string, string> | null | undefined): Record<string, string> {
-  const out: Record<string, string> = {};
-  Object.entries(input ?? {}).forEach(([rawCode, rawForm]) => {
-    const code = normalizeTeamCode(rawCode);
-    const form = typeof rawForm === 'string' ? rawForm.trim().toUpperCase() : '';
-    if (code && form) out[code] = form;
-  });
-  return out;
 }
 
 function PickChip({
@@ -171,37 +87,23 @@ export default function PredictionsScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const confetti = useConfetti();
 
-  const [nowMs, setNowMs] = React.useState(() => Date.now());
-  React.useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, []);
-
-  const [userId, setUserId] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      const id = data.session?.user?.id ?? null;
-      if (!alive) return;
-      setUserId(id);
-    })().catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
-  const { data: avatarRow } = useQuery<{ avatar_url: string | null } | null>({
-    enabled: !!userId,
-    queryKey: ['profile-avatar-url', userId],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('users').select('avatar_url').eq('id', userId).maybeSingle();
-      if (error && (error as any).code !== 'PGRST116') throw error;
-      if (!data) return null;
-      return { avatar_url: typeof (data as any).avatar_url === 'string' ? (data as any).avatar_url : null };
-    },
-    staleTime: 60_000,
-  });
-  const avatarUrl = typeof avatarRow?.avatar_url === 'string' ? String(avatarRow.avatar_url) : null;
+  const {
+    avatarUrl,
+    fixtures,
+    fixturesByDate,
+    gw,
+    submitted,
+    effectiveData,
+    formsByFixtureIndex,
+    picks,
+    setPickLocal,
+    deadline,
+    deadlineExpired,
+    allPicksMade,
+    isLoading,
+    error,
+    refetch,
+  } = usePredictionsData({ isTestMode });
 
   const [howToSuppressed, setHowToSuppressed] = React.useState<boolean>(false);
   const [howToOpen, setHowToOpen] = React.useState(false);
@@ -240,168 +142,6 @@ export default function PredictionsScreen() {
       alive = false;
     };
   }, []);
-
-  const { data, isLoading, error, refetch, isRefetching } = useQuery({
-    queryKey: ['predictions', isTestMode ? 'test' : 'live'],
-    enabled: !isTestMode,
-    queryFn: () => api.getPredictions(),
-  });
-  const { data: testModePredictions } = useQuery({
-    queryKey: ['predictions-test-forms'],
-    enabled: isTestMode,
-    queryFn: () => api.getPredictions(),
-    staleTime: 30_000,
-  });
-
-  const fakeFixtures = React.useMemo(() => buildFakeFixtures(), []);
-  const effectiveData = React.useMemo(() => {
-    if (!isTestMode) return data;
-    return {
-      gw: 99,
-      fixtures: fakeFixtures,
-      picks: [],
-      submitted: false,
-      teamForms: {},
-    };
-  }, [data, fakeFixtures, isTestMode]);
-
-  const fixtures = React.useMemo(() => {
-    const fx = (effectiveData?.fixtures ?? []) as Fixture[];
-    return [...fx].sort((a, b) => (a.fixture_index ?? 0) - (b.fixture_index ?? 0));
-  }, [effectiveData?.fixtures]);
-
-  const fixturesByDate = React.useMemo(() => {
-    const groups = new Map<string, Fixture[]>();
-    fixtures.forEach((f: Fixture) => {
-      const key = fixtureDateLabel(f.kickoff_time ?? null);
-      const arr = groups.get(key) ?? [];
-      arr.push(f);
-      groups.set(key, arr);
-    });
-
-    groups.forEach((arr, key) => {
-      groups.set(
-        key,
-        [...arr].sort((a, b) => Number(a?.fixture_index ?? 0) - Number(b?.fixture_index ?? 0))
-      );
-    });
-
-    const keys = Array.from(groups.keys()).sort((a, b) => {
-      if (a === 'No date') return 1;
-      if (b === 'No date') return -1;
-      const a0 = groups.get(a)?.[0]?.kickoff_time;
-      const b0 = groups.get(b)?.[0]?.kickoff_time;
-      const da = a0 ? new Date(a0).getTime() : Number.POSITIVE_INFINITY;
-      const db = b0 ? new Date(b0).getTime() : Number.POSITIVE_INFINITY;
-      return da - db;
-    });
-
-    return keys.map((k) => ({ date: k, fixtures: groups.get(k) ?? [] }));
-  }, [fixtures]);
-
-  const gw = effectiveData?.gw ?? null;
-  const submitted = effectiveData?.submitted ?? false;
-  const teamFormsFromApi = React.useMemo(
-    () => normalizeTeamForms((effectiveData?.teamForms ?? {}) as Record<string, string>),
-    [effectiveData?.teamForms]
-  );
-  const testModeTeamForms = React.useMemo(
-    () => normalizeTeamForms((testModePredictions?.teamForms ?? {}) as Record<string, string>),
-    [testModePredictions?.teamForms]
-  );
-
-  const teamForms = React.useMemo(() => {
-    // Keep forms API-driven (same source as Despia setup):
-    // - Real modal: /v1/predictions response used by this screen.
-    // - Test modal: separate /v1/predictions call only for teamForms.
-    if (isTestMode && Object.keys(testModeTeamForms).length > 0) return testModeTeamForms;
-    return teamFormsFromApi;
-  }, [isTestMode, teamFormsFromApi, testModeTeamForms]);
-  const formsByFixtureIndex = React.useMemo(() => {
-    const out = new Map<number, { home: string | null; away: string | null }>();
-    fixtures.forEach((f) => {
-      const homeCode = normalizeTeamCode(f.home_code);
-      const awayCode = normalizeTeamCode(f.away_code);
-      out.set(f.fixture_index, {
-        home: homeCode ? (teamForms[homeCode] ?? null) : null,
-        away: awayCode ? (teamForms[awayCode] ?? null) : null,
-      });
-    });
-    return out;
-  }, [fixtures, teamForms]);
-
-  const serverPicks = React.useMemo(() => {
-    const out: Record<number, Pick> = {};
-    (effectiveData?.picks ?? []).forEach((p: any) => {
-      const idx = Number(p?.fixture_index);
-      const pick = p?.pick;
-      if (Number.isFinite(idx) && isPick(pick)) out[idx] = pick;
-    });
-    return out;
-  }, [effectiveData?.picks]);
-
-  const [draftPicks, setDraftPicks] = React.useState<Record<number, Pick>>({});
-
-  // Load draft picks (once per user+gw).
-  const loadedDraftForRef = React.useRef<string | null>(null);
-  React.useEffect(() => {
-    if (isTestMode) return;
-    if (!userId) return;
-    if (typeof gw !== 'number') return;
-    const k = draftKey(userId, gw);
-    if (loadedDraftForRef.current === k) return;
-    loadedDraftForRef.current = k;
-
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(k);
-        if (!raw) return;
-        const parsed = JSON.parse(raw) as Record<string, unknown>;
-        const next: Record<number, Pick> = {};
-        Object.entries(parsed ?? {}).forEach(([key, val]) => {
-          const idx = Number(key);
-          if (!Number.isFinite(idx)) return;
-          if (!isPick(val)) return;
-          next[idx] = val;
-        });
-        setDraftPicks(next);
-      } catch {
-        // ignore
-      }
-    })();
-  }, [gw, isTestMode, userId]);
-
-  // Persist drafts.
-  React.useEffect(() => {
-    if (isTestMode) return;
-    if (!userId) return;
-    if (typeof gw !== 'number') return;
-    const k = draftKey(userId, gw);
-    void AsyncStorage.setItem(k, JSON.stringify(draftPicks)).catch(() => {});
-  }, [draftPicks, gw, isTestMode, userId]);
-
-  // Clear drafts if submission is now confirmed.
-  React.useEffect(() => {
-    if (isTestMode) return;
-    if (!userId) return;
-    if (typeof gw !== 'number') return;
-    if (!submitted) return;
-    void AsyncStorage.removeItem(draftKey(userId, gw)).catch(() => {});
-  }, [gw, isTestMode, submitted, userId]);
-
-  const picks: Record<number, Pick> = React.useMemo(() => {
-    // If submitted, treat server as the source of truth.
-    if (submitted) return serverPicks;
-    return { ...serverPicks, ...draftPicks };
-  }, [draftPicks, serverPicks, submitted]);
-
-  const deadline = React.useMemo(() => deadlineCountdown(fixtures, nowMs), [fixtures, nowMs]);
-  const deadlineExpired = deadline?.expired ?? false;
-
-  const allPicksMade = React.useMemo(() => {
-    if (!fixtures.length) return false;
-    return fixtures.every((f) => isPick(picks[f.fixture_index]));
-  }, [fixtures, picks]);
 
   const forceListMode = submitted || deadlineExpired;
   const [mode, setMode] = React.useState<Mode>('list');
@@ -493,8 +233,7 @@ export default function PredictionsScreen() {
         });
         return;
       }
-      // Clear draft immediately (server is now canonical).
-      setDraftPicks({});
+      // Draft cleared by hook when submitted becomes true after refetch.
       confetti.fire({
         origin: { x: screenWidth / 2, y: -10 },
         count: 300,
@@ -793,7 +532,7 @@ export default function PredictionsScreen() {
       });
   }, [animateOut, isAnimatingSV, tx, ty]);
 
-  const showInitialSpinner = isLoading && !data && !error;
+  const showInitialSpinner = isLoading && !effectiveData && !error;
   const onRefresh = React.useCallback(() => {
     if (isTestMode) return Promise.resolve();
     return refetch();
@@ -859,7 +598,7 @@ export default function PredictionsScreen() {
               <TotlText variant="heading" style={{ marginBottom: 6 }}>
                 Couldn’t load predictions
               </TotlText>
-              <TotlText variant="muted">{(error as any)?.message ?? 'Unknown error'}</TotlText>
+              <TotlText variant="muted">{error instanceof Error ? error.message : String(error ?? 'Unknown error')}</TotlText>
             </Card>
           ) : null}
 
@@ -1167,7 +906,7 @@ export default function PredictionsScreen() {
             <TotlText variant="heading" style={{ marginBottom: 6 }}>
               Couldn’t load predictions
             </TotlText>
-            <TotlText variant="muted">{(error as any)?.message ?? 'Unknown error'}</TotlText>
+            <TotlText variant="muted">{error instanceof Error ? error.message : String(error ?? 'Unknown error')}</TotlText>
           </Card>
         ) : null}
 
