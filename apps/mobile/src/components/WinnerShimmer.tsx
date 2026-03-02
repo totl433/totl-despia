@@ -7,20 +7,22 @@ export default function WinnerShimmer({
   delayMs,
   opacity,
   tint,
+  skipFirstDelay = false,
 }: {
   durationMs: number;
   delayMs: number;
   opacity: number;
   tint: 'white' | 'gold';
+  /** When true, first shimmer runs immediately; subsequent runs use delayMs. */
+  skipFirstDelay?: boolean;
 }) {
   const anim = React.useRef(new Animated.Value(0)).current;
   const [w, setW] = React.useState(0);
 
   React.useEffect(() => {
     anim.setValue(0);
-    const loop = Animated.loop(
+    const runAnim = () =>
       Animated.sequence([
-        Animated.delay(delayMs),
         Animated.timing(anim, {
           toValue: 1,
           duration: durationMs,
@@ -33,12 +35,25 @@ export default function WinnerShimmer({
           easing: Easing.linear,
           useNativeDriver: true,
         }),
-      ]),
-      { resetBeforeIteration: true }
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [anim, delayMs, durationMs]);
+      ]);
+    const loopBody = Animated.sequence([Animated.delay(delayMs), runAnim()]);
+    let loop: Animated.CompositeAnimation | null = null;
+    if (skipFirstDelay) {
+      runAnim().start(({ finished }) => {
+        if (finished) {
+          loop = Animated.loop(loopBody);
+          loop.start();
+        }
+      });
+    } else {
+      loop = Animated.loop(loopBody);
+      loop.start();
+    }
+    return () => {
+      loop?.stop();
+      anim.stopAnimation();
+    };
+  }, [anim, delayMs, durationMs, skipFirstDelay]);
 
   const width = w || 220;
   const translateX = anim.interpolate({

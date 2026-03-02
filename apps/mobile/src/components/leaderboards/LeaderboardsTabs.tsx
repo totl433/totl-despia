@@ -1,22 +1,26 @@
 import React from 'react';
-import SegmentedPillControl from '../SegmentedPillControl';
+import UnderlineTabs from '../UnderlineTabs';
 
-export type LeaderboardsTab = 'gw' | 'form5' | 'form10' | 'overall';
+export type LeaderboardsTab = 'gw' | 'monthly' | 'overall';
+
+export type FormScope = 'none' | 'last5' | 'last10' | 'sinceStarted';
 
 export default function LeaderboardsTabs({
   value,
   onChange,
+  currentGw,
+  currentMonthLabel,
 }: {
   value: LeaderboardsTab;
   onChange: (next: LeaderboardsTab) => void;
+  currentGw?: number | null;
+  currentMonthLabel?: string | null;
 }) {
   const items: Array<{ key: LeaderboardsTab; label: string }> = [
-    { key: 'gw', label: 'GW' },
-    { key: 'form5', label: '5' },
-    { key: 'form10', label: '10' },
-    { key: 'overall', label: '🏆' },
+    { key: 'gw', label: currentGw != null ? `GW${currentGw}` : 'GW' },
+    { key: 'monthly', label: currentMonthLabel ?? 'Month' },
+    { key: 'overall', label: 'Overall' },
   ];
-
-  return <SegmentedPillControl items={items} value={value} onChange={onChange} height={40} />;
+  return <UnderlineTabs items={items} value={value} onChange={onChange} />;
 }
 

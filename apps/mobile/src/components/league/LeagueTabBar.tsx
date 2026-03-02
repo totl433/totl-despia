@@ -1,6 +1,7 @@
 import React from 'react';
 import { AccessibilityInfo, Pressable, type LayoutChangeEvent, Text, View } from 'react-native';
 import { useTokens } from '@totl/ui';
+import { useThemePreference } from '../../context/ThemePreferenceContext';
 import Animated, { Easing, Extrapolation, interpolate, interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 export type LeagueTabKey = 'gwTable' | 'predictions' | 'season';
@@ -67,6 +68,8 @@ export default function LeagueTabBar({
   onChange: (next: LeagueTabKey) => void;
 }) {
   const t = useTokens();
+  const { isDark } = useThemePreference();
+  const inactiveColor = isDark ? '#F8FAFC' : t.color.text;
   // How to tweak:
   // - duration/easing: `TAB_ANIM_MS` + easing in the `withTiming` below
   // - indicator height: `INDICATOR_H`
@@ -150,7 +153,7 @@ export default function LeagueTabBar({
             index={i}
             activeIndexSV={activeIndexSV}
             activeColor={t.color.brand}
-            inactiveColor={t.color.muted}
+            inactiveColor={inactiveColor}
             onPress={() => onChange(tab.key)}
             onLayout={onTabLayout(tab.key)}
           />

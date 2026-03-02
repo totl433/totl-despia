@@ -2,7 +2,7 @@ import React from 'react';
 import { Alert, Share, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Screen } from '@totl/ui';
+import { Screen, useTokens } from '@totl/ui';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
@@ -16,12 +16,16 @@ import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { Ionicons } from '@expo/vector-icons';
 import { resolveLeagueAvatarUri } from '../lib/leagueAvatars';
+import { useThemePreference } from '../context/ThemePreferenceContext';
 
 export default function ChatThreadScreen() {
   const route = useRoute<any>();
   const params = route.params as RootStackParamList['ChatThread'];
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
+  const t = useTokens();
+  const { isDark } = useThemePreference();
+  const menuTextColor = isDark ? '#F8FAFC' : t.color.text;
 
   const leagueId = String(params.leagueId);
   const leagueName = String(params.name ?? '');
@@ -160,11 +164,12 @@ export default function ChatThreadScreen() {
           open={menuOpen}
           onClose={() => setMenuOpen(false)}
           onAction={handleMenuAction}
+          menuTextColor={menuTextColor}
           extraItems={[
             {
               key: 'view-mini-league',
               label: 'Go to mini league',
-              icon: <Ionicons name="trophy-outline" size={18} color="#000000" />,
+              icon: <Ionicons name="trophy-outline" size={18} color={menuTextColor} />,
               onPress: () => {
                 setMenuOpen(false);
                 navigation.navigate('LeagueDetail' as any, { leagueId, name: leagueName, returnTo: 'chat' });

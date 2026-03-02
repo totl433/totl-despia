@@ -408,6 +408,41 @@ app.get('/v1/leagues/:leagueId', async (req) => {
   return { league: leagueRes.data, members };
 });
 
+/** Returns whether the current user is the league creator (admin). Does not touch the main league endpoint. */
+app.get('/v1/leagues/:leagueId/admin', async (req) => {
+  await requireUser(req, supabase);
+  const { userId, supa } = getAuthedSupa(req as any);
+  const params = LeagueParamsSchema.parse((req as any).params);
+
+  let creatorId: string | null = null;
+
+  const leagueRes = await (supa as any)
+    .from('leagues')
+    .select('created_by')
+    .eq('id', params.leagueId)
+    .maybeSingle();
+
+  if (!leagueRes.error && leagueRes.data?.created_by) {
+    creatorId = leagueRes.data.created_by as string;
+  }
+
+  if (!creatorId) {
+    const firstMemberRes = await (supa as any)
+      .from('league_members')
+      .select('user_id')
+      .eq('league_id', params.leagueId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (!firstMemberRes.error && firstMemberRes.data?.user_id) {
+      creatorId = firstMemberRes.data.user_id as string;
+    }
+  }
+
+  const isAdmin = !!creatorId && String(creatorId) === String(userId);
+  return { isAdmin };
+});
+
 const PredictionsQuerySchema = z.object({
   gw: z.coerce.number().int().positive().optional(),
 });

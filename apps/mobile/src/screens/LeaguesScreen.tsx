@@ -4,9 +4,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
-import { useSharedValue } from 'react-native-reanimated';
+import Reanimated, { Easing, LinearTransition, useSharedValue } from 'react-native-reanimated';
 
 import { api } from '../lib/api';
+import { env } from '../env';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import MiniLeagueListItem from '../components/miniLeagues/MiniLeagueListItem';
 import { TotlRefreshControl } from '../lib/refreshControl';
@@ -21,9 +22,8 @@ import { supabase } from '../lib/supabase';
 import { resolveLeagueStartGw } from '../lib/leagueStart';
 import { getGameweekStateFromSnapshot } from '../lib/gameweekState';
 import MiniLeagueLiveCard from '../components/home/MiniLeagueLiveCard';
-import CarouselDots from '../components/home/CarouselDots';
 import AppTopHeader from '../components/AppTopHeader';
-import SegmentedPillControl from '../components/SegmentedPillControl';
+import { DEV_FAKE_LEAGUE_ID, DEV_FAKE_LEAGUE_MEMBERS, DEV_FAKE_LEAGUE_NAME, isDevFakeLeagueId } from '../lib/devFakeLeague';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -55,23 +55,24 @@ function LeagueRow({
   onPress: () => void;
 }) {
   const leagueId = String(league.id);
+  const isDevFakeLeague = isDevFakeLeagueId(leagueId);
   const { unreadByLeagueId, optimisticallyClear } = useLeagueUnreadCounts();
   const unread = Number(unreadByLeagueId[leagueId] ?? 0);
 
   const { data: membersData } = useQuery<LeagueMembersResponse>({
-    enabled,
+    enabled: enabled && !isDevFakeLeague,
     queryKey: ['leagueMembers', leagueId],
     queryFn: () => api.getLeague(leagueId),
   });
 
   const { data: table } = useQuery<LeagueTableResponse>({
-    enabled: enabled && typeof currentGw === 'number',
+    enabled: enabled && typeof currentGw === 'number' && !isDevFakeLeague,
     queryKey: ['leagueGwTable', leagueId, currentGw],
     queryFn: () => api.getLeagueGwTable(leagueId, currentGw as number),
   });
 
-  const members = membersData?.members ?? [];
-  const allSubmitted = !!table && table.submittedCount === table.totalMembers && table.totalMembers > 0;
+  const members = isDevFakeLeague ? DEV_FAKE_LEAGUE_MEMBERS : (membersData?.members ?? []);
+  const allSubmitted = isDevFakeLeague ? true : !!table && table.submittedCount === table.totalMembers && table.totalMembers > 0;
 
   const memberCount: number | null =
     typeof table?.totalMembers === 'number' && Number.isFinite(table.totalMembers)
@@ -81,7 +82,7 @@ function LeagueRow({
         : null;
 
   const { data: resolvedLeagueStartGw } = useQuery<number>({
-    enabled: enabled && typeof currentGw === 'number' && !!leagueId,
+    enabled: enabled && typeof currentGw === 'number' && !!leagueId && !isDevFakeLeague,
     queryKey: [
       'leagueStartGw',
       leagueId,
@@ -107,6 +108,7 @@ function LeagueRow({
   const { data: seasonRankData } = useQuery<{ myRank: number | null; orderedUserIds: string[] }>({
     enabled:
       enabled &&
+      !isDevFakeLeague &&
       members.length > 0 &&
       typeof currentGw === 'number' &&
       typeof resolvedLeagueStartGw === 'number',
@@ -275,9 +277,17 @@ function LeagueRow({
     <MiniLeagueListItem
       title={String(league.name ?? '')}
       avatarUri={resolveLeagueAvatarUri(typeof league.avatar === 'string' ? league.avatar : null)}
-      submittedCount={typeof table?.submittedCount === 'number' ? table.submittedCount : null}
-      totalMembers={typeof table?.totalMembers === 'number' ? table.totalMembers : members.length ?? null}
+      submittedCount={isDevFakeLeague ? 8 : typeof table?.submittedCount === 'number' ? table.submittedCount : null}
+      totalMembers={isDevFakeLeague ? 8 : typeof table?.totalMembers === 'number' ? table.totalMembers : members.length ?? null}
       membersPreview={(() => {
+        if (isDevFakeLeague) {
+          return DEV_FAKE_LEAGUE_MEMBERS.map((m) => ({
+            id: String(m.id),
+            name: String(m.name),
+            avatarUri: null,
+            hasSubmitted: true,
+          }));
+        }
         const submitted = new Set<string>(
           Array.isArray((table as any)?.submittedUserIds)
             ? ((table as any).submittedUserIds as unknown[]).map((x) => String(x))
@@ -302,8 +312,8 @@ function LeagueRow({
             return a.name.localeCompare(b.name);
           });
       })()}
-      memberCount={memberCount}
-      myRank={currentRank}
+      memberCount={isDevFakeLeague ? 8 : memberCount}
+      myRank={isDevFakeLeague ? 1 : currentRank}
       unreadCount={unread}
       onPress={() => {
         onPress();
@@ -320,6 +330,24 @@ export default function LeaguesScreen() {
   useScrollToTop(listRef as any);
   const queryClient = useQueryClient();
   const { unreadByLeagueId, meId: unreadMeId } = useLeagueUnreadCounts();
+  const [hasAccessToken, setHasAccessToken] = React.useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (cancelled) return;
+        setHasAccessToken(Boolean(data.session?.access_token));
+      } catch {
+        if (cancelled) return;
+        setHasAccessToken(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const { data: authUser } = useQuery<any | null>({
     queryKey: ['authUser'],
     queryFn: async () => {
@@ -331,14 +359,17 @@ export default function LeaguesScreen() {
     refetchOnMount: 'always',
   });
   const meId = authUser?.id ? String(authUser.id) : null;
-  const { data: avatarRow } = useQuery<{ avatar_url: string | null } | null>({
+  type UserAvatarRow = { avatar_url: string | null };
+  const { data: avatarRow } = useQuery<UserAvatarRow | null>({
     enabled: !!meId,
     queryKey: ['profile-avatar-url', meId],
     queryFn: async () => {
       const { data, error } = await supabase.from('users').select('avatar_url').eq('id', meId).maybeSingle();
-      if (error && (error as any).code !== 'PGRST116') throw error;
+      const err = error as { code?: string } | null;
+      if (error && err?.code !== 'PGRST116') throw error;
       if (!data) return null;
-      return { avatar_url: typeof (data as any).avatar_url === 'string' ? (data as any).avatar_url : null };
+      const row = data as { avatar_url?: unknown };
+      return { avatar_url: typeof row.avatar_url === 'string' ? row.avatar_url : null };
     },
     staleTime: 60_000,
   });
@@ -351,11 +382,20 @@ export default function LeaguesScreen() {
   const sortedLeagues = React.useMemo(() => {
     return sortLeaguesByUnread(data?.leagues ?? [], unreadByLeagueId);
   }, [data?.leagues, unreadByLeagueId]);
+  const listLeagues = React.useMemo(() => {
+    if (!__DEV__) return sortedLeagues;
+    const fake = {
+      id: DEV_FAKE_LEAGUE_ID,
+      name: DEV_FAKE_LEAGUE_NAME,
+      avatar: null,
+    } as unknown as LeagueSummary;
+    return [fake, ...sortedLeagues.filter((l) => String(l.id) !== DEV_FAKE_LEAGUE_ID)];
+  }, [sortedLeagues]);
 
   const sortedLeaguesRef = React.useRef<LeagueSummary[]>([]);
   React.useEffect(() => {
-    sortedLeaguesRef.current = sortedLeagues;
-  }, [sortedLeagues]);
+    sortedLeaguesRef.current = listLeagues;
+  }, [listLeagues]);
 
   const { data: home } = useQuery({
     queryKey: ['homeSnapshot'],
@@ -363,8 +403,7 @@ export default function LeaguesScreen() {
   });
   const viewingGw = home?.viewingGw ?? null;
   const currentGw = home?.currentGw ?? viewingGw ?? null;
-  const showTopLiveRail = typeof viewingGw === 'number' && sortedLeagues.length > 0;
-  const tablesToggleLabel = typeof viewingGw === 'number' ? `Gameweek ${viewingGw} Tables` : 'Gameweek Tables';
+  const showTopLiveRail = typeof viewingGw === 'number' && listLeagues.length > 0;
   const gwState = React.useMemo(() => {
     if (!home) return null;
     return getGameweekStateFromSnapshot({
@@ -375,16 +414,22 @@ export default function LeaguesScreen() {
   }, [home]);
   const showReadyToMoveOn =
     typeof currentGw === 'number' && typeof viewingGw === 'number' ? viewingGw < currentGw : false;
-  const canToggleViews = showTopLiveRail && (gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW' || showReadyToMoveOn);
-  const liveCardWidth = Math.min(336, Math.max(260, screenWidth - t.space[4] * 2 - 22));
   const liveRailGap = 10;
+  // Carousel uses marginHorizontal: -space[4] to extend full width; content has paddingHorizontal.
+  const liveCardWidth = Math.min(336, Math.max(260, screenWidth - t.space[4] * 2 - liveRailGap - 24));
   const liveRailItemSpan = liveCardWidth + liveRailGap;
   const liveRailRef = React.useRef<ScrollView | null>(null);
   const liveRailProgress = useSharedValue(0);
   const [activeLiveRailIndex, setActiveLiveRailIndex] = React.useState(0);
-  const [topViewMode, setTopViewMode] = React.useState<'tables' | 'list'>('tables');
-  const showTablesView = canToggleViews && topViewMode === 'tables';
-  const showListView = !canToggleViews || topViewMode === 'list';
+  const [liveTablesLayout, setLiveTablesLayout] = React.useState<'mini' | 'expanded'>('expanded');
+  const liveLayoutTransition = React.useMemo(
+    () => LinearTransition.duration(200).easing(Easing.out(Easing.cubic)),
+    []
+  );
+  const showTablesView =
+    showTopLiveRail && (gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW' || showReadyToMoveOn);
+  const showListView = !showTablesView;
+  const canToggleLiveLayout = showTopLiveRail && showTablesView && listLeagues.length > 2;
 
   const [createJoinOpen, setCreateJoinOpen] = React.useState(false);
   const [joinCode, setJoinCode] = React.useState('');
@@ -392,6 +437,25 @@ export default function LeaguesScreen() {
   const [joining, setJoining] = React.useState(false);
 
   const [visibleLeagueIds, setVisibleLeagueIds] = React.useState<Set<string>>(() => new Set());
+  const [refreshTimedOut, setRefreshTimedOut] = React.useState(false);
+  const [initialLoadTimedOut, setInitialLoadTimedOut] = React.useState(false);
+  React.useEffect(() => {
+    if (!isRefetching) {
+      setRefreshTimedOut(false);
+      return;
+    }
+    const id = setTimeout(() => setRefreshTimedOut(true), 15_000);
+    return () => clearTimeout(id);
+  }, [isRefetching]);
+  React.useEffect(() => {
+    const loading = isLoading && !data && !error;
+    if (!loading) {
+      setInitialLoadTimedOut(false);
+      return;
+    }
+    const id = setTimeout(() => setInitialLoadTimedOut(true), 15_000);
+    return () => clearTimeout(id);
+  }, [isLoading, data, error]);
   const renderCreateJoinHeaderButton = React.useCallback(
     () => (
       <Pressable
@@ -462,6 +526,7 @@ export default function LeaguesScreen() {
   }, [activeLiveRailIndex, sortedLeagues.length, liveRailProgress]);
 
   // Initial/empty load: avoid rendering an empty list shell.
+  const showInitialSpinner = isLoading && !data && !error && !initialLoadTimedOut;
   if (isLoading && !data && !error) {
     return (
       <Screen fullBleed>
@@ -472,7 +537,28 @@ export default function LeaguesScreen() {
           title="Mini Leagues"
           rightAction={renderCreateJoinHeaderButton()}
         />
-        <CenteredSpinner loading />
+        {showInitialSpinner ? (
+          <CenteredSpinner loading />
+        ) : (
+          <View style={{ flex: 1, padding: t.space[4], justifyContent: 'center' }}>
+            <Card style={{ padding: 16 }}>
+              <TotlText variant="heading" style={{ marginBottom: 8 }}>Taking longer than expected</TotlText>
+              <TotlText variant="muted" style={{ marginBottom: 12 }}>Pull down to retry, or check your connection.</TotlText>
+              <Pressable
+                onPress={() => refetch()}
+                style={({ pressed }) => ({
+                  paddingVertical: 10,
+                  paddingHorizontal: 16,
+                  borderRadius: 12,
+                  backgroundColor: t.color.brand,
+                  opacity: pressed ? 0.9 : 1,
+                })}
+              >
+                <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, textAlign: 'center' }}>Retry</TotlText>
+              </Pressable>
+            </Card>
+          </View>
+        )}
         <CreateJoinLeagueSheet
           open={createJoinOpen}
           onClose={() => setCreateJoinOpen(false)}
@@ -523,7 +609,7 @@ export default function LeaguesScreen() {
 
       <FlatList
         ref={listRef}
-        data={showListView ? sortedLeagues : []}
+        data={showListView ? listLeagues : []}
         style={{ flex: 1 }}
         keyExtractor={(l) => String(l.id)}
         contentContainerStyle={{
@@ -531,86 +617,140 @@ export default function LeaguesScreen() {
           paddingTop: t.space[4],
           paddingBottom: FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
         }}
-        refreshControl={<TotlRefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
+        refreshControl={<TotlRefreshControl refreshing={isRefetching && !refreshTimedOut} onRefresh={() => refetch()} />}
         viewabilityConfig={viewabilityConfig}
         onViewableItemsChanged={onViewableItemsChanged}
         ListHeaderComponent={
           <>
             {showTopLiveRail ? (
               <View style={{ marginBottom: 14 }}>
-                {canToggleViews ? (
-                  <View style={{ marginBottom: 10 }}>
-                    <SegmentedPillControl
-                      items={[
-                        { key: 'tables', label: tablesToggleLabel },
-                        { key: 'list', label: 'List View' },
-                      ]}
-                      value={topViewMode}
-                      onChange={setTopViewMode}
-                      height={40}
-                    />
-                  </View>
-                ) : null}
                 {showTablesView ? (
                   <>
-                    <ScrollView
-                      ref={liveRailRef}
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={{ paddingRight: 8 }}
-                      snapToInterval={liveRailItemSpan}
-                      snapToAlignment="start"
-                      decelerationRate="fast"
-                      disableIntervalMomentum
-                      bounces={false}
-                      scrollEventThrottle={16}
-                      onScroll={(event) => {
-                        const x = event.nativeEvent.contentOffset.x;
-                        liveRailProgress.value = x > 0 ? x / liveRailItemSpan : 0;
-                      }}
-                      onMomentumScrollEnd={(event) => {
-                        const x = event.nativeEvent.contentOffset.x;
-                        const maxIndex = Math.max(0, sortedLeagues.length - 1);
-                        const nextIndex = Math.min(maxIndex, Math.max(0, Math.round(x / liveRailItemSpan)));
-                        setActiveLiveRailIndex(nextIndex);
-                      }}
-                    >
-                      {sortedLeagues.map((league, idx) => {
+                    {canToggleLiveLayout ? (
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginBottom: 10,
+                        }}
+                      >
+                        <TotlText
+                          style={{
+                            flex: 1,
+                            color: t.color.text,
+                            fontSize: 22,
+                            lineHeight: 22,
+                          }}
+                        >
+                          Gameweek {viewingGw} {gwState === 'LIVE' ? 'Live ' : ''}Tables
+                        </TotlText>
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            borderRadius: 999,
+                            borderWidth: 1,
+                            borderColor: 'rgba(148,163,184,0.26)',
+                            backgroundColor: t.color.surface,
+                            padding: 4,
+                          }}
+                        >
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Mini cards view"
+                            onPress={() => setLiveTablesLayout('mini')}
+                            style={({ pressed }) => ({
+                              width: 34,
+                              height: 34,
+                              borderRadius: 17,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: liveTablesLayout === 'mini' ? 'rgba(28,131,118,0.14)' : 'transparent',
+                              opacity: pressed ? 0.86 : 1,
+                            })}
+                          >
+                            <Ionicons name="grid-outline" size={18} color={liveTablesLayout === 'mini' ? '#1C8376' : '#475569'} />
+                          </Pressable>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Expanded cards view"
+                            onPress={() => setLiveTablesLayout('expanded')}
+                            style={({ pressed }) => ({
+                              width: 34,
+                              height: 34,
+                              borderRadius: 17,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: liveTablesLayout === 'expanded' ? 'rgba(28,131,118,0.14)' : 'transparent',
+                              opacity: pressed ? 0.86 : 1,
+                            })}
+                          >
+                            <Ionicons name="tablet-landscape-outline" size={18} color={liveTablesLayout === 'expanded' ? '#1C8376' : '#475569'} />
+                          </Pressable>
+                        </View>
+                      </View>
+                    ) : null}
+                    {(() => {
+                      const isExpanded = liveTablesLayout === 'expanded';
+                      const cardWidth = isExpanded ? screenWidth - t.space[4] * 2 : (screenWidth - t.space[4] * 2 - 12) / 2;
+                      const getEstHeight = (l: LeagueSummary) => (isDevFakeLeagueId(String(l.id)) ? 8 : 3);
+                      const sorted = [...listLeagues].sort((a, b) => getEstHeight(b) - getEstHeight(a));
+                      const cols: LeagueSummary[][] = [[], []];
+                      const colHeights = [0, 0];
+                      for (const league of sorted) {
+                        const h = getEstHeight(league) * 40;
+                        const i = colHeights[0] <= colHeights[1] ? 0 : 1;
+                        cols[i].push(league);
+                        colHeights[i] += h;
+                      }
+                      const renderCard = (league: LeagueSummary) => {
                         const leagueId = String(league.id);
                         return (
-                          <View key={`live-rail-${leagueId}`} style={{ marginRight: idx === sortedLeagues.length - 1 ? 0 : liveRailGap }}>
+                          <Reanimated.View
+                            key={`live-${leagueId}`}
+                            layout={liveLayoutTransition}
+                            style={{
+                              paddingHorizontal: 6,
+                              marginBottom: 12,
+                            }}
+                          >
                             <MiniLeagueLiveCard
                               leagueId={leagueId}
                               leagueName={String(league.name ?? '')}
                               leagueAvatar={typeof league.avatar === 'string' ? league.avatar : null}
                               gw={viewingGw as number}
-                              width={liveCardWidth}
+                              width={cardWidth}
                               enabled
+                              compact={!isExpanded}
+                              currentUserId={meId}
                               onPress={() =>
                                 navigation.navigate(
                                   'LeagueDetail',
-                                  { leagueId: league.id, name: league.name } satisfies RootStackParamList['LeagueDetail']
+                                  { leagueId: league.id, name: league.name, initialTab: 'predictions' } satisfies RootStackParamList['LeagueDetail']
                                 )
                               }
                             />
-                          </View>
+                          </Reanimated.View>
                         );
-                      })}
-                    </ScrollView>
-                    <CarouselDots
-                      progress={liveRailProgress}
-                      count={sortedLeagues.length}
-                      currentIndex={activeLiveRailIndex}
-                      carouselName="Mini league live tables"
-                      style={{ marginTop: 10 }}
-                      onPress={(pageIndex) => {
-                        const maxIndex = Math.max(0, sortedLeagues.length - 1);
-                        const safeIndex = Math.min(maxIndex, Math.max(0, pageIndex));
-                        setActiveLiveRailIndex(safeIndex);
-                        liveRailProgress.value = safeIndex;
-                        liveRailRef.current?.scrollTo({ x: safeIndex * liveRailItemSpan, animated: true });
-                      }}
-                    />
+                      };
+                      if (isExpanded) {
+                        return (
+                          <Reanimated.View layout={liveLayoutTransition} style={{ marginHorizontal: -6 }}>
+                            {listLeagues.map(renderCard)}
+                          </Reanimated.View>
+                        );
+                      }
+                      return (
+                        <Reanimated.View
+                          layout={liveLayoutTransition}
+                          style={{ flexDirection: 'row', marginHorizontal: -6 }}
+                        >
+                          <View style={{ flex: 1 }}>{cols[0].map(renderCard)}</View>
+                          <View style={{ flex: 1 }}>{cols[1].map(renderCard)}</View>
+                        </Reanimated.View>
+                      );
+                    })()}
                   </>
                 ) : null}
               </View>
@@ -636,27 +776,37 @@ export default function LeaguesScreen() {
           ) : null
         }
         ListFooterComponent={
-          showListView && (data?.leagues?.length ?? 0) > 0 ? (
-            <View style={{ marginTop: 14, marginBottom: 6 }}>
-              <Pressable
-                onPress={() => {
-                  setJoinError(null);
-                  setCreateJoinOpen(true);
-                }}
-                style={({ pressed }) => ({
-                  width: '100%',
-                  paddingVertical: 12,
-                  paddingHorizontal: 14,
-                  borderRadius: 14,
-                  backgroundColor: t.color.brand,
-                  opacity: pressed ? 0.92 : 1,
-                  transform: [{ scale: pressed ? 0.99 : 1 }],
-                })}
-              >
-                <TotlText style={{ color: '#FFFFFF', fontWeight: '900', textAlign: 'center' }}>Create or Join</TotlText>
-              </Pressable>
-            </View>
-          ) : null
+          <>
+            {showListView && (data?.leagues?.length ?? 0) > 0 ? (
+              <View style={{ marginTop: 14, marginBottom: 6 }}>
+                <Pressable
+                  onPress={() => {
+                    setJoinError(null);
+                    setCreateJoinOpen(true);
+                  }}
+                  style={({ pressed }) => ({
+                    width: '100%',
+                    paddingVertical: 12,
+                    paddingHorizontal: 14,
+                    borderRadius: 14,
+                    backgroundColor: t.color.brand,
+                    opacity: pressed ? 0.92 : 1,
+                    transform: [{ scale: pressed ? 0.99 : 1 }],
+                  })}
+                >
+                  <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, textAlign: 'center' }}>Create or Join</TotlText>
+                </Pressable>
+              </View>
+            ) : null}
+            {__DEV__ ? (
+              <View style={{ marginTop: 10 }}>
+                <TotlText variant="muted">Dev: BFF {String(env.EXPO_PUBLIC_BFF_URL)}</TotlText>
+                <TotlText variant="muted">
+                  Dev: Auth token {hasAccessToken === null ? 'unknown' : hasAccessToken ? 'present' : 'missing'}
+                </TotlText>
+              </View>
+            ) : null}
+          </>
         }
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         renderItem={({ item }) => {
@@ -673,7 +823,7 @@ export default function LeaguesScreen() {
               onPress={() => {
                 navigation.navigate(
                   'LeagueDetail',
-                  { leagueId: item.id, name: item.name } satisfies RootStackParamList['LeagueDetail']
+                  { leagueId: item.id, name: item.name, initialTab: 'predictions' } satisfies RootStackParamList['LeagueDetail']
                 );
               }}
             />

@@ -28,6 +28,9 @@ function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && value.length > 10;
 }
 
+/** Leagues created within this many days are treated as "new" - never lock for invites. */
+const NEW_LEAGUE_GRACE_DAYS = 5;
+
 /**
  * resolveLeagueStartGw (mobile)
  * Computes the first GW this league should participate in, mirroring web logic but using app tables.
@@ -41,6 +44,10 @@ export async function resolveLeagueStartGw(league: LeagueRecord | null | undefin
   if (!isIsoDate(league.created_at) || !currentGw) return currentGw;
   const leagueCreatedAt = new Date(league.created_at);
   if (Number.isNaN(leagueCreatedAt.getTime())) return currentGw;
+
+  // Safeguard: leagues created very recently are always treated as new (never lock).
+  const hoursSinceCreation = (Date.now() - leagueCreatedAt.getTime()) / (1000 * 60 * 60);
+  if (hoursSinceCreation < NEW_LEAGUE_GRACE_DAYS * 24) return currentGw;
 
   const { data: resultsData, error: resultsErr } = await (supabase as any)
     .from('app_gw_results')

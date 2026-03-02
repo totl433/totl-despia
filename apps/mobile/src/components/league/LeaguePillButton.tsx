@@ -24,7 +24,7 @@ export default function LeaguePillButton({
         opacity: pressed ? 0.92 : 1,
       })}
     >
-      <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '800' }}>
+      <TotlText variant="caption" style={{ color: t.color.text, fontWeight: '800' }}>
         {label}
       </TotlText>
     </Pressable>

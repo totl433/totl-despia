@@ -11,7 +11,7 @@ const meta: Meta<typeof MiniLeagueCardStory> = {
 export default meta
 type Story = StoryObj<typeof MiniLeagueCardStory>
 
-function MiniLeagueCardStory({ rowCount }: { rowCount: 0 | 2 | 4 }) {
+function MiniLeagueCardStory({ rowCount, compact, currentUserId }: { rowCount: 0 | 2 | 4; compact?: boolean; currentUserId?: string | null }) {
   const allRows: MiniLeagueTableRowWithAvatar[] = [
     { user_id: 'u1', name: 'Carl', score: 200, unicorns: 10, avatar_url: null },
     { user_id: 'u2', name: 'Jof', score: 180, unicorns: 8, avatar_url: null },
@@ -29,8 +29,10 @@ function MiniLeagueCardStory({ rowCount }: { rowCount: 0 | 2 | 4 }) {
         gwIsLive={false}
         winnerChip={null}
         rows={rows}
-        fixedRowCount={4}
+        fixedRowCount={compact ? undefined : 4}
         emptyLabel={rowCount === 0 ? 'Loading table…' : 'No table yet.'}
+        compact={compact}
+        currentUserId={currentUserId}
       />
     </Screen>
   )
@@ -39,6 +41,10 @@ function MiniLeagueCardStory({ rowCount }: { rowCount: 0 | 2 | 4 }) {
 export const Default: Story = { args: { rowCount: 4 } }
 export const TwoRows: Story = { args: { rowCount: 2 } }
 export const EmptyWithFixedHeight: Story = { args: { rowCount: 0 } }
+
+export const Compact: Story = { args: { rowCount: 4, compact: true } }
+export const CompactTwoRows: Story = { args: { rowCount: 2, compact: true } }
+export const CompactWithMyRowHighlight: Story = { args: { rowCount: 4, compact: true, currentUserId: 'u2' } }
 
 export const LightMode: Story = {
   args: { rowCount: 4 },

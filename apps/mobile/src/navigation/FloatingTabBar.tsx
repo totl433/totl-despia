@@ -171,6 +171,10 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
                   if (tab.routeName === 'Leagues') {
                     (navigation as any).navigate('Leagues', { screen: 'LeaguesList' });
                   }
+                  // 2025/26: always reset filters and dates, default to GW leaderboard.
+                  if (tab.routeName === 'Global') {
+                    (navigation as any).navigate('Global', { resetKey: Date.now() });
+                  }
                   return;
                 }
 
@@ -178,6 +182,11 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
                 // even if the user last viewed a specific league detail screen.
                 if (tab.routeName === 'Leagues') {
                   (navigation as any).navigate('Leagues', { screen: 'LeaguesList' });
+                  return;
+                }
+                // 2025/26: always reset filters and dates, default to GW leaderboard.
+                if (tab.routeName === 'Global') {
+                  (navigation as any).navigate('Global', { resetKey: Date.now() });
                   return;
                 }
                 navigation.navigate(route.name as never);

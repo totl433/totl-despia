@@ -6,8 +6,8 @@ const EnvSchema = z.object({
   EXPO_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
   EXPO_PUBLIC_BFF_URL: z.string().url().default('http://localhost:8787'),
   // Base URL for Netlify functions (push notifications, etc).
-  // Set to https://playtotl.com in prod; default to playtotl.com for convenience.
-  EXPO_PUBLIC_SITE_URL: z.string().url().default('https://playtotl.com'),
+  // Expo and Despia both use totl-staging; playtotl.com is for the website only.
+  EXPO_PUBLIC_SITE_URL: z.string().url().default('https://totl-staging.netlify.app'),
   // Optional OneSignal App ID for native push integration.
   EXPO_PUBLIC_ONESIGNAL_APP_ID: z.string().min(1).optional(),
 });
@@ -63,7 +63,7 @@ export const env: MobileEnv = parsed.success
       EXPO_PUBLIC_SUPABASE_URL: 'https://invalid.local',
       EXPO_PUBLIC_SUPABASE_ANON_KEY: 'invalid',
       EXPO_PUBLIC_BFF_URL: 'http://localhost:8787',
-      EXPO_PUBLIC_SITE_URL: 'https://playtotl.com',
+      EXPO_PUBLIC_SITE_URL: 'https://totl-staging.netlify.app',
       EXPO_PUBLIC_ONESIGNAL_APP_ID: undefined,
     };
 

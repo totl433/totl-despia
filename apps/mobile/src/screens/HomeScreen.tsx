@@ -780,7 +780,18 @@ export default function HomeScreen() {
         >
         {isHomeLoading && <TotlText variant="muted">Loading…</TotlText>}
 
-        {/* Coming soon state is now represented as a carousel card. */}
+        {/* GW Coming soon banner (RESULTS_PRE_GW, next GW not yet published) */}
+        {showComingSoonBanner ? (
+          <TopStatusBanner
+            title={
+              typeof currentGw === 'number'
+                ? `Gameweek ${currentGw + 1} coming soon`
+                : 'Gameweek coming soon'
+            }
+            icon="info"
+            gradientBackground
+          />
+        ) : null}
 
         {/* GW Transition banner (RESULTS_PRE_GW but next GW published) */}
         {showReadyToMoveOn ? (
@@ -1415,15 +1426,13 @@ export default function HomeScreen() {
                               const team = String(g?.team ?? '').toLowerCase();
                               return team && homeCandidates.some((c) => c && (team.includes(c) || c.includes(team)));
                             })
-                            .map(formatScorerLine)
-                            .slice(0, 3);
+                            .map(formatScorerLine);
                           const awayScorers = goalsRaw
                             .filter((g) => {
                               const team = String(g?.team ?? '').toLowerCase();
                               return team && awayCandidates.some((c) => c && (team.includes(c) || c.includes(team)));
                             })
-                            .map(formatScorerLine)
-                            .slice(0, 3);
+                            .map(formatScorerLine);
 
                           return (
                             <Reanimated.View
@@ -1726,15 +1735,13 @@ export default function HomeScreen() {
                       const team = String(g?.team ?? '').toLowerCase();
                       return team && homeCandidates.some((c) => c && (team.includes(c) || c.includes(team)));
                     })
-                    .map(formatScorerLine)
-                    .slice(0, 3);
+                    .map(formatScorerLine);
                   const awayScorers = goalsRaw
                     .filter((g) => {
                       const team = String(g?.team ?? '').toLowerCase();
                       return team && awayCandidates.some((c) => c && (team.includes(c) || c.includes(team)));
                     })
-                    .map(formatScorerLine)
-                    .slice(0, 3);
+                    .map(formatScorerLine);
 
                   return (
                     <Reanimated.View

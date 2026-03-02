@@ -19,6 +19,7 @@ import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import { resolveLeagueStartGw } from '../lib/leagueStart';
 import ChatStackHeaderTitle from '../components/chat/ChatStackHeaderTitle';
 import { Ionicons } from '@expo/vector-icons';
+import { useThemePreference } from '../context/ThemePreferenceContext';
 
 export default function LeagueChatScreen() {
   const route = useRoute<any>();
@@ -26,6 +27,8 @@ export default function LeagueChatScreen() {
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
   const t = useTokens();
+  const { isDark } = useThemePreference();
+  const menuTextColor = isDark ? '#F8FAFC' : t.color.text;
 
   const leagueId = String(params.leagueId);
   const leagueName = String(params.name ?? '');
@@ -185,6 +188,7 @@ export default function LeagueChatScreen() {
           open={menuOpen}
           onClose={() => setMenuOpen(false)}
           onAction={handleMenuAction}
+          menuTextColor={menuTextColor}
           showBadgeActions={false}
           showResetBadge={false}
         />

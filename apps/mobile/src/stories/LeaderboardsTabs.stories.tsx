@@ -23,6 +23,22 @@ export const Default: Story = {
   args: {
     value: 'gw',
     onChange: () => {},
+    currentGw: 28,
+  },
+};
+
+export const Monthly: Story = {
+  args: {
+    value: 'monthly',
+    onChange: () => {},
+    currentMonthLabel: 'February',
+  },
+};
+
+export const Overall: Story = {
+  args: {
+    value: 'overall',
+    onChange: () => {},
   },
 };
 

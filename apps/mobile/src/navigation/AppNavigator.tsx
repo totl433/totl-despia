@@ -18,7 +18,7 @@ import Chat2Navigator from './Chat2Navigator';
 
 export type RootStackParamList = {
   Tabs: undefined;
-  LeagueDetail: { leagueId: string; name: string; returnTo?: 'chat' | 'chat2'; chatMlHopCount?: number };
+  LeagueDetail: { leagueId: string; name: string; returnTo?: 'chat' | 'chat2'; chatMlHopCount?: number; initialTab?: 'gwTable' | 'predictions' | 'season' };
   LeagueChat: { leagueId: string; name: string };
   CreateLeague: undefined;
   ChatThread: { leagueId: string; name: string };

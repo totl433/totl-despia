@@ -42,7 +42,7 @@
       "EXPO_PUBLIC_SUPABASE_URL": "https://gyjagrtwrhctmgkootjj.supabase.co",
       "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5amFncnR3cmhjdG1na29vdGpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MzM2OTIsImV4cCI6MjA3NDMwOTY5Mn0.S6TrCrZWkISC7g14QmVriEQSBawLwxpcGYQKcNqpazA",
       "EXPO_PUBLIC_BFF_URL": "https://totl-despia-production.up.railway.app",
-      "EXPO_PUBLIC_SITE_URL": "https://playtotl.com",
+      "EXPO_PUBLIC_SITE_URL": "https://totl-staging.netlify.app",
       "EXPO_PUBLIC_ONESIGNAL_APP_ID": "b4f056ec-6753-4a80-ba72-bdfbe8527f9e",
       "eas": {
         "projectId": "099a4819-be8c-4214-8b87-941895ff9e2e"

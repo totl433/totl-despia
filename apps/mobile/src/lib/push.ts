@@ -33,7 +33,7 @@ function getOneSignalSdk(): { OneSignal: any; LogLevel: any } | null {
 }
 
 function siteBaseUrl(): string {
-  return String(env.EXPO_PUBLIC_SITE_URL ?? 'https://playtotl.com').replace(/\/+$/, '');
+  return String(env.EXPO_PUBLIC_SITE_URL ?? 'https://totl-staging.netlify.app').replace(/\/+$/, '');
 }
 
 function oneSignalAppId(): string | null {

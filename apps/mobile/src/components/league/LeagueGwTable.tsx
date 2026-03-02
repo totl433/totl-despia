@@ -1,34 +1,24 @@
 import React from 'react';
 import { View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
+import { useThemePreference } from '../../context/ThemePreferenceContext';
 
 export type LeagueGwTableRow = { user_id: string; name: string; score: number; unicorns: number };
 
 export default function LeagueGwTable({
   rows,
   showUnicorns,
-  submittedCount,
-  totalMembers,
+  submittedUserIds = [],
 }: {
   rows: LeagueGwTableRow[];
   showUnicorns: boolean;
-  submittedCount: number | null;
-  totalMembers: number | null;
+  submittedUserIds?: string[];
 }) {
   const t = useTokens();
-
-  const allSubmitted =
-    typeof submittedCount === 'number' &&
-    typeof totalMembers === 'number' &&
-    totalMembers > 0 &&
-    submittedCount === totalMembers;
-
-  const submittedLabel =
-    typeof submittedCount === 'number' && typeof totalMembers === 'number' && totalMembers > 0
-      ? allSubmitted
-        ? 'All Submitted'
-        : `Submitted ${submittedCount}/${totalMembers}`
-      : null;
+  const { isDark } = useThemePreference();
+  const textColor = isDark ? '#F8FAFC' : t.color.text;
+  const mutedColor = isDark ? '#94A3B8' : t.color.muted;
+  const submittedSet = React.useMemo(() => new Set(submittedUserIds.map(String)), [submittedUserIds]);
 
   return (
     <Card
@@ -40,35 +30,25 @@ export default function LeagueGwTable({
         elevation: 0,
       }}
     >
-      {submittedLabel ? (
-        <View style={{ paddingHorizontal: 14, paddingTop: 12 }}>
-          <TotlText variant="caption" style={{ color: allSubmitted ? t.color.brand : t.color.muted, fontWeight: '900' }}>
-            {submittedLabel}
-          </TotlText>
-        </View>
-      ) : null}
-
-      <View style={{ paddingHorizontal: 14, paddingTop: submittedLabel ? 8 : 12, paddingBottom: 12 }}>
+      <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 12 }}>
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
             paddingVertical: 8,
-            borderTopWidth: 1,
-            borderTopColor: 'rgba(148,163,184,0.14)',
             borderBottomWidth: 1,
             borderBottomColor: 'rgba(148,163,184,0.14)',
           }}
         >
           <View style={{ width: 24 }} />
-          <TotlText variant="caption" style={{ flex: 1, color: t.color.muted, fontWeight: '700' }}>
+          <TotlText variant="caption" style={{ flex: 1, color: textColor, fontFamily: t.font.medium }}>
             Player
           </TotlText>
-          <TotlText variant="caption" style={{ width: 56, textAlign: 'right', color: t.color.muted, fontWeight: '700' }}>
+          <TotlText variant="caption" style={{ width: 56, textAlign: 'right', color: textColor, fontFamily: t.font.medium }}>
             Score
           </TotlText>
           {showUnicorns ? (
-            <TotlText variant="caption" style={{ width: 36, textAlign: 'right', color: t.color.muted, fontWeight: '700' }}>
+            <TotlText variant="caption" style={{ width: 36, textAlign: 'right', color: textColor, fontFamily: t.font.medium }}>
               🦄
             </TotlText>
           ) : null}
@@ -76,6 +56,8 @@ export default function LeagueGwTable({
 
         {rows.length ? (
           rows.map((r, rowIdx) => {
+            const submitted = submittedSet.has(String(r.user_id));
+            const greyedOut = !submitted;
             return (
               <View
                 key={`${r.user_id}-${rowIdx}`}
@@ -85,19 +67,20 @@ export default function LeagueGwTable({
                   paddingVertical: 10,
                   borderBottomWidth: rowIdx === rows.length - 1 ? 0 : 1,
                   borderBottomColor: 'rgba(148,163,184,0.12)',
+                  opacity: greyedOut ? 0.5 : 1,
                 }}
               >
-                <TotlText variant="caption" style={{ width: 24, fontWeight: '700', color: t.color.muted }}>
+                <TotlText variant="caption" style={{ width: 24, fontFamily: t.font.medium, color: greyedOut ? mutedColor : textColor }}>
                   {rowIdx + 1}
                 </TotlText>
-                <TotlText variant="caption" numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1 }}>
+                <TotlText variant="caption" numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, color: greyedOut ? mutedColor : textColor }}>
                   {r.name}
                 </TotlText>
-                <TotlText variant="caption" style={{ width: 56, textAlign: 'right', color: t.color.brand, fontWeight: '900' }}>
+                <TotlText variant="caption" style={{ width: 56, textAlign: 'right', color: greyedOut ? mutedColor : t.color.brand, fontFamily: t.font.medium }}>
                   {r.score}
                 </TotlText>
                 {showUnicorns ? (
-                  <TotlText variant="caption" style={{ width: 36, textAlign: 'right' }}>
+                  <TotlText variant="caption" style={{ width: 36, textAlign: 'right', color: greyedOut ? mutedColor : textColor, fontFamily: t.font.medium }}>
                     {r.unicorns}
                   </TotlText>
                 ) : null}
@@ -106,7 +89,7 @@ export default function LeagueGwTable({
           })
         ) : (
           <View style={{ paddingVertical: 12 }}>
-            <TotlText variant="muted">No table yet.</TotlText>
+            <TotlText variant="caption" style={{ color: textColor }}>No table yet.</TotlText>
           </View>
         )}
       </View>

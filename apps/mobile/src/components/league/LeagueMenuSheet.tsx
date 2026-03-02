@@ -1,8 +1,9 @@
 import React from 'react';
-import { Alert, Pressable, View } from 'react-native';
+import { Alert, Pressable, useColorScheme, View } from 'react-native';
 import { BottomSheetBackdrop, BottomSheetModal, BottomSheetView } from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
 import { TotlText, useTokens } from '@totl/ui';
+import { useThemePreference } from '../../context/ThemePreferenceContext';
 
 export type LeagueMenuAction = 'editBadge' | 'resetBadge' | 'invitePlayers' | 'shareLeagueCode' | 'leave';
 
@@ -18,7 +19,10 @@ function MenuRow({
   onPress: () => void;
 }) {
   const t = useTokens();
-  const textColor = destructive ? '#DC2626' : '#000000';
+  const { isDark: appDark } = useThemePreference();
+  const systemDark = useColorScheme() === 'dark';
+  const isDark = appDark || systemDark;
+  const textColor = destructive ? t.color.danger : isDark ? '#F8FAFC' : t.color.text;
   return (
     <Pressable
       onPress={onPress}
@@ -56,6 +60,10 @@ export default function LeagueMenuSheet({
   showResetBadge?: boolean;
 }) {
   const t = useTokens();
+  const { isDark: appDark } = useThemePreference();
+  const systemDark = useColorScheme() === 'dark';
+  const isDark = appDark || systemDark;
+  const iconColor = isDark ? '#F8FAFC' : t.color.text;
   const ref = React.useRef<BottomSheetModal>(null);
   const snapPoints = React.useMemo(() => [showResetBadge ? 356 : 302], [showResetBadge]);
 
@@ -82,13 +90,13 @@ export default function LeagueMenuSheet({
       <BottomSheetView style={{ paddingTop: 8, paddingBottom: 26 }}>
         <MenuRow
           label="Edit League Badge"
-          icon={<Ionicons name="image-outline" size={18} color={t.color.muted} />}
+          icon={<Ionicons name="image-outline" size={18} color={iconColor} />}
           onPress={() => onAction('editBadge')}
         />
         {showResetBadge ? (
           <MenuRow
             label="Reset League Badge"
-            icon={<Ionicons name="refresh-outline" size={18} color="#000000" />}
+            icon={<Ionicons name="refresh-outline" size={18} color={iconColor} />}
             onPress={() => {
               Alert.alert('Reset Badge', 'Remove the current league badge?', [
                 { text: 'Cancel', style: 'cancel' },
@@ -99,12 +107,12 @@ export default function LeagueMenuSheet({
         ) : null}
         <MenuRow
           label="Invite players"
-          icon={<Ionicons name="add" size={20} color={t.color.muted} />}
+          icon={<Ionicons name="add" size={20} color={iconColor} />}
           onPress={() => onAction('invitePlayers')}
         />
         <MenuRow
           label="Share league code"
-          icon={<Ionicons name="link-outline" size={18} color={t.color.muted} />}
+          icon={<Ionicons name="link-outline" size={18} color={iconColor} />}
           onPress={() => onAction('shareLeagueCode')}
         />
         <MenuRow

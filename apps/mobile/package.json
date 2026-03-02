@@ -3,11 +3,13 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
-    "start": "CI=0 expo start",
-    "storybook": "CI=0 EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start --dev-client",
+    "start": "CI=0 REACT_NATIVE_PACKAGER_HOSTNAME=127.0.0.1 expo start --localhost",
+    "start:clear": "CI=0 REACT_NATIVE_PACKAGER_HOSTNAME=127.0.0.1 expo start --localhost --clear",
+    "start:tunnel": "CI=0 expo start --tunnel",
+    "storybook": "CI=0 REACT_NATIVE_PACKAGER_HOSTNAME=127.0.0.1 EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start --dev-client --localhost",
     "storybook:ios": "EXPO_PUBLIC_STORYBOOK_ENABLED=true expo run:ios",
     "android": "expo run:android",
-    "ios": "expo run:ios",
+    "ios": "REACT_NATIVE_PACKAGER_HOSTNAME=127.0.0.1 expo run:ios",
     "web": "CI=0 expo start --web",
     "check": "tsc --noEmit"
   },

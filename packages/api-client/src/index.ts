@@ -152,6 +152,10 @@ export function createApiClient(opts: ApiClientOptions) {
       return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}`, { method: 'GET' });
     },
 
+    async getLeagueAdmin(leagueId: string): Promise<{ isAdmin: boolean }> {
+      return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/admin`, { method: 'GET' });
+    },
+
     async getLeagueGwTable(
       leagueId: string,
       gw: number

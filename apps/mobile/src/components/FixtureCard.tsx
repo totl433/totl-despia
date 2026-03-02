@@ -251,7 +251,7 @@ export default function FixtureCard({
 
     return (
       <View style={{ marginTop: compact ? 1 : 10, marginBottom: compact ? 3 : 6, alignItems: align }}>
-        {lines.slice(0, 3).map((txt, idx) => (
+        {lines.map((txt, idx) => (
           <TotlText key={`${txt}-${idx}`} variant="microMuted" style={{ color: inverted ? 'rgba(255,255,255,0.88)' : undefined }}>
             {txt}
           </TotlText>

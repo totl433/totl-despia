@@ -17,6 +17,9 @@ function getLeagueStartOverride(name?: string | null): number | undefined {
   return LEAGUE_START_OVERRIDES[name];
 }
 
+/** Leagues created within this many days are treated as "new" - never lock for invites. */
+const NEW_LEAGUE_GRACE_DAYS = 5;
+
 export async function resolveLeagueStartGw(
   supa: any,
   league: LeagueRecord | null | undefined,
@@ -28,6 +31,10 @@ export async function resolveLeagueStartGw(
 
   if (league.created_at && currentGw) {
     const leagueCreatedAt = new Date(league.created_at);
+
+    // Safeguard: leagues created very recently are always treated as new (never lock).
+    const hoursSinceCreation = (Date.now() - leagueCreatedAt.getTime()) / (1000 * 60 * 60);
+    if (hoursSinceCreation < NEW_LEAGUE_GRACE_DAYS * 24) return currentGw;
 
     // Use app tables (native single source of truth).
     const { data: resultsData } = await (supa as any).from('app_gw_results').select('gw').order('gw', { ascending: true });

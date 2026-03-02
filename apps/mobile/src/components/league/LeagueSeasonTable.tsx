@@ -30,6 +30,7 @@ export default function LeagueSeasonTable({
 }) {
   const t = useTokens();
   const ROW_HEIGHT = 42;
+  const MIN_TABLE_HEIGHT = 12 + 8 + 8 + 12 + (4 * ROW_HEIGHT) + 12; // header + rows placeholder + padding
 
   return (
     <Card
@@ -39,6 +40,7 @@ export default function LeagueSeasonTable({
         shadowRadius: 0,
         shadowOffset: { width: 0, height: 0 },
         elevation: 0,
+        minHeight: loading || rows.length === 0 ? MIN_TABLE_HEIGHT : undefined,
       }}
     >
       <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 12 }}>

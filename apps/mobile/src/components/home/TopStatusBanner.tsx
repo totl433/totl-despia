@@ -1,5 +1,6 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { TotlText, useTokens } from '@totl/ui';
 
@@ -12,6 +13,7 @@ export default function TopStatusBanner({
   actionAccessibilityLabel,
   onActionPress,
   actionDisabled = false,
+  gradientBackground = false,
 }: {
   title: string;
   icon?: BannerIcon;
@@ -19,42 +21,35 @@ export default function TopStatusBanner({
   actionAccessibilityLabel?: string;
   onActionPress?: () => void;
   actionDisabled?: boolean;
+  gradientBackground?: boolean;
 }) {
   const t = useTokens();
   const iconName = icon === 'flash' ? 'flash' : 'information-circle';
 
-  return (
-    <View
-      style={{
-        backgroundColor: '#e9f0ef',
-        borderRadius: 16,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        marginBottom: 10,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      }}
-    >
+  const containerStyle = {
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 16,
+    marginBottom: 10,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+  };
+
+  const content = (
+    <>
       <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
-        <View
-          style={{
-            width: 20,
-            height: 20,
-            borderRadius: 10,
-            backgroundColor: '#1C8376',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginRight: 10,
-          }}
-        >
-          <Ionicons name={iconName} size={12} color="#FFFFFF" />
-        </View>
-        <TotlText style={{ fontFamily: 'Gramatika-Bold', fontWeight: '700', fontSize: 16, lineHeight: 18 }}>
+        <Ionicons
+          name={iconName}
+          size={20}
+          color={gradientBackground ? '#FFFFFF' : t.color.muted}
+          style={{ marginRight: 10 }}
+        />
+        <TotlText style={{ fontFamily: t.font.medium, fontSize: 16, lineHeight: 18, color: gradientBackground ? '#FFFFFF' : t.color.text }}>
           {title}
         </TotlText>
       </View>
-
       {actionLabel && onActionPress ? (
         <Pressable
           accessibilityRole="button"
@@ -65,7 +60,7 @@ export default function TopStatusBanner({
             paddingHorizontal: 14,
             paddingVertical: 10,
             borderRadius: t.radius.pill,
-            backgroundColor: '#1C8376',
+            backgroundColor: gradientBackground ? 'rgba(255,255,255,0.3)' : '#1C8376',
             opacity: actionDisabled ? 0.7 : pressed ? 0.9 : 1,
             flexDirection: 'row',
             alignItems: 'center',
@@ -75,8 +70,7 @@ export default function TopStatusBanner({
           <TotlText
             style={{
               color: '#FFFFFF',
-              fontFamily: 'Gramatika-Medium',
-              fontWeight: '500',
+              fontFamily: t.font.medium,
               fontSize: 14,
               lineHeight: 14,
             }}
@@ -87,6 +81,21 @@ export default function TopStatusBanner({
           <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
         </Pressable>
       ) : null}
-    </View>
+    </>
   );
+
+  if (gradientBackground) {
+    return (
+      <LinearGradient
+        colors={['#2D9D8B', '#1C8376', '#157A6E']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={containerStyle}
+      >
+        {content}
+      </LinearGradient>
+    );
+  }
+
+  return <View style={[containerStyle, { backgroundColor: t.color.surface }]}>{content}</View>;
 }

@@ -1,13 +1,16 @@
-import React from 'react';
-import { Pressable, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { Dimensions, Modal, Pressable, ScrollView, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { useNavigation, useRoute, useScrollToTop } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
-import LeaderboardsTabs, { type LeaderboardsTab } from '../components/leaderboards/LeaderboardsTabs';
+import LeaderboardsTabs, { type LeaderboardsTab, type FormScope } from '../components/leaderboards/LeaderboardsTabs';
+import { getMonthAllocations, getMonthForGw, getEffectiveCurrentMonthKey, isMonthAvailable, type MonthAllocation } from '../lib/leaderboardMonths';
 import { type LeaderboardsScope } from '../components/leaderboards/LeaderboardsScopeToggle';
 import LeaderboardTable, { type LeaderboardRow } from '../components/leaderboards/LeaderboardTable';
 import LeaderboardPlayerPicksSheet from '../components/leaderboards/LeaderboardPlayerPicksSheet';
@@ -38,6 +41,77 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   });
 }
 
+function MonthProgressBar({
+  detail,
+  t,
+}: {
+  detail: { progress: number; completed: number; total: number; month: MonthAllocation; lastSegmentFraction: number | null };
+  t: ReturnType<typeof useTokens>;
+}) {
+  const progressSV = useSharedValue(0);
+  useEffect(() => {
+    progressSV.value = withTiming(detail.progress, {
+      duration: 600,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [detail.progress, progressSV]);
+  const gradientStyle = useAnimatedStyle(() => ({
+    width: `${progressSV.value * 100}%`,
+  }));
+  return (
+    <View style={{ marginTop: 12 }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          borderRadius: 4,
+          overflow: 'hidden',
+          height: 24,
+          backgroundColor: t.color.border,
+          position: 'relative',
+        }}
+      >
+        <Animated.View style={[{ position: 'absolute', left: 0, top: 0, bottom: 0, overflow: 'hidden' }, gradientStyle]}>
+          <LinearGradient
+            colors={['#2D9D8B', t.color.brand, '#157A6E']}
+            locations={[0, 0.5, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}
+          />
+        </Animated.View>
+        {Array.from({ length: detail.total }, (_, i) => {
+          const gw = detail.month.startGw + i;
+          const isComplete = i < detail.completed;
+          const isLastSegment = i === detail.completed;
+          const partialFraction = isLastSegment ? detail.lastSegmentFraction : null;
+          const hasFill = isComplete || (partialFraction != null && partialFraction > 0);
+          return (
+            <View
+              key={gw}
+              style={{
+                flex: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <TotlText
+                variant="caption"
+                style={{
+                  fontSize: 10,
+                  fontWeight: '700',
+                  color: hasFill ? '#fff' : t.color.muted,
+                }}
+              >
+                GW{gw}
+              </TotlText>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 export default function GlobalScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
@@ -45,21 +119,67 @@ export default function GlobalScreen() {
   const listRef = React.useRef<any>(null);
   useScrollToTop(listRef);
 
-  const initialTabParam = (route.params as any)?.initialTab as LeaderboardsTab | undefined;
+  const initialTabParam = (route.params as any)?.initialTab as string | undefined;
   const initialScopeParam = (route.params as any)?.initialScope as LeaderboardsScope | undefined;
 
-  const [tab, setTab] = React.useState<LeaderboardsTab>(initialTabParam ?? 'gw');
+  const [tab, setTab] = React.useState<LeaderboardsTab>(() => {
+    if (initialTabParam === 'monthly' || initialTabParam === 'overall') return initialTabParam;
+    if (initialTabParam === 'form5' || initialTabParam === 'form10') return 'overall';
+    return (initialTabParam as LeaderboardsTab) ?? 'gw';
+  });
+  const [formScope, setFormScope] = React.useState<FormScope>(() => {
+    if (initialTabParam === 'form5') return 'last5';
+    if (initialTabParam === 'form10') return 'last10';
+    return 'none';
+  });
+  const [selectedMonthKey, setSelectedMonthKey] = React.useState<string | null>(null);
   const [scope, setScope] = React.useState<LeaderboardsScope>(initialScopeParam ?? 'all');
   const [pullRefreshing, setPullRefreshing] = React.useState(false);
   const [playerPicksOpen, setPlayerPicksOpen] = React.useState(false);
   const [playerPicksUserId, setPlayerPicksUserId] = React.useState<string | null>(null);
   const [playerPicksUserName, setPlayerPicksUserName] = React.useState<string | null>(null);
+  const [filterMenuOpen, setFilterMenuOpen] = React.useState(false);
+  const [filterMenuPosition, setFilterMenuPosition] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [calendarMenuOpen, setCalendarMenuOpen] = React.useState(false);
+  const [calendarMenuPosition, setCalendarMenuPosition] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [monthMenuOpen, setMonthMenuOpen] = React.useState(false);
+  const [monthMenuPosition, setMonthMenuPosition] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const filterIconRef = React.useRef<View>(null);
+  const calendarIconRef = React.useRef<View>(null);
+  const monthMenuRef = React.useRef<View>(null);
+
+  React.useEffect(() => {
+    if (tab === 'monthly' || tab === 'gw') setFormScope('none');
+    if (tab === 'monthly') setScope('all');
+  }, [tab]);
+
+  // Reset to defaults when 2025/26 tab is pressed (from bottom nav).
+  const resetKey = (route.params as any)?.resetKey as number | undefined;
+  React.useEffect(() => {
+    if (resetKey == null) return;
+    setTab('gw');
+    setFormScope('none');
+    setScope('all');
+    setSelectedMonthKey(null);
+    requestAnimationFrame(() => navigation.setParams?.({ resetKey: undefined }));
+  }, [resetKey, navigation]);
 
   // Allow other screens (e.g. Home performance cards) to deep-link into a specific leaderboard section.
-  // We consume the param once and then clear it so manual tab changes won't be overridden.
   React.useEffect(() => {
     if (!initialTabParam && !initialScopeParam) return;
-    if (initialTabParam && initialTabParam !== tab) setTab(initialTabParam);
+    if (initialTabParam === 'form5') {
+      setTab('overall');
+      setFormScope('last5');
+    } else if (initialTabParam === 'form10') {
+      setTab('overall');
+      setFormScope('last10');
+    } else if (initialTabParam === 'monthly' || initialTabParam === 'overall') {
+      setTab(initialTabParam);
+    } else if (initialTabParam === 'gw') {
+      setTab('gw');
+      setFormScope('none');
+      setSelectedMonthKey(null);
+    }
     if (initialScopeParam && initialScopeParam !== scope) setScope(initialScopeParam);
     requestAnimationFrame(() => {
       navigation.setParams?.({ initialTab: undefined, initialScope: undefined });
@@ -75,14 +195,17 @@ export default function GlobalScreen() {
     },
   });
   const userId = userData?.id ?? null;
-  const { data: avatarRow } = useQuery<{ avatar_url: string | null } | null>({
+  type UserAvatarRow = { avatar_url: string | null };
+  const { data: avatarRow } = useQuery<UserAvatarRow | null>({
     enabled: !!userId,
     queryKey: ['profile-avatar-url', userId],
     queryFn: async () => {
       const { data, error } = await supabase.from('users').select('avatar_url').eq('id', userId).maybeSingle();
-      if (error && (error as any).code !== 'PGRST116') throw error;
+      const err = error as { code?: string } | null;
+      if (error && err?.code !== 'PGRST116') throw error;
       if (!data) return null;
-      return { avatar_url: typeof (data as any).avatar_url === 'string' ? (data as any).avatar_url : null };
+      const row = data as { avatar_url?: unknown };
+      return { avatar_url: typeof row.avatar_url === 'string' ? row.avatar_url : null };
     },
     staleTime: 60_000,
   });
@@ -133,6 +256,8 @@ export default function GlobalScreen() {
   const { data: gwLiveFallbackScores, refetch: refetchGwLiveFallbackScores } = useQuery<{
     scores: Record<string, number>;
     hasActiveLiveGames: boolean;
+    isCurrentGwComplete: boolean;
+    currentGwCompleteFraction: number;
   }>({
     enabled: typeof latestGw === 'number',
     queryKey: ['leaderboards', 'gwLiveFallbackScores', latestGw],
@@ -200,9 +325,14 @@ export default function GlobalScreen() {
           if (p.pick === outcome) scores[p.user_id] = (scores[p.user_id] ?? 0) + 1;
         });
       });
-      return { scores, hasActiveLiveGames };
+      const fixtures = (fixturesRes.data ?? []) as { fixture_index?: number }[];
+      const allFixturesHaveOutcomes = fixtures.length > 0 && fixtures.every((f) => typeof f?.fixture_index === 'number' && outcomeByFixtureIndex.has(f.fixture_index));
+      const isCurrentGwComplete = !hasActiveLiveGames && allFixturesHaveOutcomes;
+      const outcomesCount = fixtures.filter((f) => typeof f?.fixture_index === 'number' && outcomeByFixtureIndex.has(f.fixture_index)).length;
+      const currentGwCompleteFraction = fixtures.length > 0 ? outcomesCount / fixtures.length : 0;
+      return { scores, hasActiveLiveGames, isCurrentGwComplete, currentGwCompleteFraction };
     },
-    refetchInterval: tab === 'gw' || tab === 'overall' ? 10_000 : false,
+    refetchInterval: tab === 'gw' || tab === 'overall' || tab === 'monthly' ? 10_000 : false,
   });
 
   const {
@@ -220,6 +350,23 @@ export default function GlobalScreen() {
       const details = await Promise.all(leagues.map((l) => api.getLeague(String(l.id))));
       details.forEach((d) => d.members.forEach((m) => ids.add(String(m.id))));
       return ids;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: firstSubmissionGw } = useQuery<number | null>({
+    enabled: !!userId && (tab === 'gw' || tab === 'overall'),
+    queryKey: ['leaderboards', 'firstSubmissionGw', userId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('app_gw_submissions')
+        .select('gw')
+        .eq('user_id', userId)
+        .order('gw', { ascending: true })
+        .limit(1);
+      if (error) throw error;
+      const first = (data ?? [])[0] as { gw?: number } | undefined;
+      return first?.gw != null ? Number(first.gw) : null;
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -243,14 +390,13 @@ export default function GlobalScreen() {
   );
 
   const computeFormRows = React.useCallback(
-    (weeks: number): LeaderboardRow[] => {
-      const gw = latestGw ?? null;
+    (weeks: number, endGw: number | null): LeaderboardRow[] => {
+      const gw = endGw ?? latestGw ?? null;
       const pts = gwPoints ?? [];
       if (!gw || gw < weeks) return [];
       const start = gw - weeks + 1;
       const byUser = new Map<string, { name: string; sum: number; played: Set<number> }>();
 
-      // Initialize from overall list so names are stable.
       (overall ?? []).forEach((o) => {
         byUser.set(o.user_id, { name: o.name ?? 'User', sum: 0, played: new Set() });
       });
@@ -270,6 +416,59 @@ export default function GlobalScreen() {
       return rows.sort(byValueThenName);
     },
     [gwPoints, latestGw, nameByUserId, overall]
+  );
+
+  const computeSinceStartedRows = React.useCallback(
+    (startGw: number, endGw: number | null): LeaderboardRow[] => {
+      const gw = endGw ?? latestGw ?? null;
+      const pts = gwPoints ?? [];
+      if (!gw || startGw > gw) return [];
+      const weeks = gw - startGw + 1;
+      const byUser = new Map<string, { name: string; sum: number; played: Set<number> }>();
+
+      (overall ?? []).forEach((o) => {
+        byUser.set(o.user_id, { name: o.name ?? 'User', sum: 0, played: new Set() });
+      });
+
+      pts.forEach((p) => {
+        if (p.gw < startGw || p.gw > gw) return;
+        const existing = byUser.get(p.user_id) ?? { name: nameByUserId.get(p.user_id) ?? 'User', sum: 0, played: new Set<number>() };
+        existing.sum += Number(p.points ?? 0);
+        existing.played.add(p.gw);
+        byUser.set(p.user_id, existing);
+      });
+
+      const rows: LeaderboardRow[] = [];
+      byUser.forEach((v, id) => {
+        if (v.played.size === weeks) rows.push({ user_id: id, name: v.name, value: v.sum });
+      });
+      return rows.sort(byValueThenName);
+    },
+    [gwPoints, latestGw, nameByUserId, overall]
+  );
+
+  const computeMonthlyRows = React.useCallback(
+    (month: MonthAllocation): LeaderboardRow[] => {
+      const pts = gwPoints ?? [];
+      const byUser = new Map<string, { name: string; sum: number }>();
+
+      (overall ?? []).forEach((o) => {
+        byUser.set(o.user_id, { name: o.name ?? 'User', sum: 0 });
+      });
+
+      pts.forEach((p) => {
+        if (p.gw < month.startGw || p.gw > month.endGw) return;
+        const existing = byUser.get(p.user_id) ?? { name: nameByUserId.get(p.user_id) ?? 'User', sum: 0 };
+        existing.sum += Number(p.points ?? 0);
+        byUser.set(p.user_id, existing);
+      });
+
+      return Array.from(byUser.entries())
+        .filter(([, v]) => v.sum > 0)
+        .map(([id, v]) => ({ user_id: id, name: v.name, value: v.sum }))
+        .sort(byValueThenName);
+    },
+    [gwPoints, nameByUserId, overall]
   );
 
   const rowsBase: LeaderboardRow[] = React.useMemo(() => {
@@ -297,6 +496,18 @@ export default function GlobalScreen() {
         });
     }
 
+    // Form scope (from calendar menu) overrides GW and overall when set.
+    const endGw = hasActiveLiveGames && gw ? Math.max(1, gw - 1) : gw;
+    if (tab === 'overall' && formScope === 'last5') {
+      return filterScope(computeFormRows(5, endGw));
+    }
+    if (tab === 'overall' && formScope === 'last10') {
+      return filterScope(computeFormRows(10, endGw));
+    }
+    if (tab === 'overall' && formScope === 'sinceStarted' && firstSubmissionGw != null) {
+      return filterScope(computeSinceStartedRows(firstSubmissionGw, endGw));
+    }
+
     if (tab === 'overall') {
       const r = overall
         .map((o) => ({
@@ -317,8 +528,13 @@ export default function GlobalScreen() {
       return filterScope(r);
     }
 
-    if (tab === 'form5') return filterScope(computeFormRows(5));
-    if (tab === 'form10') return filterScope(computeFormRows(10));
+    // Monthly tab
+    if (tab === 'monthly') {
+      const monthKey = selectedMonthKey ?? getEffectiveCurrentMonthKey(gw, gwLiveFallbackScores);
+      const month = getMonthAllocations().find((m) => m.monthKey === monthKey);
+      if (month) return filterScope(computeMonthlyRows(month));
+      return [];
+    }
 
     // GW tab: last completed gameweek
     if (!gw) return [];
@@ -341,7 +557,22 @@ export default function GlobalScreen() {
       }))
       .sort(byValueThenName);
     return filterScope(pts);
-  }, [computeFormRows, filterScope, gwLiveFallbackScores, gwLiveTable?.rows, gwPoints, latestGw, nameByUserId, overall, tab]);
+  }, [
+    computeFormRows,
+    computeSinceStartedRows,
+    computeMonthlyRows,
+    filterScope,
+    firstSubmissionGw,
+    formScope,
+    gwLiveFallbackScores,
+    gwLiveTable?.rows,
+    gwPoints,
+    latestGw,
+    nameByUserId,
+    overall,
+    selectedMonthKey,
+    tab,
+  ]);
 
   const visibleUserIds = React.useMemo(() => {
     const ids = Array.from(new Set(rowsBase.map((r) => r.user_id))).filter(Boolean);
@@ -351,7 +582,7 @@ export default function GlobalScreen() {
 
   const { data: avatarByUserId } = useQuery<Record<string, string | null>>({
     enabled: visibleUserIds.length > 0,
-    queryKey: ['leaderboards', 'avatarMap', scope, tab, latestGw, visibleUserIds.length],
+    queryKey: ['leaderboards', 'avatarMap', scope, tab, formScope, selectedMonthKey, latestGw, visibleUserIds.length],
     queryFn: async () => {
       const { data, error } = await supabase.from('users').select('id, avatar_url').in('id', visibleUserIds);
       if (error) throw error;
@@ -374,14 +605,74 @@ export default function GlobalScreen() {
 
   const subtitle = React.useMemo(() => {
     const who = scope === 'friends' ? 'Mini League Friends' : 'All Players';
-    if (tab === 'overall') return `${who} since the start of the season`;
-    if (tab === 'form5') return latestGw && latestGw >= 5 ? `${who} who completed the last 5 Gameweeks` : `${who} (need 5 completed GWs)`;
-    if (tab === 'form10') return latestGw && latestGw >= 10 ? `${who} who completed the last 10 Gameweeks` : `${who} (need 10 completed GWs)`;
+    if (tab === 'overall' && formScope === 'none') return `${who} since the start of the season`;
+    if (formScope === 'last5') return latestGw && latestGw >= 5 ? `${who} • Last 5 GWs` : `${who} (need 5 GWs)`;
+    if (formScope === 'last10') return latestGw && latestGw >= 10 ? `${who} • Last 10 GWs` : `${who} (need 10 GWs)`;
+    if (formScope === 'sinceStarted')
+      return firstSubmissionGw != null ? `${who} since GW${firstSubmissionGw}` : `${who} (submit to see)`;
+    if (tab === 'monthly') {
+      const monthKey = selectedMonthKey ?? getEffectiveCurrentMonthKey(latestGw ?? null, gwLiveFallbackScores);
+      const month = getMonthAllocations().find((m) => m.monthKey === monthKey);
+      if (month) return `GW${month.startGw}–${month.endGw}`;
+      return `${who} for this month`;
+    }
     return latestGw ? `${who} who submitted for GW${latestGw}` : `${who} who submitted for the last GW`;
-  }, [latestGw, scope, tab]);
+  }, [firstSubmissionGw, formScope, gwLiveFallbackScores, latestGw, scope, selectedMonthKey, tab]);
 
-  const valueLabel = tab === 'overall' ? 'OCP' : tab === 'gw' && latestGw ? `GW${latestGw}` : tab === 'form5' ? 'PTS' : tab === 'form10' ? 'PTS' : '—';
-  const secondaryValueLabel = tab === 'overall' && latestGw ? `GW${latestGw}` : undefined;
+  const valueLabel = React.useMemo(() => {
+    if (formScope === 'last5' || formScope === 'last10' || formScope === 'sinceStarted') return 'PTS';
+    if (tab === 'overall') return 'OCP';
+    if (tab === 'monthly') return 'PTS';
+    return latestGw ? `GW${latestGw}` : '—';
+  }, [formScope, latestGw, tab]);
+  const secondaryValueLabel = tab === 'overall' && formScope === 'none' && latestGw ? `GW${latestGw}` : undefined;
+  const currentMonthLabel = React.useMemo(() => {
+    const monthKey = tab === 'monthly' && selectedMonthKey
+      ? selectedMonthKey
+      : getEffectiveCurrentMonthKey(latestGw ?? null, gwLiveFallbackScores);
+    const month = monthKey ? getMonthAllocations().find((m) => m.monthKey === monthKey) : null;
+    return month ? month.label.split(' ')[0] : null;
+  }, [tab, selectedMonthKey, latestGw, gwLiveFallbackScores]);
+  const { monthlyWinnerUserIds } = React.useMemo(() => {
+    if (tab !== 'monthly' || !rows.length || latestGw == null) return { monthlyWinnerUserIds: [] as string[] };
+    const monthKey = selectedMonthKey ?? getEffectiveCurrentMonthKey(latestGw, gwLiveFallbackScores);
+    const month = monthKey ? getMonthAllocations().find((m) => m.monthKey === monthKey) : null;
+    if (!month) return { monthlyWinnerUserIds: [] as string[] };
+    const monthComplete = latestGw > month.endGw || (latestGw === month.endGw && gwLiveFallbackScores?.isCurrentGwComplete === true);
+    if (!monthComplete) return { monthlyWinnerUserIds: [] as string[] };
+    const topValue = rows[0]!.value;
+    const winnerRows = rows.filter((r) => r.value === topValue);
+    const userIds = winnerRows.map((r) => r.user_id);
+    return { monthlyWinnerUserIds: userIds };
+  }, [tab, rows, latestGw, selectedMonthKey, gwLiveFallbackScores]);
+
+  const selectableMonths = React.useMemo(() => {
+    if (tab !== 'monthly') return [] as MonthAllocation[];
+    const months = getMonthAllocations();
+    const selectable = latestGw != null ? months.filter((m) => isMonthAvailable(m, latestGw, gwLiveFallbackScores)) : months;
+    return [...selectable].reverse();
+  }, [tab, latestGw, gwLiveFallbackScores]);
+
+  const monthProgressDetail = React.useMemo(() => {
+    if (tab !== 'monthly' || latestGw == null) return null;
+    const monthKey = selectedMonthKey ?? getEffectiveCurrentMonthKey(latestGw, gwLiveFallbackScores);
+    const month = monthKey ? getMonthAllocations().find((m) => m.monthKey === monthKey) : null;
+    if (!month) return null;
+    const total = month.endGw - month.startGw + 1;
+    const isCurrentGwComplete = gwLiveFallbackScores?.isCurrentGwComplete === true;
+    const isViewingCurrentMonth = latestGw >= month.startGw && latestGw <= month.endGw;
+    const currentGwCompleteFraction = gwLiveFallbackScores?.currentGwCompleteFraction ?? 0;
+    let completed: number;
+    let lastSegmentFraction: number | null = null;
+    if (latestGw < month.startGw) completed = 0;
+    else if (latestGw > month.endGw) completed = total;
+    else if (isViewingCurrentMonth && !isCurrentGwComplete) {
+      completed = latestGw - month.startGw;
+      lastSegmentFraction = currentGwCompleteFraction;
+    } else completed = latestGw - month.startGw + 1;
+    const progress = completed / total + (lastSegmentFraction != null ? lastSegmentFraction / total : 0);
+    return { progress, completed, total, month, lastSegmentFraction };
+  }, [tab, selectedMonthKey, latestGw, gwLiveFallbackScores?.isCurrentGwComplete, gwLiveFallbackScores?.currentGwCompleteFraction]);
   const loading = overallLoading || gwPointsLoading || friendsLoading;
   const error = (overallError as any) ?? (gwPointsError as any);
   const showInitialSpinner = loading && !error && rows.length === 0;
@@ -432,16 +723,89 @@ export default function GlobalScreen() {
           }
         />
 
-        <View style={{ flex: 1, paddingHorizontal: t.space[4], paddingBottom: 0 }}>
+        <View style={{ flex: 1, minHeight: 0, paddingHorizontal: t.space[4], paddingBottom: 0 }}>
         <View style={{ marginTop: 12 }}>
-          <LeaderboardsTabs value={tab} onChange={setTab} />
+          <LeaderboardsTabs value={tab} onChange={setTab} currentGw={latestGw} currentMonthLabel={currentMonthLabel} />
         </View>
 
-        <View style={{ marginTop: 14, marginBottom: 10, alignItems: 'center' }}>
-          <TotlText variant="sectionSubtitle" style={{ fontSize: 13, lineHeight: 18 }}>
+        {tab === 'monthly' ? (
+          <View style={{ marginTop: 22, marginBottom: 18, position: 'relative' }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline' }}>
+              <TotlText style={{ fontWeight: '900', fontSize: 20, lineHeight: 24, color: t.color.text }}>
+                Player of the Month{' '}
+              </TotlText>
+              <TotlText style={{ fontSize: 14, lineHeight: 20, fontFamily: t.font.medium, color: t.color.text }}>
+                ({subtitle})
+              </TotlText>
+            </View>
+            {monthProgressDetail != null && monthProgressDetail.completed < monthProgressDetail.total ? (
+              <MonthProgressBar detail={monthProgressDetail} t={t} />
+            ) : null}
+            <View ref={monthMenuRef} collapsable={false} style={{ position: 'absolute', right: 0, top: 0 }}>
+              <Pressable
+                onPress={() => {
+                  monthMenuRef.current?.measureInWindow((x, y, w, h) => {
+                    setMonthMenuPosition({ x, y, width: w, height: h });
+                    setMonthMenuOpen(true);
+                  });
+                }}
+                style={({ pressed }) => ({
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 6,
+                  paddingHorizontal: 8,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+                accessibilityLabel="Select month"
+                accessibilityRole="button"
+              >
+                <Ionicons name="calendar-outline" size={20} color={t.color.muted} />
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+        <View style={{ marginTop: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <TotlText variant="sectionSubtitle" style={{ fontSize: 13, lineHeight: 18, flex: 1 }} numberOfLines={1}>
             {subtitle}
           </TotlText>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {tab === 'overall' ? (
+              <View ref={calendarIconRef} collapsable={false} style={{ padding: 8, marginLeft: 4 }}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Form period"
+                  onPress={() => {
+                    calendarIconRef.current?.measureInWindow((x, y, w, h) => {
+                      setCalendarMenuPosition({ x, y, width: w, height: h });
+                      setCalendarMenuOpen(true);
+                    });
+                  }}
+                  style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                >
+                  <Ionicons name="calendar-outline" size={20} color={formScope !== 'none' ? t.color.brand : t.color.muted} />
+                </Pressable>
+              </View>
+            ) : null}
+            {(tab === 'gw' || tab === 'overall') ? (
+            <View ref={filterIconRef} collapsable={false} style={{ padding: 8, marginLeft: 4 }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Filter"
+                onPress={() => {
+                  filterIconRef.current?.measureInWindow((x, y, w, h) => {
+                    setFilterMenuPosition({ x, y, width: w, height: h });
+                    setFilterMenuOpen(true);
+                  });
+                }}
+                style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+              >
+                <Ionicons name="funnel-outline" size={20} color={t.color.muted} />
+              </Pressable>
+            </View>
+            ) : null}
+          </View>
         </View>
+        )}
 
         {showInitialSpinner ? <CenteredSpinner loading /> : null}
 
@@ -464,13 +828,13 @@ export default function GlobalScreen() {
         ) : null}
 
         {!loading && !error && rows.length > 0 ? (
-          <LeaderboardTable
+          <>
+            <LeaderboardTable
             rows={rows}
             valueLabel={valueLabel}
             secondaryValueLabel={secondaryValueLabel}
             highlightUserId={userId}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
+            winnerUserIds={tab === 'monthly' ? monthlyWinnerUserIds : undefined}
             listRef={listRef}
             onPressRow={(row) => {
               setPlayerPicksUserId(String(row.user_id));
@@ -479,13 +843,12 @@ export default function GlobalScreen() {
             }}
             style={{
               flex: 1,
-              // Remove bottom rounding so it can visually run off-screen.
-              borderBottomLeftRadius: 0,
-              borderBottomRightRadius: 0,
-              // Pull the table down slightly so the bottom edge isn't visible.
+              // Break out of parent padding so rows are full width.
+              marginHorizontal: -t.space[4],
               marginBottom: -24,
             }}
           />
+          </>
         ) : null}
         </View>
       </View>
@@ -497,6 +860,224 @@ export default function GlobalScreen() {
         userId={playerPicksUserId}
         userName={playerPicksUserName}
       />
+
+      <Modal
+        visible={filterMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFilterMenuOpen(false)}
+      >
+        <View style={{ flex: 1 }}>
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' }}
+            onPress={() => setFilterMenuOpen(false)}
+          />
+          {filterMenuPosition ? (
+            <View
+              style={{
+                position: 'absolute',
+                top: filterMenuPosition.y + filterMenuPosition.height + 4,
+                right: Dimensions.get('window').width - (filterMenuPosition.x + filterMenuPosition.width),
+                width: 200,
+                backgroundColor: t.color.surface,
+                borderRadius: 12,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                elevation: 8,
+                overflow: 'hidden',
+              }}
+            >
+              <Pressable
+                onPress={() => {
+                  setScope('all');
+                  setFilterMenuOpen(false);
+                }}
+                style={({ pressed }) => ({
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : scope === 'all' ? 'rgba(28,131,118,0.08)' : 'transparent',
+                  borderBottomWidth: 1,
+                  borderBottomColor: t.color.border,
+                })}
+              >
+                <TotlText style={{ fontFamily: t.font.medium, fontSize: 15, color: scope === 'all' ? t.color.brand : t.color.text }}>All Players</TotlText>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setScope('friends');
+                  setFilterMenuOpen(false);
+                }}
+                style={({ pressed }) => ({
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : scope === 'friends' ? 'rgba(28,131,118,0.08)' : 'transparent',
+                })}
+              >
+                <TotlText style={{ fontFamily: t.font.medium, fontSize: 15, color: scope === 'friends' ? t.color.brand : t.color.text }}>Mini League Friends</TotlText>
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+      </Modal>
+
+      <Modal
+        visible={calendarMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCalendarMenuOpen(false)}
+      >
+        <View style={{ flex: 1 }}>
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' }}
+            onPress={() => setCalendarMenuOpen(false)}
+          />
+          {calendarMenuPosition ? (
+            <View
+              style={{
+                position: 'absolute',
+                top: calendarMenuPosition.y + calendarMenuPosition.height + 4,
+                right: Dimensions.get('window').width - (calendarMenuPosition.x + calendarMenuPosition.width),
+                width: 200,
+                backgroundColor: t.color.surface,
+                borderRadius: 12,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                elevation: 8,
+                overflow: 'hidden',
+              }}
+            >
+              <Pressable
+                onPress={() => {
+                  setFormScope('none');
+                  setCalendarMenuOpen(false);
+                }}
+                style={({ pressed }) => ({
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : formScope === 'none' ? 'rgba(28,131,118,0.08)' : 'transparent',
+                  borderBottomWidth: 1,
+                  borderBottomColor: t.color.border,
+                })}
+              >
+                <TotlText style={{ fontFamily: t.font.medium, fontSize: 15, color: formScope === 'none' ? t.color.brand : t.color.text }}>
+                  This season
+                </TotlText>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setFormScope('last5');
+                  setCalendarMenuOpen(false);
+                }}
+                style={({ pressed }) => ({
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : formScope === 'last5' ? 'rgba(28,131,118,0.08)' : 'transparent',
+                  borderBottomWidth: 1,
+                  borderBottomColor: t.color.border,
+                })}
+              >
+                <TotlText style={{ fontFamily: t.font.medium, fontSize: 15, color: formScope === 'last5' ? t.color.brand : t.color.text }}>
+                  Last 5 weeks
+                </TotlText>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setFormScope('last10');
+                  setCalendarMenuOpen(false);
+                }}
+                style={({ pressed }) => ({
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : formScope === 'last10' ? 'rgba(28,131,118,0.08)' : 'transparent',
+                  borderBottomWidth: 1,
+                  borderBottomColor: t.color.border,
+                })}
+              >
+                <TotlText style={{ fontFamily: t.font.medium, fontSize: 15, color: formScope === 'last10' ? t.color.brand : t.color.text }}>
+                  Last 10 weeks
+                </TotlText>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setFormScope('sinceStarted');
+                  setCalendarMenuOpen(false);
+                }}
+                style={({ pressed }) => ({
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : formScope === 'sinceStarted' ? 'rgba(28,131,118,0.08)' : 'transparent',
+                })}
+              >
+                <TotlText style={{ fontFamily: t.font.medium, fontSize: 15, color: formScope === 'sinceStarted' ? t.color.brand : t.color.text }}>
+                  Since Joined
+                </TotlText>
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+      </Modal>
+
+      <Modal
+        visible={monthMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMonthMenuOpen(false)}
+      >
+        <View style={{ flex: 1 }}>
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' }}
+            onPress={() => setMonthMenuOpen(false)}
+          />
+          {monthMenuPosition ? (
+            <View
+              style={{
+                position: 'absolute',
+                top: monthMenuPosition.y + monthMenuPosition.height + 4,
+                right: Dimensions.get('window').width - (monthMenuPosition.x + monthMenuPosition.width),
+                width: 200,
+                backgroundColor: t.color.surface,
+                borderRadius: 12,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                elevation: 8,
+                overflow: 'hidden',
+              }}
+            >
+              <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
+              {selectableMonths.map((month, i) => {
+                const isSelected = (selectedMonthKey ?? getEffectiveCurrentMonthKey(latestGw ?? null, gwLiveFallbackScores)) === month.monthKey;
+                const isLast = i === selectableMonths.length - 1;
+                return (
+                  <Pressable
+                    key={month.monthKey}
+                    onPress={() => {
+                      setSelectedMonthKey(month.monthKey);
+                      setMonthMenuOpen(false);
+                    }}
+                    style={({ pressed }) => ({
+                      paddingVertical: 14,
+                      paddingHorizontal: 16,
+                      backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : 'transparent',
+                      ...(!isLast && { borderBottomWidth: 1, borderBottomColor: t.color.border }),
+                    })}
+                  >
+                    <TotlText style={{ fontFamily: t.font.medium, fontSize: 15, color: isSelected ? t.color.brand : t.color.text }}>
+                      {month.label}
+                    </TotlText>
+                  </Pressable>
+                );
+              })}
+              </ScrollView>
+            </View>
+          ) : null}
+        </View>
+      </Modal>
     </Screen>
   );
 }
