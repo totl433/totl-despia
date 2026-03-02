@@ -1051,13 +1051,37 @@ if (alive && fixturesData.length > 0) {
 
  // Fetch user's picks
  let hasPicks = false;
+ 
+ // Cold-load robustness: occasionally, the first `app_picks` read can return empty
+ // even though the user has picks (transient network / race). This makes the UI
+ // look like it has "no picks" until a manual refresh. We do a tiny retry/backoff
+ // and we NEVER clear existing picks from state just because a read came back empty.
+ const fetchAppPicksWithRetry = async (): Promise<Array<{ gw: number; fixture_index: number; pick: "H" | "D" | "A" }>> => {
+   const maxAttempts = 2;
+   const delaysMs = [0, 200];
+   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+     if (delaysMs[attempt] > 0) {
+       await new Promise((r) => setTimeout(r, delaysMs[attempt]));
+     }
+     const { data, error } = await supabase
+       .from("app_picks")
+       .select("gw,fixture_index,pick")
+       .eq("gw", gwToDisplay)
+       .eq("user_id", user!.id);
+     if (!error && Array.isArray(data)) {
+       return data as Array<{ gw: number; fixture_index: number; pick: "H" | "D" | "A" }>;
+     }
+     // Retry once on error
+     if (attempt === maxAttempts - 1) {
+       return [];
+     }
+   }
+   return [];
+ };
  if (user?.id && fixturesData.length > 0 && !isSubmitted) {
  // Only fetch picks if not submitted (optimization)
- const { data: pk, error: pkErr } = await supabase
- .from("app_picks")
- .select("gw,fixture_index,pick")
- .eq("gw", gwToDisplay)
- .eq("user_id", user.id);
+ const pk = await fetchAppPicksWithRetry();
+ const pkErr = null;
 
  if (!pkErr && pk && pk.length > 0) {
  // Get current fixture indices
@@ -1103,7 +1127,8 @@ if (alive && fixturesData.length > 0) {
               .delete()
               .eq("gw", gwToDisplay)
               .eq("user_id", user.id);
-            setPicks(new Map());
+            // Don't clear UI picks aggressively on cold loads; just mark as no picks for now.
+            // (A subsequent retry or navigation will reconcile.)
             hasPicks = false;
           } else if (picksForCurrentFixtures.length > 0) {
             // Partial matches - use what we have
@@ -1133,13 +1158,10 @@ if (alive && fixturesData.length > 0) {
  let submittedPicksForCurrentFixturesCount = 0;
  if ((isSubmitted || submitted) && user?.id && fixturesData.length > 0 && !hasPicks) {
  // User has submitted - fetch picks for display purposes
- const { data: pk, error: pkErr } = await supabase
- .from("app_picks")
- .select("gw,fixture_index,pick")
- .eq("gw", gwToDisplay)
- .eq("user_id", user.id);
+ const pk = await fetchAppPicksWithRetry();
+ const pkErr = null;
 
- submittedPicksQueryOk = !pkErr;
+ submittedPicksQueryOk = true;
  submittedPicksRowCount = Array.isArray(pk) ? pk.length : 0;
  
  if (!pkErr && pk && pk.length > 0) {

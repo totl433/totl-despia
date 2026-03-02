@@ -18,6 +18,127 @@ type Fixture = {
 
 
 type ResultPick = "H" | "D" | "A" | "N" | null;
+type SimGameState = "GW_OPEN" | "GW_PREDICTED" | "DEADLINE_PASSED" | "LIVE" | "RESULTS_PRE_GW";
+type SimFixtureStatus = "SCHEDULED" | "IN_PLAY" | "PAUSED" | "FINISHED";
+
+type SimFixture = {
+ id: string;
+ kickoffLabel: string;
+ homeCode: string;
+ awayCode: string;
+ homeName: string;
+ awayName: string;
+ userPick: "H" | "D" | "A" | null;
+ status: SimFixtureStatus;
+ minute?: number;
+ homeScore?: number;
+ awayScore?: number;
+ outcome?: "H" | "D" | "A";
+ homeForm: string;
+ awayForm: string;
+};
+
+const SIM_TEAMS: Array<{ code: string; name: string }> = [
+ { code: "ARS", name: "Arsenal" },
+ { code: "AVL", name: "Aston Villa" },
+ { code: "BOU", name: "Bournemouth" },
+ { code: "BRE", name: "Brentford" },
+ { code: "BHA", name: "Brighton" },
+ { code: "CHE", name: "Chelsea" },
+ { code: "CRY", name: "Crystal Palace" },
+ { code: "EVE", name: "Everton" },
+ { code: "FUL", name: "Fulham" },
+ { code: "IPS", name: "Ipswich" },
+ { code: "LEI", name: "Leicester" },
+ { code: "LIV", name: "Liverpool" },
+ { code: "MCI", name: "Man City" },
+ { code: "MUN", name: "Man United" },
+ { code: "NEW", name: "Newcastle" },
+ { code: "NFO", name: "Forest" },
+ { code: "SOU", name: "Southampton" },
+ { code: "TOT", name: "Tottenham" },
+ { code: "WHU", name: "West Ham" },
+ { code: "WOL", name: "Wolves" },
+];
+
+const SIM_KICKOFFS = [
+ "Sat 12:30",
+ "Sat 15:00",
+ "Sat 17:30",
+ "Sun 14:00",
+ "Sun 16:30",
+ "Sun 19:00",
+ "Mon 20:00",
+ "Tue 19:45",
+ "Wed 19:45",
+ "Thu 20:00",
+];
+
+const SIM_FORMS = ["WWDLW", "LDWWW", "DDLWL", "WLLDW", "DWWLD", "LLWDD", "WDLWD", "LWDWL"];
+const SIM_PICKS: Array<"H" | "D" | "A"> = ["H", "D", "A", "H", "A", "D", "H", "A", "D", "H"];
+
+function resolveOutcome(homeScore: number, awayScore: number): "H" | "D" | "A" {
+ if (homeScore > awayScore) return "H";
+ if (homeScore < awayScore) return "A";
+ return "D";
+}
+
+function buildSimFixtures(state: SimGameState): SimFixture[] {
+ return Array.from({ length: 10 }, (_, idx) => {
+ const home = SIM_TEAMS[(idx * 2) % SIM_TEAMS.length];
+ const away = SIM_TEAMS[(idx * 2 + 7) % SIM_TEAMS.length];
+ const pick = state === "GW_OPEN" ? null : SIM_PICKS[idx];
+ const homeScoreBase = idx % 3;
+ const awayScoreBase = (idx + 1) % 3;
+ let status: SimFixtureStatus = "SCHEDULED";
+ let minute: number | undefined;
+ let homeScore: number | undefined;
+ let awayScore: number | undefined;
+
+ if (state === "LIVE") {
+ if (idx <= 2) {
+ status = "FINISHED";
+ homeScore = homeScoreBase + 1;
+ awayScore = awayScoreBase;
+ } else if (idx <= 6) {
+ status = idx % 2 === 0 ? "PAUSED" : "IN_PLAY";
+ minute = idx % 2 === 0 ? 45 : 12 + idx * 7;
+ homeScore = homeScoreBase;
+ awayScore = awayScoreBase;
+ } else {
+ status = "SCHEDULED";
+ }
+ } else if (state === "RESULTS_PRE_GW") {
+ status = "FINISHED";
+ homeScore = homeScoreBase + (idx % 2);
+ awayScore = awayScoreBase;
+ } else {
+ status = "SCHEDULED";
+ }
+
+ const outcome =
+ typeof homeScore === "number" && typeof awayScore === "number" && status === "FINISHED"
+ ? resolveOutcome(homeScore, awayScore)
+ : undefined;
+
+ return {
+ id: `sim-${idx + 1}`,
+ kickoffLabel: SIM_KICKOFFS[idx],
+ homeCode: home.code,
+ awayCode: away.code,
+ homeName: home.name,
+ awayName: away.name,
+ userPick: pick,
+ status,
+ minute,
+ homeScore,
+ awayScore,
+ outcome,
+ homeForm: SIM_FORMS[idx % SIM_FORMS.length],
+ awayForm: SIM_FORMS[(idx + 3) % SIM_FORMS.length],
+ };
+ });
+}
 
 // Convert team code to initials (e.g., "ARS" -> "ARS", "BHA" -> "BHA")
 function getTeamInitials(code: string | null): string {
@@ -86,7 +207,7 @@ export default function AdminPage() {
  const [confirming, setConfirming] = useState(false);
  const [activeGw, setActiveGw] = useState<number | null>(null);
  const [resultsPublished, setResultsPublished] = useState(false);
- const [tab, setTab] = useState<"fixtures" | "results">("fixtures");
+ const [tab, setTab] = useState<"fixtures" | "results" | "hp-sim">("fixtures");
  const hasFixtures = fixtures.length > 0;
  const [playerId, setPlayerId] = useState<string | null>(null);
  const [nativePushEnabled, setNativePushEnabled] = useState<boolean | null>(null);
@@ -94,6 +215,9 @@ export default function AdminPage() {
  const [registering, setRegistering] = useState(false);
  const [registerResult, setRegisterResult] = useState<string | null>(null);
  const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
+ const [simState, setSimState] = useState<SimGameState>("GW_OPEN");
+ const [simView, setSimView] = useState<"compact" | "details">("compact");
+ const [simExpandedFixtureId, setSimExpandedFixtureId] = useState<string | null>(null);
 
  // On first load, jump to the most recently published fixtures (current_gw)
  useEffect(() => {
@@ -167,6 +291,11 @@ export default function AdminPage() {
  );
  const allSelected = fixtures.length > 0 && pickedCount === fixtures.length;
  const remaining = Math.max(0, fixtures.length - pickedCount);
+ const simFixtures = useMemo(() => buildSimFixtures(simState), [simState]);
+
+ useEffect(() => {
+ setSimExpandedFixtureId(null);
+ }, [simState, simView]);
 
  /** Save fixtures (paste box) */
  async function saveFixtures() {
@@ -511,6 +640,15 @@ export default function AdminPage() {
      >
  Results
  </button>
+ {isAdmin ? (
+ <button
+ type="button"
+ onClick={() => setTab("hp-sim")}
+ className={`ml-1 px-3 py-1 rounded-full transition ${tab === "hp-sim" ? "bg-white shadow font-semibold text-slate-900" : "text-slate-600"}`}
+ >
+ HP Simulator
+ </button>
+ ) : null}
  </div>
  </div>
  
@@ -588,6 +726,163 @@ export default function AdminPage() {
  </div>
  </>
  )}
+ </div>
+ )}
+
+ {/* ----- Tab: HP Simulator ----- */}
+ {tab === "hp-sim" && isAdmin && (
+ <div className="mb-8 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+ <h2 className="text-lg font-semibold">HomePage Game State Simulator</h2>
+ <p className="mt-1 text-sm text-slate-600">
+ Admin-only fake HP with 10 fixtures so you can test compact/details behavior instantly.
+ </p>
+
+ <div className="mt-4 flex flex-wrap items-center gap-3">
+ <label className="text-sm font-medium text-slate-700">State</label>
+ <select
+ value={simState}
+ onChange={(e) => setSimState(e.target.value as SimGameState)}
+ className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+ >
+ <option value="GW_OPEN">GW_OPEN</option>
+ <option value="GW_PREDICTED">GW_PREDICTED</option>
+ <option value="DEADLINE_PASSED">DEADLINE_PASSED</option>
+ <option value="LIVE">LIVE</option>
+ <option value="RESULTS_PRE_GW">RESULTS_PRE_GW</option>
+ </select>
+
+ <div className="inline-flex rounded-full bg-white p-1 text-sm shadow-sm">
+ <button
+ type="button"
+ onClick={() => setSimView("compact")}
+ className={`rounded-full px-3 py-1 ${simView === "compact" ? "bg-slate-900 text-white" : "text-slate-600"}`}
+ >
+ Compact
+ </button>
+ <button
+ type="button"
+ onClick={() => setSimView("details")}
+ className={`rounded-full px-3 py-1 ${simView === "details" ? "bg-slate-900 text-white" : "text-slate-600"}`}
+ >
+ Details
+ </button>
+ </div>
+ </div>
+
+ <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+ <div className="mb-3 flex items-center justify-between">
+ <div className="text-sm font-semibold text-slate-800">Predictions Home Preview</div>
+ {simState === "GW_OPEN" ? (
+ <button type="button" className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white">
+ Make your predictions
+ </button>
+ ) : null}
+ </div>
+
+ {simState === "DEADLINE_PASSED" ? (
+ <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+ Deadline passed - predictions are now locked.
+ </div>
+ ) : null}
+
+ <div className="space-y-2">
+ {simFixtures.map((fixture, idx) => {
+ const isExpanded = simView === "details" || simExpandedFixtureId === fixture.id;
+ const pickColor =
+ fixture.userPick === "H" ? "bg-emerald-700" : fixture.userPick === "D" ? "bg-teal-700" : fixture.userPick === "A" ? "bg-blue-700" : "bg-slate-400";
+ const showStack = simView === "compact" && !simExpandedFixtureId;
+ const topGap = showStack ? (idx === 0 ? 0 : -14) : 0;
+ const statusLabel =
+ fixture.status === "FINISHED"
+ ? "FT"
+ : fixture.status === "IN_PLAY"
+ ? `${fixture.minute ?? 0}'`
+ : fixture.status === "PAUSED"
+ ? "HT"
+ : fixture.kickoffLabel;
+ const scoreLabel =
+ typeof fixture.homeScore === "number" && typeof fixture.awayScore === "number"
+ ? `${fixture.homeScore}-${fixture.awayScore}`
+ : fixture.kickoffLabel;
+ const isCorrect = Boolean(fixture.userPick && fixture.outcome && fixture.userPick === fixture.outcome);
+
+ return (
+ <button
+ key={fixture.id}
+ type="button"
+ onClick={() => {
+ if (simView === "details") return;
+ setSimExpandedFixtureId((prev) => (prev === fixture.id ? null : fixture.id));
+ }}
+ className="block w-full text-left"
+ style={{ marginTop: topGap, zIndex: showStack ? 100 - idx : 1 }}
+ >
+ <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+ {!isExpanded && fixture.userPick ? (
+ <div className="absolute left-3 top-1/2 -translate-y-1/2">
+ <div className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white ${pickColor}`}>
+ {fixture.userPick}
+ </div>
+ </div>
+ ) : null}
+
+ <div className={`${!isExpanded && fixture.userPick ? "pl-7" : ""}`}>
+ {!isExpanded ? (
+ <div className="flex items-center justify-between">
+ <div className="min-w-0 flex-1 text-right">
+ <span className="truncate text-sm font-semibold text-slate-900">{fixture.homeName}</span>
+ </div>
+ <div className="mx-2 min-w-[86px] text-center">
+ <div className="text-sm font-extrabold text-slate-900">{scoreLabel}</div>
+ <div className="text-[11px] font-medium text-slate-500">{statusLabel}</div>
+ </div>
+ <div className="min-w-0 flex-1">
+ <span className="truncate text-sm font-semibold text-slate-900">{fixture.awayName}</span>
+ </div>
+ </div>
+ ) : (
+ <div>
+ <div className="flex items-center justify-between">
+ <div className="text-sm font-semibold text-slate-900">{fixture.homeName}</div>
+ <div className="text-sm font-black text-slate-900">{scoreLabel}</div>
+ <div className="text-sm font-semibold text-slate-900">{fixture.awayName}</div>
+ </div>
+
+ <div className="mt-1 text-center text-[11px] font-medium text-slate-500">{statusLabel}</div>
+
+ <div className="mt-3 grid grid-cols-3 gap-2">
+ {(["H", "D", "A"] as const).map((side) => (
+ <div
+ key={`${fixture.id}-${side}`}
+ className={`rounded-md border px-2 py-1 text-center text-xs font-semibold ${
+ fixture.userPick === side ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-600"
+ }`}
+ >
+ {side}
+ </div>
+ ))}
+ </div>
+
+ <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+ <span>Form: {fixture.homeForm}</span>
+ <span>{fixture.userPick ? `Pick: ${fixture.userPick}` : "No pick yet"}</span>
+ <span>Form: {fixture.awayForm}</span>
+ </div>
+
+ {fixture.status === "FINISHED" && fixture.userPick ? (
+ <div className={`mt-2 text-[11px] font-semibold ${isCorrect ? "text-emerald-700" : "text-red-600"}`}>
+ {isCorrect ? "Pick correct" : "Pick incorrect"}
+ </div>
+ ) : null}
+ </div>
+ )}
+ </div>
+ </div>
+ </button>
+ );
+ })}
+ </div>
+ </div>
  </div>
  )}
  

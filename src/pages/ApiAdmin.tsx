@@ -180,8 +180,8 @@ export default function ApiAdmin() {
  return;
  }
 
- // Parse standings data to extract form
- const formsMap = new Map<string, string>();
+ // Parse standings data to extract form + league position
+ const formsMap = new Map<string, { form: string; leaguePosition: number | null }>();
  const standings = result.data?.standings || result.data;
  
  if (standings && Array.isArray(standings)) {
@@ -195,11 +195,14 @@ export default function ApiAdmin() {
  const teamCode = (team.team?.tla || team.team?.shortName || '').toUpperCase().trim();
  // API returns comma-separated format (e.g., "D,L,W,D,W") with newest FIRST
  // Reverse it so newest is LAST for display (oldest → newest)
- const formRaw = (team.form || '').trim().toUpperCase().replace(/,/g, '');
- const form = formRaw ? formRaw.split('').reverse().join('') : '';
- 
- if (teamCode && form) {
- formsMap.set(teamCode, form);
+          const formRaw = (team.form || '').trim().toUpperCase().replace(/,/g, '');
+          const form = formRaw ? formRaw.split('').reverse().join('') : '';
+          const leaguePositionRaw = Number(team?.position);
+          const leaguePosition =
+            Number.isFinite(leaguePositionRaw) && leaguePositionRaw > 0 ? Math.trunc(leaguePositionRaw) : null;
+
+          if (teamCode && form) {
+            formsMap.set(teamCode, { form, leaguePosition });
  }
  });
  }
@@ -207,10 +210,11 @@ export default function ApiAdmin() {
 
  if (formsMap.size > 0) {
  // Store forms in database
- const formsToInsert = Array.from(formsMap.entries()).map(([team_code, form]) => ({
+      const formsToInsert = Array.from(formsMap.entries()).map(([team_code, payload]) => ({
  gw,
  team_code,
- form,
+        form: payload.form,
+        league_position: payload.leaguePosition,
  }));
 
  const { error: formsError } = await supabase
