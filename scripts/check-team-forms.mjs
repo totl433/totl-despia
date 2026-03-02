@@ -22,7 +22,7 @@ console.log(`\n🔍 Checking team forms for GW ${gw}...\n`);
 // Check Newcastle and Chelsea specifically
 const { data: specificTeams, error: err1 } = await supabase
   .from('app_team_forms')
-  .select('team_code, form, league_position')
+  .select('team_code, form')
   .eq('gw', gw)
   .in('team_code', ['NEW', 'CHE', 'NUFC'])
   .order('team_code');
@@ -32,14 +32,14 @@ if (err1) {
 } else {
   console.log('Newcastle & Chelsea:');
   specificTeams?.forEach(t => {
-    console.log(`  ${t.team_code}: ${t.form} (pos ${t.league_position ?? 'n/a'})`);
+    console.log(`  ${t.team_code}: ${t.form}`);
   });
 }
 
 // Get all teams for GW 17
 const { data: allTeams, error: err2 } = await supabase
   .from('app_team_forms')
-  .select('team_code, form, league_position')
+  .select('team_code, form')
   .eq('gw', gw)
   .order('team_code');
 
@@ -48,7 +48,7 @@ if (err2) {
 } else {
   console.log(`\nAll teams for GW ${gw}:`);
   allTeams?.forEach(t => {
-    console.log(`  ${t.team_code}: ${t.form} (pos ${t.league_position ?? 'n/a'})`);
+    console.log(`  ${t.team_code}: ${t.form}`);
   });
 }
 

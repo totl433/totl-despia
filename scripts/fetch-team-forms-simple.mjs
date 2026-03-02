@@ -60,12 +60,9 @@ async function fetchAndStore() {
           // Reverse it so newest is LAST for display (oldest → newest)
           const formRaw = team.form ? team.form.trim().toUpperCase().replace(/,/g, '') : null;
           const form = formRaw ? formRaw.split('').reverse().join('') : null;
-          const leaguePositionRaw = Number(team?.position);
-          const leaguePosition =
-            Number.isFinite(leaguePositionRaw) && leaguePositionRaw > 0 ? Math.trunc(leaguePositionRaw) : null;
           
           if (code && form) {
-            forms.push({ gw, team_code: code, form, league_position: leaguePosition });
+            forms.push({ gw, team_code: code, form });
           } else if (code && !form) {
             console.log(`⚠️  ${code}: form is ${team.form}`);
           }

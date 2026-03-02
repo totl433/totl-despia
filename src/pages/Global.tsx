@@ -13,7 +13,6 @@ import SegmentedToggle from "../components/SegmentedToggle";
 import UserPicksModal from "../components/UserPicksModal";
 import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
 import UserAvatar from "../components/UserAvatar";
-import { filterHiddenLeaderboardRows, isHiddenFromLeaderboards } from "../lib/leaderboardVisibility";
 
 type OverallRow = {
   user_id: string;
@@ -60,8 +59,8 @@ export default function GlobalLeaderboardPage() {
         return {
           loading: false,
           latestGw: cached.latestGw,
-          gwPoints: filterHiddenLeaderboardRows(cached.gwPoints),
-          overall: filterHiddenLeaderboardRows(cached.overall || []),
+          gwPoints: cached.gwPoints,
+          overall: cached.overall || [],
           prevOcp: cached.prevOcp || {},
           hasCache: true,
           isCacheStale,
@@ -327,16 +326,14 @@ export default function GlobalLeaderboardPage() {
         if (oErr) throw oErr;
 
         if (!alive) return;
-        const gwPointsFiltered = filterHiddenLeaderboardRows((gp as GwPointsRow[]) ?? []);
-        const overallFiltered = filterHiddenLeaderboardRows((ocp as OverallRow[]) ?? []);
-        setGwPoints(gwPointsFiltered);
-        setOverall(overallFiltered);
+        setGwPoints((gp as GwPointsRow[]) ?? []);
+        setOverall((ocp as OverallRow[]) ?? []);
 
         // 4) previous OCP totals (up to gw-1) to compute rank movement
         let prevOcpData: Record<string, number> = {};
         if (gw && gw > 1) {
           // Use the already fetched gwPoints data instead of making another query
-          const prevList = gwPointsFiltered.filter(r => r.gw < gw);
+          const prevList = (gp as GwPointsRow[] | null)?.filter(r => r.gw < gw) ?? [];
           
           const totals: Record<string, number> = {};
           prevList.forEach((r) => {
@@ -352,8 +349,8 @@ export default function GlobalLeaderboardPage() {
         try {
           setCached(cacheKey, {
             latestGw: gw,
-            gwPoints: gwPointsFiltered,
-            overall: overallFiltered,
+            gwPoints: (gp as GwPointsRow[]) ?? [],
+            overall: (ocp as OverallRow[]) ?? [],
             prevOcp: prevOcpData,
           }, CACHE_TTL.GLOBAL);
           setHasCache(true);
@@ -499,11 +496,9 @@ export default function GlobalLeaderboardPage() {
   const filterByMiniLeagueFriends = useMemo(() => {
     return <T extends { user_id: string }>(rows: T[]): T[] => {
       if (!showMiniLeagueFriendsOnly || miniLeagueFriendIds.size === 0) {
-        return rows.filter((r) => !isHiddenFromLeaderboards(r.user_id));
+        return rows;
       }
-      return rows
-        .filter(row => miniLeagueFriendIds.has(row.user_id))
-        .filter((r) => !isHiddenFromLeaderboards(r.user_id));
+      return rows.filter(row => miniLeagueFriendIds.has(row.user_id));
     };
   }, [showMiniLeagueFriendsOnly, miniLeagueFriendIds]);
 

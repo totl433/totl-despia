@@ -33,7 +33,7 @@ async function calculateUnreadCountAndUrl(
       .eq('user_id', userId);
     
     if (!userLeagues || userLeagues.length === 0) {
-      return { badgeCount: 1, url: `/league/${currentLeagueCode}?tab=chat` };
+      return { badgeCount: 1, url: `/league/${currentLeagueCode}` };
     }
     
     const leagueIds = userLeagues.map((l: any) => l.league_id);
@@ -86,8 +86,16 @@ async function calculateUnreadCountAndUrl(
     // Calculate total badge count
     const badgeCount = Object.values(unreadByLeague).reduce((sum, count) => sum + count, 0);
     
-    // This notification is about a message in the current league, so always deep link to chat.
-    const url = `/league/${currentLeagueCode}?tab=chat`;
+    // Determine URL: if only current league has unread, link to it. Otherwise link to leagues list.
+    const leaguesWithUnread = Object.entries(unreadByLeague)
+      .filter(([_, count]) => count > 0)
+      .map(([id]) => id);
+    
+    // If only current league has unread, link directly to chat tab
+    // Otherwise link to leagues list
+    const url = leaguesWithUnread.length === 1 && leaguesWithUnread[0] === currentLeagueId
+      ? `/league/${currentLeagueCode}?tab=chat`
+      : '/leagues';
     
     return { badgeCount, url };
   } catch (error) {

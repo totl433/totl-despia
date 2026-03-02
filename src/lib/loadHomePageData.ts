@@ -9,7 +9,6 @@ import { getCached, setCached, getCacheTimestamp, CACHE_TTL } from './cache';
 import { resolveLeagueStartGw } from './leagueStart';
 import { APP_ONLY_USER_IDS } from './appOnlyUsers';
 import { logDataFetch } from './dataFetchLogger';
-import { filterHiddenLeaderboardRows, filterHiddenMembers } from './leaderboardVisibility';
 
 type LeagueMember = { id: string; name: string };
 type PickRow = { user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" };
@@ -264,10 +263,8 @@ export async function loadHomePageData(
   
   const gw = metaResult.data?.current_gw ?? currentGw;
   const latestGw = latestGwResult.data?.gw ?? gw;
-  const allGwPointsRaw = (allGwPointsResult.data as Array<{user_id: string, gw: number, points: number}>) ?? [];
-  const overallRaw = (overallResult.data as Array<{user_id: string, name: string | null, ocp: number | null}>) ?? [];
-  const allGwPoints = filterHiddenLeaderboardRows(allGwPointsRaw);
-  const overall = filterHiddenLeaderboardRows(overallRaw);
+  const allGwPoints = (allGwPointsResult.data as Array<{user_id: string, gw: number, points: number}>) ?? [];
+  const overall = (overallResult.data as Array<{user_id: string, name: string | null, ocp: number | null}>) ?? [];
   const fixtures = (fixturesResult.data ?? []) as any[];
   
   // Process picks
@@ -302,11 +299,6 @@ export async function loadHomePageData(
       name: m.users.name
     });
   });
-  
-  // Hide internal/test users from mini-league table surfaces.
-  for (const [leagueId, members] of Object.entries(membersByLeague)) {
-    membersByLeague[leagueId] = filterHiddenMembers(members);
-  }
   
   const allMemberIdsSet = new Set(Object.values(membersByLeague).flat().map(m => m.id));
   const submittedUserIds = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id).filter((id: string) => allMemberIdsSet.has(id)));

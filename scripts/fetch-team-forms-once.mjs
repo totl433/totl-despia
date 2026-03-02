@@ -54,7 +54,7 @@ async function fetchAndStoreTeamForms(gw) {
 
     const result = await response.json();
     
-    // Parse standings data to extract form + league position
+    // Parse standings data to extract form
     const formsMap = new Map();
     const standings = result?.standings || result;
     
@@ -68,11 +68,9 @@ async function fetchAndStoreTeamForms(gw) {
           // Reverse it so newest is LAST for display (oldest → newest)
           const formRaw = (team.form || '').trim().toUpperCase().replace(/,/g, '');
           const form = formRaw ? formRaw.split('').reverse().join('') : '';
-          const leaguePositionRaw = Number(team?.position);
-          const leaguePosition = Number.isFinite(leaguePositionRaw) && leaguePositionRaw > 0 ? Math.trunc(leaguePositionRaw) : null;
           
           if (teamCode && form) {
-            formsMap.set(teamCode, { form, leaguePosition });
+            formsMap.set(teamCode, form);
           }
         });
       }
@@ -80,11 +78,10 @@ async function fetchAndStoreTeamForms(gw) {
 
     if (formsMap.size > 0) {
       // Store forms in database
-      const formsToInsert = Array.from(formsMap.entries()).map(([team_code, payload]) => ({
+      const formsToInsert = Array.from(formsMap.entries()).map(([team_code, form]) => ({
         gw,
         team_code,
-        form: payload.form,
-        league_position: payload.leaguePosition,
+        form,
       }));
 
       const { error: formsError } = await supabase
@@ -99,7 +96,7 @@ async function fetchAndStoreTeamForms(gw) {
       }
 
       console.log(`✅ Successfully stored ${formsMap.size} team forms for GW ${gw}`);
-      console.log('Forms + positions:', Array.from(formsMap.entries()));
+      console.log('Forms:', Array.from(formsMap.entries()));
     } else {
       console.warn('⚠️  No team forms found in API response');
     }

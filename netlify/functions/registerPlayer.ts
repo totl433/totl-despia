@@ -94,8 +94,14 @@ export const handler: Handler = async (event) => {
     console.warn('[registerPlayer] Failed to check/reassign player ownership:', e);
   }
 
-  // 1) Multi-device support: do NOT deactivate other devices for this user.
-  // Users can have both Despia and Expo (TestFlight) registered; both receive notifications.
+  // 1) Mark other devices for this user as inactive (single-device mode)
+  // If you want multi-device support, remove this block
+  await admin
+    .from('push_subscriptions')
+    .update({ is_active: false })
+    .eq('user_id', userId)
+    .neq('player_id', playerId)
+    .then(() => {}, (err) => console.warn(`[registerPlayer] Failed to deactivate old devices:`, err));
 
   // 2) Verify subscription status with OneSignal before marking as subscribed
   let subscriptionStatus = { subscribed: false, player: null as any };

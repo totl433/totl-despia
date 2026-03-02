@@ -29,7 +29,6 @@ import { useLeagueTabs } from "../hooks/useLeagueTabs";
 import { useLeaguePageLayoutLock } from "../hooks/useLeaguePageLayoutLock";
 import { useLeagueMeta } from "../hooks/useLeagueMeta";
 import { computeGwTableRows } from "../lib/leagueScoring";
-import { filterHiddenLeaderboardRows } from "../lib/leaderboardVisibility";
 
 const MAX_MEMBERS = 8;
 
@@ -1219,7 +1218,7 @@ ${shareUrl}`;
     return [];
   };
   
-  const [mltRows, setMltRows] = useState<MltRow[]>(() => filterHiddenLeaderboardRows(getInitialMltRows()));
+  const [mltRows, setMltRows] = useState<MltRow[]>(getInitialMltRows);
   
   // Log tab changes (after mltRows is declared)
   useEffect(() => {
@@ -1240,11 +1239,10 @@ ${shareUrl}`;
         cachedLength: cached?.length,
         currentMltRowsLength: mltRows.length 
       });
-      const filteredCached = cached ? filterHiddenLeaderboardRows(cached) : [];
-      if (filteredCached.length > 0) {
+      if (cached && cached.length > 0) {
         if (mltRows.length === 0) {
-          console.log('[League] ✅ Setting mltRows from cache', filteredCached.length);
-          setMltRows(filteredCached);
+          console.log('[League] ✅ Setting mltRows from cache', cached.length);
+          setMltRows(cached);
         } else {
           console.log('[League] mltRows already populated, skipping');
         }
@@ -1263,10 +1261,9 @@ ${shareUrl}`;
           const timeout = setTimeout(() => {
             retryCount++;
             const retryCached = getCached<MltRow[]>(cacheKey);
-            const retryFiltered = retryCached ? filterHiddenLeaderboardRows(retryCached) : [];
-            if (retryFiltered.length > 0 && mltRows.length === 0) {
-              console.log(`[League] ✅ Retry ${retryCount} successful - Setting mltRows from cache`, retryFiltered.length);
-              setMltRows(retryFiltered);
+            if (retryCached && retryCached.length > 0 && mltRows.length === 0) {
+              console.log(`[League] ✅ Retry ${retryCount} successful - Setting mltRows from cache`, retryCached.length);
+              setMltRows(retryCached);
             } else if (retryCount < maxRetries) {
               tryRetry();
             }
