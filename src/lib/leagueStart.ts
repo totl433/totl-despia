@@ -72,6 +72,11 @@ export async function resolveLeagueStartGw(
   if (withMeta.created_at && currentGw) {
     const leagueCreatedAt = new Date(withMeta.created_at);
 
+    // Safeguard: leagues created very recently are always treated as new (never lock).
+    const NEW_LEAGUE_GRACE_DAYS = 5;
+    const hoursSinceCreation = (Date.now() - leagueCreatedAt.getTime()) / (1000 * 60 * 60);
+    if (hoursSinceCreation < NEW_LEAGUE_GRACE_DAYS * 24) return currentGw;
+
     const { data: resultsData } = await supabase
       .from("gw_results")
       .select("gw")
