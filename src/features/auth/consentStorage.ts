@@ -1,3 +1,5 @@
+import { isNativeApp } from '../../lib/platform';
+
 const PRIVACY_KEY = 'totl_consent_privacy_v1';
 const COOKIES_KEY = 'totl_consent_cookies_v1';
 const PUSH_KEY = 'totl_consent_push_v1';
@@ -86,7 +88,10 @@ export function setPushScreenCompleted(completed: boolean) {
 }
 
 export function hasConsents(): boolean {
-  return getPrivacyAccepted() && !!getCookieConsent();
+  if (!getPrivacyAccepted()) return false;
+  // Despia/native app path must not require cookie consent.
+  if (isNativeApp()) return true;
+  return !!getCookieConsent();
 }
 
 
