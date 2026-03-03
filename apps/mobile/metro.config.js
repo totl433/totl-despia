@@ -34,6 +34,5 @@ config.resolver.nodeModulesPaths = [
 module.exports = withStorybook(config, {
   enabled: process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === 'true',
   configPath: './storybook',
-  websocketServerOptions: { port: 7007 },
 });
 

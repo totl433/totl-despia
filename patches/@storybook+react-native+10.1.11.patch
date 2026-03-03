@@ -1,0 +1,27 @@
+diff --git a/node_modules/@storybook/react-native/dist/metro/withStorybook.js b/node_modules/@storybook/react-native/dist/metro/withStorybook.js
+index 6d338ca..7b34837 100644
+--- a/node_modules/@storybook/react-native/dist/metro/withStorybook.js
++++ b/node_modules/@storybook/react-native/dist/metro/withStorybook.js
+@@ -283,10 +283,18 @@ ${options ? `    ${options},` : ""}
+ 
+ export const view${useJs ? "" : ": View"} = global.view;
+ `;
+-      fs.writeFileSync(storybookRequiresLocation, fileContent, {
+-        encoding: "utf8",
+-        flag: "w"
+-      });
++      try {
++        fs.writeFileSync(storybookRequiresLocation, fileContent, {
++          encoding: "utf8",
++          flag: "w"
++        });
++      } catch (err) {
++        if (err.code === "EPERM" && fs.existsSync(storybookRequiresLocation)) {
++          // Read-only env (e.g. Cursor sandbox): use existing file
++        } else {
++          throw err;
++        }
++      }
+     }
+     module2.exports = {
+       generate: generate2
