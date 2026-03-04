@@ -21,7 +21,7 @@ head: []
 | Thread ID | `match:{api_match_id}` |
 | Android Group | `totl_scores` |
 
-Note: Half-time has no preference key - always sent.
+Preference Key: `score-updates`
 
 ## Trigger
 

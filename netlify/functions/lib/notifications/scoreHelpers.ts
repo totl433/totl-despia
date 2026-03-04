@@ -483,7 +483,6 @@ export async function sendHalftimeNotification(
         },
         url: deepLinkUrl || undefined,
         grouping_params: { api_match_id: apiMatchId },
-        skip_preference_check: true, // Half-time has no preference
       });
       results.push(onTrackResult);
       totalAccepted += onTrackResult.results.accepted;
@@ -506,7 +505,6 @@ export async function sendHalftimeNotification(
         },
         url: deepLinkUrl || undefined,
         grouping_params: { api_match_id: apiMatchId },
-        skip_preference_check: true, // Half-time has no preference
       });
       results.push(offTrackResult);
       totalAccepted += offTrackResult.results.accepted;
@@ -529,7 +527,6 @@ export async function sendHalftimeNotification(
         },
         url: deepLinkUrl || undefined,
         grouping_params: { api_match_id: apiMatchId },
-        skip_preference_check: true, // Half-time has no preference
       });
       results.push(noPickResult);
       totalAccepted += noPickResult.results.accepted;
@@ -557,7 +554,6 @@ export async function sendHalftimeNotification(
     },
     url: deepLinkUrl || undefined,
     grouping_params: { api_match_id: apiMatchId },
-    skip_preference_check: true, // Half-time has no preference
   });
 }
 

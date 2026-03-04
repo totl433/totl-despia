@@ -809,7 +809,6 @@ export const handler: Handler = async (event, context) => {
       }
 
       const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
-      const prefsMap = await loadUserNotificationPreferences(userIds);
       const playerIdsByUser = await getSubscriptionsAndPlayerIds(userIds);
 
       // Get newest goal details
@@ -918,6 +917,7 @@ export const handler: Handler = async (event, context) => {
       }
 
       const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
+      const prefsMap = await loadUserNotificationPreferences(userIds);
       const playerIdsByUser = await getSubscriptionsAndPlayerIds(userIds);
 
       // Send notification to each user
@@ -1134,6 +1134,7 @@ export const handler: Handler = async (event, context) => {
       );
 
       const userIds = Array.from(new Set(picks.map((p: any) => p.user_id)));
+      const prefsMap = await loadUserNotificationPreferences(userIds);
       const playerIdsByUser = await getSubscriptionsAndPlayerIds(userIds);
 
       const htMinute = minute !== null && minute !== undefined ? `${minute}'` : '';
@@ -1143,7 +1144,7 @@ export const handler: Handler = async (event, context) => {
       const totalSent = await sendNotificationsToUsers(
         picks,
         playerIdsByUser,
-        new Map(), // No preference check for half-time
+        prefsMap,
         title,
         message,
         {
@@ -1152,7 +1153,8 @@ export const handler: Handler = async (event, context) => {
           fixture_index: normalizedFixture.fixture_index,
           gw: fixtureGw,
         },
-        requestId
+        requestId,
+        'score-updates' // Check user preferences
       );
 
       return {

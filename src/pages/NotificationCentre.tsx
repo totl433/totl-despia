@@ -1,6 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { NotificationSection } from '../components/profile/NotificationSection';
 import type { NotificationOption } from '../components/profile/NotificationSection';
@@ -58,6 +58,10 @@ export default function NotificationCentre() {
  enabled: true,
  },
  ]);
+ const miniLeagueNotificationsRef = useRef(miniLeagueNotifications);
+ const gameNotificationsRef = useRef(gameNotifications);
+ const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+ const pendingSaveCountRef = useRef(0);
  const [systemNotifications] = useState<NotificationOption[]>([
  {
  id: 'system-updates',
@@ -74,6 +78,14 @@ export default function NotificationCentre() {
  loadPushState();
  }
  }, [user]);
+
+ useEffect(() => {
+ miniLeagueNotificationsRef.current = miniLeagueNotifications;
+ }, [miniLeagueNotifications]);
+
+ useEffect(() => {
+ gameNotificationsRef.current = gameNotifications;
+ }, [gameNotifications]);
 
  async function loadPushState() {
  // Give Despia a moment to initialize and provide Player ID
@@ -189,31 +201,36 @@ export default function NotificationCentre() {
  async function handleToggle(section: 'miniLeague' | 'game' | 'system', id: string, enabled: boolean) {
  if (!user) return;
 
- setSaving(true);
+ // Build next state from refs so rapid taps don't race stale closures
+ const currentMiniLeague = miniLeagueNotificationsRef.current;
+ const currentGame = gameNotificationsRef.current;
+ const nextMiniLeague = section === 'miniLeague'
+ ? currentMiniLeague.map((opt) => (opt.id === id ? { ...opt, enabled } : opt))
+ : currentMiniLeague;
+ const nextGame = section === 'game'
+ ? currentGame.map((opt) => (opt.id === id ? { ...opt, enabled } : opt))
+ : currentGame;
 
- try {
- // Update local state immediately for better UX
+ // Optimistic UI update
+ miniLeagueNotificationsRef.current = nextMiniLeague;
+ gameNotificationsRef.current = nextGame;
  if (section === 'miniLeague') {
- setMiniLeagueNotifications((prev) =>
- prev.map((opt) => (opt.id === id ? { ...opt, enabled } : opt))
- );
+ setMiniLeagueNotifications(nextMiniLeague);
  } else if (section === 'game') {
- setGameNotifications((prev) =>
- prev.map((opt) => (opt.id === id ? { ...opt, enabled } : opt))
- );
+ setGameNotifications(nextGame);
  }
 
- // Save to database
- const allOptions = [...miniLeagueNotifications, ...gameNotifications, ...systemNotifications];
+ // Persist sequentially to avoid out-of-order writes overriding newer changes
+ const allOptions = [...nextMiniLeague, ...nextGame, ...systemNotifications];
  const preferences: Record<string, boolean> = {};
  allOptions.forEach((opt) => {
- if (opt.id === id) {
- preferences[opt.id] = enabled;
- } else {
  preferences[opt.id] = opt.enabled;
- }
  });
 
+ pendingSaveCountRef.current += 1;
+ setSaving(true);
+ saveQueueRef.current = saveQueueRef.current.then(async () => {
+ try {
  const { error } = await supabase
  .from('user_notification_preferences')
  .upsert({
@@ -226,22 +243,19 @@ export default function NotificationCentre() {
 
  if (error) {
  console.error('Error saving preferences:', error);
- // Revert local state on error
- if (section === 'miniLeague') {
- setMiniLeagueNotifications((prev) =>
- prev.map((opt) => (opt.id === id ? { ...opt, enabled: !enabled } : opt))
- );
- } else if (section === 'game') {
- setGameNotifications((prev) =>
- prev.map((opt) => (opt.id === id ? { ...opt, enabled: !enabled } : opt))
- );
- }
+ await loadNotificationPreferences();
  }
  } catch (error) {
  console.error('Error toggling notification:', error);
+ await loadNotificationPreferences();
  } finally {
+ pendingSaveCountRef.current -= 1;
+ if (pendingSaveCountRef.current <= 0) {
+ pendingSaveCountRef.current = 0;
  setSaving(false);
  }
+ }
+ });
  }
 
  if (!user) {

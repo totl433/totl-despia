@@ -134,7 +134,7 @@ const catalogData = {
     "dedupe": { "scope": "per_user_per_event", "ttl_seconds": 600 },
     "cooldown": { "per_user_seconds": 0 },
     "quiet_hours": { "start": null, "end": null },
-    "preferences": { "preference_key": null, "default": true },
+    "preferences": { "preference_key": "score-updates", "default": true },
     "onesignal": { "collapse_id_format": "halftime:{api_match_id}", "thread_id_format": "match:{api_match_id}", "android_group_format": "totl_scores" },
     "deep_links": { "url_format": null },
     "rollout": { "enabled": true, "percentage": 100 }
