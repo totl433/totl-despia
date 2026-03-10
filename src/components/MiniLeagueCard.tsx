@@ -1,4 +1,4 @@
-import { useMemo, memo, useRef } from 'react';
+import { useMemo, memo, useRef, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
 import { ordinal, toStringSet } from '../lib/helpers';
@@ -72,7 +72,7 @@ export const MiniLeagueCard = memo(function MiniLeagueCard({
   const { state: currentGwState } = useGameweekState(currentGw);
 
   // Use ref to track previous values and prevent unnecessary recalculations
-  const prevMemberChipsRef = useRef<JSX.Element[]>([]);
+  const prevMemberChipsRef = useRef<ReactElement[]>([]);
   const prevDataKeyRef = useRef<string>('');
   const prevCurrentGwStateRef = useRef<GameweekState | null>(null);
   

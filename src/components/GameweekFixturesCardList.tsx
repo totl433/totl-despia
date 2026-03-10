@@ -16,7 +16,7 @@ export interface GameweekFixturesCardListProps {
  globalRank?: number; // User's global ranking
  gwRankPercent?: number; // User's gameweek ranking as a percentage (e.g., 24 means top 24%)
  showShareButton?: boolean; // Show share button at top (legacy)
- onCardRefReady?: (ref: React.RefObject<HTMLDivElement>) => void; // Callback to get the card ref for external share button
+ onCardRefReady?: (ref: React.RefObject<HTMLDivElement | null>) => void; // Callback to get the card ref for external share button
  imageCaptureMode?: boolean; // Simplified layout for image capture
 }
 
