@@ -237,6 +237,7 @@ const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsAndConditionsPage = lazy(() => import("./pages/TermsAndConditions"));
 const HomeExperimental = lazy(() => import("./pages/HomeExperimental"));
 const SupportPage = lazy(() => import("./pages/Support"));
+const DeleteDataPage = lazy(() => import("./pages/DeleteData"));
 
 // New onboarding + auth flow
 import { AuthGate } from "./features/auth";
@@ -819,6 +820,7 @@ function AppContent() {
               <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
               <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
               <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
+              <Route path="/delete-data" element={<DeleteDataPage />} />
               <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
               <Route path="/admin-data" element={<RequireAuth><AdminDataPage /></RequireAuth>} />
               <Route path="*" element={<Navigate to="/" replace />} />
