@@ -12,7 +12,7 @@ export interface GameweekFixturesCardListForCaptureProps {
   userName?: string;
   globalRank?: number;
   gwRankPercent?: number; // User's gameweek ranking as a percentage (e.g., 24 means top 24%)
-  onCardRefReady?: (ref: React.RefObject<HTMLDivElement>) => void;
+  onCardRefReady?: (ref: React.RefObject<HTMLDivElement | null>) => void;
 }
 
 /**

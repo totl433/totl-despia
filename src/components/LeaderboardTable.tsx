@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { forwardRef, type RefObject } from 'react';
 import { LeaderboardRow } from './LeaderboardRow';
 
 type LeaderboardRowData = {
@@ -18,7 +18,7 @@ type LeaderboardTableProps = {
   prevRanks: Record<string, number>;
   currRanks: Record<string, number>;
   latestGw: number | null;
-  userRowRef: React.RefObject<HTMLTableRowElement>;
+  userRowRef: RefObject<HTMLTableRowElement | null>;
   onUserClick?: (userId: string, userName: string | null) => void;
 };
 
