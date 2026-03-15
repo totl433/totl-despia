@@ -3,6 +3,8 @@
  * Route: /support
  * Usage: <SupportPage />
  */
+import { Link } from 'react-router-dom';
+
 export default function SupportPage() {
   return (
     <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-900 p-4">
