@@ -22,7 +22,7 @@ export default function GlobalLeaderboardPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const tableContainerRef = useRef<HTMLDivElement>(null);
-  const userRowRef = useRef<HTMLTableRowElement>(null);
+  const userRowRef = useRef<HTMLTableRowElement | null>(null);
   
   const tabParam = searchParams.get("tab");
   const validTab = (tabParam === "form5" || tabParam === "form10" || tabParam === "lastgw" || tabParam === "overall") 

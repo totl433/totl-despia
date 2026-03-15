@@ -120,6 +120,11 @@ export default function SupportPage() {
                 Terms of Service
               </a>
             </li>
+            <li>
+              <Link className="text-[#1C8376] dark:text-emerald-400 underline" to="/delete-data">
+                Delete account / delete data
+              </Link>
+            </li>
           </ul>
         </section>
 
