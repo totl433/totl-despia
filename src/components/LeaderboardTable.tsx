@@ -1,4 +1,4 @@
-import { forwardRef, type RefObject } from 'react';
+import { forwardRef, type MutableRefObject } from 'react';
 import { LeaderboardRow } from './LeaderboardRow';
 
 type LeaderboardRowData = {
@@ -18,7 +18,7 @@ type LeaderboardTableProps = {
   prevRanks: Record<string, number>;
   currRanks: Record<string, number>;
   latestGw: number | null;
-  userRowRef: RefObject<HTMLTableRowElement | null>;
+  userRowRef: MutableRefObject<HTMLTableRowElement | null>;
   onUserClick?: (userId: string, userName: string | null) => void;
 };
 
@@ -77,7 +77,13 @@ export const LeaderboardTable = forwardRef<HTMLDivElement, LeaderboardTableProps
               return (
                 <LeaderboardRow
                   key={r.user_id}
-                  ref={isCurrentUser ? userRowRef : null}
+                  ref={
+                    isCurrentUser
+                      ? (node) => {
+                          userRowRef.current = node;
+                        }
+                      : null
+                  }
                   row={r}
                   index={i}
                   array={arr}
