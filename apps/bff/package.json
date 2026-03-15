@@ -1,0 +1,31 @@
+{
+  "name": "@totl/bff",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js"
+  },
+  "keywords": [],
+  "license": "UNLICENSED",
+  "description": "TOTL backend-for-frontend API for the native app.",
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@fastify/helmet": "^13.0.2",
+    "@sentry/node": "^10.35.0",
+    "@supabase/supabase-js": "^2.90.1",
+    "@totl/domain": "0.0.0",
+    "dotenv": "^17.2.3",
+    "fastify": "^5.7.1",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.9",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
