@@ -1,7 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 
 interface UseLeaguePageLayoutLockReturn {
-  headerRef: RefObject<HTMLDivElement | null>;
+  headerRef: RefObject<HTMLDivElement>;
 }
 
 /**
@@ -10,7 +10,7 @@ interface UseLeaguePageLayoutLockReturn {
  * `src/pages/League.tsx` can stay focused on data + UI.
  */
 export function useLeaguePageLayoutLock(): UseLeaguePageLayoutLockReturn {
-  const headerRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null!);
 
   useEffect(() => {
     document.body.classList.add('league-page-active');
