@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, ScrollView, Switch, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 
@@ -25,18 +25,36 @@ export default function NotificationCentreScreen() {
     setLocalPrefs(data.preferences ?? {});
   }, [data]);
 
-  const update = useMutation({
-    mutationFn: async (next: Record<string, boolean>) => {
-      setLocalPrefs(next);
-      await api.updateNotificationPrefs({ preferences: next });
-      return true;
-    },
-    onSuccess: () => refetch(),
-  });
+  const localPrefsRef = React.useRef(localPrefs);
+  const saveQueueRef = React.useRef<Promise<void>>(Promise.resolve());
+  const pendingSaveCountRef = React.useRef(0);
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    localPrefsRef.current = localPrefs;
+  }, [localPrefs]);
 
   const setPref = (key: string, value: boolean) => {
-    const next = { ...(localPrefs ?? {}), [key]: value };
-    update.mutate(next);
+    const next = { ...(localPrefsRef.current ?? {}), [key]: value };
+    localPrefsRef.current = next;
+    setLocalPrefs(next);
+
+    pendingSaveCountRef.current += 1;
+    setIsSaving(true);
+    saveQueueRef.current = saveQueueRef.current.then(async () => {
+      try {
+        await api.updateNotificationPrefs({ preferences: next });
+        await refetch();
+      } catch {
+        await refetch();
+      } finally {
+        pendingSaveCountRef.current -= 1;
+        if (pendingSaveCountRef.current <= 0) {
+          pendingSaveCountRef.current = 0;
+          setIsSaving(false);
+        }
+      }
+    });
   };
 
   if (isLoading && !data && !error) {
@@ -109,7 +127,7 @@ export default function NotificationCentreScreen() {
                 <Switch
                   value={enabled}
                   onValueChange={(v) => setPref(opt.id, v)}
-                  disabled={!!opt.disabled || update.isPending}
+                  disabled={!!opt.disabled || isSaving}
                 />
               </View>
             </View>

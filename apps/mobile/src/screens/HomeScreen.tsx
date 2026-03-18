@@ -28,6 +28,7 @@ import { env } from '../env';
 import ExpandedFixtureCard from '../components/home/ExpandedFixtureCard';
 import HomeCarouselSection from '../components/home/HomeCarouselSection';
 import HomeMiniLeaguesSection from '../components/home/HomeMiniLeaguesSection';
+import usePopupCards from '../hooks/usePopupCards';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -92,6 +93,7 @@ function formToDotColors(form: string | null | undefined): string[] {
 export default function HomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
+  const { openManualResultsRecall } = usePopupCards();
   const scrollRef = React.useRef<any>(null);
   useScrollToTop(scrollRef);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -617,7 +619,13 @@ export default function HomeScreen() {
           dismissedCountdownGw={dismissedCountdownGw}
           onDismissCountdown={setDismissedCountdownGw}
           onNavigatePredictions={() => navigation.navigate('PredictionsFlow')}
-          onNavigateGameweekResults={(gw, mode) => navigation.navigate('GameweekResults', { gw, mode })}
+          onNavigateGameweekResults={(gw, mode) => {
+            if (mode === 'fixturesShare') {
+              navigation.navigate('GameweekResults', { gw, mode });
+              return;
+            }
+            openManualResultsRecall(gw);
+          }}
           onNavigateGlobal={(initialTab) => navigation.navigate('Global', { initialTab })}
         />
 

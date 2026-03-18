@@ -1,8 +1,15 @@
 import { Linking, Platform } from 'react-native';
 import type { Session } from '@supabase/supabase-js';
+import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 
 import { env } from '../env';
+import {
+  getPushDiagnosticsState,
+  recordPushDiagnosticEvent,
+  setLastLoginUserId,
+  setLastPushOperationTrace,
+} from './pushDiagnostics';
 
 type PushReason = 'permission-denied' | 'no-player-id' | 'api-not-available' | 'no-session' | 'unknown';
 
@@ -86,16 +93,41 @@ export function resetPushSessionState(): void {
 
 export function initPushSdk(): boolean {
   const appId = oneSignalAppId();
-  if (!appId) return false;
+  if (!appId) {
+    recordPushDiagnosticEvent({
+      scope: 'push',
+      status: 'error',
+      message: 'OneSignal app ID missing in Expo config',
+    });
+    return false;
+  }
   if (hasInitialized) return true;
   const sdk = getOneSignalSdk();
-  if (!sdk) return false;
+  if (!sdk) {
+    recordPushDiagnosticEvent({
+      scope: 'push',
+      status: 'error',
+      message: 'OneSignal native SDK unavailable at init',
+    });
+    return false;
+  }
   const { OneSignal, LogLevel } = sdk;
 
   OneSignal.Debug.setLogLevel(__DEV__ ? LogLevel.Warn : LogLevel.None);
   OneSignal.initialize(appId);
   attachClickHandlerOnce();
   hasInitialized = true;
+  setLastPushOperationTrace({
+    at: new Date().toISOString(),
+    operation: 'init',
+    ok: true,
+  });
+  recordPushDiagnosticEvent({
+    scope: 'push',
+    status: 'success',
+    message: 'OneSignal SDK initialized',
+    data: { appId },
+  });
   return true;
 }
 
@@ -112,7 +144,7 @@ async function waitForPlayerId(maxMs: number = 15000): Promise<string | null> {
   return null;
 }
 
-async function registerWithBackend(accessToken: string, playerId: string): Promise<void> {
+async function registerWithBackend(accessToken: string, playerId: string): Promise<{ ok: boolean; status: number; bodyText: string }> {
   const platform = Platform.OS === 'ios' || Platform.OS === 'android' ? Platform.OS : 'ios';
   const response = await fetch(`${siteBaseUrl()}/.netlify/functions/registerPlayer`, {
     method: 'POST',
@@ -123,10 +155,17 @@ async function registerWithBackend(accessToken: string, playerId: string): Promi
     body: JSON.stringify({ playerId, platform }),
   });
 
+  const bodyText = await response.text().catch(() => '');
+
   if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    throw new Error(`registerPlayer failed (${response.status}): ${body || 'unknown error'}`);
+    throw new Error(`registerPlayer failed (${response.status}): ${bodyText || 'unknown error'}`);
   }
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    bodyText,
+  };
 }
 
 export async function registerForPushNotifications(
@@ -134,9 +173,19 @@ export async function registerForPushNotifications(
   options: { force?: boolean; userId?: string } = {}
 ): Promise<PushSubscriptionResult> {
   if (!Device.isDevice) {
+    recordPushDiagnosticEvent({
+      scope: 'push',
+      status: 'error',
+      message: 'Push registration skipped on non-physical device',
+    });
     return { ok: false, reason: 'api-not-available', error: 'Push requires a physical device' };
   }
   if (!initPushSdk()) {
+    recordPushDiagnosticEvent({
+      scope: 'push',
+      status: 'error',
+      message: 'OneSignal SDK unavailable during registration',
+    });
     return { ok: false, reason: 'api-not-available', error: 'OneSignal native SDK unavailable or app ID missing' };
   }
   const sdk = getOneSignalSdk();
@@ -152,26 +201,107 @@ export async function registerForPushNotifications(
 
   try {
     OneSignal.login(userId);
+    setLastLoginUserId(userId);
+    recordPushDiagnosticEvent({
+      scope: 'push',
+      status: 'info',
+      message: 'Called OneSignal.login',
+      data: { userId },
+    });
   } catch (error) {
+    const errorText = String(error);
+    setLastPushOperationTrace({
+      at: new Date().toISOString(),
+      operation: 'register',
+      ok: false,
+      reason: 'unknown',
+      error: errorText,
+    });
+    recordPushDiagnosticEvent({
+      scope: 'push',
+      status: 'error',
+      message: 'OneSignal.login failed',
+      data: { userId, error: errorText },
+    });
     return { ok: false, reason: 'unknown', error: String(error) };
   }
 
   const hasPermission = await OneSignal.Notifications.getPermissionAsync();
   const allowed = hasPermission || (await OneSignal.Notifications.requestPermission(true));
-  if (!allowed) return { ok: false, reason: 'permission-denied' };
+  if (!allowed) {
+    setLastPushOperationTrace({
+      at: new Date().toISOString(),
+      operation: 'register',
+      ok: false,
+      reason: 'permission-denied',
+    });
+    recordPushDiagnosticEvent({
+      scope: 'push',
+      status: 'error',
+      message: 'Push permission denied',
+      data: { userId },
+    });
+    return { ok: false, reason: 'permission-denied' };
+  }
 
   const playerId = await waitForPlayerId(15000);
   if (!playerId) {
+    setLastPushOperationTrace({
+      at: new Date().toISOString(),
+      operation: 'register',
+      ok: false,
+      reason: 'no-player-id',
+      error: 'OneSignal subscription ID not available yet',
+    });
+    recordPushDiagnosticEvent({
+      scope: 'push',
+      status: 'error',
+      message: 'No OneSignal player ID available after wait',
+      data: { userId },
+    });
     return { ok: false, reason: 'no-player-id', error: 'OneSignal subscription ID not available yet' };
   }
 
   try {
-    await registerWithBackend(session.access_token, playerId);
+    const backend = await registerWithBackend(session.access_token, playerId);
     hasRegisteredThisSession = true;
     currentPlayerId = playerId;
+    setLastPushOperationTrace({
+      at: new Date().toISOString(),
+      operation: 'register',
+      ok: true,
+      playerId,
+      backend: {
+        at: new Date().toISOString(),
+        ok: backend.ok,
+        status: backend.status,
+        bodyText: backend.bodyText,
+      },
+    });
+    recordPushDiagnosticEvent({
+      scope: 'push',
+      status: 'success',
+      message: 'Push registration completed',
+      data: { userId, playerId, backendStatus: backend.status },
+    });
     return { ok: true, playerId };
   } catch (error) {
-    return { ok: false, reason: 'unknown', error: String(error) };
+    const errorText = String(error);
+    setLastPushOperationTrace({
+      at: new Date().toISOString(),
+      operation: 'register',
+      ok: false,
+      reason: 'unknown',
+      playerId,
+      error: errorText,
+    });
+    recordPushDiagnosticEvent({
+      scope: 'push',
+      status: 'error',
+      message: 'Backend registerPlayer failed',
+      data: { userId, playerId, error: errorText },
+    });
+    return { ok: false, reason: 'unknown', error: errorText };
   }
 }
 
@@ -195,10 +325,40 @@ export async function updateHeartbeat(session: Session | null, options: { userId
   if (!playerId) return;
 
   try {
-    await registerWithBackend(session.access_token, playerId);
+    const backend = await registerWithBackend(session.access_token, playerId);
     currentPlayerId = playerId;
+    setLastPushOperationTrace({
+      at: new Date().toISOString(),
+      operation: 'heartbeat',
+      ok: true,
+      playerId,
+      backend: {
+        at: new Date().toISOString(),
+        ok: backend.ok,
+        status: backend.status,
+        bodyText: backend.bodyText,
+      },
+    });
+    recordPushDiagnosticEvent({
+      scope: 'push',
+      status: 'success',
+      message: 'Push heartbeat updated',
+      data: { userId, playerId, backendStatus: backend.status },
+    });
   } catch {
-    // Heartbeat is best effort.
+    setLastPushOperationTrace({
+      at: new Date().toISOString(),
+      operation: 'heartbeat',
+      ok: false,
+      playerId,
+      error: 'Heartbeat registerPlayer call failed',
+    });
+    recordPushDiagnosticEvent({
+      scope: 'push',
+      status: 'error',
+      message: 'Push heartbeat failed',
+      data: { userId, playerId },
+    });
   }
 }
 
@@ -221,8 +381,32 @@ export async function deactivatePushSubscription(session: Session | null): Promi
       headers,
       body: JSON.stringify({ playerId: currentPlayerId }),
     });
+    setLastPushOperationTrace({
+      at: new Date().toISOString(),
+      operation: 'deactivate',
+      ok: true,
+      playerId: currentPlayerId,
+    });
+    recordPushDiagnosticEvent({
+      scope: 'push',
+      status: 'info',
+      message: 'Push subscription deactivated',
+      data: { playerId: currentPlayerId },
+    });
   } catch {
-    // Best effort: always clear local state.
+    setLastPushOperationTrace({
+      at: new Date().toISOString(),
+      operation: 'deactivate',
+      ok: false,
+      playerId: currentPlayerId,
+      error: 'deactivateDevice request failed',
+    });
+    recordPushDiagnosticEvent({
+      scope: 'push',
+      status: 'error',
+      message: 'Push deactivation request failed',
+      data: { playerId: currentPlayerId },
+    });
   } finally {
     try {
       OneSignal.logout();
@@ -231,5 +415,57 @@ export async function deactivatePushSubscription(session: Session | null): Promi
     }
     resetPushSessionState();
   }
+}
+
+export async function getPushDebugSnapshot(): Promise<any> {
+  const sdk = getOneSignalSdk();
+  const oneSignal = sdk?.OneSignal;
+  const pushSubscription = oneSignal?.User?.pushSubscription;
+  const permission = oneSignal?.Notifications && typeof oneSignal.Notifications.getPermissionAsync === 'function'
+    ? await oneSignal.Notifications.getPermissionAsync().catch(() => null)
+    : null;
+  const playerId = pushSubscription && typeof pushSubscription.getIdAsync === 'function'
+    ? await pushSubscription.getIdAsync().catch(() => currentPlayerId)
+    : currentPlayerId;
+  const optedIn = pushSubscription && typeof pushSubscription.getOptedInAsync === 'function'
+    ? await pushSubscription.getOptedInAsync().catch(() => null)
+    : null;
+  const token = pushSubscription && typeof pushSubscription.getTokenAsync === 'function'
+    ? await pushSubscription.getTokenAsync().catch(() => null)
+    : null;
+  const externalUserId = oneSignal?.User && typeof oneSignal.User.getExternalId === 'function'
+    ? await oneSignal.User.getExternalId().catch(() => null)
+    : null;
+  const expoConfig = (Constants.expoConfig ?? {}) as Record<string, any>;
+  const iosConfig = (expoConfig.ios ?? {}) as Record<string, any>;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    local: {
+      platform: Platform.OS,
+      platformVersion: Platform.Version,
+      isPhysicalDevice: Device.isDevice,
+      deviceName: Device.deviceName ?? null,
+      modelName: Device.modelName ?? null,
+      osName: Device.osName ?? null,
+      osVersion: Device.osVersion ?? null,
+      bundleId: iosConfig.bundleIdentifier ?? null,
+      appVersion: expoConfig.version ?? null,
+      buildNumber: iosConfig.buildNumber ?? null,
+      siteUrl: siteBaseUrl(),
+      oneSignalAppId: oneSignalAppId(),
+      sdkAvailable: !!sdk,
+      initialized: hasInitialized,
+      registeredThisSession: hasRegisteredThisSession,
+      currentPlayerId,
+      livePlayerId: typeof playerId === 'string' && playerId.trim().length > 0 ? playerId.trim() : null,
+      lastLoginUserId: getPushDiagnosticsState().lastLoginUserId,
+      notificationPermission: permission,
+      optedIn,
+      pushTokenPresent: typeof token === 'string' ? token.length > 0 : null,
+      externalUserId,
+    },
+    traces: getPushDiagnosticsState(),
+  };
 }
 

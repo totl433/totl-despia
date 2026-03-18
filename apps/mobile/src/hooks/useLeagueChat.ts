@@ -3,6 +3,7 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
 import { supabase } from '../lib/supabase';
 import { env } from '../env';
+import { recordPushDiagnosticEvent, setLastChatNotifyTrace } from '../lib/pushDiagnostics';
 
 const PAGE_SIZE = 40;
 
@@ -65,45 +66,126 @@ async function notifyLeagueMessage({
   senderId,
   senderName,
   content,
+  messageId,
   accessToken,
 }: {
   leagueId: string;
   senderId: string;
   senderName: string;
   content: string;
+  messageId?: string | null;
   accessToken: string | null;
 }): Promise<void> {
   // Skip notifications in local dev (matches web best-effort behavior)
   const bff = String(env.EXPO_PUBLIC_BFF_URL ?? '');
-  if (bff.includes('localhost') || bff.includes('127.0.0.1')) return;
+  if (bff.includes('localhost') || bff.includes('127.0.0.1')) {
+    recordPushDiagnosticEvent({
+      scope: 'chat',
+      status: 'info',
+      message: 'Chat notify skipped in local dev',
+      data: { leagueId, messageId: messageId ?? null },
+    });
+    return;
+  }
 
   const baseUrl = String(env.EXPO_PUBLIC_SITE_URL ?? '').replace(/\/$/, '');
-  if (!baseUrl) return;
+  if (!baseUrl) {
+    recordPushDiagnosticEvent({
+      scope: 'chat',
+      status: 'error',
+      message: 'Chat notify skipped because site URL is missing',
+      data: { leagueId, messageId: messageId ?? null },
+    });
+    return;
+  }
 
   const url = `${baseUrl}/.netlify/functions/notifyLeagueMessageV2`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3000);
-  try {
-    await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        leagueId,
-        senderId,
-        senderName,
-        content,
-        activeUserIds: [senderId],
-      }),
-    });
-  } catch {
-    // best effort
-  } finally {
-    clearTimeout(timeout);
+  const payload = {
+    leagueId,
+    senderId,
+    senderName,
+    content,
+    messageId,
+    activeUserIds: [senderId],
+  };
+
+  let lastError = 'Unknown error';
+  let lastBodyText = '';
+  let lastStatus: number | undefined;
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        signal: controller.signal,
+        body: JSON.stringify(payload),
+      });
+
+      const bodyText = await response.text().catch(() => '');
+      lastBodyText = bodyText;
+      lastStatus = response.status;
+
+      if (response.ok) {
+        setLastChatNotifyTrace({
+          at: new Date().toISOString(),
+          leagueId,
+          messageId: messageId ?? null,
+          url,
+          ok: true,
+          attemptCount: attempt,
+          status: response.status,
+          bodyText,
+        });
+        recordPushDiagnosticEvent({
+          scope: 'chat',
+          status: 'success',
+          message: 'Chat notify function returned success',
+          data: { leagueId, messageId: messageId ?? null, status: response.status, attempt },
+        });
+        return;
+      }
+
+      lastError = `HTTP ${response.status}`;
+      recordPushDiagnosticEvent({
+        scope: 'chat',
+        status: 'error',
+        message: 'Chat notify function returned non-OK response',
+        data: { leagueId, messageId: messageId ?? null, status: response.status, attempt },
+      });
+    } catch (error: any) {
+      lastError = error?.message || String(error);
+      recordPushDiagnosticEvent({
+        scope: 'chat',
+        status: 'error',
+        message: 'Chat notify request threw an error',
+        data: { leagueId, messageId: messageId ?? null, error: lastError, attempt },
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (attempt < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 750));
+    }
   }
+
+  setLastChatNotifyTrace({
+    at: new Date().toISOString(),
+    leagueId,
+    messageId: messageId ?? null,
+    url,
+    ok: false,
+    attemptCount: 2,
+    status: lastStatus,
+    bodyText: lastBodyText,
+    error: lastError,
+  });
 }
 
 type Page = { rows: LeagueChatMessage[]; nextCursor: string | null };
@@ -342,6 +424,7 @@ export function useLeagueChat({
           senderId: userId,
           senderName,
           content: text,
+          messageId: saved.id,
           accessToken,
         });
       } catch (e: any) {

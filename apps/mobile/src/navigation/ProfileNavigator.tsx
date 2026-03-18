@@ -9,6 +9,7 @@ import EmailPreferencesScreen from '../screens/profile/EmailPreferencesScreen';
 import EditAvatarScreen from '../screens/profile/EditAvatarScreen';
 import AdminHomeScreen from '../screens/profile/AdminHomeScreen';
 import AdminHomeSimulatorScreen from '../screens/profile/AdminHomeSimulatorScreen';
+import PushDiagnosticsScreen from '../screens/profile/PushDiagnosticsScreen';
 import HowToPlayScreen from '../screens/profile/HowToPlayScreen';
 import ContactUsScreen from '../screens/profile/ContactUsScreen';
 import CookiePolicyScreen from '../screens/profile/CookiePolicyScreen';
@@ -23,6 +24,7 @@ export type ProfileStackParamList = {
   EditAvatar: undefined;
   AdminHome: undefined;
   AdminHomeSimulator: undefined;
+  PushDiagnostics: undefined;
   HowToPlay: undefined;
   ContactUs: undefined;
   CookiePolicy: undefined;
@@ -48,6 +50,7 @@ export default function ProfileNavigator() {
       <Stack.Screen name="EditAvatar" component={EditAvatarScreen} />
       <Stack.Screen name="AdminHome" component={AdminHomeScreen} />
       <Stack.Screen name="AdminHomeSimulator" component={AdminHomeSimulatorScreen} />
+      <Stack.Screen name="PushDiagnostics" component={PushDiagnosticsScreen} />
       <Stack.Screen name="HowToPlay" component={HowToPlayScreen} />
       <Stack.Screen name="ContactUs" component={ContactUsScreen} />
       <Stack.Screen name="CookiePolicy" component={CookiePolicyScreen} />

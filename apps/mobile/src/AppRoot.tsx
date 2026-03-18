@@ -15,26 +15,12 @@ import { LeagueUnreadCountsProvider } from './context/LeagueUnreadCountsContext'
 import { envStatus } from './env';
 import AuthScreen from './screens/AuthScreen';
 import AppNavigator from './navigation/AppNavigator';
+import PopupCardsProvider from './components/popupCards/PopupCardsProvider';
 
 export default function AppRoot() {
   const [fontsReady, setFontsReady] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [authed, setAuthed] = useState(false);
-  // Force light mode for the Expo app by overriding UI tokens.
-  // (Expo config already sets `userInterfaceStyle: "light"`, but our UI tokens were dark by default.)
-  const lightThemeTokens = React.useMemo(
-    () => ({
-      color: {
-        background: '#F8FAFC',
-        surface: '#FFFFFF',
-        surface2: '#E2E8F0',
-        text: '#0F172A',
-        muted: '#475569',
-        border: 'rgba(15,23,42,0.12)',
-      },
-    }),
-    []
-  );
 
   useEffect(() => {
     initSentry().catch(() => {});
@@ -150,7 +136,7 @@ export default function AppRoot() {
 
   return (
     <SafeAreaProvider>
-      <ThemeProvider tokens={lightThemeTokens}>
+      <ThemeProvider>
         <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister }}>
           {!envStatus.ok ? (
             <Screen>
@@ -172,14 +158,16 @@ export default function AppRoot() {
           ) : authed ? (
             <ConfettiProvider>
               <LeagueUnreadCountsProvider>
-                <AppNavigator />
+                <PopupCardsProvider>
+                  <AppNavigator />
+                </PopupCardsProvider>
               </LeagueUnreadCountsProvider>
             </ConfettiProvider>
           ) : (
             <AuthScreen />
           )}
         </PersistQueryClientProvider>
-        <StatusBar style="dark" />
+        <StatusBar style="light" />
       </ThemeProvider>
     </SafeAreaProvider>
   );

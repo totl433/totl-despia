@@ -14,9 +14,15 @@ import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanim
 import PageHeader from '../../components/PageHeader';
 import { api } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
+import usePopupCards from '../../hooks/usePopupCards';
 
 type SimGameState = 'GW_OPEN' | 'GW_PREDICTED' | 'DEADLINE_PASSED' | 'LIVE' | 'RESULTS_PRE_GW';
 type SimFixtureStatus = 'SCHEDULED' | 'IN_PLAY' | 'PAUSED' | 'FINISHED';
+
+const SIM_DARK_CARD_BG = '#15213A';
+const SIM_DARK_CARD_BG_ALT = '#1B2945';
+const SIM_DARK_TEXT = '#F8FAFC';
+const SIM_DARK_MUTED_TEXT = '#A5B4CF';
 type Pick = 'H' | 'D' | 'A';
 
 type SimFixture = {
@@ -139,6 +145,7 @@ function buildFixtures(state: SimGameState): SimFixture[] {
 export default function AdminHomeSimulatorScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
+  const { hasActivePopupStack, openMainSimulatorStack, openSimulatorCard, openWelcomeSimulatorStack } = usePopupCards();
   const [state, setState] = React.useState<SimGameState>('GW_OPEN');
   const [gwOpenLayout, setGwOpenLayout] = React.useState<'mini' | 'compact'>('mini');
   const [viewMode, setViewMode] = React.useState<'compact' | 'details'>('compact');
@@ -307,7 +314,7 @@ export default function AdminHomeSimulatorScreen() {
         }
       />
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: t.space[4], paddingTop: t.space[4], paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: t.space[4], paddingTop: t.space[4], paddingBottom: 176 }}>
         <View style={{ marginBottom: 10, zIndex: 40 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <TotlText style={{ fontSize: 13, fontWeight: '700', color: '#475569' }}>Game State</TotlText>
@@ -631,7 +638,7 @@ export default function AdminHomeSimulatorScreen() {
                                 borderWidth: 1,
                                 borderColor: 'rgba(148,163,184,0.2)',
                                 overflow: 'hidden',
-                                backgroundColor: '#FFFFFF',
+                                backgroundColor: SIM_DARK_CARD_BG,
                                 shadowColor: '#0F172A',
                                 shadowOpacity: 0.05,
                                 shadowRadius: 3,
@@ -647,7 +654,7 @@ export default function AdminHomeSimulatorScreen() {
                                     height: isMiniExpanded ? 70 : undefined,
                                     alignItems: 'center',
                                     justifyContent: isMiniExpanded ? 'flex-start' : 'center',
-                                    backgroundColor: '#FFFFFF',
+                                    backgroundColor: SIM_DARK_CARD_BG,
                                     paddingTop: isMiniExpanded ? 15 : 0,
                                   }}
                                 >
@@ -664,14 +671,14 @@ export default function AdminHomeSimulatorScreen() {
                                     height: isMiniExpanded ? 70 : undefined,
                                     alignItems: 'center',
                                     justifyContent: isMiniExpanded ? 'flex-start' : 'center',
-                                    backgroundColor: '#FFFFFF',
+                                    backgroundColor: SIM_DARK_CARD_BG,
                                     paddingTop: isMiniExpanded ? 27 : 0,
                                   }}
                                 >
                                   <View style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}>
                                     <TotlText
                                       style={{
-                                        color: '#0F172A',
+                                        color: SIM_DARK_TEXT,
                                         fontWeight: '900',
                                         fontSize: isMiniExpanded ? 30 : 16,
                                         lineHeight: isMiniExpanded ? 32 : 18,
@@ -682,7 +689,7 @@ export default function AdminHomeSimulatorScreen() {
                                       {miniPrimaryExpandedLabel}
                                     </TotlText>
                                     {miniSecondaryLabel && !isMiniExpanded ? (
-                                      <TotlText style={{ color: '#334155', fontWeight: '700', fontSize: 11, lineHeight: 13, textAlign: 'center', marginTop: 2 }}>
+                                      <TotlText style={{ color: SIM_DARK_MUTED_TEXT, fontWeight: '700', fontSize: 11, lineHeight: 13, textAlign: 'center', marginTop: 2 }}>
                                         {miniSecondaryLabel}
                                       </TotlText>
                                     ) : null}
@@ -695,7 +702,7 @@ export default function AdminHomeSimulatorScreen() {
                                     height: isMiniExpanded ? 70 : undefined,
                                     alignItems: 'center',
                                     justifyContent: isMiniExpanded ? 'flex-start' : 'center',
-                                    backgroundColor: '#FFFFFF',
+                                    backgroundColor: SIM_DARK_CARD_BG,
                                     paddingTop: isMiniExpanded ? 15 : 0,
                                   }}
                                 >
@@ -756,18 +763,18 @@ export default function AdminHomeSimulatorScreen() {
                                       <View style={{ width: '37%', alignItems: 'center' }}>
                                         <TotlText
                                           numberOfLines={1}
-                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: '#0F172A', textAlign: 'center' }}
+                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: SIM_DARK_TEXT, textAlign: 'center' }}
                                         >
                                           {fixture.home}
                                         </TotlText>
                                       </View>
                                       <View style={{ width: '26%', alignItems: 'center' }}>
-                                        <TotlText style={{ fontSize: 12, fontWeight: '700', color: '#334155', textAlign: 'center' }}>{miniSecondaryLabel}</TotlText>
+                                        <TotlText style={{ fontSize: 12, fontWeight: '700', color: SIM_DARK_MUTED_TEXT, textAlign: 'center' }}>{miniSecondaryLabel}</TotlText>
                                       </View>
                                       <View style={{ width: '37%', alignItems: 'center' }}>
                                         <TotlText
                                           numberOfLines={1}
-                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: '#0F172A', textAlign: 'center' }}
+                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: SIM_DARK_TEXT, textAlign: 'center' }}
                                         >
                                           {fixture.away}
                                         </TotlText>
@@ -779,7 +786,7 @@ export default function AdminHomeSimulatorScreen() {
                                       <View style={{ width: '37%', alignItems: 'center' }}>
                                         <TotlText
                                           numberOfLines={1}
-                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: '#0F172A', textAlign: 'center' }}
+                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: SIM_DARK_TEXT, textAlign: 'center' }}
                                         >
                                           {fixture.home}
                                         </TotlText>
@@ -788,7 +795,7 @@ export default function AdminHomeSimulatorScreen() {
                                       <View style={{ width: '37%', alignItems: 'center' }}>
                                         <TotlText
                                           numberOfLines={1}
-                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: '#0F172A', textAlign: 'center' }}
+                                          style={{ width: '100%', fontSize: 15, fontWeight: '900', color: SIM_DARK_TEXT, textAlign: 'center' }}
                                         >
                                           {fixture.away}
                                         </TotlText>
@@ -803,7 +810,7 @@ export default function AdminHomeSimulatorScreen() {
                                           <TotlText
                                             key={`${fixture.id}-eh-${line}`}
                                             numberOfLines={1}
-                                            style={{ fontSize: 12, lineHeight: 16, fontWeight: '900', color: '#0F172A', textAlign: 'right' }}
+                                            style={{ fontSize: 12, lineHeight: 16, fontWeight: '900', color: SIM_DARK_TEXT, textAlign: 'right' }}
                                           >
                                             {line}
                                           </TotlText>
@@ -815,7 +822,7 @@ export default function AdminHomeSimulatorScreen() {
                                           <TotlText
                                             key={`${fixture.id}-ea-${line}`}
                                             numberOfLines={1}
-                                            style={{ fontSize: 12, lineHeight: 16, fontWeight: '900', color: '#0F172A', textAlign: 'left' }}
+                                            style={{ fontSize: 12, lineHeight: 16, fontWeight: '900', color: SIM_DARK_TEXT, textAlign: 'left' }}
                                           >
                                             {line}
                                           </TotlText>
@@ -894,11 +901,11 @@ export default function AdminHomeSimulatorScreen() {
                                             <View key={`home-form-${fixture.id}-${i}`} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
                                           ))}
                                         </View>
-                                        <TotlText style={{ marginTop: 8, fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{homePositionLabel}</TotlText>
+                                        <TotlText style={{ marginTop: 8, fontSize: 13, fontWeight: '700', color: SIM_DARK_TEXT }}>{homePositionLabel}</TotlText>
                                       </View>
                                       <View style={{ width: '26%', alignItems: 'center' }}>
                                         <View style={{ height: 8 }} />
-                                        <TotlText style={{ marginTop: 8, fontSize: 13, color: '#475569', textAlign: 'center' }}>
+                                        <TotlText style={{ marginTop: 8, fontSize: 13, color: SIM_DARK_MUTED_TEXT, textAlign: 'center' }}>
                                           {String(fixture.kickoffDetail).split('•')[0].trim()}
                                         </TotlText>
                                       </View>
@@ -908,7 +915,7 @@ export default function AdminHomeSimulatorScreen() {
                                             <View key={`away-form-${fixture.id}-${i}`} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
                                           ))}
                                         </View>
-                                        <TotlText style={{ marginTop: 8, fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{awayPositionLabel}</TotlText>
+                                        <TotlText style={{ marginTop: 8, fontSize: 13, fontWeight: '700', color: SIM_DARK_TEXT }}>{awayPositionLabel}</TotlText>
                                       </View>
                                     </View>
                                   )}
@@ -1059,7 +1066,7 @@ export default function AdminHomeSimulatorScreen() {
                       paddingHorizontal: isLiveOrResultsCard ? 16 : 12,
                       paddingTop: isLiveOrResultsCard ? 14 : 12,
                       paddingBottom: isLiveOrResultsCard ? 14 : 12,
-                      backgroundColor: '#FFFFFF',
+                      backgroundColor: SIM_DARK_CARD_BG,
                       opacity: pressed ? 0.96 : 1,
                       transform: [{ scale: pressed ? 0.995 : 1 }],
                     })}
@@ -1067,32 +1074,32 @@ export default function AdminHomeSimulatorScreen() {
                       <View style={{ paddingLeft: 0 }}>
                         {isGwOpenState ? (
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-                            <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: '#0F172A' }}>
+                            <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: SIM_DARK_TEXT }}>
                               {fixture.home}
                             </TotlText>
                             {homeBadge ? <Image source={homeBadge} style={{ width: 24, height: 24, marginLeft: 8, marginRight: 6 }} /> : null}
-                            <TotlText style={{ fontWeight: '800', fontSize: 14, color: '#111827' }}>{centerLabel}</TotlText>
+                            <TotlText style={{ fontWeight: '800', fontSize: 14, color: SIM_DARK_TEXT }}>{centerLabel}</TotlText>
                             {awayBadge ? <Image source={awayBadge} style={{ width: 24, height: 24, marginLeft: 6, marginRight: 8 }} /> : null}
-                            <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: '#0F172A' }}>
+                            <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: SIM_DARK_TEXT }}>
                               {fixture.away}
                             </TotlText>
                           </View>
                         ) : (
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', transform: [{ translateY: 5 }] }}>
                             <View style={{ flex: 1, alignItems: 'flex-end', paddingRight: 6 }}>
-                              <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: '#0F172A' }}>
+                              <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: SIM_DARK_TEXT }}>
                                 {fixture.home}
                               </TotlText>
                             </View>
                             <View style={{ minWidth: 118, alignItems: 'center', justifyContent: 'center' }}>
                               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
                                 {homeBadge ? <Image source={homeBadge} style={{ width: 24, height: 24, marginRight: 6 }} /> : null}
-                                <TotlText style={{ fontWeight: '800', fontSize: 14, color: '#111827' }}>{centerLabel}</TotlText>
+                                <TotlText style={{ fontWeight: '800', fontSize: 14, color: SIM_DARK_TEXT }}>{centerLabel}</TotlText>
                                 {awayBadge ? <Image source={awayBadge} style={{ width: 24, height: 24, marginLeft: 6 }} /> : null}
                               </View>
                             </View>
                             <View style={{ flex: 1, alignItems: 'flex-start', paddingLeft: 6 }}>
-                              <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: '#0F172A' }}>
+                              <TotlText numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: SIM_DARK_TEXT }}>
                                 {fixture.away}
                               </TotlText>
                             </View>
@@ -1102,7 +1109,7 @@ export default function AdminHomeSimulatorScreen() {
                           <View style={{ marginTop: 2, alignItems: 'center' }}>
                             <TotlText
                               style={{
-                                color: '#64748B',
+                                color: SIM_DARK_MUTED_TEXT,
                                 fontSize: 12,
                                 opacity:
                                   hideRepeatedKickoffInDetails || hideRepeatedKickoffInCompact || hideRepeatedKickoffInLiveScheduled ? 0 : 1,
@@ -1207,7 +1214,7 @@ export default function AdminHomeSimulatorScreen() {
                                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                         {sideBadge ? <Image source={sideBadge} style={{ width: 16, height: 16, marginRight: 4 }} /> : null}
                                         {label ? (
-                                          <TotlText style={{ fontSize: 13, fontWeight: '500', color: showWinnerTabShiny || showSolidPickedTab ? '#FFFFFF' : '#1F2937' }}>
+                                          <TotlText style={{ fontSize: 13, fontWeight: '500', color: showWinnerTabShiny || showSolidPickedTab ? '#FFFFFF' : SIM_DARK_TEXT }}>
                                             {label}{' '}
                                           </TotlText>
                                         ) : null}
@@ -1216,7 +1223,7 @@ export default function AdminHomeSimulatorScreen() {
                                             style={{
                                               fontSize: 15,
                                               fontWeight: active ? '700' : '500',
-                                              color: showSolidPickedTab ? '#FFFFFF' : active ? '#1C8376' : '#64748B',
+                                              color: showSolidPickedTab ? '#FFFFFF' : active ? '#1C8376' : SIM_DARK_MUTED_TEXT,
                                             }}
                                           >
                                             --%
@@ -1235,10 +1242,10 @@ export default function AdminHomeSimulatorScreen() {
                                                 : isLiveOrResultsCard
                                                   ? active
                                                     ? activeText
-                                                    : '#1F2937'
+                                                    : SIM_DARK_TEXT
                                                   : active
                                                     ? activeText
-                                                    : '#1F2937',
+                                                    : SIM_DARK_TEXT,
                                             }}
                                           >
                                             {`${percentBySide[side]}%`}
@@ -1248,7 +1255,7 @@ export default function AdminHomeSimulatorScreen() {
                                             style={{
                                               fontSize: 14,
                                               fontWeight: active ? '800' : '600',
-                                              color: showWinnerTabShiny ? '#FFFFFF' : showSolidPickedTab ? '#FFFFFF' : active ? '#047857' : '#475569',
+                                              color: showWinnerTabShiny ? '#FFFFFF' : showSolidPickedTab ? '#FFFFFF' : active ? '#047857' : SIM_DARK_MUTED_TEXT,
                                             }}
                                           >
                                             {side === 'D' ? 'Draw' : 'Win'}
@@ -1276,6 +1283,58 @@ export default function AdminHomeSimulatorScreen() {
           )}
         </View>
       </ScrollView>
+
+      <View
+        style={{
+          paddingHorizontal: t.space[4],
+          paddingTop: 10,
+          paddingBottom: 16,
+          borderTopWidth: 1,
+          borderTopColor: 'rgba(148,163,184,0.12)',
+          backgroundColor: 'rgba(2,6,23,0.92)',
+        }}
+      >
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
+          {[
+            { key: 'results', label: 'Results', onPress: () => openSimulatorCard('results') },
+            { key: 'winners', label: 'Winners', onPress: () => openSimulatorCard('winners') },
+            { key: 'new-gw', label: 'New Game Week', onPress: () => openSimulatorCard('newGameweek') },
+            { key: 'welcome', label: 'Welcome', onPress: () => openWelcomeSimulatorStack() },
+            { key: 'main-stack', label: 'Load Main Stack', onPress: () => openMainSimulatorStack() },
+            { key: 'welcome-stack', label: 'Load Welcome Stack', onPress: () => openWelcomeSimulatorStack() },
+          ].map((button) => (
+            <Pressable
+              key={button.key}
+              accessibilityRole="button"
+              accessibilityLabel={button.label}
+              disabled={hasActivePopupStack}
+              onPress={button.onPress}
+              style={({ pressed }) => ({
+                marginHorizontal: 4,
+                marginBottom: 8,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: 'rgba(28,131,118,0.28)',
+                backgroundColor: hasActivePopupStack ? 'rgba(255,255,255,0.05)' : 'rgba(28,131,118,0.08)',
+                opacity: hasActivePopupStack ? 0.45 : pressed ? 0.8 : 1,
+              })}
+            >
+              <TotlText
+                style={{
+                  fontSize: 12,
+                  lineHeight: 14,
+                  fontWeight: '800',
+                  color: '#E2E8F0',
+                }}
+              >
+                {button.label}
+              </TotlText>
+            </Pressable>
+          ))}
+        </View>
+      </View>
     </Screen>
   );
 }

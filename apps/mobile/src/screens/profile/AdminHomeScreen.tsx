@@ -37,6 +37,10 @@ export default function AdminHomeScreen() {
     navigation.navigate('AdminHomeSimulator');
   }, [navigation]);
 
+  const openPushDiagnostics = React.useCallback(() => {
+    navigation.navigate('PushDiagnostics');
+  }, [navigation]);
+
   return (
     <Screen fullBleed>
       <PageHeader
@@ -116,6 +120,24 @@ export default function AdminHomeScreen() {
             <TotlText style={{ fontWeight: '700' }}>API Admin</TotlText>
             <TotlText variant="muted">Coming soon</TotlText>
           </View>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Push diagnostics"
+            onPress={openPushDiagnostics}
+            style={({ pressed }) => ({
+              paddingVertical: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottomWidth: 1,
+              borderBottomColor: 'rgba(148,163,184,0.18)',
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <TotlText style={{ fontWeight: '700' }}>Push Diagnostics</TotlText>
+            <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
+          </Pressable>
 
           <Pressable
             accessibilityRole="button"
