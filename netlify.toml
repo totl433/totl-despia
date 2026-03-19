@@ -4,6 +4,15 @@
 
 [functions]
   directory = "netlify/functions"
+
+  # pushDebugReport (mobile Admin → Push Diagnostics → server section):
+  # - Requires a Netlify deploy that includes `netlify/functions/pushDebugReport.ts`
+  #   (feat in commit 7983967 on branch `expo-ui-carl`; merge into the branch your
+  #   staging site builds if needed).
+  # - Smoke: GET `/.netlify/functions/pushDebugReport` with `Authorization: Bearer <jwt>`
+  #   must return JSON (200/401). If the SPA HTML is returned, the function is not in this deploy.
+  # - Runtime env (set in Netlify UI for totl-staging): SUPABASE_URL, SUPABASE_ANON_KEY,
+  #   SUPABASE_SERVICE_ROLE_KEY, ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY
   
   # Environment variables for functions
   # Note: These should also be set in Netlify dashboard, but adding here

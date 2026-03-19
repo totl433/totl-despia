@@ -1,3 +1,11 @@
+/**
+ * Netlify function: GET `/.netlify/functions/pushDebugReport?playerId=<optional>`
+ * Auth: `Authorization: Bearer <Supabase access token>` (validates via anon client).
+ *
+ * Staging (totl-staging): deploy a branch that includes this file, and set in the site env:
+ * `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+ * `ONESIGNAL_APP_ID`, `ONESIGNAL_REST_API_KEY`
+ */
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 
