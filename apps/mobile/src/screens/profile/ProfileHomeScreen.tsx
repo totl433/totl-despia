@@ -39,7 +39,9 @@ export default function ProfileHomeScreen() {
   const name = data?.name ?? 'User';
   const email = data?.email ?? null;
   const avatarUrl = data?.avatar_url ?? null;
-  const isAdmin = data?.isAdmin ?? false;
+  // Temporary Expo-only testing access: show the mobile Admin tools to all Expo users.
+  // This does not change backend roles and does not affect the Despia web app.
+  const isAdmin = true;
 
   const initials = React.useMemo(() => {
     const parts = String(name || '?')
