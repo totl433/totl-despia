@@ -138,7 +138,8 @@ export default function PushDiagnosticsScreen() {
 
     const localData = await getPushDebugSnapshot();
     const livePlayerId = localData?.local?.livePlayerId || localData?.local?.currentPlayerId;
-    const reportUrl = `${baseUrl}/.netlify/functions/pushDebugReport${
+    // Use /totl-functions/* proxy — SPA /* → index.html catches /.netlify/functions/* in practice.
+    const reportUrl = `${baseUrl}/totl-functions/pushDebugReport${
       livePlayerId ? `?playerId=${encodeURIComponent(String(livePlayerId))}` : ''
     }`;
     const serverResult = await fetchJson(reportUrl, {
