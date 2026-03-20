@@ -76,6 +76,13 @@
   to = "/.netlify/functions/:splat"
   status = 200
   force = true
+  
+[[redirects]]
+  from = "/totl-functions/pushDebugReport"
+  to = "/.netlify/functions/pushDebugReport"
+  status = 200
+  force = true
+
 
 # Redirect everything else to index.html for SPA routing
 [[redirects]]
