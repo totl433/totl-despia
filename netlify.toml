@@ -78,12 +78,7 @@
   status = 200
   force = true
   
-# Keep Netlify Functions off the SPA fallback below (browser hits /.netlify/functions/* directly)
-[[redirects]]
-  from = "/.netlify/functions/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
-  force = true
+
 
 
 # Redirect everything else to index.html for SPA routing
