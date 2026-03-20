@@ -24,7 +24,7 @@
 
 # REMOVED: sendScoreNotifications scheduled function
 # Notifications are now handled by sendScoreNotificationsWebhook (triggered by database webhook)
-# The scheduled version was removed as it was redundant and less reliable than webhook-triggered notifications
+# The scheduled version was removed because it was redundant and less reliable than webhook-triggered notifications
 
 # Ignore secrets scanning for helper scripts, .env file, and debug logs
 [build.environment]
@@ -56,14 +56,6 @@
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
-# Don't redirect Netlify functions - they need to work directly
-# Note: Netlify functions are handled automatically, no redirect needed
-# [[redirects]]
-#   from = "/.netlify/functions/*"
-#   to = "/.netlify/functions/:splat"
-#   status = 200
-#   force = true
-
 # Don't redirect static assets - serve them directly
 [[redirects]]
   from = "/assets/*"
@@ -77,9 +69,13 @@
   to = "/.netlify/functions/notification-docs/:splat"
   status = 200
   force = true
-  
 
-
+# So /.netlify/functions/* is not eaten by the SPA rule below; app uses /totl-functions/...
+[[redirects]]
+  from = "/totl-functions/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
 
 # Redirect everything else to index.html for SPA routing
 [[redirects]]
