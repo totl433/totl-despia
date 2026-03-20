@@ -86,6 +86,20 @@
   status = 200
   force = true
 
+# Push diagnostics: exact path first (reliable); then splat for any other aliases.
+[[redirects]]
+  from = "/totl-functions/pushDebugReport"
+  to = "/.netlify/functions/pushDebugReport"
+  status = 200
+  force = true
+
+# So /.netlify/functions/* is not eaten by the SPA rule below; optional app paths under /totl-functions/
+[[redirects]]
+  from = "/totl-functions/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
+
 # Redirect everything else to index.html for SPA routing
 [[redirects]]
   from = "/*"
