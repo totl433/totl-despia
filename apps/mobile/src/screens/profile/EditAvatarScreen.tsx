@@ -1,8 +1,10 @@
 import React from 'react';
 import { Image, Pressable, ScrollView, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import { supabase } from '../../lib/supabase';
@@ -13,6 +15,7 @@ import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
 
 export default function EditAvatarScreen() {
   const t = useTokens();
+  const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
 
   const { data: user, isLoading: userLoading, error: userError, refetch: refetchUser, isRefetching } = useQuery({
@@ -124,7 +127,26 @@ export default function EditAvatarScreen() {
   if (userLoading && !user && !userError) {
     return (
       <Screen fullBleed>
-        <PageHeader title="Edit Avatar" />
+        <PageHeader
+          title="Edit Avatar"
+          leftAction={
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              onPress={() => navigation.goBack()}
+              style={({ pressed }) => ({
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.75 : 1,
+              })}
+            >
+              <Ionicons name="chevron-back" size={24} color={t.color.text} />
+            </Pressable>
+          }
+        />
         <CenteredSpinner loading />
       </Screen>
     );
@@ -132,7 +154,26 @@ export default function EditAvatarScreen() {
 
   return (
     <Screen fullBleed>
-      <PageHeader title="Edit Avatar" />
+      <PageHeader
+        title="Edit Avatar"
+        leftAction={
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            onPress={() => navigation.goBack()}
+            style={({ pressed }) => ({
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.75 : 1,
+            })}
+          >
+            <Ionicons name="chevron-back" size={24} color={t.color.text} />
+          </Pressable>
+        }
+      />
 
       <ScrollView
         style={{ flex: 1 }}
@@ -144,6 +185,29 @@ export default function EditAvatarScreen() {
         refreshControl={<TotlRefreshControl refreshing={isRefetching} onRefresh={() => refetchUser()} />}
         showsVerticalScrollIndicator={false}
       >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back to profile"
+          onPress={() => navigation.goBack()}
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start',
+            marginBottom: 12,
+            paddingVertical: 8,
+            paddingHorizontal: 12,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: t.color.border,
+            backgroundColor: t.color.surface,
+            opacity: pressed ? 0.8 : 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+          })}
+        >
+          <Ionicons name="chevron-back" size={18} color={t.color.text} />
+          <TotlText style={{ color: t.color.text, fontWeight: '800' }}>Back to Profile</TotlText>
+        </Pressable>
+
         {userError ? (
           <Card style={{ marginBottom: 12 }}>
             <TotlText variant="heading" style={{ marginBottom: 6 }}>

@@ -11,10 +11,12 @@ import PageHeader from '../../components/PageHeader';
 import CenteredSpinner from '../../components/CenteredSpinner';
 import { TotlRefreshControl } from '../../lib/refreshControl';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
+import { useThemePreference, type ThemePreference } from '../../context/ThemePreferenceContext';
 
 export default function ProfileHomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
+  const { preference, effectiveTheme, setPreference } = useThemePreference();
 
   const goHome = React.useCallback(() => {
     const parent = (navigation as any).getParent?.();
@@ -236,6 +238,54 @@ export default function ProfileHomeScreen() {
         </Card>
 
         <Card style={{ marginBottom: 12, padding: 16 }}>
+          <TotlText variant="heading" style={{ marginBottom: 6 }}>
+            Appearance
+          </TotlText>
+          <TotlText variant="muted" style={{ marginBottom: 12 }}>
+            {preference === 'system'
+              ? `Following system settings (${effectiveTheme}).`
+              : `Currently using ${effectiveTheme} mode.`}
+          </TotlText>
+
+          <View
+            style={{
+              flexDirection: 'row',
+              backgroundColor: t.color.surface2,
+              borderRadius: 14,
+              padding: 4,
+              gap: 4,
+            }}
+          >
+            {([
+              ['system', 'System'],
+              ['light', 'Light'],
+              ['dark', 'Dark'],
+            ] as Array<[ThemePreference, string]>).map(([value, label]) => {
+              const active = preference === value;
+              return (
+                <Pressable
+                  key={value}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${label} theme`}
+                  onPress={() => setPreference(value)}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    minHeight: 40,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: active ? t.color.surface : 'transparent',
+                    opacity: pressed ? 0.85 : 1,
+                  })}
+                >
+                  <TotlText style={{ color: t.color.text, fontWeight: active ? '900' : '700' }}>{label}</TotlText>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Card>
+
+        <Card style={{ marginBottom: 12, padding: 16 }}>
           <View>
             {accountSections.map((section, sectionIdx) => (
               <View
@@ -252,7 +302,7 @@ export default function ProfileHomeScreen() {
                       lineHeight: 24,
                       letterSpacing: 0,
                       fontWeight: '900',
-                      color: 'rgba(15,23,42,0.95)',
+                      color: t.color.text,
                     }}
                   >
                     {section.title}

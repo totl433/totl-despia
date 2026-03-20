@@ -12,10 +12,12 @@ import { supabase } from './lib/supabase';
 import { initPushSdk, registerForPushNotifications, resetPushSessionState, updateHeartbeat } from './lib/push';
 import { ConfettiProvider } from './lib/confetti';
 import { LeagueUnreadCountsProvider } from './context/LeagueUnreadCountsContext';
+import { ThemePreferenceProvider, useThemePreference } from './context/ThemePreferenceContext';
 import { envStatus } from './env';
 import AuthScreen from './screens/AuthScreen';
 import AppNavigator from './navigation/AppNavigator';
 import PopupCardsProvider from './components/popupCards/PopupCardsProvider';
+import { lightThemeTokens } from './lib/lightThemeTokens';
 
 export default function AppRoot() {
   const [fontsReady, setFontsReady] = useState(false);
@@ -136,40 +138,50 @@ export default function AppRoot() {
 
   return (
     <SafeAreaProvider>
-      <ThemeProvider>
-        <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister }}>
-          {!envStatus.ok ? (
-            <Screen>
-              <TotlText variant="heading" style={{ marginBottom: 12 }}>
-                Setup needed
-              </TotlText>
-              <TotlText variant="muted" style={{ marginBottom: 12 }}>
-                Missing config for Supabase. This usually happens if the dev client was installed before the env values were
-                embedded.
-              </TotlText>
-              <Card style={{ marginBottom: 12 }}>
-                <TotlText variant="muted">{envStatus.message}</TotlText>
-              </Card>
-              <TotlText variant="muted" style={{ marginBottom: 12 }}>
-                Fix: close the app and reopen it. If it still happens, we’ll rebuild the iOS dev client.
-              </TotlText>
-              <Button title="Close and reopen the app" onPress={() => {}} variant="secondary" />
-            </Screen>
-          ) : authed ? (
-            <ConfettiProvider>
-              <LeagueUnreadCountsProvider>
-                <PopupCardsProvider>
-                  <AppNavigator />
-                </PopupCardsProvider>
-              </LeagueUnreadCountsProvider>
-            </ConfettiProvider>
-          ) : (
-            <AuthScreen />
-          )}
-        </PersistQueryClientProvider>
-        <StatusBar style="light" />
-      </ThemeProvider>
+      <ThemePreferenceProvider>
+        <ThemedApp authed={authed} />
+      </ThemePreferenceProvider>
     </SafeAreaProvider>
+  );
+}
+
+function ThemedApp({ authed }: { authed: boolean }) {
+  const { isDark } = useThemePreference();
+
+  return (
+    <ThemeProvider tokens={isDark ? undefined : lightThemeTokens}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister }}>
+        {!envStatus.ok ? (
+          <Screen>
+            <TotlText variant="heading" style={{ marginBottom: 12 }}>
+              Setup needed
+            </TotlText>
+            <TotlText variant="muted" style={{ marginBottom: 12 }}>
+              Missing config for Supabase. This usually happens if the dev client was installed before the env values were
+              embedded.
+            </TotlText>
+            <Card style={{ marginBottom: 12 }}>
+              <TotlText variant="muted">{envStatus.message}</TotlText>
+            </Card>
+            <TotlText variant="muted" style={{ marginBottom: 12 }}>
+              Fix: close the app and reopen it. If it still happens, we’ll rebuild the iOS dev client.
+            </TotlText>
+            <Button title="Close and reopen the app" onPress={() => {}} variant="secondary" />
+          </Screen>
+        ) : authed ? (
+          <ConfettiProvider>
+            <LeagueUnreadCountsProvider>
+              <PopupCardsProvider>
+                <AppNavigator />
+              </PopupCardsProvider>
+            </LeagueUnreadCountsProvider>
+          </ConfettiProvider>
+        ) : (
+          <AuthScreen />
+        )}
+      </PersistQueryClientProvider>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+    </ThemeProvider>
   );
 }
 
