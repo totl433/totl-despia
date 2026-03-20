@@ -2,6 +2,8 @@
  * Netlify function: GET `/.netlify/functions/pushDebugReport?playerId=<optional>`
  * Auth: `Authorization: Bearer <Supabase access token>` (validates via anon client).
  *
+ * deploy-bump: 2026-03-20 — force functions bundle refresh if Netlify skipped packaging (see deploy log "All files already uploaded").
+ *
  * Staging (totl-staging): deploy a branch that includes this file, and set in the site env:
  * `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
  * `ONESIGNAL_APP_ID`, `ONESIGNAL_REST_API_KEY`
