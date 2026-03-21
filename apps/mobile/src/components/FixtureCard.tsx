@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import WinnerShimmer from './WinnerShimmer';
 import { TEAM_BADGES } from '../lib/teamBadges';
+import { formatGoalMinuteForScorerLine, parseGoalEvents } from '../lib/goalEvents';
 import { areTeamNamesSimilar, getMediumName } from '../../../../src/lib/teamNames';
 import { formatLocalTimeHHmm } from '../lib/dateTime';
 
@@ -30,7 +31,13 @@ export type LiveScoreLike = {
   goals?: unknown;
 };
 
-type GoalEvent = { team?: string | null; scorer?: string | null; minute?: number | null; isOwnGoal?: boolean | null };
+type GoalEvent = {
+  team?: string | null;
+  scorer?: string | null;
+  minute?: number | null;
+  isOwnGoal?: boolean | null;
+  isPenalty?: boolean | null;
+};
 
 function formatMinute(status: LiveStatus, minute: number | null | undefined) {
   if (status === 'FINISHED') return 'FT';
@@ -54,19 +61,6 @@ function getSurname(fullName: string | null | undefined): string {
   if (trimmed.toLowerCase().includes('own goal') || trimmed.toLowerCase().includes('(og)')) return trimmed;
   const parts = trimmed.split(/\s+/);
   return parts.length ? parts[parts.length - 1] : trimmed;
-}
-
-function parseGoals(raw: unknown): GoalEvent[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((g) => (g && typeof g === 'object' ? (g as any) : null))
-    .filter(Boolean)
-    .map((g) => ({
-      team: typeof g.team === 'string' ? g.team : null,
-      scorer: typeof g.scorer === 'string' ? g.scorer : null,
-      minute: typeof g.minute === 'number' ? g.minute : null,
-      isOwnGoal: typeof g.isOwnGoal === 'boolean' ? g.isOwnGoal : null,
-    }));
 }
 
 export default function FixtureCard({
@@ -221,7 +215,7 @@ export default function FixtureCard({
     compact = false
   ) => {
     if (!showScore) return null;
-    const goals = parseGoals((ls as any)?.goals);
+    const goals = parseGoalEvents((ls as any)?.goals) as GoalEvent[];
     if (!goals.length) return null;
 
     const teamGoals = goals.filter((g) => {
@@ -231,21 +225,20 @@ export default function FixtureCard({
     });
     if (!teamGoals.length) return null;
 
-    const byScorer = new Map<string, Array<{ minute: number; isOwnGoal: boolean }>>();
+    const byScorer = new Map<string, GoalEvent[]>();
     teamGoals.forEach((g) => {
       const scorer = getSurname(g.scorer);
       const minute = typeof g.minute === 'number' ? g.minute : null;
       if (minute === null) return;
-      const isOwnGoal = g.isOwnGoal === true;
       const arr = byScorer.get(scorer) ?? [];
-      arr.push({ minute, isOwnGoal });
+      arr.push(g);
       byScorer.set(scorer, arr);
     });
     if (!byScorer.size) return null;
 
     const lines = Array.from(byScorer.entries()).map(([scorer, mins]) => {
-      const sorted = [...mins].sort((a, b) => a.minute - b.minute);
-      const minutesDisplay = sorted.map((m) => (m.isOwnGoal ? `${m.minute}' (OG)` : `${m.minute}'`)).join(', ');
+      const sorted = [...mins].sort((a, b) => Number(a.minute ?? 0) - Number(b.minute ?? 0));
+      const minutesDisplay = sorted.map((m) => formatGoalMinuteForScorerLine(m)).join(', ');
       return `${scorer} ${minutesDisplay}`;
     });
 

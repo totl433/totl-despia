@@ -16,6 +16,11 @@ function FixtureHeaderMorph({
   awayBadge,
   homeTeamFontWeight,
   awayTeamFontWeight,
+  hasScore,
+  homeScoreValue,
+  awayScoreValue,
+  homeRedCardCount = 0,
+  awayRedCardCount = 0,
 }: {
   expanded: boolean;
   headerPrimary: string;
@@ -25,8 +30,27 @@ function FixtureHeaderMorph({
   awayBadge: any | null;
   homeTeamFontWeight: '600' | '800';
   awayTeamFontWeight: '600' | '800';
+  hasScore: boolean;
+  homeScoreValue?: string;
+  awayScoreValue?: string;
+  homeRedCardCount?: number;
+  awayRedCardCount?: number;
 }) {
   const t = useTokens();
+  const showHomeRedCard = hasScore && homeRedCardCount > 0;
+  const showAwayRedCard = hasScore && awayRedCardCount > 0;
+
+  const redCardMarker = (
+    <View
+      style={{
+        width: 6,
+        height: 9,
+        borderRadius: 1.5,
+        backgroundColor: '#F0626E',
+      }}
+    />
+  );
+
   return (
     <>
       <View
@@ -52,10 +76,26 @@ function FixtureHeaderMorph({
             {headerHome}
           </TotlText>
         </View>
-        <View style={{ minWidth: 118, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ minWidth: hasScore ? 134 : 118, alignItems: 'center', justifyContent: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
             {homeBadge ? <Image source={homeBadge} style={{ width: 24, height: 24, marginRight: 6 }} /> : null}
-            <TotlText style={{ fontFamily: t.font.medium, color: t.color.text, fontSize: 14, lineHeight: 20 }}>{headerPrimary}</TotlText>
+            {hasScore ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                {showHomeRedCard ? <View style={{ marginRight: 3 }}>{redCardMarker}</View> : null}
+                <TotlText style={{ fontFamily: t.font.medium, color: t.color.text, fontSize: 14, lineHeight: 20 }}>
+                  {homeScoreValue ?? '0'}
+                </TotlText>
+                <TotlText style={{ fontFamily: t.font.medium, color: t.color.text, fontSize: 14, lineHeight: 20, marginHorizontal: 7 }}>
+                  -
+                </TotlText>
+                <TotlText style={{ fontFamily: t.font.medium, color: t.color.text, fontSize: 14, lineHeight: 20 }}>
+                  {awayScoreValue ?? '0'}
+                </TotlText>
+                {showAwayRedCard ? <View style={{ marginLeft: 3 }}>{redCardMarker}</View> : null}
+              </View>
+            ) : (
+              <TotlText style={{ fontFamily: t.font.medium, color: t.color.text, fontSize: 14, lineHeight: 20 }}>{headerPrimary}</TotlText>
+            )}
             {awayBadge ? <Image source={awayBadge} style={{ width: 24, height: 24, marginLeft: 6 }} /> : null}
           </View>
         </View>
@@ -112,6 +152,8 @@ export default function ExpandedFixtureCard({
   tabsAboveScorers,
   homeScorers,
   awayScorers,
+  homeRedCardCount = 0,
+  awayRedCardCount = 0,
   kickoffDetail,
   hideStatusRowCompletely,
   hideRepeatedKickoffInDetails,
@@ -167,6 +209,11 @@ export default function ExpandedFixtureCard({
             awayBadge={awayBadge}
             homeTeamFontWeight={homeTeamFontWeight}
             awayTeamFontWeight={awayTeamFontWeight}
+            hasScore={hasScore}
+            homeScoreValue={hasScore ? headerPrimary.split(' - ')[0] : undefined}
+            awayScoreValue={hasScore ? headerPrimary.split(' - ')[1] : undefined}
+            homeRedCardCount={homeRedCardCount}
+            awayRedCardCount={awayRedCardCount}
           />
         </View>
 

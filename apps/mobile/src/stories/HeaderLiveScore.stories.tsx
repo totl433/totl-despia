@@ -48,6 +48,10 @@ export const Live: Story = {
   args: {
     scoreLabel: '1/10',
     fill: true,
+    expandedStats: [
+      { value: '#3', icon: 'people-outline', trailingValue: '46' },
+      { value: 'Top 7%' },
+    ],
   },
 };
 
@@ -59,6 +63,10 @@ export const LiveWithTicker: Story = {
     tickerEventKey: 'storybook-preview-goal',
     tickerIntervalMs: 2500,
     previewTickerLoop: true,
+    expandedStats: [
+      { value: '#3', icon: 'people-outline', trailingValue: '46' },
+      { value: 'Top 7%' },
+    ],
   },
 };
 
@@ -67,5 +75,9 @@ export const ResultsPreGw: Story = {
     scoreLabel: '6/10',
     fill: true,
     live: false,
+    expandedStats: [
+      { value: '#3', icon: 'people-outline', trailingValue: '46' },
+      { value: 'Top 7%' },
+    ],
   },
 };

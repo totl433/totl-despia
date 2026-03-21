@@ -10,6 +10,7 @@ export type LeaderboardRow = {
   name: string;
   value: number;
   secondaryValue?: number;
+  compactValues?: Array<number | null | undefined>;
   avatar_url?: string | null;
 };
 
@@ -23,10 +24,18 @@ function formatRank(rank: number, tied: boolean): string {
   return tied ? `${rank}=` : `${rank}`;
 }
 
+function truncateName(value: string, maxChars: number | null): string {
+  const trimmed = value.trim();
+  if (!trimmed || !maxChars || trimmed.length <= maxChars) return trimmed;
+  return `${trimmed.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
+}
+
 export default function LeaderboardTable({
   rows,
   valueLabel,
   secondaryValueLabel,
+  compactValueLabels,
+  compactLiveValueLabel,
   highlightUserId,
   winnerUserIds,
   style,
@@ -36,6 +45,8 @@ export default function LeaderboardTable({
   rows: LeaderboardRow[];
   valueLabel: string;
   secondaryValueLabel?: string;
+  compactValueLabels?: string[];
+  compactLiveValueLabel?: string;
   highlightUserId?: string | null;
   /** When provided, rows with these user_ids get the winner shiny pill background (monthly tab). */
   winnerUserIds?: string[];
@@ -44,6 +55,20 @@ export default function LeaderboardTable({
   onPressRow?: (row: LeaderboardRow) => void;
 }) {
   const t = useTokens();
+  const compactColumnWidth = React.useMemo(() => {
+    const count = compactValueLabels?.length ?? 0;
+    if (count >= 5) return 28;
+    if (count === 4) return 30;
+    return 34;
+  }, [compactValueLabels?.length]);
+  const hasCompactColumns = (compactValueLabels?.length ?? 0) > 0;
+  const valueColumnWidth = hasCompactColumns ? 56 : 70;
+  const nameCharacterCap = React.useMemo(() => {
+    const count = compactValueLabels?.length ?? 0;
+    if (count >= 5) return 11;
+    if (count >= 3) return 14;
+    return null;
+  }, [compactValueLabels?.length]);
 
   const ranked = React.useMemo(() => {
     const out: Array<{ row: LeaderboardRow; rank: number; tied: boolean }> = [];
@@ -128,6 +153,7 @@ export default function LeaderboardTable({
       const isWinner = !!winnerUserIds?.length && winnerUserIds.includes(item.row.user_id);
       const showTrophy = item.rank === 1;
       const AVATAR_SIZE = 20;
+      const displayName = truncateName(item.row.name, hasCompactColumns ? nameCharacterCap : null);
       const rowInner = (
         <>
           <TotlText style={{ width: 36, fontFamily: t.font.medium, fontSize: 13, lineHeight: 18, color: isWinner ? '#fff' : t.color.text }}>{formatRank(item.rank, item.tied)}</TotlText>
@@ -156,21 +182,40 @@ export default function LeaderboardTable({
             <TotlText
               variant="caption"
               numberOfLines={1}
+              ellipsizeMode="tail"
               style={{
                 fontFamily: isWinner ? t.font.medium : t.font.regular,
                 color: isWinner ? '#fff' : t.color.text,
                 flexShrink: 1,
+                minWidth: 0,
               }}
             >
-              {item.row.name}
+              {displayName}
             </TotlText>
           </View>
+          {hasCompactColumns
+            ? compactValueLabels!.map((label, index) => (
+                <TotlText
+                  key={`${item.row.user_id}-${label}`}
+                  style={{
+                    width: compactColumnWidth,
+                    textAlign: 'center',
+                    fontFamily: t.font.medium,
+                    fontSize: 12,
+                    lineHeight: 16,
+                    color: isWinner ? '#fff' : t.color.muted,
+                  }}
+                >
+                  {typeof item.row.compactValues?.[index] === 'number' ? String(item.row.compactValues?.[index]) : '—'}
+                </TotlText>
+              ))
+            : null}
           {secondaryValueLabel ? (
             <TotlText style={{ width: 62, textAlign: 'center', fontFamily: t.font.medium, fontSize: 13, lineHeight: 18, color: isWinner ? '#fff' : t.color.text }}>
               {typeof item.row.secondaryValue === 'number' ? String(item.row.secondaryValue) : '—'}
             </TotlText>
           ) : null}
-          <TotlText style={{ width: 70, textAlign: 'center', fontFamily: t.font.medium, fontSize: 13, lineHeight: 18, color: isWinner ? '#fff' : t.color.text }}>{String(item.row.value)}</TotlText>
+          <TotlText style={{ width: valueColumnWidth, textAlign: 'center', fontFamily: t.font.medium, fontSize: 13, lineHeight: 18, color: isWinner ? '#fff' : t.color.text }}>{String(item.row.value)}</TotlText>
         </>
       );
       return (
@@ -203,7 +248,7 @@ export default function LeaderboardTable({
         </Pressable>
       );
     },
-    [highlightUserId, onPressRow, secondaryValueLabel, t, winnerUserIds]
+    [compactColumnWidth, compactValueLabels, hasCompactColumns, highlightUserId, nameCharacterCap, onPressRow, secondaryValueLabel, t, valueColumnWidth, winnerUserIds]
   );
 
   const Separator = () => (
@@ -232,12 +277,43 @@ export default function LeaderboardTable({
         <TotlText variant="caption" style={{ color: t.color.muted, flex: 1, fontFamily: t.font.medium }}>
           Player
         </TotlText>
+        {hasCompactColumns
+          ? compactValueLabels!.map((label) => (
+              <View
+                key={label}
+                style={{ width: compactColumnWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+              >
+                {compactLiveValueLabel === label ? (
+                  <View
+                    style={{
+                      width: 5,
+                      height: 5,
+                      borderRadius: 999,
+                      backgroundColor: '#EF4444',
+                      marginRight: 4,
+                    }}
+                  />
+                ) : null}
+                <TotlText
+                  variant="caption"
+                  style={{
+                    color: t.color.muted,
+                    textAlign: 'center',
+                    fontFamily: t.font.medium,
+                    fontSize: 11,
+                  }}
+                >
+                  {label}
+                </TotlText>
+              </View>
+            ))
+          : null}
         {secondaryValueLabel ? (
           <TotlText variant="caption" style={{ color: t.color.muted, width: 62, textAlign: 'center', fontFamily: t.font.medium }}>
             {secondaryValueLabel}
           </TotlText>
         ) : null}
-        <TotlText variant="caption" style={{ color: t.color.muted, width: 70, textAlign: 'center', fontFamily: t.font.medium }}>
+        <TotlText variant="caption" style={{ color: t.color.muted, width: valueColumnWidth, textAlign: 'center', fontFamily: t.font.medium }}>
           {valueLabel}
         </TotlText>
       </View>

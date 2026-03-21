@@ -1,5 +1,5 @@
 import type { ImageSourcePropType } from 'react-native';
-import type { Pick } from '@totl/domain';
+import type { LiveStatus, Pick } from '@totl/domain';
 import type { GameweekState } from '../../lib/gameweekState';
 
 export interface MiniFixtureCardProps {
@@ -24,11 +24,14 @@ export interface MiniFixtureCardProps {
   primaryLabel: string;
   primaryExpandedLabel: string;
   secondaryLabel: string;
+  fixtureStatus?: LiveStatus | 'SCHEDULED';
 
   gwState: GameweekState;
   pick: Pick | undefined;
   derivedOutcome: Pick | null;
   hasScore: boolean;
+  compactVisualTone?: 'default' | 'finished-grey';
+  compactLiveMinutePill?: boolean;
 
   percentBySide: Record<Pick, number>;
   showExpandedPercentages: boolean;
@@ -40,6 +43,8 @@ export interface MiniFixtureCardProps {
 
   homeScorers: string[];
   awayScorers: string[];
+  homeRedCardCount?: number;
+  awayRedCardCount?: number;
 
   fixtureDateLabel: string;
 }
@@ -81,6 +86,8 @@ export interface ExpandedFixtureCardProps {
 
   homeScorers: string[];
   awayScorers: string[];
+  homeRedCardCount?: number;
+  awayRedCardCount?: number;
 
   kickoffDetail: string;
   hideStatusRowCompletely: boolean;

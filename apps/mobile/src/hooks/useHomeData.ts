@@ -277,6 +277,7 @@ export function useHomeData() {
   return {
     nowMs,
     hasAccessToken,
+    userId,
     home,
     homeLoading: Boolean(homeLoading),
     homeError,

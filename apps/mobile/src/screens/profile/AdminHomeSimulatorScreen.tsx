@@ -16,7 +16,8 @@ import HeaderTotlLogo from '../../components/HeaderTotlLogo';
 import HeaderLiveScore from '../../components/HeaderLiveScore';
 import PageHeader from '../../components/PageHeader';
 import { api } from '../../lib/api';
-import { supabase } from '../../lib/supabase';
+import { countRedCardsForTeam } from '../../lib/goalEvents';
+import { fetchTeamPositionsWithFallback } from '../../lib/teamPositions';
 import usePopupCards from '../../hooks/usePopupCards';
 import MiniFixtureCard from '../../components/home/MiniFixtureCard';
 import ExpandedFixtureCard from '../../components/home/ExpandedFixtureCard';
@@ -32,6 +33,7 @@ import {
   sortFixturesByFixtureIndex,
 } from '../../lib/homeFixtureUi';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
+import { useThemePreference, type ThemePreference } from '../../context/ThemePreferenceContext';
 
 type SimGameState = 'GW_OPEN' | 'GW_PREDICTED' | 'DEADLINE_PASSED' | 'LIVE' | 'RESULTS_PRE_GW';
 type SimFixtureStatus = 'SCHEDULED' | 'IN_PLAY' | 'PAUSED' | 'FINISHED';
@@ -143,7 +145,7 @@ function buildFixtures(state: SimGameState): SimFixture[] {
         status = 'FINISHED';
         homeScore = baseHome + 1;
         awayScore = baseAway;
-      } else if (i <= 6) {
+      } else if (i <= 4) {
         status = i % 2 === 0 ? 'PAUSED' : 'IN_PLAY';
         minute = i % 2 === 0 ? 45 : 7 + i * 8;
         homeScore = baseHome;
@@ -186,6 +188,7 @@ export default function AdminHomeSimulatorScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
   const { height: screenHeight } = useWindowDimensions();
+  const { effectiveTheme, setPreference } = useThemePreference();
   const { hasActivePopupStack, openMainSimulatorStack, openSimulatorCard, openWelcomeSimulatorStack } = usePopupCards();
   const scrollRef = React.useRef<Animated.ScrollView | null>(null);
   const scrollYRef = React.useRef(0);
@@ -205,58 +208,12 @@ export default function AdminHomeSimulatorScreen() {
   const { data: teamPositionsByCode } = useQuery({
     queryKey: ['predictions-team-positions-hp-sim'],
     queryFn: async () => {
-      const fromPredictions = await api
+      const seedPositions = await api
         .getPredictions()
-        .then((res) => {
-          const out: Record<string, number> = {};
-          const raw = (res?.teamPositions ?? {}) as Record<string, unknown>;
-          Object.entries(raw).forEach(([code, positionRaw]) => {
-            const normalizedCode = String(code ?? '').trim().toUpperCase();
-            const position = Number(positionRaw);
-            if (!normalizedCode) return;
-            if (!Number.isFinite(position) || position <= 0) return;
-            out[normalizedCode] = Math.trunc(position);
-          });
-          return out;
-        })
-        .catch(() => ({} as Record<string, number>));
+        .then((res) => (res?.teamPositions ?? {}) as Record<string, unknown>)
+        .catch(() => undefined);
 
-      if (Object.keys(fromPredictions).length > 0) return fromPredictions;
-
-      const { data: meta } = await supabase.from('app_meta').select('current_gw').eq('id', 1).maybeSingle();
-      const currentGw = Number((meta as { current_gw?: unknown })?.current_gw);
-      const gwToTry = Number.isFinite(currentGw) && currentGw > 0 ? Math.trunc(currentGw) : null;
-
-      const readPositionsForGw = async (gw: number) => {
-        const { data } = await supabase.from('app_team_forms').select('team_code, league_position').eq('gw', gw);
-        const out: Record<string, number> = {};
-        (data ?? []).forEach((row: { team_code?: string; league_position?: number }) => {
-          const code = String(row?.team_code ?? '').trim().toUpperCase();
-          const pos = Number(row?.league_position);
-          if (!code) return;
-          if (!Number.isFinite(pos) || pos <= 0) return;
-          out[code] = Math.trunc(pos);
-        });
-        return out;
-      };
-
-      if (gwToTry) {
-        const fromCurrentGw = await readPositionsForGw(gwToTry);
-        if (Object.keys(fromCurrentGw).length > 0) return fromCurrentGw;
-      }
-
-      const { data: latestWithPosition } = await supabase
-        .from('app_team_forms')
-        .select('gw')
-        .not('league_position', 'is', null)
-        .order('gw', { ascending: false })
-        .limit(1);
-      const fallbackGw = Number(latestWithPosition?.[0]?.gw);
-      if (Number.isFinite(fallbackGw) && fallbackGw > 0) {
-        return readPositionsForGw(Math.trunc(fallbackGw));
-      }
-
-      return {} as Record<string, number>;
+      return fetchTeamPositionsWithFallback(seedPositions);
     },
     staleTime: 60_000,
   });
@@ -288,6 +245,8 @@ export default function AdminHomeSimulatorScreen() {
     });
     return m;
   }, [fixtures]);
+
+  const simulatorBackgroundColor = effectiveTheme === 'dark' ? '#1A2435' : t.color.background;
 
   const userPicks = React.useMemo(() => {
     const o: Record<string, Pick | undefined> = {};
@@ -634,6 +593,13 @@ export default function AdminHomeSimulatorScreen() {
     ),
     [gameStateControl, headerContextControl]
   );
+  const headerExpandedStats = React.useMemo(
+    () => [
+      { value: '#3', icon: 'people-outline' as const, trailingValue: '46' },
+      { value: 'Top 7%' },
+    ],
+    []
+  );
 
   React.useEffect(() => {
     setStateMenuOpen(false);
@@ -641,57 +607,59 @@ export default function AdminHomeSimulatorScreen() {
 
   return (
     <Screen fullBleed>
-      <AppTopHeader
-        embedded
-        onPressChat={() => navigation.navigate('ChatHub')}
-        onPressProfile={() => navigation.navigate('Profile')}
-        title={
-          showLiveHeaderScore || showStaticResultsHeaderScore || showHeaderTotlLogo ? undefined : headerTitle
-        }
-        centerContent={
-          showLiveHeaderScore ? (
-            <HeaderLiveScore
-              scoreLabel={liveScore}
-              fill
-              tickerEventKey="hp-sim-preview-goal"
-              tickerIntervalMs={10_000}
-              previewTickerLoop
-              tickerEvent={{
-                scorerName: 'Stratton',
-                minuteLabel: "(58')",
-                homeCode: 'TOT',
-                awayCode: 'NFO',
-                homeBadge: TEAM_BADGES.TOT,
-                awayBadge: TEAM_BADGES.NFO,
-                homeScore: '2',
-                awayScore: '1',
-                scoringSide: 'home',
-              }}
-            />
-          ) : showStaticResultsHeaderScore ? (
-            <HeaderLiveScore scoreLabel={liveScore} fill live={false} />
-          ) : showHeaderTotlLogo ? (
-            <HeaderTotlLogo />
-          ) : undefined
-        }
-        rightAction={headerRightAction}
-        hasLiveGames={gwState === 'LIVE'}
-        showLeftLiveBadge={!showLiveHeaderScore && !showStaticResultsHeaderScore}
-      />
+      <View style={{ flex: 1, backgroundColor: simulatorBackgroundColor }}>
+        <AppTopHeader
+          embedded
+          onPressChat={() => navigation.navigate('ChatHub')}
+          onPressProfile={() => navigation.navigate('Profile')}
+          title={
+            showLiveHeaderScore || showStaticResultsHeaderScore || showHeaderTotlLogo ? undefined : headerTitle
+          }
+          centerContent={
+            showLiveHeaderScore ? (
+              <HeaderLiveScore
+                scoreLabel={liveScore}
+                fill
+                tickerEventKey="hp-sim-preview-goal"
+                tickerIntervalMs={10_000}
+                previewTickerLoop
+                expandedStats={headerExpandedStats}
+                tickerEvent={{
+                  scorerName: 'Stratton',
+                  minuteLabel: "(58')",
+                  homeCode: 'TOT',
+                  awayCode: 'NFO',
+                  homeBadge: TEAM_BADGES.TOT,
+                  awayBadge: TEAM_BADGES.NFO,
+                  homeScore: '2',
+                  awayScore: '1',
+                  scoringSide: 'home',
+                }}
+              />
+            ) : showStaticResultsHeaderScore ? (
+              <HeaderLiveScore scoreLabel={liveScore} fill live={false} expandedStats={headerExpandedStats} />
+            ) : showHeaderTotlLogo ? (
+              <HeaderTotlLogo />
+            ) : undefined
+          }
+          rightAction={headerRightAction}
+          hasLiveGames={gwState === 'LIVE'}
+          showLeftLiveBadge={!showLiveHeaderScore && !showStaticResultsHeaderScore}
+        />
 
-      <Animated.ScrollView
-        ref={scrollRef}
-        style={{ flex: 1 }}
-        onScroll={(e) => {
-          scrollYRef.current = e.nativeEvent.contentOffset.y;
-        }}
-        scrollEventThrottle={16}
-        contentContainerStyle={{
-          paddingHorizontal: t.space[4],
-          paddingTop: 8,
-          paddingBottom: 176 + FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
-        }}
-      >
+        <Animated.ScrollView
+          ref={scrollRef}
+          style={{ flex: 1, backgroundColor: simulatorBackgroundColor }}
+          onScroll={(e) => {
+            scrollYRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
+          contentContainerStyle={{
+            paddingHorizontal: t.space[4],
+            paddingTop: 8,
+            paddingBottom: 176 + FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
+          }}
+        >
         {state === 'GW_OPEN' ? (
           <Pressable
             accessibilityRole="button"
@@ -937,7 +905,21 @@ export default function AdminHomeSimulatorScreen() {
                                     elevation: isMiniExpanded ? 6 : 2,
                                   }}
                                 >
-                                  <View ref={(node) => { fixtureNodeRefs.current[fixtureId] = node; }}>
+                                  <View
+                                    ref={(node) => { fixtureNodeRefs.current[fixtureId] = node; }}
+                                    style={
+                                      gwState === 'LIVE' && !isMiniExpanded && (st === 'IN_PLAY' || st === 'PAUSED')
+                                        ? {
+                                            borderRadius: 16,
+                                            shadowColor: effectiveTheme === 'dark' ? '#000000' : '#0F172A',
+                                            shadowOpacity: effectiveTheme === 'dark' ? 0.72 : 0.22,
+                                            shadowRadius: effectiveTheme === 'dark' ? 32 : 18,
+                                            shadowOffset: { width: 0, height: effectiveTheme === 'dark' ? 18 : 10 },
+                                            elevation: effectiveTheme === 'dark' ? 18 : 10,
+                                          }
+                                        : undefined
+                                    }
+                                  >
                                     <MiniFixtureCard
                                       fixtureId={fixtureId}
                                       isExpanded={isMiniExpanded}
@@ -958,10 +940,17 @@ export default function AdminHomeSimulatorScreen() {
                                       primaryLabel={miniPrimaryLabel}
                                       primaryExpandedLabel={miniPrimaryExpandedLabel}
                                       secondaryLabel={miniSecondaryLabel}
+                                      fixtureStatus={st}
                                       gwState={gwState}
                                       pick={pick}
                                       derivedOutcome={derivedOutcome}
                                       hasScore={hasScore}
+                                      compactVisualTone={
+                                        (gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW') && st === 'FINISHED'
+                                          ? 'finished-grey'
+                                          : 'default'
+                                      }
+                                      compactLiveMinutePill={gwState === 'LIVE'}
                                       percentBySide={percentBySide}
                                       showExpandedPercentages={showExpandedPercentages}
                                       homeFormColors={homeFormColors}
@@ -1030,6 +1019,10 @@ export default function AdminHomeSimulatorScreen() {
                           const awayBadge = TEAM_BADGES[awayCode] ?? null;
                           const headerHome = getSimMediumName(String(f.home_name ?? f.home_team ?? homeCode ?? 'Home'));
                           const headerAway = getSimMediumName(String(f.away_name ?? f.away_team ?? awayCode ?? 'Away'));
+                          const homeCandidates = [String(f.home_name ?? ''), String(f.home_team ?? ''), headerHome].map((v) => v.toLowerCase());
+                          const awayCandidates = [String(f.away_name ?? ''), String(f.away_team ?? ''), headerAway].map((v) => v.toLowerCase());
+                          const homeRedCardCount = countRedCardsForTeam((ls as any)?.red_cards, homeCandidates);
+                          const awayRedCardCount = countRedCardsForTeam((ls as any)?.red_cards, awayCandidates);
                           const pick = userPicks[String(fixture_index)];
                           const homeTeamFontWeight =
                             pick === 'H' ? '800' : pick === 'D' ? '600' : pick === 'A' ? '600' : '800';
@@ -1122,6 +1115,8 @@ export default function AdminHomeSimulatorScreen() {
                                 tabsAboveScorers={tabsAboveScorers}
                                 homeScorers={homeScorers}
                                 awayScorers={awayScorers}
+                                homeRedCardCount={homeRedCardCount}
+                                awayRedCardCount={awayRedCardCount}
                                 kickoffDetail={kickoffDetail}
                                 hideStatusRowCompletely={hideStatusRowCompletely}
                                 hideRepeatedKickoffInDetails={hideRepeatedKickoffInDetails}
@@ -1146,18 +1141,18 @@ export default function AdminHomeSimulatorScreen() {
             )}
           </Animated.View>
         </View>
-      </Animated.ScrollView>
+        </Animated.ScrollView>
 
-      <View
-        style={{
-          paddingHorizontal: t.space[4],
-          paddingTop: 6,
-          paddingBottom: 12,
-          borderTopWidth: 1,
-          borderTopColor: 'rgba(148,163,184,0.12)',
-          backgroundColor: 'rgba(2,6,23,0.92)',
-        }}
-      >
+        <View
+          style={{
+            paddingHorizontal: t.space[4],
+            paddingTop: 6,
+            paddingBottom: 12,
+            borderTopWidth: 1,
+            borderTopColor: effectiveTheme === 'dark' ? 'rgba(148,163,184,0.12)' : 'rgba(15,23,42,0.08)',
+            backgroundColor: effectiveTheme === 'dark' ? 'rgba(13,18,30,0.94)' : 'rgba(255,255,255,0.96)',
+          }}
+        >
         <PageHeader
           title=""
           leftAction={
@@ -1182,6 +1177,52 @@ export default function AdminHomeSimulatorScreen() {
         />
 
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
+          {([
+            { key: 'dark', label: 'Dark', value: 'dark' },
+            { key: 'light', label: 'Light', value: 'light' },
+          ] as Array<{ key: string; label: string; value: ThemePreference }>).map((button) => {
+            const active = effectiveTheme === button.value;
+            return (
+              <Pressable
+                key={button.key}
+                accessibilityRole="button"
+                accessibilityLabel={`Switch simulator theme to ${button.label.toLowerCase()} mode`}
+                onPress={() => setPreference(button.value)}
+                style={({ pressed }) => ({
+                  marginHorizontal: 4,
+                  marginBottom: 6,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: active
+                    ? effectiveTheme === 'dark'
+                      ? 'rgba(255,255,255,0.34)'
+                      : 'rgba(15,23,42,0.2)'
+                    : effectiveTheme === 'dark'
+                      ? 'rgba(255,255,255,0.12)'
+                      : 'rgba(15,23,42,0.08)',
+                  backgroundColor: active
+                    ? effectiveTheme === 'dark'
+                      ? 'rgba(255,255,255,0.12)'
+                      : 'rgba(15,23,42,0.08)'
+                    : 'transparent',
+                  opacity: pressed ? 0.8 : 1,
+                })}
+              >
+                <TotlText
+                  style={{
+                    fontSize: 11,
+                    lineHeight: 13,
+                    fontWeight: '800',
+                    color: effectiveTheme === 'dark' ? '#E2E8F0' : '#0F172A',
+                  }}
+                >
+                  {button.label}
+                </TotlText>
+              </Pressable>
+            );
+          })}
           {[
             { key: 'results', label: 'Results', onPress: () => openSimulatorCard('results') },
             { key: 'winners', label: 'Winners', onPress: () => openSimulatorCard('winners') },
@@ -1203,8 +1244,13 @@ export default function AdminHomeSimulatorScreen() {
                 paddingVertical: 8,
                 borderRadius: 999,
                 borderWidth: 1,
-                borderColor: 'rgba(28,131,118,0.28)',
-                backgroundColor: hasActivePopupStack ? 'rgba(255,255,255,0.05)' : 'rgba(28,131,118,0.08)',
+                borderColor: effectiveTheme === 'dark' ? 'rgba(28,131,118,0.28)' : 'rgba(28,131,118,0.22)',
+                backgroundColor:
+                  hasActivePopupStack
+                    ? effectiveTheme === 'dark'
+                      ? 'rgba(255,255,255,0.05)'
+                      : 'rgba(15,23,42,0.04)'
+                    : 'rgba(28,131,118,0.08)',
                 opacity: hasActivePopupStack ? 0.45 : pressed ? 0.8 : 1,
               })}
             >
@@ -1213,13 +1259,14 @@ export default function AdminHomeSimulatorScreen() {
                   fontSize: 11,
                   lineHeight: 13,
                   fontWeight: '800',
-                  color: '#E2E8F0',
+                  color: effectiveTheme === 'dark' ? '#E2E8F0' : '#0F172A',
                 }}
               >
                 {button.label}
               </TotlText>
             </Pressable>
           ))}
+        </View>
         </View>
       </View>
     </Screen>

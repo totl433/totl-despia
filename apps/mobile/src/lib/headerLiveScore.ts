@@ -1,5 +1,6 @@
 import type { Fixture, LiveScore, LiveStatus, Pick } from '@totl/domain';
 
+import { formatGoalMinuteForTicker, parseGoalEvents } from './goalEvents';
 import { TEAM_BADGES } from './teamBadges';
 
 export type HeaderScoreSummary = {
@@ -25,11 +26,18 @@ export type HeaderTickerEvent = {
   scoringSide: 'home' | 'away';
 };
 
+export type HeaderExpandedStat = {
+  value: string;
+  icon?: 'people-outline';
+  trailingValue?: string;
+};
+
 type GoalEvent = {
   team?: string | null;
   scorer?: string | null;
   minute?: number | null;
   isOwnGoal?: boolean | null;
+  isPenalty?: boolean | null;
 };
 
 function normalize(value: string | null | undefined): string {
@@ -39,19 +47,6 @@ function normalize(value: string | null | undefined): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function parseGoals(raw: unknown): GoalEvent[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((goal) => (goal && typeof goal === 'object' ? (goal as Record<string, unknown>) : null))
-    .filter(Boolean)
-    .map((goal) => ({
-      team: typeof goal?.team === 'string' ? goal.team : null,
-      scorer: typeof goal?.scorer === 'string' ? goal.scorer : null,
-      minute: typeof goal?.minute === 'number' ? goal.minute : null,
-      isOwnGoal: typeof goal?.isOwnGoal === 'boolean' ? goal.isOwnGoal : null,
-    }));
 }
 
 function getTickerScorerName(value: string | null | undefined): string {
@@ -90,6 +85,25 @@ function parseUpdatedAtMs(value: string | null | undefined): number {
   if (!value) return 0;
   const ms = new Date(value).getTime();
   return Number.isFinite(ms) ? ms : 0;
+}
+
+function formatTopPercent(rank: number, total: number): string {
+  const percent = Math.max(1, Math.ceil((rank / total) * 100));
+  return `Top ${percent}%`;
+}
+
+export function buildHeaderExpandedStats(
+  options?: { gwRank?: number | null; gwTotal?: number | null }
+): HeaderExpandedStat[] {
+  const rank = options?.gwRank ?? null;
+  const total = options?.gwTotal ?? null;
+
+  if (!rank || rank <= 0 || !total || total <= 0) return [];
+
+  return [
+    { value: `#${rank}`, icon: 'people-outline', trailingValue: String(total) },
+    { value: formatTopPercent(rank, total) },
+  ];
 }
 
 export function buildHeaderScoreSummary({
@@ -159,13 +173,14 @@ export function buildHeaderTickerEvent({
       const fixture = fixtureByIndex.get(fixtureIndex);
       if (!fixture) return null;
 
-      const goals = parseGoals(liveScore.goals);
+      const goals = parseGoalEvents(liveScore.goals) as GoalEvent[];
       const latestGoal = goals[goals.length - 1];
       if (!latestGoal) return null;
 
       return {
         fixture,
         liveScore,
+        goalIndex: goals.length - 1,
         latestGoal,
         updatedAtMs: parseUpdatedAtMs(liveScore.updated_at ?? null),
       };
@@ -187,7 +202,7 @@ export function buildHeaderTickerEvent({
   return {
     tickerEvent: {
       scorerName: getTickerScorerName(latestGoal.scorer),
-      minuteLabel: typeof latestGoal.minute === 'number' ? `(${latestGoal.minute}')` : '',
+      minuteLabel: formatGoalMinuteForTicker(latestGoal),
       homeCode,
       awayCode,
       homeBadge: TEAM_BADGES[homeCode],
@@ -198,12 +213,10 @@ export function buildHeaderTickerEvent({
     },
     tickerEventKey: [
       fixture.fixture_index,
-      liveScore.updated_at ?? '',
+      latest.goalIndex,
       latestGoal.team ?? '',
       latestGoal.scorer ?? '',
       latestGoal.minute ?? '',
-      liveScore.home_score ?? '',
-      liveScore.away_score ?? '',
     ].join(':'),
   };
 }

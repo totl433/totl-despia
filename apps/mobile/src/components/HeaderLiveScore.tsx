@@ -1,8 +1,10 @@
 import React from 'react';
-import { Animated, Image, View } from 'react-native';
+import { Animated, Easing, Image, Pressable, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { TotlText, useTokens } from '@totl/ui';
 import HeaderGoalMatrix from './HeaderGoalMatrix';
-import type { HeaderTickerEvent } from '../lib/headerLiveScore';
+import type { HeaderExpandedStat, HeaderTickerEvent } from '../lib/headerLiveScore';
 
 type Phase = 'score' | 'goal' | 'ticker';
 
@@ -27,6 +29,7 @@ export default function HeaderLiveScore({
   tickerIntervalMs = 10_000,
   live = true,
   previewTickerLoop = false,
+  expandedStats,
 }: {
   scoreLabel: string;
   fill?: boolean;
@@ -35,6 +38,7 @@ export default function HeaderLiveScore({
   tickerIntervalMs?: number;
   live?: boolean;
   previewTickerLoop?: boolean;
+  expandedStats?: HeaderExpandedStat[];
 }) {
   const t = useTokens();
   const liveDotOpacity = React.useRef(new Animated.Value(1)).current;
@@ -43,11 +47,14 @@ export default function HeaderLiveScore({
   const scoreScale = React.useRef(new Animated.Value(1)).current;
   const pillScale = React.useRef(new Animated.Value(1)).current;
   const goalOpacity = React.useRef(new Animated.Value(0)).current;
-  const goalOverlayScale = React.useRef(new Animated.Value(0.96)).current;
+  const goalOverlayScale = React.useRef(new Animated.Value(0.985)).current;
   const contentOpacity = React.useRef(new Animated.Value(1)).current;
+  const expandProgress = React.useRef(new Animated.Value(0)).current;
   const [phase, setPhase] = React.useState<Phase>('score');
+  const [expanded, setExpanded] = React.useState(false);
   const [pillWidth, setPillWidth] = React.useState(0);
   const [tickerWidth, setTickerWidth] = React.useState(0);
+  const [activeTickerEvent, setActiveTickerEvent] = React.useState<HeaderTickerEvent | null>(tickerEvent ?? null);
   const isLightMode = React.useMemo(() => isLightSurface(t.color.background), [t.color.background]);
   const pillBackground = isLightMode ? 'rgba(15,23,42,0.045)' : 'rgba(255,255,255,0.05)';
   const pillBorder = isLightMode ? 'rgba(15,23,42,0.10)' : 'rgba(255,255,255,0.08)';
@@ -56,6 +63,8 @@ export default function HeaderLiveScore({
   const flashFill = isLightMode ? '#0F172A' : '#FFFFFF';
   const lastPlayedEventKeyRef = React.useRef<string | null>(null);
   const initialTickerEventKeyRef = React.useRef<string | null | undefined>(tickerEventKey);
+  const renderedTickerEvent = activeTickerEvent ?? tickerEvent ?? null;
+  const tickerReady = !!renderedTickerEvent && tickerWidth > 0;
   const parsedScore = React.useMemo(() => {
     const match = scoreLabel.match(/^(\d+)\s*\/\s*(\d+)$/);
     if (!match) return null;
@@ -86,25 +95,20 @@ export default function HeaderLiveScore({
   React.useEffect(() => {
     if (phase !== 'goal') {
       pillScale.stopAnimation();
-      pillScale.setValue(1);
+      Animated.timing(pillScale, {
+        toValue: 1,
+        duration: 240,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
       return;
     }
-    const grow = Animated.sequence([
-      Animated.spring(pillScale, {
-        toValue: 1.08,
-        useNativeDriver: true,
-        damping: 9,
-        stiffness: 180,
-        mass: 0.7,
-      }),
-      Animated.spring(pillScale, {
-        toValue: 1,
-        useNativeDriver: true,
-        damping: 10,
-        stiffness: 170,
-        mass: 0.8,
-      }),
-    ]);
+    const grow = Animated.timing(pillScale, {
+      toValue: 1.035,
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
     grow.start();
     return () => grow.stop();
   }, [phase, pillScale]);
@@ -112,23 +116,47 @@ export default function HeaderLiveScore({
   React.useEffect(() => {
     if (phase === 'goal') {
       Animated.parallel([
-        Animated.timing(goalOpacity, { toValue: 1, duration: 170, useNativeDriver: true }),
-        Animated.timing(contentOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
-        Animated.spring(goalOverlayScale, {
+        Animated.timing(goalOpacity, {
           toValue: 1,
+          duration: 240,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
-          damping: 10,
-          stiffness: 180,
-          mass: 0.8,
+        }),
+        Animated.timing(contentOpacity, {
+          toValue: 0,
+          duration: 220,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(goalOverlayScale, {
+          toValue: 1,
+          duration: 260,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
         }),
       ]).start();
       return;
     }
 
     Animated.parallel([
-      Animated.timing(goalOpacity, { toValue: 0, duration: 240, useNativeDriver: true }),
-      Animated.timing(contentOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
-      Animated.timing(goalOverlayScale, { toValue: 0.98, duration: 220, useNativeDriver: true }),
+      Animated.timing(goalOpacity, {
+        toValue: 0,
+        duration: 260,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(contentOpacity, {
+        toValue: 1,
+        duration: 240,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(goalOverlayScale, {
+        toValue: 0.985,
+        duration: 240,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
     ]).start();
   }, [contentOpacity, goalOpacity, goalOverlayScale, phase]);
 
@@ -137,12 +165,13 @@ export default function HeaderLiveScore({
       setPhase('score');
       return;
     }
-    if (!tickerEvent || !previewTickerLoop) return;
-    if (!pillWidth) return;
+    if (!renderedTickerEvent || !previewTickerLoop) return;
+    if (!pillWidth || !tickerReady) return;
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const effectiveTickerWidth = tickerWidth || Math.max(pillWidth * 1.1, 220);
+    const effectiveTickerWidth = tickerWidth;
+    const tickerEntryOffset = Math.max(10, Math.min(28, pillWidth * 0.12));
     const GOAL_HOLD_MS = 1100;
     const TICKER_SCROLL_MS = 7600;
 
@@ -166,12 +195,13 @@ export default function HeaderLiveScore({
 
       timer = setTimeout(() => {
         if (cancelled) return;
+        setActiveTickerEvent(renderedTickerEvent);
         setPhase('goal');
 
         timer = setTimeout(() => {
           if (cancelled) return;
           setPhase('ticker');
-          tickerTranslateX.setValue(pillWidth);
+          tickerTranslateX.setValue(tickerEntryOffset);
           Animated.timing(tickerTranslateX, {
             toValue: -effectiveTickerWidth - 20,
             duration: TICKER_SCROLL_MS,
@@ -210,14 +240,16 @@ export default function HeaderLiveScore({
     tickerIntervalMs,
     tickerTranslateX,
     tickerWidth,
+    tickerReady,
     live,
     previewTickerLoop,
+    renderedTickerEvent,
   ]);
 
   React.useEffect(() => {
     if (!live || previewTickerLoop) return;
     if (!tickerEvent || !tickerEventKey) return;
-    if (!pillWidth) return;
+    if (!pillWidth || !tickerReady) return;
     if (initialTickerEventKeyRef.current === tickerEventKey && lastPlayedEventKeyRef.current === null) {
       lastPlayedEventKeyRef.current = tickerEventKey;
       initialTickerEventKeyRef.current = undefined;
@@ -230,17 +262,19 @@ export default function HeaderLiveScore({
     let cancelled = false;
     const GOAL_HOLD_MS = 1100;
     const TICKER_SCROLL_MS = 7600;
-    const effectiveTickerWidth = tickerWidth || Math.max(pillWidth * 1.1, 220);
+    const effectiveTickerWidth = tickerWidth;
+    const tickerEntryOffset = Math.max(10, Math.min(28, pillWidth * 0.12));
     let handoffTimer: ReturnType<typeof setTimeout> | null = null;
 
     flashOpacity.setValue(0);
     scoreScale.setValue(1);
+    setActiveTickerEvent(tickerEvent);
     setPhase('goal');
 
     handoffTimer = setTimeout(() => {
       if (cancelled) return;
       setPhase('ticker');
-      tickerTranslateX.setValue(pillWidth);
+      tickerTranslateX.setValue(tickerEntryOffset);
       Animated.timing(tickerTranslateX, {
         toValue: -effectiveTickerWidth - 20,
         duration: TICKER_SCROLL_MS,
@@ -269,6 +303,7 @@ export default function HeaderLiveScore({
       tickerTranslateX.stopAnimation();
       flashOpacity.stopAnimation();
       scoreScale.stopAnimation();
+      setPhase('score');
     };
   }, [
     flashOpacity,
@@ -276,212 +311,338 @@ export default function HeaderLiveScore({
     pillWidth,
     previewTickerLoop,
     scoreScale,
-    tickerEvent,
     tickerEventKey,
     tickerTranslateX,
     tickerWidth,
+    tickerReady,
   ]);
 
   const scoreText = parsedScore ? `${displayCurrent ?? parsedScore.current}/${parsedScore.total}` : scoreLabel;
+  const interactiveStats = expandedStats?.filter((stat) => !!stat.value) ?? [];
+  const hasExpandedStats = interactiveStats.length > 0;
+  const expandedHeight = expandProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [38, 68],
+  });
+  const expandedRowOpacity = expandProgress.interpolate({
+    inputRange: [0, 0.35, 1],
+    outputRange: [0, 0, 1],
+  });
+  const expandedRowHeight = expandProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 24],
+  });
+  const expandedRowTranslateY = expandProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-2, 0],
+  });
+  const scoreRowMarginBottom = expandProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 6],
+  });
 
-  return (
-    <View
-      onLayout={(event) => setPillWidth(event.nativeEvent.layout.width)}
-      style={{
-        minHeight: 38,
-        width: fill ? '100%' : undefined,
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        borderRadius: 999,
-        backgroundColor: pillBackground,
-        borderWidth: 1,
-        borderColor: pillBorder,
-        justifyContent: 'center',
-        overflow: 'hidden',
-      }}
-    >
-      <Animated.View
-        style={{
-          position: 'absolute',
-          top: 0,
-          right: 0,
-          bottom: 0,
-          left: 0,
-          backgroundColor: flashFill,
-          opacity: flashOpacity,
-        }}
-      />
+  React.useEffect(() => {
+    if (!hasExpandedStats && expanded) {
+      setExpanded(false);
+    }
+  }, [expanded, hasExpandedStats]);
 
-      <Animated.View
-        pointerEvents="none"
+  React.useEffect(() => {
+    Animated.timing(expandProgress, {
+      toValue: expanded && hasExpandedStats ? 1 : 0,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [expandProgress, expanded, hasExpandedStats]);
+
+  const handlePress = React.useCallback(() => {
+    if (!hasExpandedStats) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setExpanded((prev) => !prev);
+  }, [hasExpandedStats]);
+
+  const tickerRow = renderedTickerEvent ? (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      {renderedTickerEvent.homeBadge ? <Image source={renderedTickerEvent.homeBadge} style={{ width: 22, height: 22, marginRight: 5 }} /> : null}
+      <TotlText
         style={{
-          position: 'absolute',
-          top: 0,
-          right: 0,
-          bottom: 0,
-          left: 0,
-          opacity: goalOpacity,
-          transform: [{ scaleX: pillScale }, { scaleY: pillScale }, { scale: goalOverlayScale }],
+          color: primaryText,
+          fontFamily: renderedTickerEvent.scoringSide === 'home' ? 'Gramatika-Bold' : 'Gramatika-Medium',
+          fontWeight: renderedTickerEvent.scoringSide === 'home' ? '900' : '700',
+          fontSize: 12,
+          lineHeight: 13,
+          letterSpacing: 0.7,
+          marginRight: 5,
         }}
       >
-        <HeaderGoalMatrix />
-      </Animated.View>
+        {renderedTickerEvent.homeCode}
+      </TotlText>
+      <TotlText
+        style={{
+          color: primaryText,
+          fontFamily: renderedTickerEvent.scoringSide === 'home' ? 'Gramatika-Bold' : 'Gramatika-Medium',
+          fontWeight: renderedTickerEvent.scoringSide === 'home' ? '900' : '700',
+          fontSize: renderedTickerEvent.scoringSide === 'home' ? 14 : 13,
+          lineHeight: renderedTickerEvent.scoringSide === 'home' ? 15 : 14,
+        }}
+      >
+        {renderedTickerEvent.homeScore}
+      </TotlText>
+      <TotlText
+        style={{
+          color: primaryText,
+          fontFamily: 'Gramatika-Medium',
+          fontWeight: '700',
+          fontSize: 13,
+          lineHeight: 14,
+          marginHorizontal: 4,
+        }}
+      >
+        -
+      </TotlText>
+      <TotlText
+        style={{
+          color: primaryText,
+          fontFamily: renderedTickerEvent.scoringSide === 'away' ? 'Gramatika-Bold' : 'Gramatika-Medium',
+          fontWeight: renderedTickerEvent.scoringSide === 'away' ? '900' : '700',
+          fontSize: renderedTickerEvent.scoringSide === 'away' ? 14 : 13,
+          lineHeight: renderedTickerEvent.scoringSide === 'away' ? 15 : 14,
+          marginRight: 5,
+        }}
+      >
+        {renderedTickerEvent.awayScore}
+      </TotlText>
+      {renderedTickerEvent.awayBadge ? <Image source={renderedTickerEvent.awayBadge} style={{ width: 22, height: 22, marginRight: 5 }} /> : null}
+      <TotlText
+        style={{
+          color: primaryText,
+          fontFamily: renderedTickerEvent.scoringSide === 'away' ? 'Gramatika-Bold' : 'Gramatika-Medium',
+          fontWeight: renderedTickerEvent.scoringSide === 'away' ? '900' : '700',
+          fontSize: 12,
+          lineHeight: 13,
+          letterSpacing: 0.7,
+          marginRight: 10,
+        }}
+      >
+        {renderedTickerEvent.awayCode}
+      </TotlText>
+      <TotlText
+        style={{
+          color: primaryText,
+          fontWeight: '800',
+          fontSize: 13,
+          lineHeight: 14,
+          marginRight: 4,
+        }}
+      >
+        {renderedTickerEvent.scorerName}
+      </TotlText>
+      <TotlText
+        style={{
+          color: secondaryText,
+          fontWeight: '700',
+          fontSize: 13,
+          lineHeight: 14,
+        }}
+      >
+        {renderedTickerEvent.minuteLabel}
+      </TotlText>
+    </View>
+  ) : null;
 
-      <Animated.View style={{ opacity: contentOpacity }}>
-        {phase === 'ticker' && tickerEvent ? (
-          <View style={{ height: 22, justifyContent: 'center' }}>
-            <Animated.View
-              onLayout={(event) => setTickerWidth(event.nativeEvent.layout.width)}
+  return (
+    <Pressable
+      accessibilityRole={hasExpandedStats ? 'button' : undefined}
+      accessibilityLabel={hasExpandedStats ? 'Toggle score summary details' : undefined}
+      accessibilityState={hasExpandedStats ? { expanded } : undefined}
+      disabled={!hasExpandedStats}
+      onPressIn={handlePress}
+      style={{ width: fill ? '100%' : undefined }}
+    >
+      <Animated.View
+        onLayout={(event) => setPillWidth(event.nativeEvent.layout.width)}
+        style={{
+          height: expandedHeight,
+          width: fill ? '100%' : undefined,
+          paddingHorizontal: 14,
+          paddingTop: 8,
+          paddingBottom: 8,
+          borderRadius: 999,
+          backgroundColor: pillBackground,
+          borderWidth: 1,
+          borderColor: pillBorder,
+          justifyContent: 'center',
+          overflow: 'hidden',
+        }}
+      >
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            backgroundColor: flashFill,
+            opacity: flashOpacity,
+          }}
+        />
+
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            opacity: goalOpacity,
+            transform: [{ scaleX: pillScale }, { scaleY: pillScale }, { scale: goalOverlayScale }],
+          }}
+        >
+          <HeaderGoalMatrix />
+        </Animated.View>
+
+        <Animated.View pointerEvents="none" style={{ opacity: contentOpacity }}>
+          {renderedTickerEvent ? (
+            <View
+              pointerEvents="none"
               style={{
                 position: 'absolute',
-                left: 0,
-                flexDirection: 'row',
-                alignItems: 'center',
-                transform: [{ translateX: tickerTranslateX }],
+                opacity: 0,
+                left: -10_000,
+                top: -10_000,
+              }}
+              onLayout={(event) => {
+                const nextWidth = event.nativeEvent.layout.width;
+                if (!nextWidth || nextWidth === tickerWidth) return;
+                setTickerWidth(nextWidth);
               }}
             >
-              <Animated.View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  marginRight: 4,
-                }}
-              >
-                <Image source={tickerEvent.homeBadge} style={{ width: 22, height: 22, marginRight: 5 }} />
-                <TotlText
+              {tickerRow}
+            </View>
+          ) : null}
+          <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+            {phase === 'ticker' && renderedTickerEvent ? (
+              <Animated.View pointerEvents="none" style={{ height: 22, justifyContent: 'center', marginBottom: scoreRowMarginBottom }}>
+                <Animated.View
+                  pointerEvents="none"
                   style={{
-                    color: primaryText,
-                    fontFamily: tickerEvent.scoringSide === 'home' ? 'Gramatika-Bold' : 'Gramatika-Medium',
-                    fontWeight: tickerEvent.scoringSide === 'home' ? '900' : '700',
-                    fontSize: 12,
-                    lineHeight: 13,
-                    letterSpacing: 0.7,
-                    marginRight: 5,
+                    position: 'absolute',
+                    left: 0,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    transform: [{ translateX: tickerTranslateX }],
                   }}
                 >
-                  {tickerEvent.homeCode}
-                </TotlText>
-                <TotlText
-                  style={{
-                    color: primaryText,
-                    fontFamily: tickerEvent.scoringSide === 'home' ? 'Gramatika-Bold' : 'Gramatika-Medium',
-                    fontWeight: tickerEvent.scoringSide === 'home' ? '900' : '700',
-                    fontSize: tickerEvent.scoringSide === 'home' ? 14 : 13,
-                    lineHeight: tickerEvent.scoringSide === 'home' ? 15 : 14,
-                  }}
-                >
-                  {tickerEvent.homeScore}
-                </TotlText>
+                  {tickerRow}
+                </Animated.View>
               </Animated.View>
-              <TotlText
-                style={{
-                  color: primaryText,
-                  fontFamily: 'Gramatika-Medium',
-                  fontWeight: '700',
-                  fontSize: 13,
-                  lineHeight: 14,
-                  marginRight: 4,
-                }}
-              >
-                -
-              </TotlText>
-              <Animated.View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  marginRight: 10,
-                }}
-              >
+            ) : (
+              <Animated.View pointerEvents="none" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: scoreRowMarginBottom }}>
+                <Animated.View
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 999,
+                    backgroundColor: '#EF4444',
+                    marginRight: 8,
+                    opacity: liveDotOpacity,
+                    display: live ? 'flex' : 'none',
+                  }}
+                />
                 <TotlText
                   style={{
-                    color: primaryText,
-                    fontFamily: tickerEvent.scoringSide === 'away' ? 'Gramatika-Bold' : 'Gramatika-Medium',
-                    fontWeight: tickerEvent.scoringSide === 'away' ? '900' : '700',
-                    fontSize: tickerEvent.scoringSide === 'away' ? 14 : 13,
-                    lineHeight: tickerEvent.scoringSide === 'away' ? 15 : 14,
-                    marginRight: 5,
+                    color: live ? '#EF4444' : primaryText,
+                    fontWeight: '900',
+                    fontSize: 14,
+                    lineHeight: 15,
+                    letterSpacing: 0.5,
+                    marginRight: live ? 8 : 6,
                   }}
                 >
-                  {tickerEvent.awayScore}
+                  {live ? 'LIVE' : 'SCORE'}
                 </TotlText>
-                <Image source={tickerEvent.awayBadge} style={{ width: 22, height: 22, marginRight: 5 }} />
-                <TotlText
-                  style={{
-                    color: primaryText,
-                    fontFamily: tickerEvent.scoringSide === 'away' ? 'Gramatika-Bold' : 'Gramatika-Medium',
-                    fontWeight: tickerEvent.scoringSide === 'away' ? '900' : '700',
-                    fontSize: 12,
-                    lineHeight: 13,
-                    letterSpacing: 0.7,
-                  }}
-                >
-                  {tickerEvent.awayCode}
-                </TotlText>
+                <Animated.View style={{ transform: [{ scale: scoreScale }] }}>
+                  <TotlText
+                    style={{
+                      color: primaryText,
+                      fontWeight: '900',
+                      fontSize: 15,
+                      lineHeight: 17,
+                      letterSpacing: 0.2,
+                    }}
+                  >
+                    {scoreText}
+                  </TotlText>
+                </Animated.View>
               </Animated.View>
-              <TotlText
+            )}
+            {hasExpandedStats ? (
+              <Animated.View
+                pointerEvents="none"
                 style={{
-                  color: primaryText,
-                  fontWeight: '800',
-                  fontSize: 13,
-                  lineHeight: 14,
-                  marginRight: 4,
+                  height: expandedRowHeight,
+                  opacity: expandedRowOpacity,
+                  overflow: 'hidden',
+                  justifyContent: 'center',
+                  transform: [{ translateY: expandedRowTranslateY }],
                 }}
               >
-                {tickerEvent.scorerName}
-              </TotlText>
-              <TotlText
-                style={{
-                  color: secondaryText,
-                  fontWeight: '700',
-                  fontSize: 13,
-                  lineHeight: 14,
-                }}
-              >
-                {tickerEvent.minuteLabel}
-              </TotlText>
-            </Animated.View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                  {interactiveStats.map((stat, index) => (
+                    <React.Fragment key={`${stat.value}-${stat.trailingValue ?? ''}`}>
+                      {index > 0 ? (
+                        <View
+                          style={{
+                            width: 1,
+                            height: 12,
+                            backgroundColor: pillBorder,
+                            marginHorizontal: 10,
+                          }}
+                        />
+                      ) : null}
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <TotlText
+                          style={{
+                            color: primaryText,
+                            fontWeight: '700',
+                            fontSize: 12,
+                            lineHeight: 14,
+                          }}
+                        >
+                          {stat.value}
+                        </TotlText>
+                        {stat.icon ? (
+                          <Ionicons
+                            name={stat.icon}
+                            size={14}
+                            color={secondaryText}
+                            style={{ marginLeft: 5, marginRight: stat.trailingValue ? 5 : 0 }}
+                          />
+                        ) : null}
+                        {stat.trailingValue ? (
+                          <TotlText
+                            style={{
+                              color: primaryText,
+                              fontWeight: '700',
+                              fontSize: 12,
+                              lineHeight: 14,
+                            }}
+                          >
+                            {stat.trailingValue}
+                          </TotlText>
+                        ) : null}
+                      </View>
+                    </React.Fragment>
+                  ))}
+                </View>
+              </Animated.View>
+            ) : null}
           </View>
-        ) : (
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-            <Animated.View
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 999,
-                backgroundColor: '#EF4444',
-                marginRight: 8,
-                opacity: liveDotOpacity,
-              display: live ? 'flex' : 'none',
-              }}
-            />
-            <TotlText
-              style={{
-                color: live ? '#EF4444' : primaryText,
-                fontWeight: '900',
-                fontSize: 13,
-                lineHeight: 14,
-                letterSpacing: 0.5,
-                marginRight: live ? 8 : 6,
-              }}
-            >
-              {live ? 'LIVE' : 'SCORE'}
-            </TotlText>
-            <Animated.View style={{ transform: [{ scale: scoreScale }] }}>
-              <TotlText
-                style={{
-                  color: primaryText,
-                  fontWeight: '900',
-                  fontSize: 14,
-                  lineHeight: 16,
-                  letterSpacing: 0.2,
-                }}
-              >
-                {scoreText}
-              </TotlText>
-            </Animated.View>
-          </View>
-        )}
+        </Animated.View>
       </Animated.View>
-    </View>
+    </Pressable>
   );
 }

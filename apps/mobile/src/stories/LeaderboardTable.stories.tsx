@@ -36,3 +36,20 @@ export const Gw: Story = {
   },
 };
 
+export const Monthly: Story = {
+  args: {
+    valueLabel: 'PTS',
+    compactValueLabels: ['29', '30', '31'],
+    compactLiveValueLabel: '31',
+    highlightUserId: 'me',
+    winnerUserIds: ['a'],
+    rows: [
+      { user_id: 'a', name: 'Joe Devine', value: 12, compactValues: [4, 4, 4] },
+      { user_id: 'b', name: 'Ben New', value: 11, compactValues: [4, 4, 3] },
+      { user_id: 'me', name: 'Jof', value: 10, compactValues: [3, 3, 4] },
+      { user_id: 'c', name: 'EB', value: 9, compactValues: [3, 3, 3] },
+      { user_id: 'd', name: 'Matthew Bird', value: 9, compactValues: [2, 3, 4] },
+    ],
+  },
+};
+

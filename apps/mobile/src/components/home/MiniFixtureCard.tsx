@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Image, Pressable, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Reanimated, {
+  cancelAnimation,
   Easing,
   FadeIn,
   FadeOut,
@@ -9,10 +10,11 @@ import Reanimated, {
   LinearTransition,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withTiming,
 } from 'react-native-reanimated';
 import { TotlText, useTokens } from '@totl/ui';
-import type { Pick } from '@totl/domain';
+import type { LiveStatus, Pick } from '@totl/domain';
 import WinnerShimmer from '../WinnerShimmer';
 import type { MiniFixtureCardProps } from './fixtureCardTypes';
 
@@ -20,6 +22,19 @@ const AnimatedImage = Reanimated.createAnimatedComponent(Image);
 
 const BADGE_MINI = 37;
 const BADGE_EXPANDED = 54;
+
+function isLightSurface(color: string): boolean {
+  const value = String(color ?? '').trim();
+  const hex = value.startsWith('#') ? value.slice(1) : value;
+  if (!(hex.length === 6 || hex.length === 3)) return false;
+  const normalized = hex.length === 3 ? hex.split('').map((char) => `${char}${char}`).join('') : hex;
+  const red = parseInt(normalized.slice(0, 2), 16);
+  const green = parseInt(normalized.slice(2, 4), 16);
+  const blue = parseInt(normalized.slice(4, 6), 16);
+  if ([red, green, blue].some((channel) => Number.isNaN(channel))) return false;
+  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+  return luminance > 0.72;
+}
 
 export default function MiniFixtureCard({
   fixtureId,
@@ -39,10 +54,13 @@ export default function MiniFixtureCard({
   primaryLabel: miniPrimaryLabel,
   primaryExpandedLabel: miniPrimaryExpandedLabel,
   secondaryLabel: miniSecondaryLabel,
+  fixtureStatus = 'SCHEDULED',
   gwState,
   pick,
   derivedOutcome,
   hasScore,
+  compactVisualTone = 'default',
+  compactLiveMinutePill = false,
   percentBySide,
   showExpandedPercentages,
   homeFormColors,
@@ -51,6 +69,8 @@ export default function MiniFixtureCard({
   awayPositionLabel,
   homeScorers,
   awayScorers,
+  homeRedCardCount = 0,
+  awayRedCardCount = 0,
   fixtureDateLabel: fixtureDateLabelStr,
 }: MiniFixtureCardProps) {
   const t = useTokens();
@@ -59,6 +79,7 @@ export default function MiniFixtureCard({
     []
   );
   const expandedSV = useSharedValue(isMiniExpanded ? 1 : 0);
+  const liveDotPulse = useSharedValue(1);
   useEffect(() => {
     expandedSV.value = withTiming(isMiniExpanded ? 1 : 0, { duration: 200, easing: Easing.out(Easing.cubic) });
   }, [isMiniExpanded, expandedSV]);
@@ -72,6 +93,42 @@ export default function MiniFixtureCard({
   const miniLivePickIncorrect = isLiveOrResultsMini && !!pick && !!derivedOutcome && pick !== derivedOutcome;
   const miniPickIndex = pick === 'H' ? 0 : pick === 'D' ? 1 : 2;
   const st = hasScore ? (gwState === 'RESULTS_PRE_GW' ? 'FINISHED' : 'IN_PLAY') : 'SCHEDULED';
+  const isLightMode = React.useMemo(() => isLightSurface(t.color.background), [t.color.background]);
+  const finishedGreyCompact = compactVisualTone === 'finished-grey' && !isMiniExpanded;
+  const compactLiveMinutePillActive =
+    compactLiveMinutePill && !isMiniExpanded && (fixtureStatus === 'IN_PLAY' || fixtureStatus === 'PAUSED');
+  useEffect(() => {
+    if (!compactLiveMinutePillActive) {
+      cancelAnimation(liveDotPulse);
+      liveDotPulse.value = 1;
+      return;
+    }
+    liveDotPulse.value = withRepeat(withTiming(1.28, { duration: 650, easing: Easing.inOut(Easing.ease) }), -1, true);
+  }, [compactLiveMinutePillActive, liveDotPulse]);
+  const compactCardBorderWidth = 1;
+  const compactCardBorderColor = finishedGreyCompact
+    ? isLightMode
+      ? 'rgba(148,163,184,0.5)'
+      : 'rgba(148,163,184,0.22)'
+    : t.color.border;
+  const compactCardBackground = t.color.surface;
+  const compactSectionBackground = finishedGreyCompact ? 'transparent' : t.color.surface;
+  const finishedCardBase = isLightMode ? '#E9EEF5' : 'rgba(17,24,39,0.96)';
+  const finishedCardGradient = isLightMode
+    ? ['rgba(148,163,184,0.075)', 'rgba(203,213,225,0.03)', 'rgba(255,255,255,0.03)']
+    : ['rgba(15,23,42,0.24)', 'rgba(30,41,59,0.26)', 'rgba(148,163,184,0.025)'];
+  const incorrectIndicatorColor = isLightMode ? '#B6C2D1' : '#64748B';
+  const liveStatusDotColor = isLightMode ? '#DC2626' : '#FF4D4F';
+  const liveStatusTextColor = isLightMode ? t.color.muted : '#FFFFFF';
+  const showExpandedScoreRedCards = isMiniExpanded && hasScore && (homeRedCardCount > 0 || awayRedCardCount > 0);
+  const expandedScoreParts = React.useMemo(() => {
+    const [homePart = '', awayPart = ''] = String(miniPrimaryExpandedLabel ?? '').split(' - ');
+    return { homePart, awayPart };
+  }, [miniPrimaryExpandedLabel]);
+  const liveDotAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: liveDotPulse.value }],
+    opacity: interpolate(liveDotPulse.value, [1, 1.28], [0.9, 0.45]),
+  }));
 
   return (
     <Pressable
@@ -84,10 +141,10 @@ export default function MiniFixtureCard({
         layout={layoutTransition}
         style={{
           borderRadius: isMiniExpanded ? 18 : 16,
-          borderWidth: 1,
-          borderColor: t.color.border,
+          borderWidth: compactCardBorderWidth,
+          borderColor: compactCardBorderColor,
           overflow: 'hidden',
-          backgroundColor: t.color.surface,
+          backgroundColor: compactCardBackground,
           shadowColor: '#0F172A',
           shadowOpacity: 0.05,
           shadowRadius: 3,
@@ -95,6 +152,21 @@ export default function MiniFixtureCard({
           elevation: 1,
         }}
       >
+        {finishedGreyCompact ? (
+          <>
+            <View
+              pointerEvents="none"
+              style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: finishedCardBase }}
+            />
+            <LinearGradient
+              colors={finishedCardGradient}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              pointerEvents="none"
+              style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+            />
+          </>
+        ) : null}
         <Reanimated.View
           layout={layoutTransition}
           style={{
@@ -110,7 +182,7 @@ export default function MiniFixtureCard({
               height: isMiniExpanded ? 70 : tightLayout ? 50 : 62,
               alignItems: 'center',
               justifyContent: isMiniExpanded ? 'flex-start' : 'center',
-              backgroundColor: t.color.surface,
+              backgroundColor: compactSectionBackground,
               paddingTop: isMiniExpanded ? 15 : 0,
               paddingBottom: tightLayout ? 0 : isMiniExpanded ? 0 : 10,
             }}
@@ -125,7 +197,7 @@ export default function MiniFixtureCard({
                   height: 6,
                   borderRadius: 3,
                   overflow: 'hidden',
-                  backgroundColor: miniLivePickIncorrect ? t.color.surface2 : t.color.brand,
+                  backgroundColor: miniLivePickIncorrect ? incorrectIndicatorColor : t.color.brand,
                 }}
               >
                 {miniLivePickCorrect ? (
@@ -145,17 +217,81 @@ export default function MiniFixtureCard({
               height: isMiniExpanded ? 70 : tightLayout ? 50 : 62,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: t.color.surface,
+              backgroundColor: compactSectionBackground,
               paddingTop: isMiniExpanded ? 27 : 0,
               paddingBottom: tightLayout ? 0 : isMiniExpanded ? 0 : 10,
             }}
           >
             <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-              <TotlText style={{ color: t.color.text, fontFamily: t.font.medium, fontSize: isMiniExpanded ? 30 : 16, lineHeight: isMiniExpanded ? 32 : 18, letterSpacing: isMiniExpanded ? 0.9 : 0, textAlign: 'center' }}>
-                {miniPrimaryExpandedLabel}
-              </TotlText>
+              {showExpandedScoreRedCards ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                  {homeRedCardCount > 0 ? (
+                    <View
+                      style={{
+                        width: 7,
+                        height: 10,
+                        borderRadius: 1.5,
+                        backgroundColor: '#F0626E',
+                        marginRight: 5,
+                      }}
+                    />
+                  ) : null}
+                  <TotlText style={{ color: t.color.text, fontFamily: t.font.medium, fontSize: 30, lineHeight: 32, letterSpacing: 0.9, textAlign: 'center' }}>
+                    {expandedScoreParts.homePart}
+                  </TotlText>
+                  <TotlText style={{ color: t.color.text, fontFamily: t.font.medium, fontSize: 30, lineHeight: 32, letterSpacing: 0.9, textAlign: 'center', marginHorizontal: 8 }}>
+                    -
+                  </TotlText>
+                  <TotlText style={{ color: t.color.text, fontFamily: t.font.medium, fontSize: 30, lineHeight: 32, letterSpacing: 0.9, textAlign: 'center' }}>
+                    {expandedScoreParts.awayPart}
+                  </TotlText>
+                  {awayRedCardCount > 0 ? (
+                    <View
+                      style={{
+                        width: 7,
+                        height: 10,
+                        borderRadius: 1.5,
+                        backgroundColor: '#F0626E',
+                        marginLeft: 5,
+                      }}
+                    />
+                  ) : null}
+                </View>
+              ) : (
+                <TotlText style={{ color: t.color.text, fontFamily: t.font.medium, fontSize: isMiniExpanded ? 30 : 16, lineHeight: isMiniExpanded ? 32 : 18, letterSpacing: isMiniExpanded ? 0.9 : 0, textAlign: 'center' }}>
+                  {miniPrimaryExpandedLabel}
+                </TotlText>
+              )}
               {miniSecondaryLabel && !isMiniExpanded ? (
-                <TotlText style={{ color: t.color.muted, fontFamily: t.font.medium, fontSize: 11, lineHeight: 13, textAlign: 'center', marginTop: 2 }}>{miniSecondaryLabel}</TotlText>
+                compactLiveMinutePillActive ? (
+                  <View style={{ marginTop: 3, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                    <Reanimated.View
+                      style={[
+                        {
+                          width: 6,
+                          height: 6,
+                          borderRadius: 999,
+                          backgroundColor: liveStatusDotColor,
+                          marginRight: 5,
+                        },
+                        liveDotAnimatedStyle,
+                      ]}
+                    />
+                    <TotlText
+                      style={{
+                        color: liveStatusTextColor,
+                        fontFamily: t.font.medium,
+                        fontSize: 10,
+                        lineHeight: 11,
+                        textAlign: 'center',
+                      }}
+                    >
+                      {miniSecondaryLabel}
+                    </TotlText>
+                  </View>
+                ) : (
+                  <TotlText style={{ color: t.color.muted, fontFamily: t.font.medium, fontSize: 11, lineHeight: 13, textAlign: 'center', marginTop: 2 }}>{miniSecondaryLabel}</TotlText>
+                )
               ) : null}
             </View>
             {!isMiniExpanded && gwState !== 'GW_OPEN' && pick && miniPickIndex === 1 ? (
@@ -167,7 +303,7 @@ export default function MiniFixtureCard({
                   height: 6,
                   borderRadius: 3,
                   overflow: 'hidden',
-                  backgroundColor: miniLivePickIncorrect ? t.color.surface2 : t.color.brand,
+                  backgroundColor: miniLivePickIncorrect ? incorrectIndicatorColor : t.color.brand,
                 }}
               >
                 {miniLivePickCorrect ? (
@@ -187,7 +323,7 @@ export default function MiniFixtureCard({
               height: isMiniExpanded ? 70 : tightLayout ? 50 : 62,
               alignItems: 'center',
               justifyContent: isMiniExpanded ? 'flex-start' : 'center',
-              backgroundColor: t.color.surface,
+              backgroundColor: compactSectionBackground,
               paddingTop: isMiniExpanded ? 15 : 0,
               paddingBottom: tightLayout ? 0 : isMiniExpanded ? 0 : 10,
             }}
@@ -202,7 +338,7 @@ export default function MiniFixtureCard({
                   height: 6,
                   borderRadius: 3,
                   overflow: 'hidden',
-                  backgroundColor: miniLivePickIncorrect ? t.color.surface2 : t.color.brand,
+                  backgroundColor: miniLivePickIncorrect ? incorrectIndicatorColor : t.color.brand,
                 }}
               >
                 {miniLivePickCorrect ? (

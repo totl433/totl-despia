@@ -2,10 +2,11 @@ import React from 'react';
 import { Animated, Pressable, View, useWindowDimensions } from 'react-native';
 
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
+import { useQuery } from '@tanstack/react-query';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { Ionicons } from '@expo/vector-icons';
 import Reanimated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
-import type { Fixture, GwResultRow, GwResults, HomeRanks, HomeSnapshot, LiveScore, Pick } from '@totl/domain';
+import type { Fixture, GwResultRow, GwResults, HomeRanks, HomeSnapshot, LiveScore, LiveStatus, Pick } from '@totl/domain';
 import { TotlRefreshControl } from '../lib/refreshControl';
 import GameweekAdvanceTransition from '../components/transitions/GameweekAdvanceTransition';
 import { useGameweekAdvanceTransition } from '../hooks/useGameweekAdvanceTransition';
@@ -20,6 +21,7 @@ import AppTopHeader from '../components/AppTopHeader';
 import HeaderLiveScore from '../components/HeaderLiveScore';
 import { TEAM_BADGES } from '../lib/teamBadges';
 import { normalizeTeamCode } from '../lib/teamColors';
+import { buildGoalScorerLines, countRedCardsForTeam } from '../lib/goalEvents';
 import { getMediumName } from '../../../../src/lib/teamNames';
 
 import MiniFixtureCard from '../components/home/MiniFixtureCard';
@@ -40,7 +42,8 @@ import {
   ordinalLabel,
   sortFixturesByFixtureIndex,
 } from '../lib/homeFixtureUi';
-import { buildHeaderScoreSummary, buildHeaderTickerEvent, formatHeaderScoreLabel } from '../lib/headerLiveScore';
+import { buildHeaderExpandedStats, buildHeaderScoreSummary, buildHeaderTickerEvent, formatHeaderScoreLabel } from '../lib/headerLiveScore';
+import { fetchTeamPositionsWithFallback, normalizeTeamPositions } from '../lib/teamPositions';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -50,6 +53,19 @@ function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
   return 'Unknown error';
+}
+
+function isLightSurface(color: string): boolean {
+  const value = String(color ?? '').trim();
+  const hex = value.startsWith('#') ? value.slice(1) : value;
+  if (!(hex.length === 6 || hex.length === 3)) return false;
+  const normalized = hex.length === 3 ? hex.split('').map((char) => `${char}${char}`).join('') : hex;
+  const red = parseInt(normalized.slice(0, 2), 16);
+  const green = parseInt(normalized.slice(2, 4), 16);
+  const blue = parseInt(normalized.slice(4, 6), 16);
+  if ([red, green, blue].some((channel) => Number.isNaN(channel))) return false;
+  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+  return luminance > 0.72;
 }
 
 
@@ -65,9 +81,11 @@ export default function HomeScreen() {
   const advanceTransition = useGameweekAdvanceTransition({ totalMs: 1050 });
   const { unreadByLeagueId } = useLeagueUnreadCounts();
   const [dismissedCountdownGw, setDismissedCountdownGw] = React.useState<number | null>(null);
+  const isLightMode = React.useMemo(() => isLightSurface(t.color.background), [t.color.background]);
 
   const {
     hasAccessToken,
+    userId,
     home,
     homeLoading: isHomeLoading,
     homeError,
@@ -235,18 +253,27 @@ export default function HomeScreen() {
     () => normalizeTeamForms((predictionsMeta?.teamForms ?? {}) as Record<string, string>),
     [predictionsMeta?.teamForms]
   );
-  const teamPositionsByCode = React.useMemo(() => {
-    const out: Record<string, number> = {};
-    const raw = (predictionsMeta?.teamPositions ?? {}) as Record<string, unknown>;
-    Object.entries(raw).forEach(([codeRaw, posRaw]) => {
-      const code = normalizeTeamCode(codeRaw);
-      const pos = Number(posRaw);
-      if (!code) return;
-      if (!Number.isFinite(pos) || pos <= 0) return;
-      out[code] = Math.trunc(pos);
-    });
-    return out;
-  }, [predictionsMeta?.teamPositions]);
+  const predictedTeamPositionsByCode = React.useMemo(
+    () => normalizeTeamPositions((predictionsMeta?.teamPositions ?? {}) as Record<string, unknown>),
+    [predictionsMeta?.teamPositions]
+  );
+  const { data: fallbackTeamPositionsByCode } = useQuery({
+    queryKey: ['predictions-team-positions-home', viewingGw ?? currentGw ?? 'current'],
+    queryFn: async () => {
+      const seedPositions = await api
+        .getPredictions()
+        .then((res) => (res?.teamPositions ?? {}) as Record<string, unknown>)
+        .catch(() => undefined);
+
+      return fetchTeamPositionsWithFallback(seedPositions);
+    },
+    enabled: Object.keys(predictedTeamPositionsByCode).length < 20,
+    staleTime: 60_000,
+  });
+  const teamPositionsByCode = React.useMemo(
+    () => ({ ...(fallbackTeamPositionsByCode ?? {}), ...predictedTeamPositionsByCode }),
+    [fallbackTeamPositionsByCode, predictedTeamPositionsByCode]
+  );
   const hasActiveLiveGames = React.useMemo(() => {
     const liveScores = home?.liveScores ?? [];
     return liveScores.some((ls) => ls?.status === 'IN_PLAY' || ls?.status === 'PAUSED');
@@ -306,6 +333,30 @@ export default function HomeScreen() {
   const showLiveHeaderScore = gwState === 'LIVE' && !!scoreSummary;
   const showStaticResultsHeaderScore = isResultsPreGw && !!scoreSummary;
   const headerScoreLabel = scoreSummary ? formatHeaderScoreLabel(scoreSummary, showLiveHeaderScore) : null;
+  const liveHeaderGw = typeof viewingGw === 'number' ? viewingGw : typeof currentGw === 'number' ? currentGw : null;
+  const { data: headerGwLiveTable } = useQuery({
+    enabled: showLiveHeaderScore && typeof liveHeaderGw === 'number' && !!userId,
+    queryKey: ['headerGwLiveTable', liveHeaderGw],
+    queryFn: () => api.getGlobalGwLiveTable(liveHeaderGw as number),
+    staleTime: 30_000,
+  });
+  const liveGwRank = React.useMemo(() => {
+    if (!userId) return null;
+    const rows = headerGwLiveTable?.rows ?? [];
+    if (!rows.length) return null;
+    const mine = rows.find((row) => String(row.user_id) === String(userId));
+    if (!mine) return null;
+    const higher = rows.filter((row) => Number(row.score ?? 0) > Number(mine.score ?? 0)).length;
+    return higher + 1;
+  }, [headerGwLiveTable?.rows, userId]);
+  const headerExpandedStats = React.useMemo(
+    () =>
+      buildHeaderExpandedStats({
+        gwRank: showLiveHeaderScore ? liveGwRank : ranks?.gwRank?.rank ?? null,
+        gwTotal: showLiveHeaderScore ? headerGwLiveTable?.rows?.length ?? null : ranks?.gwRank?.total ?? null,
+      }),
+    [headerGwLiveTable?.rows?.length, liveGwRank, ranks?.gwRank?.rank, ranks?.gwRank?.total, showLiveHeaderScore]
+  );
 
   // Keep Mini Leagues in live-table mode during LIVE and RESULTS_PRE_GW.
   // This includes the period before/after next GW publish, until user moves on.
@@ -342,9 +393,10 @@ export default function HomeScreen() {
                 fill
                 tickerEvent={headerTickerEvent ?? undefined}
                 tickerEventKey={headerTickerEventKey}
+                expandedStats={headerExpandedStats}
               />
             ) : showStaticResultsHeaderScore && headerScoreLabel ? (
-              <HeaderLiveScore scoreLabel={headerScoreLabel} fill live={false} />
+              <HeaderLiveScore scoreLabel={headerScoreLabel} fill live={false} expandedStats={headerExpandedStats} />
             ) : undefined
           }
           showLeftLiveBadge={!showLiveHeaderScore && !showStaticResultsHeaderScore}
@@ -740,24 +792,10 @@ export default function HomeScreen() {
                           const goalsRaw = Array.isArray((ls as any)?.goals) ? ((ls as any).goals as Array<any>) : [];
                           const homeCandidates = [String(f.home_name ?? ''), String(f.home_team ?? ''), headerHome].map((v) => v.toLowerCase());
                           const awayCandidates = [String(f.away_name ?? ''), String(f.away_team ?? ''), headerAway].map((v) => v.toLowerCase());
-                          const formatScorerLine = (g: any) => {
-                            const full = typeof g?.scorer === 'string' ? g.scorer.trim() : 'Unknown';
-                            const surname = full.split(/\s+/).filter(Boolean).slice(-1)[0] ?? full;
-                            const minute = typeof g?.minute === 'number' ? `${g.minute}'` : '';
-                            return `${surname} ${minute}`.trim();
-                          };
-                          const homeScorers = goalsRaw
-                            .filter((g) => {
-                              const team = String(g?.team ?? '').toLowerCase();
-                              return team && homeCandidates.some((c) => c && (team.includes(c) || c.includes(team)));
-                            })
-                            .map(formatScorerLine);
-                          const awayScorers = goalsRaw
-                            .filter((g) => {
-                              const team = String(g?.team ?? '').toLowerCase();
-                              return team && awayCandidates.some((c) => c && (team.includes(c) || c.includes(team)));
-                            })
-                            .map(formatScorerLine);
+                          const homeRedCardCount = countRedCardsForTeam((ls as any)?.red_cards, homeCandidates);
+                          const awayRedCardCount = countRedCardsForTeam((ls as any)?.red_cards, awayCandidates);
+                          const homeScorers = buildGoalScorerLines(goalsRaw, homeCandidates);
+                          const awayScorers = buildGoalScorerLines(goalsRaw, awayCandidates);
 
                           return (
                             <Reanimated.View
@@ -772,7 +810,21 @@ export default function HomeScreen() {
                                 elevation: isMiniExpanded ? 6 : 2,
                               }}
                             >
-                              <View ref={(node) => { fixtureNodeRefs.current[fixtureId] = node; }}>
+                              <View
+                                ref={(node) => { fixtureNodeRefs.current[fixtureId] = node; }}
+                                style={
+                                  gwState === 'LIVE' && !isMiniExpanded && (st === 'IN_PLAY' || st === 'PAUSED')
+                                    ? {
+                                        borderRadius: 16,
+                                        shadowColor: isLightMode ? '#0F172A' : '#000000',
+                                        shadowOpacity: isLightMode ? 0.22 : 0.72,
+                                        shadowRadius: isLightMode ? 18 : 32,
+                                        shadowOffset: { width: 0, height: isLightMode ? 10 : 18 },
+                                        elevation: isLightMode ? 10 : 18,
+                                      }
+                                    : undefined
+                                }
+                              >
                                 <MiniFixtureCard
                                   fixtureId={fixtureId}
                                   isExpanded={isMiniExpanded}
@@ -793,10 +845,17 @@ export default function HomeScreen() {
                                   primaryLabel={miniPrimaryLabel}
                                   primaryExpandedLabel={miniPrimaryExpandedLabel}
                                   secondaryLabel={miniSecondaryLabel}
+                                  fixtureStatus={st}
                                   gwState={gwState}
                                   pick={pick}
                                   derivedOutcome={derivedOutcome}
                                   hasScore={hasScore}
+                                  compactVisualTone={
+                                    (gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW') && st === 'FINISHED'
+                                      ? 'finished-grey'
+                                      : 'default'
+                                  }
+                                  compactLiveMinutePill={gwState === 'LIVE'}
                                   percentBySide={percentBySide}
                                   showExpandedPercentages={showExpandedPercentages}
                                   homeFormColors={homeFormColors}
@@ -805,6 +864,8 @@ export default function HomeScreen() {
                                   awayPositionLabel={awayPositionLabel}
                                   homeScorers={homeScorers}
                                   awayScorers={awayScorers}
+                                  homeRedCardCount={homeRedCardCount}
+                                  awayRedCardCount={awayRedCardCount}
                                   fixtureDateLabel={fixtureDateLabel(f.kickoff_time ?? null)}
                                 />
                               </View>
@@ -916,24 +977,10 @@ export default function HomeScreen() {
                   const goalsRaw = Array.isArray((ls as any)?.goals) ? ((ls as any).goals as Array<any>) : [];
                   const homeCandidates = [String(f.home_name ?? ''), String(f.home_team ?? ''), headerHome].map((v) => v.toLowerCase());
                   const awayCandidates = [String(f.away_name ?? ''), String(f.away_team ?? ''), headerAway].map((v) => v.toLowerCase());
-                  const formatScorerLine = (g: any) => {
-                    const full = typeof g?.scorer === 'string' ? g.scorer.trim() : 'Unknown';
-                    const surname = full.split(/\s+/).filter(Boolean).slice(-1)[0] ?? full;
-                    const minute = typeof g?.minute === 'number' ? `${g.minute}'` : "";
-                    return `${surname} ${minute}`.trim();
-                  };
-                  const homeScorers = goalsRaw
-                    .filter((g) => {
-                      const team = String(g?.team ?? '').toLowerCase();
-                      return team && homeCandidates.some((c) => c && (team.includes(c) || c.includes(team)));
-                    })
-                    .map(formatScorerLine);
-                  const awayScorers = goalsRaw
-                    .filter((g) => {
-                      const team = String(g?.team ?? '').toLowerCase();
-                      return team && awayCandidates.some((c) => c && (team.includes(c) || c.includes(team)));
-                    })
-                    .map(formatScorerLine);
+                  const homeRedCardCount = countRedCardsForTeam((ls as any)?.red_cards, homeCandidates);
+                  const awayRedCardCount = countRedCardsForTeam((ls as any)?.red_cards, awayCandidates);
+                  const homeScorers = buildGoalScorerLines(goalsRaw, homeCandidates);
+                  const awayScorers = buildGoalScorerLines(goalsRaw, awayCandidates);
 
                   return (
                     <View key={fixtureId} ref={(node) => { fixtureNodeRefs.current[fixtureId] = node; }}>
@@ -960,7 +1007,7 @@ export default function HomeScreen() {
                         awayBadge={awayBadge}
                         homeTeamFontWeight={homeTeamFontWeight}
                         awayTeamFontWeight={awayTeamFontWeight}
-                        gwState={gwState}
+                        gwState={gwState ?? 'GW_OPEN'}
                         pick={pick}
                         derivedOutcome={derivedOutcome}
                         hasScore={hasScore}
@@ -973,6 +1020,8 @@ export default function HomeScreen() {
                         tabsAboveScorers={tabsAboveScorers}
                         homeScorers={homeScorers}
                         awayScorers={awayScorers}
+                        homeRedCardCount={homeRedCardCount}
+                        awayRedCardCount={awayRedCardCount}
                         kickoffDetail={kickoffDetail}
                         hideStatusRowCompletely={hideStatusRowCompletely}
                         hideRepeatedKickoffInDetails={hideRepeatedKickoffInDetails}

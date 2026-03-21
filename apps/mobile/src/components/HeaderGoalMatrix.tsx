@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, View } from 'react-native';
+import { Animated, Easing, View } from 'react-native';
 import Svg, { Rect } from 'react-native-svg';
 import { useTokens } from '@totl/ui';
 
@@ -41,48 +41,36 @@ export default function HeaderGoalMatrix() {
   const offPixel = isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.08)';
 
   React.useEffect(() => {
-    goalScale.setValue(0.92);
-    glowOpacity.setValue(0.35);
+    goalScale.setValue(0.985);
+    glowOpacity.setValue(0.5);
     sweepProgress.setValue(0);
     flareOpacity.setValue(0);
 
-    const intro = Animated.sequence([
-      Animated.parallel([
-        Animated.spring(goalScale, {
-          toValue: 1.04,
-          useNativeDriver: true,
-          damping: 8,
-          stiffness: 190,
-          mass: 0.7,
-        }),
-        Animated.sequence([
-          Animated.timing(flareOpacity, { toValue: 0.22, duration: 120, useNativeDriver: true }),
-          Animated.timing(flareOpacity, { toValue: 0, duration: 260, useNativeDriver: true }),
-        ]),
-      ]),
-      Animated.spring(goalScale, {
+    const intro = Animated.parallel([
+      Animated.timing(goalScale, {
         toValue: 1,
+        duration: 320,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
-        damping: 10,
-        stiffness: 180,
-        mass: 0.8,
       }),
+      Animated.sequence([
+        Animated.timing(flareOpacity, { toValue: 0.16, duration: 180, useNativeDriver: true }),
+        Animated.timing(flareOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]),
     ]);
 
     const glowLoop = Animated.loop(
       Animated.sequence([
-        Animated.timing(glowOpacity, { toValue: 0.82, duration: 220, useNativeDriver: true }),
-        Animated.timing(glowOpacity, { toValue: 0.48, duration: 260, useNativeDriver: true }),
-        Animated.timing(glowOpacity, { toValue: 0.9, duration: 160, useNativeDriver: true }),
-        Animated.timing(glowOpacity, { toValue: 0.42, duration: 220, useNativeDriver: true }),
+        Animated.timing(glowOpacity, { toValue: 0.78, duration: 420, useNativeDriver: true }),
+        Animated.timing(glowOpacity, { toValue: 0.56, duration: 480, useNativeDriver: true }),
       ])
     );
 
     const sweepLoop = Animated.loop(
       Animated.sequence([
-        Animated.timing(sweepProgress, { toValue: 1, duration: 620, useNativeDriver: true }),
+        Animated.timing(sweepProgress, { toValue: 1, duration: 920, useNativeDriver: true }),
         Animated.timing(sweepProgress, { toValue: 0, duration: 1, useNativeDriver: true }),
-        Animated.delay(90),
+        Animated.delay(140),
       ])
     );
 

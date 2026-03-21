@@ -25,13 +25,29 @@ import MiniLeagueLiveCard from '../components/home/MiniLeagueLiveCard';
 import AppTopHeader from '../components/AppTopHeader';
 import HeaderLiveScore from '../components/HeaderLiveScore';
 import { DEV_FAKE_LEAGUE_ID, DEV_FAKE_LEAGUE_MEMBERS, DEV_FAKE_LEAGUE_NAME, isDevFakeLeagueId } from '../lib/devFakeLeague';
-import { buildHeaderScoreSummary, buildHeaderTickerEvent, formatHeaderScoreLabel } from '../lib/headerLiveScore';
+import { buildHeaderExpandedStats, buildHeaderScoreSummary, buildHeaderTickerEvent, formatHeaderScoreLabel } from '../lib/headerLiveScore';
 import { useLiveScores } from '../hooks/useLiveScores';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
 type LeagueMembersResponse = Awaited<ReturnType<typeof api.getLeague>>;
 type LeagueTableResponse = Awaited<ReturnType<typeof api.getLeagueGwTable>>;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error('refresh-timeout')), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(id);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(id);
+        reject(error);
+      }
+    );
+  });
+}
 
 function ordinal(n: number): string {
   const mod10 = n % 10;
@@ -334,6 +350,7 @@ export default function LeaguesScreen() {
   const queryClient = useQueryClient();
   const { unreadByLeagueId, meId: unreadMeId } = useLeagueUnreadCounts();
   const [hasAccessToken, setHasAccessToken] = React.useState<boolean | null>(null);
+  const [pullRefreshing, setPullRefreshing] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -377,7 +394,7 @@ export default function LeaguesScreen() {
     staleTime: 60_000,
   });
   const avatarUrl = typeof avatarRow?.avatar_url === 'string' ? String(avatarRow.avatar_url) : null;
-  const { data, isLoading, error, refetch, isRefetching } = useQuery<LeaguesResponse>({
+  const { data, isLoading, error, refetch } = useQuery<LeaguesResponse>({
     queryKey: ['leagues'],
     queryFn: () => api.listLeagues(),
   });
@@ -400,9 +417,14 @@ export default function LeaguesScreen() {
     sortedLeaguesRef.current = listLeagues;
   }, [listLeagues]);
 
-  const { data: home } = useQuery({
+  const { data: home, refetch: refetchHome } = useQuery({
     queryKey: ['homeSnapshot'],
     queryFn: () => api.getHomeSnapshot(),
+  });
+  const { data: headerRanks } = useQuery({
+    queryKey: ['homeRanks'],
+    queryFn: () => api.getHomeRanks(),
+    staleTime: 60_000,
   });
   const viewingGw = home?.viewingGw ?? null;
   const currentGw = home?.currentGw ?? viewingGw ?? null;
@@ -420,6 +442,12 @@ export default function LeaguesScreen() {
       hasSubmittedViewingGw: !!home.hasSubmittedViewingGw,
     });
   }, [home, liveByFixtureIndexRealtime]);
+  const { data: headerGwLiveTable } = useQuery({
+    enabled: gwState === 'LIVE' && typeof viewingGw === 'number' && !!meId,
+    queryKey: ['headerGwLiveTable', viewingGw],
+    queryFn: () => api.getGlobalGwLiveTable(viewingGw as number),
+    staleTime: 30_000,
+  });
   const showReadyToMoveOn =
     typeof currentGw === 'number' && typeof viewingGw === 'number' ? viewingGw < currentGw : false;
   const liveRailGap = 10;
@@ -505,6 +533,23 @@ export default function LeaguesScreen() {
   const showHeaderTotlLogo =
     gwState === 'GW_OPEN' || gwState === 'GW_PREDICTED' || gwState === 'DEADLINE_PASSED';
   const headerScoreLabel = headerScoreSummary ? formatHeaderScoreLabel(headerScoreSummary, showLiveHeaderScore) : null;
+  const liveGwRank = React.useMemo(() => {
+    if (!meId) return null;
+    const rows = headerGwLiveTable?.rows ?? [];
+    if (!rows.length) return null;
+    const mine = rows.find((row) => String(row.user_id) === String(meId));
+    if (!mine) return null;
+    const higher = rows.filter((row) => Number(row.score ?? 0) > Number(mine.score ?? 0)).length;
+    return higher + 1;
+  }, [headerGwLiveTable?.rows, meId]);
+  const headerExpandedStats = React.useMemo(
+    () =>
+      buildHeaderExpandedStats({
+        gwRank: showLiveHeaderScore ? liveGwRank : headerRanks?.gwRank?.rank ?? null,
+        gwTotal: showLiveHeaderScore ? headerGwLiveTable?.rows?.length ?? null : headerRanks?.gwRank?.total ?? null,
+      }),
+    [headerGwLiveTable?.rows?.length, headerRanks?.gwRank?.rank, headerRanks?.gwRank?.total, liveGwRank, showLiveHeaderScore]
+  );
 
   const [createJoinOpen, setCreateJoinOpen] = React.useState(false);
   const [joinCode, setJoinCode] = React.useState('');
@@ -512,16 +557,7 @@ export default function LeaguesScreen() {
   const [joining, setJoining] = React.useState(false);
 
   const [visibleLeagueIds, setVisibleLeagueIds] = React.useState<Set<string>>(() => new Set());
-  const [refreshTimedOut, setRefreshTimedOut] = React.useState(false);
   const [initialLoadTimedOut, setInitialLoadTimedOut] = React.useState(false);
-  React.useEffect(() => {
-    if (!isRefetching) {
-      setRefreshTimedOut(false);
-      return;
-    }
-    const id = setTimeout(() => setRefreshTimedOut(true), 15_000);
-    return () => clearTimeout(id);
-  }, [isRefetching]);
   React.useEffect(() => {
     const loading = isLoading && !data && !error;
     if (!loading) {
@@ -531,6 +567,19 @@ export default function LeaguesScreen() {
     const id = setTimeout(() => setInitialLoadTimedOut(true), 15_000);
     return () => clearTimeout(id);
   }, [isLoading, data, error]);
+  const refreshing = pullRefreshing;
+  const onRefresh = React.useCallback(async () => {
+    if (pullRefreshing) return;
+    setPullRefreshing(true);
+    try {
+      await Promise.allSettled([
+        withTimeout(refetch(), 8000),
+        withTimeout(refetchHome(), 8000),
+      ]);
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [pullRefreshing, refetch, refetchHome]);
   const renderCreateJoinHeaderButton = React.useCallback(
     () => (
       <Pressable
@@ -617,9 +666,10 @@ export default function LeaguesScreen() {
                 fill
                 tickerEvent={headerTickerEvent ?? undefined}
                 tickerEventKey={headerTickerEventKey}
+                expandedStats={headerExpandedStats}
               />
             ) : showStaticResultsHeaderScore && headerScoreLabel ? (
-              <HeaderLiveScore scoreLabel={headerScoreLabel} fill live={false} />
+              <HeaderLiveScore scoreLabel={headerScoreLabel} fill live={false} expandedStats={headerExpandedStats} />
             ) : undefined
           }
           rightAction={renderCreateJoinHeaderButton()}
@@ -700,9 +750,10 @@ export default function LeaguesScreen() {
               fill
               tickerEvent={headerTickerEvent ?? undefined}
               tickerEventKey={headerTickerEventKey}
+                expandedStats={headerExpandedStats}
             />
           ) : showStaticResultsHeaderScore && headerScoreLabel ? (
-            <HeaderLiveScore scoreLabel={headerScoreLabel} fill live={false} />
+              <HeaderLiveScore scoreLabel={headerScoreLabel} fill live={false} expandedStats={headerExpandedStats} />
           ) : undefined
         }
         rightAction={renderCreateJoinHeaderButton()}
@@ -720,7 +771,7 @@ export default function LeaguesScreen() {
           paddingTop: t.space[4],
           paddingBottom: FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
         }}
-        refreshControl={<TotlRefreshControl refreshing={isRefetching && !refreshTimedOut} onRefresh={() => refetch()} />}
+        refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         viewabilityConfig={viewabilityConfig}
         onViewableItemsChanged={onViewableItemsChanged}
         ListHeaderComponent={

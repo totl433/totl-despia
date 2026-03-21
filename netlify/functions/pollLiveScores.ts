@@ -285,13 +285,15 @@ async function pollAllLiveScores() {
       const goals = (matchData.goals || []).map((goal: any) => {
         let goalTeam = goal.team;
         let goalTeamId = goal.team?.id;
+        const goalType = typeof goal.type === 'string' ? String(goal.type).trim().toUpperCase() : null;
         
         // Check if this is an own goal - API uses "OWN" for own goals
         // If goal.type is "OWN", then the goal counts for the OPPOSITE team
-        const isOwnGoal = goal.type === 'OWN' || 
-                         goal.type === 'OWN_GOAL' || 
-                         goal.type === 'OWN GOAL' || 
+        const isOwnGoal = goalType === 'OWN' || 
+                         goalType === 'OWN_GOAL' || 
+                         goalType === 'OWN GOAL' || 
                          (goal.scorer?.name && goal.scorer.name.toLowerCase().includes('own goal'));
+        const isPenalty = goalType === 'PENALTY' || goalType === 'PEN';
         
         if (isOwnGoal) {
           // Own goal: if player's team is home, goal counts for away (and vice versa)
@@ -314,6 +316,8 @@ async function pollAllLiveScores() {
           team: normalizedTeam ?? null, // Normalize to canonical name
           teamId: goalTeamId ?? null,
           isOwnGoal: isOwnGoal,
+          isPenalty: isPenalty,
+          type: goalType,
         };
       });
 
