@@ -797,7 +797,7 @@ app.get('/v1/leaderboards/gw/:gw/live', async (req) => {
     picksByFixtureIndex.set(p.fixture_index, arr);
   });
 
-  const rows = (usersData ?? []).map((u: any) => ({
+  const rows: Array<{ user_id: string; name: string; score: number }> = (usersData ?? []).map((u: any) => ({
     user_id: String(u.id),
     name: typeof u.name === 'string' && u.name.trim() ? u.name : 'User',
     score: 0,
@@ -807,12 +807,15 @@ app.get('/v1/leaderboards/gw/:gw/live', async (req) => {
     const thesePicks = picksByFixtureIndex.get(fixtureIndex) ?? [];
     thesePicks.forEach((p) => {
       if (p.pick !== outcome) return;
-      const r = rows.find((x) => x.user_id === p.user_id);
+      const r = rows.find((x: { user_id: string; name: string; score: number }) => x.user_id === p.user_id);
       if (r) r.score += 1;
     });
   });
 
-  rows.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  rows.sort(
+    (a: { user_id: string; name: string; score: number }, b: { user_id: string; name: string; score: number }) =>
+      b.score - a.score || a.name.localeCompare(b.name)
+  );
   return { gw, rows };
 });
 
