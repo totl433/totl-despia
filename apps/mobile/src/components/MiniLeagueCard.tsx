@@ -29,6 +29,8 @@ function CompactRow({
   idx,
   displayRows,
   isLightMode,
+  showUnicorns,
+  emptyLabel,
 }: {
   isPlaceholder: boolean;
   showEmptyLabelInFirstRow: boolean;
@@ -43,6 +45,8 @@ function CompactRow({
   idx: number;
   displayRows: Array<MiniLeagueTableRowWithAvatar | null>;
   isLightMode: boolean;
+  showUnicorns: boolean;
+  emptyLabel: string;
 }) {
   const rowHighlightColor = isLightMode ? 'rgba(241, 245, 249, 0.9)' : 'rgba(255, 255, 255, 0.06)';
   const pulseOpacity = useSharedValue(0.75);
@@ -66,14 +70,31 @@ function CompactRow({
       <View style={{ width: 24, height: 24, borderRadius: 999, backgroundColor: avatarBg, overflow: 'hidden' }}>
         {r?.avatar_url ? <Image source={{ uri: r.avatar_url }} style={{ width: 24, height: 24 }} /> : null}
       </View>
-      <View style={{ flex: 1, minWidth: 4 }} />
+      <View style={{ width: 8 }} />
+      <TotlText
+        numberOfLines={1}
+        ellipsizeMode="tail"
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: 12,
+          color: showEmptyLabelInFirstRow ? t.color.muted : greyedOut ? t.color.muted : t.color.text,
+        }}
+      >
+        {showEmptyLabelInFirstRow ? emptyLabel : r?.name ?? '—'}
+      </TotlText>
+      <View style={{ width: 8 }} />
       <TotlText style={{ width: compactPtsWidth, textAlign: 'right', fontSize: 12, color: greyedOut ? t.color.muted : t.color.text }}>
         {showEmptyLabelInFirstRow ? '—' : String(r?.score ?? '—')}
       </TotlText>
-      <View style={{ width: 8 }} />
-      <TotlText style={{ width: compactUnicornWidth, textAlign: 'right', fontSize: 12, color: greyedOut ? t.color.muted : t.color.text }}>
-        {showEmptyLabelInFirstRow ? '—' : String(r?.unicorns ?? 0)}
-      </TotlText>
+      {showUnicorns ? (
+        <>
+          <View style={{ width: 8 }} />
+          <TotlText style={{ width: compactUnicornWidth, textAlign: 'right', fontSize: 12, color: greyedOut ? t.color.muted : t.color.text }}>
+            {showEmptyLabelInFirstRow ? '—' : String(r?.unicorns ?? 0)}
+          </TotlText>
+        </>
+      ) : null}
     </>
   );
 
@@ -141,6 +162,7 @@ export default function MiniLeagueCard({
   submittedCount = null,
   totalMembers = null,
   hideHeaderIndicators = false,
+  showUnicorns = true,
 }: {
   title: string;
   avatarUri: string | null;
@@ -168,6 +190,8 @@ export default function MiniLeagueCard({
   totalMembers?: number | null;
   /** Hide rank and "All submitted" row in expanded header (e.g. for Live ML cards). */
   hideHeaderIndicators?: boolean;
+  /** Hide unicorn counts when leagues are too small for unicorn scoring. */
+  showUnicorns?: boolean;
 }) {
   const t = useTokens();
   const layoutTransition = React.useMemo(
@@ -242,8 +266,12 @@ export default function MiniLeagueCard({
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
           <View style={{ flex: 1 }} />
           <TotlText style={{ width: compactPtsWidth, textAlign: 'right', fontSize: 11, color: t.color.muted }}>Pts</TotlText>
-          <View style={{ width: 8 }} />
-          <TotlText style={{ width: compactUnicornWidth, textAlign: 'right', fontSize: 11, color: t.color.text }}>🦄</TotlText>
+          {showUnicorns ? (
+            <>
+              <View style={{ width: 8 }} />
+              <TotlText style={{ width: compactUnicornWidth, textAlign: 'right', fontSize: 11, color: t.color.text }}>🦄</TotlText>
+            </>
+          ) : null}
         </View>
         {displayRows.length ? (
           displayRows.map((r, idx) => {
@@ -267,6 +295,8 @@ export default function MiniLeagueCard({
                 idx={idx}
                 displayRows={displayRows}
                 isLightMode={isLightMode}
+                showUnicorns={showUnicorns}
+                emptyLabel={emptyLabel}
               />
             );
           })
@@ -362,10 +392,12 @@ export default function MiniLeagueCard({
       <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch' }}>
         <View style={{ flex: 1 }} />
         <TotlText style={{ width: ptsColWidth, textAlign: 'right', fontSize: 14, color: t.color.muted }}>Pts</TotlText>
-        <>
-          <View style={{ width: 20 }} />
-          <TotlText style={{ width: unicornColWidth, textAlign: 'right', fontSize: 14, color: t.color.text }}>🦄</TotlText>
-        </>
+        {showUnicorns ? (
+          <>
+            <View style={{ width: 20 }} />
+            <TotlText style={{ width: unicornColWidth, textAlign: 'right', fontSize: 14, color: t.color.text }}>🦄</TotlText>
+          </>
+        ) : null}
           </View>
 
       <View style={{ height: 16 }} />
@@ -416,12 +448,14 @@ export default function MiniLeagueCard({
                 <TotlText style={{ width: ptsColWidth, textAlign: 'right', fontSize: 14, color: greyedOut ? t.color.muted : t.color.text }}>
                   {showEmptyLabelInFirstRow ? '—' : String(r?.score ?? '—')}
                 </TotlText>
-                <>
-                  <View style={{ width: 20 }} />
-                  <TotlText style={{ width: unicornColWidth, textAlign: 'right', fontSize: 14, color: greyedOut ? t.color.muted : t.color.text }}>
-                    {showEmptyLabelInFirstRow ? '—' : String(r?.unicorns ?? 0)}
-                  </TotlText>
-                </>
+                {showUnicorns ? (
+                  <>
+                    <View style={{ width: 20 }} />
+                    <TotlText style={{ width: unicornColWidth, textAlign: 'right', fontSize: 14, color: greyedOut ? t.color.muted : t.color.text }}>
+                      {showEmptyLabelInFirstRow ? '—' : String(r?.unicorns ?? 0)}
+                    </TotlText>
+                  </>
+                ) : null}
               </View>
               {idx < displayRows.length - 1 ? <View style={{ height: rowGap }} /> : null}
             </React.Fragment>

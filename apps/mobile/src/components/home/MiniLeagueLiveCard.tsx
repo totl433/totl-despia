@@ -138,6 +138,7 @@ export default function MiniLeagueLiveCard({
     const tbl = table as { totalMembers?: number } | null | undefined;
     return typeof tbl?.totalMembers === 'number' && Number.isFinite(tbl.totalMembers) ? tbl.totalMembers : null;
   }, [table, isDevFakeLeague]);
+  const showUnicorns = (totalMembers ?? members.length) >= 3;
 
   return (
     <Pressable
@@ -165,6 +166,7 @@ export default function MiniLeagueLiveCard({
         submittedCount={submittedCount}
         totalMembers={totalMembers}
         hideHeaderIndicators={!compact}
+        showUnicorns={showUnicorns}
       />
     </Pressable>
   );

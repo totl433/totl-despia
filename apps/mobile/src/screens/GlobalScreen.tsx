@@ -8,6 +8,7 @@ import { useNavigation, useRoute, useScrollToTop } from '@react-navigation/nativ
 import { Ionicons } from '@expo/vector-icons';
 
 import { api } from '../lib/api';
+import { getGameweekStateFromSnapshot } from '../lib/gameweekState';
 import { supabase } from '../lib/supabase';
 import LeaderboardsTabs, { type LeaderboardsTab, type FormScope } from '../components/leaderboards/LeaderboardsTabs';
 import { getMonthAllocations, getMonthForGw, getEffectiveCurrentMonthKey, isMonthAvailable, type MonthAllocation } from '../lib/leaderboardMonths';
@@ -16,6 +17,9 @@ import LeaderboardTable, { type LeaderboardRow } from '../components/leaderboard
 import LeaderboardPlayerPicksSheet from '../components/leaderboards/LeaderboardPlayerPicksSheet';
 import CenteredSpinner from '../components/CenteredSpinner';
 import AppTopHeader from '../components/AppTopHeader';
+import HeaderLiveScore from '../components/HeaderLiveScore';
+import { useLiveScores } from '../hooks/useLiveScores';
+import { buildHeaderScoreSummary, buildHeaderTickerEvent, formatHeaderScoreLabel } from '../lib/headerLiveScore';
 
 type OverallRow = { user_id: string; name: string | null; ocp: number | null };
 type GwPointsRow = { user_id: string; gw: number; points: number };
@@ -210,12 +214,83 @@ export default function GlobalScreen() {
     staleTime: 60_000,
   });
   const avatarUrl = typeof avatarRow?.avatar_url === 'string' ? String(avatarRow.avatar_url) : null;
+  const { data: homeSnapshot } = useQuery({
+    queryKey: ['homeSnapshot'],
+    queryFn: () => api.getHomeSnapshot(),
+    staleTime: 60_000,
+  });
+  const liveScoresGw =
+    typeof homeSnapshot?.viewingGw === 'number'
+      ? homeSnapshot.viewingGw
+      : typeof homeSnapshot?.currentGw === 'number'
+        ? homeSnapshot.currentGw
+        : null;
+  const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(liveScoresGw, {
+    initial: homeSnapshot?.liveScores ?? [],
+  });
 
   const { data: ranks, refetch: refetchRanks, isRefetching: ranksRefetching } = useQuery({
     queryKey: ['homeRanks'],
     queryFn: () => api.getHomeRanks(),
   });
   const latestGw = ranks?.latestGw ?? null;
+  const headerLiveByFixtureIndex = React.useMemo(() => {
+    if (!homeSnapshot) return new Map<number, any>();
+    if (liveByFixtureIndexRealtime.size > 0) return liveByFixtureIndexRealtime;
+
+    const apiMatchIdToFixtureIndex = new Map<number, number>();
+    (homeSnapshot.fixtures ?? []).forEach((fixture) => {
+      if (typeof fixture.api_match_id === 'number') apiMatchIdToFixtureIndex.set(fixture.api_match_id, fixture.fixture_index);
+    });
+
+    return (homeSnapshot.liveScores ?? []).reduce((map, liveScore) => {
+      const fixtureIndex =
+        typeof liveScore.fixture_index === 'number'
+          ? liveScore.fixture_index
+          : typeof liveScore.api_match_id === 'number'
+            ? apiMatchIdToFixtureIndex.get(liveScore.api_match_id)
+            : undefined;
+      if (typeof fixtureIndex === 'number') map.set(fixtureIndex, liveScore);
+      return map;
+    }, new Map<number, any>());
+  }, [homeSnapshot, liveByFixtureIndexRealtime]);
+  const headerScoreSummary = React.useMemo(() => {
+    if (!homeSnapshot) return null;
+    const resultByFixtureIndex = new Map<number, 'H' | 'D' | 'A'>();
+    (homeSnapshot.gwResults ?? []).forEach((result) => {
+      resultByFixtureIndex.set(result.fixture_index, result.result);
+    });
+    return buildHeaderScoreSummary({
+      fixtures: homeSnapshot.fixtures ?? [],
+      userPicks: homeSnapshot.userPicks ?? {},
+      liveByFixtureIndex: headerLiveByFixtureIndex,
+      resultByFixtureIndex,
+    });
+  }, [headerLiveByFixtureIndex, homeSnapshot]);
+  const { tickerEvent: headerTickerEvent, tickerEventKey: headerTickerEventKey } = React.useMemo(() => {
+    if (!homeSnapshot) return { tickerEvent: null, tickerEventKey: null };
+    return buildHeaderTickerEvent({
+      fixtures: homeSnapshot.fixtures ?? [],
+      liveByFixtureIndex: headerLiveByFixtureIndex,
+    });
+  }, [headerLiveByFixtureIndex, homeSnapshot]);
+  const currentGwIsLive = React.useMemo(() => {
+    if (homeSnapshot) {
+      return (
+        getGameweekStateFromSnapshot({
+          fixtures: homeSnapshot.fixtures ?? [],
+          liveScores:
+            headerLiveByFixtureIndex.size > 0
+              ? Array.from(headerLiveByFixtureIndex.values())
+              : homeSnapshot.liveScores ?? [],
+          hasSubmittedViewingGw: !!homeSnapshot.hasSubmittedViewingGw,
+        }) === 'LIVE'
+      );
+    }
+    return gwLiveFallbackScores?.hasActiveLiveGames === true;
+  }, [headerLiveByFixtureIndex, homeSnapshot, gwLiveFallbackScores?.hasActiveLiveGames]);
+  const showLiveHeaderScore = currentGwIsLive && !!headerScoreSummary;
+  const headerScoreLabel = headerScoreSummary ? formatHeaderScoreLabel(headerScoreSummary, true) : null;
 
   const {
     data: overall,
@@ -334,7 +409,6 @@ export default function GlobalScreen() {
     },
     refetchInterval: tab === 'gw' || tab === 'overall' || tab === 'monthly' ? 10_000 : false,
   });
-
   const {
     data: friendIds,
     isLoading: friendsLoading,
@@ -704,7 +778,17 @@ export default function GlobalScreen() {
           onPressChat={() => navigation.navigate('ChatHub')}
           onPressProfile={() => navigation.navigate('Profile')}
           avatarUrl={avatarUrl}
-          title="Leaderboards"
+          title={showLiveHeaderScore ? undefined : 'Leaderboards'}
+          centerContent={
+            showLiveHeaderScore && headerScoreLabel ? (
+              <HeaderLiveScore
+                scoreLabel={headerScoreLabel}
+                fill
+                tickerEvent={headerTickerEvent ?? undefined}
+                tickerEventKey={headerTickerEventKey}
+              />
+            ) : undefined
+          }
           rightAction={
             <Pressable
               onPress={() => navigation.navigate('Profile' as any, { screen: 'ProfileStats' } as any)}
@@ -721,11 +805,19 @@ export default function GlobalScreen() {
               <Ionicons name="analytics-outline" size={24} color={t.color.muted} />
             </Pressable>
           }
+          hasLiveGames={currentGwIsLive}
+          showLeftLiveBadge={!showLiveHeaderScore}
         />
 
         <View style={{ flex: 1, minHeight: 0, paddingHorizontal: t.space[4], paddingBottom: 0 }}>
         <View style={{ marginTop: 12 }}>
-          <LeaderboardsTabs value={tab} onChange={setTab} currentGw={latestGw} currentMonthLabel={currentMonthLabel} />
+          <LeaderboardsTabs
+            value={tab}
+            onChange={setTab}
+            currentGw={latestGw}
+            currentMonthLabel={currentMonthLabel}
+            currentGwIsLive={currentGwIsLive}
+          />
         </View>
 
         {tab === 'monthly' ? (

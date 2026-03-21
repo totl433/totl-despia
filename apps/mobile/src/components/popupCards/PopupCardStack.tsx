@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Pressable, View, useWindowDimensions } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
   interpolate,
@@ -44,6 +45,7 @@ function StackCard({
   stackProgress,
   dismissProgress,
   onClose,
+  onSwipeDismiss,
 }: {
   card: PopupCardDescriptor;
   cardWidth: number;
@@ -58,20 +60,101 @@ function StackCard({
   stackProgress: SharedValue<number>;
   dismissProgress: SharedValue<number>;
   onClose: () => void;
+  onSwipeDismiss: () => void;
 }) {
+  const dragTranslateX = useSharedValue(0);
+  const dragTranslateY = useSharedValue(0);
+  const dragRotationDeg = useSharedValue(0);
+  const dragOpacity = useSharedValue(1);
+
+  React.useEffect(() => {
+    dragTranslateX.value = 0;
+    dragTranslateY.value = 0;
+    dragRotationDeg.value = 0;
+    dragOpacity.value = 1;
+  }, [card.id, dragOpacity, dragRotationDeg, dragTranslateX, dragTranslateY, isTopCard]);
+
+  const gesture = React.useMemo(() => {
+    const SWIPE_DISTANCE = 90;
+    const SWIPE_VELOCITY = 700;
+
+    return Gesture.Pan()
+      .enabled(isTopCard && !isClosing)
+      .maxPointers(1)
+      .runOnJS(false)
+      .onUpdate((event) => {
+        if (!isTopCard || isClosing) return;
+        const nextTranslateX = (event.translationX ?? 0) * 0.98;
+        const nextTranslateY = (event.translationY ?? 0) * 0.92;
+        dragTranslateX.value = nextTranslateX;
+        dragTranslateY.value = nextTranslateY;
+        dragRotationDeg.value = interpolate(nextTranslateX, [-cardWidth * 0.45, cardWidth * 0.45], [-7, 7]);
+        dragOpacity.value = interpolate(Math.abs(nextTranslateX), [0, cardWidth * 0.7], [1, 0.78]);
+      })
+      .onEnd((event) => {
+        if (!isTopCard || isClosing) return;
+        const translateX = event.translationX ?? 0;
+        const translateY = event.translationY ?? 0;
+        const velocityX = event.velocityX ?? 0;
+        const velocityY = event.velocityY ?? 0;
+        const absX = Math.abs(translateX);
+        const absY = Math.abs(translateY);
+        const horizontalThrow = absX >= SWIPE_DISTANCE || Math.abs(velocityX) >= SWIPE_VELOCITY;
+        const verticalThrow = absY >= SWIPE_DISTANCE || Math.abs(velocityY) >= SWIPE_VELOCITY;
+        const shouldDismiss = horizontalThrow || verticalThrow;
+
+        if (shouldDismiss) {
+          const dismissHorizontally = absX >= absY;
+          const targetX = dismissHorizontally ? (translateX >= 0 ? cardWidth + 72 : -cardWidth - 72) : translateX * 0.35;
+          const targetY = dismissHorizontally ? translateY * 0.35 : translateY >= 0 ? cardHeight + 96 : -cardHeight - 96;
+          const targetRotation = dismissHorizontally ? (translateX >= 0 ? 10 : -10) : translateY >= 0 ? 6 : -6;
+
+          dragTranslateX.value = withTiming(targetX, { duration: 180, easing: Easing.in(Easing.cubic) });
+          dragTranslateY.value = withTiming(targetY, { duration: 180, easing: Easing.in(Easing.cubic) });
+          dragRotationDeg.value = withTiming(targetRotation, { duration: 180, easing: Easing.in(Easing.cubic) });
+          dragOpacity.value = withTiming(0.7, { duration: 180, easing: Easing.in(Easing.cubic) }, (finished) => {
+            if (!finished) return;
+            runOnJS(onSwipeDismiss)();
+          });
+          return;
+        }
+
+        dragTranslateX.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
+        dragTranslateY.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
+        dragRotationDeg.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
+        dragOpacity.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
+      });
+  }, [cardWidth, dragOpacity, dragRotationDeg, dragTranslateX, dragTranslateY, isClosing, isTopCard, onSwipeDismiss]);
+
   const animatedStyle = useAnimatedStyle(() => {
     const enterTranslateX = interpolate(stackProgress.value, [0, 1], [cardWidth + 48, baseTranslateX]);
     const closingTranslateX = interpolate(dismissProgress.value, [0, 1], [baseTranslateX, -cardWidth - 72]);
-    const translateX = isClosing ? closingTranslateX : enterTranslateX;
-    const opacity = isClosing ? interpolate(dismissProgress.value, [0, 1], [1, 0.7]) : 1;
+    const dragAdjustedTranslateX = enterTranslateX + (isTopCard ? dragTranslateX.value : 0);
+    const translateX = isClosing ? closingTranslateX : dragAdjustedTranslateX;
+    const translateY = baseTranslateY + (isTopCard ? dragTranslateY.value : 0);
+    const rotateDeg = baseRotationDeg + (isTopCard ? dragRotationDeg.value : 0);
+    const opacity = isClosing ? interpolate(dismissProgress.value, [0, 1], [1, 0.7]) : isTopCard ? dragOpacity.value : 1;
 
     return {
       opacity,
-      transform: [{ translateX }, { translateY: baseTranslateY }, { rotateZ: `${baseRotationDeg}deg` }],
+      transform: [{ translateX }, { translateY }, { rotateZ: `${rotateDeg}deg` }],
     };
-  }, [baseRotationDeg, baseTranslateX, baseTranslateY, cardWidth, dismissProgress, isClosing, stackProgress]);
+  }, [
+    baseRotationDeg,
+    baseTranslateX,
+    baseTranslateY,
+    cardWidth,
+    dismissProgress,
+    dragOpacity,
+    dragRotationDeg,
+    dragTranslateX,
+    dragTranslateY,
+    isClosing,
+    isTopCard,
+    stackProgress,
+  ]);
 
-  return (
+  const cardNode = (
     <Animated.View
       style={[
         {
@@ -105,6 +188,12 @@ function StackCard({
       </View>
     </Animated.View>
   );
+
+  if (!isTopCard) {
+    return cardNode;
+  }
+
+  return <GestureDetector gesture={gesture}>{cardNode}</GestureDetector>;
 }
 
 export default function PopupCardStack({
@@ -206,6 +295,11 @@ export default function PopupCardStack({
     });
   }, [cards, closingCardId, dismissProgress, onDismissTop]);
 
+  const dismissTopAfterSwipe = React.useCallback(() => {
+    if (!cards.length || closingCardId) return;
+    onDismissTop();
+  }, [cards.length, closingCardId, onDismissTop]);
+
   if (!shouldRender) return null;
 
   return (
@@ -283,6 +377,7 @@ export default function PopupCardStack({
                     stackProgress={stackProgress}
                     dismissProgress={dismissProgress}
                     onClose={dismissTop}
+                    onSwipeDismiss={dismissTopAfterSwipe}
                   />
                 );
               })}

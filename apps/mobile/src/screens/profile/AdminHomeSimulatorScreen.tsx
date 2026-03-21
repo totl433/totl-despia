@@ -9,9 +9,11 @@ import type { Fixture, LiveStatus, Pick } from '@totl/domain';
 
 import { TEAM_BADGES } from '../../lib/teamBadges';
 import { normalizeTeamCode } from '../../lib/teamColors';
-import { getMediumName } from '../../../../../src/lib/teamNames';
 import type { GameweekState } from '../../lib/gameweekState';
 
+import AppTopHeader from '../../components/AppTopHeader';
+import HeaderTotlLogo from '../../components/HeaderTotlLogo';
+import HeaderLiveScore from '../../components/HeaderLiveScore';
 import PageHeader from '../../components/PageHeader';
 import { api } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
@@ -19,6 +21,7 @@ import usePopupCards from '../../hooks/usePopupCards';
 import MiniFixtureCard from '../../components/home/MiniFixtureCard';
 import ExpandedFixtureCard from '../../components/home/ExpandedFixtureCard';
 import SectionHeaderRow from '../../components/home/SectionHeaderRow';
+import { buildHeaderScoreSummary, formatHeaderScoreLabel } from '../../lib/headerLiveScore';
 import {
   buildFixturesByDate,
   fixtureDateLabel,
@@ -32,6 +35,7 @@ import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
 
 type SimGameState = 'GW_OPEN' | 'GW_PREDICTED' | 'DEADLINE_PASSED' | 'LIVE' | 'RESULTS_PRE_GW';
 type SimFixtureStatus = 'SCHEDULED' | 'IN_PLAY' | 'PAUSED' | 'FINISHED';
+type HeaderPreviewContext = 'HP' | 'ML' | '2526';
 
 type SimFixture = {
   id: string;
@@ -99,6 +103,16 @@ const KICKOFF_DETAILS = [
   'Sun 22 Feb • 19:00',
   'Mon 23 Feb • 20:00',
 ];
+
+function getSimMediumName(input: string): string {
+  const value = String(input ?? '').trim();
+  if (!value) return value;
+  const normalizedCode = normalizeTeamCode(value);
+  const matchedTeam = TEAMS.find(
+    (team) => team.code === normalizedCode || team.name.toLowerCase() === value.toLowerCase()
+  );
+  return matchedTeam?.name ?? value;
+}
 
 function resultForScore(homeScore: number, awayScore: number): Pick {
   if (homeScore > awayScore) return 'H';
@@ -178,6 +192,7 @@ export default function AdminHomeSimulatorScreen() {
   const fixtureNodeRefs = React.useRef<Record<string, View | null>>({});
 
   const [state, setState] = React.useState<SimGameState>('GW_OPEN');
+  const [headerContext, setHeaderContext] = React.useState<HeaderPreviewContext>('HP');
   const [gwOpenLayout, setGwOpenLayout] = React.useState<'mini' | 'compact'>('mini');
   const [stateMenuOpen, setStateMenuOpen] = React.useState(false);
   const [expandedFixtureId, setExpandedFixtureId] = React.useState<string | null>(null);
@@ -414,31 +429,254 @@ export default function AdminHomeSimulatorScreen() {
     navigation.navigate('AdminHome');
   }, [navigation]);
 
+  const headerTitle = headerContext === 'HP' ? state : headerContext === 'ML' ? 'Mini Leagues' : 'Leaderboards';
+  const headerScoreSummary = React.useMemo(
+    () =>
+      buildHeaderScoreSummary({
+        fixtures: fixturesForHome,
+        userPicks,
+        liveByFixtureIndex,
+        resultByFixtureIndex,
+      }),
+    [fixturesForHome, liveByFixtureIndex, resultByFixtureIndex, userPicks]
+  );
+  const showStaticResultsHeaderScore = (headerContext === 'HP' || headerContext === 'ML') && gwState === 'RESULTS_PRE_GW';
+  const showLiveHeaderScore = (headerContext === 'HP' || headerContext === 'ML') && gwState === 'LIVE';
+  const liveScore = headerScoreSummary ? formatHeaderScoreLabel(headerScoreSummary, showLiveHeaderScore) : '0/0';
+  /** Match real Home header: wordmark for pre-kickoff / pre-live states (not score pill). */
+  const showHeaderTotlLogo =
+    (headerContext === 'HP' || headerContext === 'ML') &&
+    (gwState === 'GW_OPEN' || gwState === 'GW_PREDICTED' || gwState === 'DEADLINE_PASSED');
+  const headerRightAction = React.useMemo(() => {
+    if (headerContext === 'ML') {
+      return (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Create or join mini league"
+          onPress={() => {}}
+          style={({ pressed }) => ({
+            width: 30,
+            height: 38,
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: pressed ? 0.86 : 1,
+          })}
+        >
+          <Ionicons name="add" size={24} color={t.color.muted} />
+        </Pressable>
+      );
+    }
+
+    if (headerContext === '2526') {
+      return (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open stats"
+          onPress={() => {}}
+          style={({ pressed }) => ({
+            width: 30,
+            height: 38,
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: pressed ? 0.86 : 1,
+          })}
+        >
+          <Ionicons name="analytics-outline" size={24} color={t.color.muted} />
+        </Pressable>
+      );
+    }
+
+    return null;
+  }, [headerContext, t.color.muted]);
+
+  const headerContextControl = React.useMemo(
+    () => (
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          alignSelf: 'flex-start',
+          borderRadius: 999,
+          borderWidth: 1,
+          borderColor: 'rgba(148,163,184,0.26)',
+          backgroundColor: t.color.surface,
+          padding: 4,
+        }}
+      >
+        {([
+          { id: 'HP', label: 'HP' },
+          { id: 'ML', label: 'ML' },
+          { id: '2526', label: '25/26' },
+        ] as const).map((option) => {
+          const active = headerContext === option.id;
+          return (
+            <Pressable
+              key={option.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Header context ${option.label}`}
+              onPress={() => setHeaderContext(option.id)}
+              style={({ pressed }) => ({
+                minWidth: option.id === '2526' ? 62 : 46,
+                height: 26,
+                borderRadius: 13,
+                paddingHorizontal: 8,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: active ? 'rgba(28,131,118,0.14)' : 'transparent',
+                opacity: pressed ? 0.86 : 1,
+              })}
+            >
+              <TotlText
+                style={{
+                  fontSize: 10,
+                  fontFamily: t.font.medium,
+                  color: active ? '#1C8376' : t.color.muted,
+                }}
+              >
+                {option.label}
+              </TotlText>
+            </Pressable>
+          );
+        })}
+      </View>
+    ),
+    [headerContext, t.color.muted, t.color.surface, t.font.medium]
+  );
+
+  const gameStateControl = React.useMemo(
+    () => (
+      <View style={{ alignItems: 'flex-end', position: 'relative' }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open game state menu"
+          onPress={() => setStateMenuOpen((prev) => !prev)}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: 'rgba(28,131,118,0.28)',
+            backgroundColor: 'rgba(28,131,118,0.08)',
+            paddingHorizontal: 9,
+            paddingVertical: 4,
+            opacity: pressed ? 0.85 : 1,
+          })}
+        >
+          <TotlText style={{ fontSize: 11, fontWeight: '800', color: '#1C8376' }}>{state}</TotlText>
+          <View style={{ width: 4 }} />
+          <Ionicons name={stateMenuOpen ? 'chevron-up' : 'chevron-down'} size={12} color="#1C8376" />
+        </Pressable>
+
+        {stateMenuOpen ? (
+          <View
+            style={{
+              position: 'absolute',
+              right: 0,
+              bottom: 34,
+              width: 190,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: t.color.border,
+              backgroundColor: t.color.surface,
+              shadowColor: '#000000',
+              shadowOpacity: 0.25,
+              shadowRadius: 8,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 4,
+              zIndex: 60,
+            }}
+          >
+            {GAME_STATES.map((s, idx) => {
+              const active = s === state;
+              return (
+                <Pressable
+                  key={s}
+                  onPress={() => {
+                    setState(s);
+                    setStateMenuOpen(false);
+                  }}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    borderTopWidth: idx === 0 ? 0 : 1,
+                    borderTopColor: t.color.border,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <TotlText
+                    style={{
+                      fontSize: 12,
+                      fontWeight: active ? '800' : '600',
+                      color: active ? t.color.brand : t.color.text,
+                    }}
+                  >
+                    {s}
+                  </TotlText>
+                  {active ? <Ionicons name="checkmark" size={16} color={t.color.brand} /> : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+      </View>
+    ),
+    [state, stateMenuOpen, t.color.border, t.color.brand, t.color.surface, t.color.text]
+  );
+
+  const topRightControls = React.useMemo(
+    () => (
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+        {gameStateControl}
+        {headerContextControl}
+      </View>
+    ),
+    [gameStateControl, headerContextControl]
+  );
+
   React.useEffect(() => {
     setStateMenuOpen(false);
   }, [state]);
 
   return (
     <Screen fullBleed>
-      <PageHeader
-        title="HP Simulator"
-        leftAction={
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            onPress={goBack}
-            style={({ pressed }) => ({
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: pressed ? 0.75 : 1,
-            })}
-          >
-            <Ionicons name="chevron-back" size={24} color={t.color.text} />
-          </Pressable>
+      <AppTopHeader
+        embedded
+        onPressChat={() => navigation.navigate('ChatHub')}
+        onPressProfile={() => navigation.navigate('Profile')}
+        title={
+          showLiveHeaderScore || showStaticResultsHeaderScore || showHeaderTotlLogo ? undefined : headerTitle
         }
+        centerContent={
+          showLiveHeaderScore ? (
+            <HeaderLiveScore
+              scoreLabel={liveScore}
+              fill
+              tickerEventKey="hp-sim-preview-goal"
+              tickerIntervalMs={10_000}
+              previewTickerLoop
+              tickerEvent={{
+                scorerName: 'Stratton',
+                minuteLabel: "(58')",
+                homeCode: 'TOT',
+                awayCode: 'NFO',
+                homeBadge: TEAM_BADGES.TOT,
+                awayBadge: TEAM_BADGES.NFO,
+                homeScore: '2',
+                awayScore: '1',
+                scoringSide: 'home',
+              }}
+            />
+          ) : showStaticResultsHeaderScore ? (
+            <HeaderLiveScore scoreLabel={liveScore} fill live={false} />
+          ) : showHeaderTotlLogo ? (
+            <HeaderTotlLogo />
+          ) : undefined
+        }
+        rightAction={headerRightAction}
+        hasLiveGames={gwState === 'LIVE'}
+        showLeftLiveBadge={!showLiveHeaderScore && !showStaticResultsHeaderScore}
       />
 
       <Animated.ScrollView
@@ -450,91 +688,10 @@ export default function AdminHomeSimulatorScreen() {
         scrollEventThrottle={16}
         contentContainerStyle={{
           paddingHorizontal: t.space[4],
-          paddingTop: t.space[4],
+          paddingTop: 8,
           paddingBottom: 176 + FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
         }}
       >
-        <View style={{ marginBottom: 10, zIndex: 40 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <TotlText style={{ fontSize: 13, fontWeight: '700', color: t.color.muted }}>Game State</TotlText>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open game state menu"
-              onPress={() => setStateMenuOpen((prev) => !prev)}
-              style={({ pressed }) => ({
-                flexDirection: 'row',
-                alignItems: 'center',
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: 'rgba(28,131,118,0.28)',
-                backgroundColor: 'rgba(28,131,118,0.08)',
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                opacity: pressed ? 0.85 : 1,
-              })}
-            >
-              <TotlText style={{ fontSize: 12, fontWeight: '800', color: '#1C8376' }}>{state}</TotlText>
-              <View style={{ width: 6 }} />
-              <Ionicons name={stateMenuOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#1C8376" />
-            </Pressable>
-          </View>
-
-          {stateMenuOpen ? (
-            <View
-              style={{
-                position: 'absolute',
-                right: 0,
-                top: 42,
-                width: 190,
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: t.color.border,
-                backgroundColor: t.color.surface,
-                shadowColor: '#000000',
-                shadowOpacity: 0.25,
-                shadowRadius: 8,
-                shadowOffset: { width: 0, height: 4 },
-                elevation: 4,
-                zIndex: 60,
-              }}
-            >
-              {GAME_STATES.map((s, idx) => {
-                const active = s === state;
-                return (
-                  <Pressable
-                    key={s}
-                    onPress={() => {
-                      setState(s);
-                      setStateMenuOpen(false);
-                    }}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      borderTopWidth: idx === 0 ? 0 : 1,
-                      borderTopColor: t.color.border,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <TotlText
-                      style={{
-                        fontSize: 12,
-                        fontWeight: active ? '800' : '600',
-                        color: active ? t.color.brand : t.color.text,
-                      }}
-                    >
-                      {s}
-                    </TotlText>
-                    {active ? <Ionicons name="checkmark" size={16} color={t.color.brand} /> : null}
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
-        </View>
-
         {state === 'GW_OPEN' ? (
           <Pressable
             accessibilityRole="button"
@@ -719,8 +876,12 @@ export default function AdminHomeSimulatorScreen() {
                                 typeof ls?.home_score === 'number' &&
                                 typeof ls?.away_score === 'number' &&
                                 (st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED');
-                              const headerHome = getMediumName(String(f.home_name ?? f.home_team ?? normalizeTeamCode(f.home_code) ?? 'Home'));
-                              const headerAway = getMediumName(String(f.away_name ?? f.away_team ?? normalizeTeamCode(f.away_code) ?? 'Away'));
+                              const headerHome = getSimMediumName(
+                                String(f.home_name ?? f.home_team ?? normalizeTeamCode(f.home_code) ?? 'Home')
+                              );
+                              const headerAway = getSimMediumName(
+                                String(f.away_name ?? f.away_team ?? normalizeTeamCode(f.away_code) ?? 'Away')
+                              );
                               const homeCode = normalizeTeamCode(f.home_code) ?? '';
                               const awayCode = normalizeTeamCode(f.away_code) ?? '';
                               const homeBadge = TEAM_BADGES[homeCode] ?? null;
@@ -867,8 +1028,8 @@ export default function AdminHomeSimulatorScreen() {
                           const awayCode = normalizeTeamCode(f.away_code);
                           const homeBadge = TEAM_BADGES[homeCode] ?? null;
                           const awayBadge = TEAM_BADGES[awayCode] ?? null;
-                          const headerHome = getMediumName(String(f.home_name ?? f.home_team ?? homeCode ?? 'Home'));
-                          const headerAway = getMediumName(String(f.away_name ?? f.away_team ?? awayCode ?? 'Away'));
+                          const headerHome = getSimMediumName(String(f.home_name ?? f.home_team ?? homeCode ?? 'Home'));
+                          const headerAway = getSimMediumName(String(f.away_name ?? f.away_team ?? awayCode ?? 'Away'));
                           const pick = userPicks[String(fixture_index)];
                           const homeTeamFontWeight =
                             pick === 'H' ? '800' : pick === 'D' ? '600' : pick === 'A' ? '600' : '800';
@@ -990,13 +1151,36 @@ export default function AdminHomeSimulatorScreen() {
       <View
         style={{
           paddingHorizontal: t.space[4],
-          paddingTop: 10,
-          paddingBottom: 16,
+          paddingTop: 6,
+          paddingBottom: 12,
           borderTopWidth: 1,
           borderTopColor: 'rgba(148,163,184,0.12)',
           backgroundColor: 'rgba(2,6,23,0.92)',
         }}
       >
+        <PageHeader
+          title=""
+          leftAction={
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              onPress={goBack}
+              style={({ pressed }) => ({
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.75 : 1,
+              })}
+            >
+              <Ionicons name="chevron-back" size={24} color={t.color.text} />
+            </Pressable>
+          }
+          rightAction={topRightControls}
+          style={{ paddingHorizontal: 0, paddingTop: 0, paddingBottom: 6 }}
+        />
+
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
           {[
             { key: 'results', label: 'Results', onPress: () => openSimulatorCard('results') },
@@ -1014,9 +1198,9 @@ export default function AdminHomeSimulatorScreen() {
               onPress={button.onPress}
               style={({ pressed }) => ({
                 marginHorizontal: 4,
-                marginBottom: 8,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
+                marginBottom: 6,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
                 borderRadius: 999,
                 borderWidth: 1,
                 borderColor: 'rgba(28,131,118,0.28)',
@@ -1026,8 +1210,8 @@ export default function AdminHomeSimulatorScreen() {
             >
               <TotlText
                 style={{
-                  fontSize: 12,
-                  lineHeight: 14,
+                  fontSize: 11,
+                  lineHeight: 13,
                   fontWeight: '800',
                   color: '#E2E8F0',
                 }}

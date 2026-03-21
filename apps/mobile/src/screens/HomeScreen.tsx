@@ -5,7 +5,7 @@ import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { Ionicons } from '@expo/vector-icons';
 import Reanimated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
-import type { Fixture, GwResultRow, GwResults, HomeRanks, HomeSnapshot, LiveScore, LiveStatus, Pick } from '@totl/domain';
+import type { Fixture, GwResultRow, GwResults, HomeRanks, HomeSnapshot, LiveScore, Pick } from '@totl/domain';
 import { TotlRefreshControl } from '../lib/refreshControl';
 import GameweekAdvanceTransition from '../components/transitions/GameweekAdvanceTransition';
 import { useGameweekAdvanceTransition } from '../hooks/useGameweekAdvanceTransition';
@@ -17,6 +17,7 @@ import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import { sortLeaguesByUnread } from '../lib/sortLeaguesByUnread';
 import TopStatusBanner from '../components/home/TopStatusBanner';
 import AppTopHeader from '../components/AppTopHeader';
+import HeaderLiveScore from '../components/HeaderLiveScore';
 import { TEAM_BADGES } from '../lib/teamBadges';
 import { normalizeTeamCode } from '../lib/teamColors';
 import { getMediumName } from '../../../../src/lib/teamNames';
@@ -39,6 +40,7 @@ import {
   ordinalLabel,
   sortFixturesByFixtureIndex,
 } from '../lib/homeFixtureUi';
+import { buildHeaderScoreSummary, buildHeaderTickerEvent, formatHeaderScoreLabel } from '../lib/headerLiveScore';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -96,45 +98,16 @@ export default function HomeScreen() {
 
   const showFixtureDateSections = true;
 
-  const scoreSummary = React.useMemo(() => {
-    if (!fixtures.length) return null;
-
-    let started = 0;
-    let live = 0;
-    let correct = 0;
-    for (const f of fixtures) {
-      const fixtureIndex = f.fixture_index;
-      const pick = userPicks[String(fixtureIndex)];
-
-      const ls = liveByFixtureIndex.get(fixtureIndex);
-      const st: LiveStatus = ls?.status ?? 'SCHEDULED';
-      // IMPORTANT: `live_scores` can be missing/pruned after a GW finishes. Final outcomes live in `app_gw_results`.
-      const resultFromDb = resultByFixtureIndex.get(fixtureIndex);
-      const hasFinalResult = resultFromDb === 'H' || resultFromDb === 'D' || resultFromDb === 'A';
-      const isStartedFromLive = st === 'IN_PLAY' || st === 'PAUSED' || st === 'FINISHED';
-      const isStarted = hasFinalResult || isStartedFromLive;
-      if (!isStarted) continue;
-      started += 1;
-      if (st === 'IN_PLAY' || st === 'PAUSED') live += 1;
-
-      if (!pick) continue;
-
-      const outcome: Pick | null = hasFinalResult
-        ? resultFromDb
-        : typeof ls?.home_score === 'number' && typeof ls?.away_score === 'number'
-          ? ls.home_score > ls.away_score
-            ? 'H'
-            : ls.home_score < ls.away_score
-              ? 'A'
-              : 'D'
-          : null;
-      if (!outcome) continue;
-
-      if (outcome === pick) correct += 1;
-    }
-
-    return { started, live, correct, total: fixtures.length };
-  }, [fixtures, liveByFixtureIndex, resultByFixtureIndex, userPicks]);
+  const scoreSummary = React.useMemo(
+    () =>
+      buildHeaderScoreSummary({
+        fixtures,
+        userPicks,
+        liveByFixtureIndex,
+        resultByFixtureIndex,
+      }),
+    [fixtures, liveByFixtureIndex, resultByFixtureIndex, userPicks]
+  );
 
   // SectionTitle/RoundIconButton/PickPill/SectionHeaderRow/LeaderboardCards are extracted into `src/components/home/*`.
 
@@ -321,6 +294,18 @@ export default function HomeScreen() {
   const liveLeagueList = React.useMemo(() => {
     return sortLeaguesByUnread(leagues?.leagues ?? [], unreadByLeagueId);
   }, [leagues?.leagues, unreadByLeagueId]);
+  const { tickerEvent: headerTickerEvent, tickerEventKey: headerTickerEventKey } = React.useMemo(
+    () =>
+      buildHeaderTickerEvent({
+        fixtures,
+        liveByFixtureIndex,
+      }),
+    [fixtures, liveByFixtureIndex]
+  );
+
+  const showLiveHeaderScore = gwState === 'LIVE' && !!scoreSummary;
+  const showStaticResultsHeaderScore = isResultsPreGw && !!scoreSummary;
+  const headerScoreLabel = scoreSummary ? formatHeaderScoreLabel(scoreSummary, showLiveHeaderScore) : null;
 
   // Keep Mini Leagues in live-table mode during LIVE and RESULTS_PRE_GW.
   // This includes the period before/after next GW publish, until user moves on.
@@ -350,6 +335,19 @@ export default function HomeScreen() {
           avatarUrl={avatarUrl}
           isRefreshing={refreshing}
           hasLiveGames={gwState === 'LIVE' && gwIsLive}
+          centerContent={
+            showLiveHeaderScore && headerScoreLabel ? (
+              <HeaderLiveScore
+                scoreLabel={headerScoreLabel}
+                fill
+                tickerEvent={headerTickerEvent ?? undefined}
+                tickerEventKey={headerTickerEventKey}
+              />
+            ) : showStaticResultsHeaderScore && headerScoreLabel ? (
+              <HeaderLiveScore scoreLabel={headerScoreLabel} fill live={false} />
+            ) : undefined
+          }
+          showLeftLiveBadge={!showLiveHeaderScore && !showStaticResultsHeaderScore}
         />
 
         <Animated.ScrollView

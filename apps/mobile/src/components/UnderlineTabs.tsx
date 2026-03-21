@@ -5,7 +5,7 @@ import Animated, { Easing, Extrapolation, interpolate, interpolateColor, useAnim
 
 const AnimatedText = Animated.createAnimatedComponent(Text);
 
-export type UnderlineTabItem<K extends string> = { key: K; label: string };
+export type UnderlineTabItem<K extends string> = { key: K; label: string; showLiveDot?: boolean };
 
 function TabButton({
   label,
@@ -15,6 +15,7 @@ function TabButton({
   inactiveColor,
   onPress,
   onLayout,
+  showLiveDot = false,
 }: {
   label: string;
   index: number;
@@ -23,6 +24,7 @@ function TabButton({
   inactiveColor: string;
   onPress: () => void;
   onLayout: (e: LayoutChangeEvent) => void;
+  showLiveDot?: boolean;
 }) {
   const t = useTokens();
   const labelStyle = useAnimatedStyle(() => {
@@ -43,18 +45,30 @@ function TabButton({
         opacity: pressed ? 0.9 : 1,
       })}
     >
-      <AnimatedText
-        style={[
-          {
-            fontSize: 14,
-            lineHeight: 20,
-            fontFamily: t.font.medium,
-          },
-          labelStyle,
-        ]}
-      >
-        {label}
-      </AnimatedText>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        {showLiveDot ? (
+          <View
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 999,
+              backgroundColor: '#EF4444',
+            }}
+          />
+        ) : null}
+        <AnimatedText
+          style={[
+            {
+              fontSize: 14,
+              lineHeight: 20,
+              fontFamily: t.font.medium,
+            },
+            labelStyle,
+          ]}
+        >
+          {label}
+        </AnimatedText>
+      </View>
     </Pressable>
   );
 }
@@ -142,6 +156,7 @@ export default function UnderlineTabs<K extends string>({
           <TabButton
             key={item.key}
             label={item.label}
+            showLiveDot={item.showLiveDot}
             index={index}
             activeIndexSV={activeIndexSV}
             activeColor={t.color.brand}

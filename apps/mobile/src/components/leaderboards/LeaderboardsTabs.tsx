@@ -1,5 +1,5 @@
 import React from 'react';
-import UnderlineTabs from '../UnderlineTabs';
+import UnderlineTabs, { type UnderlineTabItem } from '../UnderlineTabs';
 
 export type LeaderboardsTab = 'gw' | 'monthly' | 'overall';
 
@@ -10,14 +10,16 @@ export default function LeaderboardsTabs({
   onChange,
   currentGw,
   currentMonthLabel,
+  currentGwIsLive = false,
 }: {
   value: LeaderboardsTab;
   onChange: (next: LeaderboardsTab) => void;
   currentGw?: number | null;
   currentMonthLabel?: string | null;
+  currentGwIsLive?: boolean;
 }) {
-  const items: Array<{ key: LeaderboardsTab; label: string }> = [
-    { key: 'gw', label: currentGw != null ? `GW${currentGw}` : 'GW' },
+  const items: Array<UnderlineTabItem<LeaderboardsTab>> = [
+    { key: 'gw', label: currentGw != null ? `GW${currentGw}` : 'GW', showLiveDot: currentGwIsLive },
     { key: 'monthly', label: currentMonthLabel ?? 'Month' },
     { key: 'overall', label: 'Overall' },
   ];

@@ -23,7 +23,10 @@ import { resolveLeagueStartGw } from '../lib/leagueStart';
 import { getGameweekStateFromSnapshot } from '../lib/gameweekState';
 import MiniLeagueLiveCard from '../components/home/MiniLeagueLiveCard';
 import AppTopHeader from '../components/AppTopHeader';
+import HeaderLiveScore from '../components/HeaderLiveScore';
 import { DEV_FAKE_LEAGUE_ID, DEV_FAKE_LEAGUE_MEMBERS, DEV_FAKE_LEAGUE_NAME, isDevFakeLeagueId } from '../lib/devFakeLeague';
+import { buildHeaderScoreSummary, buildHeaderTickerEvent, formatHeaderScoreLabel } from '../lib/headerLiveScore';
+import { useLiveScores } from '../hooks/useLiveScores';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -404,14 +407,19 @@ export default function LeaguesScreen() {
   const viewingGw = home?.viewingGw ?? null;
   const currentGw = home?.currentGw ?? viewingGw ?? null;
   const showTopLiveRail = typeof viewingGw === 'number' && listLeagues.length > 0;
+  const liveScoresGw = typeof viewingGw === 'number' ? viewingGw : typeof currentGw === 'number' ? currentGw : null;
+  const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(liveScoresGw, {
+    initial: home?.liveScores ?? [],
+  });
   const gwState = React.useMemo(() => {
     if (!home) return null;
     return getGameweekStateFromSnapshot({
       fixtures: home.fixtures ?? [],
-      liveScores: home.liveScores ?? [],
+      liveScores:
+        liveByFixtureIndexRealtime.size > 0 ? Array.from(liveByFixtureIndexRealtime.values()) : home.liveScores ?? [],
       hasSubmittedViewingGw: !!home.hasSubmittedViewingGw,
     });
-  }, [home]);
+  }, [home, liveByFixtureIndexRealtime]);
   const showReadyToMoveOn =
     typeof currentGw === 'number' && typeof viewingGw === 'number' ? viewingGw < currentGw : false;
   const liveRailGap = 10;
@@ -421,7 +429,7 @@ export default function LeaguesScreen() {
   const liveRailRef = React.useRef<ScrollView | null>(null);
   const liveRailProgress = useSharedValue(0);
   const [activeLiveRailIndex, setActiveLiveRailIndex] = React.useState(0);
-  const [liveTablesLayout, setLiveTablesLayout] = React.useState<'mini' | 'expanded'>('expanded');
+  const [liveTablesLayout, setLiveTablesLayout] = React.useState<'mini' | 'expanded'>('mini');
   const liveLayoutTransition = React.useMemo(
     () => LinearTransition.duration(200).easing(Easing.out(Easing.cubic)),
     []
@@ -430,6 +438,73 @@ export default function LeaguesScreen() {
     showTopLiveRail && (gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW' || showReadyToMoveOn);
   const showListView = !showTablesView;
   const canToggleLiveLayout = showTopLiveRail && showTablesView && listLeagues.length > 2;
+  const wasShowingTablesViewRef = React.useRef(showTablesView);
+  React.useEffect(() => {
+    if (showTablesView && !wasShowingTablesViewRef.current) {
+      setLiveTablesLayout('mini');
+    }
+    wasShowingTablesViewRef.current = showTablesView;
+  }, [showTablesView]);
+
+  const headerScoreSummary = React.useMemo(() => {
+    if (!home) return null;
+
+    const apiMatchIdToFixtureIndex = new Map<number, number>();
+    (home.fixtures ?? []).forEach((fixture) => {
+      if (typeof fixture.api_match_id === 'number') apiMatchIdToFixtureIndex.set(fixture.api_match_id, fixture.fixture_index);
+    });
+
+    const liveByFixtureIndex =
+      liveByFixtureIndexRealtime.size > 0
+        ? liveByFixtureIndexRealtime
+        : (home.liveScores ?? []).reduce((map, liveScore) => {
+            const fixtureIndex =
+              typeof liveScore.fixture_index === 'number'
+                ? liveScore.fixture_index
+                : typeof liveScore.api_match_id === 'number'
+                  ? apiMatchIdToFixtureIndex.get(liveScore.api_match_id)
+                  : undefined;
+            if (typeof fixtureIndex === 'number') map.set(fixtureIndex, liveScore);
+            return map;
+          }, new Map<number, any>());
+
+    const resultByFixtureIndex = new Map<number, 'H' | 'D' | 'A'>();
+    (home.gwResults ?? []).forEach((result) => {
+      resultByFixtureIndex.set(result.fixture_index, result.result);
+    });
+
+    return buildHeaderScoreSummary({
+      fixtures: home.fixtures ?? [],
+      userPicks: home.userPicks ?? {},
+      liveByFixtureIndex,
+      resultByFixtureIndex,
+    });
+  }, [home, liveByFixtureIndexRealtime]);
+  const { tickerEvent: headerTickerEvent, tickerEventKey: headerTickerEventKey } = React.useMemo(() => {
+    if (!home) return { tickerEvent: null, tickerEventKey: null };
+    return buildHeaderTickerEvent({
+      fixtures: home.fixtures ?? [],
+      liveByFixtureIndex:
+        liveByFixtureIndexRealtime.size > 0
+          ? liveByFixtureIndexRealtime
+          : (home.liveScores ?? []).reduce((map, liveScore) => {
+              const fixtureIndex =
+                typeof liveScore.fixture_index === 'number'
+                  ? liveScore.fixture_index
+                  : typeof liveScore.api_match_id === 'number'
+                    ? home.fixtures?.find((fixture) => fixture.api_match_id === liveScore.api_match_id)?.fixture_index
+                    : undefined;
+              if (typeof fixtureIndex === 'number') map.set(fixtureIndex, liveScore);
+              return map;
+            }, new Map<number, any>()),
+    });
+  }, [home, liveByFixtureIndexRealtime]);
+
+  const showLiveHeaderScore = gwState === 'LIVE' && !!headerScoreSummary;
+  const showStaticResultsHeaderScore = gwState === 'RESULTS_PRE_GW' && !!headerScoreSummary;
+  const showHeaderTotlLogo =
+    gwState === 'GW_OPEN' || gwState === 'GW_PREDICTED' || gwState === 'DEADLINE_PASSED';
+  const headerScoreLabel = headerScoreSummary ? formatHeaderScoreLabel(headerScoreSummary, showLiveHeaderScore) : null;
 
   const [createJoinOpen, setCreateJoinOpen] = React.useState(false);
   const [joinCode, setJoinCode] = React.useState('');
@@ -534,8 +609,22 @@ export default function LeaguesScreen() {
           onPressChat={() => navigation.navigate('ChatHub')}
           onPressProfile={() => navigation.navigate('Profile')}
           avatarUrl={avatarUrl}
-          title="Mini Leagues"
+          title={showLiveHeaderScore || showStaticResultsHeaderScore || showHeaderTotlLogo ? undefined : 'Mini Leagues'}
+          centerContent={
+            showLiveHeaderScore && headerScoreLabel ? (
+              <HeaderLiveScore
+                scoreLabel={headerScoreLabel}
+                fill
+                tickerEvent={headerTickerEvent ?? undefined}
+                tickerEventKey={headerTickerEventKey}
+              />
+            ) : showStaticResultsHeaderScore && headerScoreLabel ? (
+              <HeaderLiveScore scoreLabel={headerScoreLabel} fill live={false} />
+            ) : undefined
+          }
           rightAction={renderCreateJoinHeaderButton()}
+          hasLiveGames={gwState === 'LIVE'}
+          showLeftLiveBadge={!showLiveHeaderScore && !showStaticResultsHeaderScore}
         />
         {showInitialSpinner ? (
           <CenteredSpinner loading />
@@ -603,8 +692,22 @@ export default function LeaguesScreen() {
         onPressChat={() => navigation.navigate('ChatHub')}
         onPressProfile={() => navigation.navigate('Profile')}
         avatarUrl={avatarUrl}
-        title="Mini Leagues"
+        title={showLiveHeaderScore || showStaticResultsHeaderScore || showHeaderTotlLogo ? undefined : 'Mini Leagues'}
+        centerContent={
+          showLiveHeaderScore && headerScoreLabel ? (
+            <HeaderLiveScore
+              scoreLabel={headerScoreLabel}
+              fill
+              tickerEvent={headerTickerEvent ?? undefined}
+              tickerEventKey={headerTickerEventKey}
+            />
+          ) : showStaticResultsHeaderScore && headerScoreLabel ? (
+            <HeaderLiveScore scoreLabel={headerScoreLabel} fill live={false} />
+          ) : undefined
+        }
         rightAction={renderCreateJoinHeaderButton()}
+        hasLiveGames={gwState === 'LIVE'}
+        showLeftLiveBadge={!showLiveHeaderScore && !showStaticResultsHeaderScore}
       />
 
       <FlatList

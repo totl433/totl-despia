@@ -1,10 +1,10 @@
 import React from 'react';
 import { Animated, Pressable, View } from 'react-native';
-import { Asset } from 'expo-asset';
-import Svg, { Path, SvgUri } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { TotlText, useTokens } from '@totl/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RoundIconButton from './home/RoundIconButton';
+import HeaderTotlLogo from './HeaderTotlLogo';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 
 export default function AppTopHeader({
@@ -12,16 +12,24 @@ export default function AppTopHeader({
   onPressProfile,
   avatarUrl,
   title,
+  centerContent,
   leftAction,
   rightAction,
+  hasLiveGames = false,
+  showLeftLiveBadge = true,
+  embedded = false,
   isRefreshing = false,
 }: {
   onPressChat: () => void;
   onPressProfile: () => void;
   avatarUrl?: string | null;
   title?: string;
+  centerContent?: React.ReactNode;
   leftAction?: React.ReactNode;
   rightAction?: React.ReactNode;
+  hasLiveGames?: boolean;
+  showLeftLiveBadge?: boolean;
+  embedded?: boolean;
   isRefreshing?: boolean;
 }) {
   const t = useTokens();
@@ -37,7 +45,6 @@ export default function AppTopHeader({
   );
   const showUnreadBadge = unreadCount > 0;
   const unreadLabel = unreadCount > 99 ? '99+' : String(unreadCount);
-  const hasLiveGames = true;
   const liveDotOpacity = React.useRef(new Animated.Value(1)).current;
 
   React.useEffect(() => {
@@ -56,20 +63,11 @@ export default function AppTopHeader({
     return () => pulse.stop();
   }, [hasLiveGames, liveDotOpacity]);
 
-  const fixedHeaderLogoUri = React.useMemo(() => {
-    const isLightMode = t.color.background.toLowerCase() === '#f8fafc';
-    return Asset.fromModule(
-      isLightMode
-        ? require('../../../../public/assets/badges/totl-logo1-black.svg')
-        : require('../../../../public/assets/badges/totl-logo1.svg')
-    ).uri;
-  }, [t.color.background]);
-
   return (
     <View
       style={{
-        marginTop: -insets.top,
-        paddingTop: insets.top + 4,
+        marginTop: embedded ? 0 : -insets.top,
+        paddingTop: embedded ? 4 : insets.top + 4,
         paddingHorizontal: t.space[4],
         backgroundColor: t.color.background,
       }}
@@ -81,7 +79,7 @@ export default function AppTopHeader({
             icon={require('../../../../public/assets/Icons/Person--Streamline-Outlined-Material-Pro_white.png')}
             imageUri={avatarUrl}
           />
-          {hasLiveGames ? (
+          {hasLiveGames && showLeftLiveBadge ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 12 }}>
               <Animated.View
                 style={{
@@ -111,19 +109,12 @@ export default function AppTopHeader({
         </View>
 
         <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-          {title ? (
+          {centerContent ? (
+            <View style={{ width: 184, maxWidth: '100%' }}>{centerContent as any}</View>
+          ) : title ? (
             <TotlText style={{ fontWeight: '900', fontSize: 20, lineHeight: 24, color: t.color.text }}>{title}</TotlText>
           ) : (
-            <View
-              style={{
-                width: 159,
-                height: 50,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <SvgUri uri={fixedHeaderLogoUri} width={159} height={50} />
-            </View>
+            <HeaderTotlLogo />
           )}
         </View>
 
