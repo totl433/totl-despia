@@ -6,7 +6,7 @@
       }
     },
     "ios": {
-      "bundleIdentifier": "com.carlstratton.totlweb",
+      "bundleIdentifier": "com.despia.totlnative",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

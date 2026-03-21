@@ -15,8 +15,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.totl.mobile",
-      "buildNumber": "15",
+      "bundleIdentifier": "com.despia.totlnative",
+      "buildNumber": "17",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

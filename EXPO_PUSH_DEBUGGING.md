@@ -27,13 +27,13 @@ LIMIT 10;
 3. Check:
    - **Status**: Subscribed (green) vs Not Subscribed (grey)
    - **Platform**: iOS
-   - **Bundle ID**: Should show `com.totl.mobile` for Expo
+  - **Bundle ID**: Should show `com.despia.totlnative` for Expo
 
 ### 3. OneSignal iOS configuration
 
 OneSignal → Your App → **Platforms** → **iOS**:
 
-- **Bundle ID**: Must include `com.totl.mobile` (Expo's bundle ID)
+- **Bundle ID**: Must include `com.despia.totlnative` (Expo's bundle ID)
 - **APNs Auth Key**: Production key for TestFlight (sandbox won't work)
 - If only Despia's bundle ID is configured, Expo devices may register but not receive
 
@@ -53,7 +53,7 @@ OneSignal → Your App → **Platforms** → **iOS**:
 |--------|--------------|
 | `recipients: 0` | Expo player not subscribed in OneSignal, or wrong APNs env |
 | `All included players are not subscribed` | OneSignal rejects the player_id |
-| Despia works, Expo doesn't | OneSignal iOS config missing `com.totl.mobile`, or Expo APNs token invalid |
+| Despia works, Expo doesn't | OneSignal iOS config missing `com.despia.totlnative`, or Expo APNs token invalid |
 | Both apps installed, only Despia gets it | Multi-device now sends to both; if Expo still doesn't receive, see above |
 
 ## Multi-device support

@@ -58,7 +58,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const oneSignalMode =
     process.env.EXPO_PUBLIC_ONESIGNAL_MODE === 'production' || isProductionBuild ? 'production' : 'development';
 
-  const oneSignalAppGroup = 'group.com.totl.mobile.onesignal';
+  const oneSignalAppGroup = 'group.com.despia.totlnative.onesignal';
   const existingIosEntitlements =
     (config.ios as any)?.entitlements && typeof (config.ios as any).entitlements === 'object' ? (config.ios as any).entitlements : {};
   const existingAppGroups = Array.isArray(existingIosEntitlements['com.apple.security.application-groups'])
