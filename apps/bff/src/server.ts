@@ -500,27 +500,32 @@ app.post('/v1/chat/reports', async (req) => {
     messageId: String(messageData.id),
   });
 
-  await sendChatMessageReportEmail({
-    env,
-    subject: `[TOTL] Chat report ${String(reportInsertRes.data.id)}`,
-    text: buildChatReportEmailText({
-      reportId: String(reportInsertRes.data.id),
-      reportCreatedAt: String(reportInsertRes.data.created_at),
-      reporterUserId: userId,
-      reporterEmail,
-      reporterName: namesById.get(userId) ?? null,
-      reportedUserId: reportedMessageUserId,
-      reportedUserName: namesById.get(reportedMessageUserId) ?? null,
-      leagueId,
-      leagueName: leagueRes.data?.name ? String(leagueRes.data.name) : null,
-      leagueCode,
-      messageId: String(messageData.id),
-      messageCreatedAt: String(messageData.created_at),
-      messageContent: String(messageData.content ?? ''),
-      reason: body.reason,
-      chatLink,
-    }),
-  });
+  try {
+    await sendChatMessageReportEmail({
+      env,
+      subject: `[TOTL] Chat report ${String(reportInsertRes.data.id)}`,
+      text: buildChatReportEmailText({
+        reportId: String(reportInsertRes.data.id),
+        reportCreatedAt: String(reportInsertRes.data.created_at),
+        reporterUserId: userId,
+        reporterEmail,
+        reporterName: namesById.get(userId) ?? null,
+        reportedUserId: reportedMessageUserId,
+        reportedUserName: namesById.get(reportedMessageUserId) ?? null,
+        leagueId,
+        leagueName: leagueRes.data?.name ? String(leagueRes.data.name) : null,
+        leagueCode,
+        messageId: String(messageData.id),
+        messageCreatedAt: String(messageData.created_at),
+        messageContent: String(messageData.content ?? ''),
+        reason: body.reason,
+        chatLink,
+      }),
+    });
+  } catch (error) {
+    req.log.error({ err: error, reportId: reportInsertRes.data.id }, 'chat report email failed after report was stored');
+    captureException(error);
+  }
 
   return { ok: true };
 });
