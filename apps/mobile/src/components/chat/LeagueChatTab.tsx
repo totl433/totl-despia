@@ -8,12 +8,16 @@ import { KeyboardStickyView, useKeyboardState } from 'react-native-keyboard-cont
 import ChatMessageBubble from './ChatMessageBubble';
 import ChatComposer from './ChatComposer';
 import ChatActionsSheet from './ChatActionsSheet';
+import { api } from '../../lib/api';
 import { useLeagueChat } from '../../hooks/useLeagueChat';
 import type { LeagueChatMessage } from '../../hooks/useLeagueChat';
 import { useLeagueChatPresence } from '../../hooks/useLeagueChatPresence';
 import { useLeagueChatReadReceipts } from '../../hooks/useLeagueChatReadReceipts';
 import { useLeagueChatReactions } from '../../hooks/useLeagueChatReactions';
 import { supabase } from '../../lib/supabase';
+
+type ChatActionsTarget = { id: string; content: string; authorName?: string };
+type ReportState = 'idle' | 'submitting' | 'error' | 'success';
 
 type ChatListItem =
   | { type: 'message'; message: LeagueChatMessage }
@@ -92,9 +96,12 @@ export default function LeagueChatTab({
 
   const [draft, setDraft] = React.useState('');
   const [sending, setSending] = React.useState(false);
-  const [replyTo, setReplyTo] = React.useState<{ id: string; content: string; authorName?: string } | null>(null);
-  const [actionsFor, setActionsFor] = React.useState<{ id: string; content: string; authorName?: string } | null>(null);
+  const [replyTo, setReplyTo] = React.useState<ChatActionsTarget | null>(null);
+  const [actionsFor, setActionsFor] = React.useState<ChatActionsTarget | null>(null);
   const [composerHeight, setComposerHeight] = React.useState(0);
+  const [reportReason, setReportReason] = React.useState('');
+  const [reportState, setReportState] = React.useState<ReportState>('idle');
+  const [reportError, setReportError] = React.useState<string | null>(null);
 
   const prevMessageCountRef = React.useRef(0);
   const lastReadMarkedAtRef = React.useRef<string | null>(null);
@@ -112,6 +119,13 @@ export default function LeagueChatTab({
         listRef.current?.scrollToEnd({ animated });
       });
     });
+  }, []);
+
+  const closeActions = React.useCallback(() => {
+    setActionsFor(null);
+    setReportReason('');
+    setReportState('idle');
+    setReportError(null);
   }, []);
 
   const { data: me } = useQuery({
@@ -228,6 +242,27 @@ export default function LeagueChatTab({
       setSending(false);
     }
   };
+
+  const handleSubmitReport = React.useCallback(async () => {
+    if (!actionsFor) return;
+    const reason = reportReason.trim();
+    if (!reason) {
+      setReportError('Please tell us why you are reporting this comment.');
+      setReportState('error');
+      return;
+    }
+
+    setReportError(null);
+    setReportState('submitting');
+    try {
+      await api.submitChatMessageReport({ messageId: actionsFor.id, reason });
+      setReportState('success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to submit your report right now. Please try again.';
+      setReportError(message);
+      setReportState('error');
+    }
+  }, [actionsFor, reportReason]);
 
   const listItems: ChatListItem[] = React.useMemo(() => {
     // Chronological (oldest -> newest) so we can use a normal (non-inverted) list.
@@ -399,17 +434,26 @@ export default function LeagueChatTab({
 
       <ChatActionsSheet
         open={!!actionsFor}
-        onClose={() => setActionsFor(null)}
+        onClose={closeActions}
         onReply={() => {
           if (!actionsFor) return;
           setReplyTo(actionsFor);
-          setActionsFor(null);
+          closeActions();
         }}
         onReact={(emoji) => {
           if (!actionsFor) return;
           void toggleReaction(actionsFor.id, emoji);
-          setActionsFor(null);
+          closeActions();
         }}
+        reportReason={reportReason}
+        reportState={reportState}
+        reportError={reportError}
+        onChangeReportReason={(value) => {
+          setReportReason(value);
+          if (reportError) setReportError(null);
+          if (reportState !== 'idle') setReportState('idle');
+        }}
+        onSubmitReport={() => void handleSubmitReport()}
       />
     </View>
   );

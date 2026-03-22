@@ -23,6 +23,8 @@ export interface ApiClientOptions {
   getAccessToken: () => Promise<string | null>;
 }
 
+const OkResponseSchema = z.object({ ok: z.literal(true) });
+
 export class ApiError extends Error {
   status: number;
   body: unknown;
@@ -257,6 +259,14 @@ export function createApiClient(opts: ApiClientOptions) {
           (z
             .object({ ok: z.literal(true), preferences: EmailPreferencesSchema })
             .parse(data) as unknown) as { ok: true; preferences: EmailPreferences },
+      });
+    },
+
+    async submitChatMessageReport(input: { messageId: string; reason: string }): Promise<{ ok: true }> {
+      return requestJson<{ ok: true }>(opts, `/v1/chat/reports`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+        validate: (data) => (OkResponseSchema.parse(data) as unknown) as { ok: true },
       });
     },
   };

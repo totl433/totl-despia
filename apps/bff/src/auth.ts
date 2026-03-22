@@ -1,7 +1,7 @@
 import type { FastifyRequest } from 'fastify';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export type AuthedRequest = FastifyRequest & { userId: string; accessToken: string };
+export type AuthedRequest = FastifyRequest & { userId: string; accessToken: string; userEmail?: string | null };
 
 export function getBearerToken(req: FastifyRequest): string | null {
   const raw = req.headers.authorization;
@@ -24,5 +24,6 @@ export async function requireUser(req: FastifyRequest, supabase: SupabaseClient)
 
   (req as AuthedRequest).userId = data.user.id;
   (req as AuthedRequest).accessToken = accessToken;
+  (req as AuthedRequest).userEmail = data.user.email ?? null;
 }
 

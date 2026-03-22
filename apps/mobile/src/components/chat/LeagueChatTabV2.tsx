@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Reanimated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { Card, TotlText, useTokens } from '@totl/ui';
+import { api } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { VOLLEY_AVATAR_SOURCE, VOLLEY_NAME, VOLLEY_USER_ID } from '../../lib/volley';
 
@@ -19,6 +20,9 @@ import { useLeagueChatPresence } from '../../hooks/useLeagueChatPresence';
 import { useLeagueChatReadReceipts } from '../../hooks/useLeagueChatReadReceipts';
 import { useLeagueChatReactions } from '../../hooks/useLeagueChatReactions';
 import type { LeagueChatMessage } from '../../hooks/useLeagueChat';
+
+type ChatActionsTarget = { id: string; content: string; authorName?: string };
+type ReportState = 'idle' | 'submitting' | 'error' | 'success';
 
 function toGiftedMessage(
   m: LeagueChatMessage,
@@ -197,7 +201,17 @@ export default function LeagueChatTabV2({
     messageIds,
   });
 
-  const [actionsFor, setActionsFor] = React.useState<{ id: string; content: string; authorName?: string } | null>(null);
+  const [actionsFor, setActionsFor] = React.useState<ChatActionsTarget | null>(null);
+  const [reportReason, setReportReason] = React.useState('');
+  const [reportState, setReportState] = React.useState<ReportState>('idle');
+  const [reportError, setReportError] = React.useState<string | null>(null);
+
+  const closeActions = React.useCallback(() => {
+    setActionsFor(null);
+    setReportReason('');
+    setReportState('idle');
+    setReportError(null);
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -239,6 +253,27 @@ export default function LeagueChatTabV2({
     },
     []
   );
+
+  const handleSubmitReport = React.useCallback(async () => {
+    if (!actionsFor) return;
+    const reason = reportReason.trim();
+    if (!reason) {
+      setReportError('Please tell us why you are reporting this comment.');
+      setReportState('error');
+      return;
+    }
+
+    setReportError(null);
+    setReportState('submitting');
+    try {
+      await api.submitChatMessageReport({ messageId: actionsFor.id, reason });
+      setReportState('success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to submit your report right now. Please try again.';
+      setReportError(message);
+      setReportState('error');
+    }
+  }, [actionsFor, reportReason]);
 
   return (
     <View style={{ flex: 1, backgroundColor: chatBg }}>
@@ -395,16 +430,25 @@ export default function LeagueChatTabV2({
 
       <ChatActionsSheet
         open={!!actionsFor}
-        onClose={() => setActionsFor(null)}
+        onClose={closeActions}
         onReply={() => {
           // Non-goal in this pass: reply UI/threading.
-          setActionsFor(null);
+          closeActions();
         }}
         onReact={(emoji) => {
           if (!actionsFor) return;
           void toggleReaction(actionsFor.id, emoji);
-          setActionsFor(null);
+          closeActions();
         }}
+        reportReason={reportReason}
+        reportState={reportState}
+        reportError={reportError}
+        onChangeReportReason={(value) => {
+          setReportReason(value);
+          if (reportError) setReportError(null);
+          if (reportState !== 'idle') setReportState('idle');
+        }}
+        onSubmitReport={() => void handleSubmitReport()}
       />
     </View>
   );

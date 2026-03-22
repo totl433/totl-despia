@@ -14,7 +14,17 @@ export function Open() {
       <View style={{ padding: 16 }}>
         <TotlText variant="muted">Sheet is open.</TotlText>
       </View>
-      <ChatActionsSheet open onClose={() => {}} onReply={() => {}} onReact={() => {}} />
+      <ChatActionsSheet
+        open
+        onClose={() => {}}
+        onReply={() => {}}
+        onReact={() => {}}
+        reportReason=""
+        reportState="idle"
+        reportError={null}
+        onChangeReportReason={() => {}}
+        onSubmitReport={() => {}}
+      />
     </Screen>
   );
 }

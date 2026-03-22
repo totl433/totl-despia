@@ -27,6 +27,7 @@ import {
   getProfileUnicorns,
   updateEmailPreferences,
 } from './profile.js';
+import { sendChatMessageReportEmail } from './reporting.js';
 
 const env = loadEnv(process.env);
 const supabase = createSupabaseClient(env);
@@ -379,6 +380,149 @@ app.get('/v1/leagues', async (req) => {
 
 const LeagueParamsSchema = z.object({
   leagueId: z.string().uuid(),
+});
+
+const ChatReportBodySchema = z.object({
+  messageId: z.string().uuid(),
+  reason: z.string().trim().min(1).max(2000),
+});
+
+function buildLeagueChatLink(input: { siteUrl?: string; leagueCode?: string | null; messageId: string }) {
+  if (!input.siteUrl || !input.leagueCode) return null;
+  const base = input.siteUrl.replace(/\/$/, '');
+  return `${base}/league/${encodeURIComponent(input.leagueCode)}?tab=chat&messageId=${encodeURIComponent(input.messageId)}`;
+}
+
+function buildChatReportEmailText(input: {
+  reportId: string;
+  reportCreatedAt: string;
+  reporterUserId: string;
+  reporterEmail?: string | null;
+  reporterName?: string | null;
+  reportedUserId: string;
+  reportedUserName?: string | null;
+  leagueId: string;
+  leagueName?: string | null;
+  leagueCode?: string | null;
+  messageId: string;
+  messageCreatedAt: string;
+  messageContent: string;
+  reason: string;
+  chatLink: string | null;
+}) {
+  return [
+    'A chat message has been reported in TOTL.',
+    '',
+    `Report ID: ${input.reportId}`,
+    `Reported at: ${input.reportCreatedAt}`,
+    '',
+    'Reporter',
+    `- User ID: ${input.reporterUserId}`,
+    `- Name: ${input.reporterName ?? 'Unknown'}`,
+    `- Email: ${input.reporterEmail ?? 'Unknown'}`,
+    '',
+    'Reported message',
+    `- Message ID: ${input.messageId}`,
+    `- Created at: ${input.messageCreatedAt}`,
+    `- Author user ID: ${input.reportedUserId}`,
+    `- Author name: ${input.reportedUserName ?? 'Unknown'}`,
+    `- Content: ${input.messageContent || '(empty message)'}`,
+    '',
+    'League',
+    `- League ID: ${input.leagueId}`,
+    `- League name: ${input.leagueName ?? 'Unknown'}`,
+    `- League code: ${input.leagueCode ?? 'Unknown'}`,
+    '',
+    'Reason',
+    input.reason,
+    '',
+    `Chat link: ${input.chatLink ?? 'Unavailable'}`,
+  ].join('\n');
+}
+
+app.post('/v1/chat/reports', async (req) => {
+  await requireUser(req, supabase);
+  const { userId, supa } = getAuthedSupa(req as any);
+  const reporterEmail = ((req as any).userEmail as string | null | undefined) ?? null;
+  const body = ChatReportBodySchema.parse((req as any).body);
+
+  const { data: messageData, error: messageError } = await (supa as any)
+    .from('league_messages')
+    .select('id, league_id, user_id, content, created_at')
+    .eq('id', body.messageId)
+    .maybeSingle();
+
+  if (messageError) throw messageError;
+  if (!messageData) {
+    throw Object.assign(new Error('Reported message not found'), { statusCode: 404 });
+  }
+
+  const leagueId = String(messageData.league_id);
+  const reportedMessageUserId = String(messageData.user_id);
+
+  const [membershipRes, leagueRes, usersRes, reportInsertRes] = await Promise.all([
+    (supa as any).from('league_members').select('user_id').eq('league_id', leagueId).eq('user_id', userId).maybeSingle(),
+    (supa as any).from('leagues').select('id, name, code').eq('id', leagueId).maybeSingle(),
+    (supa as any).from('users').select('id, name').in('id', [userId, reportedMessageUserId]),
+    (supa as any)
+      .from('league_message_reports')
+      .insert({
+        reporter_user_id: userId,
+        reporter_email: reporterEmail,
+        league_id: leagueId,
+        message_id: String(messageData.id),
+        reason: body.reason,
+        reported_message_content: String(messageData.content ?? ''),
+        reported_message_user_id: reportedMessageUserId,
+        status: 'submitted',
+      })
+      .select('id, created_at')
+      .single(),
+  ]);
+
+  if (membershipRes.error) throw membershipRes.error;
+  if (!membershipRes.data) {
+    throw Object.assign(new Error('You are not allowed to report this message'), { statusCode: 403 });
+  }
+  if (leagueRes.error) throw leagueRes.error;
+  if (usersRes.error) throw usersRes.error;
+  if (reportInsertRes.error) throw reportInsertRes.error;
+
+  const namesById = new Map<string, string>();
+  for (const row of (usersRes.data ?? []) as Array<{ id: string; name: string | null }>) {
+    namesById.set(String(row.id), String(row.name ?? ''));
+  }
+
+  const leagueCode = leagueRes.data?.code ? String(leagueRes.data.code) : null;
+  const chatLink = buildLeagueChatLink({
+    siteUrl: env.SITE_URL,
+    leagueCode,
+    messageId: String(messageData.id),
+  });
+
+  await sendChatMessageReportEmail({
+    env,
+    subject: `[TOTL] Chat report ${String(reportInsertRes.data.id)}`,
+    text: buildChatReportEmailText({
+      reportId: String(reportInsertRes.data.id),
+      reportCreatedAt: String(reportInsertRes.data.created_at),
+      reporterUserId: userId,
+      reporterEmail,
+      reporterName: namesById.get(userId) ?? null,
+      reportedUserId: reportedMessageUserId,
+      reportedUserName: namesById.get(reportedMessageUserId) ?? null,
+      leagueId,
+      leagueName: leagueRes.data?.name ? String(leagueRes.data.name) : null,
+      leagueCode,
+      messageId: String(messageData.id),
+      messageCreatedAt: String(messageData.created_at),
+      messageContent: String(messageData.content ?? ''),
+      reason: body.reason,
+      chatLink,
+    }),
+  });
+
+  return { ok: true };
 });
 
 app.get('/v1/leagues/:leagueId', async (req) => {

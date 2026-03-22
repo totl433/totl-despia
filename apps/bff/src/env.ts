@@ -7,6 +7,10 @@ const EnvSchema = z.object({
   SUPABASE_URL: z.string().url(),
   SUPABASE_ANON_KEY: z.string().min(1),
   CORS_ORIGIN: z.string().optional(),
+  SITE_URL: z.string().url().optional(),
+  RESEND_API_KEY: z.string().min(1).optional(),
+  REPORT_EMAIL_TO: z.string().email().default('hello+onlinesafety@playtotl.com'),
+  REPORT_EMAIL_FROM: z.string().email().default('hello@playtotl.com'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -60,6 +64,7 @@ export function loadEnv(input: NodeJS.ProcessEnv): Env {
     sanitizeAnonKey(merged.SUPABASE_ANON_KEY) ??
     sanitizeAnonKey(fromMobileEnvLocal.EXPO_PUBLIC_SUPABASE_ANON_KEY) ??
     sanitizeAnonKey(fromMobileEnvLocal.SUPABASE_ANON_KEY);
+  merged.SITE_URL = merged.SITE_URL ?? fromMobileEnvLocal.EXPO_PUBLIC_SITE_URL;
 
   return EnvSchema.parse(merged);
 }
