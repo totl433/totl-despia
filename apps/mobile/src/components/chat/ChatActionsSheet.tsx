@@ -1,12 +1,15 @@
 import React from 'react';
 import { Platform, Pressable, TextInput, View } from 'react-native';
-import { BottomSheetBackdrop, BottomSheetModal, BottomSheetView } from '@gorhom/bottom-sheet';
+import { BottomSheetBackdrop, BottomSheetModal, BottomSheetScrollView, BottomSheetView } from '@gorhom/bottom-sheet';
 import { TotlText, useTokens } from '@totl/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemePreference } from '../../context/ThemePreferenceContext';
 import GlobalButton from '../GlobalButton';
 
 const EMOJIS = ['👍', '❤️', '😂', '🔥', '😮', '😢'];
+
+/** Matches @gorhom/bottom-sheet handle; snap height must include this + measured content or you get empty space under the CTA. */
+const BOTTOM_SHEET_HANDLE_HEIGHT = 24;
 
 type ReportState = 'idle' | 'submitting' | 'error' | 'success';
 type SheetStep = 'actions' | 'reportForm' | 'reportSuccess';
@@ -37,11 +40,15 @@ export default function ChatActionsSheet({
   const insets = useSafeAreaInsets();
   const ref = React.useRef<BottomSheetModal>(null);
   const [step, setStep] = React.useState<SheetStep>('actions');
+  /** Pixel snap for success: handle (24) + measured padded content — fixed guesses (e.g. 340) always left empty space under Close. */
+  const [reportSuccessSnapHeight, setReportSuccessSnapHeight] = React.useState(300);
+
   const snapPoints = React.useMemo(() => {
-    if (step === 'reportForm') return [560];
-    if (step === 'reportSuccess') return [320];
-    return [220];
-  }, [step]);
+    // Tall enough for copy + fixed input + CTA; avoid 80%+ which leaves a huge empty band below the button.
+    if (step === 'reportForm') return ['70%'];
+    if (step === 'reportSuccess') return [reportSuccessSnapHeight];
+    return [252];
+  }, [step, reportSuccessSnapHeight]);
 
   React.useEffect(() => {
     if (reportState === 'success' && open) {
@@ -66,7 +73,7 @@ export default function ChatActionsSheet({
     requestAnimationFrame(() => {
       ref.current?.snapToIndex(0);
     });
-  }, [open, step]);
+  }, [open, step, reportSuccessSnapHeight]);
 
   const handleClose = React.useCallback(() => {
     setStep('actions');
@@ -76,7 +83,7 @@ export default function ChatActionsSheet({
   const canSubmitReport = reportReason.trim().length > 0 && reportState !== 'submitting';
 
   const inputStyle = {
-    minHeight: 150,
+    height: 220,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: t.color.border,
@@ -94,9 +101,17 @@ export default function ChatActionsSheet({
     <BottomSheetModal
       ref={ref}
       snapPoints={snapPoints}
+      // v5 defaults enableDynamicSizing=true; that sizes the sheet to content and can look like a centered modal.
+      // We want standard bottom-anchored sheets like the rest of the app.
+      enableDynamicSizing={false}
+      detached={false}
       // Keep the sheet background flush to the bottom of the screen.
       // We handle safe-area spacing via content padding so there's no visible "gap" under the sheet.
       bottomInset={0}
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      enableBlurKeyboardOnGesture
       enablePanDownToClose
       onDismiss={handleClose}
       backgroundStyle={{ backgroundColor: t.color.surface }}
@@ -111,7 +126,78 @@ export default function ChatActionsSheet({
         />
       )}
     >
-      <BottomSheetView style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 + insets.bottom }}>
+      {step === 'reportForm' ? (
+        <BottomSheetScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{
+            paddingHorizontal: 18,
+            paddingTop: 24,
+            // 24px space below the primary button; safe-area for home indicator is additive
+            paddingBottom: 24 + insets.bottom,
+          }}
+        >
+          <TotlText style={{ color: t.color.text, fontFamily: 'Gramatika-Bold', fontSize: 18, lineHeight: 24, fontWeight: '900', marginBottom: 16 }}>
+            Report a comment
+          </TotlText>
+          <TotlText style={{ fontSize: 15, lineHeight: 23, color: t.color.text, marginBottom: 18 }}>
+            If you believe this comment violates our community guidelines, you can report it for review. Our team will assess the content to ensure it aligns with our standards.
+          </TotlText>
+          <TotlText style={{ fontSize: 15, lineHeight: 23, color: t.color.text, marginBottom: 20 }}>
+            Your feedback helps us maintain a safe and respectful space for all users.
+          </TotlText>
+          <TotlText style={{ color: t.color.text, fontFamily: 'Gramatika-Bold', fontSize: 16, lineHeight: 22, fontWeight: '900', marginBottom: 12 }}>
+            Tell us why you are reporting this comment
+          </TotlText>
+          <TextInput
+            value={reportReason}
+            onChangeText={onChangeReportReason}
+            placeholder="I’m reporting this because..."
+            placeholderTextColor={t.color.muted}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={t.color.brand}
+            multiline
+            scrollEnabled
+            style={inputStyle}
+          />
+          {reportError ? (
+            <>
+              <View style={{ height: 12 }} />
+              <View
+                style={{
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: 'rgba(239,68,68,0.22)',
+                  backgroundColor: 'rgba(239,68,68,0.08)',
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                }}
+              >
+                <TotlText style={{ fontFamily: 'System', fontSize: 13, lineHeight: 16, fontWeight: '700', color: '#DC2626' }}>
+                  {reportError}
+                </TotlText>
+              </View>
+            </>
+          ) : null}
+          <View style={{ height: 14 }} />
+          <GlobalButton
+            title={reportState === 'submitting' ? 'Reporting…' : 'Report'}
+            disabled={!canSubmitReport}
+            onPress={onSubmitReport}
+          />
+        </BottomSheetScrollView>
+      ) : (
+        <BottomSheetView
+          style={
+            step === 'reportSuccess'
+              ? { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 }
+              : {
+                  paddingHorizontal: 18,
+                  paddingTop: 0,
+                  // 24px below primary actions; safe-area for home indicator is additive
+                  paddingBottom: 24 + insets.bottom,
+                }
+          }
+        >
         {step === 'actions' ? (
           <>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -178,70 +264,32 @@ export default function ChatActionsSheet({
           </>
         ) : null}
 
-        {step === 'reportForm' ? (
-          <>
-            <TotlText style={{ fontFamily: 'Gramatika-Bold', fontSize: 18, lineHeight: 24, fontWeight: '900', marginBottom: 18 }}>
-              Report a comment
-            </TotlText>
-            <TotlText style={{ fontSize: 15, lineHeight: 23, color: t.color.text, marginBottom: 22 }}>
-              If you believe this comment violates our community guidelines, you can report it for review. Our team will assess the content to ensure it aligns with our standards.
-            </TotlText>
-            <TotlText style={{ fontSize: 15, lineHeight: 23, color: t.color.text, marginBottom: 24 }}>
-              Your feedback helps us maintain a safe and respectful space for all users.
-            </TotlText>
-            <TotlText style={{ fontFamily: 'Gramatika-Bold', fontSize: 16, lineHeight: 22, fontWeight: '900', marginBottom: 14 }}>
-              Tell us why you are reporting this comment
-            </TotlText>
-            <TextInput
-              value={reportReason}
-              onChangeText={onChangeReportReason}
-              placeholder="I’m reporting this because..."
-              placeholderTextColor={t.color.muted}
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={t.color.brand}
-              multiline
-              style={inputStyle}
-            />
-            {reportError ? (
-              <>
-                <View style={{ height: 12 }} />
-                <View
-                  style={{
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    borderColor: 'rgba(239,68,68,0.22)',
-                    backgroundColor: 'rgba(239,68,68,0.08)',
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                  }}
-                >
-                  <TotlText style={{ fontFamily: 'System', fontSize: 13, lineHeight: 16, fontWeight: '700', color: '#DC2626' }}>
-                    {reportError}
-                  </TotlText>
-                </View>
-              </>
-            ) : null}
-            <View style={{ height: 18 }} />
-            <GlobalButton
-              title={reportState === 'submitting' ? 'Reporting…' : 'Report'}
-              disabled={!canSubmitReport}
-              onPress={onSubmitReport}
-            />
-          </>
-        ) : null}
-
         {step === 'reportSuccess' ? (
-          <>
-            <TotlText style={{ fontFamily: 'Gramatika-Bold', fontSize: 18, lineHeight: 24, fontWeight: '900', marginBottom: 18 }}>
+          <View
+            onLayout={(e) => {
+              const h = e.nativeEvent.layout.height;
+              if (h < 48) return;
+              const next = Math.ceil(h + BOTTOM_SHEET_HANDLE_HEIGHT);
+              const clamped = Math.min(Math.max(next, 260), 520);
+              setReportSuccessSnapHeight((prev) => (Math.abs(prev - clamped) < 2 ? prev : clamped));
+            }}
+            style={{
+              paddingHorizontal: 18,
+              paddingTop: 24,
+              paddingBottom: 24 + insets.bottom,
+            }}
+          >
+            <TotlText style={{ color: t.color.text, fontFamily: 'Gramatika-Bold', fontSize: 18, lineHeight: 24, fontWeight: '900', marginBottom: 14 }}>
               Thanks for your feedback
             </TotlText>
-            <TotlText style={{ fontSize: 15, lineHeight: 23, color: t.color.text, marginBottom: 28 }}>
+            <TotlText style={{ fontSize: 15, lineHeight: 23, color: t.color.text, marginBottom: 18 }}>
               Our team has been notified and will review it promptly. Relevant actions will be taken if necessary to maintain a respectful and safe environment.
             </TotlText>
             <GlobalButton title="Close" onPress={() => ref.current?.dismiss()} />
-          </>
+          </View>
         ) : null}
-      </BottomSheetView>
+        </BottomSheetView>
+      )}
     </BottomSheetModal>
   );
 }

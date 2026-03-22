@@ -1,14 +1,24 @@
 import React, { useState } from 'react';
 import { Alert, TextInput, View } from 'react-native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
+import { useThemePreference } from '../context/ThemePreferenceContext';
 import { supabase } from '../lib/supabase';
 
 export default function AuthScreen() {
   const t = useTokens();
+  const { isDark } = useThemePreference();
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const inputStyle = {
+    borderWidth: 1,
+    borderColor: t.color.border,
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: t.color.background,
+    color: t.color.text,
+  } as const;
 
   const submit = async () => {
     setBusy(true);
@@ -43,16 +53,14 @@ export default function AuthScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="email-address"
+          keyboardAppearance={isDark ? 'dark' : 'light'}
+          selectionColor={t.color.brand}
           value={email}
           onChangeText={setEmail}
           placeholder="you@example.com"
-          placeholderTextColor="#64748B"
+          placeholderTextColor={t.color.muted}
           style={{
-            borderWidth: 1,
-            borderColor: 'rgba(148,163,184,0.25)',
-            borderRadius: 12,
-            padding: 12,
-            color: '#F8FAFC',
+            ...inputStyle,
             marginBottom: 12,
           }}
         />
@@ -60,16 +68,14 @@ export default function AuthScreen() {
         <TotlText style={{ marginBottom: 8 }}>Password</TotlText>
         <TextInput
           secureTextEntry
+          keyboardAppearance={isDark ? 'dark' : 'light'}
+          selectionColor={t.color.brand}
           value={password}
           onChangeText={setPassword}
           placeholder="••••••••"
-          placeholderTextColor="#64748B"
+          placeholderTextColor={t.color.muted}
           style={{
-            borderWidth: 1,
-            borderColor: 'rgba(148,163,184,0.25)',
-            borderRadius: 12,
-            padding: 12,
-            color: '#F8FAFC',
+            ...inputStyle,
             marginBottom: 16,
           }}
         />
