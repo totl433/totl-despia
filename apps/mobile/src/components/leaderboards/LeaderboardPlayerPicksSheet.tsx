@@ -124,7 +124,7 @@ export default function LeaderboardPlayerPicksSheet({
         <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.5} pressBehavior="close" />
       )}
     >
-      <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 28, flex: 1 }}>
+      <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 24, flex: 1 }}>
         <View style={{ alignItems: 'flex-end', marginBottom: 8 }}>
           <Pressable onPress={onClose} hitSlop={10} style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, padding: 2 })}>
             <Ionicons name="close" size={24} color={t.color.muted} />

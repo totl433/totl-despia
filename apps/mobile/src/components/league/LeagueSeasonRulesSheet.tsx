@@ -39,7 +39,7 @@ export default function LeagueSeasonRulesSheet({
         <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.5} pressBehavior="close" />
       )}
     >
-      <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 52 }}>
+      <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 24 }}>
         <View style={{ alignItems: 'flex-end', marginBottom: 8 }}>
           <Pressable
             onPress={onClose}

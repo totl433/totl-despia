@@ -3,7 +3,6 @@ import { Alert, Pressable, View } from 'react-native';
 import { BottomSheetBackdrop, BottomSheetModal, BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
 import { TotlText, useTokens } from '@totl/ui';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type LeagueManagementMember = { id: string; name: string };
 
@@ -25,7 +24,6 @@ export default function LeagueManagementSheet({
   onEndLeague: () => Promise<void>;
 }) {
   const t = useTokens();
-  const insets = useSafeAreaInsets();
   const ref = React.useRef<BottomSheetModal>(null);
   const snapPoints = React.useMemo(() => [400], []);
 
@@ -106,7 +104,7 @@ export default function LeagueManagementSheet({
         contentContainerStyle={{
           paddingHorizontal: 18,
           paddingTop: 8,
-          paddingBottom: insets.bottom + 24,
+          paddingBottom: 24,
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>

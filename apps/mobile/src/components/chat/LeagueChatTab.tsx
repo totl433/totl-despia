@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList, Keyboard, View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -102,6 +102,7 @@ export default function LeagueChatTab({
   const [reportReason, setReportReason] = React.useState('');
   const [reportState, setReportState] = React.useState<ReportState>('idle');
   const [reportError, setReportError] = React.useState<string | null>(null);
+  const openActionsTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const prevMessageCountRef = React.useRef(0);
   const lastReadMarkedAtRef = React.useRef<string | null>(null);
@@ -122,10 +123,33 @@ export default function LeagueChatTab({
   }, []);
 
   const closeActions = React.useCallback(() => {
+    if (openActionsTimeoutRef.current) {
+      clearTimeout(openActionsTimeoutRef.current);
+      openActionsTimeoutRef.current = null;
+    }
     setActionsFor(null);
     setReportReason('');
     setReportState('idle');
     setReportError(null);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (openActionsTimeoutRef.current) {
+        clearTimeout(openActionsTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const openActionsSheet = React.useCallback((target: ChatActionsTarget) => {
+    Keyboard.dismiss();
+    if (openActionsTimeoutRef.current) {
+      clearTimeout(openActionsTimeoutRef.current);
+    }
+    openActionsTimeoutRef.current = setTimeout(() => {
+      setActionsFor(target);
+      openActionsTimeoutRef.current = null;
+    }, 180);
   }, []);
 
   const { data: me } = useQuery({
@@ -401,7 +425,7 @@ export default function LeagueChatTab({
                 topSpacing={topSpacing}
                 reactions={r}
                 onPressReaction={(emoji) => void toggleReaction(msg.id, emoji)}
-                onLongPress={() => setActionsFor({ id: msg.id, content: msg.content, authorName })}
+                onLongPress={() => openActionsSheet({ id: msg.id, content: msg.content, authorName })}
               />
             );
           }}

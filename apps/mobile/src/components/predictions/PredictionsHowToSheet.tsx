@@ -36,7 +36,7 @@ export default function PredictionsHowToSheet({
         <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.35} pressBehavior="close" />
       )}
     >
-      <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 30 }}>
+      <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 24 }}>
         <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 22, lineHeight: 24, color: t.color.text }}>
           Quick tip
         </TotlText>

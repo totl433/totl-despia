@@ -4,7 +4,6 @@ import { BottomSheetBackdrop, BottomSheetModal, BottomSheetView } from '@gorhom/
 import { Ionicons } from '@expo/vector-icons';
 import { TotlText, useTokens } from '@totl/ui';
 import { KeyboardController } from 'react-native-keyboard-controller';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemePreference } from '../../context/ThemePreferenceContext';
 
 export type LeagueOverflowAction =
@@ -97,7 +96,6 @@ export default function LeagueOverflowMenu({
   const t = useTokens();
   const fallback = useSheetTextColor();
   const sheetTextColor = menuTextColor ?? fallback.text;
-  const insets = useSafeAreaInsets();
   const ref = React.useRef<BottomSheetModal>(null);
   const snapPoints = React.useMemo(() => {
     // Roughly 54px per row + chrome. Keep this simple and forgiving.
@@ -156,7 +154,7 @@ export default function LeagueOverflowMenu({
         <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.5} pressBehavior="close" />
       )}
     >
-      <BottomSheetView style={{ paddingTop: 8, paddingBottom: insets.bottom + 12 }}>
+      <BottomSheetView style={{ paddingTop: 8, paddingBottom: 24 }}>
         {showManage ? (
           <MenuRow
             label="Manage"

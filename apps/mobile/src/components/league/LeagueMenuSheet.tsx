@@ -87,7 +87,7 @@ export default function LeagueMenuSheet({
         <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.5} pressBehavior="close" />
       )}
     >
-      <BottomSheetView style={{ paddingTop: 8, paddingBottom: 26 }}>
+      <BottomSheetView style={{ paddingTop: 8, paddingBottom: 24 }}>
         <MenuRow
           label="Edit League Badge"
           icon={<Ionicons name="image-outline" size={18} color={iconColor} />}

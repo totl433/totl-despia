@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { Keyboard, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useQuery } from '@tanstack/react-query';
@@ -205,12 +205,25 @@ export default function LeagueChatTabV2({
   const [reportReason, setReportReason] = React.useState('');
   const [reportState, setReportState] = React.useState<ReportState>('idle');
   const [reportError, setReportError] = React.useState<string | null>(null);
+  const openActionsTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const closeActions = React.useCallback(() => {
+    if (openActionsTimeoutRef.current) {
+      clearTimeout(openActionsTimeoutRef.current);
+      openActionsTimeoutRef.current = null;
+    }
     setActionsFor(null);
     setReportReason('');
     setReportState('idle');
     setReportError(null);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (openActionsTimeoutRef.current) {
+        clearTimeout(openActionsTimeoutRef.current);
+      }
+    };
   }, []);
 
   useFocusEffect(
@@ -249,7 +262,14 @@ export default function LeagueChatTabV2({
     (_: unknown, msg: IMessage) => {
       const id = String(msg?._id ?? '');
       if (!id) return;
-      setActionsFor({ id, content: String(msg?.text ?? ''), authorName: typeof msg?.user?.name === 'string' ? msg.user.name : undefined });
+      Keyboard.dismiss();
+      if (openActionsTimeoutRef.current) {
+        clearTimeout(openActionsTimeoutRef.current);
+      }
+      openActionsTimeoutRef.current = setTimeout(() => {
+        setActionsFor({ id, content: String(msg?.text ?? ''), authorName: typeof msg?.user?.name === 'string' ? msg.user.name : undefined });
+        openActionsTimeoutRef.current = null;
+      }, 180);
     },
     []
   );
