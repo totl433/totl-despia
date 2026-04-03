@@ -650,7 +650,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
 
     const { data: members, error: memErr } = await (supa as any)
       .from('branded_leaderboard_memberships')
-      .select('user_id, users:user_id(id, name, avatar_url)')
+      .select('user_id')
       .eq('leaderboard_id', id)
       .is('left_at', null);
     if (memErr) throw memErr;
@@ -658,10 +658,18 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     const memberIds = (members ?? []).map((m: any) => m.user_id);
     if (memberIds.length === 0) return { rows: [], userRank: null };
 
-    const { data: hosts } = await (supa as any)
-      .from('branded_leaderboard_hosts')
-      .select('user_id')
-      .eq('leaderboard_id', id);
+    const [{ data: userProfiles }, { data: hosts }] = await Promise.all([
+      (supa as any)
+        .from('users')
+        .select('id, name, avatar_url')
+        .in('id', memberIds),
+      (supa as any)
+        .from('branded_leaderboard_hosts')
+        .select('user_id')
+        .eq('leaderboard_id', id),
+    ]);
+    const profileMap = new Map<string, any>();
+    (userProfiles ?? []).forEach((u: any) => profileMap.set(u.id, u));
     const hostIds = new Set((hosts ?? []).map((h: any) => h.user_id));
 
     const { data: meta } = await (supa as any)
@@ -695,14 +703,17 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       scoreMap.set(uid, (scoreMap.get(uid) ?? 0) + Number(p.points ?? 0));
     });
 
-    const rows = (members ?? []).map((m: any) => ({
-      rank: 0,
-      user_id: m.user_id,
-      name: m.users?.name ?? 'User',
-      avatar_url: m.users?.avatar_url ?? null,
-      value: scoreMap.get(m.user_id) ?? 0,
-      is_host: hostIds.has(m.user_id),
-    }));
+    const rows = (members ?? []).map((m: any) => {
+      const profile = profileMap.get(m.user_id);
+      return {
+        rank: 0,
+        user_id: m.user_id,
+        name: profile?.name ?? 'User',
+        avatar_url: profile?.avatar_url ?? null,
+        value: scoreMap.get(m.user_id) ?? 0,
+        is_host: hostIds.has(m.user_id),
+      };
+    });
 
     rows.sort((a: any, b: any) => b.value - a.value || a.name.localeCompare(b.name));
     rows.forEach((r: any, i: number) => {
