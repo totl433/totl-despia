@@ -28,6 +28,7 @@ import {
   updateEmailPreferences,
 } from './profile.js';
 import { sendChatMessageReportEmail } from './reporting.js';
+import { registerBrandedLeaderboardRoutes } from './brandedLeaderboards.js';
 
 const env = loadEnv(process.env);
 const supabase = createSupabaseClient(env);
@@ -46,7 +47,12 @@ app.setErrorHandler((err, req, reply) => {
   const statusCode =
     typeof (err as any)?.statusCode === 'number' ? (err as any).statusCode : 500;
 
-  const message = err instanceof Error ? err.message : String(err);
+  const message =
+    err instanceof Error
+      ? err.message
+      : typeof err === 'object' && err !== null && typeof (err as any).message === 'string'
+        ? (err as any).message
+        : String(err);
   req.log.error({ err }, 'request failed');
   captureException(err);
   reply.status(statusCode).send({
@@ -1019,6 +1025,8 @@ app.put('/v1/notification-prefs', async (req) => {
   if (error) throw error;
   return { ok: true };
 });
+
+registerBrandedLeaderboardRoutes(app, env);
 
 await app.listen({ port: env.PORT, host: '0.0.0.0' });
 
