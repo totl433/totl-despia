@@ -13,17 +13,12 @@ import SegmentedToggle from "../components/SegmentedToggle";
 import UserPicksModal from "../components/UserPicksModal";
 import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
 import UserAvatar from "../components/UserAvatar";
+import { fetchAllGwPoints, type GwPointsRow } from "../lib/fetchAllGwPoints";
 
 type OverallRow = {
   user_id: string;
   name: string | null;
   ocp: number;
-};
-
-type GwPointsRow = {
-  user_id: string;
-  gw: number;
-  points: number;
 };
 
 export default function GlobalLeaderboardPage() {
@@ -313,11 +308,7 @@ export default function GlobalLeaderboardPage() {
         if (alive) setLatestGw(gw);
 
         // 2) all GW points (needed for form leaderboards) - App reads from app_v_gw_points
-        const { data: gp, error: gErr } = await supabase
-          .from("app_v_gw_points")
-          .select("user_id, gw, points")
-          .order("gw", { ascending: true });
-        if (gErr) throw gErr;
+        const gp = await fetchAllGwPoints("asc");
 
         // 3) overall - App reads from app_v_ocp_overall
         const { data: ocp, error: oErr } = await supabase
@@ -326,7 +317,7 @@ export default function GlobalLeaderboardPage() {
         if (oErr) throw oErr;
 
         if (!alive) return;
-        setGwPoints((gp as GwPointsRow[]) ?? []);
+        setGwPoints(gp ?? []);
         setOverall((ocp as OverallRow[]) ?? []);
 
         // 4) previous OCP totals (up to gw-1) to compute rank movement
@@ -609,7 +600,7 @@ export default function GlobalLeaderboardPage() {
 
     // sort by OCP desc, then name
     merged.sort((a, b) => (b.ocp - a.ocp) || a.name.localeCompare(b.name));
-    
+
     // Add joint ranking
     let currentRank = 1;
     return merged.map((player, index) => {
