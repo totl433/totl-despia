@@ -23,6 +23,7 @@ import { getGameweekState, type GameweekState } from '../lib/gameweekState';
 import { resolveLeagueStartGw } from '../lib/leagueStart';
 import { APP_ONLY_USER_IDS } from '../lib/appOnlyUsers';
 import { filterHiddenLeaderboardRows } from '../lib/leaderboardVisibility';
+import { fetchAllGwPoints } from '../lib/fetchAllGwPoints';
 
 /**
  * Return type for initial data loading.
@@ -165,13 +166,19 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
       .eq('id', 1)
       .maybeSingle(),
     
-    // 2. Get recent GW points only (for form leaderboards - last 15 GWs is enough for 10-week form)
-    // This dramatically reduces data transfer for mature seasons
-    supabase
-      .from('app_v_gw_points')
-      .select('user_id, gw, points')
-      .order('gw', { ascending: false })
-      .limit(15000), // ~1000 users × 15 GWs = 15000 rows max
+    // 2. Get the full GW points history using paging.
+    // A single unpaged request is commonly capped at ~1000 rows by PostgREST.
+    (async () => {
+      try {
+        const data = await fetchAllGwPoints('asc');
+        return { data, error: null };
+      } catch (error) {
+        return {
+          data: null,
+          error: error instanceof Error ? error : new Error('Failed to fetch GW points'),
+        };
+      }
+    })(),
     
     // 3. Get top 100 overall standings (sufficient for display, user rank fetched separately if needed)
     supabase

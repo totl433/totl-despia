@@ -29,8 +29,8 @@ async function prefetchHomeData(userId: string): Promise<void> {
         supabase.from("league_members").select("leagues(id, name, code, avatar, created_at)").eq("user_id", userId),
         supabase.from("gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle(),
-        supabase.from("v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
-        supabase.from("v_ocp_overall").select("user_id, name, ocp")
+        supabase.from("app_v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
+        supabase.from("app_v_ocp_overall").select("user_id, name, ocp")
       ]).catch(() => {
         // Silently fail - this is just a prefetch
       });
