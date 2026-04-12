@@ -244,7 +244,7 @@ async function pollAllLiveScores() {
     });
 
     if (fixturesToPoll.length === 0) {
-      console.log('[pollLiveScores] All fixtures are finished, skipping polling');
+      console.log('[pollLiveScores] No fixtures currently eligible for polling');
       return;
     }
 
@@ -484,31 +484,15 @@ export const handler: Handler = async (event) => {
   // 1. Scheduled function (Netlify cron) - event will have event.source = 'netlify-scheduled-function'
   // 2. Manual HTTP call (GET or POST)
   
-  // Only run on staging environment
-  // Check multiple environment variables that Netlify sets
   const context = process.env.CONTEXT || process.env.NETLIFY_CONTEXT || 'unknown';
   const branch = process.env.BRANCH || process.env.HEAD || process.env.COMMIT_REF || 'unknown';
   const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || '';
-  
-  // Consider it staging if:
-  // 1. Context is deploy-preview or branch deploy
-  // 2. Branch is "Staging"
-  // 3. Site URL contains "staging" or "deploy-preview"
-  // 4. Or if we're on a branch that's not "main" (scheduled functions typically run on all branches)
-  const isStaging = 
-    context === 'deploy-preview' || 
-    context === 'branch-deploy' ||
-    branch === 'Staging' || 
-    branch.toLowerCase() === 'staging' ||
-    siteUrl.toLowerCase().includes('staging') ||
-    siteUrl.toLowerCase().includes('deploy-preview');
-  
+
   // Log environment info for debugging
   console.log(`[pollLiveScores] Environment check:`, {
     context,
     branch,
     siteUrl: siteUrl ? siteUrl.substring(0, 50) + '...' : 'none',
-    isStaging,
     allEnvVars: {
       CONTEXT: process.env.CONTEXT,
       NETLIFY_CONTEXT: process.env.NETLIFY_CONTEXT,
@@ -519,15 +503,6 @@ export const handler: Handler = async (event) => {
       DEPLOY_PRIME_URL: process.env.DEPLOY_PRIME_URL ? process.env.DEPLOY_PRIME_URL.substring(0, 50) + '...' : undefined,
     }
   });
-  
-  if (!isStaging) {
-    console.log(`[pollLiveScores] Skipping - not staging environment (context: ${context}, branch: ${branch})`);
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ success: false, message: 'Only runs on staging', context, branch }),
-    };
-  }
   
   // Use meta table to store lock timestamp with aggressive check
   // For test API, we want 15-second polling, but Netlify cron minimum is 1 minute
@@ -542,10 +517,11 @@ export const handler: Handler = async (event) => {
     // Check lock immediately before starting work
     // Try to read last_poll_time, but handle gracefully if column doesn't exist yet
     let lastPollTime: string | null = null;
+    let metaCurrentGw: number | null = null;
     try {
       const { data: metaData, error: metaError } = await supabase
         .from('app_meta')
-        .select('last_poll_time')
+        .select('current_gw, last_poll_time')
         .eq('id', 1)
         .maybeSingle();
       
@@ -557,6 +533,7 @@ export const handler: Handler = async (event) => {
           console.warn('[pollLiveScores] Error checking lock:', metaError);
         }
       } else if (metaData) {
+        metaCurrentGw = (metaData as any).current_gw ?? null;
         lastPollTime = (metaData as any).last_poll_time;
         if (lastPollTime) {
           const lastPoll = new Date(lastPollTime).getTime();
@@ -598,7 +575,10 @@ export const handler: Handler = async (event) => {
         // Try upsert as fallback
         const { error: upsertError } = await supabase
           .from('app_meta')
-          .upsert({ id: 1, last_poll_time: lockTimestamp, current_gw: 12 } as any, { onConflict: 'id' });
+          .upsert(
+            { id: 1, last_poll_time: lockTimestamp, current_gw: metaCurrentGw ?? 1 } as any,
+            { onConflict: 'id' }
+          );
         
         if (upsertError && upsertError.code !== 'PGRST204' && upsertError.code !== '42703') {
           console.warn('[pollLiveScores] Failed to update lock timestamp:', upsertError);

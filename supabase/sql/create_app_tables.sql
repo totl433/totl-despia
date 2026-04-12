@@ -11,6 +11,7 @@
 CREATE TABLE IF NOT EXISTS app_meta (
   id INTEGER PRIMARY KEY DEFAULT 1,
   current_gw INTEGER NOT NULL DEFAULT 1,
+  last_poll_time TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT app_meta_single_row CHECK (id = 1)
