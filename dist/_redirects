@@ -1,0 +1,3 @@
+/assets/* /assets/:splat 200
+/notification-docs/* /.netlify/functions/notification-docs/:splat 200!
+/* /index.html 200

@@ -16,7 +16,10 @@ import ProfileNavigator from './ProfileNavigator';
 import PredictionsScreen from '../screens/PredictionsScreen';
 import Chat2Navigator from './Chat2Navigator';
 import { useThemePreference } from '../context/ThemePreferenceContext';
-
+import { useJoinIntent } from '../context/JoinIntentContext';
+import BrandedLeaderboardScreen from '../screens/brandedLeaderboards/BrandedLeaderboardScreen';
+import BrandedLeaderboardListScreen from '../screens/brandedLeaderboards/BrandedLeaderboardListScreen';
+import JoinLeaderboardScreen from '../screens/brandedLeaderboards/JoinLeaderboardScreen';
 export type RootStackParamList = {
   Tabs: undefined;
   LeagueDetail: { leagueId: string; name: string; returnTo?: 'chat' | 'chat2'; chatMlHopCount?: number; initialTab?: 'gwTable' | 'predictions' | 'season' };
@@ -29,21 +32,83 @@ export type RootStackParamList = {
   PredictionsFlow: undefined;
   PredictionsTestFlow: undefined;
   GameweekResults: { gw: number; mode?: 'roundup' | 'fixturesShare' };
+  BrandedLeaderboard: { idOrSlug: string; joinCode?: string };
+  BrandedLeaderboardList: undefined;
+  JoinLeaderboard: { leaderboardId?: string; leaderboardName?: string; code?: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
+type LeagueInitialTab = NonNullable<RootStackParamList['LeagueDetail']['initialTab']>;
+
+function parseIncomingUrl(rawUrl: string): URL | null {
+  try {
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawUrl)) {
+      return new URL(rawUrl);
+    }
+    if (rawUrl.startsWith('/')) {
+      return new URL(`https://totl.local${rawUrl}`);
+    }
+  } catch {
+    // Ignore invalid URLs and fall back to regex matching below.
+  }
+  return null;
+}
+
+function getLeagueTarget(rawUrl: string): { code: string; openChat: boolean; initialTab?: LeagueInitialTab } | null {
+  const parsed = parseIncomingUrl(rawUrl);
+  const pathname = parsed?.pathname ?? rawUrl;
+  const pathLeagueMatch = pathname.match(/\/league\/([^/?#]+)/i);
+  const queryLeagueCode = parsed?.searchParams.get('leagueCode');
+  const rawCode = pathLeagueMatch?.[1] ?? queryLeagueCode ?? '';
+  const code = decodeURIComponent(String(rawCode)).trim().toUpperCase();
+  if (!code) return null;
+
+  const tabParam = (parsed?.searchParams.get('tab') ?? '').trim().toLowerCase();
+  const openChat = tabParam === 'chat' || /\/league\/[^/?#]+\/chat(?:[/?#]|$)/i.test(pathname);
+
+  let initialTab: LeagueInitialTab | undefined;
+  if (!openChat) {
+    if (tabParam === 'predictions') {
+      initialTab = 'predictions';
+    } else if (tabParam === 'season') {
+      initialTab = 'season';
+    } else if (tabParam === 'gw' || tabParam === 'gwtable' || tabParam === 'table') {
+      initialTab = 'gwTable';
+    }
+  }
+
+  return { code, openChat, initialTab };
+}
 
 export default function AppNavigator() {
   const t = useTokens();
   const { isDark } = useThemePreference();
+  const { pending: joinIntent, clearPending: clearJoinIntent } = useJoinIntent();
   const pendingUrlRef = React.useRef<string | null>(null);
+  const joinIntentConsumedRef = React.useRef(false);
 
   const handleIncomingUrl = React.useCallback(async (url: string) => {
     if (!url) return;
+    const parsed = parseIncomingUrl(url);
+    const pathname = parsed?.pathname ?? url;
+
+    // Route: /join/{code}
+    const joinMatch = pathname.match(/\/join\/([^/?#]+)/i);
+    if (joinMatch?.[1]) {
+      const joinCode = decodeURIComponent(joinMatch[1]).trim().toUpperCase();
+      if (joinCode) {
+        if (!navigationRef.isReady()) {
+          pendingUrlRef.current = url;
+          return;
+        }
+        navigationRef.navigate('JoinLeaderboard' as any, { code: joinCode });
+        return;
+      }
+    }
 
     // Route: /leagues
-    if (/\/leagues(?:[/?#]|$)/i.test(url)) {
+    if (/\/leagues(?:[/?#]|$)/i.test(pathname)) {
       if (!navigationRef.isReady()) {
         pendingUrlRef.current = url;
         return;
@@ -52,14 +117,19 @@ export default function AppNavigator() {
       return;
     }
 
-    // Route: /league/{CODE}[?tab=chat] or /league/{CODE}/chat
-    const m = url.match(/\/league\/([^/?#]+)/i);
-    if (!m?.[1]) return;
-    const raw = decodeURIComponent(m[1]);
-    const code = String(raw).trim().toUpperCase();
-    if (!code) return;
+    // Route: /predictions
+    if (/\/predictions(?:[/?#]|$)/i.test(pathname)) {
+      if (!navigationRef.isReady()) {
+        pendingUrlRef.current = url;
+        return;
+      }
+      navigationRef.navigate('PredictionsFlow');
+      return;
+    }
 
-    const openChat = /tab=chat/i.test(url) || /\/league\/[^/?#]+\/chat(?:[/?#]|$)/i.test(url);
+    const leagueTarget = getLeagueTarget(url);
+    if (!leagueTarget) return;
+    const { code, openChat, initialTab } = leagueTarget;
 
     // Resolve league ID from code (native screens are keyed by leagueId).
     try {
@@ -81,7 +151,7 @@ export default function AppNavigator() {
       if (openChat) {
         navigationRef.navigate('ChatThread', { leagueId, name });
       } else {
-        navigationRef.navigate('LeagueDetail', { leagueId, name });
+        navigationRef.navigate('LeagueDetail', initialTab ? { leagueId, name, initialTab } : { leagueId, name });
       }
     } catch {
       // ignore
@@ -123,9 +193,19 @@ export default function AppNavigator() {
       theme={navTheme}
       onReady={() => {
         const pending = pendingUrlRef.current;
-        if (!pending) return;
-        pendingUrlRef.current = null;
-        void handleIncomingUrl(pending);
+        if (pending) {
+          pendingUrlRef.current = null;
+          void handleIncomingUrl(pending);
+        }
+
+        if (joinIntent && !joinIntentConsumedRef.current) {
+          joinIntentConsumedRef.current = true;
+          clearJoinIntent();
+          navigationRef.navigate('JoinLeaderboard' as any, {
+            leaderboardId: joinIntent.leaderboardId,
+            code: joinIntent.code,
+          });
+        }
       }}
     >
       <Stack.Navigator
@@ -184,6 +264,33 @@ export default function AppNavigator() {
           }}
         />
         <Stack.Screen name="Profile" component={ProfileNavigator} />
+        <Stack.Screen
+          name="BrandedLeaderboard"
+          component={BrandedLeaderboardScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="BrandedLeaderboardList"
+          component={BrandedLeaderboardListScreen}
+          options={{
+            headerShown: true,
+            headerShadowVisible: false,
+            headerStyle: { backgroundColor: t.color.background },
+            headerTintColor: t.color.text,
+            headerTitle: 'Leaderboards',
+          }}
+        />
+        <Stack.Screen
+          name="JoinLeaderboard"
+          component={JoinLeaderboardScreen}
+          options={{
+            headerShown: true,
+            headerShadowVisible: false,
+            headerStyle: { backgroundColor: t.color.background },
+            headerTintColor: t.color.text,
+            headerTitle: '',
+          }}
+        />
         <Stack.Screen
           name="GameweekResults"
           component={GameweekResultsModalScreen}

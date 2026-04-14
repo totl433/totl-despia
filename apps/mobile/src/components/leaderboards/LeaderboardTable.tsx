@@ -224,9 +224,9 @@ export default function LeaderboardTable({
           style={[
             { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
             isWinner
-              ? { overflow: 'hidden', borderRadius: 10, position: 'relative' }
+              ? { overflow: 'hidden', position: 'relative' }
               : isMe
-                ? { overflow: 'hidden', borderRadius: 10, backgroundColor: t.color.surface2 }
+                ? { overflow: 'hidden', backgroundColor: t.color.surface2 }
                 : { backgroundColor: 'transparent' },
           ]}
         >

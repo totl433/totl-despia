@@ -197,6 +197,139 @@ export const UserStatsDataSchema = z.object({
 });
 export type UserStatsData = z.infer<typeof UserStatsDataSchema>;
 
+// ----------------------------
+// Branded Leaderboards
+// ----------------------------
+export const BrandedLeaderboardSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  display_name: z.string(),
+  description: z.string().nullable(),
+  slug: z.string(),
+  header_image_url: z.string().nullable(),
+  visibility: z.enum(['public', 'private', 'unlisted']),
+  price_type: z.enum(['free', 'paid']),
+  season_price_cents: z.number().int(),
+  currency: z.string(),
+  revenue_share_pct: z.number(),
+  payout_owner_id: z.string().nullable(),
+  status: z.enum(['draft', 'active', 'paused', 'archived']),
+  season: z.string(),
+  start_gw: z.number().int().nullable(),
+  rc_offering_id: z.string().nullable(),
+  rc_entitlement_id: z.string().nullable(),
+  rc_product_id: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type BrandedLeaderboard = z.infer<typeof BrandedLeaderboardSchema>;
+
+export const BrandedLeaderboardAccessReasonSchema = z.enum([
+  'free_not_joined',
+  'free_joined',
+  'paid_not_purchased',
+  'paid_purchased_not_joined',
+  'paid_full_access',
+]);
+export type BrandedLeaderboardAccessReason = z.infer<typeof BrandedLeaderboardAccessReasonSchema>;
+
+export const BrandedLeaderboardHostSchema = z.object({
+  id: z.string(),
+  leaderboard_id: z.string(),
+  user_id: z.string(),
+  display_order: z.number().int(),
+  name: z.string().nullable().optional(),
+  avatar_url: z.string().nullable().optional(),
+});
+export type BrandedLeaderboardHost = z.infer<typeof BrandedLeaderboardHostSchema>;
+
+export const BrandedLeaderboardMembershipSchema = z.object({
+  id: z.string(),
+  leaderboard_id: z.string(),
+  user_id: z.string(),
+  joined_at: z.string(),
+  left_at: z.string().nullable(),
+  source: z.string(),
+});
+export type BrandedLeaderboardMembership = z.infer<typeof BrandedLeaderboardMembershipSchema>;
+
+export const BrandedLeaderboardSubscriptionSchema = z.object({
+  id: z.string(),
+  leaderboard_id: z.string(),
+  user_id: z.string(),
+  rc_subscription_id: z.string().nullable(),
+  rc_product_id: z.string().nullable(),
+  status: z.enum(['active', 'expired', 'cancelled', 'billing_retry']),
+  started_at: z.string(),
+  expires_at: z.string().nullable(),
+  cancelled_at: z.string().nullable(),
+});
+export type BrandedLeaderboardSubscription = z.infer<typeof BrandedLeaderboardSubscriptionSchema>;
+
+export const BrandedLeaderboardJoinCodeSchema = z.object({
+  id: z.string(),
+  code: z.string(),
+  leaderboard_id: z.string(),
+  expires_at: z.string().nullable(),
+  max_uses: z.number().int().nullable(),
+  use_count: z.number().int(),
+  active: z.boolean(),
+  created_at: z.string(),
+});
+export type BrandedLeaderboardJoinCode = z.infer<typeof BrandedLeaderboardJoinCodeSchema>;
+
+export const BrandedLeaderboardDetailSchema = z.object({
+  leaderboard: BrandedLeaderboardSchema,
+  hosts: z.array(BrandedLeaderboardHostSchema),
+  membership: BrandedLeaderboardMembershipSchema.nullable(),
+  subscription: BrandedLeaderboardSubscriptionSchema.nullable(),
+  hasAccess: z.boolean(),
+  hasActivePurchase: z.boolean(),
+  requiresPurchase: z.boolean(),
+  accessReason: BrandedLeaderboardAccessReasonSchema,
+});
+export type BrandedLeaderboardDetail = z.infer<typeof BrandedLeaderboardDetailSchema>;
+
+export const BrandedLeaderboardStandingsRowSchema = z.object({
+  rank: z.number().int().positive(),
+  user_id: z.string(),
+  name: z.string(),
+  avatar_url: z.string().nullable(),
+  value: z.number(),
+  is_host: z.boolean(),
+  compact_values: z.array(z.number().nullable()).optional(),
+});
+export type BrandedLeaderboardStandingsRow = z.infer<typeof BrandedLeaderboardStandingsRowSchema>;
+
+export const BrandedLeaderboardStandingsSchema = z.object({
+  rows: z.array(BrandedLeaderboardStandingsRowSchema),
+  userRank: z.number().int().positive().nullable(),
+});
+export type BrandedLeaderboardStandings = z.infer<typeof BrandedLeaderboardStandingsSchema>;
+
+export const BrandedLeaderboardMyItemSchema = z.object({
+  leaderboard: BrandedLeaderboardSchema,
+  membership: BrandedLeaderboardMembershipSchema,
+  subscription: BrandedLeaderboardSubscriptionSchema.nullable(),
+});
+export type BrandedLeaderboardMyItem = z.infer<typeof BrandedLeaderboardMyItemSchema>;
+
+export const BrandedLeaderboardPayoutSchema = z.object({
+  id: z.string(),
+  leaderboard_id: z.string(),
+  owner_id: z.string(),
+  period: z.string(),
+  gross_revenue_cents: z.number().int(),
+  net_revenue_cents: z.number().int(),
+  totl_share_cents: z.number().int(),
+  influencer_share_cents: z.number().int(),
+  status: z.enum(['pending', 'paid', 'held']),
+  paid_at: z.string().nullable(),
+  notes: z.string().nullable(),
+  created_at: z.string(),
+});
+export type BrandedLeaderboardPayout = z.infer<typeof BrandedLeaderboardPayoutSchema>;
+
 export const UnicornCardSchema = z.object({
   fixture_index: z.number().int().nonnegative(),
   gw: z.number().int().positive(),

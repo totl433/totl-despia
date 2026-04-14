@@ -8,6 +8,8 @@ import {
   ProfileSummarySchema,
   UnicornCardSchema,
   UserStatsDataSchema,
+  BrandedLeaderboardDetailSchema,
+  BrandedLeaderboardStandingsSchema,
   type GwResults,
   type EmailPreferences,
   type HomeRanks,
@@ -16,6 +18,12 @@ import {
   type PredictionsResponse,
   type UnicornCard,
   type UserStatsData,
+  type BrandedLeaderboard,
+  type BrandedLeaderboardDetail,
+  type BrandedLeaderboardStandings,
+  type BrandedLeaderboardMyItem,
+  type BrandedLeaderboardMembership,
+  type BrandedLeaderboardSubscription,
 } from '@totl/domain';
 
 export interface ApiClientOptions {
@@ -267,6 +275,62 @@ export function createApiClient(opts: ApiClientOptions) {
         method: 'POST',
         body: JSON.stringify(input),
         validate: (data) => (OkResponseSchema.parse(data) as unknown) as { ok: true },
+      });
+    },
+
+    // ---- Branded Leaderboards (Public) ----
+
+    async getBrandedLeaderboard(idOrSlug: string): Promise<BrandedLeaderboardDetail> {
+      return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(idOrSlug)}`, {
+        method: 'GET',
+        validate: (data) => BrandedLeaderboardDetailSchema.parse(data),
+      });
+    },
+
+    async getBrandedLeaderboardStandings(
+      id: string,
+      params?: { scope?: 'gw' | 'month' | 'season'; gw?: number }
+    ): Promise<BrandedLeaderboardStandings> {
+      const qs = new URLSearchParams();
+      if (params?.scope) qs.set('scope', params.scope);
+      if (params?.gw) qs.set('gw', String(params.gw));
+      const q = qs.toString() ? `?${qs.toString()}` : '';
+      return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/standings${q}`, {
+        method: 'GET',
+        validate: (data) => BrandedLeaderboardStandingsSchema.parse(data),
+      });
+    },
+
+    async getMyBrandedLeaderboards(): Promise<{ leaderboards: BrandedLeaderboardMyItem[] }> {
+      return requestJson(opts, `/v1/branded-leaderboards/mine`, { method: 'GET' });
+    },
+
+    async resolveJoinCode(code: string): Promise<{ leaderboard: BrandedLeaderboard }> {
+      return requestJson(opts, `/v1/branded-leaderboards/resolve-code/${encodeURIComponent(code)}`, {
+        method: 'GET',
+      });
+    },
+
+    async joinBrandedLeaderboard(id: string, code: string): Promise<{ membership: BrandedLeaderboardMembership }> {
+      return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/join`, {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      });
+    },
+
+    async leaveBrandedLeaderboard(id: string): Promise<{ ok: true }> {
+      return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/leave`, {
+        method: 'POST',
+      });
+    },
+
+    async activateBrandedLeaderboardSubscription(
+      id: string,
+      input: { rc_subscription_id: string; rc_product_id: string }
+    ): Promise<{ subscription: BrandedLeaderboardSubscription }> {
+      return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/activate`, {
+        method: 'POST',
+        body: JSON.stringify(input),
       });
     },
   };

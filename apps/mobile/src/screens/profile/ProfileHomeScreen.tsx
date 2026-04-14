@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, ScrollView, View } from 'react-native';
+import { Alert, Image, Pressable, ScrollView, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -7,6 +7,7 @@ import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import { api } from '../../lib/api';
 import { signOutWithPushCleanup } from '../../lib/signOut';
+import { restorePurchases } from '../../lib/purchases';
 import PageHeader from '../../components/PageHeader';
 import CenteredSpinner from '../../components/CenteredSpinner';
 import { TotlRefreshControl } from '../../lib/refreshControl';
@@ -84,6 +85,29 @@ export default function ProfileHomeScreen() {
   }
 
   const accountSections: Array<{ title: string; items: Array<{ label: string; onPress: () => void }> }> = [
+    {
+      title: 'Leaderboards',
+      items: [
+        {
+          label: 'My Branded Leaderboards',
+          onPress: () => {
+            const parent = (navigation as any).getParent?.();
+            parent?.navigate?.('BrandedLeaderboardList');
+          },
+        },
+        {
+          label: 'Restore Purchases',
+          onPress: async () => {
+            try {
+              await restorePurchases();
+              Alert.alert('Done', 'Purchases restored successfully.');
+            } catch {
+              Alert.alert('Error', 'Could not restore purchases.');
+            }
+          },
+        },
+      ],
+    },
     {
       title: 'Preferences',
       items: [

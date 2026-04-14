@@ -223,6 +223,16 @@ import PredictionsPage from "./pages/Predictions";
 const LeaguePage = lazy(() => import("./pages/League"));
 const AdminPage = lazy(() => import("./pages/Admin"));
 const AdminDataPage = lazy(() => import("./pages/AdminData"));
+import { RequireAdmin } from "./components/RequireAdmin";
+import { RequireHostOrAdmin } from "./components/RequireHostOrAdmin";
+const AdminLeaderboards = lazy(() => import("./pages/admin/AdminLeaderboards"));
+const AdminLeaderboardForm = lazy(() => import("./pages/admin/AdminLeaderboardForm"));
+const AdminLeaderboardDetail = lazy(() => import("./pages/admin/AdminLeaderboardDetail"));
+const AdminLeaderboardRevenue = lazy(() => import("./pages/admin/AdminLeaderboardRevenue"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminPayouts = lazy(() => import("./pages/admin/AdminPayouts"));
+const AdminReporting = lazy(() => import("./pages/admin/AdminReporting"));
+const HostLeaderboardReview = lazy(() => import("./pages/HostLeaderboardReview"));
 const TempGlobalPage = lazy(() => import("./pages/TempGlobal"));
 const CreateLeaguePage = lazy(() => import("./pages/CreateLeague"));
 const HowToPlayPage = lazy(() => import("./pages/HowToPlay"));
@@ -857,6 +867,15 @@ function AppContent() {
               <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
               <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
               <Route path="/admin-data" element={<RequireAuth><AdminDataPage /></RequireAuth>} />
+              <Route path="/admin/leaderboards" element={<RequireAuth><RequireAdmin><AdminLeaderboards /></RequireAdmin></RequireAuth>} />
+              <Route path="/admin/leaderboards/new" element={<RequireAuth><RequireAdmin><AdminLeaderboardForm /></RequireAdmin></RequireAuth>} />
+              <Route path="/admin/leaderboards/:id" element={<RequireAuth><RequireAdmin><AdminLeaderboardDetail /></RequireAdmin></RequireAuth>} />
+              <Route path="/admin/leaderboards/:id/edit" element={<RequireAuth><RequireAdmin><AdminLeaderboardForm /></RequireAdmin></RequireAuth>} />
+              <Route path="/admin/leaderboards/:id/revenue" element={<RequireAuth><RequireAdmin><AdminLeaderboardRevenue /></RequireAdmin></RequireAuth>} />
+              <Route path="/admin/dashboard" element={<RequireAuth><RequireAdmin><AdminDashboard /></RequireAdmin></RequireAuth>} />
+              <Route path="/admin/payouts" element={<RequireAuth><RequireAdmin><AdminPayouts /></RequireAdmin></RequireAuth>} />
+              <Route path="/admin/reporting" element={<RequireAuth><RequireAdmin><AdminReporting /></RequireAdmin></RequireAuth>} />
+              <Route path="/host/leaderboards/:id" element={<RequireAuth><RequireHostOrAdmin><HostLeaderboardReview /></RequireHostOrAdmin></RequireAuth>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>

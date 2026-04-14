@@ -29,8 +29,11 @@ let cachedOneSignalSdk: { OneSignal: any; LogLevel: any } | null | undefined;
 function getOneSignalSdk(): { OneSignal: any; LogLevel: any } | null {
   if (cachedOneSignalSdk !== undefined) return cachedOneSignalSdk;
   try {
-    // Lazy-load to avoid runtime crashes when native module is unavailable
-    // (e.g. simulator / stale dev client without the OneSignal native build).
+    const { NativeModules } = require('react-native');
+    if (!NativeModules.OneSignal && !NativeModules.RNOneSignal) {
+      cachedOneSignalSdk = null;
+      return cachedOneSignalSdk;
+    }
     const mod = require('react-native-onesignal');
     cachedOneSignalSdk = mod?.OneSignal && mod?.LogLevel ? { OneSignal: mod.OneSignal, LogLevel: mod.LogLevel } : null;
   } catch {

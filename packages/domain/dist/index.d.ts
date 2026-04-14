@@ -301,6 +301,277 @@ export declare const UserStatsDataSchema: z.ZodObject<{
     }, z.core.$strip>>;
 }, z.core.$strip>;
 export type UserStatsData = z.infer<typeof UserStatsDataSchema>;
+export declare const BrandedLeaderboardSchema: z.ZodObject<{
+    id: z.ZodString;
+    name: z.ZodString;
+    display_name: z.ZodString;
+    description: z.ZodNullable<z.ZodString>;
+    slug: z.ZodString;
+    header_image_url: z.ZodNullable<z.ZodString>;
+    visibility: z.ZodEnum<{
+        public: "public";
+        private: "private";
+        unlisted: "unlisted";
+    }>;
+    price_type: z.ZodEnum<{
+        free: "free";
+        paid: "paid";
+    }>;
+    season_price_cents: z.ZodNumber;
+    currency: z.ZodString;
+    revenue_share_pct: z.ZodNumber;
+    payout_owner_id: z.ZodNullable<z.ZodString>;
+    status: z.ZodEnum<{
+        draft: "draft";
+        active: "active";
+        paused: "paused";
+        archived: "archived";
+    }>;
+    season: z.ZodString;
+    start_gw: z.ZodNullable<z.ZodNumber>;
+    rc_offering_id: z.ZodNullable<z.ZodString>;
+    rc_entitlement_id: z.ZodNullable<z.ZodString>;
+    rc_product_id: z.ZodNullable<z.ZodString>;
+    created_at: z.ZodString;
+    updated_at: z.ZodString;
+}, z.core.$strip>;
+export type BrandedLeaderboard = z.infer<typeof BrandedLeaderboardSchema>;
+export declare const BrandedLeaderboardAccessReasonSchema: z.ZodEnum<{
+    free_not_joined: "free_not_joined";
+    free_joined: "free_joined";
+    paid_not_purchased: "paid_not_purchased";
+    paid_purchased_not_joined: "paid_purchased_not_joined";
+    paid_full_access: "paid_full_access";
+}>;
+export type BrandedLeaderboardAccessReason = z.infer<typeof BrandedLeaderboardAccessReasonSchema>;
+export declare const BrandedLeaderboardHostSchema: z.ZodObject<{
+    id: z.ZodString;
+    leaderboard_id: z.ZodString;
+    user_id: z.ZodString;
+    display_order: z.ZodNumber;
+    name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    avatar_url: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}, z.core.$strip>;
+export type BrandedLeaderboardHost = z.infer<typeof BrandedLeaderboardHostSchema>;
+export declare const BrandedLeaderboardMembershipSchema: z.ZodObject<{
+    id: z.ZodString;
+    leaderboard_id: z.ZodString;
+    user_id: z.ZodString;
+    joined_at: z.ZodString;
+    left_at: z.ZodNullable<z.ZodString>;
+    source: z.ZodString;
+}, z.core.$strip>;
+export type BrandedLeaderboardMembership = z.infer<typeof BrandedLeaderboardMembershipSchema>;
+export declare const BrandedLeaderboardSubscriptionSchema: z.ZodObject<{
+    id: z.ZodString;
+    leaderboard_id: z.ZodString;
+    user_id: z.ZodString;
+    rc_subscription_id: z.ZodNullable<z.ZodString>;
+    rc_product_id: z.ZodNullable<z.ZodString>;
+    status: z.ZodEnum<{
+        active: "active";
+        expired: "expired";
+        cancelled: "cancelled";
+        billing_retry: "billing_retry";
+    }>;
+    started_at: z.ZodString;
+    expires_at: z.ZodNullable<z.ZodString>;
+    cancelled_at: z.ZodNullable<z.ZodString>;
+}, z.core.$strip>;
+export type BrandedLeaderboardSubscription = z.infer<typeof BrandedLeaderboardSubscriptionSchema>;
+export declare const BrandedLeaderboardJoinCodeSchema: z.ZodObject<{
+    id: z.ZodString;
+    code: z.ZodString;
+    leaderboard_id: z.ZodString;
+    expires_at: z.ZodNullable<z.ZodString>;
+    max_uses: z.ZodNullable<z.ZodNumber>;
+    use_count: z.ZodNumber;
+    active: z.ZodBoolean;
+    created_at: z.ZodString;
+}, z.core.$strip>;
+export type BrandedLeaderboardJoinCode = z.infer<typeof BrandedLeaderboardJoinCodeSchema>;
+export declare const BrandedLeaderboardDetailSchema: z.ZodObject<{
+    leaderboard: z.ZodObject<{
+        id: z.ZodString;
+        name: z.ZodString;
+        display_name: z.ZodString;
+        description: z.ZodNullable<z.ZodString>;
+        slug: z.ZodString;
+        header_image_url: z.ZodNullable<z.ZodString>;
+        visibility: z.ZodEnum<{
+            public: "public";
+            private: "private";
+            unlisted: "unlisted";
+        }>;
+        price_type: z.ZodEnum<{
+            free: "free";
+            paid: "paid";
+        }>;
+        season_price_cents: z.ZodNumber;
+        currency: z.ZodString;
+        revenue_share_pct: z.ZodNumber;
+        payout_owner_id: z.ZodNullable<z.ZodString>;
+        status: z.ZodEnum<{
+            draft: "draft";
+            active: "active";
+            paused: "paused";
+            archived: "archived";
+        }>;
+        season: z.ZodString;
+        start_gw: z.ZodNullable<z.ZodNumber>;
+        rc_offering_id: z.ZodNullable<z.ZodString>;
+        rc_entitlement_id: z.ZodNullable<z.ZodString>;
+        rc_product_id: z.ZodNullable<z.ZodString>;
+        created_at: z.ZodString;
+        updated_at: z.ZodString;
+    }, z.core.$strip>;
+    hosts: z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        leaderboard_id: z.ZodString;
+        user_id: z.ZodString;
+        display_order: z.ZodNumber;
+        name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        avatar_url: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>;
+    membership: z.ZodNullable<z.ZodObject<{
+        id: z.ZodString;
+        leaderboard_id: z.ZodString;
+        user_id: z.ZodString;
+        joined_at: z.ZodString;
+        left_at: z.ZodNullable<z.ZodString>;
+        source: z.ZodString;
+    }, z.core.$strip>>;
+    subscription: z.ZodNullable<z.ZodObject<{
+        id: z.ZodString;
+        leaderboard_id: z.ZodString;
+        user_id: z.ZodString;
+        rc_subscription_id: z.ZodNullable<z.ZodString>;
+        rc_product_id: z.ZodNullable<z.ZodString>;
+        status: z.ZodEnum<{
+            active: "active";
+            expired: "expired";
+            cancelled: "cancelled";
+            billing_retry: "billing_retry";
+        }>;
+        started_at: z.ZodString;
+        expires_at: z.ZodNullable<z.ZodString>;
+        cancelled_at: z.ZodNullable<z.ZodString>;
+    }, z.core.$strip>>;
+    hasAccess: z.ZodBoolean;
+    hasActivePurchase: z.ZodBoolean;
+    requiresPurchase: z.ZodBoolean;
+    accessReason: z.ZodEnum<{
+        free_not_joined: "free_not_joined";
+        free_joined: "free_joined";
+        paid_not_purchased: "paid_not_purchased";
+        paid_purchased_not_joined: "paid_purchased_not_joined";
+        paid_full_access: "paid_full_access";
+    }>;
+}, z.core.$strip>;
+export type BrandedLeaderboardDetail = z.infer<typeof BrandedLeaderboardDetailSchema>;
+export declare const BrandedLeaderboardStandingsRowSchema: z.ZodObject<{
+    rank: z.ZodNumber;
+    user_id: z.ZodString;
+    name: z.ZodString;
+    avatar_url: z.ZodNullable<z.ZodString>;
+    value: z.ZodNumber;
+    is_host: z.ZodBoolean;
+    compact_values: z.ZodOptional<z.ZodArray<z.ZodNullable<z.ZodNumber>>>;
+}, z.core.$strip>;
+export type BrandedLeaderboardStandingsRow = z.infer<typeof BrandedLeaderboardStandingsRowSchema>;
+export declare const BrandedLeaderboardStandingsSchema: z.ZodObject<{
+    rows: z.ZodArray<z.ZodObject<{
+        rank: z.ZodNumber;
+        user_id: z.ZodString;
+        name: z.ZodString;
+        avatar_url: z.ZodNullable<z.ZodString>;
+        value: z.ZodNumber;
+        is_host: z.ZodBoolean;
+        compact_values: z.ZodOptional<z.ZodArray<z.ZodNullable<z.ZodNumber>>>;
+    }, z.core.$strip>>;
+    userRank: z.ZodNullable<z.ZodNumber>;
+}, z.core.$strip>;
+export type BrandedLeaderboardStandings = z.infer<typeof BrandedLeaderboardStandingsSchema>;
+export declare const BrandedLeaderboardMyItemSchema: z.ZodObject<{
+    leaderboard: z.ZodObject<{
+        id: z.ZodString;
+        name: z.ZodString;
+        display_name: z.ZodString;
+        description: z.ZodNullable<z.ZodString>;
+        slug: z.ZodString;
+        header_image_url: z.ZodNullable<z.ZodString>;
+        visibility: z.ZodEnum<{
+            public: "public";
+            private: "private";
+            unlisted: "unlisted";
+        }>;
+        price_type: z.ZodEnum<{
+            free: "free";
+            paid: "paid";
+        }>;
+        season_price_cents: z.ZodNumber;
+        currency: z.ZodString;
+        revenue_share_pct: z.ZodNumber;
+        payout_owner_id: z.ZodNullable<z.ZodString>;
+        status: z.ZodEnum<{
+            draft: "draft";
+            active: "active";
+            paused: "paused";
+            archived: "archived";
+        }>;
+        season: z.ZodString;
+        start_gw: z.ZodNullable<z.ZodNumber>;
+        rc_offering_id: z.ZodNullable<z.ZodString>;
+        rc_entitlement_id: z.ZodNullable<z.ZodString>;
+        rc_product_id: z.ZodNullable<z.ZodString>;
+        created_at: z.ZodString;
+        updated_at: z.ZodString;
+    }, z.core.$strip>;
+    membership: z.ZodObject<{
+        id: z.ZodString;
+        leaderboard_id: z.ZodString;
+        user_id: z.ZodString;
+        joined_at: z.ZodString;
+        left_at: z.ZodNullable<z.ZodString>;
+        source: z.ZodString;
+    }, z.core.$strip>;
+    subscription: z.ZodNullable<z.ZodObject<{
+        id: z.ZodString;
+        leaderboard_id: z.ZodString;
+        user_id: z.ZodString;
+        rc_subscription_id: z.ZodNullable<z.ZodString>;
+        rc_product_id: z.ZodNullable<z.ZodString>;
+        status: z.ZodEnum<{
+            active: "active";
+            expired: "expired";
+            cancelled: "cancelled";
+            billing_retry: "billing_retry";
+        }>;
+        started_at: z.ZodString;
+        expires_at: z.ZodNullable<z.ZodString>;
+        cancelled_at: z.ZodNullable<z.ZodString>;
+    }, z.core.$strip>>;
+}, z.core.$strip>;
+export type BrandedLeaderboardMyItem = z.infer<typeof BrandedLeaderboardMyItemSchema>;
+export declare const BrandedLeaderboardPayoutSchema: z.ZodObject<{
+    id: z.ZodString;
+    leaderboard_id: z.ZodString;
+    owner_id: z.ZodString;
+    period: z.ZodString;
+    gross_revenue_cents: z.ZodNumber;
+    net_revenue_cents: z.ZodNumber;
+    totl_share_cents: z.ZodNumber;
+    influencer_share_cents: z.ZodNumber;
+    status: z.ZodEnum<{
+        paid: "paid";
+        pending: "pending";
+        held: "held";
+    }>;
+    paid_at: z.ZodNullable<z.ZodString>;
+    notes: z.ZodNullable<z.ZodString>;
+    created_at: z.ZodString;
+}, z.core.$strip>;
+export type BrandedLeaderboardPayout = z.infer<typeof BrandedLeaderboardPayoutSchema>;
 export declare const UnicornCardSchema: z.ZodObject<{
     fixture_index: z.ZodNumber;
     gw: z.ZodNumber;

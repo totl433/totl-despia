@@ -859,7 +859,7 @@ export default function GlobalScreen() {
           onPressChat={() => navigation.navigate('ChatHub')}
           onPressProfile={() => navigation.navigate('Profile')}
           avatarUrl={avatarUrl}
-          title={showLiveHeaderScore ? undefined : 'Leaderboards'}
+          title={showLiveHeaderScore ? undefined : '2025/26'}
           centerContent={
             showLiveHeaderScore && headerScoreLabel ? (
               <HeaderLiveScore
@@ -872,20 +872,21 @@ export default function GlobalScreen() {
             ) : undefined
           }
           rightAction={
-            <Pressable
-              onPress={() => navigation.navigate('Profile' as any, { screen: 'ProfileStats' } as any)}
-              accessibilityRole="button"
-              accessibilityLabel="Open stats"
-              style={({ pressed }) => ({
-                width: 30,
-                height: 38,
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: pressed ? 0.86 : 1,
-              })}
-            >
-              <Ionicons name="analytics-outline" size={24} color={t.color.muted} />
-            </Pressable>
+            // <Pressable
+            //   onPress={() => navigation.navigate('Profile' as any, { screen: 'ProfileStats' } as any)}
+            //   accessibilityRole="button"
+            //   accessibilityLabel="Open stats"
+            //   style={({ pressed }) => ({
+            //     width: 30,
+            //     height: 38,
+            //     alignItems: 'center',
+            //     justifyContent: 'center',
+            //     opacity: pressed ? 0.86 : 1,
+            //   })}
+            // >
+            //   <Ionicons name="analytics-outline" size={24} color={t.color.muted} />
+            // </Pressable>
+            undefined
           }
           hasLiveGames={currentGwIsLive}
           showLeftLiveBadge={!showLiveHeaderScore}

@@ -18,6 +18,7 @@ export default function AuthScreen() {
     padding: 12,
     backgroundColor: t.color.background,
     color: t.color.text,
+    letterSpacing: 0,
   } as const;
 
   const submit = async () => {

@@ -16,7 +16,7 @@ import {
 } from '@totl/domain';
 
 import { loadEnv } from './env.js';
-import { createSupabaseClient } from './supabase.js';
+import { createSupabaseAdminClient, createSupabaseClient } from './supabase.js';
 import { requireUser } from './auth.js';
 import { captureException, initSentry } from './sentry.js';
 import { computeGwResults } from './gwResults.js';
@@ -27,7 +27,7 @@ import {
   getProfileUnicorns,
   updateEmailPreferences,
 } from './profile.js';
-import { sendChatMessageReportEmail } from './reporting.js';
+import { sendChatMessageReportEmail, sendHostReviewReadyEmail } from './reporting.js';
 import { registerBrandedLeaderboardRoutes } from './brandedLeaderboards.js';
 
 const env = loadEnv(process.env);
@@ -446,6 +446,24 @@ function buildChatReportEmailText(input: {
   ].join('\n');
 }
 
+function buildHostReviewReadyEmailText(input: {
+  hostName?: string | null;
+  leaderboardName: string;
+  reviewLink: string;
+}) {
+  return [
+    `Hi ${input.hostName?.trim() || 'there'},`,
+    '',
+    `You've been added as a host for ${input.leaderboardName} on TOTL.`,
+    'Your campaign is ready for review.',
+    '',
+    `Review link: ${input.reviewLink}`,
+    '',
+    'Thanks,',
+    'TOTL',
+  ].join('\n');
+}
+
 app.post('/v1/chat/reports', async (req) => {
   await requireUser(req, supabase);
   const { userId, supa } = getAuthedSupa(req as any);
@@ -534,6 +552,74 @@ app.post('/v1/chat/reports', async (req) => {
   }
 
   return { ok: true };
+});
+
+const NotifyHostReviewBodySchema = z.object({
+  hostUserId: z.string().uuid(),
+});
+
+app.post('/v1/admin/branded-leaderboards/:id/notify-host-review', async (req) => {
+  await requireUser(req, supabase);
+  const { userId, supa } = getAuthedSupa(req as any);
+  const params = z.object({ id: z.string().uuid() }).parse((req as any).params);
+  const body = NotifyHostReviewBodySchema.parse((req as any).body);
+  const adminSupa = createSupabaseAdminClient(env);
+
+  const { data: adminRow, error: adminError } = await (supa as any)
+    .from('users')
+    .select('is_admin')
+    .eq('id', userId)
+    .maybeSingle();
+  if (adminError) throw adminError;
+  if (!adminRow?.is_admin) {
+    throw Object.assign(new Error('Admin access required'), { statusCode: 403 });
+  }
+
+  const [leaderboardRes, hostRes, hostAuthRes] = await Promise.all([
+    (supa as any)
+      .from('branded_leaderboards')
+      .select('id, display_name')
+      .eq('id', params.id)
+      .maybeSingle(),
+    (supa as any)
+      .from('users')
+      .select('id, name')
+      .eq('id', body.hostUserId)
+      .maybeSingle(),
+    adminSupa.auth.admin.getUserById(body.hostUserId),
+  ]);
+
+  if (leaderboardRes.error) throw leaderboardRes.error;
+  if (!leaderboardRes.data) {
+    throw Object.assign(new Error('Leaderboard not found'), { statusCode: 404 });
+  }
+  if (hostRes.error) throw hostRes.error;
+  if (hostAuthRes.error) throw hostAuthRes.error;
+  const hostEmail = typeof hostAuthRes.data?.user?.email === 'string' ? hostAuthRes.data.user.email : null;
+  if (!hostEmail) {
+    throw Object.assign(new Error('Host user not found or has no email'), { statusCode: 404 });
+  }
+
+  const baseUrl = (env.SITE_URL ?? 'https://playtotl.com').replace(/\/$/, '');
+  const reviewLink = `${baseUrl}/host/leaderboards/${encodeURIComponent(params.id)}`;
+
+  await sendHostReviewReadyEmail({
+    env,
+    to: hostEmail,
+    subject: `Your TOTL campaign is ready for review: ${String(leaderboardRes.data.display_name)}`,
+    text: buildHostReviewReadyEmailText({
+      hostName: typeof hostRes.data.name === 'string' ? hostRes.data.name : null,
+      leaderboardName: String(leaderboardRes.data.display_name),
+      reviewLink,
+    }),
+  });
+
+  return {
+    ok: true,
+    email: hostEmail,
+    leaderboardId: params.id,
+    reviewLink,
+  };
 });
 
 app.get('/v1/leagues/:leagueId', async (req) => {

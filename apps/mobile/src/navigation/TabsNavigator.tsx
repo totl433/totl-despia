@@ -1,16 +1,22 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useTokens } from '@totl/ui';
+import { Screen, useTokens } from '@totl/ui';
 import { SvgXml } from 'react-native-svg';
+import { useQuery } from '@tanstack/react-query';
 
 import HomeScreen from '../screens/HomeScreen';
 import GlobalScreen from '../screens/GlobalScreen';
 import LeaguesNavigator from './LeaguesNavigator';
+import BrandedLeaderboardListScreen from '../screens/brandedLeaderboards/BrandedLeaderboardListScreen';
+import BrandedLeaderboardScreen from '../screens/brandedLeaderboards/BrandedLeaderboardScreen';
+import { api } from '../lib/api';
+import CenteredSpinner from '../components/CenteredSpinner';
 
 export type RootTabsParamList = {
   Predictions: undefined;
   Leagues: undefined;
   Global: undefined;
+  BrandedLeaderboards: undefined;
 };
 
 const Tab = createBottomTabNavigator<RootTabsParamList>();
@@ -25,12 +31,46 @@ const LEADERBOARDS_SVG = `<svg width="24" height="24" viewBox="0 0 36 36" fill="
 <path d="M8 10.3691C8 9.28516 8.69336 8.61133 9.82617 8.61133H11.6816C11.8867 7.5957 12.6387 7 13.8496 7H21.7012C22.9219 7 23.6738 7.60547 23.8691 8.61133H25.7246C26.8574 8.61133 27.5508 9.28516 27.5508 10.3691C27.5508 14.3438 25.5879 16.9023 21.7109 18.1133C21.2031 18.7676 20.6172 19.2949 20.0605 19.6855V23.6309H21.2031C22.5996 23.6309 23.3613 24.4609 23.3613 25.7891V27.8496C23.3613 28.3672 22.9609 28.7188 22.4727 28.7188H13.0781C12.5898 28.7188 12.1895 28.3672 12.1895 27.8496V25.7891C12.1895 24.4609 12.9512 23.6309 14.3477 23.6309H15.4902V19.6758C14.9336 19.2949 14.3574 18.7676 13.8496 18.1133C9.96289 16.9023 8 14.3438 8 10.3691ZM13.3516 12.4004C13.3516 15.8477 16.4961 18.8555 17.7754 18.8555C19.0547 18.8555 22.1992 15.8477 22.1992 12.4004V9.32422C22.1992 8.98242 21.9648 8.75781 21.623 8.75781H13.9277C13.5859 8.75781 13.3516 8.98242 13.3516 9.32422V12.4004ZM9.63086 10.5938C9.63086 13.0938 10.6074 14.8516 12.4727 15.8477C11.9355 14.7539 11.6035 13.4844 11.6035 12.127V10.3301H9.9043C9.73828 10.3301 9.63086 10.4375 9.63086 10.5938ZM23.0781 15.8477C24.9434 14.8516 25.9199 13.0938 25.9199 10.5938C25.9199 10.4375 25.8125 10.3301 25.6465 10.3301H23.9473V12.127C23.9473 13.4844 23.6152 14.7539 23.0781 15.8477ZM17.1602 23.6309H18.3906V20.5059C18.1758 20.5645 17.9707 20.5938 17.7754 20.5938C17.5801 20.5938 17.375 20.5645 17.1602 20.5059V23.6309ZM13.9375 26.9707H21.6133V25.9355C21.6133 25.6035 21.3887 25.3887 21.0566 25.3887H14.4941C14.1621 25.3887 13.9375 25.6035 13.9375 25.9355V26.9707Z" fill="currentColor"/>
 </svg>`;
 
+const BRANDED_LB_SVG = `<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M18 29C11.9284 29 7 24.0716 7 18C7 11.9284 11.9284 7 18 7C24.0716 7 29 11.9284 29 18C29 24.0716 24.0716 29 18 29ZM18 27.1667C23.0686 27.1667 27.1667 23.0686 27.1667 18C27.1667 12.9314 23.0686 8.83333 18 8.83333C12.9314 8.83333 8.83333 12.9314 8.83333 18C8.83333 23.0686 12.9314 27.1667 18 27.1667ZM14.8941 23.5647C14.2686 24.0392 13.6 23.5431 13.848 22.8098L15.0667 19.1539L11.9392 16.9216C11.3569 16.4902 11.551 15.6598 12.3382 15.6706L16.1775 15.7029L17.3529 12.0255C17.5794 11.3137 18.399 11.3137 18.6255 12.0255L19.801 15.7029L23.6402 15.6706C24.4382 15.6598 24.6108 16.501 24.0392 16.9216L20.9118 19.1539L22.1412 22.8098C22.3784 23.5431 21.7206 24.0392 21.0843 23.5647L17.9892 21.2892L14.8941 23.5647Z" fill="currentColor"/>
+</svg>`;
+
 function TabSvgIcon({ xml, color, size }: { xml: string; color: string; size: number }) {
   return <SvgXml xml={xml} width={size} height={size} color={color} />;
 }
 
+function useBrandedLeaderboardCount() {
+  const { data } = useQuery({
+    queryKey: ['branded-leaderboards-mine'],
+    queryFn: () => api.getMyBrandedLeaderboards(),
+    staleTime: 5 * 60_000,
+  });
+  return data?.leaderboards?.length ?? 0;
+}
+
+function BrandedLeaderboardsTabContent() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['branded-leaderboards-mine'],
+    queryFn: () => api.getMyBrandedLeaderboards(),
+    staleTime: 5 * 60_000,
+  });
+  const items = data?.leaderboards ?? [];
+  if (isLoading && !data) {
+    return (
+      <Screen>
+        <CenteredSpinner loading />
+      </Screen>
+    );
+  }
+  if (items.length === 1) {
+    return <BrandedLeaderboardScreen idOrSlugOverride={items[0]?.leaderboard.id} hideBackButton />;
+  }
+  return <BrandedLeaderboardListScreen embedded />;
+}
+
 export default function TabsNavigator() {
   const t = useTokens();
+  const brandedCount = useBrandedLeaderboardCount();
 
   return (
     <Tab.Navigator
@@ -74,6 +114,16 @@ export default function TabsNavigator() {
           tabBarIcon: ({ color }) => <TabSvgIcon xml={MINI_LEAGUES_SVG} size={35} color={color} />,
         }}
       />
+      {brandedCount > 0 && (
+        <Tab.Screen
+          name="BrandedLeaderboards"
+          component={BrandedLeaderboardsTabContent}
+          options={{
+            title: 'Leaderboards',
+            tabBarIcon: ({ color }) => <TabSvgIcon xml={BRANDED_LB_SVG} size={35} color={color} />,
+          }}
+        />
+      )}
       <Tab.Screen
         name="Global"
         component={GlobalScreen}
